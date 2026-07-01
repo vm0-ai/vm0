@@ -20,6 +20,7 @@ export const streak = {
           fields: {
             STREAK_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-streak-api-key",
             },

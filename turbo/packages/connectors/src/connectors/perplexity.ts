@@ -21,6 +21,7 @@ export const perplexity = {
           fields: {
             PERPLEXITY_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "pplx-...",
             },

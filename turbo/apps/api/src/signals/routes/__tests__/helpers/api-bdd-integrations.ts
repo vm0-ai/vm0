@@ -27,10 +27,7 @@ import {
   type TelegramUploadInitBody,
   type TelegramUploadCompleteBody,
 } from "@vm0/api-contracts/contracts/integrations";
-import {
-  integrationsGithubContract,
-  type PatchGithubInstallationBody,
-} from "@vm0/api-contracts/contracts/integrations-github";
+import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
 import {
   githubOauthContract,
   type GithubAppSetupCallbackQuery,
@@ -1521,21 +1518,6 @@ export function createBddIntegrationApi(context: TestContext) {
           headers: authenticate(context, routeMocks, actor),
         }),
         [200, 404],
-      );
-    },
-
-    async requestUpdateGithubInstallation(
-      actor: ApiTestUser | null,
-      body: PatchGithubInstallationBody,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
-    ) {
-      const client = setupApp({ context })(integrationsGithubContract);
-      return await accept(
-        client.updateInstallation({
-          headers: authenticate(context, routeMocks, actor),
-          body,
-        }),
-        statuses,
       );
     },
 

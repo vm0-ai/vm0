@@ -19,6 +19,7 @@ export const helicone = {
           fields: {
             HELICONE_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "sk-helicone-...",
             },

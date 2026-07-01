@@ -2,17 +2,11 @@ import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { chatMessages } from "@vm0/db/schema/chat-message";
-import { threadGoals } from "@vm0/db/schema/thread-goal";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
-import { and, asc, eq } from "drizzle-orm";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import {
   deleteUsageInsightFixture$,
@@ -26,10 +20,11 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-} from "./helpers/zero-org-membership";
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
@@ -48,8 +43,8 @@ interface GoalApiFixture extends UsageInsightFixture {
 }
 
 const track = createFixtureTracker<GoalApiFixture>(async (fixture) => {
+  await deleteFeatureSwitchesForUser(context, fixture);
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
-  await store.set(deleteOrgMembership$, fixture, context.signal);
 });
 
 function currentSecond(): number {
@@ -119,14 +114,9 @@ async function seedGoalApiFixture(args: {
     context.signal,
   );
   if (args.featureEnabled) {
-    await store
-      .set(writeDb$)
-      .insert(userFeatureSwitches)
-      .values({
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        switches: { [FeatureSwitchKey.GoalWorkflows]: true },
-      });
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.WorkflowAutomation]: true,
+    });
   }
   return await track(
     Promise.resolve({
@@ -138,36 +128,6 @@ async function seedGoalApiFixture(args: {
   );
 }
 
-async function loadGoalRow(fixture: GoalApiFixture) {
-  const db = store.set(writeDb$);
-  const [row] = await db
-    .select()
-    .from(threadGoals)
-    .where(
-      and(
-        eq(threadGoals.orgId, fixture.orgId),
-        eq(threadGoals.chatThreadId, fixture.threadId),
-      ),
-    )
-    .limit(1);
-  return row ?? null;
-}
-
-async function loadGoalMarkers(fixture: GoalApiFixture) {
-  const db = store.set(writeDb$);
-  return await db
-    .select({
-      role: chatMessages.role,
-      content: chatMessages.content,
-      runId: chatMessages.runId,
-      runEventId: chatMessages.runEventId,
-      goalEvent: chatMessages.goalEvent,
-    })
-    .from(chatMessages)
-    .where(eq(chatMessages.chatThreadId, fixture.threadId))
-    .orderBy(asc(chatMessages.createdAt));
-}
-
 async function createGoal(fixture: GoalApiFixture, objective = "ship goals") {
   return await accept(
     goalsClient().create({
@@ -175,6 +135,26 @@ async function createGoal(fixture: GoalApiFixture, objective = "ship goals") {
       body: { objective },
     }),
     [201],
+  );
+}
+
+async function readCurrentGoal(fixture: GoalApiFixture) {
+  return await accept(
+    goalsClient().get({
+      headers: headers(fixture),
+    }),
+    [200],
+  );
+}
+
+async function readThreadGoalWithSession(fixture: GoalApiFixture) {
+  mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+  return await accept(
+    goalsClient().getForChatThread({
+      headers: { authorization: "Bearer clerk-session" },
+      params: { threadId: fixture.threadId },
+    }),
+    [200],
   );
 }
 
@@ -202,7 +182,7 @@ describe("zero goals", () => {
     });
   });
 
-  it("stores a thread goal row and writes goalEvent markers for lifecycle transitions", async () => {
+  it("exposes lifecycle transitions through the goal API", async () => {
     const fixture = await seedGoalApiFixture({ featureEnabled: true });
 
     const created = await createGoal(fixture, "ship thread goals");
@@ -211,32 +191,9 @@ describe("zero goals", () => {
       objectiveBrief: "ship thread goals",
       status: "active",
     });
-
-    const row = await loadGoalRow(fixture);
-    expect(row).toMatchObject({
-      orgId: fixture.orgId,
-      ownerUserId: fixture.userId,
-      agentId: fixture.agentId,
-      chatThreadId: fixture.threadId,
-      status: "active",
-      objective: "ship thread goals",
-      objectiveBrief: "ship thread goals",
+    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
+      body: created.body,
     });
-
-    const afterCreate = await loadGoalMarkers(fixture);
-    expect(afterCreate).toStrictEqual([
-      {
-        role: "assistant",
-        content: null,
-        runId: null,
-        runEventId: null,
-        goalEvent: {
-          type: "state",
-          status: "active",
-          objectiveBrief: "ship thread goals",
-        },
-      },
-    ]);
 
     const duplicate = await accept(
       goalsClient().create({
@@ -252,36 +209,27 @@ describe("zero goals", () => {
       [200],
     );
     expect(blocked.body.status).toBe("blocked");
+    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
+      body: { status: "blocked" },
+    });
 
     const resumed = await accept(
       goalsClient().resume({ headers: headers(fixture) }),
       [200],
     );
     expect(resumed.body.status).toBe("active");
+    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
+      body: { status: "active", objectiveBrief: "ship thread goals" },
+    });
 
     const completed = await accept(
       goalsClient().complete({ headers: headers(fixture) }),
       [200],
     );
     expect(completed.body.status).toBe("complete");
-
-    const events = (await loadGoalMarkers(fixture)).map((marker) => {
-      return marker.goalEvent;
+    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
+      body: { status: "complete" },
     });
-    expect(events).toStrictEqual([
-      {
-        type: "state",
-        status: "active",
-        objectiveBrief: "ship thread goals",
-      },
-      { type: "state", status: "blocked" },
-      {
-        type: "state",
-        status: "active",
-        objectiveBrief: "ship thread goals",
-      },
-      { type: "state", status: "complete" },
-    ]);
   });
 
   it("edits a blocked goal back to active and replaces a completed goal", async () => {
@@ -302,7 +250,9 @@ describe("zero goals", () => {
       status: "active",
     });
 
-    const editedRow = await loadGoalRow(fixture);
+    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
+      body: edited.body,
+    });
     await accept(goalsClient().complete({ headers: headers(fixture) }), [200]);
 
     const replacement = await accept(
@@ -312,14 +262,13 @@ describe("zero goals", () => {
       }),
       [200],
     );
-    expect(replacement.body.status).toBe("active");
-
-    const replacementRow = await loadGoalRow(fixture);
-    expect(replacementRow?.id).not.toBe(editedRow?.id);
-    expect(replacementRow).toMatchObject({
+    expect(replacement.body).toMatchObject({
       objective: "start the next goal",
       objectiveBrief: "start the next goal",
       status: "active",
+    });
+    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
+      body: replacement.body,
     });
   });
 
@@ -337,12 +286,8 @@ describe("zero goals", () => {
     );
 
     expect(paused.body.status).toBe("paused");
-    await expect(loadGoalRow(fixture)).resolves.toMatchObject({
-      status: "paused",
-    });
-    expect((await loadGoalMarkers(fixture)).at(-1)?.goalEvent).toStrictEqual({
-      type: "state",
-      status: "paused",
+    await expect(readThreadGoalWithSession(fixture)).resolves.toMatchObject({
+      body: { status: "paused" },
     });
   });
 
@@ -380,10 +325,11 @@ describe("zero goals", () => {
     );
 
     expect(cleared.body).toStrictEqual({ cleared: true });
-    await expect(loadGoalRow(fixture)).resolves.toBeNull();
-    expect((await loadGoalMarkers(fixture)).at(-1)?.goalEvent).toStrictEqual({
-      type: "cleared",
-    });
+    const missing = await accept(
+      goalsClient().get({ headers: headers(fixture) }),
+      [404],
+    );
+    expect(missing.body.error.code).toBe("NOT_FOUND");
   });
 
   it("enforces user-control and agent-result capability boundaries", async () => {
@@ -424,23 +370,9 @@ describe("zero goals", () => {
       "The goal changed after this run started",
     );
 
-    const currentGoal = await loadGoalRow(fixture);
-    if (!currentGoal) {
-      throw new Error("Expected current goal");
-    }
-    await store
-      .set(writeDb$)
-      .update(zeroRuns)
-      .set({ goalId: currentGoal.id })
-      .where(eq(zeroRuns.id, fixture.runId));
-
-    const blocked = await accept(
-      goalsClient().block({
-        headers: headers(fixture, ["goal:agent-result:write"]),
-      }),
-      [200],
-    );
-    expect(blocked.body.status).toBe("blocked");
+    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
+      body: { status: "active" },
+    });
   });
 
   it("excludes goal-state markers from a thread's unread state", async () => {

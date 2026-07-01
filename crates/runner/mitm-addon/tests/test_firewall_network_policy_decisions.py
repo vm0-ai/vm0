@@ -82,6 +82,36 @@ class TestFirewallNetworkPolicyDecisions:
             }
         }
 
+    def test_codex_oauth_auth_host_is_blocked_by_unknown_policy(self):
+        firewalls = [builtin_firewalls.BUILTIN_FIREWALLS["model-provider:codex-oauth-token"]]
+        policies = {
+            "model-provider:codex-oauth-token": {
+                "allow": ["codex:api"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            }
+        }
+
+        auth_result = match_request_with_raw_firewalls(
+            "https://auth.openai.com/oauth/token",
+            "POST",
+            firewalls,
+            network_policies=policies,
+        )
+        codex_result = match_request_with_raw_firewalls(
+            "https://chatgpt.com/backend-api/codex/responses",
+            "POST",
+            firewalls,
+            network_policies=policies,
+        )
+
+        assert isinstance(auth_result, matching.FirewallBlock)
+        assert auth_result.reason == "unknown_endpoint"
+        assert auth_result.permissions == ()
+        assert isinstance(codex_result, matching.FirewallAllow)
+        assert codex_result.permission == "codex:api"
+
     def test_allowed_permission_passes(self):
         policies = {
             "github": {"allow": ["repo-read"], "deny": ["repo-write"], "unknownPolicy": "deny"}

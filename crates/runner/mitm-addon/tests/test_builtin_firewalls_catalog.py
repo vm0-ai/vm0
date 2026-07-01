@@ -259,14 +259,22 @@ def test_model_provider_builtin_firewalls_are_available():
     assert openai_firewall is not None
     assert openai_firewall["apis"][0]["base"] == "https://api.openai.com/v1/responses"
     assert codex_firewall is not None
-    assert any(
-        api["base"] == "https://chatgpt.com/backend-api/codex" for api in codex_firewall["apis"]
-    )
-    assert any(
-        api["base"] == "https://auth.openai.com"
-        and api.get("permissions") == [{"name": "denied", "rules": ["ANY /*"]}]
+    codex_api = next(
+        api
         for api in codex_firewall["apis"]
+        if api["base"] == "https://chatgpt.com/backend-api/codex"
     )
+    assert codex_api.get("permissions") == [
+        {
+            "name": "codex:api",
+            "description": "Access the ChatGPT Codex backend with GET and POST requests.",
+            "rules": ["GET /{path*}", "POST /{path*}"],
+        }
+    ]
+    auth_api = next(
+        api for api in codex_firewall["apis"] if api["base"] == "https://auth.openai.com"
+    )
+    assert auth_api.get("permissions") == []
 
 
 def test_unknown_builtin_firewall_does_not_import(monkeypatch):
@@ -515,6 +523,30 @@ def test_youtube_builtin_allows_video_media_put_as_create():
         assert result.permission == "videos.create"
         assert result.rule == "PUT /v3/videos"
         assert result.rel_path == "/v3/videos"
+
+
+def test_youtube_builtin_allows_video_batch_stats_as_read():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["youtube"]
+    compiled = matching.compile_firewalls([firewall])
+    assert compiled is not None
+
+    result = matching.match_compiled_firewall_request(
+        "https://youtube.googleapis.com/youtube/v3/videos:batchGetStats",
+        "GET",
+        compiled,
+        {
+            "youtube": {
+                "allow": ["videos.read"],
+                "deny": [],
+                "unknownPolicy": "deny",
+            }
+        },
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.permission == "videos.read"
+    assert result.rule == "GET /v3/videos:batchGetStats"
+    assert result.rel_path == "/v3/videos:batchGetStats"
 
 
 def test_figma_firewall_uses_granular_permissions():

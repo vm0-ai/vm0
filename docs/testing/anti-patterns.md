@@ -388,24 +388,33 @@ it("should create a provider", async () => {
 ```
 
 ```typescript
-// ✅ Good — testing through the route handler
-import { POST } from "../route";
-import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
+// ✅ Good — testing through the API endpoint
+import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+
+import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+
+const context = testContext();
+const client = setupApp({ context })(zeroModelProvidersMainContract);
 
 it("should create a provider", async () => {
-  const request = createTestRequest(url, {
-    method: "POST",
-    body: JSON.stringify({ type: "anthropic-api-key", secret: "sk-test" }),
-  });
-  const response = await POST(request);
-  expect(response.status).toBe(201);
+  context.mocks.clerk.session(userId, orgId);
+  const response = await accept(
+    client.upsert({
+      headers: { authorization: "Bearer clerk-session" },
+      body: { type: "anthropic-api-key", secret: "sk-test" },
+    }),
+    [201],
+  );
+  expect(response.body.provider.type).toBe("anthropic-api-key");
 });
 ```
 
 The service test passes even if the route handler has a bug in request parsing, auth checking, or response formatting. The route test catches all of these.
 
-**Exception**: Some service functions have no route. See
-[Service-Level Exceptions](api-testing.md#service-level-exceptions).
+If behavior is not reachable through the production API surface, do not test it
+by importing the service from an API test. Add the missing API surface first, or
+raise the gap during review. See
+[Testing External Behavior](testing-external-behavior.md).
 
 ---
 

@@ -1,5 +1,65 @@
 # Changelog
 
+## [0.131.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.3...runner-rs-v0.131.4) (2026-06-30)
+
+## [0.131.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.2...runner-rs-v0.131.3) (2026-06-30)
+
+## [0.131.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.1...runner-rs-v0.131.2) (2026-06-30)
+
+
+### Performance Improvements
+
+* split runner storage manifest telemetry ([#19518](https://github.com/vm0-ai/vm0/issues/19518)) ([cd0cc9e](https://github.com/vm0-ai/vm0/commit/cd0cc9ec1b11239b294c9b569f61fa20115c3a0b))
+
+## [0.131.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.0...runner-rs-v0.131.1) (2026-06-30)
+
+## [0.131.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.14...runner-rs-v0.131.0) (2026-06-30)
+
+
+### Features
+
+* enable codex local active input ([#19463](https://github.com/vm0-ai/vm0/issues/19463)) ([5a34420](https://github.com/vm0-ai/vm0/commit/5a34420314311d9a290c195f33539d8359303660))
+
+
+### Documentation
+
+* **runner:** document session history materializer contract ([#19493](https://github.com/vm0-ai/vm0/issues/19493)) ([dac914a](https://github.com/vm0-ai/vm0/commit/dac914ab5ceb017e38addc3c065f82f12d28ee2e))
+
+## [0.130.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.13...runner-rs-v0.130.14) (2026-06-30)
+
+
+### Documentation
+
+* document runner snapshot publish contract ([#19477](https://github.com/vm0-ai/vm0/issues/19477)) ([7412194](https://github.com/vm0-ai/vm0/commit/74121940890576935986994d6691efbc82d8e68f))
+
+## [0.130.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.12...runner-rs-v0.130.13) (2026-06-30)
+
+
+### Documentation
+
+* document Ably supervisor discovery contract ([#19433](https://github.com/vm0-ai/vm0/issues/19433)) ([83f686e](https://github.com/vm0-ai/vm0/commit/83f686e8a32de4dd4edd7dcf416421b78756ffca))
+
+## [0.130.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.11...runner-rs-v0.130.12) (2026-06-30)
+
+
+### Bug Fixes
+
+* add youtube batch stats firewall route ([#19436](https://github.com/vm0-ai/vm0/issues/19436)) ([65f41cc](https://github.com/vm0-ai/vm0/commit/65f41cc4df675880b47f99e65e6d946add16708a))
+
+
+### Performance Improvements
+
+* avoid quadratic mitm firewall prefix lookup ([#19435](https://github.com/vm0-ai/vm0/issues/19435)) ([432c902](https://github.com/vm0-ai/vm0/commit/432c902ede6c4ac8d1072a1c40489fbc46e86d97))
+
+## [0.130.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.10...runner-rs-v0.130.11) (2026-06-30)
+
+## [0.130.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.9...runner-rs-v0.130.10) (2026-06-30)
+
+
+### Bug Fixes
+
+* enforce runtime builtin host policies ([#19385](https://github.com/vm0-ai/vm0/issues/19385)) ([89c05a9](https://github.com/vm0-ai/vm0/commit/89c05a908553736cb903a7fb4ad7fa8697acf1a8))
+
 ## [0.130.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.8...runner-rs-v0.130.9) (2026-06-30)
 
 ## [0.130.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.7...runner-rs-v0.130.8) (2026-06-29)

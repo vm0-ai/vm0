@@ -21,6 +21,7 @@ export const meshy = {
           fields: {
             MESHY_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "msy_...",
             },

@@ -21,6 +21,7 @@ export const hume = {
           fields: {
             HUME_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
           },

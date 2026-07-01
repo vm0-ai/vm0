@@ -627,9 +627,9 @@ function collectAgentEvents(
 
     const queried = await settle(
       (async (): Promise<ChatHistoryEvent[]> => {
-        const events = (await get(
-          queryAxiom(apl, { noCache: true }),
-        )) as unknown as readonly ChatHistoryEvent[];
+        const events = await get(
+          queryAxiom<ChatHistoryEvent>(apl, { noCache: true }),
+        );
         return [...events];
       })(),
     );
@@ -822,11 +822,11 @@ function queryAgentEvents(
 
     const queried = await settle(
       (async (): Promise<AxiomAgentEvent[]> => {
-        const events = (await get(
-          queryAxiom(apl, {
+        const events = await get(
+          queryAxiom<AxiomAgentEvent>(apl, {
             noCache: true,
           }),
-        )) as unknown as readonly AxiomAgentEvent[];
+        );
         return [...events];
       })(),
     );

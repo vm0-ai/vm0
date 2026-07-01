@@ -18,11 +18,13 @@ export const salesforce = {
           fields: {
             SALESFORCE_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "00D...",
             },
             SALESFORCE_INSTANCE: {
               label: "Instance",
+              publicId: "instance",
               required: true,
               placeholder: "mycompany",
               storage: "variable",

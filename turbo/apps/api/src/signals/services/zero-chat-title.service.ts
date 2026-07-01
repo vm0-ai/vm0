@@ -32,7 +32,7 @@ const BUILT_IN_GENERATION_FOLLOWUP_CONTEXT = [
   "- website: create hosted websites or web pages.",
 ].join("\n");
 
-interface TitleContextMessage {
+export interface ChatCompletionContextMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
 }
@@ -40,7 +40,7 @@ interface TitleContextMessage {
 interface ChatTitleInput {
   readonly currentUserMessage: string;
   readonly currentAssistantReply?: string;
-  readonly priorRounds?: readonly TitleContextMessage[];
+  readonly priorRounds?: readonly ChatCompletionContextMessage[];
 }
 
 interface OpenRouterResponse {
@@ -62,6 +62,25 @@ export function isChatTitleGenerationConfigured(): boolean {
   return Boolean(optionalEnv("OPENROUTER_API_KEY"));
 }
 
+function completedConversationContextMessageCondition() {
+  return sql<boolean>`NOT (
+      ${chatMessages.role} = 'user'
+      AND ${chatMessages.runId} IS NULL
+      AND ${chatMessages.revokesMessageId} IS NULL
+      AND ${chatMessages.interruptsRunId} IS NULL
+      AND ${chatMessages.error} IS NULL
+    )
+    AND NOT (
+      ${chatMessages.runId} IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM ${agentRuns}
+        WHERE ${agentRuns.id} = ${chatMessages.runId}
+          AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+      )
+    )`;
+}
+
 function stripMarkdown(text: string): string {
   return text
     .replace(/(\*{1,3}|_{1,3})(.+?)\1/g, "$2")
@@ -76,7 +95,10 @@ function stripMarkdown(text: string): string {
 async function generateText(
   messages: readonly ChatMessageForGeneration[],
   maxTokens = 30,
-  options?: { readonly stripMarkdown?: boolean },
+  options?: {
+    readonly stripMarkdown?: boolean;
+    readonly allowEmpty?: boolean;
+  },
 ): Promise<string | null> {
   const apiKey = optionalEnv("OPENROUTER_API_KEY");
   if (!apiKey) {
@@ -104,8 +126,12 @@ async function generateText(
   }
 
   const data = (await response.json()) as OpenRouterResponse;
-  const content = data.choices[0]?.message.content.trim();
-  if (!content) {
+  const rawContent = data.choices[0]?.message.content;
+  if (rawContent === undefined) {
+    throw new Error("OpenRouter returned empty content");
+  }
+  const content = rawContent.trim();
+  if (!content && !options?.allowEmpty) {
     throw new Error("OpenRouter returned empty content");
   }
 
@@ -153,12 +179,13 @@ async function getLatestTitleContextMessages(
   db: Db,
   threadId: string,
   options?: { readonly excludeRunId?: string },
-): Promise<TitleContextMessage[]> {
+): Promise<ChatCompletionContextMessage[]> {
   const filters = [
     eq(chatMessages.chatThreadId, threadId),
     isNotNull(chatMessages.content),
     inArray(chatMessages.role, ["user", "assistant"]),
     visibleChatMessageCondition(),
+    completedConversationContextMessageCondition(),
   ];
   if (options?.excludeRunId !== undefined) {
     filters.push(
@@ -407,10 +434,22 @@ function parseRecommendedFollowups(
   return suggestions;
 }
 
+function parseWorkflowAutomationSuggestion(
+  text: string,
+): ChatMessageRecommendedFollowup | null {
+  const match = /^\[YES\]\s*[:：-]?\s*(.*)$/i.exec(text.trim());
+  if (!match) {
+    return null;
+  }
+
+  const prompt = sanitizeFollowup(match[1] ?? "");
+  return prompt === null ? null : { prompt, kind: "talk" };
+}
+
 async function getLatestFollowupContextMessages(
   db: SelectDb,
   threadId: string,
-): Promise<TitleContextMessage[]> {
+): Promise<ChatCompletionContextMessage[]> {
   const rows = await db
     .select({
       role: chatMessages.role,
@@ -425,6 +464,7 @@ async function getLatestFollowupContextMessages(
         isNotNull(chatMessages.content),
         inArray(chatMessages.role, ["user", "assistant"]),
         visibleChatMessageCondition(),
+        completedConversationContextMessageCondition(),
       ),
     )
     .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
@@ -442,7 +482,7 @@ async function getLatestFollowupContextMessages(
 }
 
 async function generateRecommendedFollowups(
-  messages: readonly TitleContextMessage[],
+  messages: readonly ChatCompletionContextMessage[],
 ): Promise<ChatMessageRecommendedFollowups> {
   const last = messages[messages.length - 1];
   if (last?.role !== "assistant" || last.content.trim().length === 0) {
@@ -480,25 +520,83 @@ async function generateRecommendedFollowups(
   return text === null ? [] : parseRecommendedFollowups(text);
 }
 
-export async function generateChatThreadRecommendedFollowups(args: {
+async function generateWorkflowAutomationSuggestion(
+  messages: readonly ChatCompletionContextMessage[],
+): Promise<ChatMessageRecommendedFollowup | null> {
+  const last = messages[messages.length - 1];
+  if (last?.role !== "assistant" || last.content.trim().length === 0) {
+    return null;
+  }
+
+  const context = messages
+    .map((message) => {
+      return `${message.role}: ${message.content.slice(0, FOLLOWUP_CONTEXT_CHAR_CAP)}`;
+    })
+    .join("\n\n");
+
+  const text = await generateText(
+    [
+      {
+        role: "system",
+        content: [
+          "Decide whether this completed VM0 chat task should be suggested as a reusable workflow or automation.",
+          "A workflow is reusable instructions or an SOP. An automation/trigger is when and how that workflow should run automatically.",
+          "Suggest only when the task is likely repeated, scheduled, triggered by an event, or has reusable SOP steps.",
+          "Do not suggest for one-off Q&A, broad brainstorming, tiny edits, or tasks that should just be continued manually.",
+          "If you do not recommend it, return an empty string.",
+          "If you recommend it, return exactly one line starting with [YES] followed by a short user prompt.",
+          "The prompt must invite discussion only. Do not ask the agent to create, enable, run, or schedule anything immediately.",
+          "Keep the text after [YES] under 100 characters. Match the user's language.",
+          "Example: [YES] Discuss whether to save this as a workflow for new support emails.",
+        ].join("\n"),
+      },
+      {
+        role: "user",
+        content: `Recent conversation:\n${context}`,
+      },
+    ],
+    80,
+    { stripMarkdown: false, allowEmpty: true },
+  );
+
+  return text === null ? null : parseWorkflowAutomationSuggestion(text);
+}
+
+export async function loadChatThreadRecommendedFollowupContext(args: {
   readonly db: SelectDb;
   readonly threadId: string;
+}): Promise<ChatCompletionContextMessage[]> {
+  return await getLatestFollowupContextMessages(args.db, args.threadId);
+}
+
+export async function generateChatThreadRecommendedFollowupsFromContext(args: {
+  readonly messages: readonly ChatCompletionContextMessage[];
+  readonly threadId?: string;
 }): Promise<ChatMessageRecommendedFollowups> {
-  const result = await settle(
-    (async () => {
-      const messages = await getLatestFollowupContextMessages(
-        args.db,
-        args.threadId,
-      );
-      return generateRecommendedFollowups(messages);
-    })(),
-  );
+  const result = await settle(generateRecommendedFollowups(args.messages));
   if (!result.ok) {
     log.warn("Recommended follow-up generation failed", {
-      threadId: args.threadId,
+      ...(args.threadId ? { threadId: args.threadId } : {}),
       err: result.error,
     });
     return [];
+  }
+  return result.value;
+}
+
+export async function generateChatThreadWorkflowAutomationSuggestionFromContext(args: {
+  readonly messages: readonly ChatCompletionContextMessage[];
+  readonly threadId?: string;
+}): Promise<ChatMessageRecommendedFollowup | null> {
+  const result = await settle(
+    generateWorkflowAutomationSuggestion(args.messages),
+  );
+  if (!result.ok) {
+    log.warn("Workflow automation suggestion generation failed", {
+      ...(args.threadId ? { threadId: args.threadId } : {}),
+      err: result.error,
+    });
+    return null;
   }
   return result.value;
 }

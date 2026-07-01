@@ -21,6 +21,7 @@ export const segment = {
           fields: {
             SEGMENT_TOKEN: {
               label: "Public API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "your-segment-public-api-token",
             },

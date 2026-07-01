@@ -173,7 +173,6 @@ import {
 } from "./agent-connector-scope.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
-const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
 type ArtifactMissingRootPolicy = NonNullable<
   StorageManifest["artifacts"][number]["missingRootPolicy"]
@@ -432,6 +431,11 @@ export type DispatchFailedRunCallbacks = (
   error: string,
 ) => Promise<void>;
 
+export type BeforeRunDispatch = (args: {
+  readonly runId: string;
+  readonly status: "queued" | "pending";
+}) => Promise<boolean>;
+
 export interface CreateAgentRunArgs {
   readonly userId: string;
   readonly orgId: string;
@@ -462,6 +466,7 @@ export interface CreateAgentRunArgs {
   readonly queueOnConcurrencyLimit?: boolean;
   readonly enforceVm0Credits?: boolean;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
+  readonly beforeDispatch?: BeforeRunDispatch;
   readonly timing?: ApiDispatchTimingCollector;
   readonly timingDimensions?: ApiDispatchTimingDimensions;
 }
@@ -584,7 +589,7 @@ function buildSystemSkillVolumes(
   framework: SupportedFramework,
   goalSeedEnabled: boolean,
 ): readonly AdditionalVolume[] {
-  // The `goal` skill is mounted only when the GoalWorkflows switch is on, so it
+  // The `goal` skill is mounted only when workflow automation is on, so it
   // is appended here rather than living in the always-on SEED_SKILLS list.
   const seedNames = goalSeedEnabled
     ? [...SEED_SKILLS, GOAL_SKILL_NAME]
@@ -4319,7 +4324,7 @@ async function buildStoredExecutionContext(args: {
       disallowedTools: withBuiltinGoalDisabled(
         args.body.disallowedTools,
         isFeatureEnabled(
-          FeatureSwitchKey.GoalWorkflows,
+          FeatureSwitchKey.WorkflowAutomation,
           args.featureSwitchContext,
         ),
       ),
@@ -4845,7 +4850,7 @@ function dispatchRun(
                 profile: payload.profile,
                 cliAgentSessionId: payload.cliAgentSessionId,
                 executionContext: payload.executionContext,
-                expiresAt: new Date(now() + 2 * 60 * 60 * 1000),
+                expiresAt: sql`now() + interval '2 hours'`,
               });
             },
           );
@@ -4943,7 +4948,7 @@ function enqueueRunForConcurrency(
         orgId: args.orgId,
         encryptedParams,
         createdAt: args.run.createdAt,
-        expiresAt: new Date(now() + QUEUED_RUN_TTL_MS),
+        expiresAt: sql`now() + interval '2 hours'`,
       });
       const [depthRow] = await tx
         .select({ depth: count() })
@@ -5007,6 +5012,62 @@ function failedRunResponse(
       createdAt: run.createdAt.toISOString(),
     },
   };
+}
+
+export const BEFORE_DISPATCH_CANCELLED_ERROR =
+  "Run dispatch cancelled before runner queue persistence";
+
+function cancelledBeforeDispatchRunResponse(
+  run: RunRecord,
+): Extract<CreateRunRouteResult, { readonly status: 201 }> {
+  return {
+    status: 201,
+    body: {
+      runId: run.id,
+      status: "cancelled",
+      sessionId: run.sessionId,
+      error: BEFORE_DISPATCH_CANCELLED_ERROR,
+      createdAt: run.createdAt.toISOString(),
+    },
+  };
+}
+
+async function cancelRunBeforeDispatch(
+  db: Db,
+  runId: string,
+): Promise<boolean> {
+  const updated = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(agentRuns)
+      .set({
+        status: "cancelled",
+        completedAt: nowDate(),
+        error: BEFORE_DISPATCH_CANCELLED_ERROR,
+      })
+      .where(
+        and(
+          eq(agentRuns.id, runId),
+          inArray(agentRuns.status, ["queued", "pending"]),
+        ),
+      )
+      .returning({ userId: agentRuns.userId });
+    if (!row) {
+      return undefined;
+    }
+
+    await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, runId));
+    await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
+    return row;
+  });
+
+  if (!updated) {
+    return false;
+  }
+
+  await publishRunChangedForUserSafely(updated.userId, runId, {
+    status: "cancelled",
+  });
+  return true;
 }
 
 interface PreparedRunContext {
@@ -5286,7 +5347,7 @@ function preparedRunAdditionalVolumes(args: {
       },
       args.framework,
       isFeatureEnabled(
-        FeatureSwitchKey.GoalWorkflows,
+        FeatureSwitchKey.WorkflowAutomation,
         args.featureSwitchContext,
       ),
     ),
@@ -5938,6 +5999,63 @@ function completePendingRun(input: {
   );
 }
 
+async function beforeDispatchResponse(args: {
+  readonly db: Db;
+  readonly run: RunRecord;
+  readonly createArgs: CreateAgentRunArgs;
+  readonly signal: AbortSignal;
+  readonly drainOrgQueue: () => Promise<void>;
+}): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }> | null> {
+  const beforeDispatch = args.createArgs.beforeDispatch;
+  if (!beforeDispatch) {
+    return null;
+  }
+
+  // Do not bind the outer request signal here. A successful gate may have
+  // persisted pre-dispatch state that must be followed by queue/job persistence.
+  const beforeDispatchResult = await settle(
+    beforeDispatch({
+      runId: args.run.id,
+      status: args.run.status,
+    }),
+  );
+  if (!beforeDispatchResult.ok) {
+    const transitioned = await markRunFailed(
+      args.db,
+      args.run.id,
+      beforeDispatchResult.error,
+      args.createArgs.dispatchFailedCallbacks,
+    );
+    args.signal.throwIfAborted();
+    if (transitioned && args.run.status === "pending") {
+      await tapError(args.drainOrgQueue(), (error) => {
+        L.error("Failed to drain org queue after run pre-dispatch failure", {
+          runId: args.run.id,
+          error,
+        });
+      });
+      args.signal.throwIfAborted();
+    }
+    return failedRunResponse(args.run, beforeDispatchResult.error);
+  }
+  if (beforeDispatchResult.value) {
+    return null;
+  }
+
+  const cancelled = await cancelRunBeforeDispatch(args.db, args.run.id);
+  args.signal.throwIfAborted();
+  if (cancelled && args.run.status === "pending") {
+    await tapError(args.drainOrgQueue(), (error) => {
+      L.error("Failed to drain org queue after run dispatch cancellation", {
+        runId: args.run.id,
+        error,
+      });
+    });
+    args.signal.throwIfAborted();
+  }
+  return cancelledBeforeDispatchRunResponse(args.run);
+}
+
 export const createAgentRun$ = command(
   async (
     { get, set },
@@ -6011,6 +6129,19 @@ export const createAgentRun$ = command(
 
     if (isRouteError(transactionResult)) {
       return transactionResult;
+    }
+
+    const beforeDispatch = await beforeDispatchResponse({
+      db,
+      run: transactionResult,
+      createArgs: args,
+      signal,
+      drainOrgQueue: async () => {
+        await set(drainOrgQueue$, { orgId: args.orgId }, signal);
+      },
+    });
+    if (beforeDispatch) {
+      return beforeDispatch;
     }
 
     if (transactionResult.status === "queued") {

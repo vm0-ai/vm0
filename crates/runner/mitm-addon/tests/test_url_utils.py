@@ -117,7 +117,9 @@ class TestBuildRewriteUrl:
             ("https://user:pass@example.com/hook", "userinfo"),
             ("https://exa mple.com/hook", "whitespace"),
             ("https://example.com:99999/hook", "Port out of range"),
+            ("https://example.com:/hook", "invalid port"),
             ("https://[::1/hook", "Invalid IPv6 URL"),
+            ("https://[v1.invalid]/hook", "invalid host"),
             ("https://example%2ecom/hook", "unsafe percent encoding"),
             ("https://example%2ccom/hook", "unsafe percent encoding"),
             ("https://example%3a443.com/hook", "invalid host"),
@@ -152,6 +154,8 @@ class TestBuildRewriteUrl:
             ("https://127。0。0。1?token=static", "invalid host"),
             ("https://127.0.0.1。/hook", "invalid host"),
             ("https://\uff11\uff12\uff17.\uff10.\uff10.\uff11/hook", "invalid host"),
+            ("https://fa\u212a.example/hook", "invalid host"),
+            ("https://\u212a.example/hook", "invalid host"),
         ],
     )
     def test_invalid_resolved_base_rejected(self, base, message):

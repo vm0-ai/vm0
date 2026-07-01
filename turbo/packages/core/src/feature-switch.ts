@@ -160,15 +160,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Resend email service connector",
     enabled: false,
   },
+  [FeatureSwitchKey.PexelsConnector]: {
+    maintainer: "bingjie@vm0.ai",
+    description: "Enable the Pexels stock photo and video connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Spotify connector integration",
-    enabled: false,
-  },
-  [FeatureSwitchKey.GitHubIntegration]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Show the GitHub integration card on the Works page for installing GitHub, connecting users, and managing label listeners. Off by default; individuals opt in via the feature-switch overrides API.",
     enabled: false,
   },
   [FeatureSwitchKey.DataExport]: {
@@ -195,9 +194,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.WorkflowsViewer]: {
+  [FeatureSwitchKey.WorkflowAutomation]: {
     maintainer: "lancy@vm0.ai",
-    description: "Show the workflows viewer in the Zero sidebar and page UI",
+    description:
+      "Enable workflow automation surfaces, slash workflow commands, event triggers, automation-to-workflow routing, persistent goals, and workflow-driven ZERO_TOKEN capabilities.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -250,6 +250,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub. Individuals opt in via feature-switch overrides.",
     enabled: false,
   },
+  [FeatureSwitchKey.ChatThreadEmoji]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show the chat thread emoji icon in chat headers and enable the Shift+F2 emoji picker shortcut for staff orgs.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.MemoryViewer]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -270,55 +277,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the HTML artifact comment-editing workflow for collecting DOM comments and preparing instrumented working-copy edits.",
     enabled: false,
   },
-  [FeatureSwitchKey.ChatSlashWorkflowCommands]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable slash command suggestions for the current agent's workflows in the Zero chat composer.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.WorkflowGmailEventTriggers]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Allow Gmail new-message workflow event triggers. Creating/enabling requires a connected Gmail connector and Pub/Sub watch setup; matched inbound messages run the linked workflow.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.WorkflowGithubLabelEventTriggers]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Allow GitHub label workflow event triggers. Matching GitHub issue and pull request label events run the linked workflow.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.WorkflowGoogleCalendarEventTriggers]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Allow Google Calendar event-created workflow triggers. Creating/enabling requires a connected Google Calendar connector and Calendar watch setup; newly observed calendar events run the linked workflow.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.WorkflowWebhookTriggers]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Allow signed inbound webhook workflow event triggers. Creating a trigger mints a workflow-native endpoint and signing secret; valid deliveries run the linked workflow.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Replace the /automations schedule list and calendar with a workflow-trigger surface and route new automation setup into triggered workflow creation.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.GoalWorkflows]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable persistent thread goals, the zero goal CLI, and run-terminal goal continuation for staff orgs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -330,6 +288,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show connected connector filtering and per-agent connector access management on connected connector cards.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ConnectorCatalogApi]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Expose the read-only public connector catalog API for frontend and CLI metadata migration.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -345,7 +310,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

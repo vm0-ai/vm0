@@ -85,6 +85,7 @@ import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseAuthorizationRoutes } from "./routes/zero-computer-use-authorization";
 import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
 import { zeroCodexDeviceAuthRoutes } from "./routes/zero-codex-device-auth";
+import { zeroConnectorCatalogRoutes } from "./routes/zero-connector-catalog";
 import { zeroConnectorsExternalCodeRoutes } from "./routes/zero-connectors-external-code";
 import { zeroConnectorsOauthDeviceAuthRoutes } from "./routes/zero-connectors-oauth-device-auth";
 import { zeroConnectorsRoutes } from "./routes/zero-connectors";
@@ -152,6 +153,9 @@ import { zeroSlackConnectRoutes } from "./routes/zero-slack-connect";
 import { zeroSlackEventsRoutes } from "./routes/zero-slack-events";
 import { zeroSlackInteractiveRoutes } from "./routes/zero-slack-interactive";
 import { zeroSlackOauthRoutes } from "./routes/zero-slack-oauth";
+import { zeroTeamsBrowserConnectRoutes } from "./routes/zero-teams-browser-connect";
+import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
+import { zeroTeamsConnectRoutes } from "./routes/zero-teams-connect";
 import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsHtmlDomEditSnapshotRoutes } from "./routes/zero-uploads-html-dom-edit-snapshot";
@@ -180,9 +184,20 @@ import { testOAuthProviderUserinfoRoutes } from "./routes/test-oauth-provider-us
 import { testSlackDispatchProbeRoutes } from "./routes/test-slack-dispatch-probe";
 import { testSlackMockRoutes } from "./routes/test-slack-mock";
 import { testSlackStateRoutes } from "./routes/test-slack-state";
+import { testEmailStateRoutes } from "./routes/test-email-state";
+import { testBillingRedeemStateRoutes } from "./routes/test-billing-redeem-state";
+import { testBillingStatusStateRoutes } from "./routes/test-billing-status-state";
 import { testTelegramDispatchProbeRoutes } from "./routes/test-telegram-dispatch-probe";
 import { testTelegramMockRoutes } from "./routes/test-telegram-mock";
 import { testTelegramStateRoutes } from "./routes/test-telegram-state";
+import { testGenerationStateRoutes } from "./routes/test-generation-state";
+import { testOnboardingStatusStateRoutes } from "./routes/test-onboarding-status-state";
+import { testMemoryStateRoutes } from "./routes/test-memory-state";
+import { testUsageInsightStateRoutes } from "./routes/test-usage-insight-state";
+import { testUsageStateRoutes } from "./routes/test-usage-state";
+import { testWorkflowTriggerStateRoutes } from "./routes/test-workflow-trigger-state";
+import { testChatMessagesStateRoutes } from "./routes/test-chat-messages-state";
+import { testWebhooksStateRoutes } from "./routes/test-webhooks-state";
 
 export const ROUTES: readonly RouteEntry[] = [
   {
@@ -267,6 +282,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroComputerUseAuthorizationRoutes,
   ...zeroComputerUseRoutes,
   ...zeroCodexDeviceAuthRoutes,
+  ...zeroConnectorCatalogRoutes,
   ...zeroConnectorsExternalCodeRoutes,
   ...zeroConnectorsOauthDeviceAuthRoutes,
   ...zeroConnectorsRoutes,
@@ -325,6 +341,9 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroSlackCommandsRoutes,
   ...zeroSlackEventsRoutes,
   ...zeroSlackInteractiveRoutes,
+  ...zeroTeamsBrowserConnectRoutes,
+  ...zeroTeamsBotRoutes,
+  ...zeroTeamsConnectRoutes,
   ...zeroIntegrationsAgentPhoneRoutes,
   ...zeroIntegrationsPhoneDownloadFileRoutes,
   ...zeroIntegrationsPhoneMessageRoutes,
@@ -368,7 +387,18 @@ export const ROUTES: readonly RouteEntry[] = [
   ...testSlackDispatchProbeRoutes,
   ...testSlackMockRoutes,
   ...testSlackStateRoutes,
+  ...testEmailStateRoutes,
+  ...testBillingRedeemStateRoutes,
+  ...testBillingStatusStateRoutes,
   ...testTelegramDispatchProbeRoutes,
   ...testTelegramMockRoutes,
   ...testTelegramStateRoutes,
+  ...testGenerationStateRoutes,
+  ...testOnboardingStatusStateRoutes,
+  ...testMemoryStateRoutes,
+  ...testUsageInsightStateRoutes,
+  ...testUsageStateRoutes,
+  ...testWorkflowTriggerStateRoutes,
+  ...testChatMessagesStateRoutes,
+  ...testWebhooksStateRoutes,
 ];

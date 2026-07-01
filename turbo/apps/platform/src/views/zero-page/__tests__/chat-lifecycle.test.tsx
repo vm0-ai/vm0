@@ -261,21 +261,30 @@ function makeMessage(id: string, text: string): PagedChatMessage {
   };
 }
 
-function mockKeyboardNavigationThreads(): void {
+function mockKeyboardNavigationThreads({
+  currentTitle = "Current keyboard thread",
+  currentDetailTitle = currentTitle,
+}: {
+  currentTitle?: string;
+  currentDetailTitle?: string | null;
+} = {}): void {
   const threadFixtures = [
     {
       id: "keyboard-prev-thread",
       title: "Previous keyboard thread",
+      detailTitle: "Previous keyboard thread",
       message: "Previous thread launch note",
     },
     {
       id: "keyboard-current-thread",
-      title: "Current keyboard thread",
+      title: currentTitle,
+      detailTitle: currentDetailTitle,
       message: "Current thread launch note",
     },
     {
       id: "keyboard-next-thread",
       title: "Next keyboard thread",
+      detailTitle: "Next keyboard thread",
       message: "Next thread launch note",
     },
   ];
@@ -312,7 +321,7 @@ function mockKeyboardNavigationThreads(): void {
     }
     return respond(200, {
       id: thread.id,
-      title: thread.title,
+      title: thread.detailTitle,
       agentId: AGENT_ID,
       activeRunIds: [],
       createdAt: "2026-06-01T00:00:00Z",
@@ -602,24 +611,7 @@ function mockGithubPrTrackingThread(): void {
     },
   ]);
   context.mocks.data.githubIntegration(
-    context.mocks.data.defaultGithubIntegration({
-      labelListeners: [
-        {
-          id: "b0000000-0000-4000-a000-000000000701",
-          labelName: "needs-review",
-          triggerMode: "created_by_me",
-          prompt: "Review the labeled pull request.",
-          enabled: true,
-          canManage: true,
-          agent: {
-            id: AGENT_ID,
-            name: "zero",
-          },
-          createdAt: "2026-06-09T10:00:00Z",
-          updatedAt: "2026-06-09T10:00:00Z",
-        },
-      ],
-    }),
+    context.mocks.data.defaultGithubIntegration(),
   );
   context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
     return respond(200, { enabledTypes: ["github"] });
@@ -809,6 +801,16 @@ function buttonByLabel(label: string): HTMLElement {
   return button;
 }
 
+function menuItemByLabel(label: string, container: HTMLElement): HTMLElement {
+  const item = queryAllByRoleFast("menuitem", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!item) {
+    throw new Error(`${label} menu item not found`);
+  }
+  return item;
+}
+
 function linkByText(text: string): HTMLElement {
   const link = queryAllByRoleFast("link").find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -841,6 +843,14 @@ function chatComposerTextarea(): HTMLTextAreaElement {
     throw new Error("Chat composer textarea not found");
   }
   return element;
+}
+
+function activeElementIsInside(element: HTMLElement): boolean {
+  return (
+    document.activeElement === element ||
+    (document.activeElement instanceof Node &&
+      element.contains(document.activeElement))
+  );
 }
 
 function setScrollMetrics(
@@ -2759,6 +2769,7 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -2829,11 +2840,13 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Previous thread")).toBeInTheDocument();
       expect(screen.getByText("Next thread")).toBeInTheDocument();
       expect(screen.getByText("Rename chat")).toBeInTheDocument();
-      expect(screen.getByText("F2")).toBeInTheDocument();
+      expect(screen.getByText("Change emoji")).toBeInTheDocument();
+      expect(screen.getAllByText("F2")).toHaveLength(2);
+      expect(screen.getAllByText("Shift").length).toBeGreaterThan(0);
     });
   });
 
-  it("opens the current chat rename dialog with F2", async () => {
+  it("hides the chat emoji shortcut when the feature switch is off", async () => {
     mockResizeObserver();
     mockKeyboardNavigationThreads();
 
@@ -2846,8 +2859,44 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Current keyboard thread").length,
+      ).toBeGreaterThan(0);
     });
+
+    expect(screen.queryByLabelText("Change emoji")).not.toBeInTheDocument();
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+  });
+
+  it("opens the current chat rename dialog with F2", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Current keyboard thread").length,
+      ).toBeGreaterThan(0);
+    });
+    const emojiButton = screen.getByLabelText("Change emoji");
+    expect(emojiButton).toHaveTextContent("");
+    expect(emojiButton.querySelector("svg")).not.toBeInTheDocument();
+    expect(emojiButton).toHaveClass("h-7", "w-7");
 
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
@@ -2876,7 +2925,7 @@ describe("chat lifecycle", () => {
     );
   });
 
-  it("returns document focus to the main chat thread after rename", async () => {
+  it("keeps F2 rename available after renaming the current chat", async () => {
     const user = userEvent.setup({ delay: null });
     mockResizeObserver();
     mockKeyboardNavigationThreads();
@@ -2910,20 +2959,9 @@ describe("chat lifecycle", () => {
       ).not.toBeInTheDocument();
     });
 
-    const previousBodyTabIndex = document.body.getAttribute("tabindex");
-    try {
-      document.body.tabIndex = -1;
-      document.body.focus();
-      await waitFor(() => {
-        expect(document.activeElement).toBe(threadRegion);
-      });
-    } finally {
-      if (previousBodyTabIndex === null) {
-        document.body.removeAttribute("tabindex");
-      } else {
-        document.body.setAttribute("tabindex", previousBodyTabIndex);
-      }
-    }
+    await waitFor(() => {
+      expect(activeElementIsInside(threadRegion)).toBeTruthy();
+    });
 
     await user.keyboard("{F2}");
 
@@ -2933,6 +2971,152 @@ describe("chat lifecycle", () => {
     expect(
       within(reopenedDialog).getByPlaceholderText("Chat title"),
     ).toHaveValue("Current keyboard thread");
+  });
+
+  it("keeps F2 rename available after creating a chat from the agent composer", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockResizeObserver();
+    mockChatLifecycle(context);
+
+    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Name this thread from F2");
+
+    await waitFor(() => {
+      expect(screen.getByText("Name this thread from F2")).toBeInTheDocument();
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    expect(activeElementIsInside(threadRegion)).toBeTruthy();
+
+    await user.keyboard("{F2}");
+
+    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue("");
+  });
+
+  it("renames the main chat with F2 when a side chat is focused", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread?sidebar=keyboard-next-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
+    });
+
+    const threadRegions = screen.getAllByLabelText("Chat thread");
+    expect(threadRegions).toHaveLength(2);
+    threadRegions[1]?.focus();
+
+    await user.keyboard("{F2}");
+
+    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
+      "Current keyboard thread",
+    );
+  });
+
+  it("adds an emoji to the current chat with Shift+F2", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({ currentDetailTitle: null });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Current keyboard thread").length,
+      ).toBeGreaterThan(0);
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
+
+    const menu = await screen.findByRole("menu");
+    expect(queryAllByRoleFast("menuitem", menu)).toHaveLength(7);
+    click(menuItemByLabel("Done ✅", menu));
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        "keyboard-current-thread",
+        "✅",
+      );
+    });
+  });
+
+  it("replaces the current chat emoji from the Shift+F2 picker", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({
+      currentTitle: "🔥   Current keyboard thread",
+    });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(document.title).toBe("🔥   Current keyboard thread | VM0");
+      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+      expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
+
+    const menu = await screen.findByRole("menu");
+    expect(
+      queryAllByRoleFast("menuitem", menu).some((item) => {
+        return item.getAttribute("aria-label") === "Important 📌";
+      }),
+    ).toBeFalsy();
+    fireEvent.keyDown(menu, { key: "1", code: "Digit1" });
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        "keyboard-current-thread",
+        "✅ Current keyboard thread",
+      );
+    });
   });
 
   it("opens run logs from assistant message actions", async () => {
@@ -3033,7 +3217,9 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Scheduled launch review").length,
+      ).toBeGreaterThan(0);
       expect(buttonByLabel("Automations")).toBeInTheDocument();
     });
 
@@ -3105,7 +3291,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("lists workflow triggers in the sidebar", async () => {
+  it("lists workflow automations in the sidebar", async () => {
     mockAutomationThread();
     setMockWorkflowTriggers([
       createMockWorkflowTrigger({
@@ -3159,10 +3345,12 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("dialog", { name: "Edit trigger" }),
+        screen.getByRole("dialog", { name: "Edit automation" }),
       ).toBeInTheDocument();
     });
-    const editDialog = screen.getByRole("dialog", { name: "Edit trigger" });
+    const editDialog = screen.getByRole("dialog", {
+      name: "Edit automation",
+    });
     expect(
       within(editDialog).getByRole("combobox", { name: "Every" }),
     ).toHaveTextContent("1 minute");
@@ -3171,7 +3359,7 @@ describe("chat lifecycle", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("updates a schedule workflow trigger from the sidebar", async () => {
+  it("updates a schedule workflow automation from the sidebar", async () => {
     const updateBodies: {
       readonly triggerId: string;
       readonly body: ZeroWorkflowTriggerUpdateRequest;
@@ -3191,9 +3379,11 @@ describe("chat lifecycle", () => {
 
     click(within(sidebar).getAllByText("Edit").at(-1)!);
 
-    const dialog = await screen.findByRole("dialog", { name: "Edit trigger" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Edit automation",
+    });
     selectOptionByLabel("Every", "30 minutes", dialog);
-    click(buttonByText("Save trigger", dialog));
+    click(buttonByText("Save automation", dialog));
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
@@ -3208,7 +3398,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("updates a Gmail workflow trigger match from the sidebar", async () => {
+  it("updates a Gmail workflow automation match from the sidebar", async () => {
     const updateBodies: {
       readonly triggerId: string;
       readonly body: ZeroWorkflowTriggerUpdateRequest;
@@ -3234,10 +3424,12 @@ describe("chat lifecycle", () => {
 
     click(within(sidebar).getAllByText("Edit").at(-1)!);
 
-    const dialog = await screen.findByRole("dialog", { name: "Edit trigger" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Edit automation",
+    });
     await fill(within(dialog).getByLabelText("From contains"), "@acme.com");
     await fill(within(dialog).getByLabelText("Body contains"), "invoice");
-    click(buttonByText("Save trigger", dialog));
+    click(buttonByText("Save automation", dialog));
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
@@ -3257,7 +3449,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("updates a Gmail label workflow trigger from the sidebar", async () => {
+  it("updates a Gmail label workflow automation from the sidebar", async () => {
     const updateBodies: {
       readonly triggerId: string;
       readonly body: ZeroWorkflowTriggerUpdateRequest;
@@ -3281,9 +3473,11 @@ describe("chat lifecycle", () => {
 
     click(within(sidebar).getAllByText("Edit").at(-1)!);
 
-    const dialog = await screen.findByRole("dialog", { name: "Edit trigger" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Edit automation",
+    });
     await fill(within(dialog).getByLabelText("Label name"), "Escalated");
-    click(buttonByText("Save trigger", dialog));
+    click(buttonByText("Save automation", dialog));
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
@@ -4295,20 +4489,6 @@ describe("chat lifecycle", () => {
         "aria-pressed",
         "false",
       );
-    });
-  });
-
-  it("queues a GitHub PR label command from the tracking dock", async () => {
-    setupGithubPrTrackingPage();
-    await openGithubPrTracking();
-
-    click(await screen.findByLabelText("Add label to PR 123"));
-    click(await screen.findByText("needs-review"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText('add label "needs-review" to pr 123'),
-      ).toBeInTheDocument();
     });
   });
 

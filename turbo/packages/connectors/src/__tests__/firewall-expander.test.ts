@@ -66,6 +66,182 @@ describe("firewall expander helpers", () => {
     expect([...names].sort()).toEqual(["read", "upload"]);
   });
 
+  it("collectAndValidatePermissions validates static base URL host policies", () => {
+    const config = (
+      base: string,
+      hostPolicy: FirewallConfig["apis"][number]["hostPolicy"],
+    ): FirewallConfig => {
+      return {
+        name: "static-host-policy",
+        apis: [
+          {
+            base,
+            hostPolicy,
+            auth: { headers: { Authorization: "Bearer token" } },
+            permissions: [],
+          },
+        ],
+      };
+    };
+
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://127.0.0.1", { kind: "publicDestination" }),
+      );
+    }).toThrow("host policy does not allow non-public IP literal");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://127.0.0.1/v1/{path}", {
+          kind: "publicDestination",
+        }),
+      );
+    }).toThrow("host policy does not allow non-public IP literal");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://8.8.8.8.", { kind: "publicDestination" }),
+      );
+    }).toThrow("host policy does not allow non-public IP literal");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://\u0668.\u0668.\u0668.\u0668", {
+          kind: "publicDestination",
+        }),
+      );
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://api.evil.test", {
+          kind: "providerOwned",
+          suffixes: ["example.com"],
+        }),
+      );
+    }).toThrow('host policy does not allow resolved host "api.evil.test"');
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://api.example.com:8443", {
+          kind: "providerOwned",
+          suffixes: ["example.com"],
+        }),
+      );
+    }).toThrow("host policy does not allow non-default ports");
+
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://8.8.8.8", { kind: "publicDestination" }),
+      );
+    }).not.toThrow();
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://api.example.com", {
+          kind: "providerOwned",
+          suffixes: ["example.com"],
+        }),
+      );
+    }).not.toThrow();
+  });
+
+  it("collectAndValidatePermissions validates host policy shape before base URL vars resolve", () => {
+    const config = (
+      hostPolicy: FirewallConfig["apis"][number]["hostPolicy"],
+    ): FirewallConfig => {
+      return {
+        name: "template-host-policy",
+        apis: [
+          {
+            base: "https://${{ vars.API_HOST }}",
+            hostPolicy,
+            auth: { headers: { Authorization: "Bearer token" } },
+            permissions: [],
+          },
+        ],
+      };
+    };
+
+    expect(() => {
+      return collectAndValidatePermissions(
+        config({
+          kind: "providerOwned",
+          suffixes: ["*.example.com"],
+        }),
+      );
+    }).toThrow("providerOwned host policy suffixes must be fixed hostnames");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config({
+          kind: "providerOwned",
+          exactHosts: [".api.example.com"],
+        }),
+      );
+    }).toThrow("providerOwned host policy exactHosts must be fixed hostnames");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config({
+          kind: "providerOwned",
+          suffixes: ["example.com"],
+        }),
+      );
+    }).not.toThrow();
+    expect(() => {
+      return collectAndValidatePermissions(
+        config({
+          kind: "publicDestination",
+        }),
+      );
+    }).not.toThrow();
+  });
+
+  it("collectAndValidatePermissions validates parameterized host policies", () => {
+    const config = (
+      base: string,
+      hostPolicy: FirewallConfig["apis"][number]["hostPolicy"],
+    ): FirewallConfig => {
+      return {
+        name: "parameterized-host-policy",
+        apis: [
+          {
+            base,
+            hostPolicy,
+            auth: { headers: { Authorization: "Bearer token" } },
+            permissions: [],
+          },
+        ],
+      };
+    };
+
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://{sub}.example.com", {
+          kind: "providerOwned",
+          suffixes: ["example.com"],
+        }),
+      );
+    }).not.toThrow();
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://{sub}.evil.test", {
+          kind: "providerOwned",
+          suffixes: ["example.com"],
+        }),
+      );
+    }).toThrow('host policy does not allow resolved host "x.evil.test"');
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://{sub}.example.com", {
+          kind: "providerOwned",
+          exactHosts: ["x.example.com"],
+        }),
+      );
+    }).toThrow('host policy does not allow resolved host "x.example.com"');
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://{sub}.example.com:8443", {
+          kind: "providerOwned",
+          suffixes: ["example.com"],
+        }),
+      );
+    }).toThrow("host policy does not allow non-default ports");
+  });
+
   it("collectAndValidatePermissions rejects malformed static auth.base URLs", () => {
     const config = (authBase: string): FirewallConfig => {
       return {
@@ -96,6 +272,9 @@ describe("firewall expander helpers", () => {
     }).toThrow('URL must include "://" after the scheme');
     expect(() => {
       return collectAndValidatePermissions(config("https:///hook"));
+    }).toThrow("not a valid URL authority");
+    expect(() => {
+      return collectAndValidatePermissions(config("https://example.com:/hook"));
     }).toThrow("not a valid URL authority");
     expect(() => {
       return collectAndValidatePermissions(
@@ -461,6 +640,15 @@ describe("validateBaseUrl", () => {
     }).toThrow("not a valid URL authority");
   });
 
+  it("should reject URLs with empty ports", () => {
+    expect(() => {
+      return validateBaseUrl("https://api.example.com:", "fw");
+    }).toThrow("not a valid URL authority");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com:", "fw");
+    }).toThrow("not a valid URL authority");
+  });
+
   it("should reject URLs that omit // after the scheme", () => {
     expect(() => {
       return validateBaseUrl("https:/api.example.com/v1", "fw");
@@ -707,6 +895,24 @@ describe("validateBaseUrl", () => {
     }).toThrow("host must not contain percent-encoded dots");
   });
 
+  it("should reject raw and percent-encoded wildcard host characters", () => {
+    expect(() => {
+      return validateBaseUrl("https://*.example.com", "fw");
+    }).toThrow("host must not contain wildcard characters");
+    expect(() => {
+      return validateBaseUrl("https://api-*.example.com", "fw");
+    }).toThrow("host must not contain wildcard characters");
+    expect(() => {
+      return validateBaseUrl("https://api-{sub}*.example.com", "fw");
+    }).toThrow("host must not contain wildcard characters");
+    expect(() => {
+      return validateBaseUrl("https://%2A.example.com", "fw");
+    }).toThrow("host must not contain wildcard characters");
+    expect(() => {
+      return validateBaseUrl("https://api-%2A.example.com", "fw");
+    }).toThrow("host must not contain wildcard characters");
+  });
+
   it("should reject commas in host", () => {
     expect(() => {
       return validateBaseUrl("https://api,example.com", "fw");
@@ -788,6 +994,9 @@ describe("validateBaseUrl", () => {
     }).toThrow("host must use canonical IPv4 address syntax");
     expect(() => {
       return validateBaseUrl("https://127.0.0.1。", "fw");
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return validateBaseUrl("https://\u0668.\u0668.\u0668.\u0668", "fw");
     }).toThrow("host must use canonical IPv4 address syntax");
     expect(() => {
       return validateBaseUrl("https://127.0.0.1.", "fw");
@@ -1047,6 +1256,54 @@ describe("expandHostWildcardsInBaseUrl", () => {
     expect(() => {
       return validateBaseUrl(expanded, "fw");
     }).not.toThrow();
+
+    expect(expandHostWildcardsInBaseUrl("https://*.example.com:443/v1/")).toBe(
+      "https://{hostWildcard1}.example.com:443/v1/",
+    );
+  });
+
+  it("does not normalize wildcard URLs with empty ports", () => {
+    const expanded = expandHostWildcardsInBaseUrl("https://*.example.com:/v1/");
+    expect(expanded).toBe("https://*.example.com:/v1/");
+    expect(() => {
+      return validateBaseUrl(expanded, "fw");
+    }).toThrow("not a valid URL authority");
+  });
+
+  it("does not normalize wildcard URLs with userinfo", () => {
+    const expanded = expandHostWildcardsInBaseUrl(
+      "https://user@*.example.com/v1/",
+    );
+    expect(expanded).toBe("https://user@*.example.com/v1/");
+    expect(() => {
+      return validateBaseUrl(expanded, "fw");
+    }).toThrow("must not contain userinfo");
+  });
+
+  it("does not expand percent-encoded host wildcards", () => {
+    expect(expandHostWildcardsInBaseUrl("https://%2A.example.com/v1/")).toBe(
+      "https://%2A.example.com/v1/",
+    );
+    expect(() => {
+      return validateBaseUrl("https://%2A.example.com/v1/", "fw");
+    }).toThrow("host must not contain wildcard characters");
+  });
+
+  it("does not normalize wildcard URLs with backslashes", () => {
+    const base = String.raw`https://*.example.com\v1`;
+    const expanded = expandHostWildcardsInBaseUrl(base);
+    expect(expanded).toBe(base);
+    expect(() => {
+      return validateBaseUrl(expanded, "fw");
+    }).toThrow("must not contain backslash");
+  });
+
+  it("does not expand wildcard characters inside bracketed authorities", () => {
+    const expanded = expandHostWildcardsInBaseUrl("https://[::*]/v1/");
+    expect(expanded).toBe("https://[::*]/v1/");
+    expect(() => {
+      return validateBaseUrl(expanded, "fw");
+    }).toThrow("not a valid URL");
   });
 
   it("converts mixed-label host wildcards and leaves path wildcards literal", () => {
@@ -1640,23 +1897,25 @@ describe("resolveFirewallBaseUrlVars", () => {
   it("rejects public-destination template base URLs with non-public IP literals", () => {
     for (const STRAPI_BASE_URL of [
       "https://127.0.0.1",
+      "https://8.8.8.8.",
       "https://10.0.0.5",
       "https://169.254.1.2",
       "https://192.168.1.10",
-      "https://192.0.0.9",
-      "https://192.0.0.10",
+      "https://192.0.0.8",
+      "https://192.0.0.11",
       "https://224.0.0.1",
       "https://[::1]",
       "https://[fc00::1]",
       "https://[64:ff9b::808:808]",
       "https://[2001::1]",
-      "https://[2001:1::3]",
       "https://[2001:2::1]",
       "https://[2001:4::1]",
       "https://[2001:10::1]",
       "https://[2001:1ff::1]",
       "https://[2001:db8::1]",
       "https://[2002:808:808::1]",
+      "https://[3fff::1]",
+      "https://[3fff:0fff::1]",
       "https://[4000::1]",
       "https://[ff0e::1]",
     ]) {
@@ -1673,16 +1932,19 @@ describe("resolveFirewallBaseUrlVars", () => {
       "https://8.8.8.8",
       "https://100.128.0.1",
       "https://172.32.0.1",
+      "https://192.0.0.9",
+      "https://192.0.0.10",
       "https://192.0.1.1",
       "https://[2606:4700:4700::1111]",
       "https://[2001:1::1]",
       "https://[2001:1::2]",
+      "https://[2001:1::3]",
       "https://[2001:3::1]",
       "https://[2001:4:112::1]",
       "https://[2001:20::1]",
       "https://[2001:30::1]",
       "https://[2003::1]",
-      "https://[3fff::1]",
+      "https://[3fff:1000::1]",
     ]) {
       const result = resolveFirewallBaseUrlVars([strapiFirewall], {
         STRAPI_BASE_URL,

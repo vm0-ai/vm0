@@ -20,6 +20,7 @@ export const coda = {
           fields: {
             CODA_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "your-coda-api-token",
             },

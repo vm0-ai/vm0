@@ -1,5 +1,5 @@
 import { createElement } from "react";
-import { IconMessageCircleFilled, IconPointer2 } from "@tabler/icons-react";
+import { IconPointer } from "@tabler/icons-react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { command, computed, state } from "ccstate";
 import {
@@ -50,18 +50,43 @@ interface FrameCleanup {
   readonly run: () => void;
 }
 
+export type HtmlDomStyleProperty = "backgroundColor" | "color";
+
+export interface HtmlDomSelectedStyle {
+  readonly backgroundColor: string;
+  readonly color: string;
+}
+
+export interface HtmlDomColorPopoverOffset {
+  readonly left: number;
+  readonly top: number;
+}
+
+type HtmlDomStyleEdits = Partial<Record<HtmlDomStyleProperty, string>>;
+
+type HtmlDomOriginalInlineStyles = Partial<
+  Record<HtmlDomStyleProperty, string>
+>;
+type FrameStyleElement = HTMLElement | SVGElement;
+
 export interface HtmlDomCommentEditorModel {
+  readonly activeColorPanelProperty: HtmlDomStyleProperty | null;
+  readonly canApplyStyleEdits: boolean;
   readonly canAddComment: boolean;
+  readonly canEditSelectedStyle: boolean;
   readonly canSend: boolean;
+  readonly colorPopoverOffset: HtmlDomColorPopoverOffset;
   readonly commentsOpen: boolean;
   readonly commentText: string;
   readonly commentPopoverAnchor: CommentPopoverAnchor | null;
   readonly comments: readonly HtmlDomEditComment[];
   readonly currentComment: HtmlDomEditComment | null;
+  readonly editableStyleProperties: readonly HtmlDomStyleProperty[];
   readonly editingCommentId: string | null;
   readonly loadState: EditorLoadState;
   readonly popoverTextAreaKey: string;
   readonly prepared: boolean;
+  readonly selectedStyle: HtmlDomSelectedStyle;
   readonly submitting: boolean;
 }
 
@@ -83,27 +108,59 @@ interface SendHtmlDomEditRequestParams {
   readonly onStarted?: () => void;
 }
 
+interface ApplyHtmlDomStyleEditsParams {
+  readonly onApplied?: (html: string) => Promise<void>;
+  readonly onFailed?: () => void;
+  readonly onStarted?: () => void;
+}
+
+type CommentMarkerPlacement = "bottom" | "left" | "right" | "top";
+
+interface CommentMarkerRect {
+  readonly bottom: number;
+  readonly height: number;
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+  readonly width: number;
+}
+
+interface CommentMarkerPosition {
+  readonly placement: CommentMarkerPlacement;
+  readonly rect: CommentMarkerRect;
+}
+
 const HTML_DOM_COMMENT_LAYER_ID = "vm0-html-edit-comment-layer";
 const MAX_DIRECT_HTML_EDIT_DRAFT_BYTES = 500_000;
 const HTML_DOM_COMMENT_MARKER_TARGET_ATTR =
   "data-vm0-html-comment-target-node-id";
-const FRAME_COMMENT_MARKER_ICON_SVG = renderToStaticMarkup(
-  createElement(IconMessageCircleFilled, {
-    "aria-hidden": "true",
-    size: 20,
-  }),
-);
+const HTML_DOM_COMMENT_DELETE_ATTR = "data-vm0-html-comment-delete-id";
+const HTML_DOM_COMMENT_FLASH_ATTR = "data-vm0-html-comment-flash";
+const FRAME_COMMENT_MARKER_PLACEMENT_ATTR = "data-vm0-html-comment-placement";
+const FRAME_COMMENT_LABEL_MAX_WIDTH = 136;
+const FRAME_COMMENT_LABEL_LINE_HEIGHT = 20;
+const FRAME_COMMENT_LABEL_VERTICAL_PADDING = 16;
+const FRAME_COMMENT_LABEL_MAX_LINES = 2;
+const FRAME_COMMENT_LABEL_HEIGHT =
+  FRAME_COMMENT_LABEL_MAX_LINES * FRAME_COMMENT_LABEL_LINE_HEIGHT +
+  FRAME_COMMENT_LABEL_VERTICAL_PADDING;
+const FRAME_COMMENT_CONNECTOR_GAP = 36;
+const FRAME_COMMENT_DOT_SIZE = 8;
+const FRAME_COMMENT_VIEWPORT_PADDING = 8;
+const FRAME_COMMENT_COLLISION_GAP = 6;
+const FRAME_COMMENT_NUDGE_STEP = 12;
+const FRAME_COMMENT_NUDGE_STEPS = [0, 1, -1, 2, -2] as const;
 const FRAME_NAVIGATION_CURSOR_SVG = renderToStaticMarkup(
-  createElement(IconPointer2, {
+  createElement(IconPointer, {
     "aria-hidden": "true",
     color: "#2563eb",
     size: 20,
+    stroke: 2.6,
   }),
 );
 const FRAME_NAVIGATION_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
   FRAME_NAVIGATION_CURSOR_SVG,
 )}") 3 3, pointer`;
-
 const internalLoadState$ = state<EditorLoadState>({ status: "loading" });
 const internalStageElement$ = state<HTMLDivElement | null>(null);
 const internalIframeElement$ = state<HTMLIFrameElement | null>(null);
@@ -117,6 +174,19 @@ const internalCommentsOpen$ = state(false);
 const internalSubmitting$ = state(false);
 const internalPreparedPayload$ = state<HtmlDomEditPayload | null>(null);
 const internalFrameCleanup$ = state<FrameCleanup | null>(null);
+const internalActiveColorPanelProperty$ = state<HtmlDomStyleProperty | null>(
+  null,
+);
+const internalColorPopoverOffset$ = state<HtmlDomColorPopoverOffset>({
+  left: 0,
+  top: 0,
+});
+const internalStyleEditsByNodeId$ = state<
+  Readonly<Record<string, HtmlDomStyleEdits>>
+>({});
+const internalOriginalStylesByNodeId$ = state<
+  Readonly<Record<string, HtmlDomOriginalInlineStyles>>
+>({});
 const resetHtmlDomEditRequestSignal$ = resetSignal();
 
 async function uploadHtmlDomEditSnapshot(
@@ -239,12 +309,88 @@ function closestCommentNode(target: EventTarget | null): Element | null {
   return (target as Element).closest(`[${HTML_DOM_NODE_ID_ATTR}]`);
 }
 
+function isElementLike(value: EventTarget | null): value is Element {
+  return (
+    value !== null && typeof value === "object" && "ownerDocument" in value
+  );
+}
+
+function isMousePointEvent(event: Event): event is MouseEvent {
+  return "clientX" in event && "clientY" in event;
+}
+
+function isFrameHtmlElement(
+  element: Element | null | undefined,
+): element is HTMLElement {
+  if (!element) {
+    return false;
+  }
+  const FrameHTMLElement = element.ownerDocument.defaultView?.HTMLElement;
+  return FrameHTMLElement
+    ? element instanceof FrameHTMLElement
+    : element instanceof HTMLElement;
+}
+
+function isFrameSvgElement(
+  element: Element | null | undefined,
+): element is SVGElement {
+  if (!element) {
+    return false;
+  }
+  const FrameSVGElement = element.ownerDocument.defaultView?.SVGElement;
+  return FrameSVGElement
+    ? element instanceof FrameSVGElement
+    : typeof SVGElement !== "undefined" && element instanceof SVGElement;
+}
+
+function isFrameStyleElement(
+  element: Element | null | undefined,
+): element is FrameStyleElement {
+  return isFrameHtmlElement(element) || isFrameSvgElement(element);
+}
+
+function smallestCommentNodeAtPoint(event: MouseEvent): Element | null {
+  const doc =
+    event.view?.document ??
+    (isElementLike(event.target) ? event.target.ownerDocument : null);
+  const elements = doc?.elementsFromPoint?.(event.clientX, event.clientY) ?? [];
+  const candidates = elements
+    .map((element) => {
+      return element.closest(`[${HTML_DOM_NODE_ID_ATTR}]`);
+    })
+    .filter((element): element is Element => {
+      return element !== null;
+    });
+  const uniqueCandidates = Array.from(new Set(candidates));
+  return (
+    uniqueCandidates.sort((first, second) => {
+      const firstRect = first.getBoundingClientRect();
+      const secondRect = second.getBoundingClientRect();
+      return (
+        firstRect.width * firstRect.height -
+        secondRect.width * secondRect.height
+      );
+    })[0] ?? null
+  );
+}
+
 function closestCommentMarker(target: EventTarget | null): HTMLElement | null {
   if (target === null || typeof target !== "object" || !("closest" in target)) {
     return null;
   }
   return (target as Element).closest<HTMLElement>(
     `[${HTML_DOM_COMMENT_MARKER_TARGET_ATTR}]`,
+  );
+}
+
+function closestCommentDeleteButton(
+  target: EventTarget | null,
+): HTMLElement | null {
+  if (target === null || typeof target !== "object" || !("closest" in target)) {
+    return null;
+  }
+  return (target as Element).closest<HTMLElement>(
+    `[${HTML_DOM_COMMENT_DELETE_ATTR}]`,
   );
 }
 
@@ -293,13 +439,31 @@ function installFrameStyles(doc: Document): void {
       cursor: ${FRAME_NAVIGATION_CURSOR} !important;
     }
     [${HTML_DOM_EDIT_HOVER_ATTR}="true"] {
-      outline: 2px solid rgba(37, 99, 235, 0.75) !important;
+      outline: 2px dashed rgba(37, 99, 235, 0.75) !important;
       outline-offset: 2px !important;
     }
     [${HTML_DOM_EDIT_SELECTED_ATTR}="true"] {
       outline: 2px solid rgb(37, 99, 235) !important;
       outline-offset: 2px !important;
       box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.16) !important;
+    }
+    [${HTML_DOM_COMMENT_MARKER_TARGET_ATTR}]:hover [${HTML_DOM_COMMENT_DELETE_ATTR}],
+    [${HTML_DOM_COMMENT_DELETE_ATTR}]:focus-visible {
+      opacity: 1 !important;
+      pointer-events: auto !important;
+    }
+    [${HTML_DOM_COMMENT_FLASH_ATTR}="true"] {
+      animation: vm0-html-comment-flash 900ms ease-out both !important;
+    }
+    @keyframes vm0-html-comment-flash {
+      0%, 100% {
+        box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.16) !important;
+      }
+      35% {
+        box-shadow:
+          0 0 0 5px rgba(37, 99, 235, 0.28),
+          0 0 0 14px rgba(37, 99, 235, 0.16) !important;
+      }
     }
   `;
   doc.head.append(style);
@@ -337,6 +501,305 @@ function htmlWithEditOverlaysRemoved(params: {
   return stripHtmlDomEditOverlaysFromDocument(params.frameDocument);
 }
 
+function hasStyleEdits(
+  styleEditsByNodeId: Readonly<Record<string, HtmlDomStyleEdits>>,
+): boolean {
+  return Object.values(styleEditsByNodeId).some((edits) => {
+    return edits.backgroundColor !== undefined || edits.color !== undefined;
+  });
+}
+
+function selectedStyleForNodes(params: {
+  readonly doc: Document | null;
+  readonly selectedNodeIds: readonly string[];
+}): HtmlDomSelectedStyle {
+  const firstNodeId = params.selectedNodeIds[0];
+  const element = firstNodeId
+    ? params.doc?.querySelector(nodeSelector(firstNodeId))
+    : null;
+  return {
+    backgroundColor: isFrameStyleElement(element)
+      ? elementBackgroundColor(element)
+      : "#FFFFFF",
+    color: isFrameStyleElement(element) ? elementTextColor(element) : "#111827",
+  };
+}
+
+function editableStylePropertiesForSelectedNodes(params: {
+  readonly doc: Document | null;
+  readonly selectedNodeIds: readonly string[];
+}): readonly HtmlDomStyleProperty[] {
+  const properties: HtmlDomStyleProperty[] = [];
+  if (
+    canEditStylePropertyForSelectedNodes({
+      ...params,
+      property: "color",
+    })
+  ) {
+    properties.push("color");
+  }
+  if (
+    canEditStylePropertyForSelectedNodes({
+      ...params,
+      property: "backgroundColor",
+    })
+  ) {
+    properties.push("backgroundColor");
+  }
+  return properties;
+}
+
+function canEditStylePropertyForSelectedNodes(params: {
+  readonly doc: Document | null;
+  readonly property: HtmlDomStyleProperty;
+  readonly selectedNodeIds: readonly string[];
+}): boolean {
+  const firstNodeId = params.selectedNodeIds[0];
+  const element = firstNodeId
+    ? params.doc?.querySelector(nodeSelector(firstNodeId))
+    : null;
+  if (
+    !isFrameStyleElement(element) ||
+    isStyleControlUnsupportedTagName(element.tagName)
+  ) {
+    return false;
+  }
+  if (params.property === "backgroundColor") {
+    return isFrameHtmlElement(element);
+  }
+  return editableTextColorTargets(element).length > 0;
+}
+
+function isStyleControlUnsupportedTagName(tagName: string): boolean {
+  switch (tagName.toUpperCase()) {
+    case "AUDIO":
+    case "BR":
+    case "CANVAS":
+    case "EMBED":
+    case "HR":
+    case "IFRAME":
+    case "IMG":
+    case "OBJECT":
+    case "PICTURE":
+    case "SOURCE":
+    case "TRACK":
+    case "VIDEO": {
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
+}
+
+function elementTextColor(element: FrameStyleElement): string {
+  const textTarget = editableTextColorTargets(element)[0] ?? element;
+  const computedStyle =
+    textTarget.ownerDocument.defaultView?.getComputedStyle(textTarget);
+  if (isFrameSvgElement(textTarget)) {
+    const fillColor = cssColorToHex(
+      computedStyle?.getPropertyValue("fill") ||
+        textTarget.style.getPropertyValue("fill") ||
+        textTarget.getAttribute("fill") ||
+        undefined,
+      "",
+      textTarget.ownerDocument,
+    );
+    if (fillColor) {
+      return fillColor;
+    }
+  }
+
+  return cssColorToHex(
+    computedStyle?.getPropertyValue("color") ||
+      textTarget.style.getPropertyValue("color"),
+    "#111827",
+    textTarget.ownerDocument,
+  );
+}
+
+function editableTextColorTargets(
+  element: FrameStyleElement,
+): readonly FrameStyleElement[] {
+  const candidates = [
+    element,
+    ...Array.from(element.querySelectorAll("*")),
+  ].filter(isFrameStyleElement);
+  return candidates.filter((candidate) => {
+    return (
+      !isStyleControlUnsupportedTagName(candidate.tagName) &&
+      hasEditableTextColor(candidate)
+    );
+  });
+}
+
+function hasEditableTextColor(element: FrameStyleElement): boolean {
+  if (isFrameSvgElement(element)) {
+    return hasUsefulTextContent(element);
+  }
+  if (isTextControlElement(element)) {
+    return true;
+  }
+  return hasDirectUsefulText(element);
+}
+
+function hasUsefulTextContent(element: Element): boolean {
+  return (element.textContent ?? "").replace(/\s+/g, " ").trim().length > 0;
+}
+
+function hasDirectUsefulText(element: Element): boolean {
+  return Array.from(element.childNodes).some((node) => {
+    return (
+      node.nodeType === 3 &&
+      (node.textContent ?? "").replace(/\s+/g, " ").trim().length > 0
+    );
+  });
+}
+
+function isTextControlElement(element: HTMLElement): boolean {
+  switch (element.tagName.toUpperCase()) {
+    case "BUTTON":
+    case "INPUT":
+    case "SELECT":
+    case "TEXTAREA": {
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
+}
+
+function elementBackgroundColor(element: FrameStyleElement): string {
+  let current: Element | null = element;
+  while (current) {
+    if (!isFrameStyleElement(current)) {
+      current = current.parentElement;
+      continue;
+    }
+    const computedStyle =
+      current.ownerDocument.defaultView?.getComputedStyle(current);
+    const color = cssColorToHex(
+      computedStyle?.getPropertyValue("background-color") ||
+        current.style.getPropertyValue("background-color"),
+      "",
+      current.ownerDocument,
+    );
+    if (color) {
+      return color;
+    }
+    current = current.parentElement;
+  }
+  return "#FFFFFF";
+}
+
+function stylePropertyNameForElement(
+  element: FrameStyleElement,
+  property: HtmlDomStyleProperty,
+): string {
+  if (property === "color" && isFrameSvgElement(element)) {
+    return "fill";
+  }
+  return property === "backgroundColor" ? "background-color" : "color";
+}
+
+function cssColorToHex(
+  value: string | undefined,
+  fallback: string,
+  doc: Document | undefined,
+): string {
+  const color = value?.trim();
+  if (!color) {
+    return fallback;
+  }
+  if (/^#[0-9a-f]{6}$/i.test(color)) {
+    return color.toUpperCase();
+  }
+  if (/^#[0-9a-f]{3}$/i.test(color)) {
+    return `#${color
+      .slice(1)
+      .split("")
+      .map((char) => {
+        return `${char}${char}`;
+      })
+      .join("")
+      .toUpperCase()}`;
+  }
+
+  const rgb = rgbColorToHex(color);
+  if (rgb) {
+    return rgb;
+  }
+
+  return browserParsedCssColorToHex(color, doc) ?? fallback;
+}
+
+function rgbColorToHex(color: string): string | null {
+  const rgbMatch = /^rgba?\(([^)]+)\)$/i.exec(color);
+  if (!rgbMatch) {
+    return null;
+  }
+
+  const [channelsSource, alphaSource] = rgbMatch[1].split("/");
+  const parts = channelsSource
+    ?.trim()
+    .split(/[,\s]+/)
+    .filter(Boolean);
+  const [red, green, blue, commaAlpha] = parts ?? [];
+  const alpha = alphaSource?.trim() ?? commaAlpha;
+  if (alpha !== undefined && Number(alpha) === 0) {
+    return null;
+  }
+  if (red === undefined || green === undefined || blue === undefined) {
+    return null;
+  }
+  const channels = [red, green, blue].map((channel) => {
+    return Number(channel);
+  });
+  if (
+    channels.some((channel) => {
+      return !Number.isFinite(channel);
+    })
+  ) {
+    return null;
+  }
+
+  return rgbChannelsToHex(channels[0], channels[1], channels[2]);
+}
+
+function browserParsedCssColorToHex(
+  color: string,
+  doc: Document | undefined,
+): string | null {
+  const parent = doc?.body ?? doc?.documentElement;
+  const view = doc?.defaultView;
+  if (!parent || !view) {
+    return null;
+  }
+
+  const probe = doc.createElement("span");
+  probe.style.color = color;
+  if (!probe.style.color) {
+    return null;
+  }
+  probe.style.display = "none";
+  parent.append(probe);
+  const parsed = rgbColorToHex(view.getComputedStyle(probe).color);
+  probe.remove();
+  return parsed;
+}
+
+function rgbChannelsToHex(red: number, green: number, blue: number): string {
+  return `#${[red, green, blue]
+    .map((channel) => {
+      return Math.max(0, Math.min(255, Math.round(channel)))
+        .toString(16)
+        .padStart(2, "0");
+    })
+    .join("")
+    .toUpperCase()}`;
+}
+
 function restoreFrameDocumentHtml(params: {
   readonly doc: Document;
   readonly html: string;
@@ -361,20 +824,6 @@ function restoreFrameDocumentHtml(params: {
     }),
   );
   installFrameStyles(params.doc);
-}
-
-function commentedTargetNodeIds(
-  comments: readonly HtmlDomEditComment[],
-): ReadonlySet<string> {
-  const nodeIds = new Set<string>();
-  for (const comment of comments) {
-    const nodeId = comment.targetNodeIds[0];
-    if (!nodeId) {
-      continue;
-    }
-    nodeIds.add(nodeId);
-  }
-  return nodeIds;
 }
 
 function commentForSelectedNodes(params: {
@@ -413,17 +862,305 @@ function commentForNodeId(
   );
 }
 
-function commentMarkerPosition(params: {
+function clamp(value: number, min: number, max: number): number {
+  if (max < min) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, value));
+}
+
+function commentMarkerRect(params: {
+  readonly height: number;
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+}): CommentMarkerRect {
+  return {
+    bottom: params.top + params.height,
+    height: params.height,
+    left: params.left,
+    right: params.left + params.width,
+    top: params.top,
+    width: params.width,
+  };
+}
+
+function commentMarkerRectsOverlap(
+  first: CommentMarkerRect,
+  second: CommentMarkerRect,
+): boolean {
+  return !(
+    first.right + FRAME_COMMENT_COLLISION_GAP <= second.left ||
+    second.right + FRAME_COMMENT_COLLISION_GAP <= first.left ||
+    first.bottom + FRAME_COMMENT_COLLISION_GAP <= second.top ||
+    second.bottom + FRAME_COMMENT_COLLISION_GAP <= first.top
+  );
+}
+
+function commentMarkerCollides(
+  rect: CommentMarkerRect,
+  occupiedRects: readonly CommentMarkerRect[],
+): boolean {
+  return occupiedRects.some((occupied) => {
+    return commentMarkerRectsOverlap(rect, occupied);
+  });
+}
+
+function targetIntersectsViewport(params: {
   readonly doc: Document;
   readonly target: Element;
-}): { readonly left: number; readonly top: number } {
+}): boolean {
   const rect = params.target.getBoundingClientRect();
+  if (
+    rect.bottom === 0 &&
+    rect.height === 0 &&
+    rect.left === 0 &&
+    rect.right === 0 &&
+    rect.top === 0 &&
+    rect.width === 0
+  ) {
+    return true;
+  }
+
+  const viewportWidth =
+    params.doc.documentElement.clientWidth ||
+    params.doc.defaultView?.innerWidth ||
+    320;
+  const viewportHeight =
+    params.doc.documentElement.clientHeight ||
+    params.doc.defaultView?.innerHeight ||
+    240;
+
+  return (
+    rect.bottom > 0 &&
+    rect.right > 0 &&
+    rect.left < viewportWidth &&
+    rect.top < viewportHeight
+  );
+}
+
+function markerCandidateRect(params: {
+  readonly labelHeight: number;
+  readonly nudge: number;
+  readonly placement: CommentMarkerPlacement;
+  readonly targetRect: DOMRect;
+  readonly viewportHeight: number;
+  readonly viewportWidth: number;
+}): CommentMarkerRect {
+  const targetCenterX = params.targetRect.left + params.targetRect.width / 2;
+  const targetCenterY = params.targetRect.top + params.targetRect.height / 2;
+  const horizontalWidth =
+    FRAME_COMMENT_CONNECTOR_GAP + FRAME_COMMENT_LABEL_MAX_WIDTH;
+  const verticalHeight = FRAME_COMMENT_CONNECTOR_GAP + params.labelHeight;
+
+  switch (params.placement) {
+    case "right": {
+      return commentMarkerRect({
+        height: params.labelHeight,
+        left: params.targetRect.right,
+        top: clamp(
+          targetCenterY - params.labelHeight / 2 + params.nudge,
+          FRAME_COMMENT_VIEWPORT_PADDING,
+          params.viewportHeight -
+            FRAME_COMMENT_VIEWPORT_PADDING -
+            params.labelHeight,
+        ),
+        width: horizontalWidth,
+      });
+    }
+    case "bottom": {
+      return commentMarkerRect({
+        height: verticalHeight,
+        left: clamp(
+          targetCenterX - FRAME_COMMENT_LABEL_MAX_WIDTH / 2 + params.nudge,
+          FRAME_COMMENT_VIEWPORT_PADDING,
+          params.viewportWidth -
+            FRAME_COMMENT_VIEWPORT_PADDING -
+            FRAME_COMMENT_LABEL_MAX_WIDTH,
+        ),
+        top: params.targetRect.bottom,
+        width: FRAME_COMMENT_LABEL_MAX_WIDTH,
+      });
+    }
+    case "left": {
+      return commentMarkerRect({
+        height: params.labelHeight,
+        left: params.targetRect.left - horizontalWidth,
+        top: clamp(
+          targetCenterY - params.labelHeight / 2 + params.nudge,
+          FRAME_COMMENT_VIEWPORT_PADDING,
+          params.viewportHeight -
+            FRAME_COMMENT_VIEWPORT_PADDING -
+            params.labelHeight,
+        ),
+        width: horizontalWidth,
+      });
+    }
+    case "top": {
+      return commentMarkerRect({
+        height: verticalHeight,
+        left: clamp(
+          targetCenterX - FRAME_COMMENT_LABEL_MAX_WIDTH / 2 + params.nudge,
+          FRAME_COMMENT_VIEWPORT_PADDING,
+          params.viewportWidth -
+            FRAME_COMMENT_VIEWPORT_PADDING -
+            FRAME_COMMENT_LABEL_MAX_WIDTH,
+        ),
+        top: params.targetRect.top - verticalHeight,
+        width: FRAME_COMMENT_LABEL_MAX_WIDTH,
+      });
+    }
+  }
+}
+
+function markerPlacementHasGap(params: {
+  readonly labelHeight: number;
+  readonly placement: CommentMarkerPlacement;
+  readonly targetRect: DOMRect;
+  readonly viewportHeight: number;
+  readonly viewportWidth: number;
+}): boolean {
+  switch (params.placement) {
+    case "right": {
+      return (
+        params.viewportWidth - params.targetRect.right >=
+        FRAME_COMMENT_CONNECTOR_GAP +
+          FRAME_COMMENT_LABEL_MAX_WIDTH +
+          FRAME_COMMENT_VIEWPORT_PADDING
+      );
+    }
+    case "bottom": {
+      return (
+        params.viewportHeight - params.targetRect.bottom >=
+        FRAME_COMMENT_CONNECTOR_GAP +
+          params.labelHeight +
+          FRAME_COMMENT_VIEWPORT_PADDING
+      );
+    }
+    case "left": {
+      return (
+        params.targetRect.left >=
+        FRAME_COMMENT_CONNECTOR_GAP +
+          FRAME_COMMENT_LABEL_MAX_WIDTH +
+          FRAME_COMMENT_VIEWPORT_PADDING
+      );
+    }
+    case "top": {
+      return (
+        params.targetRect.top >=
+        FRAME_COMMENT_CONNECTOR_GAP +
+          params.labelHeight +
+          FRAME_COMMENT_VIEWPORT_PADDING
+      );
+    }
+  }
+}
+
+function clampedMarkerRect(params: {
+  readonly rect: CommentMarkerRect;
+  readonly viewportHeight: number;
+  readonly viewportWidth: number;
+}): CommentMarkerRect {
+  return commentMarkerRect({
+    height: params.rect.height,
+    left: clamp(
+      params.rect.left,
+      FRAME_COMMENT_VIEWPORT_PADDING,
+      params.viewportWidth - FRAME_COMMENT_VIEWPORT_PADDING - params.rect.width,
+    ),
+    top: clamp(
+      params.rect.top,
+      FRAME_COMMENT_VIEWPORT_PADDING,
+      params.viewportHeight -
+        FRAME_COMMENT_VIEWPORT_PADDING -
+        params.rect.height,
+    ),
+    width: params.rect.width,
+  });
+}
+
+function commentMarkerPosition(params: {
+  readonly doc: Document;
+  readonly labelHeight: number;
+  readonly occupiedRects: readonly CommentMarkerRect[];
+  readonly target: Element;
+}): CommentMarkerPosition {
+  const targetRect = params.target.getBoundingClientRect();
   const viewportWidth = params.doc.documentElement.clientWidth || 320;
   const viewportHeight = params.doc.documentElement.clientHeight || 240;
-  return {
-    left: Math.max(8, Math.min(viewportWidth - 28, rect.right - 14)),
-    top: Math.max(8, Math.min(viewportHeight - 28, rect.top - 14)),
-  };
+  const placements: readonly CommentMarkerPlacement[] = [
+    "right",
+    "bottom",
+    "left",
+    "top",
+  ];
+  let fallback: CommentMarkerPosition | null = null;
+
+  for (const placement of placements) {
+    if (
+      !markerPlacementHasGap({
+        labelHeight: params.labelHeight,
+        placement,
+        targetRect,
+        viewportHeight,
+        viewportWidth,
+      })
+    ) {
+      continue;
+    }
+
+    for (const nudgeStep of FRAME_COMMENT_NUDGE_STEPS) {
+      const rect = markerCandidateRect({
+        labelHeight: params.labelHeight,
+        nudge: nudgeStep * FRAME_COMMENT_NUDGE_STEP,
+        placement,
+        targetRect,
+        viewportHeight,
+        viewportWidth,
+      });
+      if (!fallback) {
+        fallback = { placement, rect };
+      }
+      if (!commentMarkerCollides(rect, params.occupiedRects)) {
+        return { placement, rect };
+      }
+    }
+  }
+
+  for (const placement of placements) {
+    for (const nudgeStep of FRAME_COMMENT_NUDGE_STEPS) {
+      const rect = clampedMarkerRect({
+        rect: markerCandidateRect({
+          labelHeight: params.labelHeight,
+          nudge: nudgeStep * FRAME_COMMENT_NUDGE_STEP,
+          placement,
+          targetRect,
+          viewportHeight,
+          viewportWidth,
+        }),
+        viewportHeight,
+        viewportWidth,
+      });
+      if (!fallback) {
+        fallback = { placement, rect };
+      }
+      if (!commentMarkerCollides(rect, params.occupiedRects)) {
+        return { placement, rect };
+      }
+    }
+  }
+
+  return (
+    fallback ?? {
+      placement: "right",
+      rect: commentMarkerRect({
+        height: params.labelHeight,
+        left: FRAME_COMMENT_VIEWPORT_PADDING,
+        top: FRAME_COMMENT_VIEWPORT_PADDING,
+        width: FRAME_COMMENT_CONNECTOR_GAP + FRAME_COMMENT_LABEL_MAX_WIDTH,
+      }),
+    }
+  );
 }
 
 function removeFrameCommentLayer(doc: Document): void {
@@ -435,7 +1172,7 @@ function ensureFrameCommentLayer(doc: Document): HTMLElement {
   for (const candidate of Array.from(
     doc.querySelectorAll(`#${HTML_DOM_COMMENT_LAYER_ID}`),
   )) {
-    if (candidate instanceof HTMLElement && layer === null) {
+    if (isFrameHtmlElement(candidate) && layer === null) {
       layer = candidate;
       continue;
     }
@@ -458,66 +1195,465 @@ function ensureFrameCommentLayer(doc: Document): HTMLElement {
   return layer;
 }
 
-function createFrameCommentMarkerIcon(doc: Document): SVGElement {
-  const template = doc.createElement("template");
-  template.innerHTML = FRAME_COMMENT_MARKER_ICON_SVG;
-  const icon = template.content.firstElementChild;
-  const svgElement = doc.defaultView?.SVGElement;
-  if (svgElement && icon instanceof svgElement) {
-    return icon;
+function styleCommentMarkerLabel(label: HTMLElement): void {
+  label.dataset.testid = "html-dom-comment-tag";
+  label.style.position = "absolute";
+  label.style.display = "flex";
+  label.style.alignItems = "center";
+  label.style.boxSizing = "border-box";
+  label.style.maxWidth = `${FRAME_COMMENT_LABEL_MAX_WIDTH}px`;
+  label.style.width = `${FRAME_COMMENT_LABEL_MAX_WIDTH}px`;
+  label.style.height = `${FRAME_COMMENT_LABEL_HEIGHT}px`;
+  label.style.padding = "8px 14px";
+  label.style.borderRadius = "18px";
+  label.style.background = "rgb(37, 99, 235)";
+  label.style.border = "0";
+  label.style.color = "white";
+  label.style.cursor = "pointer";
+  label.style.fontFamily =
+    "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+  label.style.fontSize = "14px";
+  label.style.fontWeight = "600";
+  label.style.lineHeight = `${FRAME_COMMENT_LABEL_LINE_HEIGHT}px`;
+  label.style.overflow = "hidden";
+  label.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.18)";
+  label.style.pointerEvents = "auto";
+}
+
+function styleCommentMarkerLabelText(labelText: HTMLElement): void {
+  labelText.dataset.testid = "html-dom-comment-tag-text";
+  labelText.style.display = "-webkit-box";
+  labelText.style.width = "100%";
+  labelText.style.lineHeight = `${FRAME_COMMENT_LABEL_LINE_HEIGHT}px`;
+  labelText.style.whiteSpace = "normal";
+  labelText.style.overflow = "hidden";
+  labelText.style.overflowWrap = "anywhere";
+  labelText.style.setProperty("-webkit-box-orient", "vertical");
+  labelText.style.setProperty(
+    "-webkit-line-clamp",
+    String(FRAME_COMMENT_LABEL_MAX_LINES),
+  );
+}
+
+function styleCommentMarkerDot(dot: HTMLElement): void {
+  dot.setAttribute("aria-hidden", "true");
+  dot.style.position = "absolute";
+  dot.style.width = `${FRAME_COMMENT_DOT_SIZE}px`;
+  dot.style.height = `${FRAME_COMMENT_DOT_SIZE}px`;
+  dot.style.borderRadius = "999px";
+  dot.style.background = "rgb(37, 99, 235)";
+  dot.style.pointerEvents = "none";
+}
+
+function styleCommentMarkerLeader(leader: HTMLElement): void {
+  leader.setAttribute("aria-hidden", "true");
+  leader.style.position = "absolute";
+  leader.style.pointerEvents = "none";
+}
+
+function styleCommentMarkerDeleteButton(params: {
+  readonly button: HTMLElement;
+  readonly commentId: string;
+}): void {
+  params.button.dataset.testid = "html-dom-comment-delete";
+  params.button.setAttribute(HTML_DOM_COMMENT_DELETE_ATTR, params.commentId);
+  params.button.setAttribute("aria-label", "Delete comment");
+  params.button.textContent = "x";
+  params.button.style.position = "absolute";
+  params.button.style.display = "inline-flex";
+  params.button.style.alignItems = "center";
+  params.button.style.justifyContent = "center";
+  params.button.style.width = "18px";
+  params.button.style.height = "18px";
+  params.button.style.border = "1px solid rgb(37, 99, 235)";
+  params.button.style.borderRadius = "999px";
+  params.button.style.background = "white";
+  params.button.style.color = "rgb(37, 99, 235)";
+  params.button.style.cursor = "pointer";
+  params.button.style.fontFamily =
+    "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+  params.button.style.fontSize = "13px";
+  params.button.style.fontWeight = "700";
+  params.button.style.lineHeight = "1";
+  params.button.style.opacity = "0";
+  params.button.style.padding = "0";
+  params.button.style.pointerEvents = "none";
+  params.button.style.boxShadow = "0 2px 6px rgba(15, 23, 42, 0.18)";
+  params.button.style.transition = "opacity 120ms ease, box-shadow 120ms ease";
+}
+
+function positionCommentMarkerParts(params: {
+  readonly deleteButton: HTMLElement;
+  readonly dot: HTMLElement;
+  readonly label: HTMLElement;
+  readonly leader: HTMLElement;
+  readonly placement: CommentMarkerPlacement;
+  readonly rect: CommentMarkerRect;
+}): void {
+  const dotCenterOffset = FRAME_COMMENT_DOT_SIZE / 2;
+  const labelHeight =
+    params.placement === "bottom" || params.placement === "top"
+      ? params.rect.height - FRAME_COMMENT_CONNECTOR_GAP
+      : params.rect.height;
+  const labelCenterOffset = labelHeight / 2;
+  const markerCenterY = params.rect.height / 2;
+  const markerCenterX = params.rect.width / 2;
+  const horizontalLeaderLeft = FRAME_COMMENT_DOT_SIZE + 4;
+  const horizontalLeaderWidth =
+    FRAME_COMMENT_CONNECTOR_GAP - FRAME_COMMENT_DOT_SIZE - 8;
+  const verticalLeaderTop = FRAME_COMMENT_DOT_SIZE + 4;
+  const verticalLeaderHeight =
+    FRAME_COMMENT_CONNECTOR_GAP - FRAME_COMMENT_DOT_SIZE - 8;
+
+  switch (params.placement) {
+    case "right": {
+      params.dot.style.left = "0";
+      params.dot.style.top = `${markerCenterY - dotCenterOffset}px`;
+      params.leader.style.left = `${horizontalLeaderLeft}px`;
+      params.leader.style.top = `${markerCenterY - 1}px`;
+      params.leader.style.width = `${horizontalLeaderWidth}px`;
+      params.leader.style.borderTop = "2px dashed rgb(37, 99, 235)";
+      params.label.style.left = `${FRAME_COMMENT_CONNECTOR_GAP}px`;
+      params.label.style.top = `${markerCenterY - labelCenterOffset}px`;
+      params.deleteButton.style.left = `${
+        FRAME_COMMENT_CONNECTOR_GAP + FRAME_COMMENT_LABEL_MAX_WIDTH - 10
+      }px`;
+      params.deleteButton.style.top = `${
+        markerCenterY - labelCenterOffset - 8
+      }px`;
+      break;
+    }
+    case "bottom": {
+      params.dot.style.left = `${markerCenterX - dotCenterOffset}px`;
+      params.dot.style.top = "0";
+      params.leader.style.left = `${markerCenterX - 1}px`;
+      params.leader.style.top = `${verticalLeaderTop}px`;
+      params.leader.style.height = `${verticalLeaderHeight}px`;
+      params.leader.style.borderLeft = "2px dashed rgb(37, 99, 235)";
+      params.label.style.left = "0";
+      params.label.style.top = `${FRAME_COMMENT_CONNECTOR_GAP}px`;
+      params.deleteButton.style.left = `${
+        FRAME_COMMENT_LABEL_MAX_WIDTH - 10
+      }px`;
+      params.deleteButton.style.top = `${FRAME_COMMENT_CONNECTOR_GAP - 8}px`;
+      break;
+    }
+    case "left": {
+      params.label.style.left = "0";
+      params.label.style.top = `${markerCenterY - labelCenterOffset}px`;
+      params.leader.style.left = `${FRAME_COMMENT_LABEL_MAX_WIDTH + 4}px`;
+      params.leader.style.top = `${markerCenterY - 1}px`;
+      params.leader.style.width = `${horizontalLeaderWidth}px`;
+      params.leader.style.borderTop = "2px dashed rgb(37, 99, 235)";
+      params.dot.style.left = `${params.rect.width - FRAME_COMMENT_DOT_SIZE}px`;
+      params.dot.style.top = `${markerCenterY - dotCenterOffset}px`;
+      params.deleteButton.style.left = `${
+        FRAME_COMMENT_LABEL_MAX_WIDTH - 10
+      }px`;
+      params.deleteButton.style.top = `${
+        markerCenterY - labelCenterOffset - 8
+      }px`;
+      break;
+    }
+    case "top": {
+      params.label.style.left = "0";
+      params.label.style.top = "0";
+      params.leader.style.left = `${markerCenterX - 1}px`;
+      params.leader.style.top = `${labelHeight + 4}px`;
+      params.leader.style.height = `${verticalLeaderHeight}px`;
+      params.leader.style.borderLeft = "2px dashed rgb(37, 99, 235)";
+      params.dot.style.left = `${markerCenterX - dotCenterOffset}px`;
+      params.dot.style.top = `${params.rect.height - FRAME_COMMENT_DOT_SIZE}px`;
+      params.deleteButton.style.left = `${
+        FRAME_COMMENT_LABEL_MAX_WIDTH - 10
+      }px`;
+      params.deleteButton.style.top = "-8px";
+      break;
+    }
   }
-  return doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+}
+
+function createFrameCommentMarker(params: {
+  readonly comment: HtmlDomEditComment;
+  readonly doc: Document;
+  readonly nodeId: string;
+  readonly position: CommentMarkerPosition;
+}): HTMLElement {
+  const marker = params.doc.createElement("div");
+  marker.setAttribute(HTML_DOM_EDIT_OVERLAY_ATTR, "");
+  marker.setAttribute(HTML_DOM_COMMENT_MARKER_TARGET_ATTR, params.nodeId);
+  marker.setAttribute(
+    FRAME_COMMENT_MARKER_PLACEMENT_ATTR,
+    params.position.placement,
+  );
+  marker.dataset.testid = "html-dom-comment-marker";
+  marker.setAttribute("aria-label", `Comment: ${params.comment.comment}`);
+  marker.style.position = "absolute";
+  marker.style.left = `${params.position.rect.left}px`;
+  marker.style.top = `${params.position.rect.top}px`;
+  marker.style.width = `${params.position.rect.width}px`;
+  marker.style.height = `${params.position.rect.height}px`;
+  marker.style.border = "0";
+  marker.style.borderRadius = "0";
+  marker.style.background = "transparent";
+  marker.style.cursor = "pointer";
+  marker.style.pointerEvents = "auto";
+  marker.style.padding = "0";
+  marker.style.margin = "0";
+  marker.style.overflow = "visible";
+
+  const dot = params.doc.createElement("span");
+  const leader = params.doc.createElement("span");
+  const label = params.doc.createElement("button");
+  const labelText = params.doc.createElement("span");
+  const deleteButton = params.doc.createElement("button");
+  label.type = "button";
+  deleteButton.type = "button";
+  dot.dataset.testid = "html-dom-comment-anchor";
+  leader.dataset.testid = "html-dom-comment-leader";
+  labelText.textContent = params.comment.comment;
+  styleCommentMarkerDot(dot);
+  styleCommentMarkerLeader(leader);
+  styleCommentMarkerLabel(label);
+  styleCommentMarkerLabelText(labelText);
+  styleCommentMarkerDeleteButton({
+    button: deleteButton,
+    commentId: params.comment.id,
+  });
+  label.append(labelText);
+  positionCommentMarkerParts({
+    deleteButton,
+    dot,
+    label,
+    leader,
+    placement: params.position.placement,
+    rect: params.position.rect,
+  });
+  marker.append(dot, leader, label, deleteButton);
+  return marker;
 }
 
 function syncFrameCommentMarkers(
   doc: Document | null | undefined,
   comments: readonly HtmlDomEditComment[],
+  visibleCommentId?: string | null,
+  hideAll = false,
 ): void {
   if (!doc) {
     return;
   }
 
-  const commentedNodeIds = commentedTargetNodeIds(comments);
-  if (commentedNodeIds.size === 0) {
+  if (comments.length === 0 || hideAll) {
     removeFrameCommentLayer(doc);
     return;
   }
 
   const layer = ensureFrameCommentLayer(doc);
   layer.replaceChildren();
-  for (const nodeId of commentedNodeIds) {
-    const target = doc.querySelector(nodeSelector(nodeId));
-    if (!target) {
+  const occupiedRects: CommentMarkerRect[] = [];
+  const usedNodeIds = new Set<string>();
+  const commentsWithTargets = comments
+    .filter((comment) => {
+      return !visibleCommentId || comment.id === visibleCommentId;
+    })
+    .map((comment) => {
+      const nodeId = comment.targetNodeIds[0];
+      const target = nodeId ? doc.querySelector(nodeSelector(nodeId)) : null;
+      return nodeId && target ? { comment, nodeId, target } : null;
+    })
+    .filter(
+      (
+        entry,
+      ): entry is {
+        readonly comment: HtmlDomEditComment;
+        readonly nodeId: string;
+        readonly target: Element;
+      } => {
+        return entry !== null;
+      },
+    )
+    .filter((entry) => {
+      return targetIntersectsViewport({
+        doc,
+        target: entry.target,
+      });
+    })
+    .sort((first, second) => {
+      const firstRect = first.target.getBoundingClientRect();
+      const secondRect = second.target.getBoundingClientRect();
+      return firstRect.top - secondRect.top || firstRect.left - secondRect.left;
+    });
+
+  for (const { comment, nodeId, target } of commentsWithTargets) {
+    if (usedNodeIds.has(nodeId)) {
       continue;
     }
-
-    const position = commentMarkerPosition({ doc, target });
-    const marker = doc.createElement("button");
-    marker.type = "button";
-    marker.append(createFrameCommentMarkerIcon(doc));
-    marker.setAttribute(HTML_DOM_EDIT_OVERLAY_ATTR, "");
-    marker.setAttribute(HTML_DOM_COMMENT_MARKER_TARGET_ATTR, nodeId);
-    marker.dataset.testid = "html-dom-comment-marker";
-    marker.setAttribute("aria-label", "Comment");
-    marker.style.position = "absolute";
-    marker.style.left = `${position.left}px`;
-    marker.style.top = `${position.top}px`;
-    marker.style.display = "inline-flex";
-    marker.style.alignItems = "center";
-    marker.style.justifyContent = "center";
-    marker.style.width = "28px";
-    marker.style.height = "28px";
-    marker.style.border = "0";
-    marker.style.borderRadius = "0";
-    marker.style.background = "transparent";
-    marker.style.color = "rgb(59, 130, 246)";
-    marker.style.filter = "drop-shadow(0 1px 2px rgba(15, 23, 42, 0.35))";
-    marker.style.cursor = "pointer";
-    marker.style.pointerEvents = "auto";
-    marker.style.padding = "0";
-    layer.append(marker);
+    usedNodeIds.add(nodeId);
+    const position = commentMarkerPosition({
+      doc,
+      labelHeight: FRAME_COMMENT_LABEL_HEIGHT,
+      occupiedRects,
+      target,
+    });
+    occupiedRects.push(position.rect);
+    layer.append(
+      createFrameCommentMarker({
+        comment,
+        doc,
+        nodeId,
+        position,
+      }),
+    );
   }
 }
+
+function shouldHideCommittedCommentMarkers(params: {
+  readonly comments: readonly HtmlDomEditComment[];
+  readonly editingCommentId: string | null;
+  readonly selectedNodeIds: readonly string[];
+}): boolean {
+  return (
+    params.editingCommentId === null &&
+    params.selectedNodeIds.length > 0 &&
+    !hasCommentForSelectedNodes({
+      comments: params.comments,
+      selectedNodeIds: params.selectedNodeIds,
+    })
+  );
+}
+
+const restoreOriginalStylesForNodes$ = command(
+  ({ get, set }, nodeIds: readonly string[]) => {
+    if (nodeIds.length === 0) {
+      return;
+    }
+
+    const doc = currentFrameDocument(get(internalIframeElement$));
+    const originalStylesByNodeId = get(internalOriginalStylesByNodeId$);
+    const nextStyleEditsByNodeId = { ...get(internalStyleEditsByNodeId$) };
+    const nextOriginalStylesByNodeId = { ...originalStylesByNodeId };
+
+    for (const nodeId of nodeIds) {
+      const originalStyles = originalStylesByNodeId[nodeId];
+      if (!originalStyles) {
+        continue;
+      }
+
+      const element = doc?.querySelector(nodeSelector(nodeId));
+      if (isFrameStyleElement(element)) {
+        for (const property of Object.keys(
+          originalStyles,
+        ) as HtmlDomStyleProperty[]) {
+          const styleProperty = stylePropertyNameForElement(element, property);
+          const originalValue = originalStyles[property];
+          if (originalValue) {
+            element.style.setProperty(styleProperty, originalValue);
+          } else {
+            element.style.removeProperty(styleProperty);
+          }
+        }
+      }
+
+      delete nextStyleEditsByNodeId[nodeId];
+      delete nextOriginalStylesByNodeId[nodeId];
+    }
+
+    set(internalStyleEditsByNodeId$, nextStyleEditsByNodeId);
+    set(internalOriginalStylesByNodeId$, nextOriginalStylesByNodeId);
+    set(internalPreparedPayload$, null);
+  },
+);
+
+export const deleteHtmlDomComment$ = command(
+  ({ get, set }, commentId: string) => {
+    const comments = get(internalComments$);
+    const deletedComment = comments.find((comment) => {
+      return comment.id === commentId;
+    });
+    if (!deletedComment) {
+      return;
+    }
+
+    const nextComments = comments.filter((comment) => {
+      return comment.id !== commentId;
+    });
+    const editingCommentId = get(internalEditingCommentId$);
+    const selectedNodeIds = get(internalSelectedNodeIds$);
+    const shouldResetDraft =
+      editingCommentId === commentId ||
+      deletedComment.targetNodeIds.some((nodeId) => {
+        return selectedNodeIds.includes(nodeId);
+      });
+    const doc = currentFrameDocument(get(internalIframeElement$));
+
+    set(restoreOriginalStylesForNodes$, deletedComment.targetNodeIds);
+    set(internalComments$, nextComments);
+    set(internalPreparedPayload$, null);
+
+    if (shouldResetDraft) {
+      set(internalCommentText$, "");
+      set(internalSelectedNodeIds$, []);
+      set(internalCommentPopoverAnchor$, null);
+      set(internalEditingCommentId$, null);
+      syncFrameEditState(doc, {
+        hoveredNodeId: get(internalHoveredNodeId$),
+        selectedNodeIds: [],
+      });
+      syncFrameCommentMarkers(doc, nextComments);
+      return;
+    }
+
+    syncFrameCommentMarkers(
+      doc,
+      nextComments,
+      editingCommentId,
+      shouldHideCommittedCommentMarkers({
+        comments: nextComments,
+        editingCommentId,
+        selectedNodeIds,
+      }),
+    );
+  },
+);
+
+function flashFrameCommentTarget(element: Element): void {
+  element.removeAttribute(HTML_DOM_COMMENT_FLASH_ATTR);
+  element.getBoundingClientRect();
+  element.setAttribute(HTML_DOM_COMMENT_FLASH_ATTR, "true");
+  element.ownerDocument.defaultView?.setTimeout(() => {
+    element.removeAttribute(HTML_DOM_COMMENT_FLASH_ATTR);
+  }, 900);
+}
+
+export const focusHtmlDomComment$ = command(
+  ({ get, set }, commentId: string) => {
+    const comment = get(internalComments$).find((candidate) => {
+      return candidate.id === commentId;
+    });
+    const nodeId = comment?.targetNodeIds[0];
+    const doc = currentFrameDocument(get(internalIframeElement$));
+    const target = nodeId ? doc?.querySelector(nodeSelector(nodeId)) : null;
+    if (!nodeId || !doc || !target) {
+      return;
+    }
+
+    set(internalHoveredNodeId$, null);
+    set(internalEditingCommentId$, null);
+    set(internalCommentPopoverAnchor$, null);
+    set(internalSelectedNodeIds$, [nodeId]);
+    syncFrameEditState(doc, {
+      hoveredNodeId: null,
+      selectedNodeIds: [nodeId],
+    });
+    syncFrameCommentMarkers(doc, get(internalComments$));
+    target.scrollIntoView?.({
+      behavior: "smooth",
+      block: "center",
+      inline: "center",
+    });
+    flashFrameCommentTarget(target);
+  },
+);
 
 function currentFrameDocument(
   iframe: HTMLIFrameElement | null,
@@ -548,6 +1684,10 @@ const resetHtmlDomCommentEditor$ = command(({ set }) => {
   set(internalCommentsOpen$, false);
   set(internalSubmitting$, false);
   set(internalPreparedPayload$, null);
+  set(internalActiveColorPanelProperty$, null);
+  set(internalColorPopoverOffset$, { left: 0, top: 0 });
+  set(internalStyleEditsByNodeId$, {});
+  set(internalOriginalStylesByNodeId$, {});
 });
 
 export const setHtmlDomCommentStageRef$ = onRef(
@@ -593,6 +1733,7 @@ export const setHtmlDomCommentIframeRef$ = onRef(
 );
 
 interface FrameCommentBindingParams {
+  readonly deleteComment: (commentId: string) => void;
   readonly doc: Document;
   readonly getComments: () => readonly HtmlDomEditComment[];
   readonly getDisabled: () => boolean;
@@ -687,18 +1828,23 @@ function bindFrameCommentEvents(params: FrameCommentBindingParams): () => void {
     if (params.getDisabled()) {
       return;
     }
+    if (closestCommentDeleteButton(event.target)) {
+      return;
+    }
     const markerNodeId = closestCommentMarker(event.target)?.getAttribute(
       HTML_DOM_COMMENT_MARKER_TARGET_ATTR,
     );
     if (markerNodeId) {
       params.setHoveredNodeId(markerNodeId);
-      openPopoverForNode(markerNodeId, "view");
       return;
     }
 
-    const nodeId = closestCommentNode(event.target)?.getAttribute(
-      HTML_DOM_NODE_ID_ATTR,
-    );
+    const nodeId = (
+      isMousePointEvent(event)
+        ? (smallestCommentNodeAtPoint(event) ??
+          closestCommentNode(event.target))
+        : closestCommentNode(event.target)
+    )?.getAttribute(HTML_DOM_NODE_ID_ATTR);
     params.setHoveredNodeId(nodeId ?? null);
     if (nodeId && commentForNodeId(params.getComments(), nodeId)) {
       openPopoverForNode(nodeId, "view");
@@ -729,6 +1875,16 @@ function bindFrameCommentEvents(params: FrameCommentBindingParams): () => void {
     if (params.getDisabled()) {
       return;
     }
+    const deleteCommentId = closestCommentDeleteButton(
+      event.target,
+    )?.getAttribute(HTML_DOM_COMMENT_DELETE_ATTR);
+    if (deleteCommentId) {
+      event.preventDefault();
+      event.stopPropagation();
+      params.deleteComment(deleteCommentId);
+      return;
+    }
+
     const markerNodeId = closestCommentMarker(event.target)?.getAttribute(
       HTML_DOM_COMMENT_MARKER_TARGET_ATTR,
     );
@@ -739,7 +1895,9 @@ function bindFrameCommentEvents(params: FrameCommentBindingParams): () => void {
       return;
     }
 
-    const element = closestCommentNode(event.target);
+    const element = isMousePointEvent(event)
+      ? (smallestCommentNodeAtPoint(event) ?? closestCommentNode(event.target))
+      : closestCommentNode(event.target);
     const nodeId = element?.getAttribute(HTML_DOM_NODE_ID_ATTR);
     if (!element || !nodeId) {
       return;
@@ -777,13 +1935,28 @@ export const bindHtmlDomCommentFrame$ = command(
     }
 
     const syncMarkers = () => {
-      syncFrameCommentMarkers(doc, get(internalComments$));
+      const comments = get(internalComments$);
+      const editingCommentId = get(internalEditingCommentId$);
+      const selectedNodeIds = get(internalSelectedNodeIds$);
+      syncFrameCommentMarkers(
+        doc,
+        comments,
+        editingCommentId,
+        shouldHideCommittedCommentMarkers({
+          comments,
+          editingCommentId,
+          selectedNodeIds,
+        }),
+      );
     };
     const view = doc.defaultView;
     view?.addEventListener("scroll", syncMarkers, true);
     view?.addEventListener("resize", syncMarkers);
 
     const eventCleanup = bindFrameCommentEvents({
+      deleteComment: (commentId) => {
+        set(deleteHtmlDomComment$, commentId);
+      },
       doc,
       getComments: () => {
         return get(internalComments$);
@@ -804,7 +1977,22 @@ export const bindHtmlDomCommentFrame$ = command(
         set(internalCommentPopoverAnchor$, value);
       },
       setEditingCommentId: (value) => {
+        if (get(internalEditingCommentId$) === value) {
+          return;
+        }
+        const comments = get(internalComments$);
+        const selectedNodeIds = get(internalSelectedNodeIds$);
         set(internalEditingCommentId$, value);
+        syncFrameCommentMarkers(
+          doc,
+          comments,
+          value,
+          shouldHideCommittedCommentMarkers({
+            comments,
+            editingCommentId: value,
+            selectedNodeIds,
+          }),
+        );
       },
       setHoveredNodeId: (value) => {
         set(internalHoveredNodeId$, value);
@@ -817,11 +2005,36 @@ export const bindHtmlDomCommentFrame$ = command(
         set(internalCommentText$, value);
       },
       setSelectedNodeIds: (value) => {
+        const comments = get(internalComments$);
+        const editingCommentId = get(internalEditingCommentId$);
+        const previousSelectedNodeIds = get(internalSelectedNodeIds$);
+        const wasHidingMarkers = shouldHideCommittedCommentMarkers({
+          comments,
+          editingCommentId,
+          selectedNodeIds: previousSelectedNodeIds,
+        });
+        const shouldHideMarkers = shouldHideCommittedCommentMarkers({
+          comments,
+          editingCommentId,
+          selectedNodeIds: value,
+        });
+        if (previousSelectedNodeIds.join(":") !== value.join(":")) {
+          set(internalActiveColorPanelProperty$, null);
+          set(internalColorPopoverOffset$, { left: 0, top: 0 });
+        }
         set(internalSelectedNodeIds$, value);
         syncFrameEditState(doc, {
           hoveredNodeId: get(internalHoveredNodeId$),
           selectedNodeIds: value,
         });
+        if (wasHidingMarkers !== shouldHideMarkers) {
+          syncFrameCommentMarkers(
+            doc,
+            comments,
+            editingCommentId,
+            shouldHideMarkers,
+          );
+        }
       },
       stage,
     });
@@ -854,6 +2067,106 @@ export const setHtmlDomCommentText$ = command(({ set }, value: string) => {
   set(internalPreparedPayload$, null);
 });
 
+export const toggleHtmlDomColorPanel$ = command(
+  ({ get, set }, property: HtmlDomStyleProperty) => {
+    const doc = currentFrameDocument(get(internalIframeElement$));
+    const selectedNodeIds = get(internalSelectedNodeIds$);
+    if (
+      !canEditStylePropertyForSelectedNodes({
+        doc,
+        property,
+        selectedNodeIds,
+      })
+    ) {
+      set(internalActiveColorPanelProperty$, null);
+      set(internalColorPopoverOffset$, { left: 0, top: 0 });
+      return;
+    }
+    const activeProperty = get(internalActiveColorPanelProperty$);
+    set(
+      internalActiveColorPanelProperty$,
+      activeProperty === property ? null : property,
+    );
+    set(internalColorPopoverOffset$, { left: 0, top: 0 });
+  },
+);
+
+export const closeHtmlDomColorPanel$ = command(({ set }) => {
+  set(internalActiveColorPanelProperty$, null);
+  set(internalColorPopoverOffset$, { left: 0, top: 0 });
+});
+
+export const setHtmlDomColorPopoverOffset$ = command(
+  ({ set }, offset: HtmlDomColorPopoverOffset) => {
+    set(internalColorPopoverOffset$, offset);
+  },
+);
+
+export const applyHtmlDomColorStyle$ = command(
+  (
+    { get, set },
+    params: {
+      readonly property: HtmlDomStyleProperty;
+      readonly value: string;
+    },
+  ) => {
+    const selectedNodeIds = get(internalSelectedNodeIds$);
+    if (selectedNodeIds.length === 0) {
+      return;
+    }
+
+    const iframe = get(internalIframeElement$);
+    const doc = currentFrameDocument(iframe);
+    if (
+      !canEditStylePropertyForSelectedNodes({
+        doc,
+        property: params.property,
+        selectedNodeIds,
+      })
+    ) {
+      set(internalActiveColorPanelProperty$, null);
+      return;
+    }
+    const styleEditsByNodeId = { ...get(internalStyleEditsByNodeId$) };
+    const originalStylesByNodeId = { ...get(internalOriginalStylesByNodeId$) };
+
+    for (const nodeId of selectedNodeIds) {
+      const element = doc?.querySelector(nodeSelector(nodeId));
+      if (!isFrameStyleElement(element)) {
+        continue;
+      }
+      const targets =
+        params.property === "color"
+          ? editableTextColorTargets(element)
+          : [element];
+      for (const target of targets) {
+        const targetNodeId =
+          target.getAttribute(HTML_DOM_NODE_ID_ATTR) ?? nodeId;
+        const styleProperty = stylePropertyNameForElement(
+          target,
+          params.property,
+        );
+
+        originalStylesByNodeId[targetNodeId] = {
+          ...originalStylesByNodeId[targetNodeId],
+          [params.property]:
+            originalStylesByNodeId[targetNodeId]?.[params.property] ??
+            target.style.getPropertyValue(styleProperty),
+        };
+        target.style.setProperty(styleProperty, params.value);
+        styleEditsByNodeId[targetNodeId] = {
+          ...styleEditsByNodeId[targetNodeId],
+          [params.property]: params.value,
+        };
+      }
+    }
+
+    set(internalOriginalStylesByNodeId$, originalStylesByNodeId);
+    set(internalStyleEditsByNodeId$, styleEditsByNodeId);
+    set(internalPreparedPayload$, null);
+  },
+);
+
 export const beginEditingCurrentHtmlDomComment$ = command(({ get, set }) => {
   const currentComment = commentForSelectedNodes({
     comments: get(internalComments$),
@@ -866,6 +2179,11 @@ export const beginEditingCurrentHtmlDomComment$ = command(({ get, set }) => {
   set(internalEditingCommentId$, currentComment.id);
   set(internalCommentText$, currentComment.comment);
   set(internalPreparedPayload$, null);
+  syncFrameCommentMarkers(
+    currentFrameDocument(get(internalIframeElement$)),
+    get(internalComments$),
+    currentComment.id,
+  );
 });
 
 const resetHtmlDomCommentDraft$ = command(({ get, set }) => {
@@ -873,11 +2191,17 @@ const resetHtmlDomCommentDraft$ = command(({ get, set }) => {
   set(internalSelectedNodeIds$, []);
   set(internalCommentPopoverAnchor$, null);
   set(internalEditingCommentId$, null);
+  set(internalActiveColorPanelProperty$, null);
+  set(internalColorPopoverOffset$, { left: 0, top: 0 });
   set(internalPreparedPayload$, null);
   syncFrameEditState(currentFrameDocument(get(internalIframeElement$)), {
     hoveredNodeId: get(internalHoveredNodeId$),
     selectedNodeIds: [],
   });
+  syncFrameCommentMarkers(
+    currentFrameDocument(get(internalIframeElement$)),
+    get(internalComments$),
+  );
 });
 
 export const addHtmlDomComment$ = command(({ get, set }) => {
@@ -933,6 +2257,10 @@ export const discardHtmlDomComments$ = command(({ get, set }) => {
 
   set(internalComments$, []);
   set(internalCommentsOpen$, false);
+  set(internalActiveColorPanelProperty$, null);
+  set(internalColorPopoverOffset$, { left: 0, top: 0 });
+  set(internalStyleEditsByNodeId$, {});
+  set(internalOriginalStylesByNodeId$, {});
   if (readyLoadState.status === "ready" && doc) {
     restoreFrameDocumentHtml({
       doc,
@@ -1039,6 +2367,59 @@ export const sendHtmlDomEditRequest$ = command(
   },
 );
 
+export const applyHtmlDomStyleEdits$ = command(
+  async (
+    { get, set },
+    params: ApplyHtmlDomStyleEditsParams,
+    _parentSignal: AbortSignal,
+  ) => {
+    const readyLoadState = get(internalLoadState$);
+    if (
+      readyLoadState.status !== "ready" ||
+      get(internalComments$).length > 0 ||
+      !hasStyleEdits(get(internalStyleEditsByNodeId$)) ||
+      get(internalSubmitting$)
+    ) {
+      return;
+    }
+
+    const signal = set(resetHtmlDomEditRequestSignal$);
+    set(internalSubmitting$, true);
+    set(internalPreparedPayload$, null);
+
+    const apply = async () => {
+      const html = htmlWithEditOverlaysRemoved({
+        fallbackHtml: readyLoadState.html,
+        frameDocument: currentFrameDocument(get(internalIframeElement$)),
+      });
+      params.onStarted?.();
+      if (params.onApplied) {
+        const applied = await tapError(
+          (async () => {
+            await params.onApplied?.(html);
+            return true;
+          })(),
+          (error) => {
+            toast.error(htmlDomEditErrorMessage(error, "Failed to apply edit"));
+          },
+        );
+        signal.throwIfAborted();
+        if (!applied) {
+          params.onFailed?.();
+        }
+        return;
+      }
+      toast.success("Edit applied");
+    };
+
+    await withCleanup(apply(), () => {
+      if (!signal.aborted) {
+        set(internalSubmitting$, false);
+      }
+    });
+  },
+);
+
 export const htmlDomCommentEditorModel$ = computed(
   (get): HtmlDomCommentEditorModel => {
     const comments = get(internalComments$);
@@ -1047,24 +2428,39 @@ export const htmlDomCommentEditorModel$ = computed(
     const selectedNodeIds = get(internalSelectedNodeIds$);
     const loadState = get(internalLoadState$);
     const submitting = get(internalSubmitting$);
+    const styleEditsByNodeId = get(internalStyleEditsByNodeId$);
+    const doc = currentFrameDocument(get(internalIframeElement$));
+    const editableStyleProperties = editableStylePropertiesForSelectedNodes({
+      doc,
+      selectedNodeIds,
+    });
     const currentComment = commentForSelectedNodes({
       comments,
       selectedNodeIds,
     });
 
     return {
+      activeColorPanelProperty: get(internalActiveColorPanelProperty$),
+      canApplyStyleEdits:
+        loadState.status === "ready" &&
+        comments.length === 0 &&
+        hasStyleEdits(styleEditsByNodeId) &&
+        !submitting,
       canAddComment: editingCommentId
         ? commentText.trim() !== ""
         : selectedNodeIds.length > 0 &&
           commentText.trim() !== "" &&
           !hasCommentForSelectedNodes({ comments, selectedNodeIds }),
+      canEditSelectedStyle: editableStyleProperties.length > 0,
       canSend:
         loadState.status === "ready" && comments.length > 0 && !submitting,
+      colorPopoverOffset: get(internalColorPopoverOffset$),
       commentsOpen: get(internalCommentsOpen$),
       commentText,
       commentPopoverAnchor: get(internalCommentPopoverAnchor$),
       comments,
       currentComment,
+      editableStyleProperties,
       editingCommentId,
       loadState,
       popoverTextAreaKey: [
@@ -1073,6 +2469,7 @@ export const htmlDomCommentEditorModel$ = computed(
         currentComment?.id ?? "draft",
       ].join("|"),
       prepared: get(internalPreparedPayload$) !== null,
+      selectedStyle: selectedStyleForNodes({ doc, selectedNodeIds }),
       submitting,
     };
   },

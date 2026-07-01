@@ -1,155 +1,107 @@
 import { randomUUID } from "node:crypto";
 
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
-import { getInstructionsStorageName } from "@vm0/core/storage-names";
-import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { cliTokens } from "@vm0/db/schema/cli-tokens";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { storages } from "@vm0/db/schema/storage";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
-import { generateCliToken, signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
-import { seedInstructionsStorage$ } from "./helpers/zero-workflows";
-import {
-  deleteTeamCompose$,
-  seedTeamCompose$,
-  type TeamComposeFixture,
-} from "./helpers/zero-team";
+  createBddApi,
+  expectApiError,
+  type ApiTestUser,
+} from "./helpers/api-bdd";
+import { mockClerkMembership } from "./helpers/api-bdd-clerk";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 
 const context = testContext();
-const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const bdd = createBddApi(context);
+const api = createRunsAutomationsApi(context);
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-async function cliAuthHeaders(
-  fixture: {
-    readonly orgId: string;
-    readonly userId: string;
-  },
-  role: "admin" | "member" = "admin",
-): Promise<{ readonly authorization: string }> {
-  const tokenId = randomUUID();
-  const token = generateCliToken(fixture.userId, fixture.orgId, tokenId);
-  const writeDb = store.set(writeDb$);
+function agentsClient() {
+  return setupApp({ context })(zeroAgentsByIdContract);
+}
 
-  await writeDb.insert(cliTokens).values({
-    id: tokenId,
-    token,
-    userId: fixture.userId,
-    name: "test token",
-    expiresAt: new Date(now() + 60 * 60 * 1000),
-  });
-  await writeDb
-    .insert(orgMembersCache)
-    .values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      role,
-      cachedAt: new Date(now()),
-    })
-    .onConflictDoUpdate({
-      target: [orgMembersCache.orgId, orgMembersCache.userId],
-      set: { role, cachedAt: new Date(now()) },
-    });
-
+function bearerHeaders(token: string): { readonly authorization: string } {
   return { authorization: `Bearer ${token}` };
 }
 
-describe("GET /api/zero/agents/:id", () => {
-  const track = createFixtureTracker<TeamComposeFixture>((fixture) => {
-    return store.set(deleteTeamCompose$, fixture, context.signal);
-  });
+async function createAgent(
+  actor: ApiTestUser,
+  body: Parameters<typeof bdd.createAgent>[1] = {},
+) {
+  bdd.acceptAgentStorageWrites();
+  return await bdd.createAgent(actor, body);
+}
 
+async function apiKeyHeaders(
+  actor: ApiTestUser,
+  role: "org:admin" | "org:member",
+): Promise<{ readonly authorization: string }> {
+  const key = await api.createApiKey(actor);
+  mockClerkMembership(context, actor, role);
+  return bearerHeaders(key.token);
+}
+
+function zeroTokenFor(
+  actor: ApiTestUser,
+  capabilities: readonly ZeroCapability[],
+): string {
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped actor");
+  }
+  const seconds = currentSecond();
+  return signSandboxJwtForTests({
+    scope: "zero",
+    userId: actor.userId,
+    orgId: actor.orgId,
+    runId: randomUUID(),
+    capabilities,
+    iat: seconds,
+    exp: seconds + 60,
+  });
+}
+
+describe("GET /api/zero/agents/:id", () => {
   it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.get({ params: { id: randomUUID() }, headers: {} }),
-      [401],
-    );
+    const response = await bdd.requestReadAgent(null, randomUUID(), [401]);
     expect(response.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
   });
 
   it("returns 401 when the authenticated session has no active organization", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, null);
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.get({
-        params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
+    const actor = bdd.user({ orgId: null });
+    const response = await bdd.requestReadAgent(actor, randomUUID(), [401]);
     expect(response.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
   });
 
   it("returns 400 for invalid path params", async () => {
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.get({
-        params: { id: "not-a-uuid" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-
+    const actor = bdd.user();
+    const response = await bdd.requestReadAgent(actor, "not-a-uuid", [400]);
+    expectApiError(response.body);
     expect(response.body.error.code).toBe("BAD_REQUEST");
   });
 
   it("returns the agent when found in the active org", async () => {
-    const fixture = await track(
-      store.set(
-        seedTeamCompose$,
-        {
-          composes: [
-            {
-              displayName: "Test Agent",
-              description: "Test description",
-              sound: "friendly",
-            },
-          ],
-        },
-        context.signal,
-      ),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const agentId = fixture.composeIds[0]!;
+    const actor = bdd.user();
+    const agent = await createAgent(actor, {
+      displayName: "Test Agent",
+      description: "Test description",
+      sound: "friendly",
+    });
 
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.get({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
+    const response = await bdd.readAgent(actor, agent.agentId);
 
-    expect(response.body).toStrictEqual({
-      agentId,
-      ownerId: fixture.userId,
+    expect(response).toStrictEqual({
+      agentId: agent.agentId,
+      ownerId: actor.userId,
       displayName: "Test Agent",
       description: "Test description",
       sound: "friendly",
@@ -161,151 +113,89 @@ describe("GET /api/zero/agents/:id", () => {
     });
   });
 
-  it("accepts an owner CLI token for a private agent", async () => {
-    const fixture = await track(
-      store.set(
-        seedTeamCompose$,
-        {
-          composes: [
-            {
-              displayName: "CLI Private Agent",
-              visibility: "private",
-            },
-          ],
-        },
-        context.signal,
-      ),
-    );
-    const agentId = fixture.composeIds[0]!;
+  it("accepts an owner API key for a private agent", async () => {
+    const actor = bdd.user({ orgRole: "org:member" });
+    const agent = await createAgent(actor, {
+      displayName: "API Key Private Agent",
+      visibility: "private",
+    });
 
-    const client = setupApp({ context })(zeroAgentsByIdContract);
     const response = await accept(
-      client.get({
-        params: { id: agentId },
-        headers: await cliAuthHeaders(fixture, "member"),
+      agentsClient().get({
+        params: { id: agent.agentId },
+        headers: await apiKeyHeaders(actor, "org:member"),
       }),
       [200],
     );
 
     expect(response.body).toMatchObject({
-      agentId,
-      ownerId: fixture.userId,
-      displayName: "CLI Private Agent",
+      agentId: agent.agentId,
+      ownerId: actor.userId,
+      displayName: "API Key Private Agent",
       visibility: "private",
     });
   });
 
   it("hides private agents from same-org non-owners", async () => {
-    const fixture = await track(
-      store.set(
-        seedTeamCompose$,
-        {
-          composes: [
-            {
-              displayName: "Owner Only",
-              visibility: "private",
-            },
-          ],
-        },
-        context.signal,
-      ),
-    );
-    const agentId = fixture.composeIds[0]!;
-    const client = setupApp({ context })(zeroAgentsByIdContract);
+    const owner = bdd.user();
+    const member = bdd.user({ orgId: owner.orgId, orgRole: "org:member" });
+    const agent = await createAgent(owner, {
+      displayName: "Owner Only",
+      visibility: "private",
+    });
 
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const ownerResponse = await accept(
-      client.get({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(ownerResponse.body.visibility).toBe("private");
+    const ownerResponse = await bdd.readAgent(owner, agent.agentId);
+    expect(ownerResponse.visibility).toBe("private");
 
-    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId, "org:member");
-    const otherResponse = await accept(
-      client.get({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
+    const otherResponse = await bdd.requestReadAgent(
+      member,
+      agent.agentId,
       [404],
     );
     expect(otherResponse.body).toStrictEqual({
-      error: { message: `Agent not found: ${agentId}`, code: "NOT_FOUND" },
+      error: {
+        message: `Agent not found: ${agent.agentId}`,
+        code: "NOT_FOUND",
+      },
     });
   });
 
   it("returns 404 for an unknown agent id", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const actor = bdd.user();
     const unknownId = randomUUID();
 
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.get({
-        params: { id: unknownId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
+    const response = await bdd.requestReadAgent(actor, unknownId, [404]);
 
     expect(response.body).toStrictEqual({
       error: { message: `Agent not found: ${unknownId}`, code: "NOT_FOUND" },
     });
   });
 
-  it("returns 404 when the agent belongs to a different org (no existence leak)", async () => {
-    const otherFixture = await track(
-      store.set(
-        seedTeamCompose$,
-        { composes: [{ displayName: "Other Org Agent" }] },
-        context.signal,
-      ),
-    );
-    const sharedId = otherFixture.composeIds[0]!;
+  it("returns 404 when the agent belongs to a different org without leaking existence", async () => {
+    const owner = bdd.user();
+    const other = bdd.user();
+    const agent = await createAgent(other, {
+      displayName: "Other Org Agent",
+    });
 
-    const myFixture = await track(
-      store.set(seedTeamCompose$, {}, context.signal),
-    );
-    mocks.clerk.session(myFixture.userId, myFixture.orgId);
-
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.get({
-        params: { id: sharedId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
+    const response = await bdd.requestReadAgent(owner, agent.agentId, [404]);
 
     expect(response.body).toStrictEqual({
-      error: { message: `Agent not found: ${sharedId}`, code: "NOT_FOUND" },
+      error: {
+        message: `Agent not found: ${agent.agentId}`,
+        code: "NOT_FOUND",
+      },
     });
   });
 
-  it("returns 403 for a sandbox token without agent:read capability", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    const runId = `run_${randomUUID()}`;
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId,
-      orgId,
-      runId,
-      capabilities: ["file:read"],
-      iat: seconds,
-      exp: seconds + 60,
-    });
+  it("returns 403 for a zero token without agent:read capability", async () => {
+    const actor = bdd.user();
+    const token = zeroTokenFor(actor, ["file:read"]);
 
-    const client = setupApp({ context })(zeroAgentsByIdContract);
     const response = await accept(
-      client.get({
+      agentsClient().get({
         params: { id: randomUUID() },
-        headers: { authorization: `Bearer ${token}` },
+        headers: bearerHeaders(token),
       }),
       [403],
     );
@@ -319,54 +209,25 @@ describe("GET /api/zero/agents/:id", () => {
   });
 
   it("returns the agent for a zero token with agent:read capability", async () => {
-    const fixture = await track(
-      store.set(
-        seedTeamCompose$,
-        {
-          composes: [
-            {
-              displayName: "Zero Token Agent",
-              description: "Read by zero token",
-            },
-          ],
-        },
-        context.signal,
-      ),
-    );
-    const agentId = fixture.composeIds[0]!;
-    const runId = `run_${randomUUID()}`;
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      runId,
-      capabilities: ["agent:read"],
-      iat: seconds,
-      exp: seconds + 60,
+    const actor = bdd.user();
+    const agent = await createAgent(actor, {
+      displayName: "Zero Token Agent",
+      description: "Read by zero token",
     });
-    await store
-      .set(writeDb$)
-      .insert(orgMembersCache)
-      .values({
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        role: "admin",
-        cachedAt: new Date(now()),
-      });
+    const token = zeroTokenFor(actor, ["agent:read"]);
+    mockClerkMembership(context, actor, "org:admin");
 
-    const client = setupApp({ context })(zeroAgentsByIdContract);
     const response = await accept(
-      client.get({
-        params: { id: agentId },
-        headers: { authorization: `Bearer ${token}` },
+      agentsClient().get({
+        params: { id: agent.agentId },
+        headers: bearerHeaders(token),
       }),
       [200],
     );
 
     expect(response.body).toMatchObject({
-      agentId,
-      ownerId: fixture.userId,
+      agentId: agent.agentId,
+      ownerId: actor.userId,
       displayName: "Zero Token Agent",
       description: "Read by zero token",
     });
@@ -374,41 +235,21 @@ describe("GET /api/zero/agents/:id", () => {
 });
 
 describe("DELETE /api/zero/agents/:id", () => {
-  const track = createFixtureTracker<TeamComposeFixture>((fixture) => {
-    return store.set(deleteTeamCompose$, fixture, context.signal);
-  });
-
   it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.delete({ params: { id: randomUUID() }, headers: {} }),
-      [401],
-    );
+    const response = await bdd.requestDeleteAgent(null, randomUUID(), [401]);
     expect(response.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
   });
 
-  it("returns 403 for a sandbox token without agent:delete capability", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    const runId = `run_${randomUUID()}`;
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId,
-      orgId,
-      runId,
-      capabilities: ["file:read"],
-      iat: seconds,
-      exp: seconds + 60,
-    });
+  it("returns 403 for a zero token without agent:delete capability", async () => {
+    const actor = bdd.user();
+    const token = zeroTokenFor(actor, ["file:read"]);
 
-    const client = setupApp({ context })(zeroAgentsByIdContract);
     const response = await accept(
-      client.delete({
+      agentsClient().delete({
         params: { id: randomUUID() },
-        headers: { authorization: `Bearer ${token}` },
+        headers: bearerHeaders(token),
       }),
       [403],
     );
@@ -422,95 +263,55 @@ describe("DELETE /api/zero/agents/:id", () => {
   });
 
   it("returns 400 for invalid path params", async () => {
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.delete({
-        params: { id: "not-a-uuid" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
+    const actor = bdd.user();
+    const response = await bdd.requestDeleteAgent(actor, "not-a-uuid", [400]);
 
+    expectApiError(response.body);
     expect(response.body.error.code).toBe("BAD_REQUEST");
   });
 
   it("returns 404 for an unknown agent id", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const actor = bdd.user();
     const unknownId = randomUUID();
 
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.delete({
-        params: { id: unknownId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
+    const response = await bdd.requestDeleteAgent(actor, unknownId, [404]);
 
     expect(response.body).toStrictEqual({
       error: { message: `Agent not found: ${unknownId}`, code: "NOT_FOUND" },
     });
   });
 
-  it("returns 404 when the agent belongs to a different org", async () => {
-    const otherFixture = await track(
-      store.set(
-        seedTeamCompose$,
-        { composes: [{ displayName: "Other Org Agent" }] },
-        context.signal,
-      ),
-    );
-    const agentId = otherFixture.composeIds[0];
-    if (!agentId) {
-      throw new Error("Expected seeded agent");
-    }
+  it("returns 404 when the agent belongs to a different org and leaves it readable to its owner", async () => {
+    const owner = bdd.user();
+    const requester = bdd.user();
+    const agent = await createAgent(owner, {
+      displayName: "Other Org Agent",
+    });
 
-    const fixture = await track(
-      store.set(seedTeamCompose$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.delete({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
+    const response = await bdd.requestDeleteAgent(
+      requester,
+      agent.agentId,
       [404],
     );
     expect(response.body).toStrictEqual({
-      error: { message: `Agent not found: ${agentId}`, code: "NOT_FOUND" },
+      error: {
+        message: `Agent not found: ${agent.agentId}`,
+        code: "NOT_FOUND",
+      },
     });
 
-    const writeDb = store.set(writeDb$);
-    const survivor = await writeDb
-      .select({ id: zeroAgents.id })
-      .from(zeroAgents)
-      .where(eq(zeroAgents.id, agentId));
-    expect(survivor).toStrictEqual([{ id: agentId }]);
+    await expect(bdd.readAgent(owner, agent.agentId)).resolves.toMatchObject({
+      agentId: agent.agentId,
+      displayName: "Other Org Agent",
+    });
   });
 
   it("rejects same-org members who are not the agent owner", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, { composes: [{}] }, context.signal),
-    );
-    const agentId = fixture.composeIds[0];
-    if (!agentId) {
-      throw new Error("Expected seeded agent");
-    }
-    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId, "org:member");
+    const owner = bdd.user();
+    const member = bdd.user({ orgId: owner.orgId, orgRole: "org:member" });
+    const agent = await createAgent(owner);
 
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.delete({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [403],
-    );
+    const response = await bdd.requestDeleteAgent(member, agent.agentId, [403]);
 
     expect(response.body).toStrictEqual({
       error: {
@@ -521,177 +322,85 @@ describe("DELETE /api/zero/agents/:id", () => {
   });
 
   it("deletes the caller's own agent", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, { composes: [{}] }, context.signal),
-    );
-    const agentId = fixture.composeIds[0];
-    if (!agentId) {
-      throw new Error("Expected seeded agent");
-    }
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const actor = bdd.user();
+    const agent = await createAgent(actor);
 
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.delete({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [204],
-    );
-    expect(response.body).toBeUndefined();
+    await bdd.deleteAgent(actor, agent.agentId);
 
-    const writeDb = store.set(writeDb$);
-    await expect(
-      writeDb
-        .select({ id: zeroAgents.id })
-        .from(zeroAgents)
-        .where(eq(zeroAgents.id, agentId)),
-    ).resolves.toStrictEqual([]);
-    await expect(
-      writeDb
-        .select({ id: agentComposes.id })
-        .from(agentComposes)
-        .where(eq(agentComposes.id, agentId)),
-    ).resolves.toStrictEqual([]);
+    const response = await bdd.requestReadAgent(actor, agent.agentId, [404]);
+    expect(response.body).toStrictEqual({
+      error: {
+        message: `Agent not found: ${agent.agentId}`,
+        code: "NOT_FOUND",
+      },
+    });
   });
 
-  it("allows an owner CLI token to delete and cleans instructions storage", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, { composes: [{}] }, context.signal),
-    );
-    const agentId = fixture.composeIds[0];
-    if (!agentId) {
-      throw new Error("Expected seeded agent");
-    }
-    const agentName = `agent-${agentId.slice(0, 8)}`;
-    const storageName = getInstructionsStorageName(agentName);
-    const s3Prefix = `orgs/${fixture.orgId}/${storageName}`;
-    await store.set(
-      seedInstructionsStorage$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        agentName,
-        s3Key: `${s3Prefix}/v1`,
-      },
-      context.signal,
-    );
-    mocks.s3.listObjects([
-      {
-        bucket: "test-user-storages",
-        key: `${s3Prefix}/v1/archive.tar.gz`,
-        size: 1024,
-      },
-    ]);
+  it("allows an owner API key to delete a private agent", async () => {
+    const actor = bdd.user({ orgRole: "org:member" });
+    const agent = await createAgent(actor, {
+      displayName: "API Key Deletable Agent",
+      visibility: "private",
+    });
 
-    const writeDb = store.set(writeDb$);
-    await expect(
-      writeDb
-        .select({ id: storages.id })
-        .from(storages)
-        .where(
-          and(
-            eq(storages.orgId, fixture.orgId),
-            eq(storages.name, storageName),
-          ),
-        ),
-    ).resolves.toHaveLength(1);
-
-    const client = setupApp({ context })(zeroAgentsByIdContract);
     const response = await accept(
-      client.delete({
-        params: { id: agentId },
-        headers: await cliAuthHeaders(fixture, "member"),
+      agentsClient().delete({
+        params: { id: agent.agentId },
+        headers: await apiKeyHeaders(actor, "org:member"),
       }),
       [204],
     );
     expect(response.body).toBeUndefined();
 
-    await expect(
-      writeDb
-        .select({ id: storages.id })
-        .from(storages)
-        .where(
-          and(
-            eq(storages.orgId, fixture.orgId),
-            eq(storages.name, storageName),
-          ),
-        ),
-    ).resolves.toStrictEqual([]);
+    const readAfterDelete = await bdd.requestReadAgent(
+      actor,
+      agent.agentId,
+      [404],
+    );
+    expect(readAfterDelete.body).toStrictEqual({
+      error: {
+        message: `Agent not found: ${agent.agentId}`,
+        code: "NOT_FOUND",
+      },
+    });
   });
 
   it("allows an org admin to delete another user's public agent", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, { composes: [{}] }, context.signal),
-    );
-    const agentId = fixture.composeIds[0];
-    if (!agentId) {
-      throw new Error("Expected seeded agent");
-    }
-    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId, "org:admin");
+    const owner = bdd.user();
+    const admin = bdd.user({ orgId: owner.orgId, orgRole: "org:admin" });
+    const agent = await createAgent(owner);
 
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.delete({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [204],
-    );
-    expect(response.body).toBeUndefined();
+    await bdd.deleteAgent(admin, agent.agentId);
 
-    const writeDb = store.set(writeDb$);
-    await expect(
-      writeDb
-        .select({ id: zeroAgents.id })
-        .from(zeroAgents)
-        .where(eq(zeroAgents.id, agentId)),
-    ).resolves.toStrictEqual([]);
+    const readAfterDelete = await bdd.requestReadAgent(
+      owner,
+      agent.agentId,
+      [404],
+    );
+    expect(readAfterDelete.body).toStrictEqual({
+      error: {
+        message: `Agent not found: ${agent.agentId}`,
+        code: "NOT_FOUND",
+      },
+    });
   });
 
-  it("returns 409 and preserves rows when a pending run references the agent", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, { composes: [{}] }, context.signal),
-    );
-    const agentId = fixture.composeIds[0];
-    if (!agentId) {
-      throw new Error("Expected seeded agent");
-    }
-    const writeDb = store.set(writeDb$);
-    const versionId = `v_${randomUUID().slice(0, 16)}`;
-    const sessionId = randomUUID();
-    const runId = randomUUID();
-    await writeDb.insert(agentComposeVersions).values({
-      id: versionId,
-      composeId: agentId,
-      content: {},
-      createdBy: fixture.userId,
-    });
-    await writeDb.insert(agentSessions).values({
-      id: sessionId,
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      agentComposeId: agentId,
-    });
-    await writeDb.insert(agentRuns).values({
-      id: runId,
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      agentComposeVersionId: versionId,
-      sessionId,
-      status: "pending",
-      prompt: "x",
+  it("returns 409 and preserves the agent when a pending run references it", async () => {
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor);
+    const run = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "keep this run pending",
+      modelProvider: "anthropic-api-key",
     });
 
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.delete({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [409],
-    );
+    const response = await bdd.requestDeleteAgent(actor, agent.agentId, [409]);
 
     expect(response.body).toStrictEqual({
       error: {
@@ -699,23 +408,10 @@ describe("DELETE /api/zero/agents/:id", () => {
         code: "CONFLICT",
       },
     });
-    await expect(
-      writeDb
-        .select({ id: zeroAgents.id })
-        .from(zeroAgents)
-        .where(eq(zeroAgents.id, agentId)),
-    ).resolves.toStrictEqual([{ id: agentId }]);
-    await expect(
-      writeDb
-        .select({ id: agentRuns.id })
-        .from(agentRuns)
-        .where(eq(agentRuns.id, runId)),
-    ).resolves.toStrictEqual([{ id: runId }]);
+    await expect(bdd.readAgent(actor, agent.agentId)).resolves.toMatchObject({
+      agentId: agent.agentId,
+    });
 
-    await writeDb.delete(agentRuns).where(eq(agentRuns.id, runId));
-    await writeDb.delete(agentSessions).where(eq(agentSessions.id, sessionId));
-    await writeDb
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, versionId));
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 });

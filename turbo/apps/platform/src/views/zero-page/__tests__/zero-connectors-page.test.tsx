@@ -4,7 +4,10 @@ import {
   zeroCustomConnectorsContract,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroConnectorOauthStartContract,
+  zeroConnectorScopeDiffContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
@@ -364,6 +367,107 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("moves reconnect into the connector options menu", async () => {
+    mockConnectors([
+      {
+        type: "meta-ads",
+        connectionStatus: "reconnect-required",
+      },
+    ]);
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
+    context.mocks.api(
+      zeroConnectorOauthStartContract.start,
+      ({ params, respond }) => {
+        expect(params.type).toBe("meta-ads");
+        return respond(200, {
+          authorizationUrl: "https://oauth.test/meta-ads/authorize",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+    });
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("Meta Ads");
+      expect(within(card).getByText("Connection expired")).toBeInTheDocument();
+      expect(queryButtonByText("Reconnect", card)).not.toBeInTheDocument();
+    });
+
+    click(
+      within(connectorCardByLabel("Meta Ads")).getByLabelText("More options"),
+    );
+
+    await waitFor(() => {
+      expect(menuItemByText("Reconnect")).toBeInTheDocument();
+    });
+    click(menuItemByText("Reconnect"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/meta-ads/authorize",
+      );
+    });
+  });
+
+  it("moves scope review into the connector options menu", async () => {
+    const storedScopes = ["https://www.googleapis.com/auth/adwords"];
+    const addedScopes = [
+      "https://www.googleapis.com/auth/datamanager",
+      "https://www.googleapis.com/auth/userinfo.email",
+    ];
+    mockConnectors([
+      {
+        type: "google-ads",
+        oauthScopes: storedScopes,
+      },
+    ]);
+    context.mocks.api(
+      zeroConnectorScopeDiffContract.getScopeDiff,
+      ({ params, respond }) => {
+        expect(params.type).toBe("google-ads");
+        return respond(200, {
+          addedScopes,
+          removedScopes: [],
+          currentScopes: [...storedScopes, ...addedScopes],
+          storedScopes,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+    });
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("Google Ads");
+      expect(within(card).getByText("Update permissions")).toBeInTheDocument();
+      expect(
+        within(card).queryByText("Permissions update available"),
+      ).not.toBeInTheDocument();
+      expect(queryButtonByText("Review", card)).not.toBeInTheDocument();
+    });
+
+    click(
+      within(connectorCardByLabel("Google Ads")).getByLabelText("More options"),
+    );
+
+    await waitFor(() => {
+      expect(menuItemByText("Review permissions")).toBeInTheDocument();
+    });
+    click(menuItemByText("Review permissions"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Google Ads permissions update",
+    });
+    expect(within(dialog).getByText("New permissions")).toBeInTheDocument();
+    expect(within(dialog).getByText(addedScopes[0])).toBeInTheDocument();
+  });
+
   it("navigates connector categories and opens a connector from the keyboard", async () => {
     mockConnectors([]);
 
@@ -430,16 +534,10 @@ describe("connectors page", () => {
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
-  it("filters connectors by connected status when access management is enabled", async () => {
+  it("filters connectors by connected status", async () => {
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorAccessManagement]: true,
-      },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
@@ -512,7 +610,7 @@ describe("connectors page", () => {
     expect(screen.queryByLabelText("Connect AWS")).not.toBeInTheDocument();
   });
 
-  it("hides connector access management when its switch is disabled", async () => {
+  it("shows the connection filter and hides access management when its switch is disabled", async () => {
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
 
     detachedSetupPage({
@@ -527,10 +625,10 @@ describe("connectors page", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(
-      screen.queryByRole("group", {
+      screen.getByRole("group", {
         name: "Connector connection filter",
       }),
-    ).not.toBeInTheDocument();
+    ).toBeInTheDocument();
     expect(
       screen.queryByLabelText("Manage GitHub access"),
     ).not.toBeInTheDocument();
@@ -688,6 +786,17 @@ describe("connectors page", () => {
       const empty = within(card).getByTestId("connector-card-access-empty");
       expect(empty).toHaveTextContent("Add access");
     });
+
+    click(
+      within(connectorCardByLabel("GitHub")).getByLabelText(
+        "Manage GitHub access",
+      ),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub access",
+    });
+    expect(dialog).toBeInTheDocument();
   });
 
   it("hides permission controls for connectors without firewall rules", async () => {

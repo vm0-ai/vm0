@@ -21,6 +21,7 @@ export const luma = {
           fields: {
             LUMA_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-luma-api-key",
             },

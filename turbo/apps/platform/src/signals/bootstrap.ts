@@ -22,7 +22,6 @@ import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
 import { setupAgentPhoneConnectPage$ } from "./zero-page/agentphone-connect-page.ts";
 import { setupGithubConnectPage$ } from "./zero-page/github-connect-page.ts";
-import { setupGithubSettingsPage$ } from "./zero-page/github-settings-page.ts";
 import { setupTelegramConnectPage$ } from "./zero-page/telegram-connect-page.ts";
 import { setupTelegramSettingsPage$ } from "./zero-page/telegram-settings-page.ts";
 import { setupActivityPage$ } from "./activity-page/activity-page-setup.ts";
@@ -51,6 +50,7 @@ import { setupComputerUseAuthorizationPage$ } from "./computer-use-authorization
 import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-page-setup.ts";
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
+import { setupSignInPage$, setupSignUpPage$ } from "./auth-page-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
 import { setupReportErrorPage$ } from "./report-error/report-error-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
@@ -118,6 +118,23 @@ function setupAuthSidebarPageWrapper(
 }
 
 const ROUTE_CONFIG = [
+  {
+    path: ROUTES.signIn,
+    setup: setupSignInPage$,
+  },
+  {
+    path: ROUTES.signInCatchAll,
+    setup: setupSignInPage$,
+  },
+  {
+    path: ROUTES.signUp,
+    setup: setupSignUpPage$,
+  },
+  {
+    path: ROUTES.signUpCatchAll,
+    setup: setupSignUpPage$,
+  },
+
   // --- New routes ---
   {
     path: ROUTES.insights,
@@ -172,20 +189,12 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupReportErrorPage$),
   },
   {
-    path: ROUTES.agentWorkflowDetail,
-    setup: setupAuthSidebarPageWrapper(setupWorkflowDetailPage$),
-  },
-  {
     path: ROUTES.workflowDetail,
     setup: setupAuthSidebarPageWrapper(setupWorkflowDetailPage$),
   },
   {
     path: ROUTES.workflows,
     setup: setupAuthSidebarPageWrapper(setupWorkflowsPage$),
-  },
-  {
-    path: ROUTES.agentWorkflows,
-    setup: setupAuthSidebarPageWrapper(setupAgentDetailPage$),
   },
   {
     path: ROUTES.agentDetail,
@@ -202,10 +211,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.settingsSlack,
     setup: setupAuthSidebarPageWrapper(setupSlackConnectPage$),
-  },
-  {
-    path: ROUTES.settingsGithub,
-    setup: setupAuthSidebarPageWrapper(setupGithubSettingsPage$),
   },
   {
     path: ROUTES.settingsTelegram,

@@ -20,6 +20,7 @@ export const oddpool = {
           fields: {
             ODDPOOL_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-oddpool-api-key",
             },

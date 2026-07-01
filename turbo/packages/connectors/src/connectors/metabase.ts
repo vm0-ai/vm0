@@ -20,10 +20,12 @@ export const metabase = {
           fields: {
             METABASE_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
             METABASE_BASE_URL: {
               label: "Base URL",
+              publicId: "baseUrl",
               required: true,
               placeholder: "https://mycompany.metabaseapp.com",
               storage: "variable",

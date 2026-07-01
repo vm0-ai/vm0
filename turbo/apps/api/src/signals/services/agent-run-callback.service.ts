@@ -30,6 +30,10 @@ import {
   handleSlackOrgInternalCallbackWithoutCcstate,
 } from "./internal-slack-org-run-callback.service";
 import {
+  handleTeamsOrgInternalCallback$,
+  handleTeamsOrgInternalCallbackWithoutCcstate,
+} from "./internal-teams-org-run-callback.service";
+import {
   handleTelegramInternalCallback$,
   handleTelegramInternalCallbackWithoutCcstate,
 } from "./internal-telegram-run-callback.service";
@@ -135,6 +139,13 @@ const dispatchInternalCallback$ = command(
           signal,
         );
       }
+      case "teams:org": {
+        return await set(
+          handleTeamsOrgInternalCallback$,
+          input.envelope,
+          signal,
+        );
+      }
       case "telegram": {
         return await set(
           handleTelegramInternalCallback$,
@@ -229,7 +240,7 @@ const dispatchSingleInternalCallback$ = command(
   },
 );
 
-export async function dispatchRunCallbacks(
+async function dispatchRunCallbacks(
   db: Db,
   runId: string,
   status: TerminalCallbackStatus,
@@ -481,6 +492,12 @@ async function dispatchInternalCallbackWithoutCcstate(
     }
     case "slack:org": {
       return await handleSlackOrgInternalCallbackWithoutCcstate(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
+    case "teams:org": {
+      return await handleTeamsOrgInternalCallbackWithoutCcstate(
         input.db,
         callbackEnvelope(input),
       );

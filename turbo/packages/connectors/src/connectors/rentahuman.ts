@@ -20,6 +20,7 @@ export const rentahuman = {
           fields: {
             RENTAHUMAN_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-rentahuman-api-key",
             },

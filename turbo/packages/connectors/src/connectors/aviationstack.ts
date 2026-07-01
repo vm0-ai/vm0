@@ -20,6 +20,7 @@ export const aviationstack = {
           fields: {
             AVIATIONSTACK_TOKEN: {
               label: "Access Key",
+              publicId: "accessKey",
               required: true,
             },
           },

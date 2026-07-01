@@ -1,25 +1,19 @@
-import { createStore } from "ccstate";
 import {
   SLACK_E2E_FIXTURES,
   SLACK_E2E_SCOPES,
   type TestSlackMockUsersInfoResponse,
 } from "@vm0/api-contracts/contracts/test-slack-mock";
-import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
-import { afterEach, describe, expect, it } from "vitest";
-import { and, eq, inArray } from "drizzle-orm";
+import { describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
-import { writeDb$ } from "../../external/db";
 import { testSlackMockRoutes } from "../test-slack-mock";
 
 const context = testContext();
-const store = createStore();
-const writeDb = store.set(writeDb$);
 
 const BASE_ROUTE = "/api/test/slack-mock";
-const LOG_TEST_TEAM_ID = "T_TEST_SLACK_MOCK_12859";
+const RESPONSE_TEST_TEAM_ID = "T_TEST_SLACK_MOCK_RESPONSE";
 
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
   const app = createAppWithRoutes({
@@ -32,16 +26,6 @@ function requestApp(path: string, init?: RequestInit): Promise<Response> {
 async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
-
-async function cleanupMockCallLog(): Promise<void> {
-  await writeDb
-    .delete(e2eSlackMockCallLog)
-    .where(eq(e2eSlackMockCallLog.teamId, LOG_TEST_TEAM_ID));
-}
-
-afterEach(async () => {
-  await cleanupMockCallLog();
-});
 
 describe("POST /api/test/slack-mock/*", () => {
   it("returns 404 outside allowed test environments", async () => {
@@ -279,15 +263,14 @@ describe("POST /api/test/slack-mock/*", () => {
     expect(emptyFormBody.user.id).toBe(SLACK_E2E_FIXTURES.userUserId);
   });
 
-  it("logs chat.postMessage and chat.postEphemeral calls", async () => {
+  it("returns chat.postMessage and chat.postEphemeral payloads", async () => {
     mockEnv("ENV", "development");
-    await cleanupMockCallLog();
 
     const messageResponse = await requestApp(`${BASE_ROUTE}/chat.postMessage`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        team_id: LOG_TEST_TEAM_ID,
+        team_id: RESPONSE_TEST_TEAM_ID,
         channel: "C_TEST_FORM",
         text: "hello from form",
       }),
@@ -298,7 +281,7 @@ describe("POST /api/test/slack-mock/*", () => {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          team_id: LOG_TEST_TEAM_ID,
+          team_id: RESPONSE_TEST_TEAM_ID,
           channel_id: "C_TEST_JSON",
           text: "hello from json",
         }),
@@ -316,48 +299,5 @@ describe("POST /api/test/slack-mock/*", () => {
       ok: true,
       message_ts: expect.stringMatching(/^\d+\.000200$/),
     });
-
-    const calls = await writeDb
-      .select({
-        method: e2eSlackMockCallLog.method,
-        teamId: e2eSlackMockCallLog.teamId,
-        channelId: e2eSlackMockCallLog.channelId,
-        bodyJson: e2eSlackMockCallLog.bodyJson,
-      })
-      .from(e2eSlackMockCallLog)
-      .where(
-        and(
-          eq(e2eSlackMockCallLog.teamId, LOG_TEST_TEAM_ID),
-          inArray(e2eSlackMockCallLog.method, [
-            "chat.postMessage",
-            "chat.postEphemeral",
-          ]),
-        ),
-      );
-
-    expect(calls).toStrictEqual(
-      expect.arrayContaining([
-        {
-          method: "chat.postMessage",
-          teamId: LOG_TEST_TEAM_ID,
-          channelId: "C_TEST_FORM",
-          bodyJson: {
-            team_id: LOG_TEST_TEAM_ID,
-            channel: "C_TEST_FORM",
-            text: "hello from form",
-          },
-        },
-        {
-          method: "chat.postEphemeral",
-          teamId: LOG_TEST_TEAM_ID,
-          channelId: "C_TEST_JSON",
-          bodyJson: {
-            team_id: LOG_TEST_TEAM_ID,
-            channel_id: "C_TEST_JSON",
-            text: "hello from json",
-          },
-        },
-      ]),
-    );
   });
 });

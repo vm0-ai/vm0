@@ -20,6 +20,7 @@ export const braveSearch = {
           fields: {
             BRAVE_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "BSAxxxxxxxxxxxxxxxx",
             },

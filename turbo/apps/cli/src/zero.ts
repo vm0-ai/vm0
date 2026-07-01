@@ -38,7 +38,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   "model-provider": null,
   logs: "agent-run:read",
   search: "chat-message:read",
-  chat: "chat-thread:write",
+  chat: ["chat-thread:read", "chat-thread:write"],
   resource: null,
   github: ["github:read", "github:write"],
   slack: "slack:write",
@@ -138,7 +138,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
   {
     name: "github",
-    description: "Manage GitHub integration files and label listeners",
+    description: "Upload and download GitHub files",
     load: async () => {
       return (await import("./commands/zero/github")).zeroGithubCommand;
     },

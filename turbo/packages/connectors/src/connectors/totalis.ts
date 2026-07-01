@@ -20,6 +20,7 @@ export const totalis = {
           fields: {
             TOTALIS_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-totalis-api-key",
             },

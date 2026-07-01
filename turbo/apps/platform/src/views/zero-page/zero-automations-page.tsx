@@ -524,7 +524,7 @@ const AUTOMATIONS_LABELS = {
 
 export function ZeroAutomationsPage() {
   const features = useGet(featureSwitch$);
-  if (features[FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]) {
+  if (features[FeatureSwitchKey.WorkflowAutomation]) {
     return <WorkflowTriggerAutomationsPage />;
   }
   return <LegacyZeroAutomationsPage />;

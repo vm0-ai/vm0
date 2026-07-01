@@ -19,6 +19,7 @@ export const slackWebhook = {
           fields: {
             SLACK_WEBHOOK_URL: {
               label: "Webhook URL",
+              publicId: "url",
               required: true,
               placeholder: "https://hooks.slack.com/services/xxx/xxx/xxx",
             },

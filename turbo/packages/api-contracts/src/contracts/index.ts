@@ -308,6 +308,175 @@ export {
   type TestOAuthProviderUserinfoResponse,
 } from "./test-oauth-provider-userinfo";
 export {
+  testComputerUseStateContract,
+  testComputerUseStateDeleteResponseSchema,
+  testComputerUseStateGetResponseSchema,
+  testComputerUseStatePostBodySchema,
+  testComputerUseStatePostResponseSchema,
+  type TestComputerUseStateContract,
+  type TestComputerUseStateDeleteResponse,
+  type TestComputerUseStateGetResponse,
+  type TestComputerUseStatePostResponse,
+} from "./test-computer-use-state";
+export {
+  testAutomationsStateActionBodySchema,
+  testAutomationsStateActionResponseSchema,
+  testAutomationsStateContract,
+  testAutomationsStateDeleteResponseSchema,
+  testAutomationsStatePatchBodySchema,
+  testAutomationsStatePostBodySchema,
+  testAutomationsStatePostResponseSchema,
+  testAutomationsStateReadResponseSchema,
+  testAutomationsStateSeedSchema,
+  testAutomationsStateTriggerRowSchema,
+  type TestAutomationsStateActionBody,
+  type TestAutomationsStateActionResponse,
+  type TestAutomationsStateContract,
+  type TestAutomationsStateDeleteResponse,
+  type TestAutomationsStatePatchBody,
+  type TestAutomationsStatePostBody,
+  type TestAutomationsStatePostResponse,
+  type TestAutomationsStateReadResponse,
+  type TestAutomationsStateSeed,
+  type TestAutomationsStateTriggerRow,
+} from "./test-automations-state";
+export {
+  testBillingRedeemStateActionBodySchema,
+  testBillingRedeemStateActionResponseSchema,
+  testBillingRedeemStateContract,
+  testBillingRedeemStateFixtureSchema,
+  type TestBillingRedeemStateActionBody,
+  type TestBillingRedeemStateActionResponse,
+  type TestBillingRedeemStateContract,
+  type TestBillingRedeemStateFixture,
+} from "./test-billing-redeem-state";
+export {
+  testBillingStatusStateActionBodySchema,
+  testBillingStatusStateActionResponseSchema,
+  testBillingStatusStateContract,
+  testBillingStatusStateFixtureSchema,
+  type TestBillingStatusStateActionBody,
+  type TestBillingStatusStateActionResponse,
+  type TestBillingStatusStateContract,
+  type TestBillingStatusStateFixture,
+} from "./test-billing-status-state";
+export {
+  testGenerationStateActionBodySchema,
+  testGenerationStateActionResponseSchema,
+  testGenerationStateContract,
+  testGenerationStateFixtureSchema,
+  type TestGenerationStateActionBody,
+  type TestGenerationStateActionResponse,
+  type TestGenerationStateBehaviorCountRow,
+  type TestGenerationStateContract,
+  type TestGenerationStateFixture,
+  type TestGenerationStateGenerationJobRow,
+  type TestGenerationStatePricingRow,
+  type TestGenerationStateUploadedFileRow,
+  type TestGenerationStateUsageEventRow,
+} from "./test-generation-state";
+export {
+  testUsageStateActionBodySchema,
+  testUsageStateActionResponseSchema,
+  testUsageStateContract,
+  testUsageStateFixtureSchema,
+  testUsageStateInsightsResponseSchema,
+  type TestUsageStateActionBody,
+  type TestUsageStateActionResponse,
+  type TestUsageStateContract,
+  type TestUsageStateFixture,
+  type TestUsageStateInsightsResponse,
+} from "./test-usage-state";
+export {
+  testChatThreadStateActionBodySchema,
+  testChatThreadStateActionResponseSchema,
+  testChatThreadStateContract,
+  testChatThreadStateErrorSchema,
+  testChatThreadStateFixtureSchema,
+  type TestChatThreadStateActionBody,
+  type TestChatThreadStateActionResponse,
+  type TestChatThreadStateContract,
+  type TestChatThreadStateFixture,
+} from "./test-chat-thread-state";
+export {
+  testChatMessagesStateActionBodySchema,
+  testChatMessagesStateActionResponseSchema,
+  testChatMessagesStateContract,
+  testChatMessagesStateErrorSchema,
+  type TestChatMessagesStateActionBody,
+  type TestChatMessagesStateActionResponse,
+  type TestChatMessagesStateContract,
+} from "./test-chat-messages-state";
+export {
+  testWebhooksStateActionBodySchema,
+  testWebhooksStateActionResponseSchema,
+  testWebhooksStateContract,
+  type TestWebhooksStateActionBody,
+  type TestWebhooksStateActionResponse,
+  type TestWebhooksStateBillingState,
+  type TestWebhooksStateContract,
+  type TestWebhooksStateOrgCleanupRows,
+} from "./test-webhooks-state";
+export {
+  testUsageInsightStateActionBodySchema,
+  testUsageInsightStateActionResponseSchema,
+  testUsageInsightStateContract,
+  testUsageInsightStateFixtureSchema,
+  type TestUsageInsightStateActionBody,
+  type TestUsageInsightStateActionResponse,
+  type TestUsageInsightStateContract,
+  type TestUsageInsightStateFixture,
+} from "./test-usage-insight-state";
+export {
+  testWorkflowTriggerStateActionBodySchema,
+  testWorkflowTriggerStateActionResponseSchema,
+  testWorkflowTriggerStateContract,
+  testWorkflowTriggerStateErrorSchema,
+  type TestWorkflowTriggerStateActionBody,
+  type TestWorkflowTriggerStateActionResponse,
+  type TestWorkflowTriggerStateContract,
+} from "./test-workflow-trigger-state";
+export {
+  testCronCleanupSandboxesStateActionBodySchema,
+  testCronCleanupSandboxesStateActionResponseSchema,
+  testCronCleanupSandboxesStateContract,
+  testCronCleanupSandboxesStateErrorSchema,
+  type TestCronCleanupSandboxesStateActionBody,
+  type TestCronCleanupSandboxesStateActionResponse,
+  type TestCronCleanupSandboxesStateContract,
+} from "./test-cron-cleanup-sandboxes-state";
+export {
+  testEmailStateActionBodySchema,
+  testEmailStateActionResponseSchema,
+  testEmailStateContract,
+  testEmailStateErrorSchema,
+  type TestEmailStateActionBody,
+  type TestEmailStateActionResponse,
+  type TestEmailStateContract,
+} from "./test-email-state";
+export {
+  testOnboardingStatusStateActionBodySchema,
+  testOnboardingStatusStateActionResponseSchema,
+  testOnboardingStatusStateContract,
+  testOnboardingStatusStateFixtureSchema,
+  type TestOnboardingStatusStateActionBody,
+  type TestOnboardingStatusStateActionResponse,
+  type TestOnboardingStatusStateContract,
+  type TestOnboardingStatusStateFixture,
+} from "./test-onboarding-status-state";
+export {
+  testMemoryStateActionBodySchema,
+  testMemoryStateActionResponseSchema,
+  testMemoryStateContract,
+  testMemoryStateErrorSchema,
+  testMemoryStateFixtureSchema,
+  type TestMemoryStateActionBody,
+  type TestMemoryStateActionResponse,
+  type TestMemoryStateContract,
+  type TestMemoryStateFixture,
+  type TestMemoryStateSummaryRow,
+} from "./test-memory-state";
+export {
   testSlackDispatchProbeBodySchema,
   testSlackDispatchProbeContract,
   testSlackDispatchProbeErrorSchema,
@@ -528,6 +697,8 @@ export {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMarkReadContract,
+  chatThreadMarkAgentReadContract,
+  chatThreadMetadataContract,
   chatThreadModelSelectionContract,
   chatThreadComputerUseHostContract,
   chatMessagesContract,
@@ -537,6 +708,7 @@ export {
   chatSearchContract,
   chatThreadListItemSchema,
   chatThreadDetailSchema,
+  chatThreadMetadataSchema,
   modelSelectionRequestSchema,
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
@@ -556,6 +728,8 @@ export {
   type ChatThreadsContract,
   type ChatThreadByIdContract,
   type ChatThreadMarkReadContract,
+  type ChatThreadMarkAgentReadContract,
+  type ChatThreadMetadataContract,
   type ChatThreadModelSelectionContract,
   type ChatThreadComputerUseHostContract,
   type ChatMessagesContract,
@@ -568,6 +742,7 @@ export {
   type ChatSearchMessage,
   type ChatThreadListItem,
   type ChatThreadDetail,
+  type ChatThreadMetadata,
   type PagedChatMessage,
   type PersistedAttachment,
   type AttachFile,
@@ -964,6 +1139,21 @@ export {
   type ZeroConnectorsSearchContract,
 } from "./zero-connectors";
 export {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogAuthMethodDetail,
+  type PublicConnectorCatalogAuthMethodSummary,
+  type PublicConnectorCatalogDetail,
+  type PublicConnectorCatalogDetailResponse,
+  type PublicConnectorCatalogItem,
+  type PublicConnectorCatalogListResponse,
+  type PublicConnectorCatalogManualField,
+  type PublicConnectorCatalogPermissionDetail,
+  type PublicConnectorCatalogPermissionDetailResponse,
+  type PublicConnectorCatalogPermissionSummary,
+  type PublicConnectorCatalogStartOption,
+  type ZeroConnectorCatalogContract,
+} from "./zero-connector-catalog";
+export {
   codexDeviceAuthScopeSchema,
   zeroCodexDeviceAuthContract,
   type CodexDeviceAuthScope,
@@ -1140,9 +1330,17 @@ export {
   type PhoneUploadCompleteResponse,
 } from "./integrations";
 export {
-  deleteGithubInstallationResponseSchema,
+  githubConnectSignatureSchema,
+  githubConnectUserBodySchema,
+  githubInstallationNotFoundResponseSchema,
+  githubInstallationResponseSchema,
+  githubIntegrationActionResponseSchema,
   integrationsGithubContract,
-  type DeleteGithubInstallationResponse,
+  type GithubConnectSignature,
+  type GithubConnectUserBody,
+  type GithubInstallationNotFoundResponse,
+  type GithubInstallationResponse,
+  type GithubIntegrationActionResponse,
   type IntegrationsGithubContract,
 } from "./integrations-github";
 export {
@@ -1257,6 +1455,28 @@ export {
   zeroSlackEventsContract,
   type ZeroSlackEventsContract,
 } from "./zero-slack-events";
+export {
+  zeroTeamsBotContract,
+  teamsInboundActivitySchema,
+  teamsBotIngressResponseSchema,
+  type TeamsInboundActivity,
+  type TeamsBotIngressResponse,
+  type ZeroTeamsBotContract,
+} from "./zero-teams-bot";
+export {
+  zeroTeamsConnectContract,
+  type TeamsConnectBody,
+  type TeamsConnectResponse,
+  type TeamsConnectStatus,
+  type TeamsDisconnectResponse,
+  type ZeroTeamsConnectContract,
+} from "./zero-teams-connect";
+export {
+  zeroTeamsBrowserConnectContract,
+  zeroTeamsBrowserConnectQuerySchema,
+  type ZeroTeamsBrowserConnectContract,
+  type ZeroTeamsBrowserConnectQuery,
+} from "./zero-teams-browser-connect";
 export {
   zeroSlackInteractiveContract,
   type ZeroSlackInteractiveContract,

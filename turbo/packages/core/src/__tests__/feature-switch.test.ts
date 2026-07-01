@@ -39,7 +39,7 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(true);
     expect(
-      isFeatureEnabled(FeatureSwitchKey.WorkflowsViewer, {
+      isFeatureEnabled(FeatureSwitchKey.WorkflowAutomation, {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
     ).toBe(true);
@@ -47,17 +47,6 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.ApiKeys, {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
-    ).toBe(true);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.GoalWorkflows, {
-        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      }),
-    ).toBe(true);
-    expect(
-      isFeatureEnabled(
-        FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger,
-        { orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe" },
-      ),
     ).toBe(true);
   });
 
@@ -68,7 +57,7 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(false);
     expect(
-      isFeatureEnabled(FeatureSwitchKey.WorkflowsViewer, {
+      isFeatureEnabled(FeatureSwitchKey.WorkflowAutomation, {
         orgId: "org_nonexistent",
       }),
     ).toBe(false);
@@ -76,17 +65,6 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.ApiKeys, {
         orgId: "org_nonexistent",
       }),
-    ).toBe(false);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.GoalWorkflows, {
-        orgId: "org_nonexistent",
-      }),
-    ).toBe(false);
-    expect(
-      isFeatureEnabled(
-        FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger,
-        { orgId: "org_nonexistent" },
-      ),
     ).toBe(false);
   });
 
@@ -135,18 +113,14 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.WorkflowsViewer]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.WorkflowAutomation]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.GoalWorkflows]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ConnectorAccessManagement]).toBe(
       true,
     );
-    expect(
-      staffOrgStates[
-        FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger
-      ],
-    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
     );
@@ -155,18 +129,14 @@ describe("getAllFeatureStates", () => {
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.WorkflowsViewer]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.WorkflowAutomation]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.GoalWorkflows]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ConnectorAccessManagement]).toBe(
       false,
     );
-    expect(
-      otherOrgStates[
-        FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger
-      ],
-    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
     );
@@ -189,6 +159,13 @@ describe("getAllFeatureStates", () => {
       },
     });
     expect(states[FeatureSwitchKey.ChatGithubPrTracking]).toBe(true);
+  });
+
+  it("should enable chat thread emoji for staff orgs", () => {
+    const states = getAllFeatureStates({
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    });
+    expect(states[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
   });
 
   it("should apply overrides to disable enabled features", () => {

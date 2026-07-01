@@ -523,7 +523,7 @@ export function TiptapWorkflowComposer({
     : [];
   const isLoadingOrgWorkflows = composerWorkflowsLoadable.state === "loading";
   const showWorkflowsPageLink =
-    features?.[FeatureSwitchKey.WorkflowsViewer] ?? false;
+    features?.[FeatureSwitchKey.WorkflowAutomation] ?? false;
   const showSlashWorkflowMenu =
     slashRange !== null &&
     (isLoadingOrgWorkflows ||
@@ -621,7 +621,6 @@ export function TiptapWorkflowComposer({
           loading={isLoadingOrgWorkflows}
           selectedIndex={selectedWorkflowIndex}
           showWorkflowsPageLink={showWorkflowsPageLink}
-          currentAgentId={currentAgentId}
           onSelect={(workflow) => {
             insertWorkflow(workflow);
           }}

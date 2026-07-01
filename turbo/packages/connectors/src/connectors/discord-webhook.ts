@@ -19,6 +19,7 @@ export const discordWebhook = {
           fields: {
             DISCORD_WEBHOOK_URL: {
               label: "Webhook URL",
+              publicId: "url",
               required: true,
               placeholder: "https://discord.com/api/webhooks/xxx/xxx",
             },

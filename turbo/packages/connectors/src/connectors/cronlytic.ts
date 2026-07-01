@@ -20,10 +20,12 @@ export const cronlytic = {
           fields: {
             CRONLYTIC_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
             CRONLYTIC_USER_ID: {
               label: "User ID",
+              publicId: "userId",
               required: true,
               storage: "variable",
             },

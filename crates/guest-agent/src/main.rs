@@ -12,6 +12,7 @@ use guest_agent::http::HttpClient;
 use guest_agent::masker;
 use guest_agent::metrics;
 use guest_agent::paths;
+use guest_agent::run_context::GuestRuntime;
 use guest_agent::session_history_identity;
 use guest_agent::session_metadata;
 use guest_agent::telemetry::{Telemetry, UploadMode};
@@ -22,7 +23,11 @@ use guest_contracts::diagnostics::{
     AgentFramework, CliTerminationDiagnostic, CliTerminationReason, FailureClass,
     FailureDetailSource, FailureDiagnostic, FailureReason, PromptMetadata, SessionHistoryStatus,
 };
-use guest_contracts::session_history_identity::FinalSessionHistoryIdentityExpectation;
+use guest_contracts::session_history_identity::{
+    FinalSessionHistoryIdentityExpectation, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS,
+};
 use serde_json::Value;
 use std::io::ErrorKind;
 use std::path::Path;
@@ -40,8 +45,15 @@ async fn main() {
     if let Some(exit_code) = helper_exit_code_from_args() {
         std::process::exit(exit_code);
     }
-    guest_common::log::enable_system_log_file();
-    let exit_code = run().await;
+    let runtime = match GuestRuntime::from_process_env() {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            log_error!(LOG_TAG, "Fatal: {e}");
+            log_info!(LOG_TAG, "✗ Sandbox failed (exit code 1)");
+            std::process::exit(1);
+        }
+    };
+    let exit_code = run(runtime).await;
     std::process::exit(exit_code);
 }
 
@@ -58,15 +70,22 @@ fn helper_exit_code_from_args() -> Option<i32> {
     let remaining = args.collect::<Vec<_>>();
     let expected = match parse_session_history_identity_expectation(&remaining) {
         Ok(expected) => expected,
-        Err(()) => return Some(2),
+        Err(()) => return Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS),
     };
     Some(
         match session_history_identity::verify_final_session_history_identity_file(
             metadata_path,
             expected.as_ref(),
         ) {
-            Ok(()) => 0,
-            Err(_) => 1,
+            Ok(()) => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS,
+            Err(error) => {
+                let exit_code = error.helper_exit_code();
+                if exit_code == SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS {
+                    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE
+                } else {
+                    exit_code
+                }
+            }
         },
     )
 }
@@ -116,45 +135,34 @@ fn parse_session_history_identity_expectation(
 /// Top-level orchestrator. Returns exit code directly (never panics/errors out).
 /// Final telemetry upload is attempted on all paths where the HTTP client can
 /// be initialized; when no API token is configured, that upload is a no-op.
-async fn run() -> i32 {
+async fn run(runtime: GuestRuntime) -> i32 {
     // Record API-to-agent E2E time (as early as possible)
-    guest_agent::timing::record_e2e_from_api("api_to_agent_start");
-
-    if let Err(e) = env::init_user_env() {
-        log_error!(LOG_TAG, "Fatal: {e}");
-        log_info!(LOG_TAG, "✗ Sandbox failed (exit code 1)");
-        return 1;
-    }
-
-    let http = match HttpClient::for_current_env() {
-        Ok(http) => http,
-        Err(e) => {
-            log_error!(LOG_TAG, "Fatal: {e}");
-            log_info!(LOG_TAG, "✗ Sandbox failed (exit code 1)");
-            return 1;
-        }
-    };
+    guest_agent::timing::record_e2e_from_api_start(
+        "api_to_agent_start",
+        &runtime.config.api_start_time,
+    );
 
     // Lifecycle: Header
-    log_info!(LOG_TAG, "▶ VM0 Sandbox {}", env::run_id());
+    log_info!(LOG_TAG, "▶ VM0 Sandbox {}", runtime.config.run_id);
 
     // Lifecycle: Initialization
     log_info!(LOG_TAG, "▷ Initialization");
 
-    let masker = Arc::new(masker::SecretMasker::from_env());
+    let http = runtime.http.clone();
+    let masker = Arc::new(masker::SecretMasker::from_config(&runtime.config));
     let shutdown = CancellationToken::new();
     let framework_supports_active_input = framework_supports_active_input(
-        env::Framework::from_env(),
-        env::use_codex_app_server_backend(),
+        runtime.config.framework,
+        runtime.config.use_codex_app_server_backend,
     );
     let has_process_control_endpoint = matches!(
         std::env::var(process_control_ipc::BOOTSTRAP_ENV),
         Ok(endpoint) if !endpoint.is_empty()
     );
     let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
-        env::run_id(),
+        &runtime.config.run_id,
         framework_supports_active_input && has_process_control_endpoint,
-        env::prompt(),
+        &runtime.config.prompt,
     );
     let control_handle = control::ControlHandle::spawn(shutdown.clone(), active_input.controller());
     let start = Instant::now();
@@ -167,7 +175,12 @@ async fn run() -> i32 {
 
     let t = Instant::now();
     let (heartbeat_status_tx, heartbeat_status_rx) = tokio::sync::oneshot::channel();
-    let heartbeat_handle = spawn_heartbeat(shutdown.clone(), http.clone(), heartbeat_status_tx);
+    let heartbeat_handle = spawn_heartbeat(
+        runtime.config.run_id.clone(),
+        shutdown.clone(),
+        http.clone(),
+        heartbeat_status_tx,
+    );
     log_info!(LOG_TAG, "Heartbeat started");
     record_sandbox_op("heartbeat_start", t.elapsed(), true, None);
 
@@ -180,7 +193,12 @@ async fn run() -> i32 {
     record_sandbox_op("metrics_collector_start", t.elapsed(), true, None);
 
     let t = Instant::now();
-    let telemetry = Telemetry::spawn(masker.clone(), http.clone());
+    let telemetry = Telemetry::spawn_for_paths(
+        runtime.config.run_id.clone(),
+        &runtime.paths,
+        masker.clone(),
+        http.clone(),
+    );
     log_info!(LOG_TAG, "Telemetry upload started");
     record_sandbox_op("telemetry_upload_start", t.elapsed(), true, None);
 
@@ -194,8 +212,8 @@ async fn run() -> i32 {
         start,
         Some(heartbeat_status_rx),
         &telemetry,
-        http,
         active_input.into_writer(),
+        &runtime,
     )
     .await;
 
@@ -234,13 +252,17 @@ async fn execute(
     start: Instant,
     heartbeat_monitor: cli::HeartbeatMonitor,
     telemetry: &Telemetry,
-    http: HttpClient,
     active_input: guest_agent::active_input::ActiveInputWriter,
+    runtime: &GuestRuntime,
 ) -> i32 {
+    let config = &runtime.config;
+    let runtime_paths = &runtime.paths;
+    let http = runtime.http.clone();
+
     // Pre-warm kernel DNS cache for the CLI's API endpoint.
     // Fire-and-forget: runs in background so the cache is populated by the
     // time the CLI spawns and makes its first HTTPS request.
-    let dns_target = match env::Framework::from_env() {
+    let dns_target = match config.framework {
         env::Framework::ClaudeCode => "api.anthropic.com:443",
         env::Framework::Codex => "api.openai.com:443",
     };
@@ -254,7 +276,8 @@ async fn execute(
         let msg = format!("Working dir setup failed: {e}");
         log_error!(LOG_TAG, "{msg}");
         write_guest_error_file(&msg);
-        write_guest_failure_diagnostic(&base_failure_diagnostic(
+        write_guest_failure_diagnostic(&base_failure_diagnostic_for_config(
+            config,
             FailureClass::WorkingDirSetupFailed,
         ));
         record_sandbox_op("working_dir_setup", wd_start.elapsed(), false, Some(&msg));
@@ -262,12 +285,23 @@ async fn execute(
     }
     record_sandbox_op("working_dir_setup", wd_start.elapsed(), true, None);
 
-    // Codex setup: best-effort `codex login`. Failure is non-fatal —
-    // `codex exec` also receives `OPENAI_API_KEY` through the curated CLI env.
-    if matches!(env::Framework::from_env(), env::Framework::Codex)
-        && let Err(e) = cli::setup_codex(masker).await
+    // Codex auth reconciliation must complete before the CLI starts. On reused
+    // sandboxes, continuing after a setup failure can inherit stale auth state
+    // from an earlier run.
+    if matches!(config.framework, env::Framework::Codex)
+        && let Err(e) = cli::setup_codex_for_config(masker, config).await
     {
-        log_error!(LOG_TAG, "Codex setup failed (non-fatal, continuing): {e}");
+        let msg = format!(
+            "Codex auth setup failed: {}",
+            masker.mask_string(&e.to_string())
+        );
+        log_error!(LOG_TAG, "{msg}");
+        write_guest_error_file(&msg);
+        write_guest_failure_diagnostic(&base_failure_diagnostic_for_config(
+            config,
+            FailureClass::CliExecutionError,
+        ));
+        return 1;
     }
 
     // Memory is mounted directly through manifest.artifacts[] at the
@@ -292,11 +326,13 @@ async fn execute(
         skip_recovery_checkpoint_for_no_history,
         failure_diagnostic,
         cli_execution_succeeded,
-    ) = match cli::execute_cli_with_active_input(
+    ) = match cli::execute_cli_with_active_input_for_config(
         masker,
         heartbeat_monitor,
         http.clone(),
         active_input,
+        config,
+        runtime_paths,
     )
     .await
     {
@@ -305,17 +341,15 @@ async fn execute(
             let cli_exit_code = cli_result.exit_code;
             if let Some(control_error) = cli_result.control_error.as_ref() {
                 let msg = control_error.to_string();
-                let diagnostic = cli_result_failure_diagnostic(
+                let diagnostic = cli_result_failure_diagnostic_for_config(
+                    config,
                     FailureClass::CliExecutionError,
                     cli_exit_code,
                     cli_result.claude_result,
                 );
                 let diagnostic = with_cli_termination(diagnostic, cli_result.cli_termination);
                 (cli_exit_code, 1, msg, false, Some(diagnostic), false)
-            } else if preserves_successful_post_result_cleanup(
-                env::Framework::from_env(),
-                &cli_result,
-            ) {
+            } else if preserves_successful_post_result_cleanup(config.framework, &cli_result) {
                 (cli_exit_code, 0, String::new(), false, None, true)
             } else if cli_exit_code != 0 {
                 let failure_message = cli_failure_message(
@@ -323,7 +357,8 @@ async fn execute(
                     &cli_result.stderr_lines,
                     cli_result.failure_diagnostic.as_ref(),
                 );
-                let diagnostic = cli_result_failure_diagnostic(
+                let diagnostic = cli_result_failure_diagnostic_for_config(
+                    config,
                     FailureClass::CliNonzero,
                     cli_exit_code,
                     cli_result.claude_result,
@@ -339,9 +374,7 @@ async fn execute(
                     Some(diagnostic),
                     false,
                 )
-            } else if http.has_api()
-                && is_claude_zero_turn_result(env::Framework::from_env(), &cli_result)
-            {
+            } else if http.has_api() && is_claude_zero_turn_result(config.framework, &cli_result) {
                 let history_check_start = Instant::now();
                 let session_history_status = claude_history_target_status();
                 if session_history_unavailable(session_history_status) {
@@ -353,10 +386,13 @@ async fn execute(
                         Some(msg),
                     );
                     log_info!(LOG_TAG, "{msg}");
-                    let diagnostic = base_failure_diagnostic(FailureClass::ClaudeZeroTurnNoHistory)
-                        .with_cli_exit_code(cli_exit_code)
-                        .with_claude_num_turns(Some(0))
-                        .with_session_history_status(session_history_status);
+                    let diagnostic = base_failure_diagnostic_for_config(
+                        config,
+                        FailureClass::ClaudeZeroTurnNoHistory,
+                    )
+                    .with_cli_exit_code(cli_exit_code)
+                    .with_claude_num_turns(Some(0))
+                    .with_session_history_status(session_history_status);
                     (
                         cli_exit_code,
                         1,
@@ -380,7 +416,10 @@ async fn execute(
                 1,
                 msg,
                 false,
-                Some(base_failure_diagnostic(FailureClass::CliExecutionError)),
+                Some(base_failure_diagnostic_for_config(
+                    config,
+                    FailureClass::CliExecutionError,
+                )),
                 false,
             )
         }
@@ -409,6 +448,7 @@ async fn execute(
         },
         telemetry,
         &http,
+        config,
     )
     .await
 }
@@ -454,30 +494,44 @@ fn with_cli_termination(
     }
 }
 
-fn cli_result_failure_diagnostic(
+fn cli_result_failure_diagnostic_for_config(
+    config: &env::GuestConfig,
     failure_class: FailureClass,
     cli_exit_code: i32,
     claude_result: Option<cli::ClaudeResultSummary>,
 ) -> FailureDiagnostic {
-    let mut diagnostic = base_failure_diagnostic(failure_class)
+    let mut diagnostic = base_failure_diagnostic_for_config(config, failure_class)
         .with_cli_exit_code(cli_exit_code)
-        .with_session_history_status(diagnostic_session_history_status());
+        .with_session_history_status(diagnostic_session_history_status_for_framework(
+            config.framework,
+        ));
     if let Some(result) = claude_result {
         diagnostic = diagnostic.with_claude_num_turns(result.num_turns);
     }
     diagnostic
 }
 
-fn base_failure_diagnostic(failure_class: FailureClass) -> FailureDiagnostic {
+fn base_failure_diagnostic_for_config(
+    config: &env::GuestConfig,
+    failure_class: FailureClass,
+) -> FailureDiagnostic {
+    base_failure_diagnostic_from_parts(failure_class, config.framework, &config.prompt)
+}
+
+fn base_failure_diagnostic_from_parts(
+    failure_class: FailureClass,
+    framework: env::Framework,
+    prompt: &str,
+) -> FailureDiagnostic {
     FailureDiagnostic::new(
         failure_class,
-        diagnostic_framework(),
-        PromptMetadata::from_prompt(env::prompt()),
+        diagnostic_framework_from_framework(framework),
+        PromptMetadata::from_prompt(prompt),
     )
 }
 
-fn diagnostic_framework() -> AgentFramework {
-    match env::Framework::from_env() {
+fn diagnostic_framework_from_framework(framework: env::Framework) -> AgentFramework {
+    match framework {
         env::Framework::ClaudeCode => AgentFramework::ClaudeCode,
         env::Framework::Codex => AgentFramework::Codex,
     }
@@ -751,8 +805,10 @@ fn has_exact_codex_oauth_connector(value: &Value) -> bool {
         })
 }
 
-fn diagnostic_session_history_status() -> SessionHistoryStatus {
-    match env::Framework::from_env() {
+fn diagnostic_session_history_status_for_framework(
+    framework: env::Framework,
+) -> SessionHistoryStatus {
+    match framework {
         env::Framework::ClaudeCode => claude_history_target_status(),
         env::Framework::Codex => SessionHistoryStatus::NotApplicable,
     }
@@ -923,6 +979,7 @@ async fn complete_execution(
     state: CompletionState<'_>,
     telemetry: &Telemetry,
     http: &HttpClient,
+    config: &env::GuestConfig,
 ) -> i32 {
     let has_failure_message = state
         .failure_message
@@ -944,9 +1001,12 @@ async fn complete_execution(
             write_guest_error_file(msg);
         }
         if !wrote_failure_diagnostic {
-            let diagnostic = base_failure_diagnostic(FailureClass::EventUploadFailed)
-                .with_cli_exit_code(cli_exit_code)
-                .with_session_history_status(diagnostic_session_history_status());
+            let diagnostic =
+                base_failure_diagnostic_for_config(config, FailureClass::EventUploadFailed)
+                    .with_cli_exit_code(cli_exit_code)
+                    .with_session_history_status(diagnostic_session_history_status_for_framework(
+                        config.framework,
+                    ));
             write_guest_failure_diagnostic(&diagnostic);
             wrote_failure_diagnostic = true;
         }
@@ -964,7 +1024,7 @@ async fn complete_execution(
     // its ~1s upload overlaps the ~4s checkpoint. The EOF-consuming final
     // pass runs from the top-level shutdown path after telemetry producers
     // stop, so it can safely catch checkpoint and `/complete` logs.
-    let agent_type = env::Framework::from_env().agent_type();
+    let agent_type = config.framework.agent_type();
     if should_create_success_checkpoint(exit_code) && http.has_api() {
         log_info!(LOG_TAG, "{agent_type} completed successfully");
 
@@ -996,10 +1056,11 @@ async fn complete_execution(
                 // users because the host's status transition already happened
                 // the moment /complete returned.
                 log_info!(LOG_TAG, "▷ Cleanup");
-                complete::report_success(
+                complete::report_success_for_run(
                     http,
-                    env::sandbox_id(),
-                    env::sandbox_reuse_result(),
+                    &config.run_id,
+                    &config.sandbox_id,
+                    &config.sandbox_reuse_result,
                     state.last_event_sequence,
                 )
                 .await;
@@ -1014,9 +1075,12 @@ async fn complete_execution(
                 );
                 write_guest_error_file(&msg);
                 if !wrote_failure_diagnostic {
-                    let diagnostic = base_failure_diagnostic(FailureClass::CheckpointFailed)
-                        .with_cli_exit_code(cli_exit_code)
-                        .with_session_history_status(diagnostic_session_history_status());
+                    let diagnostic =
+                        base_failure_diagnostic_for_config(config, FailureClass::CheckpointFailed)
+                            .with_cli_exit_code(cli_exit_code)
+                            .with_session_history_status(
+                                diagnostic_session_history_status_for_framework(config.framework),
+                            );
                     write_guest_failure_diagnostic(&diagnostic);
                 }
                 exit_code = 1;
@@ -1082,12 +1146,14 @@ async fn stop_background_and_flush_final_telemetry(
 }
 
 fn spawn_heartbeat(
+    run_id: String,
     shutdown: CancellationToken,
     http: HttpClient,
     status_tx: tokio::sync::oneshot::Sender<cli::HeartbeatStatus>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let heartbeat_task = tokio::spawn(heartbeat::heartbeat_loop(http, shutdown));
+        let heartbeat_task =
+            tokio::spawn(heartbeat::heartbeat_loop_for_run(run_id, http, shutdown));
         let _abort_on_drop = AbortTaskOnDrop(heartbeat_task.abort_handle());
         let status = match heartbeat_task.await {
             Ok(Ok(())) => cli::HeartbeatStatus::Stopped,
@@ -1156,6 +1222,19 @@ mod tests {
 
     fn test_http_client(server: &MockServer) -> HttpClient {
         HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO).unwrap()
+    }
+
+    fn test_guest_config(server: &MockServer, prompt: Option<&str>) -> env::GuestConfig {
+        env::GuestConfig::from_raw(env::GuestConfigRaw {
+            run_id: "main-recovery-checkpoint".to_string(),
+            api_url: server.base_url(),
+            api_token: "test-token".to_string(),
+            prompt: prompt.unwrap_or_default().to_string(),
+            home: Some("/home/vm0".to_string()),
+            guest_runtime_dir: Some(test_runtime_dir()),
+            ..env::GuestConfigRaw::default()
+        })
+        .unwrap()
     }
 
     fn test_runtime_dir() -> std::path::PathBuf {
@@ -2755,6 +2834,7 @@ mod tests {
         let masker = Arc::new(masker::SecretMasker::from_env());
         let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http.clone());
+        let config = test_guest_config(server, Some("/event-upload-failure"));
         let exit_code = complete_execution(
             0,
             0,
@@ -2767,6 +2847,7 @@ mod tests {
             },
             &telemetry,
             &http,
+            &config,
         )
         .await;
         telemetry.shutdown().await;
@@ -2822,6 +2903,7 @@ mod tests {
         let masker = Arc::new(masker::SecretMasker::from_env());
         let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http.clone());
+        let config = test_guest_config(server, Some("/checkpoint-failure"));
         let exit_code = complete_execution(
             0,
             0,
@@ -2834,6 +2916,7 @@ mod tests {
             },
             &telemetry,
             &http,
+            &config,
         )
         .await;
         telemetry.shutdown().await;
@@ -2888,6 +2971,7 @@ mod tests {
         let masker = Arc::new(masker::SecretMasker::from_env());
         let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http.clone());
+        let config = test_guest_config(server, Some("plain prompt"));
         let failure_message = "CLI failed before all events uploaded";
         let failure_diagnostic = FailureDiagnostic::new(
             FailureClass::CliNonzero,
@@ -2908,6 +2992,7 @@ mod tests {
             },
             &telemetry,
             &http,
+            &config,
         )
         .await;
         telemetry.shutdown().await;
@@ -2965,6 +3050,7 @@ mod tests {
         let masker = Arc::new(masker::SecretMasker::from_env());
         let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http.clone());
+        let config = test_guest_config(server, Some("/help"));
         let failure_message = "Claude Code emitted a zero-turn result without creating session history; skipping checkpoint";
         let failure_diagnostic = FailureDiagnostic::new(
             FailureClass::ClaudeZeroTurnNoHistory,
@@ -2986,6 +3072,7 @@ mod tests {
             },
             &telemetry,
             &http,
+            &config,
         )
         .await;
         telemetry.shutdown().await;
@@ -3075,6 +3162,7 @@ mod tests {
         let masker = Arc::new(masker::SecretMasker::from_env());
         let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http.clone());
+        let config = test_guest_config(server, Some("plain prompt"));
         let failure_message = "You've hit your usage limit.";
         let failure_diagnostic = FailureDiagnostic::new(
             FailureClass::CliNonzero,
@@ -3095,6 +3183,7 @@ mod tests {
             },
             &telemetry,
             &http,
+            &config,
         )
         .await;
         telemetry.shutdown().await;

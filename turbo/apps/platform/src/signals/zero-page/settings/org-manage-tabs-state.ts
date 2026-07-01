@@ -15,7 +15,7 @@ import type { OrgRole } from "@vm0/api-contracts/contracts/org-members";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { org$, refreshOrg$ } from "../../org.ts";
 import { zeroClient$ } from "../../api-client.ts";
-import { clerk$, resolveWebOrigin } from "../../auth.ts";
+import { clerk$, resolveAppAuthUrl } from "../../auth.ts";
 import { refreshOrgMembers$ } from "../../external/org-members.ts";
 import { accept } from "../../../lib/accept.ts";
 
@@ -429,7 +429,9 @@ export const leaveOrg$ = command(
     await clerk?.setActive({ organization: null });
     signal.throwIfAborted();
     toast.success("You have left the workspace");
-    window.location.href = `${resolveWebOrigin()}/sign-in/tasks/choose-organization`;
+    window.location.href = resolveAppAuthUrl(
+      "/sign-in/tasks/choose-organization",
+    );
   },
 );
 
@@ -449,7 +451,9 @@ export const deleteOrg$ = command(
     await clerk?.setActive({ organization: null });
     signal.throwIfAborted();
     toast.success("Workspace deleted");
-    window.location.href = `${resolveWebOrigin()}/sign-in/tasks/choose-organization`;
+    window.location.href = resolveAppAuthUrl(
+      "/sign-in/tasks/choose-organization",
+    );
   },
 );
 

@@ -41,17 +41,20 @@ const TEST_OAUTH_API_TOKEN_MANUAL_GRANT = {
   fields: {
     TEST_OAUTH_TOKEN: {
       label: "API Token",
+      publicId: "apiToken",
       required: true,
       placeholder: "test-oauth-token",
     },
     TEST_OAUTH_API_TOKEN_INPUT_VAR: {
       label: "Input Variable",
+      publicId: "inputVariable",
       required: true,
       placeholder: "test-input-variable",
       storage: "variable",
     },
     TEST_OAUTH_API_TENANT_ID: {
       label: "Tenant ID",
+      publicId: "tenantId",
       required: true,
       placeholder: "test-oauth-tenant",
       storage: "variable",

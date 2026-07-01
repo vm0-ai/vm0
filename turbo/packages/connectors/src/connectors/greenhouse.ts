@@ -20,6 +20,7 @@ export const greenhouse = {
           fields: {
             GREENHOUSE_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-greenhouse-harvest-api-key",
             },

@@ -75,7 +75,7 @@ function connectedStatusText(item: ConnectorTypeWithStatus): string {
     return "Connection expired";
   }
   if (connectionStatus === "scope-mismatch") {
-    return "Permissions update available";
+    return "Update permissions";
   }
   const expiryText = connectorExpiryCountdownText(item);
   if (expiryText) {

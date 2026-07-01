@@ -24,6 +24,7 @@ export const printful = {
           fields: {
             PRINTFUL_TOKEN: {
               label: "Private Token",
+              publicId: "token",
               required: true,
             },
           },

@@ -20,7 +20,7 @@ export const setupWorkflowDetailPage$ = command(
     signal.throwIfAborted();
     if (
       route === "workflowDetail" &&
-      !features[FeatureSwitchKey.WorkflowsViewer]
+      !features[FeatureSwitchKey.WorkflowAutomation]
     ) {
       set(detachedNavigateTo$, ROUTES.home, { replace: true });
       return;

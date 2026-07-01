@@ -22,11 +22,13 @@ export const hitem3d = {
           fields: {
             HITEM3D_CLIENT_ID: {
               label: "Client ID",
+              publicId: "clientId",
               required: true,
               placeholder: "hitem3d_client_id",
             },
             HITEM3D_CLIENT_SECRET: {
               label: "Client Secret",
+              publicId: "clientSecret",
               required: true,
               placeholder: "hitem3d_client_secret",
             },

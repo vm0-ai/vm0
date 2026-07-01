@@ -21,14 +21,17 @@ export const gong = {
           fields: {
             GONG_ACCESS_KEY: {
               label: "Access Key",
+              publicId: "accessKey",
               required: true,
             },
             GONG_ACCESS_KEY_SECRET: {
               label: "Access Key Secret",
+              publicId: "accessKeySecret",
               required: true,
             },
             GONG_API_BASE: {
               label: "API Base URL",
+              publicId: "apiBaseUrl",
               required: true,
               storage: "variable",
               placeholder: "api.gong.io",

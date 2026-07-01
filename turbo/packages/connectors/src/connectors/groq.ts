@@ -22,6 +22,7 @@ export const groq = {
           fields: {
             GROQ_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "gsk_...",
             },

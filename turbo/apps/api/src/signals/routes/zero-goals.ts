@@ -116,7 +116,7 @@ async function goalFeatureEnabled(
     auth.orgId,
     auth.userId,
   );
-  return isFeatureEnabled(FeatureSwitchKey.GoalWorkflows, context);
+  return isFeatureEnabled(FeatureSwitchKey.WorkflowAutomation, context);
 }
 
 function goalErrorResponse(

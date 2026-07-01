@@ -66,6 +66,6 @@ describe("zero GitHub connect page", () => {
       expect(screen.getByText("Connected to GitHub!")).toBeInTheDocument();
     });
     expect(screen.getByText("@octo-dev")).toBeInTheDocument();
-    expect(screen.getByText("Back to GitHub settings")).toBeInTheDocument();
+    expect(screen.getByText("Back to workflows")).toBeInTheDocument();
   });
 });

@@ -6,8 +6,8 @@
 
 mod common;
 
-use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
+use guest_agent::run_context::GuestRuntime;
 use httpmock::prelude::*;
 use std::path::Path;
 use std::time::Duration;
@@ -89,11 +89,17 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
     unsafe {
         setup_api_env(&mock_cli, tmp.path(), &server.base_url(), &prompt)?;
     }
+    let runtime = GuestRuntime::from_process_env()?;
     let _run_files = RunFilesGuard::new();
+    let expected_run_id = runtime.config.run_id.clone();
+    unsafe {
+        std::env::set_var("VM0_RUN_ID", "stale-run-id-after-runtime-construction");
+    }
 
     let init_event = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/events")
+            .body_includes(format!(r#""runId":"{expected_run_id}""#))
             .body_includes(r#""subtype":"init""#)
             .body_includes(r#""session_id":"***"#);
         then.status(200);
@@ -114,17 +120,19 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
 
     let masker = SecretMasker::from_raw("");
     let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
-        guest_agent::env::run_id(),
+        &runtime.config.run_id,
         true,
-        guest_agent::env::prompt(),
+        &runtime.config.prompt,
     );
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
-        guest_agent::cli::execute_cli_with_active_input(
+        guest_agent::cli::execute_cli_with_active_input_for_config(
             &masker,
             common::spawn_dummy_heartbeat(),
-            HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)?,
+            runtime.http.clone(),
             active_input.into_writer(),
+            &runtime.config,
+            &runtime.paths,
         ),
     )
     .await

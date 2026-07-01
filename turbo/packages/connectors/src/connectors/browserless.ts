@@ -21,6 +21,7 @@ export const browserless = {
           fields: {
             BROWSERLESS_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
             },
           },

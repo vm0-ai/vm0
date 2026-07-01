@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { localStorageSignals } from "../external/local-storage.ts";
+import { reloadAgents$ } from "../agent.ts";
 
 // ---------------------------------------------------------------------------
 // Chat list dialog search query
@@ -57,6 +58,34 @@ export const openRenameChatThreadDialog$ = command(
 );
 
 // ---------------------------------------------------------------------------
+// Emoji picker menu state (chat header)
+// ---------------------------------------------------------------------------
+const internalEmojiMenuThreadId$ = state<string | null>(null);
+export const emojiMenuThreadId$ = computed((get) => {
+  return get(internalEmojiMenuThreadId$);
+});
+
+const internalEmojiMenuTitle$ = state<string | null>(null);
+export const emojiMenuTitle$ = computed((get) => {
+  return get(internalEmojiMenuTitle$);
+});
+
+export const openChatThreadEmojiMenu$ = command(
+  (
+    { set },
+    { threadId, title }: { threadId: string; title: string | null | undefined },
+  ) => {
+    set(internalEmojiMenuTitle$, title?.trim() || null);
+    set(internalEmojiMenuThreadId$, threadId);
+  },
+);
+
+export const closeChatThreadEmojiMenu$ = command(({ set }) => {
+  set(internalEmojiMenuThreadId$, null);
+  set(internalEmojiMenuTitle$, null);
+});
+
+// ---------------------------------------------------------------------------
 // Session list collapse state (RecentChatSection) — persisted in localStorage
 // ---------------------------------------------------------------------------
 const {
@@ -74,19 +103,6 @@ export const setSessionListCollapsed$ = command(
     } else {
       set(clearSessionListCollapsed$);
     }
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Session list unread filter (RecentChatSection)
-// ---------------------------------------------------------------------------
-const internalSessionListUnreadOnly$ = state(false);
-export const sessionListUnreadOnly$ = computed((get) => {
-  return get(internalSessionListUnreadOnly$);
-});
-export const setSessionListUnreadOnly$ = command(
-  ({ set }, unreadOnly: boolean) => {
-    set(internalSessionListUnreadOnly$, unreadOnly);
   },
 );
 
@@ -120,6 +136,11 @@ export const chatListOpen$ = computed((get) => {
 });
 export const setChatListOpen$ = command(({ set }, open: boolean) => {
   set(internalChatListOpen$, open);
+});
+
+export const openAgentListDialog$ = command(({ set }) => {
+  set(internalChatListOpen$, true);
+  set(reloadAgents$);
 });
 
 // ---------------------------------------------------------------------------

@@ -20,6 +20,7 @@ export const serpapi = {
           fields: {
             SERPAPI_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-serpapi-api-key",
             },

@@ -1,4 +1,4 @@
-//! Resume id validation for the disabled Codex app-server backend.
+//! Resume id validation for the experimental Codex app-server backend.
 //!
 //! This test lives in its own binary because `guest_agent::env` caches values
 //! in process-wide `LazyLock`s.

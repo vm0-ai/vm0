@@ -21,11 +21,13 @@ export const shopify = {
           fields: {
             SHOPIFY_TOKEN: {
               label: "Admin API Access Token",
+              publicId: "accessToken",
               required: true,
               placeholder: "shpat_...",
             },
             SHOPIFY_SHOP: {
               label: "Store Subdomain",
+              publicId: "subdomain",
               required: true,
               storage: "variable",
               placeholder: "acme",

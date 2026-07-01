@@ -11,38 +11,62 @@ use crate::session_history;
 use guest_common::{log_error, log_info};
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use std::io;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
 pub(crate) fn history_marker_payload_for_session_id(session_id: &str) -> Option<String> {
-    match Framework::from_env() {
-        Framework::ClaudeCode => claude_history_path_payload(session_id),
+    history_marker_payload_for_session_id_with_home(
+        Framework::from_env(),
+        env::home_dir(),
+        session_id,
+    )
+}
+
+pub(crate) fn history_marker_payload_for_session_id_with_home(
+    framework: Framework,
+    home_dir: &str,
+    session_id: &str,
+) -> Option<String> {
+    match framework {
+        Framework::ClaudeCode => claude_history_path_payload_for_home(home_dir, session_id),
         Framework::Codex => {
             let thread_id = canonical_codex_thread_id(session_id)?;
-            Some(codex_history_marker_payload(&thread_id))
+            Some(codex_history_marker_payload_for_home(
+                Path::new(home_dir),
+                &thread_id,
+            ))
         }
     }
 }
 
-pub(crate) fn claude_history_path_payload(session_id: &str) -> Option<String> {
+fn claude_history_path_payload_for_home(home: &str, session_id: &str) -> Option<String> {
     if !is_valid_session_history_id(session_id) {
         return None;
     }
 
-    let home = env::home_dir();
     let project_name = paths::CANONICAL_WORKING_DIR
         .strip_prefix('/')
         .unwrap_or(paths::CANONICAL_WORKING_DIR)
         .replace('/', "-");
-    Some(format!(
-        "{home}/.claude/projects/-{project_name}/{session_id}.jsonl"
-    ))
+    Some(
+        Path::new(home)
+            .join(".claude")
+            .join("projects")
+            .join(format!("-{project_name}"))
+            .join(format!("{session_id}.jsonl"))
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
-pub(crate) fn codex_history_marker_payload(thread_id: &str) -> String {
-    let sessions_dir = format!("{}/.codex/sessions", env::home_dir());
-    session_history::codex_marker_payload(Path::new(&sessions_dir), thread_id)
+fn codex_history_marker_payload_for_home(home_dir: &Path, thread_id: &str) -> String {
+    let sessions_dir = codex_sessions_dir(home_dir);
+    session_history::codex_marker_payload(&sessions_dir, thread_id)
+}
+
+fn codex_sessions_dir(home_dir: &Path) -> PathBuf {
+    crate::codex_auth::codex_home_path(home_dir).join("sessions")
 }
 
 pub(crate) fn is_valid_session_history_id(session_id: &str) -> bool {
@@ -69,7 +93,13 @@ pub(crate) fn session_history_marker_kind(history_path_payload: &str) -> &'stati
 }
 
 pub(crate) fn read_existing_history_marker_payload() -> io::Result<Option<String>> {
-    match std::fs::read_to_string(paths::session_history_path_file()) {
+    read_existing_history_marker_payload_from(paths::session_history_path_file())
+}
+
+pub(crate) fn read_existing_history_marker_payload_from(
+    session_history_path_file: &str,
+) -> io::Result<Option<String>> {
+    match std::fs::read_to_string(session_history_path_file) {
         Ok(existing) => {
             let existing = existing.trim();
             if existing.is_empty() {
@@ -83,14 +113,19 @@ pub(crate) fn read_existing_history_marker_payload() -> io::Result<Option<String
     }
 }
 
-pub(crate) fn ensure_history_marker_payload(history_path_payload: &str) {
-    match read_existing_history_marker_payload() {
+pub(crate) fn ensure_history_marker_payload_at(
+    session_history_path_file: &str,
+    history_path_payload: &str,
+) {
+    match read_existing_history_marker_payload_from(session_history_path_file) {
         Ok(Some(_)) => {}
-        Ok(None) => write_session_history_marker(history_path_payload),
+        Ok(None) => {
+            write_session_history_marker_at(session_history_path_file, history_path_payload)
+        }
         Err(e) => log_error!(
             LOG_TAG,
             "Failed to read existing session history marker from {}: {e}",
-            paths::session_history_path_file()
+            session_history_path_file
         ),
     }
 }
@@ -136,17 +171,57 @@ pub fn resolve_history_marker_payload_for_diagnostics() -> io::Result<Option<Str
 }
 
 pub(crate) fn write_session_history_marker(history_path_payload: &str) {
-    match paths::write_private(paths::session_history_path_file(), history_path_payload) {
+    write_session_history_marker_at(paths::session_history_path_file(), history_path_payload);
+}
+
+pub(crate) fn write_session_history_marker_at(
+    session_history_path_file: &str,
+    history_path_payload: &str,
+) {
+    match paths::write_private(session_history_path_file, history_path_payload) {
         Ok(()) => log_info!(
             LOG_TAG,
             "Session history marker written to {} ({})",
-            paths::session_history_path_file(),
+            session_history_path_file,
             session_history_marker_kind(history_path_payload)
         ),
         Err(e) => log_error!(
             LOG_TAG,
             "Failed to write session history marker to {}: {e}",
-            paths::session_history_path_file()
+            session_history_path_file
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn codex_history_marker_payload_for_empty_home_uses_same_home_resolution_as_codex_auth() {
+        let marker = codex_history_marker_payload_for_home(
+            Path::new(""),
+            "0193abcd-ef01-7234-89ab-cdef01234567",
+        );
+
+        assert!(
+            marker.starts_with("CODEX_SEARCH:15:.codex/sessions:"),
+            "marker should use relative .codex sessions dir for empty HOME, got {marker}"
+        );
+    }
+
+    #[test]
+    fn claude_history_marker_payload_for_empty_home_uses_path_join_semantics() {
+        let marker = history_marker_payload_for_session_id_with_home(
+            Framework::ClaudeCode,
+            "",
+            "session-123",
+        )
+        .expect("safe Claude session id should produce marker");
+
+        assert_eq!(
+            marker, ".claude/projects/-home-user-workspace/session-123.jsonl",
+            "marker should use relative .claude history dir for empty HOME"
+        );
     }
 }

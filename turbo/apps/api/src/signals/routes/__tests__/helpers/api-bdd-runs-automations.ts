@@ -90,6 +90,7 @@ import { createZeroRouteMocks } from "./zero-route-test";
 type AuthHeaders = { readonly authorization?: string };
 type ZeroRunRequest = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 type DirectRunRequest = z.infer<(typeof runsMainContract.create)["body"]>;
+type RunsListQuery = z.input<(typeof runsMainContract.list)["query"]>;
 type RunnerJobClaimRequest = z.infer<
   (typeof runnersJobClaimContract.claim)["body"]
 >;
@@ -690,6 +691,17 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
     },
 
+    async listAgentRuns(actor: ApiTestUser, query: RunsListQuery) {
+      const response = await accept(
+        runsAutomationApp(context)(runsMainContract).list({
+          headers: authenticate(context, actor),
+          query,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
     async applyUserPermissionGrant(
       actor: ApiTestUser,
       body: {
@@ -837,6 +849,16 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
 
       return { providerId };
+    },
+
+    async readBillingStatus(actor: ApiTestUser) {
+      const response = await accept(
+        runsAutomationApp(context)(zeroBillingStatusContract).get({
+          headers: authenticate(context, actor),
+        }),
+        [200],
+      );
+      return response.body;
     },
 
     async requestCreateRun(
@@ -1108,6 +1130,20 @@ export function createRunsAutomationsApi(context: TestContext) {
         }),
         statuses,
       );
+    },
+
+    async showAutomation(
+      actor: ApiTestUser,
+      automation: AutomationResourceRef,
+    ): Promise<AutomationView> {
+      const response = await accept(
+        runsAutomationApp(context)(automationsByRefContract).show({
+          headers: authenticate(context, actor),
+          params: { ref: automationRef(automation) },
+        }),
+        [200],
+      );
+      return automationViewFromResponse(response.body);
     },
 
     async updateAutomation(

@@ -256,6 +256,159 @@ export function getConnectorManualGrantFieldNames(
   return { secrets: [...secretNames], variables: [...variableNames] };
 }
 
+function addValueRefPrivateName(
+  valueRef: ConnectorOutputValueRef,
+  privateNames: Set<string>,
+): void {
+  if (isConnectorSecretValueRef(valueRef)) {
+    privateNames.add(connectorSecretNameFromValueRef(valueRef));
+    return;
+  }
+
+  privateNames.add(connectorVariableNameFromValueRef(valueRef));
+}
+
+function addStoragePrivateNames(
+  method: ConnectorAuthMethodConfig,
+  privateNames: Set<string>,
+): void {
+  for (const secret of method.storage.secrets) {
+    privateNames.add(secret);
+  }
+  for (const variable of method.storage.variables) {
+    privateNames.add(variable);
+  }
+}
+
+function addGrantPrivateNames(
+  method: ConnectorAuthMethodConfig,
+  privateNames: Set<string>,
+): void {
+  if (method.grant.kind === "manual") {
+    for (const fieldName of Object.keys(method.grant.fields)) {
+      privateNames.add(fieldName);
+    }
+  }
+  if ("outputs" in method.grant) {
+    for (const valueRef of Object.values(method.grant.outputs)) {
+      addValueRefPrivateName(valueRef, privateNames);
+    }
+  }
+}
+
+function addAccessPrivateNames(
+  method: ConnectorAuthMethodConfig,
+  privateNames: Set<string>,
+): void {
+  if (method.access.kind === "none") {
+    return;
+  }
+
+  for (const [envName, binding] of Object.entries(method.access.envBindings)) {
+    privateNames.add(envName);
+    addValueRefPrivateName(
+      typeof binding === "string" ? binding : binding.valueRef,
+      privateNames,
+    );
+  }
+  for (const platformSecret of method.access.platformSecrets ?? []) {
+    privateNames.add(platformSecret);
+  }
+}
+
+function addRefreshPrivateNames(
+  method: ConnectorAuthMethodConfig,
+  privateNames: Set<string>,
+): void {
+  if (method.access.kind !== "refresh-token") {
+    return;
+  }
+
+  for (const valueRef of Object.values(method.access.inputs)) {
+    addValueRefPrivateName(valueRef, privateNames);
+  }
+  for (const valueRef of Object.values(method.access.outputs)) {
+    addValueRefPrivateName(valueRef, privateNames);
+  }
+  for (const refreshableSecret of method.access.refreshableSecrets) {
+    privateNames.add(refreshableSecret);
+  }
+}
+
+function addRevokePrivateNames(
+  method: ConnectorAuthMethodConfig,
+  privateNames: Set<string>,
+): void {
+  if (method.revoke.kind !== "token-revoke") {
+    return;
+  }
+
+  for (const valueRef of Object.values(method.revoke.inputs)) {
+    addValueRefPrivateName(valueRef, privateNames);
+  }
+}
+
+function addClientPrivateNames(
+  method: ConnectorAuthMethodConfig,
+  privateNames: Set<string>,
+): void {
+  if (!("client" in method) || !method.client) {
+    return;
+  }
+
+  if ("clientIdEnv" in method.client) {
+    privateNames.add(method.client.clientIdEnv);
+  }
+  if ("clientSecretEnv" in method.client) {
+    privateNames.add(method.client.clientSecretEnv);
+  }
+}
+
+function addPrivateNamesForAuthMethod(
+  method: ConnectorAuthMethodConfig,
+  privateNames: Set<string>,
+): void {
+  addStoragePrivateNames(method, privateNames);
+  addGrantPrivateNames(method, privateNames);
+  addAccessPrivateNames(method, privateNames);
+  addRefreshPrivateNames(method, privateNames);
+  addRevokePrivateNames(method, privateNames);
+  addClientPrivateNames(method, privateNames);
+}
+
+/**
+ * Private connector implementation names that must not appear in public
+ * catalog surfaces or public form ids.
+ */
+export function getConnectorAuthMethodPrivateNames(
+  type: ConnectorType,
+  authMethod: string,
+): readonly string[] {
+  const method = getConnectorAuthMethod(type, authMethod);
+  if (!method) {
+    return [];
+  }
+  const privateNames = new Set<string>();
+  addPrivateNamesForAuthMethod(method, privateNames);
+  return [...privateNames];
+}
+
+export function getConnectorPrivateNames(
+  type: ConnectorType,
+  authMethods: readonly string[] = getConfiguredConnectorAuthMethodIds(type),
+): readonly string[] {
+  const privateNames = new Set<string>();
+  for (const authMethod of authMethods) {
+    for (const privateName of getConnectorAuthMethodPrivateNames(
+      type,
+      authMethod,
+    )) {
+      privateNames.add(privateName);
+    }
+  }
+  return [...privateNames];
+}
+
 function connectorAccessEnvBindings(
   access: ConnectorAccessConfig,
 ): ConnectorEnvBindings {

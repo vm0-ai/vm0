@@ -20,6 +20,7 @@ export const stablebrowse = {
           fields: {
             STABLEBROWSE_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-stablebrowse-api-key",
             },

@@ -1,32 +1,26 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import { cronCleanupSandboxesContract } from "@vm0/api-contracts/contracts/cron";
-import {
-  agentComposeVersions,
-  agentComposes,
-} from "@vm0/db/schema/agent-compose";
-import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { exportJobs } from "@vm0/db/schema/export-job";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import type {
+  TestCronCleanupSandboxesStateActionBody,
+  TestCronCleanupSandboxesStateActionResponse,
+} from "@vm0/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
-import { writeDb$ } from "../../external/db";
+import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const CRON_SECRET = "test-cron-secret";
 const BUCKET = "test-user-storage-bucket";
 const FIXED_NOW_MS = Date.parse("2000-01-01T00:10:00.000Z");
+const CRON_CLEANUP_STATE_ROUTE =
+  "/api/test/cron-cleanup-sandboxes-state/action";
 
 interface RunFixture {
   readonly runId: string;
@@ -58,10 +52,6 @@ async function rawCronRequest(
   });
 }
 
-function versionId(): string {
-  return createHash("sha256").update(randomUUID()).digest("hex");
-}
-
 function minutesAgo(minutes: number): Date {
   return new Date(FIXED_NOW_MS - minutes * 60 * 1000);
 }
@@ -70,26 +60,69 @@ function farFuture(): Date {
   return new Date("2999-01-01T00:00:00.000Z");
 }
 
+function requestCronCleanupState(
+  body: TestCronCleanupSandboxesStateActionBody,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: testCronCleanupSandboxesStateRoutes,
+  });
+  return Promise.resolve(
+    app.request(CRON_CLEANUP_STATE_ROUTE, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+async function postCronCleanupState(
+  body: TestCronCleanupSandboxesStateActionBody,
+): Promise<TestCronCleanupSandboxesStateActionResponse> {
+  const response = await requestCronCleanupState(body);
+  if (!response.ok) {
+    throw new Error(`cron cleanup state action failed with ${response.status}`);
+  }
+  return await readJson<TestCronCleanupSandboxesStateActionResponse>(response);
+}
+
+function stringField(body: Record<string, unknown>, key: string): string {
+  const value = body[key];
+  if (typeof value !== "string") {
+    throw new Error(`cron cleanup state response missing ${key}`);
+  }
+  return value;
+}
+
+function recordField(
+  body: TestCronCleanupSandboxesStateActionResponse,
+  key: string,
+): Record<string, unknown> | null {
+  const value = body[key];
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
 async function cleanupRunFixture(fixture: RunFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.delete(agentRunQueue).where(eq(agentRunQueue.runId, fixture.runId));
-  await db
-    .delete(runnerJobQueue)
-    .where(eq(runnerJobQueue.runId, fixture.runId));
-  await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
-  await db.delete(agentRuns).where(eq(agentRuns.id, fixture.runId));
-  await db.delete(agentSessions).where(eq(agentSessions.id, fixture.sessionId));
-  await db
-    .delete(agentComposeVersions)
-    .where(eq(agentComposeVersions.id, fixture.versionId));
-  await db.delete(agentComposes).where(eq(agentComposes.id, fixture.composeId));
+  await postCronCleanupState({ action: "delete-run", run_id: fixture.runId });
 }
 
 async function cleanupExportJobFixture(
   fixture: ExportJobFixture,
 ): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.delete(exportJobs).where(eq(exportJobs.id, fixture.id));
+  await postCronCleanupState({
+    action: "delete-export-job",
+    export_job_id: fixture.id,
+  });
 }
 
 async function insertRunFixture(args?: {
@@ -98,73 +131,22 @@ async function insertRunFixture(args?: {
   readonly createdAt?: Date;
   readonly lastHeartbeatAt?: Date | null;
 }): Promise<RunFixture> {
-  const db = store.set(writeDb$);
-  const userId = `user-${randomUUID()}`;
-  const orgId = `org-${randomUUID()}`;
-  const composeName = args?.composeName ?? `cleanup-${randomUUID()}`;
-  const [compose] = await db
-    .insert(agentComposes)
-    .values({ userId, orgId, name: composeName })
-    .returning({ id: agentComposes.id });
-  if (!compose) {
-    throw new Error("insertRunFixture: compose insert returned no row");
-  }
-
-  const id = versionId();
-  await db.insert(agentComposeVersions).values({
-    id,
-    composeId: compose.id,
-    createdBy: userId,
-    content: { agents: {} },
+  const response = await postCronCleanupState({
+    action: "seed-run",
+    status: args?.status,
+    compose_name: args?.composeName,
+    created_at: args?.createdAt?.toISOString(),
+    last_heartbeat_at:
+      args?.lastHeartbeatAt === undefined
+        ? undefined
+        : (args.lastHeartbeatAt?.toISOString() ?? null),
   });
-  await db
-    .update(agentComposes)
-    .set({ headVersionId: id })
-    .where(eq(agentComposes.id, compose.id));
-
-  await db.insert(orgMetadata).values({
-    orgId,
-    tier: "free",
-    credits: 10_000,
-  });
-
-  const [session] = await db
-    .insert(agentSessions)
-    .values({
-      userId,
-      orgId,
-      agentComposeId: compose.id,
-      artifacts: [],
-    })
-    .returning({ id: agentSessions.id });
-  if (!session) {
-    throw new Error("insertRunFixture: session insert returned no row");
-  }
-
-  const [run] = await db
-    .insert(agentRuns)
-    .values({
-      userId,
-      orgId,
-      agentComposeVersionId: id,
-      sessionId: session.id,
-      status: args?.status ?? "pending",
-      prompt: "cleanup sandboxes test",
-      sandboxId: `sandbox-${randomUUID()}`,
-      createdAt: args?.createdAt,
-      lastHeartbeatAt: args?.lastHeartbeatAt,
-    })
-    .returning({ id: agentRuns.id });
-  if (!run) {
-    throw new Error("insertRunFixture: run insert returned no row");
-  }
-
   return {
-    runId: run.id,
-    sessionId: session.id,
-    composeId: compose.id,
-    versionId: id,
-    orgId,
+    runId: stringField(response, "run_id"),
+    sessionId: stringField(response, "session_id"),
+    composeId: stringField(response, "compose_id"),
+    versionId: stringField(response, "version_id"),
+    orgId: stringField(response, "org_id"),
   };
 }
 
@@ -175,29 +157,11 @@ async function insertQueueEntry(
     readonly encryptedParams?: string;
   },
 ): Promise<void> {
-  const db = store.set(writeDb$);
-  const [run] = await db
-    .select({
-      userId: agentRuns.userId,
-      orgId: agentRuns.orgId,
-      createdAt: agentRuns.createdAt,
-    })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, fixture.runId))
-    .limit(1);
-  if (!run) {
-    throw new Error("insertQueueEntry: run not found");
-  }
-
-  await db.insert(agentRunQueue).values({
-    runId: fixture.runId,
-    userId: run.userId,
-    orgId: run.orgId,
-    createdAt: run.createdAt,
-    expiresAt,
-    ...(options?.encryptedParams !== undefined
-      ? { encryptedParams: options.encryptedParams }
-      : {}),
+  await postCronCleanupState({
+    action: "seed-queue-entry",
+    run_id: fixture.runId,
+    expires_at: expiresAt.toISOString(),
+    encrypted_params: options?.encryptedParams,
   });
 }
 
@@ -205,20 +169,13 @@ async function insertRunnerJobEntry(
   fixture: RunFixture,
   expiresAt: Date,
 ): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(runnerJobQueue).values({
-    runId: fixture.runId,
-    runnerGroup: "vm0/test",
+  await postCronCleanupState({
+    action: "seed-runner-job",
+    run_id: fixture.runId,
+    runner_group: "vm0/test",
     profile: "vm0/default",
-    executionContext: {
-      storageManifest: null,
-      environment: null,
-      resumeSession: null,
-      encryptedSecrets: null,
-      cliAgentType: "claude-code",
-      apiStartTime: FIXED_NOW_MS,
-    },
-    expiresAt,
+    api_start_time: new Date(FIXED_NOW_MS).toISOString(),
+    expires_at: expiresAt.toISOString(),
   });
 }
 
@@ -228,72 +185,67 @@ async function insertExportJob(args: {
   readonly expiresAt?: Date | null;
   readonly s3Key?: string | null;
 }): Promise<ExportJobFixture> {
-  const db = store.set(writeDb$);
-  const [job] = await db
-    .insert(exportJobs)
-    .values({
-      userId: `user-${randomUUID()}`,
-      orgId: `org-${randomUUID()}`,
-      status: args.status,
-      createdAt: args.createdAt,
-      expiresAt: args.expiresAt,
-      s3Key: args.s3Key,
-    })
-    .returning({ id: exportJobs.id });
-  if (!job) {
-    throw new Error("insertExportJob: insert returned no row");
-  }
-  return job;
+  const response = await postCronCleanupState({
+    action: "seed-export-job",
+    status: args.status,
+    created_at: args.createdAt?.toISOString(),
+    expires_at:
+      args.expiresAt === undefined
+        ? undefined
+        : (args.expiresAt?.toISOString() ?? null),
+    s3_key: args.s3Key ?? undefined,
+  });
+  return { id: stringField(response, "export_job_id") };
 }
 
 async function findRun(runId: string): Promise<{
   readonly status: string;
   readonly error: string | null;
 } | null> {
-  const db = store.set(writeDb$);
-  const [row] = await db
-    .select({ status: agentRuns.status, error: agentRuns.error })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, runId))
-    .limit(1);
-  return row ?? null;
+  const response = await postCronCleanupState({
+    action: "get-run",
+    run_id: runId,
+  });
+  const row = recordField(response, "run");
+  return row
+    ? { status: stringField(row, "status"), error: nullableString(row.error) }
+    : null;
 }
 
 async function findRunnerJob(runId: string): Promise<{
   readonly runId: string;
 } | null> {
-  const db = store.set(writeDb$);
-  const [row] = await db
-    .select({ runId: runnerJobQueue.runId })
-    .from(runnerJobQueue)
-    .where(eq(runnerJobQueue.runId, runId))
-    .limit(1);
-  return row ?? null;
+  const response = await postCronCleanupState({
+    action: "get-runner-job",
+    run_id: runId,
+  });
+  const row = recordField(response, "runner_job");
+  return row ? { runId: stringField(row, "runId") } : null;
 }
 
 async function findQueueEntry(runId: string): Promise<{
   readonly runId: string;
 } | null> {
-  const db = store.set(writeDb$);
-  const [row] = await db
-    .select({ runId: agentRunQueue.runId })
-    .from(agentRunQueue)
-    .where(eq(agentRunQueue.runId, runId))
-    .limit(1);
-  return row ?? null;
+  const response = await postCronCleanupState({
+    action: "get-queue-entry",
+    run_id: runId,
+  });
+  const row = recordField(response, "queue_entry");
+  return row ? { runId: stringField(row, "runId") } : null;
 }
 
 async function findExportJob(jobId: string): Promise<{
   readonly status: string;
   readonly error: string | null;
 } | null> {
-  const db = store.set(writeDb$);
-  const [row] = await db
-    .select({ status: exportJobs.status, error: exportJobs.error })
-    .from(exportJobs)
-    .where(eq(exportJobs.id, jobId))
-    .limit(1);
-  return row ?? null;
+  const response = await postCronCleanupState({
+    action: "get-export-job",
+    export_job_id: jobId,
+  });
+  const row = recordField(response, "export_job");
+  return row
+    ? { status: stringField(row, "status"), error: nullableString(row.error) }
+    : null;
 }
 
 describe("GET /api/cron/cleanup-sandboxes", () => {

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.10...guest-contracts-v0.3.0) (2026-06-30)
+
+
+### Features
+
+* enable codex local active input ([#19463](https://github.com/vm0-ai/vm0/issues/19463)) ([5a34420](https://github.com/vm0-ai/vm0/commit/5a34420314311d9a290c195f33539d8359303660))
+
+## [0.2.10](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.9...guest-contracts-v0.2.10) (2026-06-30)
+
+
+### Performance Improvements
+
+* verify large session histories in guest ([#19386](https://github.com/vm0-ai/vm0/issues/19386)) ([a3f62a1](https://github.com/vm0-ai/vm0/commit/a3f62a1bd2b649e6d5dfe0a694894d020d196925))
+
 ## [0.2.9](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.8...guest-contracts-v0.2.9) (2026-06-29)
 
 

@@ -20,6 +20,7 @@ export const clerk = {
           fields: {
             CLERK_TOKEN: {
               label: "Secret Key",
+              publicId: "secretKey",
               required: true,
               placeholder: "sk_live_...",
             },

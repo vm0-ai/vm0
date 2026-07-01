@@ -1,12 +1,10 @@
-import { command, computed } from "ccstate";
+import { command } from "ccstate";
 import { and, asc, eq } from "drizzle-orm";
 
 import {
   githubLabelAppliedEventConfigSchema,
   type GithubLabelAppliedEventConfig,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import {
@@ -21,7 +19,7 @@ import { testOverride } from "../../lib/singleton";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
 import {
   buildChatOnlyWorkflowTriggerCallbacks,
   runWorkflowTriggerNow$,
@@ -89,7 +87,7 @@ interface GithubWorkflowDispatchCounts {
   readonly duplicates: number;
 }
 
-export interface GithubWorkflowRunStartTestInput {
+interface GithubWorkflowRunStartTestInput {
   readonly triggerId: string;
   readonly workflowName: string;
   readonly deliveryId: string;
@@ -108,31 +106,8 @@ const githubWorkflowRunStarterOverride = testOverride<
   return undefined;
 });
 
-export function setGithubWorkflowRunStarterForTests(
-  starter: (args: GithubWorkflowRunStartTestInput) => Promise<"ok" | "error">,
-): () => void {
-  githubWorkflowRunStarterOverride.set(starter);
-  return () => {
-    githubWorkflowRunStarterOverride.clear();
-  };
-}
-
 function normalizeGithubWorkflowLabelName(labelName: string): string {
   return labelName.trim().toLowerCase();
-}
-
-export function workflowGithubLabelEventTriggersEnabledForOwner(
-  orgId: string,
-  userId: string,
-) {
-  return computed(async (get) => {
-    const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
-    return isFeatureEnabled(FeatureSwitchKey.WorkflowGithubLabelEventTriggers, {
-      orgId,
-      userId,
-      overrides,
-    });
-  });
 }
 
 async function loadOrgGithubWorkflowInstallation(
@@ -581,7 +556,7 @@ const dispatchMatchedGithubTriggers$ = command(
     let duplicates = 0;
     for (const trigger of args.triggers) {
       const gateEnabled = await get(
-        workflowGithubLabelEventTriggersEnabledForOwner(
+        workflowAutomationEnabledForOwner(
           trigger.trigger.orgId,
           trigger.trigger.ownerUserId,
         ),

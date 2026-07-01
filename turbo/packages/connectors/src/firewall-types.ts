@@ -321,7 +321,8 @@ const IPV4_NON_PUBLIC_RANGES: readonly (readonly [number, number])[] = [
   [0x7f000000, 0x7fffffff],
   [0xa9fe0000, 0xa9feffff],
   [0xac100000, 0xac1fffff],
-  [0xc0000000, 0xc00000ff],
+  [0xc0000000, 0xc0000008],
+  [0xc000000b, 0xc00000ff],
   [0xc0000200, 0xc00002ff],
   [0xc0586300, 0xc05863ff],
   [0xc0a80000, 0xc0a8ffff],
@@ -1563,7 +1564,8 @@ function isPublicIpv6SpecialRegistryException(
     words[4] === 0 &&
     words[5] === 0 &&
     words[6] === 0 &&
-    (words[7] === 1 || words[7] === 2)
+    words[7]! >= 1 &&
+    words[7]! <= 3
   ) {
     return true;
   }
@@ -1594,6 +1596,9 @@ function isPublicIpv6Address(words: readonly number[]): boolean {
   if (first === 0x2001 && second === 0x0db8) {
     return false;
   }
+  if (first === 0x3fff && second <= 0x0fff) {
+    return false;
+  }
   if (first === 0x2002) {
     return false;
   }
@@ -1607,7 +1612,15 @@ function hostPolicyIpLiteralIsPublic(hostname: string): boolean | null {
   }
 
   const ipv4Parts = parseCanonicalIpv4Address(hostname);
-  return ipv4Parts ? isPublicIpv4Address(ipv4Parts) : null;
+  if (ipv4Parts) {
+    return isPublicIpv4Address(ipv4Parts);
+  }
+
+  const normalizedIpv4Host = normalizeHostForIpv4LiteralSyntax(hostname);
+  if (isIpv4LiteralLike(normalizedIpv4Host)) {
+    return false;
+  }
+  return null;
 }
 
 function providerOwnedHostMatches(
@@ -1616,11 +1629,14 @@ function providerOwnedHostMatches(
     FirewallBaseHostPolicy,
     { readonly kind: "providerOwned" }
   >,
+  options: { readonly allowExactHosts?: boolean } = {},
 ): boolean {
-  const exactHosts = hostPolicy.exactHosts ?? [];
-  for (const exactHost of exactHosts) {
-    if (hostname === normalizeHostPolicyHostname(exactHost)) {
-      return true;
+  if (options.allowExactHosts !== false) {
+    const exactHosts = hostPolicy.exactHosts ?? [];
+    for (const exactHost of exactHosts) {
+      if (hostname === normalizeHostPolicyHostname(exactHost)) {
+        return true;
+      }
     }
   }
 
@@ -1638,14 +1654,57 @@ function providerOwnedHostMatches(
   return false;
 }
 
-function validateResolvedBaseUrlHostPolicy({
-  templateBase,
-  resolvedBase,
+function baseUrlAuthorityHasParams(base: string): boolean {
+  const authority = rawAuthorityFromBaseUrl(base);
+  return authority !== null && hasBaseUrlParams(authority);
+}
+
+function validateHostPolicyShape(
+  base: string,
+  serviceName: string,
+  hostPolicy: FirewallBaseHostPolicy,
+): void {
+  const result = firewallBaseHostPolicySchema.safeParse(hostPolicy);
+  if (result.success) return;
+
+  const message = result.error.issues
+    .map((issue) => {
+      return issue.message;
+    })
+    .join("; ");
+  throw new Error(
+    errMsg(base, serviceName, `hostPolicy is invalid: ${message}`),
+  );
+}
+
+function urlForHostPolicyValidation(base: string, serviceName: string): URL {
+  if (!baseUrlAuthorityHasParams(base)) return new URL(base);
+  const schemeEnd = base.indexOf("://");
+  const authority = rawAuthorityFromBaseUrl(base);
+  if (schemeEnd === -1 || authority === null) return new URL(base);
+  const authorityParts = splitParameterizedAuthority(
+    authority,
+    base,
+    serviceName,
+  );
+  const host = splitAuthorityHostSegments(authorityParts.normalizedHost)
+    .map((segment) => {
+      return hostSegmentForSyntaxValidation(segment, base, serviceName);
+    })
+    .join(".");
+  return new URL(
+    `${base.slice(0, schemeEnd)}://${host}${authorityParts.portSuffix}`,
+  );
+}
+
+export function validateBaseUrlHostPolicy({
+  base,
+  diagnosticBase = base,
   serviceName,
   hostPolicy,
 }: {
-  readonly templateBase: string;
-  readonly resolvedBase: string;
+  readonly base: string;
+  readonly diagnosticBase?: string;
   readonly serviceName: string;
   readonly hostPolicy: FirewallBaseHostPolicy | undefined;
 }): void {
@@ -1653,13 +1712,24 @@ function validateResolvedBaseUrlHostPolicy({
     return;
   }
 
-  const url = new URL(resolvedBase);
+  validateHostPolicyShape(diagnosticBase, serviceName, hostPolicy);
+  if (hasBaseUrlVars(base)) {
+    return;
+  }
+
+  const authorityHasParams = baseUrlAuthorityHasParams(base);
+  const url = urlForHostPolicyValidation(base, serviceName);
+  const rawAuthority = rawAuthorityFromBaseUrl(base);
   const hostname = normalizeHostPolicyHostname(url.hostname);
   if (hostPolicy.kind === "providerOwned") {
-    if (!providerOwnedHostMatches(hostname, hostPolicy)) {
+    if (
+      !providerOwnedHostMatches(hostname, hostPolicy, {
+        allowExactHosts: !authorityHasParams,
+      })
+    ) {
       throw new Error(
         errMsg(
-          templateBase,
+          diagnosticBase,
           serviceName,
           `host policy does not allow resolved host "${hostname}"`,
         ),
@@ -1668,7 +1738,7 @@ function validateResolvedBaseUrlHostPolicy({
     if (!hostPolicy.allowNonDefaultPort && url.port !== "") {
       throw new Error(
         errMsg(
-          templateBase,
+          diagnosticBase,
           serviceName,
           "host policy does not allow non-default ports",
         ),
@@ -1677,11 +1747,13 @@ function validateResolvedBaseUrlHostPolicy({
     return;
   }
 
-  const publicIpLiteral = hostPolicyIpLiteralIsPublic(hostname);
+  const publicDestinationHost =
+    rawAuthority === null ? url.hostname : rawHostFromAuthority(rawAuthority);
+  const publicIpLiteral = hostPolicyIpLiteralIsPublic(publicDestinationHost);
   if (publicIpLiteral === false) {
     throw new Error(
       errMsg(
-        templateBase,
+        diagnosticBase,
         serviceName,
         `host policy does not allow non-public IP literal "${hostname}"`,
       ),
@@ -1738,9 +1810,9 @@ export function resolveFirewallBaseUrlTemplate({
       serviceName,
       credentialed,
     );
-    validateResolvedBaseUrlHostPolicy({
-      templateBase: base,
-      resolvedBase: resolved,
+    validateBaseUrlHostPolicy({
+      base: resolved,
+      diagnosticBase: base,
       serviceName,
       hostPolicy,
     });
@@ -1803,6 +1875,68 @@ export function hasBaseUrlParams(base: string): boolean {
 
 const HOST_WILDCARD_PARAM_PREFIX = "hostWildcard";
 
+interface RawBaseUrlAuthority {
+  readonly authority: string;
+  readonly start: number;
+  readonly end: number;
+}
+
+interface RawWildcardAuthorityParts {
+  readonly host: string;
+  readonly portSuffix: string;
+}
+
+function rawBaseUrlAuthorityRange(base: string): RawBaseUrlAuthority | null {
+  const schemeEnd = base.indexOf("://");
+  if (schemeEnd === -1) return null;
+  const start = schemeEnd + 3;
+  const rest = base.slice(start);
+  const delimiterIndexes = [
+    rest.indexOf("/"),
+    rest.indexOf("?"),
+    rest.indexOf("#"),
+  ].filter((index) => {
+    return index !== -1;
+  });
+  const end =
+    delimiterIndexes.length === 0
+      ? base.length
+      : start + Math.min(...delimiterIndexes);
+  return {
+    authority: base.slice(start, end),
+    start,
+    end,
+  };
+}
+
+function splitRawWildcardAuthority(
+  authority: string,
+): RawWildcardAuthorityParts | null {
+  if (
+    authority === "" ||
+    authority.includes("@") ||
+    authorityHasEmptyPort(authority)
+  ) {
+    return null;
+  }
+
+  if (authority.startsWith("[")) {
+    return null;
+  }
+
+  const portSeparator = authority.lastIndexOf(":");
+  if (portSeparator === -1) {
+    return { host: authority, portSuffix: "" };
+  }
+  if (authority.indexOf(":") !== portSeparator) {
+    return null;
+  }
+  return {
+    host: authority.slice(0, portSeparator),
+    portSuffix: authority.slice(portSeparator),
+  };
+}
+
 /**
  * Convert user-facing `*` wildcards in a URL host into the existing
  * parameterized host grammar understood by the firewall matcher.
@@ -1816,19 +1950,19 @@ const HOST_WILDCARD_PARAM_PREFIX = "hostWildcard";
  * Path `*` characters remain literal.
  */
 export function expandHostWildcardsInBaseUrl(base: string): string {
-  let url: URL;
-  try {
-    url = new URL(base);
-  } catch {
+  if (base.includes("\\")) {
     return base;
   }
 
-  if (!url.hostname.includes("*")) {
+  const authorityRange = rawBaseUrlAuthorityRange(base);
+  if (authorityRange === null) {
     return base;
   }
+  const authority = splitRawWildcardAuthority(authorityRange.authority);
+  if (authority === null || !authority.host.includes("*")) return base;
 
   let paramIndex = 0;
-  const host = url.hostname
+  const host = authority.host
     .split(".")
     .map((segment) => {
       if (!segment.includes("*")) {
@@ -1848,8 +1982,9 @@ export function expandHostWildcardsInBaseUrl(base: string): string {
     })
     .join(".");
 
-  const authority = url.port ? `${host}:${url.port}` : host;
-  return `${url.protocol}//${authority}${url.pathname}${url.search}${url.hash}`;
+  return `${base.slice(0, authorityRange.start)}${host}${authority.portSuffix}${base.slice(
+    authorityRange.end,
+  )}`;
 }
 
 function errMsg(base: string, svc: string, detail: string): string {
@@ -1862,6 +1997,7 @@ const ALLOWED_BASE_URL_SCHEMES = new Set(["http", "https"]);
 const REQUIRED_AUTH_BASE_URL_SCHEME = "https";
 const WHITESPACE_PATTERN = /\s/u;
 const UNICODE_CONTROL_PATTERN = /\p{C}/u;
+const UNICODE_DECIMAL_NUMBER_PATTERN = /^\p{Decimal_Number}+$/u;
 const UNICODE_MARK_PATTERN = /\p{M}/u;
 const UNICODE_LETTER_PATTERN = /\p{L}/u;
 const GREEK_COMBINING_YPOGEGRAMMENI = "\u0345";
@@ -1983,9 +2119,7 @@ function isIpv4NumberComponent(value: string): boolean {
       })
     );
   }
-  return [...value].every((char) => {
-    return char >= "0" && char <= "9";
-  });
+  return UNICODE_DECIMAL_NUMBER_PATTERN.test(value);
 }
 
 function isIpv4LiteralLike(value: string): boolean {
@@ -2221,6 +2355,15 @@ function validateHostPercentEncoding(
           errMsg(base, serviceName, "host must not contain commas"),
         );
       }
+      if (char === "*") {
+        throw new Error(
+          errMsg(
+            base,
+            serviceName,
+            "host must not contain wildcard characters",
+          ),
+        );
+      }
     }
     i = end - 1;
   }
@@ -2251,6 +2394,21 @@ function rawAuthorityFromBaseUrl(base: string): string | null {
   const authorityEnd =
     delimiterIndexes.length === 0 ? -1 : Math.min(...delimiterIndexes);
   return authorityEnd === -1 ? rest : rest.slice(0, authorityEnd);
+}
+
+function authorityHasEmptyPort(authority: string): boolean {
+  if (authority.startsWith("[")) {
+    const closeBracket = authority.indexOf("]");
+    if (closeBracket === -1) return false;
+    return authority.slice(closeBracket + 1) === ":";
+  }
+
+  const portSeparator = authority.lastIndexOf(":");
+  if (portSeparator === -1) return false;
+  return (
+    authority.indexOf(":") === portSeparator &&
+    portSeparator === authority.length - 1
+  );
 }
 
 function validateNoUserinfo(
@@ -2437,6 +2595,33 @@ function validateStaticHostLabels(
 ): void {
   if (hostname.startsWith("[") && hostname.endsWith("]")) return;
   validateHostHasNoEmptyLabels(hostname, base, serviceName);
+  validateHostHasNoRawWildcards(hostname, base, serviceName);
+}
+
+function hostSegmentHasRawWildcard(segment: string): boolean {
+  const parsed = parseSegment(segment);
+  if (parsed.kind === "literal") return parsed.value.includes("*");
+  if (parsed.kind === "param") {
+    return parsed.prefix.includes("*") || parsed.suffix.includes("*");
+  }
+  return false;
+}
+
+function validateHostHasNoRawWildcards(
+  host: string,
+  base: string,
+  serviceName: string,
+): void {
+  if (host.startsWith("[") && host.endsWith("]")) return;
+  for (const segment of host
+    .replace(HOST_DOT_EQUIVALENT_PATTERN, ".")
+    .split(".")) {
+    if (hostSegmentHasRawWildcard(segment)) {
+      throw new Error(
+        errMsg(base, serviceName, "host must not contain wildcard characters"),
+      );
+    }
+  }
 }
 
 function hostSegmentForSyntaxValidation(
@@ -2606,6 +2791,9 @@ function validateBaseUrlParams(base: string, serviceName: string): void {
   const slashIdx = rest.indexOf("/");
   const host = slashIdx === -1 ? rest : rest.slice(0, slashIdx);
   const path = slashIdx === -1 ? "" : rest.slice(slashIdx);
+  if (authorityHasEmptyPort(host)) {
+    throw new Error(errMsg(base, serviceName, "not a valid URL authority"));
+  }
   validateNoUserinfo(host, base, serviceName);
   validateHostPercentEncoding(host, base, serviceName);
   const authority = splitParameterizedAuthority(host, base, serviceName);
@@ -2619,6 +2807,7 @@ function validateBaseUrlParams(base: string, serviceName: string): void {
     base,
     serviceName,
   );
+  validateHostHasNoRawWildcards(authority.normalizedHost, base, serviceName);
   validateParameterizedHostUrlSyntax(
     base.slice(0, schemeEnd),
     authority,
@@ -2695,6 +2884,11 @@ export function validateBaseUrl(base: string, serviceName: string): void {
   const authority = rawAuthorityFromBaseUrl(base);
   if (authority !== null) {
     if (authority === "") {
+      throw new Error(
+        `Invalid base URL "${base}" in firewall "${serviceName}": not a valid URL authority`,
+      );
+    }
+    if (authorityHasEmptyPort(authority)) {
       throw new Error(
         `Invalid base URL "${base}" in firewall "${serviceName}": not a valid URL authority`,
       );
@@ -2842,6 +3036,11 @@ export function validateAuthBaseUrl(
   const authority = rawAuthorityFromBaseUrl(validationUrl);
   if (authority !== null) {
     if (authority === "") {
+      throw new Error(
+        `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": not a valid URL authority`,
+      );
+    }
+    if (authorityHasEmptyPort(authority)) {
       throw new Error(
         `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": not a valid URL authority`,
       );

@@ -205,6 +205,12 @@ function shouldOpenHtmlCommentMode(
   );
 }
 
+function isHtmlEditFeatureEnabled(
+  features: Record<string, boolean> | null | undefined,
+): boolean {
+  return Boolean(features?.[FeatureSwitchKey.HtmlArtifactCommentEditing]);
+}
+
 function ArtifactSidebarContent({
   agentId,
   artifactRef,
@@ -225,19 +231,19 @@ function ArtifactSidebarContent({
   const closeHtmlCommentMode = useSet(closeArtifactHtmlEditMode$);
   const markHtmlDomEditPending = useSet(markHtmlDomEditPending$);
   const openHtmlCommentMode = useSet(openArtifactHtmlEditMode$);
+  const publishHtmlDomEditPreviewDraft = useSet(
+    publishHtmlDomEditPreviewDraft$,
+  );
   const toggleFullscreen = useSet(toggleArtifactFullscreen$);
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const pageSignal = useGet(pageSignal$);
   const closePreview = onClose ?? close;
   const openPresentationEditor = useSet(openPresentationEditor$);
   const features = useLastResolved(featureSwitch$);
-  const htmlEditFeatureEnabled = Boolean(
-    features?.[FeatureSwitchKey.HtmlArtifactCommentEditing],
-  );
 
   const display = resolveArtifactDisplay(artifactRef, item);
   const htmlCommentMode =
-    htmlEditFeatureEnabled &&
+    isHtmlEditFeatureEnabled(features) &&
     shouldOpenHtmlCommentMode(display, requestedHtmlCommentMode);
   const syncTarget = artifactSidebarSyncTargetForItem({
     agentId,
@@ -263,16 +269,15 @@ function ArtifactSidebarContent({
   });
 
   if (!display) {
-    return (
-      <ArtifactUnavailableSidebar
-        fullscreen={fullscreen}
-        onBack={onBack}
-        onClose={closePreview}
-        onToggleFullscreen={toggleFullscreen}
-      />
-    );
+    return null;
   }
 
+  const applyHtmlStyleEdits = createHtmlStyleEditApplyAction({
+    display,
+    htmlEditState,
+    pageSignal,
+    publishPreviewDraft: publishHtmlDomEditPreviewDraft,
+  });
   const editPresentation =
     display.artifactKind === "presentation-html"
       ? () => {
@@ -286,14 +291,6 @@ function ArtifactSidebarContent({
     htmlHeaderState === "idle"
       ? openHtmlCommentMode
       : undefined;
-  const toggleFullscreenWithImageReset = () => {
-    resetArtifactSidebarImageZoom({
-      display,
-      fullscreen,
-      resetZoomableImageCanvasZoom,
-    });
-    toggleFullscreen();
-  };
   const exitHtmlEdit = htmlEditExitAction(
     htmlHeaderState,
     closeHtmlCommentMode,
@@ -314,7 +311,14 @@ function ArtifactSidebarContent({
         onEditHtml={editHtml}
         onExitHtmlEdit={exitHtmlEdit}
         onBack={onBack}
-        onToggleFullscreen={toggleFullscreenWithImageReset}
+        onToggleFullscreen={() => {
+          resetArtifactSidebarImageZoom({
+            display,
+            fullscreen,
+            resetZoomableImageCanvasZoom,
+          });
+          toggleFullscreen();
+        }}
         onClose={closePreview}
       />
       <div className="min-h-0 flex-1 overflow-hidden bg-background">
@@ -328,38 +332,11 @@ function ArtifactSidebarContent({
           htmlCommentMode={htmlCommentMode}
           onCloseHtmlCommentMode={closeHtmlCommentMode}
           onApplyHtmlEditDraft={htmlEditState.apply}
+          onApplyHtmlStyleEdits={applyHtmlStyleEdits}
           onHtmlEditRequestFailed={htmlEditState.fail}
           onHtmlEditRequestStarted={htmlEditState.start}
           pageSignal={pageSignal}
         />
-      </div>
-    </ArtifactSidebarSurface>
-  );
-}
-
-function ArtifactUnavailableSidebar({
-  fullscreen,
-  onBack,
-  onClose,
-  onToggleFullscreen,
-}: {
-  fullscreen: boolean;
-  onBack?: () => void;
-  onClose: () => void;
-  onToggleFullscreen: () => void;
-}) {
-  return (
-    <ArtifactSidebarSurface fullscreen={fullscreen}>
-      <ArtifactSidebarHeader
-        title="Artifact unavailable"
-        subtitle="Unavailable"
-        fullscreen={fullscreen}
-        onBack={onBack}
-        onToggleFullscreen={onToggleFullscreen}
-        onClose={onClose}
-      />
-      <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
-        Unsupported artifact reference.
       </div>
     </ArtifactSidebarSurface>
   );
@@ -411,6 +388,30 @@ function createHtmlEditState({
     },
     previewHtml,
     status,
+  };
+}
+
+function createHtmlStyleEditApplyAction({
+  display,
+  htmlEditState,
+  pageSignal,
+  publishPreviewDraft,
+}: {
+  display: ArtifactDisplay;
+  htmlEditState: ReturnType<typeof createHtmlEditState>;
+  pageSignal: AbortSignal;
+  publishPreviewDraft: (url: string, signal: AbortSignal) => Promise<void>;
+}) {
+  if (display.kind !== "html" || !htmlEditState.apply) {
+    return undefined;
+  }
+  return async (html: string) => {
+    await htmlEditState.apply({
+      comments: [],
+      editRequestId: crypto.randomUUID(),
+      html,
+    });
+    await publishPreviewDraft(display.url, pageSignal);
   };
 }
 
@@ -931,6 +932,7 @@ function ArtifactBody({
   htmlCommentMode,
   onCloseHtmlCommentMode,
   onApplyHtmlEditDraft,
+  onApplyHtmlStyleEdits,
   onHtmlEditRequestFailed,
   onHtmlEditRequestStarted,
   pageSignal,
@@ -944,6 +946,7 @@ function ArtifactBody({
   htmlCommentMode: boolean;
   onCloseHtmlCommentMode: () => void;
   onApplyHtmlEditDraft?: (draft: HtmlDomEditDraft) => Promise<void>;
+  onApplyHtmlStyleEdits?: (html: string) => Promise<void>;
   onHtmlEditRequestFailed?: () => void;
   onHtmlEditRequestStarted?: () => void;
   pageSignal: AbortSignal;
@@ -973,6 +976,7 @@ function ArtifactBody({
           key={url}
           filename={filename}
           onApplyEditDraft={onApplyHtmlEditDraft}
+          onApplyStyleEdits={onApplyHtmlStyleEdits}
           onClose={onCloseHtmlCommentMode}
           onEditRequestFailed={onHtmlEditRequestFailed}
           onEditRequestStarted={onHtmlEditRequestStarted}

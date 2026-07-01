@@ -20,6 +20,7 @@ export const agentmail = {
           fields: {
             AGENTMAIL_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-agentmail-api-key",
             },

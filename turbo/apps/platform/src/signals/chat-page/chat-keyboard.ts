@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { isEditableTarget, matchShortcut } from "@vm0/ui";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   currentLeftThread$,
   currentRightThread$,
@@ -7,8 +8,11 @@ import {
   loadRightThread$,
 } from "./chat-thread-panes.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
+import { openRenameChatThreadDialogFromThreadData$ } from "./chat-thread-rename.ts";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
-import { onRef } from "../utils.ts";
+import { onDomEventFn, onRef } from "../utils.ts";
+import { openChatThreadEmojiMenu$ } from "../zero-page/zero-sidebar-state.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 
 /**
  * Snapshot row shape consumed by `navigateToAdjacentThread$`. The caller
@@ -57,6 +61,13 @@ function isDocumentScrollTarget(root: HTMLElement, target: EventTarget | null) {
   const doc = root.ownerDocument;
   return (
     target === doc || target === doc.body || target === doc.documentElement
+  );
+}
+
+function isChatShortcutTarget(root: HTMLElement, target: EventTarget | null) {
+  return (
+    isDocumentScrollTarget(root, target) ||
+    (target instanceof Node && root.contains(target))
   );
 }
 
@@ -118,9 +129,50 @@ export const setChatKeyboardScrollRoot$ = onRef(
       }
     };
 
+    const onGlobalChatKeyDown = onDomEventFn(async (event: KeyboardEvent) => {
+      const renameShortcut = matchShortcut("f2", event);
+      const emojiShortcut = matchShortcut("shift+f2", event);
+      if (
+        event.defaultPrevented ||
+        (!renameShortcut && !emojiShortcut) ||
+        hasOpenDialog(el.ownerDocument) ||
+        !isChatShortcutTarget(el, event.target)
+      ) {
+        return;
+      }
+      const features = get(featureSwitch$);
+      if (emojiShortcut && !features[FeatureSwitchKey.ChatThreadEmoji]) {
+        return;
+      }
+      const mainThread = get(currentLeftThread$);
+      if (!mainThread) {
+        return;
+      }
+
+      event.preventDefault();
+      if (emojiShortcut) {
+        const threadData = await get(mainThread.threadData$);
+        signal.throwIfAborted();
+        set(openChatThreadEmojiMenu$, {
+          threadId: mainThread.threadId,
+          title: threadData?.title,
+        });
+      } else {
+        await set(
+          openRenameChatThreadDialogFromThreadData$,
+          mainThread.threadId,
+          signal,
+        );
+      }
+    });
+
     el.addEventListener("focusin", markActiveThread, { signal });
     el.addEventListener("pointerdown", markActiveThread, { signal });
     el.addEventListener("pointerover", markActiveThread, { signal });
+    document.addEventListener("keydown", onGlobalChatKeyDown, {
+      capture: true,
+      signal,
+    });
     document.addEventListener("keydown", onKeyDown, { signal });
   }),
 );

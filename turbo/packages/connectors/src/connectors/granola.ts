@@ -20,6 +20,7 @@ export const granola = {
           fields: {
             GRANOLA_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-granola-api-key",
             },

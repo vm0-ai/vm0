@@ -20,10 +20,12 @@ export const browserbase = {
           fields: {
             BROWSERBASE_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
             },
             BROWSERBASE_PROJECT_ID: {
               label: "Project ID",
+              publicId: "projectId",
               required: true,
               storage: "variable",
             },

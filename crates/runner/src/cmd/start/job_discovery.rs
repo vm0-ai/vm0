@@ -15,7 +15,6 @@ use tracing::{info, warn};
 
 use super::active_sessions::ActiveCliAgentSessionGuard;
 use super::factory_lifecycle::SharedFactory;
-use super::heartbeat::current_held_session_states;
 use super::idle_lifecycle::{
     SharedIdlePool, add_preparing_run_with_idle_status_snapshot,
     add_running_run_with_idle_status_snapshot, spawn_idle_destroy_job,
@@ -95,14 +94,17 @@ impl LocalAdmission {
     }
 }
 
-pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: DiscoveredJobContext<'_>) {
+pub(super) async fn handle_discovered_job(
+    job: DiscoveredJob,
+    mut ctx: DiscoveredJobContext<'_>,
+) -> bool {
     let DiscoveredJob { candidate } = job;
     let run_id = candidate.run_id();
     let profile_name = candidate.profile_name().to_owned();
     // Look up profile config for resource requirements.
     let Some(profile_config) = ctx.profiles.get(&profile_name) else {
         warn!(run_id = %run_id, profile = %profile_name, "unknown profile, skipping");
-        return;
+        return false;
     };
     let job_vcpu = profile_config.vcpu;
     let job_memory = profile_config.memory_mb;
@@ -110,13 +112,13 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
     // Look up factory for this profile.
     let Some((factory, restore_guest_state)) = ctx.factories.get(&profile_name) else {
         warn!(run_id = %run_id, profile = %profile_name, "no factory for profile, skipping");
-        return;
+        return false;
     };
 
     let Some(admission) =
         claim_with_local_admission(candidate, run_id, job_vcpu, job_memory, &ctx).await
     else {
-        return;
+        return false;
     };
     let AdmittedClaim {
         claimed,
@@ -143,20 +145,21 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
     );
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::DeviceRateLimits, started_at);
 
-    let (reuse_entry, active_lease, reuse_result, idle_snapshot) = try_reuse_from_pool(
-        run_id,
-        ReuseAdmissionRequest {
-            profile_name: &profile_name,
-            device_rate_limits: &device_rate_limits,
-            workspace_disk_mb: job_workspace_disk_mb,
-            context: claimed.context(),
-            resume_session_valid,
-            job_lease,
-        },
-        &mut ctx,
-        &mut pre_spawn_timing,
-    )
-    .await;
+    let (reuse_entry, active_lease, reuse_result, idle_snapshot, needs_session_affinity_refresh) =
+        try_reuse_from_pool(
+            run_id,
+            ReuseAdmissionRequest {
+                profile_name: &profile_name,
+                device_rate_limits: &device_rate_limits,
+                workspace_disk_mb: job_workspace_disk_mb,
+                context: claimed.context(),
+                resume_session_valid,
+                job_lease,
+            },
+            &mut ctx,
+            &mut pre_spawn_timing,
+        )
+        .await;
 
     let session_history_restore_plan = build_session_history_restore_plan(
         &ctx.spawn_ctx.exec_config.http,
@@ -211,6 +214,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         ctx.spawn_ctx,
         ctx.jobs,
     );
+    needs_session_affinity_refresh
 }
 
 fn build_session_history_restore_plan(
@@ -243,7 +247,7 @@ fn build_session_history_restore_plan(
                         return SessionHistoryRestorePlan::SkipVerified(restored_identity.clone());
                     }
                     Some(restored_identity) if restored_identity == &requested_identity => {
-                        if restored_identity.has_guest_history_verification() {
+                        if restored_identity.has_final_metadata_verification() {
                             Some(SessionHistoryRestoreFallback::IdentityMismatch)
                         } else {
                             Some(SessionHistoryRestoreFallback::UnverifiedIdleIdentity)
@@ -378,6 +382,7 @@ async fn try_reuse_from_pool(
     BudgetLease,
     SandboxReuseResult,
     Option<IdlePoolSnapshot>,
+    bool,
 ) {
     let ReuseAdmissionRequest {
         profile_name,
@@ -391,11 +396,23 @@ async fn try_reuse_from_pool(
     let started_at = Instant::now();
     if !resume_session_valid {
         pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
-        return (None, job_lease, SandboxReuseResult::NoSessionId, None);
+        return (
+            None,
+            job_lease,
+            SandboxReuseResult::NoSessionId,
+            None,
+            false,
+        );
     }
     let Some(cli_agent_session_id) = context.cli_agent_session_id() else {
         pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
-        return (None, job_lease, SandboxReuseResult::NoSessionId, None);
+        return (
+            None,
+            job_lease,
+            SandboxReuseResult::NoSessionId,
+            None,
+            false,
+        );
     };
     let session_fingerprint = diagnostic_session_fingerprint(cli_agent_session_id);
 
@@ -408,21 +425,29 @@ async fn try_reuse_from_pool(
         let held_session_states = pool.held_session_states();
         (taken, snapshot, held_session_states)
     };
+    let took_idle_session = taken.is_some();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
     let started_at = Instant::now();
-    let held_session_states = current_held_session_states(
-        held_session_states,
-        ctx.spawn_ctx.exec_config.workspace_cache.as_ref(),
-        &ctx.spawn_ctx.active_cli_agent_sessions,
-        Some(cli_agent_session_id),
-    )
-    .await;
+    let claimed_workspace_cache_session = ctx.spawn_ctx.exec_config.workspace_cache.is_some()
+        && ctx
+            .spawn_ctx
+            .held_session_snapshot
+            .might_contain_workspace_cache_session(cli_agent_session_id);
+    let held_session_states = ctx
+        .spawn_ctx
+        .held_session_snapshot
+        .current_held_session_states(
+            held_session_states,
+            &ctx.spawn_ctx.active_cli_agent_sessions,
+            Some(cli_agent_session_id),
+        );
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::HeldSessionStateRefresh, started_at);
     let started_at = Instant::now();
     ctx.spawn_ctx
         .provider
         .set_held_session_states(held_session_states)
         .await;
+    let needs_session_affinity_refresh = took_idle_session || claimed_workspace_cache_session;
     pre_spawn_timing
         .record_phase_elapsed(RunnerPreSpawnPhase::ProviderHeldSessionUpdate, started_at);
     match taken {
@@ -454,7 +479,13 @@ async fn try_reuse_from_pool(
                         entry.into_destroy_job_without_workspace_promotion_for_mismatch(),
                         "reuse_workspace_promotion_mismatch",
                     );
-                    return (None, job_lease, SandboxReuseResult::PoolMiss, snapshot);
+                    return (
+                        None,
+                        job_lease,
+                        SandboxReuseResult::PoolMiss,
+                        snapshot,
+                        needs_session_affinity_refresh,
+                    );
                 }
             }
             let started_at = Instant::now();
@@ -479,6 +510,7 @@ async fn try_reuse_from_pool(
                         budget_lease,
                         SandboxReuseResult::Reused,
                         snapshot,
+                        needs_session_affinity_refresh,
                     )
                 }
                 IdleUnparkResult::Failed { destroy_job, error } => {
@@ -489,7 +521,13 @@ async fn try_reuse_from_pool(
                         "unpark failed, destroying idle VM and falling through to fresh create"
                     );
                     spawn_idle_destroy_job(ctx.destroy_tasks, *destroy_job, "reuse_unpark_failed");
-                    (None, job_lease, SandboxReuseResult::UnparkFailed, snapshot)
+                    (
+                        None,
+                        job_lease,
+                        SandboxReuseResult::UnparkFailed,
+                        snapshot,
+                        needs_session_affinity_refresh,
+                    )
                 }
             }
         }
@@ -510,6 +548,7 @@ async fn try_reuse_from_pool(
                 job_lease,
                 SandboxReuseResult::DeviceLimitMismatch,
                 snapshot,
+                needs_session_affinity_refresh,
             )
         }
         Some(stale) => {
@@ -530,6 +569,7 @@ async fn try_reuse_from_pool(
                 job_lease,
                 SandboxReuseResult::ProfileMismatch,
                 snapshot,
+                needs_session_affinity_refresh,
             )
         }
         None => {
@@ -538,7 +578,13 @@ async fn try_reuse_from_pool(
                 session_fingerprint = %session_fingerprint,
                 "no idle VM found for session"
             );
-            (None, job_lease, SandboxReuseResult::PoolMiss, None)
+            (
+                None,
+                job_lease,
+                SandboxReuseResult::PoolMiss,
+                None,
+                needs_session_affinity_refresh,
+            )
         }
     }
 }
@@ -563,7 +609,6 @@ mod tests {
         codex_thread_id::canonical_codex_thread_id,
         session_history_identity::{
             FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-            SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES,
         },
     };
     use sandbox::SandboxFactory;
@@ -758,43 +803,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_plan_skips_matching_reused_identity() {
-        let http = test_http_client();
-        let context = context_with_history_ref("history-hash-a");
-        let requested_identity = RestoredSessionIdentity::from_context(&context).unwrap();
-        let restored_identity = requested_identity.clone().with_guest_history(
-            12,
-            "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
-        );
-        let reusable_sandbox =
-            reusable_sandbox_with_identity(Some(restored_identity.clone())).await;
-        let cancel = RunCancellationHandle::new();
-        let mut timing = RunnerPreSpawnTiming::start_after_claim();
-
-        let plan = build_session_history_restore_plan(
-            &http,
-            &context,
-            true,
-            &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
-            &mut timing,
-        );
-
-        match plan {
-            SessionHistoryRestorePlan::SkipVerified(identity) => {
-                assert_eq!(identity, restored_identity);
-                assert_eq!(identity.history_size_bytes(), Some(12));
-                assert_eq!(
-                    identity.guest_history_path(),
-                    Some("/home/user/.claude/projects/-home-user-workspace/session.jsonl")
-                );
-            }
-            _ => panic!("matching reused identity should skip restore"),
-        }
-    }
-
-    #[tokio::test]
     async fn restore_plan_skips_matching_checkpointed_final_identity() {
         let http = test_http_client();
         let history_hash = "a".repeat(64);
@@ -833,7 +841,6 @@ mod tests {
             SessionHistoryRestorePlan::SkipVerified(identity) => {
                 assert_eq!(identity, restored_identity);
                 assert_eq!(identity.history_size_bytes(), Some(12));
-                assert_eq!(identity.guest_history_path(), None);
                 assert_eq!(identity.final_metadata_path(), Some(metadata_path));
             }
             _ => panic!("matching checkpointed final identity should skip restore"),
@@ -893,7 +900,6 @@ mod tests {
             SessionHistoryRestorePlan::SkipVerified(identity) => {
                 assert_eq!(identity, restored_identity);
                 assert_eq!(identity.history_size_bytes(), Some(12));
-                assert_eq!(identity.guest_history_path(), None);
                 assert_eq!(identity.final_metadata_path(), Some(metadata_path));
             }
             _ => panic!("matching Codex checkpointed final identity should skip restore"),
@@ -903,13 +909,23 @@ mod tests {
     #[tokio::test]
     async fn restore_plan_skips_identity_parked_by_finalizer() {
         let http = test_http_client();
-        let context = context_with_history_ref("history-hash-a");
-        let restored_identity = RestoredSessionIdentity::from_context(&context)
-            .unwrap()
-            .with_guest_history(
-                12,
-                "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
-            );
+        let history_hash = "a".repeat(64);
+        let context = context_with_history_ref(&history_hash);
+        let metadata = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            hex::encode(Sha256::digest(b"sess-restore-plan")),
+            FinalSessionHistoryRefKind::Blob,
+            history_hash,
+            12,
+            "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
+        )
+        .unwrap();
+        let restored_identity = RestoredSessionIdentity::from_final_metadata(
+            metadata,
+            "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json",
+            "/home/user/.vm0/guest-agent/runs/previous",
+        )
+        .expect("checkpointed final identity");
         let reusable_sandbox =
             reusable_sandbox_parked_by_finalizer(Some(restored_identity.clone())).await;
         let cancel = RunCancellationHandle::new();
@@ -936,12 +952,23 @@ mod tests {
     #[tokio::test]
     async fn restore_plan_skips_matching_reused_identity_without_requested_size() {
         let http = test_http_client();
-        let context = context_with_history_ref_and_size("history-hash-a", None);
-        let requested_identity = RestoredSessionIdentity::from_context(&context).unwrap();
-        let restored_identity = requested_identity.clone().with_guest_history(
+        let history_hash = "a".repeat(64);
+        let context = context_with_history_ref_and_size(&history_hash, None);
+        let metadata = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            hex::encode(Sha256::digest(b"sess-restore-plan")),
+            FinalSessionHistoryRefKind::Blob,
+            history_hash,
             12,
             "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
-        );
+        )
+        .unwrap();
+        let restored_identity = RestoredSessionIdentity::from_final_metadata(
+            metadata,
+            "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json",
+            "/home/user/.vm0/guest-agent/runs/previous",
+        )
+        .expect("checkpointed final identity");
         let reusable_sandbox =
             reusable_sandbox_with_identity(Some(restored_identity.clone())).await;
         let cancel = RunCancellationHandle::new();
@@ -961,10 +988,6 @@ mod tests {
             SessionHistoryRestorePlan::SkipVerified(identity) => {
                 assert_eq!(identity, restored_identity);
                 assert_eq!(identity.history_size_bytes(), Some(12));
-                assert_eq!(
-                    identity.guest_history_path(),
-                    Some("/home/user/.claude/projects/-home-user-workspace/session.jsonl")
-                );
             }
             _ => panic!("missing requested size should still allow verified skip"),
         }
@@ -1001,51 +1024,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_plan_falls_back_when_matching_reused_identity_has_invalid_history_path() {
-        for guest_history_path in ["", "relative/session.jsonl"] {
-            let http = test_http_client();
-            let context = context_with_history_ref("history-hash-a");
-            let restored_identity = RestoredSessionIdentity::from_context(&context)
-                .unwrap()
-                .with_guest_history(12, guest_history_path);
-            let reusable_sandbox = reusable_sandbox_with_identity(Some(restored_identity)).await;
-            let cancel = RunCancellationHandle::new();
-            let mut timing = RunnerPreSpawnTiming::start_after_claim();
-
-            let plan = build_session_history_restore_plan(
-                &http,
-                &context,
-                true,
-                &cancel,
-                Some(&reusable_sandbox),
-                SandboxReuseResult::Reused,
-                &mut timing,
-            );
-
-            match plan {
-                SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
-                    assert_eq!(
-                        fallback,
-                        Some(SessionHistoryRestoreFallback::UnverifiedIdleIdentity)
-                    );
-                }
-                _ => {
-                    panic!("reused identity with invalid history path should fall back to restore")
-                }
-            }
-        }
-    }
-
-    #[tokio::test]
     async fn restore_plan_falls_back_when_matching_reused_identity_size_mismatches() {
         let http = test_http_client();
-        let context = context_with_history_ref("history-hash-a");
-        let restored_identity = RestoredSessionIdentity::from_context(&context)
-            .unwrap()
-            .with_guest_history(
-                13,
-                "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
-            );
+        let history_hash = "a".repeat(64);
+        let context = context_with_history_ref(&history_hash);
+        let metadata = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            hex::encode(Sha256::digest(b"sess-restore-plan")),
+            FinalSessionHistoryRefKind::Blob,
+            history_hash,
+            13,
+            "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
+        )
+        .unwrap();
+        let restored_identity = RestoredSessionIdentity::from_final_metadata(
+            metadata,
+            "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json",
+            "/home/user/.vm0/guest-agent/runs/previous",
+        )
+        .expect("checkpointed final identity");
         let reusable_sandbox = reusable_sandbox_with_identity(Some(restored_identity)).await;
         let cancel = RunCancellationHandle::new();
         let mut timing = RunnerPreSpawnTiming::start_after_claim();
@@ -1068,44 +1065,6 @@ mod tests {
                 );
             }
             _ => panic!("reused identity with mismatched size should fall back to restore"),
-        }
-    }
-
-    #[tokio::test]
-    async fn restore_plan_falls_back_when_matching_reused_identity_is_too_large_to_verify() {
-        let http = test_http_client();
-        let context = context_with_history_ref_and_size(
-            "history-hash-a",
-            Some(SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES),
-        );
-        let restored_identity = RestoredSessionIdentity::from_context(&context)
-            .unwrap()
-            .with_guest_history(
-                SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES,
-                "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
-            );
-        let reusable_sandbox = reusable_sandbox_with_identity(Some(restored_identity)).await;
-        let cancel = RunCancellationHandle::new();
-        let mut timing = RunnerPreSpawnTiming::start_after_claim();
-
-        let plan = build_session_history_restore_plan(
-            &http,
-            &context,
-            true,
-            &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
-            &mut timing,
-        );
-
-        match plan {
-            SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
-                assert_eq!(
-                    fallback,
-                    Some(SessionHistoryRestoreFallback::UnverifiedIdleIdentity)
-                );
-            }
-            _ => panic!("oversized reused identity should fall back to prestarted restore"),
         }
     }
 

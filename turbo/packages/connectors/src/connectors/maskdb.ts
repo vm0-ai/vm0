@@ -20,6 +20,7 @@ export const maskdb = {
           fields: {
             MASKDB_TOKEN: {
               label: "Token",
+              publicId: "token",
               required: true,
               placeholder: "mk_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc",
             },

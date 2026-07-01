@@ -8,7 +8,7 @@ use crate::error::AgentError;
 use crate::{env, paths};
 use guest_common::log_info;
 
-use super::LOG_TAG;
+use super::{CliRuntimeConfig, LOG_TAG};
 
 /// Build the CLI command + args based on `CLI_AGENT_TYPE`.
 pub fn build_cli_command() -> Result<Vec<String>, AgentError> {
@@ -25,6 +25,34 @@ pub(super) fn build_cli_command_for_framework(
             replay_user_messages,
         )),
         env::Framework::Codex => Ok(build_codex_command(env::use_mock_codex())),
+    }
+}
+
+pub(super) fn build_cli_command_for_runtime(
+    runtime: &CliRuntimeConfig<'_>,
+    replay_user_messages: bool,
+) -> Result<Vec<String>, AgentError> {
+    match runtime.framework {
+        env::Framework::ClaudeCode => Ok(build_claude_command_with_config(
+            runtime.use_mock_claude,
+            runtime.mock_claude_path.as_ref(),
+            ClaudeArgsConfig {
+                resume_id: runtime.resume_session_id.as_ref(),
+                append_system_prompt: runtime.append_system_prompt.as_ref(),
+                disallowed_tools: runtime.disallowed_tools.as_ref(),
+                tools: runtime.tools.as_ref(),
+                settings: runtime.settings.as_ref(),
+                replay_user_messages,
+            },
+        )),
+        env::Framework::Codex => Ok(build_codex_command_with_config(
+            runtime.use_mock_codex,
+            runtime.mock_codex_path.as_ref(),
+            runtime.openai_model.as_ref(),
+            runtime.resume_session_id.as_ref(),
+            runtime.append_system_prompt.as_ref(),
+            runtime.prompt.as_ref(),
+        )),
     }
 }
 
@@ -93,20 +121,32 @@ fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
 }
 
 fn build_claude_command(use_mock: bool, replay_user_messages: bool) -> Vec<String> {
-    let args = build_claude_args(ClaudeArgsConfig {
-        resume_id: env::resume_session_id(),
-        append_system_prompt: env::append_system_prompt(),
-        disallowed_tools: env::disallowed_tools(),
-        tools: env::tools(),
-        settings: env::settings(),
-        replay_user_messages,
-    });
+    let mock_claude_path = use_mock.then(env::mock_claude_path);
+    build_claude_command_with_config(
+        use_mock,
+        mock_claude_path.as_deref().unwrap_or(""),
+        ClaudeArgsConfig {
+            resume_id: env::resume_session_id(),
+            append_system_prompt: env::append_system_prompt(),
+            disallowed_tools: env::disallowed_tools(),
+            tools: env::tools(),
+            settings: env::settings(),
+            replay_user_messages,
+        },
+    )
+}
 
+fn build_claude_command_with_config(
+    use_mock: bool,
+    mock_claude_path: &str,
+    config: ClaudeArgsConfig<'_>,
+) -> Vec<String> {
+    let args = build_claude_args(config);
     let bin = if use_mock {
         log_info!(LOG_TAG, "Using mock-claude for testing");
         // Tests can override the path so they target a cargo-built
         // artifact rather than the sandbox's baked-in `/usr/local/bin`.
-        env::mock_claude_path()
+        mock_claude_path.to_string()
     } else {
         "claude".to_string()
     };
@@ -213,19 +253,38 @@ fn build_codex_args(
 }
 
 fn build_codex_command(use_mock: bool) -> Vec<String> {
+    let mock_codex_path = use_mock.then(env::mock_codex_path);
+    build_codex_command_with_config(
+        use_mock,
+        mock_codex_path.as_deref().unwrap_or(""),
+        env::openai_model(),
+        env::resume_session_id(),
+        env::append_system_prompt(),
+        env::prompt(),
+    )
+}
+
+fn build_codex_command_with_config(
+    use_mock: bool,
+    mock_codex_path: &str,
+    model: &str,
+    resume_id: &str,
+    append_system_prompt: &str,
+    prompt: &str,
+) -> Vec<String> {
     let bin = if use_mock {
         log_info!(LOG_TAG, "Using mock-codex for testing");
-        env::mock_codex_path()
+        mock_codex_path.to_string()
     } else {
         "codex".to_string()
     };
 
     let mut cmd = vec![bin];
     cmd.extend(build_codex_args(
-        env::openai_model(),
-        env::resume_session_id(),
-        env::append_system_prompt(),
-        env::prompt(),
+        model,
+        resume_id,
+        append_system_prompt,
+        prompt,
     ));
     cmd
 }

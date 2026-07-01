@@ -20,6 +20,7 @@ export const manus = {
           fields: {
             MANUS_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-manus-api-key",
             },

@@ -1,24 +1,24 @@
 import { randomUUID } from "node:crypto";
 
 import { cronAggregateInsightsContract } from "@vm0/api-contracts/contracts/cron";
-import { insightsDaily } from "@vm0/db/schema/insights-daily";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { userCache } from "@vm0/db/schema/user-cache";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
-import { writeDb$ } from "../../external/db";
 import {
   deleteUsageFixture$,
+  findUsageInsights$,
+  type InsightData,
   insertUsageEvent$,
+  seedExistingUsageInsights$,
+  seedUsageCachedOrgMember$,
   seedRun$,
   seedUsageFixture$,
+  seedUsageUserName$,
+  setUsageFixtureCreditBalance$,
   type UsageFixture,
 } from "./helpers/zero-usage";
 import { createFixtureTracker } from "./helpers/zero-route-test";
@@ -27,37 +27,6 @@ const context = testContext();
 const store = createStore();
 const FIXED_NOW_ISO = "2999-01-02T12:00:00.000Z";
 const TODAY = "2999-01-02";
-
-interface InsightData {
-  readonly agents: {
-    readonly agentName: string;
-    readonly agentId: string | null;
-    readonly runs: number;
-    readonly credits: number;
-  }[];
-  readonly creditsUsed: number;
-  readonly creditBalance: number;
-  readonly teamUsage: {
-    readonly userId: string;
-    readonly name: string;
-    readonly credits: number;
-    readonly agentNames: string[];
-    readonly agentCredits: Record<string, number>;
-  }[];
-  readonly services: {
-    readonly domain: string;
-    readonly calls: number;
-    readonly agentNames: string[];
-  }[];
-  readonly permissions: {
-    readonly label: string;
-    readonly connectorType: string;
-    readonly allowed: number;
-    readonly denied: number;
-    readonly agentNames: string[];
-  }[];
-  readonly axiomDegraded?: boolean;
-}
 
 function apiClient() {
   return setupApp({ context })(cronAggregateInsightsContract);
@@ -78,20 +47,15 @@ async function rawCronRequest(
 }
 
 async function cleanupFixture(fixture: UsageFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.delete(insightsDaily).where(eq(insightsDaily.orgId, fixture.orgId));
-  await db
-    .delete(orgMembersCache)
-    .where(eq(orgMembersCache.orgId, fixture.orgId));
   await store.set(deleteUsageFixture$, fixture, context.signal);
 }
 
 async function setCreditBalance(fixture: UsageFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db
-    .update(orgMetadata)
-    .set({ credits: 100_000 })
-    .where(eq(orgMetadata.orgId, fixture.orgId));
+  await store.set(
+    setUsageFixtureCreditBalance$,
+    { fixture, credits: 100_000 },
+    context.signal,
+  );
 }
 
 async function seedUserName(
@@ -99,26 +63,27 @@ async function seedUserName(
   email = "test@example.com",
   name: string | null = "Test User",
 ): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(userCache).values({
-    userId: fixture.userId,
-    email,
-    name,
-    cachedAt: new Date(FIXED_NOW_ISO),
-  });
+  await store.set(
+    seedUsageUserName$,
+    {
+      userId: fixture.userId,
+      email,
+      name,
+      cachedAt: new Date(FIXED_NOW_ISO),
+    },
+    context.signal,
+  );
 }
 
 async function seedCachedOrgMember(
   orgId: string,
   userId: string,
 ): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(orgMembersCache).values({
-    orgId,
-    userId,
-    role: "member",
-    cachedAt: new Date(FIXED_NOW_ISO),
-  });
+  await store.set(
+    seedUsageCachedOrgMember$,
+    { orgId, userId, cachedAt: new Date(FIXED_NOW_ISO) },
+    context.signal,
+  );
 }
 
 function mockCurrentOrgMembers(
@@ -148,40 +113,21 @@ async function seedExistingInsights(
   fixture: UsageFixture,
   updatedAt: Date,
 ): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(insightsDaily).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    date: TODAY,
-    updatedAt,
-    data: {
-      agents: [],
-      creditsUsed: 0,
-      creditBalance: 0,
-      teamUsage: [],
-      topTask: null,
-      services: [],
-      permissions: [],
-    },
-  });
+  await store.set(
+    seedExistingUsageInsights$,
+    { fixture, date: TODAY, updatedAt },
+    context.signal,
+  );
 }
 
 async function findInsights(
   fixture: UsageFixture,
 ): Promise<InsightData | null> {
-  const db = store.set(writeDb$);
-  const [row] = await db
-    .select({ data: insightsDaily.data })
-    .from(insightsDaily)
-    .where(
-      and(
-        eq(insightsDaily.orgId, fixture.orgId),
-        eq(insightsDaily.userId, fixture.userId),
-        eq(insightsDaily.date, TODAY),
-      ),
-    )
-    .limit(1);
-  return (row?.data as InsightData | undefined) ?? null;
+  return await store.set(
+    findUsageInsights$,
+    { fixture, date: TODAY },
+    context.signal,
+  );
 }
 
 describe("GET /api/cron/aggregate-insights", () => {

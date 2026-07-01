@@ -21,10 +21,12 @@ export const htmlcsstoimage = {
           fields: {
             HCTI_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
             HCTI_USER_ID: {
               label: "User ID",
+              publicId: "userId",
               required: true,
               storage: "variable",
             },

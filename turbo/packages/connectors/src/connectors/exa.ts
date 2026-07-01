@@ -20,6 +20,7 @@ export const exa = {
           fields: {
             EXA_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "exa_...",
             },

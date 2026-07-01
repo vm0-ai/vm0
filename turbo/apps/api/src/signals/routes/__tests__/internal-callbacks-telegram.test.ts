@@ -1,30 +1,30 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramMessages } from "@vm0/db/schema/telegram-message";
-import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
-import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import type {
+  TestTelegramStateActionBody,
+  TestTelegramStateActionResponse,
+  TestTelegramStateResponse,
+} from "@vm0/api-contracts/contracts/test-telegram-state";
 
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
+import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { clearMockedEnv, mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { writeDb$ } from "../../external/db";
-import { handleTelegramInternalCallback$ } from "../../services/internal-telegram-run-callback.service";
-import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
-import { encryptSecretForTests } from "./helpers/encrypt-secret";
+import { testTelegramStateRoutes } from "../test-telegram-state";
+import { zeroIntegrationsTelegramRoutes } from "../zero-integrations-telegram";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/zero-feature-switches";
+import { seedTelegramUserLink$ } from "./helpers/zero-telegram";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -38,6 +38,14 @@ const store = createStore();
 
 const TEST_BOT_TOKEN = "test-bot-token";
 const OFFICIAL_BOT_TOKEN = "123456:official-test-token";
+const CALLBACK_SECRET = "test-callback-secret";
+const TELEGRAM_CALLBACK_ROUTE = "/api/internal/callbacks/telegram";
+const TELEGRAM_STATE_ROUTE = "/api/test/telegram-state";
+const TELEGRAM_STATE_ACTION_ROUTE = "/api/test/telegram-state/action";
+const telegramRoutes = [
+  ...zeroIntegrationsTelegramRoutes,
+  ...testTelegramStateRoutes,
+] as const;
 
 type TelegramCallbackStatus = "completed" | "failed" | "progress";
 
@@ -67,6 +75,18 @@ interface TelegramSendMessageBody {
   readonly text: string;
   readonly parse_mode?: string;
   readonly reply_parameters?: { readonly message_id: number };
+}
+
+interface TelegramStateMessage {
+  readonly text: string;
+  readonly isBot: boolean;
+  readonly officialOrgId?: string | null;
+  readonly officialUserLinkId?: string | null;
+}
+
+interface TelegramStateRun {
+  readonly session_id: string | null;
+  readonly selected_model: string | null;
 }
 
 function telegramApiMocks(token = TEST_BOT_TOKEN): {
@@ -114,42 +134,96 @@ function telegramApiMocks(token = TEST_BOT_TOKEN): {
   return { chatActions, deleteMessages, sentMessages };
 }
 
+function requestApp(path: string, init?: RequestInit): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: telegramRoutes,
+  });
+  return Promise.resolve(app.request(path, init));
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+function expectOk(response: Response, operation: string): void {
+  if (response.ok) {
+    return;
+  }
+  throw new Error(`${operation} failed with ${response.status}`);
+}
+
+function signedHeaders(rawBody: string): Record<string, string> {
+  const timestamp = Math.floor(now() / 1000);
+  return {
+    "content-type": "application/json",
+    "x-vm0-signature": computeHmacSignature(
+      rawBody,
+      CALLBACK_SECRET,
+      timestamp,
+    ),
+    "x-vm0-timestamp": String(timestamp),
+  };
+}
+
+async function postTelegramStateAction(
+  body: TestTelegramStateActionBody,
+): Promise<TestTelegramStateActionResponse> {
+  const response = await requestApp(TELEGRAM_STATE_ACTION_ROUTE, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  await expectOk(response, `telegram state action ${body.action}`);
+  return await readJson<TestTelegramStateActionResponse>(response);
+}
+
+async function readTelegramState(
+  botId: string,
+): Promise<TestTelegramStateResponse> {
+  const response = await requestApp(
+    `${TELEGRAM_STATE_ROUTE}?bot_id=${encodeURIComponent(botId)}`,
+  );
+  await expectOk(response, "read telegram state");
+  return await readJson<TestTelegramStateResponse>(response);
+}
+
+function stateMessages(
+  state: TestTelegramStateResponse,
+): TelegramStateMessage[] {
+  return state.messages.filter((value): value is TelegramStateMessage => {
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      "text" in value &&
+      "isBot" in value
+    );
+  });
+}
+
+function officialStateMessages(
+  state: TestTelegramStateResponse,
+): TelegramStateMessage[] {
+  return state.official_messages.filter(
+    (value): value is TelegramStateMessage => {
+      return (
+        typeof value === "object" &&
+        value !== null &&
+        "officialOrgId" in value &&
+        "officialUserLinkId" in value
+      );
+    },
+  );
+}
+
 async function deleteFixture(fixture: TelegramFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db
-    .delete(telegramThreadSessions)
-    .where(eq(telegramThreadSessions.telegramUserLinkId, fixture.userLinkId));
-  await db
-    .delete(telegramMessages)
-    .where(eq(telegramMessages.installationId, fixture.installationId));
-  await db
-    .delete(telegramMessages)
-    .where(eq(telegramMessages.officialOrgId, fixture.orgId));
-  await db
-    .delete(telegramUserLinks)
-    .where(eq(telegramUserLinks.id, fixture.userLinkId));
-  await db
-    .delete(telegramInstallations)
-    .where(eq(telegramInstallations.telegramBotId, fixture.installationId));
-  await db
-    .delete(telegramOfficialUserLinks)
-    .where(
-      and(
-        eq(telegramOfficialUserLinks.orgId, fixture.orgId),
-        eq(telegramOfficialUserLinks.vm0UserId, fixture.userId),
-      ),
-    );
-  await db
-    .delete(userFeatureSwitches)
-    .where(
-      and(
-        eq(userFeatureSwitches.orgId, fixture.orgId),
-        eq(userFeatureSwitches.userId, fixture.userId),
-      ),
-    );
-  await db
-    .delete(modelProviders)
-    .where(eq(modelProviders.orgId, fixture.orgId));
+  await postTelegramStateAction({
+    action: "delete-fixture",
+    org_id: fixture.orgId,
+    compose_ids: [fixture.composeId],
+    telegram_bot_ids: [fixture.installationId],
+  });
+  await deleteFeatureSwitchesForUser(context, fixture);
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
 }
 
@@ -158,33 +232,52 @@ async function seedTelegramInstallation(args: {
   readonly userId: string;
   readonly composeId: string;
 }): Promise<{ readonly installationId: string; readonly userLinkId: string }> {
-  const db = store.set(writeDb$);
   const installationId = `bot-${randomUUID()}`;
-  await db.insert(telegramInstallations).values({
-    telegramBotId: installationId,
-    botUsername: `bot_${installationId.slice(4, 12)}`,
-    encryptedBotToken: encryptSecretForTests(TEST_BOT_TOKEN),
-    webhookSecret: `whs_${randomUUID()}`,
-    defaultComposeId: args.composeId,
-    ownerUserId: args.userId,
-    orgId: args.orgId,
+  await postTelegramStateAction({
+    action: "seed-installation",
+    org_id: args.orgId,
+    owner_user_id: args.userId,
+    telegram_bot_id: installationId,
+    bot_username: `bot_${installationId.slice(4, 12)}`,
+    bot_token: TEST_BOT_TOKEN,
+    default_compose_id: args.composeId,
+    skip_compose: true,
   });
-  const [userLink] = await db
-    .insert(telegramUserLinks)
-    .values({
+  const userLink = await store.set(
+    seedTelegramUserLink$,
+    {
       installationId,
       telegramUserId: `tg-${randomUUID()}`,
       telegramUsername: "alice",
       telegramDisplayName: "Alice",
       vm0UserId: args.userId,
-    })
-    .returning({ id: telegramUserLinks.id });
-  if (!userLink) {
-    throw new Error(
-      "seedTelegramInstallation: user link insert returned no row",
-    );
+    },
+    context.signal,
+  );
+  if (!userLink.userLinkId) {
+    throw new Error("seedTelegramInstallation: response missing user link id");
   }
-  return { installationId, userLinkId: userLink.id };
+  return { installationId, userLinkId: userLink.userLinkId };
+}
+
+async function seedTelegramCallback(args: {
+  readonly runId: string;
+  readonly payload: TelegramCallbackPayload;
+}): Promise<{ readonly callbackId: string }> {
+  const response = await postTelegramStateAction({
+    action: "seed-agent-run-callback",
+    run_id: args.runId,
+    url: `http://localhost${TELEGRAM_CALLBACK_ROUTE}`,
+    internal_kind: "telegram",
+    payload: args.payload as unknown as Record<string, unknown>,
+    secret: CALLBACK_SECRET,
+  });
+  const callbackId =
+    typeof response.callback_id === "string" ? response.callback_id : null;
+  if (!callbackId) {
+    throw new Error("seedTelegramCallback: response missing callback_id");
+  }
+  return { callbackId };
 }
 
 async function seedFixture(): Promise<TelegramFixture> {
@@ -230,15 +323,7 @@ async function seedFixture(): Promise<TelegramFixture> {
     existingSessionId: null,
     isDM: false,
   };
-  const { callbackId } = await store.set(
-    seedAgentRunCallback$,
-    {
-      runId,
-      internalKind: "telegram",
-      payload: payload as unknown as Record<string, unknown>,
-    },
-    context.signal,
-  );
+  const { callbackId } = await seedTelegramCallback({ runId, payload });
 
   return {
     ...base,
@@ -304,15 +389,7 @@ async function seedResponderFixture(): Promise<TelegramFixture> {
     existingSessionId: null,
     isDM: false,
   };
-  const { callbackId } = await store.set(
-    seedAgentRunCallback$,
-    {
-      runId,
-      internalKind: "telegram",
-      payload: payload as unknown as Record<string, unknown>,
-    },
-    context.signal,
-  );
+  const { callbackId } = await seedTelegramCallback({ runId, payload });
 
   return {
     ...base,
@@ -332,7 +409,25 @@ async function dispatchTelegramCallback(body: {
   readonly error?: string;
   readonly payload: unknown;
 }) {
-  return await store.set(handleTelegramInternalCallback$, body, context.signal);
+  const rawBody = JSON.stringify(body);
+  const response = await requestApp(TELEGRAM_CALLBACK_ROUTE, {
+    method: "POST",
+    headers: signedHeaders(rawBody),
+    body: rawBody,
+  });
+  const responseBody = (await response.json()) as unknown;
+  if (response.ok) {
+    return responseBody;
+  }
+  const errorBody =
+    typeof responseBody === "object" && responseBody !== null
+      ? (responseBody as Record<string, unknown>)
+      : {};
+  return {
+    success: false,
+    status: response.status,
+    ...errorBody,
+  };
 }
 
 function completedOutput(text = "**Done** with `code`"): void {
@@ -345,11 +440,8 @@ function completedOutput(text = "**Done** with `code`"): void {
 }
 
 async function enableAuditLink(fixture: TelegramFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(userFeatureSwitches).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    switches: { [FeatureSwitchKey.ZeroDebug]: true },
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.ZeroDebug]: true,
   });
 }
 
@@ -358,19 +450,22 @@ async function findThreadSession(args: {
   readonly chatId: string;
   readonly rootMessageId: string;
 }): Promise<{ readonly agentSessionId: string } | null> {
-  const db = store.set(writeDb$);
-  const [row] = await db
-    .select({ agentSessionId: telegramThreadSessions.agentSessionId })
-    .from(telegramThreadSessions)
-    .where(
-      and(
-        eq(telegramThreadSessions.telegramUserLinkId, args.userLinkId),
-        eq(telegramThreadSessions.chatId, args.chatId),
-        eq(telegramThreadSessions.rootMessageId, args.rootMessageId),
-      ),
-    )
-    .limit(1);
-  return row ?? null;
+  const response = await postTelegramStateAction({
+    action: "find-thread-session",
+    user_link_id: args.userLinkId,
+    chat_id: args.chatId,
+    root_message_id: args.rootMessageId,
+  });
+  const threadSession =
+    typeof response.thread_session === "object" &&
+    response.thread_session !== null
+      ? (response.thread_session as Record<string, unknown>)
+      : null;
+  const agentSessionId =
+    typeof threadSession?.agent_session_id === "string"
+      ? threadSession.agent_session_id
+      : null;
+  return agentSessionId ? { agentSessionId } : null;
 }
 
 afterEach(() => {
@@ -378,7 +473,7 @@ afterEach(() => {
   clearMockedEnv();
 });
 
-describe("handleTelegramInternalCallback$", () => {
+describe("POST /api/internal/callbacks/telegram", () => {
   const track = createFixtureTracker<TelegramFixture>((fixture) => {
     return deleteFixture(fixture);
   });
@@ -440,13 +535,9 @@ describe("handleTelegramInternalCallback$", () => {
       "<b>Done</b> with <code>code</code>",
     );
 
-    const db = store.set(writeDb$);
-    const [stored] = await db
-      .select({ text: telegramMessages.text, isBot: telegramMessages.isBot })
-      .from(telegramMessages)
-      .where(eq(telegramMessages.installationId, fixture.installationId))
-      .limit(1);
-    expect(stored).toStrictEqual({
+    const state = await readTelegramState(fixture.installationId);
+    const [stored] = stateMessages(state);
+    expect(stored).toMatchObject({
       text: "**Done** with `code`",
       isBot: true,
     });
@@ -538,12 +629,12 @@ describe("handleTelegramInternalCallback$", () => {
 
   it("includes audit links and agent reply footer text when configured", async () => {
     const fixture = await track(seedFixture());
-    const db = store.set(writeDb$);
     await enableAuditLink(fixture);
-    await db
-      .update(zeroRuns)
-      .set({ selectedModel: "claude-opus-4-7" })
-      .where(eq(zeroRuns.id, fixture.runId));
+    await postTelegramStateAction({
+      action: "update-run",
+      run_id: fixture.runId,
+      selected_model: "claude-opus-4-7",
+    });
     const telegram = telegramApiMocks();
     mockEnv("APP_URL", "https://app.vm0.test");
     completedOutput("Plain result");
@@ -565,11 +656,11 @@ describe("handleTelegramInternalCallback$", () => {
 
   it("renders responded-by and selected-model footer text for non-default agent replies", async () => {
     const fixture = await track(seedResponderFixture());
-    const db = store.set(writeDb$);
-    await db
-      .update(zeroRuns)
-      .set({ selectedModel: "claude-opus-4-7" })
-      .where(eq(zeroRuns.id, fixture.runId));
+    await postTelegramStateAction({
+      action: "update-run",
+      run_id: fixture.runId,
+      selected_model: "claude-opus-4-7",
+    });
     const telegram = telegramApiMocks();
     completedOutput("Responder result");
 
@@ -627,32 +718,33 @@ describe("handleTelegramInternalCallback$", () => {
 
   it("does not quote DM replies and replaces the DM thread mapping", async () => {
     const fixture = await track(seedFixture());
-    const db = store.set(writeDb$);
-    const [run] = await db
-      .select({ sessionId: agentRuns.sessionId })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, fixture.runId))
-      .limit(1);
-    if (!run) {
+    const runResponse = await postTelegramStateAction({
+      action: "get-run",
+      run_id: fixture.runId,
+    });
+    const run =
+      typeof runResponse.run === "object" && runResponse.run !== null
+        ? (runResponse.run as TelegramStateRun)
+        : null;
+    if (!run?.session_id) {
       throw new Error("Expected seeded run");
     }
-    const [oldSession] = await db
-      .insert(agentSessions)
-      .values({
-        userId: fixture.userId,
-        orgId: fixture.orgId,
-        agentComposeId: fixture.composeId,
-      })
-      .returning({ id: agentSessions.id });
-    if (!oldSession) {
+    const oldSession = await postTelegramStateAction({
+      action: "seed-thread-session",
+      user_link_id: fixture.userLinkId,
+      chat_id: fixture.payload.chatId,
+      root_message_id: "dm",
+      org_id: fixture.orgId,
+      user_id: fixture.userId,
+      compose_id: fixture.composeId,
+    });
+    const oldSessionId =
+      typeof oldSession.agent_session_id === "string"
+        ? oldSession.agent_session_id
+        : null;
+    if (!oldSessionId) {
       throw new Error("Expected old session");
     }
-    await db.insert(telegramThreadSessions).values({
-      telegramUserLinkId: fixture.userLinkId,
-      chatId: fixture.payload.chatId,
-      rootMessageId: "dm",
-      agentSessionId: oldSession.id,
-    });
     const telegram = telegramApiMocks();
     completedOutput("DM result");
 
@@ -675,22 +767,23 @@ describe("handleTelegramInternalCallback$", () => {
       chatId: fixture.payload.chatId,
       rootMessageId: "dm",
     });
-    expect(session?.agentSessionId).toBe(run.sessionId);
-    expect(session?.agentSessionId).not.toBe(oldSession.id);
+    expect(session?.agentSessionId).toBe(run.session_id);
+    expect(session?.agentSessionId).not.toBe(oldSessionId);
   });
 
   it("uses the official bot token and official message scope", async () => {
     const fixture = await track(seedFixture());
-    const db = store.set(writeDb$);
-    const [officialLink] = await db
-      .insert(telegramOfficialUserLinks)
-      .values({
-        orgId: fixture.orgId,
-        vm0UserId: fixture.userId,
-        telegramUserId: `tg-${randomUUID()}`,
-      })
-      .returning({ id: telegramOfficialUserLinks.id });
-    if (!officialLink) {
+    const officialLink = await postTelegramStateAction({
+      action: "seed-official-user-link",
+      org_id: fixture.orgId,
+      user_id: fixture.userId,
+      telegram_user_id: `tg-${randomUUID()}`,
+    });
+    const officialLinkId =
+      typeof officialLink.user_link_id === "string"
+        ? officialLink.user_link_id
+        : null;
+    if (!officialLinkId) {
       throw new Error("Expected official user link");
     }
     mockEnv("TELEGRAM_OFFICIAL_BOT_TOKEN", OFFICIAL_BOT_TOKEN);
@@ -706,23 +799,17 @@ describe("handleTelegramInternalCallback$", () => {
       payload: {
         ...fixture.payload,
         installationId: OFFICIAL_TELEGRAM_BOT_ID,
-        userLinkId: officialLink.id,
+        userLinkId: officialLinkId,
       },
     });
 
     expect(result).toStrictEqual({ success: true });
     expect(telegram.sentMessages).toHaveLength(1);
-    const [stored] = await db
-      .select({
-        officialOrgId: telegramMessages.officialOrgId,
-        officialUserLinkId: telegramMessages.officialUserLinkId,
-      })
-      .from(telegramMessages)
-      .where(eq(telegramMessages.officialOrgId, fixture.orgId))
-      .limit(1);
-    expect(stored).toStrictEqual({
+    const state = await readTelegramState(fixture.installationId);
+    const [stored] = officialStateMessages(state);
+    expect(stored).toMatchObject({
       officialOrgId: fixture.orgId,
-      officialUserLinkId: officialLink.id,
+      officialUserLinkId: officialLinkId,
     });
   });
 

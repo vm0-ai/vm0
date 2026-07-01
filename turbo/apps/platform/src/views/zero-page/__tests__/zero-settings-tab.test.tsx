@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   zeroAgentInstructionsContract,
@@ -17,6 +17,127 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 const context = testContext();
 
 const AGENT_ID = "a0000000-0000-4000-a000-000000000020";
+const AVATAR_SVG_PRELOAD_CACHE_KEY = "vm0AvatarSvgPreloadCache";
+
+function resetAvatarSvgPreloadCache(): void {
+  Reflect.deleteProperty(globalThis, AVATAR_SVG_PRELOAD_CACHE_KEY);
+}
+
+function trackAvatarSvgImagePreloads(): {
+  readonly srcs: readonly string[];
+  readonly restore: () => void;
+} {
+  const srcs: string[] = [];
+  const originalGlobalImage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "Image",
+  );
+  const originalWindowImage = Object.getOwnPropertyDescriptor(window, "Image");
+
+  class TestImagePreload {
+    decoding = "";
+    fetchPriority = "";
+    #src = "";
+
+    get src(): string {
+      return this.#src;
+    }
+
+    set src(value: string) {
+      this.#src = value;
+      srcs.push(value);
+    }
+  }
+
+  const imageConstructor = TestImagePreload as unknown as typeof Image;
+  Object.defineProperty(globalThis, "Image", {
+    configurable: true,
+    value: imageConstructor,
+    writable: true,
+  });
+  Object.defineProperty(window, "Image", {
+    configurable: true,
+    value: imageConstructor,
+    writable: true,
+  });
+
+  return {
+    srcs,
+    restore: () => {
+      if (originalGlobalImage) {
+        Object.defineProperty(globalThis, "Image", originalGlobalImage);
+      } else {
+        Reflect.deleteProperty(globalThis, "Image");
+      }
+      if (originalWindowImage) {
+        Object.defineProperty(window, "Image", originalWindowImage);
+      } else {
+        Reflect.deleteProperty(window, "Image");
+      }
+    },
+  };
+}
+
+function mockImmediateIdleCallback(): () => void {
+  const originalRequestIdleCallback = Object.getOwnPropertyDescriptor(
+    window,
+    "requestIdleCallback",
+  );
+  Object.defineProperty(window, "requestIdleCallback", {
+    configurable: true,
+    value: (callback: IdleRequestCallback): number => {
+      callback({
+        didTimeout: false,
+        timeRemaining: () => {
+          return 50;
+        },
+      });
+      return 1;
+    },
+    writable: true,
+  });
+
+  return () => {
+    if (originalRequestIdleCallback) {
+      Object.defineProperty(
+        window,
+        "requestIdleCallback",
+        originalRequestIdleCallback,
+      );
+    } else {
+      Reflect.deleteProperty(window, "requestIdleCallback");
+    }
+  };
+}
+
+function mockSaveDataPreference(saveData: boolean): () => void {
+  const originalConnection = Object.getOwnPropertyDescriptor(
+    navigator,
+    "connection",
+  );
+  Object.defineProperty(navigator, "connection", {
+    configurable: true,
+    value: { saveData },
+  });
+
+  return () => {
+    if (originalConnection) {
+      Object.defineProperty(navigator, "connection", originalConnection);
+    } else {
+      Reflect.deleteProperty(navigator, "connection");
+    }
+  };
+}
+
+function avatarSvgPreloadSrcs(srcs: readonly string[]): string[] {
+  return srcs.filter((src) => {
+    return src.includes("/platform/views/zero-page/assets/avatar-svg/");
+  });
+}
+
+function uniqueAvatarSvgPreloadSrcs(srcs: readonly string[]): string[] {
+  return Array.from(new Set(avatarSvgPreloadSrcs(srcs)));
+}
 
 function prepareAgentProfile(): void {
   let detail: ZeroAgentResponse = {
@@ -72,6 +193,101 @@ function prepareAgentProfile(): void {
 }
 
 describe("zero settings tab", () => {
+  beforeEach(() => {
+    resetAvatarSvgPreloadCache();
+  });
+
+  afterEach(() => {
+    resetAvatarSvgPreloadCache();
+  });
+
+  it("preloads avatar SVG layers after opening Avatar Maker", async () => {
+    prepareAgentProfile();
+    const imagePreloads = trackAvatarSvgImagePreloads();
+    const restoreIdleCallback = mockImmediateIdleCallback();
+
+    try {
+      detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+
+      const trigger = await screen.findByLabelText("Create custom avatar");
+      expect(avatarSvgPreloadSrcs(imagePreloads.srcs)).toHaveLength(0);
+
+      click(trigger);
+
+      await waitFor(() => {
+        expect(uniqueAvatarSvgPreloadSrcs(imagePreloads.srcs)).toHaveLength(
+          225,
+        );
+      });
+
+      const allAvatarSrcs = avatarSvgPreloadSrcs(imagePreloads.srcs);
+      const uniqueAvatarSrcs = uniqueAvatarSvgPreloadSrcs(imagePreloads.srcs);
+      expect(allAvatarSrcs).toHaveLength(225);
+      expect(
+        uniqueAvatarSrcs.filter((src) => {
+          return src.includes("/head-r");
+        }),
+      ).toHaveLength(25);
+      expect(
+        uniqueAvatarSrcs.filter((src) => {
+          return src.includes("/face-r");
+        }),
+      ).toHaveLength(75);
+      expect(
+        uniqueAvatarSrcs.filter((src) => {
+          return src.includes("/hair-r");
+        }),
+      ).toHaveLength(125);
+      expect(
+        uniqueAvatarSrcs.some((src) => {
+          return src.includes("/web/assets/avatar-svg/");
+        }),
+      ).toBeFalsy();
+
+      click(screen.getByText("Cancel"));
+
+      await waitFor(() => {
+        expect(screen.queryAllByText("Give your agent a face")).toHaveLength(0);
+      });
+
+      click(screen.getByLabelText("Create custom avatar"));
+
+      await waitFor(() => {
+        expect(
+          screen.getAllByText("Give your agent a face").length,
+        ).toBeGreaterThan(0);
+      });
+      expect(avatarSvgPreloadSrcs(imagePreloads.srcs)).toHaveLength(225);
+    } finally {
+      restoreIdleCallback();
+      imagePreloads.restore();
+    }
+  });
+
+  it("does not preload the full avatar SVG catalog when save-data is enabled", async () => {
+    prepareAgentProfile();
+    const imagePreloads = trackAvatarSvgImagePreloads();
+    const restoreIdleCallback = mockImmediateIdleCallback();
+    const restoreSaveDataPreference = mockSaveDataPreference(true);
+
+    try {
+      detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+
+      click(await screen.findByLabelText("Create custom avatar"));
+
+      await waitFor(() => {
+        expect(
+          screen.getAllByText("Give your agent a face").length,
+        ).toBeGreaterThan(0);
+      });
+      expect(avatarSvgPreloadSrcs(imagePreloads.srcs)).toHaveLength(0);
+    } finally {
+      restoreSaveDataPreference();
+      restoreIdleCallback();
+      imagePreloads.restore();
+    }
+  });
+
   it("creates and saves a custom avatar from the profile page", async () => {
     prepareAgentProfile();
 

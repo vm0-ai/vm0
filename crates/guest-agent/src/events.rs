@@ -62,7 +62,16 @@ pub async fn send_event(
 /// This function does not perform filesystem or network I/O; session metadata
 /// capture is handled separately before payload preparation, and network
 /// delivery happens in `post_event` / `send_event`.
-pub fn prepare_event_payload(mut event: Value, seq: u32, masker: &SecretMasker) -> Value {
+pub fn prepare_event_payload(event: Value, seq: u32, masker: &SecretMasker) -> Value {
+    prepare_event_payload_for_run_id(event, seq, masker, env::run_id())
+}
+
+pub(crate) fn prepare_event_payload_for_run_id(
+    mut event: Value,
+    seq: u32,
+    masker: &SecretMasker,
+    run_id: &str,
+) -> Value {
     // Add sequence number
     if let Some(obj) = event.as_object_mut() {
         obj.insert("sequenceNumber".to_string(), json!(seq));
@@ -72,10 +81,7 @@ pub fn prepare_event_payload(mut event: Value, seq: u32, masker: &SecretMasker) 
     masker.mask_value(&mut event);
 
     let mut payload = Map::new();
-    payload.insert(
-        "runId".to_string(),
-        Value::String(env::run_id().to_string()),
-    );
+    payload.insert("runId".to_string(), Value::String(run_id.to_string()));
     payload.insert("events".to_string(), Value::Array(vec![event]));
     Value::Object(payload)
 }
@@ -470,23 +476,55 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
 ///   resolution is deferred to checkpoint time.
 pub(crate) struct SessionMetadataCapture {
     existing_session_id_seeded: bool,
+    framework: Framework,
+    home_dir: String,
+    session_id_file: String,
+    session_history_path_file: String,
 }
 
 impl SessionMetadataCapture {
     pub(crate) fn new() -> Self {
+        Self::from_values(
+            Framework::from_env(),
+            env::home_dir(),
+            paths::session_id_file(),
+            paths::session_history_path_file(),
+        )
+    }
+
+    pub(crate) fn from_values(
+        framework: Framework,
+        home_dir: &str,
+        session_id_file: &str,
+        session_history_path_file: &str,
+    ) -> Self {
         Self {
             existing_session_id_seeded: false,
+            framework,
+            home_dir: home_dir.to_string(),
+            session_id_file: session_id_file.to_string(),
+            session_history_path_file: session_history_path_file.to_string(),
         }
     }
 
     pub(crate) fn capture_event(&mut self, event: &Value, masker: &SecretMasker) {
-        register_event_session_identifier(event, masker);
+        self.register_event_session_identifier(event, masker);
 
-        let parsed = match Framework::from_env() {
+        let session_id = match self.framework {
             Framework::ClaudeCode => extract_claude_session_id(event),
             Framework::Codex => extract_codex_thread_id(event),
         };
-        let Some((session_id, history_path_payload)) = parsed else {
+        let Some(session_id) = session_id else {
+            self.seed_existing_session_id(masker);
+            return;
+        };
+        let Some(history_path_payload) =
+            session_metadata::history_marker_payload_for_session_id_with_home(
+                self.framework,
+                &self.home_dir,
+                &session_id,
+            )
+        else {
             self.seed_existing_session_id(masker);
             return;
         };
@@ -495,7 +533,7 @@ impl SessionMetadataCapture {
         // Idempotency: only the first id-bearing event of the run wins, but allow
         // a retry of the same session to repair a missing history marker after a
         // partial metadata write.
-        match std::fs::read_to_string(paths::session_id_file()) {
+        match std::fs::read_to_string(&self.session_id_file) {
             Ok(existing_session_id) => {
                 let existing_session_id = existing_session_id.trim();
                 if !existing_session_id.is_empty() {
@@ -503,7 +541,10 @@ impl SessionMetadataCapture {
                     self.existing_session_id_seeded = true;
                 }
                 if existing_session_id == session_id {
-                    session_metadata::ensure_history_marker_payload(&history_path_payload);
+                    session_metadata::ensure_history_marker_payload_at(
+                        &self.session_history_path_file,
+                        &history_path_payload,
+                    );
                 }
                 return;
             }
@@ -512,27 +553,30 @@ impl SessionMetadataCapture {
                 log_error!(
                     LOG_TAG,
                     "Failed to read existing session ID from {}: {e}",
-                    paths::session_id_file()
+                    self.session_id_file
                 );
                 return;
             }
         }
 
         log_info!(LOG_TAG, "Captured session ID");
-        match paths::write_private(paths::session_id_file(), &session_id) {
-            Ok(()) => log_info!(
-                LOG_TAG,
-                "Session ID written to {}",
-                paths::session_id_file()
-            ),
+        match paths::write_private(&self.session_id_file, &session_id) {
+            Ok(()) => log_info!(LOG_TAG, "Session ID written to {}", self.session_id_file),
             Err(e) => log_error!(
                 LOG_TAG,
                 "Failed to write session ID to {}: {e}",
-                paths::session_id_file()
+                self.session_id_file
             ),
         }
         self.existing_session_id_seeded = true;
-        session_metadata::write_session_history_marker(&history_path_payload);
+        session_metadata::write_session_history_marker_at(
+            &self.session_history_path_file,
+            &history_path_payload,
+        );
+    }
+
+    pub(crate) fn register_event_session_identifier(&self, event: &Value, masker: &SecretMasker) {
+        register_event_session_identifier_for_framework(event, masker, self.framework);
     }
 
     fn seed_existing_session_id(&mut self, masker: &SecretMasker) {
@@ -541,7 +585,7 @@ impl SessionMetadataCapture {
         }
         self.existing_session_id_seeded = true;
 
-        match std::fs::read_to_string(paths::session_id_file()) {
+        match std::fs::read_to_string(&self.session_id_file) {
             Ok(session_id) => {
                 let session_id = session_id.trim();
                 if !session_id.is_empty() {
@@ -552,14 +596,18 @@ impl SessionMetadataCapture {
             Err(e) => log_error!(
                 LOG_TAG,
                 "Failed to read existing session ID from {}: {e}",
-                paths::session_id_file()
+                self.session_id_file
             ),
         }
     }
 }
 
-pub(crate) fn register_event_session_identifier(event: &Value, masker: &SecretMasker) {
-    let id = match Framework::from_env() {
+fn register_event_session_identifier_for_framework(
+    event: &Value,
+    masker: &SecretMasker,
+    framework: Framework,
+) {
+    let id = match framework {
         Framework::ClaudeCode => string_field(event, "session_id"),
         Framework::Codex => string_field(event, "thread_id"),
     };
@@ -575,13 +623,9 @@ fn string_field<'a>(event: &'a Value, field: &str) -> Option<&'a str> {
         .filter(|value| !value.is_empty())
 }
 
-/// Claude variant — matches `system/init` and computes the project-scoped
-/// jsonl path under `$HOME/.claude/projects/-{cwd}/`.
-fn extract_claude_session_id(event: &Value) -> Option<(String, String)> {
-    let session_id = raw_claude_session_id(event)?;
-    let history_path_payload = session_metadata::claude_history_path_payload(session_id)?;
-
-    Some((session_id.to_string(), history_path_payload))
+/// Claude variant — matches `system/init` and returns the raw Claude session id.
+fn extract_claude_session_id(event: &Value) -> Option<String> {
+    raw_claude_session_id(event).map(ToString::to_string)
 }
 
 fn raw_claude_session_id(event: &Value) -> Option<&str> {
@@ -593,14 +637,11 @@ fn raw_claude_session_id(event: &Value) -> Option<&str> {
     string_field(event, "session_id")
 }
 
-/// Codex variant — matches `thread.started` and emits a session-history
-/// marker pointing at `${HOME}/.codex/sessions` plus the thread_id.
-fn extract_codex_thread_id(event: &Value) -> Option<(String, String)> {
+/// Codex variant — matches `thread.started` and returns the canonical Codex
+/// thread id.
+fn extract_codex_thread_id(event: &Value) -> Option<String> {
     let thread_id = raw_codex_thread_id(event)?;
-    let thread_id = guest_contracts::codex_thread_id::canonical_codex_thread_id(thread_id)?;
-    let marker = session_metadata::codex_history_marker_payload(&thread_id);
-
-    Some((thread_id, marker))
+    guest_contracts::codex_thread_id::canonical_codex_thread_id(thread_id)
 }
 
 fn raw_codex_thread_id(event: &Value) -> Option<&str> {

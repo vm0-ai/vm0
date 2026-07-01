@@ -20,6 +20,7 @@ export const keyframeLabs = {
           fields: {
             KEYFRAME_LABS_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-keyframe-labs-api-key",
             },

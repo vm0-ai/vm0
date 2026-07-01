@@ -19,6 +19,7 @@ export const wandb = {
           fields: {
             WANDB_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "Your W&B API Key",
             },

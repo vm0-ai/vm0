@@ -18,11 +18,14 @@ from mitmproxy import http
 
 from authority_utils import (
     IPV6_VERSION,
+    authority_has_empty_port,
+    bracketed_authority_host_is_ipv6,
     format_url_host,
     has_ascii_space_or_control,
     is_default_scheme_port,
     parse_authority_port,
     percent_decode_host,
+    raw_authority_host,
 )
 from host_normalization import normalize_idna_hostname
 from path_security import has_unsafe_path
@@ -32,7 +35,7 @@ from url_syntax import (
     strip_optional_terminal_slash,
 )
 
-_FORBIDDEN_HOST_CHARS = frozenset("#%,/<>?@[\\]^|{}")
+_FORBIDDEN_HOST_CHARS = frozenset("#%*,/<>?@[\\]^|{}")
 _PERCENT_DECODED_HOST_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61,")
 _URL_PATH_SAFE_CHARS = "/%:@!$&'()*+,;="
 _URL_QUERY_SAFE_CHARS = "/?%:@!$&'()*+,;="
@@ -388,6 +391,11 @@ def _percent_decode_host(host: str) -> str:
     return decoded.value
 
 
+def _raw_rewrite_base_host(netloc: str) -> str | None:
+    raw_host = raw_authority_host(netloc)
+    return raw_host.hostname if raw_host is not None else None
+
+
 def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResult, str]:
     if "\\" in resolved_base:
         raise ValueError("Invalid auth.base URL: must not contain backslash")
@@ -405,13 +413,17 @@ def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResul
         raise ValueError("Invalid auth.base URL: missing host")
     if parsed.username is not None or parsed.password is not None:
         raise ValueError("Invalid auth.base URL: userinfo is not allowed")
+    if not bracketed_authority_host_is_ipv6(parsed.netloc):
+        raise ValueError("Invalid auth.base URL: invalid host")
+    if authority_has_empty_port(parsed.netloc):
+        raise ValueError("Invalid auth.base URL: invalid port")
     if parsed.fragment:
         raise ValueError("Invalid auth.base URL: must not contain fragment")
     if has_unsafe_path(parsed.path):
         raise ValueError("Invalid auth.base URL: unsafe path syntax is not allowed")
 
-    host = parsed.hostname
-    if not host:
+    host = _raw_rewrite_base_host(parsed.netloc)
+    if host is None:
         raise ValueError("Invalid auth.base URL: missing host")
     decoded_host = _percent_decode_host(host)
     try:

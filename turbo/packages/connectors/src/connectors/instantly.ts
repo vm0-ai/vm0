@@ -20,6 +20,7 @@ export const instantly = {
           fields: {
             INSTANTLY_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-instantly-api-key",
             },

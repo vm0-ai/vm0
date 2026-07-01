@@ -1,84 +1,61 @@
 import { randomUUID } from "node:crypto";
 
-import { createStore } from "ccstate";
-import { count, eq, inArray } from "drizzle-orm";
-
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { e2eTelegramMockCallLog } from "@vm0/db/schema/e2e-telegram-mock-call-log";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramMessages } from "@vm0/db/schema/telegram-message";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { http, HttpResponse } from "msw";
+import type { TestSlackStateResponse } from "@vm0/api-contracts/contracts/test-slack-state";
+import type {
+  TestTelegramStateResponse,
+  TestTelegramStateSeedResponse,
+} from "@vm0/api-contracts/contracts/test-telegram-state";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-context";
-import { writeDb$ } from "../../external/db";
+import { testSlackDispatchProbeRoutes } from "../test-slack-dispatch-probe";
 import { testSlackStateRoutes } from "../test-slack-state";
+import { testTelegramDispatchProbeRoutes } from "../test-telegram-dispatch-probe";
+import { testTelegramMockRoutes } from "../test-telegram-mock";
 import { testTelegramStateRoutes } from "../test-telegram-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
+const TELEGRAM_STATE_ROUTE = "/api/test/telegram-state";
+const TELEGRAM_DISPATCH_PROBE_ROUTE = "/api/test/telegram-dispatch-probe";
+const TELEGRAM_MOCK_ROUTE = "/api/test/telegram-mock";
+const SLACK_STATE_ROUTE = "/api/test/slack-state";
+const SLACK_DISPATCH_PROBE_ROUTE = "/api/test/slack-dispatch-probe";
+const TELEGRAM_TEST_BOT_TOKEN = "123456:e2e-test-bot-token";
+const TELEGRAM_TEST_API_BASE_URL = "https://telegram.test/bot";
 
-interface SeededTelegramState {
+interface TelegramFixture {
   readonly botId: string;
   readonly userId: string;
   readonly orgId: string;
-  readonly composeId: string;
-  readonly versionId: string;
-  readonly chatId: string;
+  readonly telegramUserId: string;
+  readonly defaultAgentId: string;
 }
 
-interface SeededTelegramPostState {
-  readonly botId: string;
-  readonly orgId: string;
-  readonly composeId: string;
-}
-
-interface SeededSlackPostState {
+interface SlackFixture {
   readonly teamId: string;
+  readonly slackUserId: string;
 }
 
-interface TelegramStateResponse {
-  readonly installation: Record<string, unknown> | null;
-  readonly links: readonly Record<string, unknown>[];
-  readonly message_count: number;
-  readonly recent_runs: readonly Record<string, unknown>[];
-  readonly org_metadata: Record<string, unknown> | null;
-  readonly default_agent: Record<string, unknown> | null;
-  readonly default_compose: Record<string, unknown> | null;
-  readonly default_compose_version: {
-    readonly id: string;
-    readonly content_keys: readonly string[];
-  } | null;
-  readonly resolved_telegram_api_url: string | null;
-  readonly mock_calls: readonly Record<string, unknown>[];
-}
-
-interface TelegramStateSeedResponse {
-  readonly ok: true;
-  readonly bot_id: string;
-  readonly org_id: string;
-  readonly vm0_user_id: string;
-  readonly user_link_id: string | null;
-  readonly default_agent_id: string;
+interface RecentRun {
+  readonly id: string;
+  readonly triggerSource: string | null;
+  readonly promptPreview: string | null;
 }
 
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
   const app = createAppWithRoutes({
     signal: context.signal,
-    routes: [...testTelegramStateRoutes, ...testSlackStateRoutes],
+    routes: [
+      ...testTelegramStateRoutes,
+      ...testTelegramMockRoutes,
+      ...testTelegramDispatchProbeRoutes,
+      ...testSlackStateRoutes,
+      ...testSlackDispatchProbeRoutes,
+    ],
   });
   return Promise.resolve(app.request(path, init));
 }
@@ -87,156 +64,28 @@ async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function seedTelegramState(): Promise<SeededTelegramState> {
-  const writeDb = store.set(writeDb$);
-  const userId = `user_${randomUUID()}`;
-  const orgId = `org_${randomUUID()}`;
-  const botId = `bot_${randomUUID()}`;
-  const composeId = randomUUID();
-  const versionId = randomUUID().replaceAll("-", "");
-  const chatId = `chat_${randomUUID()}`;
-
-  await writeDb.insert(agentComposes).values({
-    id: composeId,
-    userId,
-    name: "telegram-state-agent",
-    orgId,
-    headVersionId: versionId,
-  });
-  await writeDb.insert(agentComposeVersions).values({
-    id: versionId,
-    composeId,
-    content: { model: "gpt-5.4", instructions: "Reply concisely" },
-    createdBy: userId,
-  });
-  await writeDb.insert(zeroAgents).values({
-    id: composeId,
-    orgId,
-    owner: userId,
-    name: "telegram-state-agent",
-  });
-  await writeDb.insert(orgMetadata).values({
-    orgId,
-    defaultAgentId: composeId,
-    tier: "free",
-  });
-  await writeDb.insert(telegramInstallations).values({
-    telegramBotId: botId,
-    botUsername: "vm0_test_bot",
-    encryptedBotToken: "encrypted-token",
-    webhookSecret: "webhook-secret",
-    defaultComposeId: composeId,
-    ownerUserId: userId,
-    orgId,
-  });
-  await writeDb.insert(telegramUserLinks).values({
-    installationId: botId,
-    telegramUserId: "telegram-user-1",
-    vm0UserId: userId,
-    dmWelcomeSent: true,
-  });
-  await writeDb.insert(telegramMessages).values({
-    installationId: botId,
-    chatId,
-    messageId: "message-1",
-    fromUserId: "telegram-user-1",
-    text: "hello from telegram",
-  });
-  await writeDb.insert(e2eTelegramMockCallLog).values({
-    method: "sendMessage",
-    botToken: "test-bot-token",
-    chatId,
-    body: "{}",
-    bodyJson: { ok: true },
-  });
-
-  return { botId, userId, orgId, composeId, versionId, chatId };
+function uniqueId(prefix: string): string {
+  return `${prefix}_${randomUUID().replaceAll("-", "")}`;
 }
 
-async function cleanupTelegramState(state: SeededTelegramState): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  const runRows = await writeDb
-    .select({ id: agentRuns.id, sessionId: agentRuns.sessionId })
-    .from(agentRuns)
-    .where(eq(agentRuns.orgId, state.orgId));
-  const runIds = runRows.map((run) => {
-    return run.id;
+function uniqueNumericId(): string {
+  return String(100_000_000 + Math.floor(Math.random() * 899_999_999));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function recentRuns(value: readonly unknown[]): RecentRun[] {
+  return value.filter((run): run is RecentRun => {
+    return (
+      isRecord(run) &&
+      typeof run.id === "string" &&
+      (typeof run.triggerSource === "string" || run.triggerSource === null) &&
+      (typeof run.promptPreview === "string" || run.promptPreview === null)
+    );
   });
-  if (runIds.length > 0) {
-    await writeDb.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
-    await writeDb.delete(agentRuns).where(inArray(agentRuns.id, runIds));
-  }
-  const sessionIds = runRows.map((run) => {
-    return run.sessionId;
-  });
-  if (sessionIds.length > 0) {
-    await writeDb
-      .delete(agentSessions)
-      .where(inArray(agentSessions.id, sessionIds));
-  }
-  await writeDb
-    .delete(e2eTelegramMockCallLog)
-    .where(eq(e2eTelegramMockCallLog.chatId, state.chatId));
-  await writeDb
-    .delete(telegramMessages)
-    .where(eq(telegramMessages.installationId, state.botId));
-  await writeDb
-    .delete(telegramUserLinks)
-    .where(eq(telegramUserLinks.installationId, state.botId));
-  await writeDb
-    .delete(telegramInstallations)
-    .where(eq(telegramInstallations.telegramBotId, state.botId));
-  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, state.orgId));
-  await writeDb.delete(zeroAgents).where(eq(zeroAgents.id, state.composeId));
-  await writeDb
-    .delete(agentComposeVersions)
-    .where(eq(agentComposeVersions.id, state.versionId));
-  await writeDb
-    .delete(agentComposes)
-    .where(eq(agentComposes.id, state.composeId));
 }
-
-async function cleanupTelegramPostState(
-  state: SeededTelegramPostState,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .delete(telegramMessages)
-    .where(eq(telegramMessages.installationId, state.botId));
-  await writeDb
-    .delete(telegramUserLinks)
-    .where(eq(telegramUserLinks.installationId, state.botId));
-  await writeDb
-    .delete(telegramInstallations)
-    .where(eq(telegramInstallations.telegramBotId, state.botId));
-  await writeDb
-    .delete(creditExpiresRecord)
-    .where(eq(creditExpiresRecord.orgId, state.orgId));
-  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, state.orgId));
-  await writeDb.delete(zeroAgents).where(eq(zeroAgents.id, state.composeId));
-  await writeDb
-    .delete(agentComposeVersions)
-    .where(eq(agentComposeVersions.composeId, state.composeId));
-  await writeDb
-    .delete(agentComposes)
-    .where(eq(agentComposes.id, state.composeId));
-}
-
-async function cleanupSlackPostState(
-  state: SeededSlackPostState,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .delete(slackOrgConnections)
-    .where(eq(slackOrgConnections.slackWorkspaceId, state.teamId));
-  await writeDb
-    .delete(slackOrgInstallations)
-    .where(eq(slackOrgInstallations.slackWorkspaceId, state.teamId));
-}
-
-const trackTelegramState = createFixtureTracker(cleanupTelegramState);
-const trackTelegramPostState = createFixtureTracker(cleanupTelegramPostState);
-const trackSlackPostState = createFixtureTracker(cleanupSlackPostState);
 
 function mockClerkTestUser(args: {
   readonly userId: string;
@@ -249,7 +98,7 @@ function mockClerkTestUser(args: {
     data: [
       {
         createdAt: 2,
-        organization: { id: `org_ignored_${randomUUID()}` },
+        organization: { id: uniqueId("org_ignored") },
       },
       {
         createdAt: 1,
@@ -259,8 +108,55 @@ function mockClerkTestUser(args: {
   });
 }
 
+function mockTelegramTyping(): void {
+  server.use(
+    ...[
+      `https://api.telegram.org/bot${TELEGRAM_TEST_BOT_TOKEN}/sendChatAction`,
+      `${TELEGRAM_TEST_API_BASE_URL}${TELEGRAM_TEST_BOT_TOKEN}/sendChatAction`,
+    ].map((url) => {
+      return http.post(url, () => {
+        return HttpResponse.json({ ok: true, result: true });
+      });
+    }),
+  );
+}
+
+function configureSlackDispatchMocks(): void {
+  context.mocks.s3.send.mockResolvedValue({});
+  context.mocks.slack.assistant.threads.setStatus.mockResolvedValue({
+    ok: true,
+  });
+  context.mocks.slack.chat.postMessage.mockResolvedValue({
+    ok: true,
+    ts: "1710000000.000000",
+    channel: "C-test",
+  });
+  context.mocks.slack.chat.postEphemeral.mockResolvedValue({
+    ok: true,
+    message_ts: "1710000000.000001",
+  });
+  context.mocks.slack.conversations.history.mockResolvedValue({
+    ok: true,
+    messages: [],
+  });
+  context.mocks.slack.conversations.replies.mockResolvedValue({
+    ok: true,
+    messages: [],
+  });
+  context.mocks.slack.users.info.mockResolvedValue({
+    ok: true,
+    user: {
+      profile: {
+        display_name: "Slack User",
+        email: "slack@example.com",
+      },
+      tz: "UTC",
+    },
+  });
+}
+
 function postTelegramState(body: Record<string, unknown>): Promise<Response> {
-  return requestApp("/api/test/telegram-state", {
+  return requestApp(TELEGRAM_STATE_ROUTE, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -268,91 +164,183 @@ function postTelegramState(body: Record<string, unknown>): Promise<Response> {
 }
 
 function postSlackState(body: Record<string, unknown>): Promise<Response> {
-  return requestApp("/api/test/slack-state", {
+  return requestApp(SLACK_STATE_ROUTE, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
 }
 
-async function seedRun(
-  state: SeededTelegramState,
-  triggerSource: "slack" | "telegram",
-): Promise<string> {
-  const writeDb = store.set(writeDb$);
-  const sessionId = randomUUID();
-  const runId = randomUUID();
-  await writeDb.insert(agentSessions).values({
-    id: sessionId,
-    userId: state.userId,
-    orgId: state.orgId,
-    agentComposeId: state.composeId,
+async function readTelegramState(
+  botId: string,
+): Promise<TestTelegramStateResponse> {
+  const response = await requestApp(
+    `${TELEGRAM_STATE_ROUTE}?bot_id=${encodeURIComponent(botId)}`,
+  );
+  expect(response.status).toBe(200);
+  return await readJson<TestTelegramStateResponse>(response);
+}
+
+async function readSlackState(teamId: string): Promise<TestSlackStateResponse> {
+  const response = await requestApp(
+    `${SLACK_STATE_ROUTE}?team_id=${encodeURIComponent(teamId)}`,
+  );
+  expect(response.status).toBe(200);
+  return await readJson<TestSlackStateResponse>(response);
+}
+
+async function deleteTelegramFixture(fixture: TelegramFixture): Promise<void> {
+  mockEnv("ENV", "development");
+  await requestApp(
+    `${TELEGRAM_STATE_ROUTE}?bot_id=${encodeURIComponent(fixture.botId)}`,
+    { method: "DELETE" },
+  );
+}
+
+async function deleteSlackFixture(fixture: SlackFixture): Promise<void> {
+  mockEnv("ENV", "development");
+  await requestApp(
+    `${SLACK_STATE_ROUTE}?team_id=${encodeURIComponent(fixture.teamId)}`,
+    { method: "DELETE" },
+  );
+}
+
+const trackTelegramFixture = createFixtureTracker(deleteTelegramFixture);
+const trackSlackFixture = createFixtureTracker(deleteSlackFixture);
+
+async function seedTelegramFixture(
+  args: {
+    readonly userId?: string;
+    readonly orgId?: string;
+    readonly botId?: string;
+    readonly telegramUserId?: string;
+    readonly email?: string;
+    readonly seedLink?: boolean;
+  } = {},
+): Promise<TelegramFixture> {
+  const userId = args.userId ?? uniqueId("user");
+  const orgId = args.orgId ?? uniqueId("org");
+  const botId = args.botId ?? uniqueId("bot");
+  const telegramUserId = args.telegramUserId ?? uniqueNumericId();
+  mockClerkTestUser({ userId, orgId });
+
+  const response = await postTelegramState({
+    bot_id: botId,
+    telegram_user_id: telegramUserId,
+    bot_username: "custom_test_bot",
+    webhook_secret: "custom-webhook-secret",
+    email: args.email ?? `${userId}@example.test`,
+    seed_link: args.seedLink ?? true,
   });
-  await writeDb.insert(agentRuns).values({
-    id: runId,
-    userId: state.userId,
-    orgId: state.orgId,
-    sessionId,
-    status: "completed",
-    prompt: `${triggerSource} diagnostic run`,
+  expect(response.status).toBe(200);
+  const body = await readJson<TestTelegramStateSeedResponse>(response);
+  const fixture = {
+    botId: body.bot_id,
+    userId: body.vm0_user_id,
+    orgId: body.org_id,
+    telegramUserId,
+    defaultAgentId: body.default_agent_id,
+  };
+  await trackTelegramFixture(Promise.resolve(fixture));
+  return fixture;
+}
+
+async function seedSlackFixture(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly email: string;
+}): Promise<SlackFixture> {
+  const teamId = uniqueId("T");
+  const slackUserId = uniqueId("U");
+  mockClerkTestUser({ userId: args.userId, orgId: args.orgId });
+
+  const response = await postSlackState({
+    team_id: teamId,
+    slack_user_id: slackUserId,
+    email: args.email,
+    seed_connection: true,
+    seed_default_agent: true,
   });
-  await writeDb.insert(zeroRuns).values({
-    id: runId,
-    triggerSource,
+  expect(response.status).toBe(200);
+  const fixture = { teamId, slackUserId };
+  await trackSlackFixture(Promise.resolve(fixture));
+  return fixture;
+}
+
+async function dispatchTelegramMessage(args: {
+  readonly fixture: TelegramFixture;
+  readonly chatId?: string;
+  readonly text: string;
+  readonly messageId?: number;
+}): Promise<void> {
+  context.mocks.s3.send.mockResolvedValue({});
+  mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+  mockOptionalEnv("VM0_API_URL", "http://localhost:3000");
+  mockOptionalEnv("VM0_WEB_URL", "http://localhost:3000");
+  mockEnv("APP_URL", "http://localhost:3002");
+  mockTelegramTyping();
+  const response = await requestApp(TELEGRAM_DISPATCH_PROBE_ROUTE, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      bot_id: args.fixture.botId,
+      chat_id: args.chatId ?? "900100200",
+      telegram_user_id: args.fixture.telegramUserId,
+      message_text: args.text,
+      message_id: args.messageId ?? 501,
+    }),
   });
-  return runId;
+  expect(response.status).toBe(200);
+  await expect(
+    readJson<{ readonly ok: true }>(response),
+  ).resolves.toStrictEqual({ ok: true });
 }
 
-async function countInstallations(botId: string): Promise<number> {
-  const writeDb = store.set(writeDb$);
-  const [row] = await writeDb
-    .select({ value: count() })
-    .from(telegramInstallations)
-    .where(eq(telegramInstallations.telegramBotId, botId));
-  return row?.value ?? 0;
+async function dispatchSlackMessage(args: {
+  readonly fixture: SlackFixture;
+  readonly text: string;
+}): Promise<void> {
+  configureSlackDispatchMocks();
+  const response = await requestApp(SLACK_DISPATCH_PROBE_ROUTE, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      team_id: args.fixture.teamId,
+      channel_id: "C-test",
+      user_id: args.fixture.slackUserId,
+      message_text: args.text,
+      message_ts: "1710000000.000000",
+      channel_type: "channel",
+    }),
+  });
+  expect(response.status).toBe(200);
+  await expect(
+    readJson<{ readonly ok: true }>(response),
+  ).resolves.toStrictEqual({ ok: true });
 }
 
-async function countLinks(botId: string): Promise<number> {
-  const writeDb = store.set(writeDb$);
-  const [row] = await writeDb
-    .select({ value: count() })
-    .from(telegramUserLinks)
-    .where(eq(telegramUserLinks.installationId, botId));
-  return row?.value ?? 0;
-}
-
-async function countMessages(botId: string): Promise<number> {
-  const writeDb = store.set(writeDb$);
-  const [row] = await writeDb
-    .select({ value: count() })
-    .from(telegramMessages)
-    .where(eq(telegramMessages.installationId, botId));
-  return row?.value ?? 0;
-}
-
-async function countAgentRuns(runId: string): Promise<number> {
-  const writeDb = store.set(writeDb$);
-  const [row] = await writeDb
-    .select({ value: count() })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, runId));
-  return row?.value ?? 0;
-}
-
-async function countZeroRuns(runId: string): Promise<number> {
-  const writeDb = store.set(writeDb$);
-  const [row] = await writeDb
-    .select({ value: count() })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId));
-  return row?.value ?? 0;
+async function recordTelegramMockCall(args: {
+  readonly botToken: string;
+  readonly chatId: string;
+}): Promise<void> {
+  const response = await requestApp(
+    `${TELEGRAM_MOCK_ROUTE}/bot${encodeURIComponent(
+      args.botToken,
+    )}/sendMessage`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: args.chatId, text: "mocked" }),
+    },
+  );
+  expect(response.status).toBe(200);
 }
 
 describe("GET /api/test/telegram-state", () => {
   it("returns 404 when the test endpoint is not allowed", async () => {
     mockEnv("ENV", "production");
 
-    const response = await requestApp("/api/test/telegram-state?bot_id=bot-1");
+    const response = await requestApp(`${TELEGRAM_STATE_ROUTE}?bot_id=bot-1`);
 
     expect(response.status).toBe(404);
     await expect(response.text()).resolves.toBe("Not found");
@@ -361,7 +349,7 @@ describe("GET /api/test/telegram-state", () => {
   it("returns 400 when bot_id is missing", async () => {
     mockEnv("ENV", "development");
 
-    const response = await requestApp("/api/test/telegram-state");
+    const response = await requestApp(TELEGRAM_STATE_ROUTE);
 
     expect(response.status).toBe(400);
     await expect(readJson<{ error: string }>(response)).resolves.toStrictEqual({
@@ -373,11 +361,11 @@ describe("GET /api/test/telegram-state", () => {
     mockEnv("ENV", "development");
 
     const response = await requestApp(
-      `/api/test/telegram-state?bot_id=bot_${randomUUID()}`,
+      `${TELEGRAM_STATE_ROUTE}?bot_id=${uniqueId("bot")}`,
     );
 
     expect(response.status).toBe(200);
-    const body = await readJson<TelegramStateResponse>(response);
+    const body = await readJson<TestTelegramStateResponse>(response);
     expect(body.installation).toBeNull();
     expect(body.links).toStrictEqual([]);
     expect(body.message_count).toBe(0);
@@ -392,49 +380,65 @@ describe("GET /api/test/telegram-state", () => {
 
   it("returns seeded Telegram diagnostic state", async () => {
     mockEnv("ENV", "development");
-    mockOptionalEnv("TELEGRAM_API_URL", "https://telegram.test/bot");
-    const seeded = await trackTelegramState(seedTelegramState());
+    mockOptionalEnv("TELEGRAM_API_URL", TELEGRAM_TEST_API_BASE_URL);
+    const fixture = await seedTelegramFixture();
+    const chatId = uniqueNumericId();
+    await dispatchTelegramMessage({
+      fixture,
+      chatId,
+      text: "telegram state diagnostic run",
+    });
+    await recordTelegramMockCall({
+      botToken: TELEGRAM_TEST_BOT_TOKEN,
+      chatId,
+    });
 
-    const response = await requestApp(
-      `/api/test/telegram-state?bot_id=${seeded.botId}`,
-    );
+    const body = await readTelegramState(fixture.botId);
 
-    expect(response.status).toBe(200);
-    const body = await readJson<TelegramStateResponse>(response);
     expect(body.installation).toMatchObject({
-      telegramBotId: seeded.botId,
-      orgId: seeded.orgId,
-      defaultComposeId: seeded.composeId,
+      telegramBotId: fixture.botId,
+      orgId: fixture.orgId,
+      defaultComposeId: fixture.defaultAgentId,
     });
     expect(body.links).toHaveLength(1);
     expect(body.links[0]).toMatchObject({
-      telegramUserId: "telegram-user-1",
-      dmWelcomeSent: true,
+      telegramUserId: fixture.telegramUserId,
+      dmWelcomeSent: false,
     });
     expect(body.message_count).toBe(1);
+    expect(recentRuns(body.recent_runs)).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          triggerSource: "telegram",
+          promptPreview: "telegram state diagnostic run",
+        }),
+      ]),
+    );
     expect(body.org_metadata).toMatchObject({
-      orgId: seeded.orgId,
-      defaultAgentId: seeded.composeId,
+      orgId: fixture.orgId,
+      defaultAgentId: fixture.defaultAgentId,
       tier: "free",
     });
     expect(body.default_agent).toMatchObject({
-      id: seeded.composeId,
-      name: "telegram-state-agent",
-      orgId: seeded.orgId,
+      id: fixture.defaultAgentId,
+      name: "e2e-slack-agent",
+      orgId: fixture.orgId,
     });
     expect(body.default_compose).toMatchObject({
-      id: seeded.composeId,
-      name: "telegram-state-agent",
-      headVersionId: seeded.versionId,
+      id: fixture.defaultAgentId,
+      name: "e2e-slack-agent",
     });
-    expect(body.default_compose_version).toStrictEqual({
-      id: seeded.versionId,
-      content_keys: ["model", "instructions"],
+    expect(body.default_compose_version).toMatchObject({
+      content_keys: expect.arrayContaining(["version", "agents"]),
     });
     expect(body.resolved_telegram_api_url).toBe("https://telegram.test/bot");
     expect(
       body.mock_calls.some((call) => {
-        return call.chatId === seeded.chatId && call.method === "sendMessage";
+        return (
+          isRecord(call) &&
+          call.chatId === chatId &&
+          call.method === "sendMessage"
+        );
       }),
     ).toBeTruthy();
   });
@@ -471,10 +475,10 @@ describe("POST /api/test/telegram-state", () => {
 
   it("seeds a Telegram installation, user link, and shared default agent", async () => {
     mockEnv("ENV", "development");
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    const botId = `bot_${randomUUID()}`;
-    const telegramUserId = `telegram_${randomUUID()}`;
+    const userId = uniqueId("user");
+    const orgId = uniqueId("org");
+    const botId = uniqueId("bot");
+    const telegramUserId = uniqueId("telegram");
     const email = `${randomUUID()}@example.test`;
     mockClerkTestUser({ userId, orgId });
 
@@ -487,9 +491,15 @@ describe("POST /api/test/telegram-state", () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await readJson<TelegramStateSeedResponse>(response);
-    await trackTelegramPostState(
-      Promise.resolve({ botId, orgId, composeId: body.default_agent_id }),
+    const body = await readJson<TestTelegramStateSeedResponse>(response);
+    await trackTelegramFixture(
+      Promise.resolve({
+        botId,
+        userId,
+        orgId,
+        telegramUserId,
+        defaultAgentId: body.default_agent_id,
+      }),
     );
     expect(body).toMatchObject({
       ok: true,
@@ -503,57 +513,27 @@ describe("POST /api/test/telegram-state", () => {
       emailAddress: [email],
     });
 
-    const writeDb = store.set(writeDb$);
-    const [installation] = await writeDb
-      .select()
-      .from(telegramInstallations)
-      .where(eq(telegramInstallations.telegramBotId, botId))
-      .limit(1);
-    expect(installation).toMatchObject({
+    const state = await readTelegramState(botId);
+    expect(state.installation).toMatchObject({
       telegramBotId: botId,
       botUsername: "custom_test_bot",
-      webhookSecret: "custom-webhook-secret",
+      orgId,
       defaultComposeId: body.default_agent_id,
       ownerUserId: userId,
-      orgId,
     });
-    expect(installation?.encryptedBotToken).toContain(":");
-
-    const links = await writeDb
-      .select()
-      .from(telegramUserLinks)
-      .where(eq(telegramUserLinks.installationId, botId));
-    expect(links).toHaveLength(1);
-    expect(links[0]).toMatchObject({
+    expect(state.links).toHaveLength(1);
+    expect(state.links[0]).toMatchObject({
       id: body.user_link_id,
       telegramUserId,
       vm0UserId: userId,
     });
-
-    const [org] = await writeDb
-      .select()
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId))
-      .limit(1);
-    expect(org).toMatchObject({
+    expect(state.org_metadata).toMatchObject({
       orgId,
       defaultAgentId: body.default_agent_id,
       credits: 10_000,
       tier: "free",
     });
-
-    const getResponse = await requestApp(
-      `/api/test/telegram-state?bot_id=${encodeURIComponent(botId)}`,
-    );
-    expect(getResponse.status).toBe(200);
-    const getBody = await readJson<TelegramStateResponse>(getResponse);
-    expect(getBody.installation).toMatchObject({
-      telegramBotId: botId,
-      orgId,
-      defaultComposeId: body.default_agent_id,
-    });
-    expect(getBody.links).toHaveLength(1);
-    expect(getBody.default_agent).toMatchObject({
+    expect(state.default_agent).toMatchObject({
       id: body.default_agent_id,
       name: "e2e-slack-agent",
       orgId,
@@ -562,10 +542,10 @@ describe("POST /api/test/telegram-state", () => {
 
   it("keeps POST idempotent and skips link creation when requested", async () => {
     mockEnv("ENV", "development");
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    const botId = `bot_${randomUUID()}`;
-    const telegramUserId = `telegram_${randomUUID()}`;
+    const userId = uniqueId("user");
+    const orgId = uniqueId("org");
+    const botId = uniqueId("bot");
+    const telegramUserId = uniqueId("telegram");
     mockClerkTestUser({ userId, orgId });
 
     const first = await postTelegramState({
@@ -573,12 +553,14 @@ describe("POST /api/test/telegram-state", () => {
       telegram_user_id: telegramUserId,
     });
     expect(first.status).toBe(200);
-    const firstBody = await readJson<TelegramStateSeedResponse>(first);
-    await trackTelegramPostState(
+    const firstBody = await readJson<TestTelegramStateSeedResponse>(first);
+    await trackTelegramFixture(
       Promise.resolve({
         botId,
+        userId,
         orgId,
-        composeId: firstBody.default_agent_id,
+        telegramUserId,
+        defaultAgentId: firstBody.default_agent_id,
       }),
     );
 
@@ -588,7 +570,7 @@ describe("POST /api/test/telegram-state", () => {
       seed_link: false,
     });
     expect(second.status).toBe(200);
-    const secondBody = await readJson<TelegramStateSeedResponse>(second);
+    const secondBody = await readJson<TestTelegramStateSeedResponse>(second);
     expect(secondBody).toMatchObject({
       bot_id: botId,
       org_id: orgId,
@@ -597,20 +579,16 @@ describe("POST /api/test/telegram-state", () => {
       default_agent_id: firstBody.default_agent_id,
     });
 
-    const links = await store
-      .set(writeDb$)
-      .select()
-      .from(telegramUserLinks)
-      .where(eq(telegramUserLinks.installationId, botId));
-    expect(links).toHaveLength(1);
-    expect(links[0]?.id).toBe(firstBody.user_link_id);
+    const state = await readTelegramState(botId);
+    expect(state.links).toHaveLength(1);
+    expect(state.links[0]).toMatchObject({ id: firstBody.user_link_id });
   });
 
   it("reuses the shared default agent when Telegram preflights race", async () => {
     mockEnv("ENV", "development");
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    const botId = `bot_${randomUUID()}`;
+    const userId = uniqueId("user");
+    const orgId = uniqueId("org");
+    const botId = uniqueId("bot");
     const email = `${randomUUID()}@example.test`;
     mockClerkTestUser({ userId, orgId });
 
@@ -632,7 +610,7 @@ describe("POST /api/test/telegram-state", () => {
             `Expected 200, got ${response.status}: ${await response.text()}`,
           );
         }
-        return readJson<TelegramStateSeedResponse>(response);
+        return readJson<TestTelegramStateSeedResponse>(response);
       }),
     );
     const defaultAgentIds = bodies.map((body) => {
@@ -642,19 +620,28 @@ describe("POST /api/test/telegram-state", () => {
     if (!defaultAgentId) {
       throw new Error("Expected seeded default agent id");
     }
-    await trackTelegramPostState(
-      Promise.resolve({ botId, orgId, composeId: defaultAgentId }),
+    await trackTelegramFixture(
+      Promise.resolve({
+        botId,
+        userId,
+        orgId,
+        telegramUserId: "99001",
+        defaultAgentId,
+      }),
     );
 
     expect(new Set(defaultAgentIds).size).toBe(1);
+    const state = await readTelegramState(botId);
+    expect(state.default_agent).toMatchObject({ id: defaultAgentId });
+    expect(state.links).toHaveLength(1);
   });
 
   it("reuses the shared default agent when Slack and Telegram preflights race", async () => {
     mockEnv("ENV", "development");
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    const teamId = `T_${randomUUID().replaceAll("-", "")}`;
-    const botId = `bot_${randomUUID()}`;
+    const userId = uniqueId("user");
+    const orgId = uniqueId("org");
+    const teamId = uniqueId("T");
+    const botId = uniqueId("bot");
     const email = `${randomUUID()}@example.test`;
     mockClerkTestUser({ userId, orgId });
 
@@ -693,9 +680,17 @@ describe("POST /api/test/telegram-state", () => {
     if (!defaultAgentId) {
       throw new Error("Expected seeded default agent id");
     }
-    await trackSlackPostState(Promise.resolve({ teamId }));
-    await trackTelegramPostState(
-      Promise.resolve({ botId, orgId, composeId: defaultAgentId }),
+    await trackSlackFixture(
+      Promise.resolve({ teamId, slackUserId: "U_TELEGRAM_RACE" }),
+    );
+    await trackTelegramFixture(
+      Promise.resolve({
+        botId,
+        userId,
+        orgId,
+        telegramUserId: "99001",
+        defaultAgentId,
+      }),
     );
 
     expect(new Set(defaultAgentIds).size).toBe(1);
@@ -707,7 +702,7 @@ describe("DELETE /api/test/telegram-state", () => {
   it("returns 404 when the test endpoint is not allowed", async () => {
     mockEnv("ENV", "production");
 
-    const response = await requestApp("/api/test/telegram-state?bot_id=bot-1", {
+    const response = await requestApp(`${TELEGRAM_STATE_ROUTE}?bot_id=bot-1`, {
       method: "DELETE",
     });
 
@@ -718,7 +713,7 @@ describe("DELETE /api/test/telegram-state", () => {
   it("returns 400 when bot_id is missing", async () => {
     mockEnv("ENV", "development");
 
-    const response = await requestApp("/api/test/telegram-state", {
+    const response = await requestApp(TELEGRAM_STATE_ROUTE, {
       method: "DELETE",
     });
 
@@ -730,10 +725,10 @@ describe("DELETE /api/test/telegram-state", () => {
 
   it("returns ok for an unknown bot without deleting unrelated state", async () => {
     mockEnv("ENV", "development");
-    const seeded = await trackTelegramState(seedTelegramState());
+    const fixture = await seedTelegramFixture();
 
     const response = await requestApp(
-      `/api/test/telegram-state?bot_id=missing_${randomUUID()}`,
+      `${TELEGRAM_STATE_ROUTE}?bot_id=${uniqueId("missing")}`,
       { method: "DELETE" },
     );
 
@@ -741,19 +736,29 @@ describe("DELETE /api/test/telegram-state", () => {
     await expect(readJson<{ ok: true }>(response)).resolves.toStrictEqual({
       ok: true,
     });
-    await expect(countInstallations(seeded.botId)).resolves.toBe(1);
-    await expect(countLinks(seeded.botId)).resolves.toBe(1);
-    await expect(countMessages(seeded.botId)).resolves.toBe(1);
+    const state = await readTelegramState(fixture.botId);
+    expect(state.installation).toMatchObject({ telegramBotId: fixture.botId });
+    expect(state.links).toHaveLength(1);
   });
 
   it("deletes Telegram state and only Telegram-triggered runs for the bot org", async () => {
     mockEnv("ENV", "development");
-    const seeded = await trackTelegramState(seedTelegramState());
-    const telegramRunId = await seedRun(seeded, "telegram");
-    const slackRunId = await seedRun(seeded, "slack");
+    const userId = uniqueId("user");
+    const orgId = uniqueId("org");
+    const email = `${userId}@example.test`;
+    const telegram = await seedTelegramFixture({ userId, orgId, email });
+    await dispatchTelegramMessage({
+      fixture: telegram,
+      text: "telegram diagnostic run",
+    });
+    const slack = await seedSlackFixture({ userId, orgId, email });
+    await dispatchSlackMessage({
+      fixture: slack,
+      text: "slack diagnostic run",
+    });
 
     const response = await requestApp(
-      `/api/test/telegram-state?bot_id=${seeded.botId}`,
+      `${TELEGRAM_STATE_ROUTE}?bot_id=${telegram.botId}`,
       { method: "DELETE" },
     );
 
@@ -761,12 +766,20 @@ describe("DELETE /api/test/telegram-state", () => {
     await expect(readJson<{ ok: true }>(response)).resolves.toStrictEqual({
       ok: true,
     });
-    await expect(countInstallations(seeded.botId)).resolves.toBe(0);
-    await expect(countLinks(seeded.botId)).resolves.toBe(0);
-    await expect(countMessages(seeded.botId)).resolves.toBe(0);
-    await expect(countZeroRuns(telegramRunId)).resolves.toBe(0);
-    await expect(countAgentRuns(telegramRunId)).resolves.toBe(0);
-    await expect(countZeroRuns(slackRunId)).resolves.toBe(1);
-    await expect(countAgentRuns(slackRunId)).resolves.toBe(1);
+    const deletedTelegram = await readTelegramState(telegram.botId);
+    expect(deletedTelegram.installation).toBeNull();
+    expect(deletedTelegram.links).toStrictEqual([]);
+    expect(deletedTelegram.message_count).toBe(0);
+    expect(deletedTelegram.recent_runs).toStrictEqual([]);
+
+    const slackState = await readSlackState(slack.teamId);
+    expect(recentRuns(slackState.recent_runs)).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          triggerSource: "slack",
+          promptPreview: "slack diagnostic run",
+        }),
+      ]),
+    );
   });
 });

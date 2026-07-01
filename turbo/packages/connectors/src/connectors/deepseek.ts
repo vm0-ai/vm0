@@ -21,6 +21,7 @@ export const deepseek = {
           fields: {
             DEEPSEEK_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "sk-...",
             },

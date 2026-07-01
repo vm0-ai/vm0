@@ -73,6 +73,14 @@ async fn shielded_snapshot_publish(
     let (result_tx, result_rx) =
         tokio::sync::oneshot::channel::<Result<sandbox::SnapshotOutput, sandbox::SnapshotError>>();
 
+    // Once the provider returns an uncommitted snapshot, publish must reach
+    // either commit or discard even if the caller waiting on this result is
+    // cancelled. Move the snapshot lock into the detached task so other
+    // builders and GC cannot acquire the lock and act on this output directory
+    // until commit succeeds or discard finishes. This shields waiter
+    // cancellation only; it is not a process-exit or runtime-shutdown
+    // guarantee. The cancellation tests below cover the lock lifetime through
+    // both commit and discard.
     tokio::spawn(async move {
         let result =
             commit_or_discard_pending_snapshot(pending, &snapshot_hash, &snapshot_dir).await;
@@ -116,6 +124,9 @@ async fn commit_or_discard_pending_snapshot(
     match pending.commit().await {
         Ok(output) => Ok(output),
         Err(err) => {
+            // Discard is best-effort cleanup after a failed publish. Preserve
+            // the original commit error so callers see the failure that made
+            // the snapshot unusable.
             if let Err(discard_err) = pending.discard().await {
                 tracing::warn!(
                     error = %discard_err,

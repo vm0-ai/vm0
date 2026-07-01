@@ -84,6 +84,7 @@ export const posthog = {
           fields: {
             POSTHOG_TOKEN: {
               label: "Personal API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "phx_...",
             },

@@ -59,6 +59,7 @@ export const stripe = {
           fields: {
             STRIPE_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "sk_live_...",
             },
@@ -94,6 +95,7 @@ export const stripe = {
             mode: {
               kind: "select",
               label: "Mode",
+              publicId: "mode",
               required: true,
               defaultValue: "test",
               options: [

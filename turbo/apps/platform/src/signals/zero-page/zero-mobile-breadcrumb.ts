@@ -107,34 +107,20 @@ const workflowsBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb> => {
     const section = "Workflows";
     const params = get(pathParams$) as Params;
-    const agentId = getStringParam(params, "agentId");
-    const sectionOptions = agentId
-      ? { pathParams: { agentId } as RouterPathParams }
-      : undefined;
     const workflowId = getStringParam(params, "workflowId");
     if (workflowId) {
       const detail = await get(workflowDetail(workflowId));
       if (detail) {
-        const workspaceRoute = get(activeRoute$) === "workflowDetail";
         return {
           section,
-          sectionPath: workspaceRoute
-            ? ROUTES.workflows
-            : ROUTES.agentWorkflows,
-          sectionOptions: workspaceRoute
-            ? undefined
-            : (sectionOptions ??
-              ({
-                pathParams: { agentId: detail.agentId } as RouterPathParams,
-              } as const)),
+          sectionPath: ROUTES.workflows,
           name: detail.displayName ?? detail.name,
         };
       }
     }
     return {
       section,
-      sectionPath: agentId ? ROUTES.agentWorkflows : ROUTES.workflows,
-      sectionOptions,
+      sectionPath: ROUTES.workflows,
     };
   },
 );
@@ -183,12 +169,7 @@ export const mobileBreadcrumb$ = computed(
       return await get(automationBreadcrumb$);
     }
 
-    if (
-      route === "workflows" ||
-      route === "workflowDetail" ||
-      route === "agentWorkflows" ||
-      route === "agentWorkflowDetail"
-    ) {
+    if (route === "workflows" || route === "workflowDetail") {
       return await get(workflowsBreadcrumb$);
     }
 

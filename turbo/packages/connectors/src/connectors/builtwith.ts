@@ -20,6 +20,7 @@ export const builtwith = {
           fields: {
             BUILTWITH_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
           },

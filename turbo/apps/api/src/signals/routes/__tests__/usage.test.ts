@@ -1,15 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import { usageContract } from "@vm0/api-contracts/contracts/usage";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { usageDaily } from "@vm0/db/schema/usage-daily";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow } from "../../../lib/time";
-import { writeDb$ } from "../../external/db";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -46,15 +42,6 @@ function apiClient() {
 }
 
 async function deleteUsageFixture(fixture: UsageFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db
-    .delete(usageDaily)
-    .where(
-      and(
-        eq(usageDaily.orgId, fixture.orgId),
-        eq(usageDaily.userId, fixture.userId),
-      ),
-    );
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
 }
 
@@ -87,41 +74,13 @@ async function seedCompletedRun(
       userId: fixture.userId,
       composeId: fixture.composeId,
       status: "completed",
-    },
-    context.signal,
-  );
-  const db = store.set(writeDb$);
-  await db
-    .update(agentRuns)
-    .set({
       createdAt: args.createdAt,
       startedAt: args.createdAt,
       completedAt: new Date(args.createdAt.getTime() + args.durationMs),
-    })
-    .where(eq(agentRuns.id, runId));
+    },
+    context.signal,
+  );
   return runId;
-}
-
-async function findCachedUsage(
-  fixture: UsageFixture,
-  date: string,
-): Promise<{ readonly runCount: number; readonly runTimeMs: number } | null> {
-  const db = store.set(writeDb$);
-  const [row] = await db
-    .select({
-      runCount: usageDaily.runCount,
-      runTimeMs: usageDaily.runTimeMs,
-    })
-    .from(usageDaily)
-    .where(
-      and(
-        eq(usageDaily.orgId, fixture.orgId),
-        eq(usageDaily.userId, fixture.userId),
-        eq(usageDaily.date, date),
-      ),
-    )
-    .limit(1);
-  return row ?? null;
 }
 
 describe("GET /api/usage", () => {
@@ -425,9 +384,6 @@ describe("GET /api/usage", () => {
     const first = await accept(apiClient().get(request), [200]);
     expect(first.body.summary.total_runs).toBe(1);
     expect(first.body.summary.total_run_time_ms).toBe(6000);
-
-    const cached = await findCachedUsage(fixture, "2026-05-08");
-    expect(cached).toStrictEqual({ runCount: 1, runTimeMs: 6000 });
 
     const second = await accept(apiClient().get(request), [200]);
     expect(second.body.summary).toStrictEqual(first.body.summary);

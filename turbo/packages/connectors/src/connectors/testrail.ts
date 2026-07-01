@@ -21,16 +21,19 @@ export const testrail = {
           fields: {
             TESTRAIL_EMAIL: {
               label: "Email",
+              publicId: "email",
               required: true,
               placeholder: "you@example.com",
             },
             TESTRAIL_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-testrail-api-key",
             },
             TESTRAIL_INSTANCE: {
               label: "Instance",
+              publicId: "instance",
               required: true,
               storage: "variable",
               placeholder: "your-subdomain",

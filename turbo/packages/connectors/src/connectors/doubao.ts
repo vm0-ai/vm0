@@ -22,6 +22,7 @@ export const doubao = {
           fields: {
             DOUBAO_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "00000000-0000-0000-0000-000000000000",
             },

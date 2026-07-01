@@ -1,10 +1,36 @@
 use super::truncate_utf8_to_u16_bytes;
 use crate::error::ProtocolError;
+use crate::frame::encode_into;
 use crate::read::{
     checked_payload_len_add, ensure_payload_fits_message, ensure_u16_len, ensure_u32_len,
     expect_consumed, read_slice, read_str, read_u8, read_u16, read_u32,
 };
-use crate::wire::{WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO};
+use crate::wire::{
+    MSG_WRITE_FILE, MSG_WRITE_FILES, WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE,
+    WRITE_FILE_FLAG_SUDO,
+};
+
+struct EncodedWriteFilePayload<'a> {
+    path_len: u16,
+    path_bytes: &'a [u8],
+    content_len: u32,
+    content: &'a [u8],
+    flags: u8,
+    payload_len: usize,
+}
+
+struct EncodedWriteFilesEntry<'a> {
+    path_len: u16,
+    path_bytes: &'a [u8],
+    content_len: u32,
+    content: &'a [u8],
+}
+
+struct EncodedWriteFilesPayload<'a> {
+    file_count: u16,
+    entries: Vec<EncodedWriteFilesEntry<'a>>,
+    payload_len: usize,
+}
 
 /// One ordinary file write entry in a `write_files` batch payload.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -28,6 +54,32 @@ pub fn encode_write_file(
     encode_write_file_flags(path, content, sudo, append, false)
 }
 
+/// Validate a write_file payload without encoding it.
+pub fn validate_write_file(
+    path: &str,
+    content: &[u8],
+    sudo: bool,
+    append: bool,
+) -> Result<(), ProtocolError> {
+    validate_write_file_payload(path, content, sudo, append, false).map(|_| ())
+}
+
+/// Encode a full write_file frame into `frame`.
+///
+/// The resulting frame uses the same bytes as
+/// `encode(MSG_WRITE_FILE, seq, &encode_write_file(...))` without allocating
+/// separate payload and frame vectors.
+pub fn encode_write_file_frame_into(
+    frame: &mut Vec<u8>,
+    seq: u32,
+    path: &str,
+    content: &[u8],
+    sudo: bool,
+    append: bool,
+) -> Result<(), ProtocolError> {
+    encode_write_file_frame_flags_into(frame, seq, path, content, sudo, append, false)
+}
+
 /// Encode a private write_file payload.
 pub fn encode_private_write_file(
     path: &str,
@@ -37,12 +89,69 @@ pub fn encode_private_write_file(
     encode_write_file_flags(path, content, false, append, true)
 }
 
+/// Validate a private write_file payload without encoding it.
+pub fn validate_private_write_file(
+    path: &str,
+    content: &[u8],
+    append: bool,
+) -> Result<(), ProtocolError> {
+    validate_write_file_payload(path, content, false, append, true).map(|_| ())
+}
+
+/// Encode a full private write_file frame into `frame`.
+///
+/// The resulting frame uses the same bytes as
+/// `encode(MSG_WRITE_FILE, seq, &encode_private_write_file(...))` without
+/// allocating separate payload and frame vectors.
+pub fn encode_private_write_file_frame_into(
+    frame: &mut Vec<u8>,
+    seq: u32,
+    path: &str,
+    content: &[u8],
+    append: bool,
+) -> Result<(), ProtocolError> {
+    encode_write_file_frame_flags_into(frame, seq, path, content, false, append, true)
+}
+
 /// Encode write_files payload:
 /// `[2B file_count]` followed by `[2B path_len][path][4B content_len][content]` for each file.
 ///
 /// Returns `Err` if the batch is empty, any path exceeds 65535 bytes, or the
 /// payload cannot fit in one protocol frame.
 pub fn encode_write_files(files: &[WriteFileBatchEntry<'_>]) -> Result<Vec<u8>, ProtocolError> {
+    let encoded = validate_write_files_payload(files)?;
+
+    let mut p = Vec::with_capacity(encoded.payload_len);
+    append_write_files_payload(&mut p, &encoded);
+    debug_assert_eq!(p.len(), encoded.payload_len);
+    Ok(p)
+}
+
+/// Validate a write_files payload without encoding it.
+pub fn validate_write_files(files: &[WriteFileBatchEntry<'_>]) -> Result<(), ProtocolError> {
+    validate_write_files_payload(files).map(|_| ())
+}
+
+/// Encode a full write_files frame into `frame`.
+///
+/// The resulting frame uses the same bytes as
+/// `encode(MSG_WRITE_FILES, seq, &encode_write_files(...))` without allocating
+/// separate payload and frame vectors.
+pub fn encode_write_files_frame_into(
+    frame: &mut Vec<u8>,
+    seq: u32,
+    files: &[WriteFileBatchEntry<'_>],
+) -> Result<(), ProtocolError> {
+    frame.clear();
+    let encoded = validate_write_files_payload(files)?;
+    encode_into(frame, MSG_WRITE_FILES, seq, encoded.payload_len, |frame| {
+        append_write_files_payload(frame, &encoded);
+    })
+}
+
+fn validate_write_files_payload<'a>(
+    files: &[WriteFileBatchEntry<'a>],
+) -> Result<EncodedWriteFilesPayload<'a>, ProtocolError> {
     if files.is_empty() {
         return Err(ProtocolError::InvalidPayload(
             "write_files file count must be positive",
@@ -59,20 +168,29 @@ pub fn encode_write_files(files: &[WriteFileBatchEntry<'_>]) -> Result<Vec<u8>, 
         payload_len = checked_payload_len_add(payload_len, path_bytes.len())?;
         payload_len = checked_payload_len_add(payload_len, 4)?;
         payload_len = checked_payload_len_add(payload_len, file.content.len())?;
-        encoded_entries.push((path_len, path_bytes, content_len, file.content));
+        encoded_entries.push(EncodedWriteFilesEntry {
+            path_len,
+            path_bytes,
+            content_len,
+            content: file.content,
+        });
     }
     ensure_payload_fits_message(payload_len)?;
+    Ok(EncodedWriteFilesPayload {
+        file_count,
+        entries: encoded_entries,
+        payload_len,
+    })
+}
 
-    let mut p = Vec::with_capacity(payload_len);
-    p.extend_from_slice(&file_count.to_be_bytes());
-    for (path_len, path_bytes, content_len, content) in encoded_entries {
-        p.extend_from_slice(&path_len.to_be_bytes());
-        p.extend_from_slice(path_bytes);
-        p.extend_from_slice(&content_len.to_be_bytes());
-        p.extend_from_slice(content);
+fn append_write_files_payload(p: &mut Vec<u8>, encoded: &EncodedWriteFilesPayload<'_>) {
+    p.extend_from_slice(&encoded.file_count.to_be_bytes());
+    for entry in &encoded.entries {
+        p.extend_from_slice(&entry.path_len.to_be_bytes());
+        p.extend_from_slice(entry.path_bytes);
+        p.extend_from_slice(&entry.content_len.to_be_bytes());
+        p.extend_from_slice(entry.content);
     }
-    debug_assert_eq!(p.len(), payload_len);
-    Ok(p)
 }
 
 fn encode_write_file_flags(
@@ -82,6 +200,37 @@ fn encode_write_file_flags(
     append: bool,
     private: bool,
 ) -> Result<Vec<u8>, ProtocolError> {
+    let encoded = validate_write_file_payload(path, content, sudo, append, private)?;
+
+    let mut p = Vec::with_capacity(encoded.payload_len);
+    append_write_file_payload(&mut p, &encoded);
+    debug_assert_eq!(p.len(), encoded.payload_len);
+    Ok(p)
+}
+
+fn encode_write_file_frame_flags_into(
+    frame: &mut Vec<u8>,
+    seq: u32,
+    path: &str,
+    content: &[u8],
+    sudo: bool,
+    append: bool,
+    private: bool,
+) -> Result<(), ProtocolError> {
+    frame.clear();
+    let encoded = validate_write_file_payload(path, content, sudo, append, private)?;
+    encode_into(frame, MSG_WRITE_FILE, seq, encoded.payload_len, |frame| {
+        append_write_file_payload(frame, &encoded);
+    })
+}
+
+fn validate_write_file_payload<'a>(
+    path: &'a str,
+    content: &'a [u8],
+    sudo: bool,
+    append: bool,
+    private: bool,
+) -> Result<EncodedWriteFilePayload<'a>, ProtocolError> {
     let path_bytes = path.as_bytes();
     let path_len = ensure_u16_len("path", path_bytes.len())?;
     let content_len = ensure_u32_len("content", content.len())?;
@@ -100,14 +249,22 @@ fn encode_write_file_flags(
     if private {
         flags |= WRITE_FILE_FLAG_PRIVATE;
     }
-    let mut p = Vec::with_capacity(payload_len);
-    p.extend_from_slice(&path_len.to_be_bytes());
-    p.extend_from_slice(path_bytes);
-    p.push(flags);
-    p.extend_from_slice(&content_len.to_be_bytes());
-    p.extend_from_slice(content);
-    debug_assert_eq!(p.len(), payload_len);
-    Ok(p)
+    Ok(EncodedWriteFilePayload {
+        path_len,
+        path_bytes,
+        content_len,
+        content,
+        flags,
+        payload_len,
+    })
+}
+
+fn append_write_file_payload(p: &mut Vec<u8>, encoded: &EncodedWriteFilePayload<'_>) {
+    p.extend_from_slice(&encoded.path_len.to_be_bytes());
+    p.extend_from_slice(encoded.path_bytes);
+    p.push(encoded.flags);
+    p.extend_from_slice(&encoded.content_len.to_be_bytes());
+    p.extend_from_slice(encoded.content);
 }
 
 /// Encode write_file_result payload: `[1B success][2B error_len][error]`.
@@ -236,7 +393,8 @@ pub fn decode_write_files_result(payload: &[u8]) -> Result<(bool, &str), Protoco
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::wire::MAX_PAYLOAD_SIZE;
+    use crate::frame::encode;
+    use crate::wire::{HEADER_SIZE, MAX_MESSAGE_SIZE, MAX_PAYLOAD_SIZE};
 
     fn assert_invalid_payload(err: ProtocolError, expected: &'static str) {
         assert!(matches!(err, ProtocolError::InvalidPayload(msg) if msg == expected));
@@ -296,6 +454,30 @@ mod tests {
     }
 
     #[test]
+    fn write_file_frame_matches_payload_plus_frame() {
+        let payload = encode_write_file("/tmp/test.txt", b"content", true, true).unwrap();
+        let expected = encode(MSG_WRITE_FILE, 42, &payload).unwrap();
+        let mut frame = Vec::new();
+
+        encode_write_file_frame_into(&mut frame, 42, "/tmp/test.txt", b"content", true, true)
+            .unwrap();
+
+        assert_eq!(frame, expected);
+    }
+
+    #[test]
+    fn private_write_file_frame_matches_payload_plus_frame() {
+        let payload = encode_private_write_file("/tmp/private", b"secret", true).unwrap();
+        let expected = encode(MSG_WRITE_FILE, 43, &payload).unwrap();
+        let mut frame = Vec::new();
+
+        encode_private_write_file_frame_into(&mut frame, 43, "/tmp/private", b"secret", true)
+            .unwrap();
+
+        assert_eq!(frame, expected);
+    }
+
+    #[test]
     fn write_files_payload_roundtrip() {
         let files = [
             WriteFileBatchEntry {
@@ -315,10 +497,40 @@ mod tests {
     }
 
     #[test]
+    fn write_files_frame_matches_payload_plus_frame() {
+        let files = [
+            WriteFileBatchEntry {
+                path: "/tmp/a.txt",
+                content: b"alpha",
+            },
+            WriteFileBatchEntry {
+                path: "/tmp/b.txt",
+                content: b"beta",
+            },
+        ];
+        let payload = encode_write_files(&files).unwrap();
+        let expected = encode(MSG_WRITE_FILES, 44, &payload).unwrap();
+        let mut frame = Vec::new();
+
+        encode_write_files_frame_into(&mut frame, 44, &files).unwrap();
+
+        assert_eq!(frame, expected);
+    }
+
+    #[test]
     fn write_files_rejects_empty_batch() {
         let err = encode_write_files(&[]).unwrap_err();
 
         assert_invalid_payload(err, "write_files file count must be positive");
+    }
+
+    #[test]
+    fn write_files_frame_rejects_empty_batch() {
+        let mut frame = vec![0xFF];
+        let err = encode_write_files_frame_into(&mut frame, 1, &[]).unwrap_err();
+
+        assert_invalid_payload(err, "write_files file count must be positive");
+        assert!(frame.is_empty());
     }
 
     #[test]
@@ -334,6 +546,27 @@ mod tests {
         .unwrap_err();
 
         assert!(matches!(err, ProtocolError::MessageTooLarge(_)));
+    }
+
+    #[test]
+    fn write_files_frame_content_too_large() {
+        let path = "/tmp/f";
+        let payload_overhead = 2 + 2 + path.len() + 4;
+        let big = vec![0u8; MAX_PAYLOAD_SIZE - payload_overhead + 1];
+        let mut frame = vec![0xFF];
+
+        let err = encode_write_files_frame_into(
+            &mut frame,
+            1,
+            &[WriteFileBatchEntry {
+                path,
+                content: &big,
+            }],
+        )
+        .unwrap_err();
+
+        assert!(matches!(err, ProtocolError::MessageTooLarge(_)));
+        assert!(frame.is_empty());
     }
 
     #[test]
@@ -356,10 +589,41 @@ mod tests {
     }
 
     #[test]
+    fn write_files_frame_content_at_message_limit() {
+        let path = "/tmp/f";
+        let payload_overhead = 2 + 2 + path.len() + 4;
+        let content = vec![0u8; MAX_PAYLOAD_SIZE - payload_overhead];
+        let mut frame = Vec::new();
+
+        encode_write_files_frame_into(
+            &mut frame,
+            1,
+            &[WriteFileBatchEntry {
+                path,
+                content: &content,
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(frame.len(), HEADER_SIZE + MAX_MESSAGE_SIZE);
+    }
+
+    #[test]
     fn write_file_path_too_long() {
         let long_path = "a".repeat(65536);
         let err = encode_write_file(&long_path, b"", false, false).unwrap_err();
         assert!(matches!(err, ProtocolError::PayloadTooLarge("path", 65536)));
+    }
+
+    #[test]
+    fn write_file_frame_path_too_long() {
+        let long_path = "a".repeat(65536);
+        let mut frame = vec![0xFF];
+        let err =
+            encode_write_file_frame_into(&mut frame, 1, &long_path, b"", false, false).unwrap_err();
+
+        assert!(matches!(err, ProtocolError::PayloadTooLarge("path", 65536)));
+        assert!(frame.is_empty());
     }
 
     #[test]
@@ -370,6 +634,19 @@ mod tests {
         let err = encode_write_file(path, &big, false, false).unwrap_err();
 
         assert!(matches!(err, ProtocolError::MessageTooLarge(_)));
+    }
+
+    #[test]
+    fn write_file_frame_content_too_large() {
+        let path = "/tmp/f";
+        let payload_overhead = 2 + path.len() + 1 + 4;
+        let big = vec![0u8; MAX_PAYLOAD_SIZE - payload_overhead + 1];
+        let mut frame = vec![0xFF];
+        let err =
+            encode_write_file_frame_into(&mut frame, 1, path, &big, false, false).unwrap_err();
+
+        assert!(matches!(err, ProtocolError::MessageTooLarge(_)));
+        assert!(frame.is_empty());
     }
 
     #[test]
@@ -388,6 +665,18 @@ mod tests {
         assert!(!sudo);
         assert!(!append);
         assert!(!private);
+    }
+
+    #[test]
+    fn write_file_frame_content_at_message_limit() {
+        let path = "/tmp/f";
+        let payload_overhead = 2 + path.len() + 1 + 4;
+        let content = vec![0u8; MAX_PAYLOAD_SIZE - payload_overhead];
+        let mut frame = Vec::new();
+
+        encode_write_file_frame_into(&mut frame, 1, path, &content, false, false).unwrap();
+
+        assert_eq!(frame.len(), HEADER_SIZE + MAX_MESSAGE_SIZE);
     }
 
     #[test]

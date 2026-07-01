@@ -1,7 +1,9 @@
 import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import {
+  chatThreadMetadataContract,
   chatThreadRenameContract,
   chatSearchContract,
+  type ChatThreadMetadata,
   type ChatSearchResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { getClientConfig, handleError } from "../core/client-factory";
@@ -44,4 +46,18 @@ export async function renameZeroChatThread(options: {
     return { threadId: options.threadId, title: options.title };
   }
   handleError(result, "Failed to rename chat thread");
+}
+
+export async function getZeroChatThread(options: {
+  threadId: string;
+}): Promise<ChatThreadMetadata> {
+  const config = await getClientConfig();
+  const client = initClient(chatThreadMetadataContract, config);
+  const result = await client.get({
+    params: { id: options.threadId },
+  });
+  if (result.status === 200) {
+    return result.body;
+  }
+  handleError(result, "Failed to get chat thread");
 }

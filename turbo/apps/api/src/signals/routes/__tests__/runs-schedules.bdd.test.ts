@@ -1,16 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { emailOutbox } from "@vm0/db/schema/email-outbox";
-import { emailSuppressions } from "@vm0/db/schema/email-suppression";
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
 import {
   createBddApi,
   expectApiError,
@@ -24,6 +19,14 @@ import {
   uniqueAutomationName,
 } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  deleteEmailOutboxBySubjectState,
+  deleteEmailSuppressionState,
+  readEmailOutboxBySubjectState,
+  seedEmailOutboxState,
+  seedEmailSuppressionState,
+  touchEmailOutboxState,
+} from "./helpers/email-state";
 
 /**
  * helper gap:
@@ -51,10 +54,6 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
  */
 
 const context = testContext();
-const store = createStore();
-const writeDb = store.set(writeDb$);
-const OUTBOX_TEST_FROM = "Zero <bdd-outbox@mail.example.com>";
-const OUTBOX_TEST_CREATED_AT_OFFSET_MS = 10 * 60 * 1000;
 interface SeedEmailOutboxOptions {
   readonly subject: string;
   readonly to: string;
@@ -65,39 +64,16 @@ interface SeedEmailOutboxOptions {
 }
 
 async function seedEmailOutbox(options: SeedEmailOutboxOptions): Promise<void> {
-  await writeDb.insert(emailOutbox).values({
-    fromAddress: OUTBOX_TEST_FROM,
-    toAddresses: options.to,
-    subject: `Re: ${options.subject}`,
-    template: {
-      template: "inbound-error",
-      props: { errorMessage: "BDD outbox test email" },
-    },
-    status: options.status ?? "pending",
-    attempts: options.attempts ?? 0,
-    createdAt:
-      options.createdAt ?? new Date(now() - OUTBOX_TEST_CREATED_AT_OFFSET_MS),
-    nextRetryAt: options.nextRetryAt ?? null,
-  });
-
+  await seedEmailOutboxState(context, options);
   onTestFinished(async () => {
-    await writeDb
-      .delete(emailOutbox)
-      .where(eq(emailOutbox.subject, `Re: ${options.subject}`));
+    await deleteEmailOutboxBySubjectState(context, options.subject);
   });
 }
 
 async function seedEmailSuppression(address: string): Promise<void> {
-  await writeDb.insert(emailSuppressions).values({
-    emailAddress: address,
-    reason: "bounced",
-    resendEmailId: `em_${randomUUID()}`,
-  });
-
+  await seedEmailSuppressionState(context, address);
   onTestFinished(async () => {
-    await writeDb
-      .delete(emailSuppressions)
-      .where(eq(emailSuppressions.emailAddress, address));
+    await deleteEmailSuppressionState(context, address);
   });
 }
 
@@ -117,25 +93,13 @@ function resendSendCallsTo(recipient: string): number {
 }
 
 async function touchEmailOutbox(subject: string): Promise<void> {
-  const updated = await writeDb
-    .update(emailOutbox)
-    .set({ createdAt: new Date(now()) })
-    .where(eq(emailOutbox.subject, `Re: ${subject}`))
-    .returning({ id: emailOutbox.id });
-
-  if (updated.length === 0) {
-    throw new Error(`Expected email outbox row for ${subject} to touch`);
-  }
+  await touchEmailOutboxState(context, subject, new Date(now()));
 }
 
 async function emailOutboxStatus(subject: string): Promise<string | null> {
-  const [row] = await writeDb
-    .select({ status: emailOutbox.status })
-    .from(emailOutbox)
-    .where(eq(emailOutbox.subject, `Re: ${subject}`))
-    .limit(1);
-
-  return row?.status ?? null;
+  return (
+    (await readEmailOutboxBySubjectState(context, subject))?.status ?? null
+  );
 }
 
 async function emailOutboxRow(subject: string): Promise<{
@@ -143,17 +107,7 @@ async function emailOutboxRow(subject: string): Promise<{
   readonly attempts: number;
   readonly lastError: string | null;
 } | null> {
-  const [row] = await writeDb
-    .select({
-      status: emailOutbox.status,
-      attempts: emailOutbox.attempts,
-      lastError: emailOutbox.lastError,
-    })
-    .from(emailOutbox)
-    .where(eq(emailOutbox.subject, `Re: ${subject}`))
-    .limit(1);
-
-  return row ?? null;
+  return await readEmailOutboxBySubjectState(context, subject);
 }
 
 async function drainEmailOutboxCronOk(): Promise<void> {

@@ -20,6 +20,7 @@ export const argaLabs = {
           fields: {
             ARGA_LABS_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-arga-labs-api-key",
             },

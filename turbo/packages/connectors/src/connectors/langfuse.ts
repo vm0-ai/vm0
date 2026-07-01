@@ -21,11 +21,13 @@ export const langfuse = {
           fields: {
             LANGFUSE_PUBLIC_KEY: {
               label: "Public Key",
+              publicId: "publicKey",
               required: true,
               placeholder: "pk-lf-...",
             },
             LANGFUSE_SECRET_KEY: {
               label: "Secret Key",
+              publicId: "secretKey",
               required: true,
               placeholder: "sk-lf-...",
             },

@@ -3,11 +3,12 @@ import { dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import {
-  type RustStringConstantModuleDoc,
-  type RustStringConstantBinding,
-  rustStringConstantModuleDocs,
-  rustStringConstantRootDoc,
-  rustStringConstantBindings,
+  type RustConstantValue,
+  type RustConstantModuleDoc,
+  type RustConstantBinding,
+  rustConstantModuleDocs,
+  rustConstantRootDoc,
+  rustConstantBindings,
 } from "./constants";
 import { type RustRouteBinding, rustRouteBindings } from "./routes";
 import {
@@ -97,10 +98,10 @@ export interface NormalizedTypeBinding {
   readonly declarationDocs: ReadonlyMap<string, NormalizedTypeDeclarationDoc>;
 }
 
-export interface NormalizedStringConstantBinding {
+export interface NormalizedConstantBinding {
   readonly rustModulePath: readonly string[];
   readonly rustConstName: string;
-  readonly value: string;
+  readonly value: RustConstantValue;
   readonly rustDoc: readonly string[];
 }
 
@@ -113,7 +114,7 @@ interface TypeModuleNode {
 
 interface ConstModuleNode {
   readonly rustDoc: readonly string[];
-  readonly constants: NormalizedStringConstantBinding[];
+  readonly constants: NormalizedConstantBinding[];
   readonly children: Map<string, ConstModuleNode>;
 }
 
@@ -336,14 +337,14 @@ export async function generateRustTypesFile(
   await writeFile(outputPath, renderRustTypes(rustTypeBindings));
 }
 
-export function normalizeStringConstantBindings(
-  bindings: readonly RustStringConstantBinding[],
-): readonly NormalizedStringConstantBinding[] {
+export function normalizeConstantBindings(
+  bindings: readonly RustConstantBinding[],
+): readonly NormalizedConstantBinding[] {
   const seenRustNames = new Set<string>();
-  const normalized: NormalizedStringConstantBinding[] = [];
+  const normalized: NormalizedConstantBinding[] = [];
 
   for (const binding of bindings) {
-    const label = stringConstantLabel(binding);
+    const label = constantLabel(binding);
     const rustModulePath = validateRustModulePath(
       binding.rustModulePath,
       label,
@@ -352,31 +353,31 @@ export function normalizeStringConstantBindings(
     const rustName = [...rustModulePath, rustConstName].join("::");
 
     if (seenRustNames.has(rustName)) {
-      throw new Error(`duplicate Rust string constant binding: ${rustName}`);
+      throw new Error(`duplicate Rust constant binding: ${rustName}`);
     }
     seenRustNames.add(rustName);
 
     normalized.push({
       rustModulePath,
       rustConstName,
-      value: validateStringConstantValue(binding.value, label),
+      value: validateConstantValue(binding.value, label),
       rustDoc: validateRustDoc(binding.rustDoc, label),
     });
   }
 
-  return [...normalized].sort(compareStringConstantBindings);
+  return [...normalized].sort(compareConstantBindings);
 }
 
-export function renderRustStringConstants(
-  bindings: readonly RustStringConstantBinding[],
-  moduleDocs: readonly RustStringConstantModuleDoc[] = rustStringConstantModuleDocs,
-  rootDoc: readonly string[] = rustStringConstantRootDoc,
+export function renderRustConstants(
+  bindings: readonly RustConstantBinding[],
+  moduleDocs: readonly RustConstantModuleDoc[] = rustConstantModuleDocs,
+  rootDoc: readonly string[] = rustConstantRootDoc,
 ): string {
-  const constants = normalizeStringConstantBindings(bindings);
+  const constants = normalizeConstantBindings(bindings);
   const root = buildConstTree(
     constants,
-    normalizeStringConstantModuleDocs(moduleDocs),
-    validateRustDoc(rootDoc, "Rust string constants root docs"),
+    normalizeConstantModuleDocs(moduleDocs),
+    validateRustDoc(rootDoc, "Rust constants root docs"),
   );
   const lines = [
     ...renderInnerRustDoc(root.rustDoc),
@@ -391,10 +392,7 @@ export async function generateRustConstantsFile(
   outputPath = generatedConstantsPath,
 ): Promise<void> {
   await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(
-    outputPath,
-    renderRustStringConstants(rustStringConstantBindings),
-  );
+  await writeFile(outputPath, renderRustConstants(rustConstantBindings));
 }
 
 export function renderGeneratedMod(): string {
@@ -429,11 +427,11 @@ function typeLabel(binding: RustTypeBinding): string {
   return rustName.length > 0 ? rustName : "<unnamed type binding>";
 }
 
-function stringConstantLabel(binding: RustStringConstantBinding): string {
+function constantLabel(binding: RustConstantBinding): string {
   const rustName = [...binding.rustModulePath, binding.rustConstName].join(
     "::",
   );
-  return rustName.length > 0 ? rustName : "<unnamed string constant binding>";
+  return rustName.length > 0 ? rustName : "<unnamed Rust constant binding>";
 }
 
 function validateHttpMethod(value: unknown, label: string): HttpMethod {
@@ -557,12 +555,34 @@ function validateRustTypeName(value: string, label: string): string {
   return value;
 }
 
-function validateStringConstantValue(value: unknown, label: string): string {
-  if (typeof value !== "string") {
-    throw new Error(`${label} is missing a string constant value`);
+function validateConstantValue(
+  value: unknown,
+  label: string,
+): RustConstantValue {
+  if (!isRecord(value)) {
+    throw new Error(`${label} is missing a supported Rust constant value`);
   }
 
-  return value;
+  const kind = value["kind"];
+  const rawValue = value["value"];
+  switch (kind) {
+    case "string":
+      if (typeof rawValue !== "string") {
+        throw new Error(`${label} is missing a string constant value`);
+      }
+      return { kind, value: rawValue };
+    case "u64":
+      if (
+        typeof rawValue !== "number" ||
+        !Number.isSafeInteger(rawValue) ||
+        rawValue < 0
+      ) {
+        throw new Error(`${label} has invalid u64 constant value`);
+      }
+      return { kind, value: rawValue };
+    default:
+      throw new Error(`${label} uses unsupported Rust constant kind`);
+  }
 }
 
 function validateRustDoc(value: unknown, label: string): readonly string[] {
@@ -586,6 +606,10 @@ function isHttpMethod(value: string): value is HttpMethod {
   return httpMethods.some((method) => {
     return method === value;
   });
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null;
 }
 
 function toRustMethodVariant(method: HttpMethod): RustMethodVariant {
@@ -657,36 +681,29 @@ function rustTypeName(binding: NormalizedTypeBinding): string {
   return [...binding.rustModulePath, binding.rustTypeName].join("::");
 }
 
-function compareStringConstantBindings(
-  left: NormalizedStringConstantBinding,
-  right: NormalizedStringConstantBinding,
+function compareConstantBindings(
+  left: NormalizedConstantBinding,
+  right: NormalizedConstantBinding,
 ): number {
-  return compareAscii(
-    rustStringConstantName(left),
-    rustStringConstantName(right),
-  );
+  return compareAscii(rustConstantName(left), rustConstantName(right));
 }
 
-function rustStringConstantName(
-  binding: NormalizedStringConstantBinding,
-): string {
+function rustConstantName(binding: NormalizedConstantBinding): string {
   return [...binding.rustModulePath, binding.rustConstName].join("::");
 }
 
-function normalizeStringConstantModuleDocs(
-  docs: readonly RustStringConstantModuleDoc[],
+function normalizeConstantModuleDocs(
+  docs: readonly RustConstantModuleDoc[],
 ): ReadonlyMap<string, readonly string[]> {
   const moduleDocs = new Map<string, readonly string[]>();
 
   for (const doc of docs) {
-    const label = stringConstantModuleDocLabel(doc);
+    const label = constantModuleDocLabel(doc);
     const rustModulePath = validateRustModulePath(doc.rustModulePath, label);
     const rustName = rustModuleKey(rustModulePath);
 
     if (moduleDocs.has(rustName)) {
-      throw new Error(
-        `duplicate Rust string constant module docs: ${rustName}`,
-      );
+      throw new Error(`duplicate Rust constant module docs: ${rustName}`);
     }
 
     moduleDocs.set(rustName, validateRustDoc(doc.rustDoc, label));
@@ -695,13 +712,11 @@ function normalizeStringConstantModuleDocs(
   return moduleDocs;
 }
 
-function stringConstantModuleDocLabel(
-  doc: RustStringConstantModuleDoc,
-): string {
+function constantModuleDocLabel(doc: RustConstantModuleDoc): string {
   const rustName = rustModuleKey(doc.rustModulePath);
   return rustName.length > 0
     ? `${rustName} module docs`
-    : "<unnamed string constant module docs>";
+    : "<unnamed Rust constant module docs>";
 }
 
 function normalizeTypeModuleDocs(
@@ -849,7 +864,7 @@ function createTypeModuleNode(rustDoc: readonly string[]): TypeModuleNode {
 }
 
 function buildConstTree(
-  constants: readonly NormalizedStringConstantBinding[],
+  constants: readonly NormalizedConstantBinding[],
   moduleDocs: ReadonlyMap<string, readonly string[]>,
   rootDoc: readonly string[],
 ): ConstModuleNode {
@@ -866,9 +881,7 @@ function buildConstTree(
       if (child === undefined) {
         const moduleDoc = moduleDocs.get(moduleKey);
         if (moduleDoc === undefined) {
-          throw new Error(
-            `missing Rust docs for string constant module ${moduleKey}`,
-          );
+          throw new Error(`missing Rust docs for constant module ${moduleKey}`);
         }
         child = createConstModuleNode(moduleDoc);
         node.children.set(segment, child);
@@ -895,7 +908,7 @@ function renderConstModuleNode(
   indent: string,
 ): string[] {
   const lines: string[] = [];
-  const constants = [...node.constants].sort(compareStringConstantBindings);
+  const constants = [...node.constants].sort(compareConstantBindings);
   const children = [...node.children.entries()].sort(
     ([leftName], [rightName]) => {
       return compareAscii(leftName, rightName);
@@ -904,7 +917,7 @@ function renderConstModuleNode(
 
   for (const constant of constants) {
     appendBlankLineIfNeeded(lines);
-    lines.push(...renderStringConstant(constant, indent));
+    lines.push(...renderConstant(constant, indent));
   }
 
   for (const [moduleName, child] of children) {
@@ -918,11 +931,24 @@ function renderConstModuleNode(
   return lines;
 }
 
-function renderStringConstant(
-  constant: NormalizedStringConstantBinding,
+function renderConstant(
+  constant: NormalizedConstantBinding,
   indent: string,
 ): string[] {
-  const literal = rustStringLiteral(constant.value);
+  switch (constant.value.kind) {
+    case "string":
+      return renderStringConstant(constant, indent, constant.value.value);
+    case "u64":
+      return renderU64Constant(constant, indent, constant.value.value);
+  }
+}
+
+function renderStringConstant(
+  constant: NormalizedConstantBinding,
+  indent: string,
+  value: string,
+): string[] {
+  const literal = rustStringLiteral(value);
   const singleLine = `${indent}pub const ${constant.rustConstName}: &str = ${literal};`;
   const splitValueLine = `${indent}    ${literal};`;
   if (singleLine.length <= 100 || splitValueLine.length > 100) {
@@ -933,6 +959,17 @@ function renderStringConstant(
     ...renderOuterRustDoc(constant.rustDoc, indent),
     `${indent}pub const ${constant.rustConstName}: &str =`,
     splitValueLine,
+  ];
+}
+
+function renderU64Constant(
+  constant: NormalizedConstantBinding,
+  indent: string,
+  value: number,
+): string[] {
+  return [
+    ...renderOuterRustDoc(constant.rustDoc, indent),
+    `${indent}pub const ${constant.rustConstName}: u64 = ${value};`,
   ];
 }
 

@@ -5,6 +5,7 @@ import { localStorageSignals } from "../external/local-storage.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
+import { openAgentListDialog$ } from "./zero-sidebar-state.ts";
 
 export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
   set(detachedNavigateTo$, "/chats/:threadId", {
@@ -52,6 +53,9 @@ export const setupGlobalKeyboardShortcuts$ = command(
         },
         "mod+shift+o": async () => {
           await set(navigateToNewChat$, signal);
+        },
+        "mod+shift+a": () => {
+          set(openAgentListDialog$);
         },
       },
       signal,

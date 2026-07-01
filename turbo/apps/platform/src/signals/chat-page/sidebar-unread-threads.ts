@@ -1,11 +1,17 @@
 import { command, computed, state } from "ccstate";
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadMarkAgentReadContract,
+  chatThreadsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
 import { now } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
-import { reloadChatUnreadStateCounter$ } from "../chat-thread-list-reload.ts";
+import {
+  reloadChatUnreadState$,
+  reloadChatUnreadStateCounter$,
+} from "../chat-thread-list-reload.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 
 type UnreadSnapshot = readonly { threadId: string; unreadAt: string }[];
@@ -86,5 +92,20 @@ export const unreadAgentIds$ = computed(
       toast: false,
     });
     return new Set(result.body.agentIds);
+  },
+);
+
+export const markAgentThreadsRead$ = command(
+  async ({ get, set }, agentId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(chatThreadMarkAgentReadContract);
+    await accept(
+      client.markAgentRead({
+        body: { agentId },
+        fetchOptions: { signal },
+      }),
+      [204],
+    );
+    signal.throwIfAborted();
+    set(reloadChatUnreadState$);
   },
 );

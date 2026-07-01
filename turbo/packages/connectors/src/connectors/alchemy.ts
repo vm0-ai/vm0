@@ -20,6 +20,7 @@ export const alchemy = {
           fields: {
             ALCHEMY_API_KEY: {
               label: "API Key or Access Key",
+              publicId: "apiKey",
               required: true,
             },
           },

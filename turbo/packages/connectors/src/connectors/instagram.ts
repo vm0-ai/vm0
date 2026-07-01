@@ -20,10 +20,12 @@ export const instagram = {
           fields: {
             INSTAGRAM_TOKEN: {
               label: "Access Token",
+              publicId: "accessToken",
               required: true,
             },
             INSTAGRAM_BUSINESS_ACCOUNT_ID: {
               label: "Business Account ID",
+              publicId: "accountId",
               required: true,
               storage: "variable",
             },

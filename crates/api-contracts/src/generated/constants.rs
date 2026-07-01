@@ -1,4 +1,4 @@
-//! Generated Rust string constants for `@vm0/api-contracts`.
+//! Generated Rust constants for `@vm0/api-contracts`.
 //! Do not edit by hand; regenerate with `cd turbo && pnpm -F @vm0/api-contracts generate:rust`.
 //! These constants are shared TypeScript/Rust contract values.
 //! Token-shaped placeholder values in this module are fake marker bytes, not secrets.
@@ -61,6 +61,10 @@ pub mod model_provider_env {
 
 /// Runner contract constants shared by TypeScript and Rust.
 pub mod runners {
+    /// Maximum resume session history blob size accepted by the API and runner.
+    /// Rust and TypeScript components use this shared contract value when validating resume history refs and downloads.
+    pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = 134217728;
+
     /// Runner and guest filesystem path constants shared across Rust and TypeScript.
     pub mod paths {
         /// Canonical home directory path expected for the sandbox user inside runner guests.

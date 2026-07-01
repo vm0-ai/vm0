@@ -20,6 +20,7 @@ export const reportei = {
           fields: {
             REPORTEI_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "your-reportei-api-token",
             },

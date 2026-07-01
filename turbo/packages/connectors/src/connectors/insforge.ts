@@ -20,11 +20,13 @@ export const insforge = {
           fields: {
             INSFORGE_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-insforge-api-key",
             },
             INSFORGE_DOMAIN: {
               label: "Backend URL",
+              publicId: "domain",
               required: true,
               storage: "variable",
               normalize: "host",

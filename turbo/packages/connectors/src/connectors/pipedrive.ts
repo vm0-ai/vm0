@@ -20,6 +20,7 @@ export const pipedrive = {
           fields: {
             PIPEDRIVE_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-pipedrive-api-token",
             },

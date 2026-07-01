@@ -21,11 +21,13 @@ export const altium365 = {
           fields: {
             ALTIUM365_TOKEN: {
               label: "User Token",
+              publicId: "token",
               required: true,
               placeholder: "your-altium-365-user-token",
             },
             ALTIUM365_WORKSPACE_URL: {
               label: "Workspace URL",
+              publicId: "workspaceUrl",
               required: true,
               storage: "variable",
               placeholder: "https://your-workspace.365.altium.com",

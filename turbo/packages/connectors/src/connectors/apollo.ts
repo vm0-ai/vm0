@@ -20,6 +20,7 @@ export const apollo = {
           fields: {
             APOLLO_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-apollo-api-key",
             },

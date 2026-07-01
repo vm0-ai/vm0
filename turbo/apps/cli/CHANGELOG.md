@@ -1,5 +1,104 @@
 # Changelog
 
+## [9.217.7](https://github.com/vm0-ai/vm0/compare/cli-v9.217.6...cli-v9.217.7) (2026-07-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.380.1
+
+## [9.217.6](https://github.com/vm0-ai/vm0/compare/cli-v9.217.5...cli-v9.217.6) (2026-07-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.133.0
+    * @vm0/connectors bumped to 1.118.0
+    * @vm0/core bumped to 8.380.0
+
+## [9.217.5](https://github.com/vm0-ai/vm0/compare/cli-v9.217.4...cli-v9.217.5) (2026-06-30)
+
+
+### Refactoring
+
+* remove legacy GitHub integration surface ([#19516](https://github.com/vm0-ai/vm0/issues/19516)) ([c7c6b30](https://github.com/vm0-ai/vm0/commit/c7c6b3003aecca18104de6e3e9f540ea2a3fe60d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.132.1
+    * @vm0/connectors bumped to 1.117.2
+    * @vm0/core bumped to 8.379.3
+
+## [9.217.4](https://github.com/vm0-ai/vm0/compare/cli-v9.217.3...cli-v9.217.4) (2026-06-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.132.0
+    * @vm0/core bumped to 8.379.2
+
+## [9.217.3](https://github.com/vm0-ai/vm0/compare/cli-v9.217.2...cli-v9.217.3) (2026-06-30)
+
+
+### Refactoring
+
+* **cli:** remove workflow run command ([#19459](https://github.com/vm0-ai/vm0/issues/19459)) ([04961b5](https://github.com/vm0-ai/vm0/commit/04961b50759c67a96833e7553210413d62fb2951))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.131.0
+    * @vm0/connectors bumped to 1.117.1
+    * @vm0/core bumped to 8.379.1
+
+## [9.217.2](https://github.com/vm0-ai/vm0/compare/cli-v9.217.1...cli-v9.217.2) (2026-06-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.130.0
+    * @vm0/connectors bumped to 1.117.0
+    * @vm0/core bumped to 8.379.0
+
+## [9.217.1](https://github.com/vm0-ai/vm0/compare/cli-v9.217.0...cli-v9.217.1) (2026-06-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.129.1
+    * @vm0/connectors bumped to 1.116.0
+    * @vm0/core bumped to 8.378.0
+
+## [9.217.0](https://github.com/vm0-ai/vm0/compare/cli-v9.216.0...cli-v9.217.0) (2026-06-30)
+
+
+### Features
+
+* add zero chat get command ([#19405](https://github.com/vm0-ai/vm0/issues/19405)) ([3a90d8f](https://github.com/vm0-ai/vm0/commit/3a90d8f6fd3d575359569843da81b34d2c1a0604))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.129.0
+    * @vm0/core bumped to 8.377.2
+
 ## [9.216.0](https://github.com/vm0-ai/vm0/compare/cli-v9.215.3...cli-v9.216.0) (2026-06-30)
 
 

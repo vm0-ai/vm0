@@ -20,6 +20,7 @@ export const anthropicManagedAgents = {
           fields: {
             ANTHROPIC_MANAGED_AGENTS_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "sk-ant-api03-...",
             },

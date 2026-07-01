@@ -20,6 +20,7 @@ export const honcho = {
           fields: {
             HONCHO_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "hch-v3-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
             },

@@ -20,6 +20,7 @@ export const mapbox = {
           fields: {
             MAPBOX_TOKEN: {
               label: "Access Token",
+              publicId: "accessToken",
               required: true,
               placeholder: "pk....",
             },

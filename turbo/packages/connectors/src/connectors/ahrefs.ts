@@ -59,6 +59,7 @@ export const ahrefs = {
           fields: {
             AHREFS_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "your-ahrefs-api-token",
             },

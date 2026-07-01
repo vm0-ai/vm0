@@ -1,43 +1,58 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroConnectorsSearchContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   type ConnectorAuthMethodConfig,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const store = createStore();
 
+function featureSwitchesClient() {
+  return setupApp({ context })(zeroFeatureSwitchesContract);
+}
+
+function authHeaders() {
+  return { authorization: "Bearer clerk-session" };
+}
+
 async function enableFeatureSwitches(
   orgId: string,
   userId: string,
   switches: Partial<Record<FeatureSwitchKey, boolean>>,
 ): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(userFeatureSwitches).values({
-    orgId,
-    userId,
-    switches,
-  });
+  mocks.clerk.session(userId, orgId);
+  await accept(
+    featureSwitchesClient().update({
+      headers: authHeaders(),
+      body: { switches },
+    }),
+    [200],
+  );
+}
+
+async function deleteFeatureSwitches(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  mocks.clerk.session(userId, orgId);
+  await accept(
+    featureSwitchesClient().delete({ headers: authHeaders() }),
+    [200],
+  );
 }
 
 function currentSecond(): number {
@@ -49,31 +64,16 @@ describe("GET /api/zero/connectors/search", () => {
     readonly orgId: string;
     readonly userId: string;
   }[] = [];
-  const seededOrgs: OrgMembershipFixture[] = [];
   const restoreConnectorRegistry: (() => void)[] = [];
 
   afterEach(async () => {
     while (restoreConnectorRegistry.length > 0) {
       restoreConnectorRegistry.pop()?.();
     }
-    const writeDb = store.set(writeDb$);
     while (seededFeatureSwitches.length > 0) {
       const fixture = seededFeatureSwitches.pop();
       if (fixture) {
-        await writeDb
-          .delete(userFeatureSwitches)
-          .where(
-            and(
-              eq(userFeatureSwitches.orgId, fixture.orgId),
-              eq(userFeatureSwitches.userId, fixture.userId),
-            ),
-          );
-      }
-    }
-    while (seededOrgs.length > 0) {
-      const fixture = seededOrgs.pop();
-      if (fixture) {
-        await store.set(deleteOrgMembership$, fixture, context.signal);
+        await deleteFeatureSwitches(fixture.orgId, fixture.userId);
       }
     }
   });
@@ -452,12 +452,10 @@ describe("GET /api/zero/connectors/search", () => {
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    seededOrgs.push(
-      await store.set(
-        seedOrgMembership$,
-        { orgId, userId, role: "admin" },
-        context.signal,
-      ),
+    await store.set(
+      seedOrgMembership$,
+      { orgId, userId, role: "admin" },
+      context.signal,
     );
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
@@ -486,12 +484,10 @@ describe("GET /api/zero/connectors/search", () => {
   it("rejects a ZERO_TOKEN missing the connector:read capability with 403", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    seededOrgs.push(
-      await store.set(
-        seedOrgMembership$,
-        { orgId, userId, role: "admin" },
-        context.signal,
-      ),
+    await store.set(
+      seedOrgMembership$,
+      { orgId, userId, role: "admin" },
+      context.signal,
     );
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({

@@ -131,6 +131,7 @@ type ChatThreadRow = {
   readonly lastReadAt: Date | null;
   readonly lastReadMessageId: string | null;
   readonly lastMessageAt: Date;
+  readonly pinnedAt: Date | null;
   readonly renamedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -377,6 +378,7 @@ function ownedChatThread(
         lastReadAt: chatThreads.lastReadAt,
         lastReadMessageId: chatThreads.lastReadMessageId,
         lastMessageAt: chatThreads.lastMessageAt,
+        pinnedAt: chatThreads.pinnedAt,
         renamedAt: chatThreads.renamedAt,
         createdAt: chatThreads.createdAt,
         updatedAt: chatThreads.updatedAt,
@@ -408,6 +410,7 @@ function ownedChatThread(
       lastReadAt: thread.lastReadAt ?? null,
       lastReadMessageId: thread.lastReadMessageId ?? null,
       lastMessageAt: thread.lastMessageAt,
+      pinnedAt: thread.pinnedAt ?? null,
       renamedAt: thread.renamedAt ?? null,
       createdAt: thread.createdAt,
       updatedAt: thread.updatedAt,
@@ -652,8 +655,29 @@ function toPagedMessage(
 // Single zero_runs JOIN agent_runs scan used to derive activeRunIds in JS,
 // paying the join cost once on the hot chat-thread detail path. Rows are
 // ordered newest-first.
+const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
+
 function isActiveRunStatus(status: string): boolean {
-  return status === "queued" || status === "pending" || status === "running";
+  return (ACTIVE_RUN_STATUSES as readonly string[]).includes(status);
+}
+
+function activeRunStatusSqlList() {
+  return sql.join(
+    ACTIVE_RUN_STATUSES.map((status) => {
+      return sql`${status}`;
+    }),
+    sql.raw(", "),
+  );
+}
+
+function noActiveRunsForCurrentThreadCondition() {
+  return sql<boolean>`NOT EXISTS (
+    SELECT 1
+    FROM ${zeroRuns}
+    INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
+    WHERE ${zeroRuns.chatThreadId} = ${chatThreads.id}
+      AND ${agentRuns.status} IN (${activeRunStatusSqlList()})
+  )`;
 }
 
 interface ThreadRunSummaryRow {
@@ -713,6 +737,7 @@ export function zeroChatThreadDetail(args: {
       activeRunIds: [...pickActiveRunIds(runSummaries)],
       createdAt: thread.createdAt.toISOString(),
       updatedAt: thread.updatedAt.toISOString(),
+      pinnedAt: thread.pinnedAt?.toISOString() ?? null,
       draftContent: thread.draftContent,
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
@@ -813,7 +838,7 @@ function chatThreadListProjection() {
       FROM ${zeroRuns}
       INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
       WHERE ${zeroRuns.chatThreadId} = ${chatThreads.id}
-        AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+        AND ${agentRuns.status} IN (${activeRunStatusSqlList()})
     )`,
   } as const;
 }
@@ -864,10 +889,13 @@ export function zeroChatThreadList(args: {
   readonly orgId: string;
   readonly agentComposeId: string;
   readonly cursor?: string;
+  readonly filter?: "unread";
 }): Computed<Promise<ChatThreadListPage>> {
   return computed(async (get): Promise<ChatThreadListPage> => {
     const db = get(db$);
     const cursor = decodeChatThreadListCursor(args.cursor);
+    const lastMessage =
+      args.filter === "unread" ? lastVisibleMessageSubquery(db) : null;
 
     const projection = chatThreadListProjection();
 
@@ -876,6 +904,15 @@ export function zeroChatThreadList(args: {
       eq(zeroAgents.orgId, args.orgId),
       eq(chatThreads.agentComposeId, args.agentComposeId),
     ];
+    if (lastMessage) {
+      scopedFilters.push(
+        isNotNull(lastMessage.id),
+        or(
+          isNull(chatThreads.lastReadMessageId),
+          sql`${chatThreads.lastReadMessageId} <> ${lastMessage.id}`,
+        )!,
+      );
+    }
 
     const nonPinnedFilters = [...scopedFilters, isNull(chatThreads.pinnedAt)];
     if (cursor) {
@@ -890,6 +927,38 @@ export function zeroChatThreadList(args: {
     const [pinnedRows, nonPinnedRows] = await Promise.all([
       cursor
         ? []
+        : lastMessage
+          ? db
+              .select(projection)
+              .from(chatThreads)
+              .innerJoin(
+                zeroAgents,
+                eq(zeroAgents.id, chatThreads.agentComposeId),
+              )
+              .leftJoinLateral(lastMessage, sql`true`)
+              .where(and(...scopedFilters, isNotNull(chatThreads.pinnedAt)))
+              .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id))
+          : db
+              .select(projection)
+              .from(chatThreads)
+              .innerJoin(
+                zeroAgents,
+                eq(zeroAgents.id, chatThreads.agentComposeId),
+              )
+              .where(and(...scopedFilters, isNotNull(chatThreads.pinnedAt)))
+              .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id)),
+      lastMessage
+        ? db
+            .select(projection)
+            .from(chatThreads)
+            .innerJoin(
+              zeroAgents,
+              eq(zeroAgents.id, chatThreads.agentComposeId),
+            )
+            .leftJoinLateral(lastMessage, sql`true`)
+            .where(and(...nonPinnedFilters))
+            .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id))
+            .limit(SIDEBAR_CHAT_THREAD_LIMIT + 1)
         : db
             .select(projection)
             .from(chatThreads)
@@ -897,15 +966,9 @@ export function zeroChatThreadList(args: {
               zeroAgents,
               eq(zeroAgents.id, chatThreads.agentComposeId),
             )
-            .where(and(...scopedFilters, isNotNull(chatThreads.pinnedAt)))
-            .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id)),
-      db
-        .select(projection)
-        .from(chatThreads)
-        .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-        .where(and(...nonPinnedFilters))
-        .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id))
-        .limit(SIDEBAR_CHAT_THREAD_LIMIT + 1),
+            .where(and(...nonPinnedFilters))
+            .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id))
+            .limit(SIDEBAR_CHAT_THREAD_LIMIT + 1),
     ]);
 
     const hasMore = nonPinnedRows.length > SIDEBAR_CHAT_THREAD_LIMIT;
@@ -996,6 +1059,7 @@ export function zeroChatThreadUnreadAgentIds(args: {
             isNull(chatThreads.lastReadMessageId),
             sql`${chatThreads.lastReadMessageId} <> ${lastMessage.id}`,
           ),
+          noActiveRunsForCurrentThreadCondition(),
         ),
       );
     return rows.map((row) => {
@@ -1418,15 +1482,22 @@ export function chatThreadForRun(
   });
 }
 
-const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
+interface ThreadRunToCancel {
+  readonly runId: string;
+  readonly orgId: string;
+}
 
 /**
  * Delete a chat thread after winding down everything attached to it. Deleting a
  * thread on its own leaves the linked automations firing and any in-flight runs
  * executing: `zero_runs.chatThreadId` is `ON DELETE SET NULL`, so a running run
- * simply loses its thread reference and keeps consuming credits. We therefore
- * follow the order: stop related automations, cancel related active runs, then
- * delete the thread.
+ * simply loses its thread reference and keeps consuming credits.
+ *
+ * Lock the thread row while deleting it and collecting active runs. Inserts into
+ * `zero_runs.chatThreadId` take a FK lock on the same parent row, so this closes
+ * the race where a new run attaches after the active-run scan but before the
+ * thread delete. Cancellation still happens after the delete transaction because
+ * it has runner notifications and queue-drain side effects.
  *
  * Run cancellation has side effects that cannot participate in the thread's
  * delete transaction (`cancelRun$` opens its own transaction and the runner
@@ -1444,45 +1515,59 @@ export const deleteChatThread$ = command(
   }> => {
     const writeDb = set(writeDb$);
 
-    const [ownedThread] = await writeDb
-      .select({ id: chatThreads.id })
-      .from(chatThreads)
-      .where(
-        and(
-          eq(chatThreads.id, args.threadId),
-          eq(chatThreads.userId, args.userId),
-        ),
-      )
-      .limit(1);
+    const deletion = await writeDb.transaction(async (tx) => {
+      const lockedRows = await tx.execute<{ readonly id: string }>(sql`
+        SELECT ${chatThreads.id} AS "id"
+        FROM ${chatThreads}
+        WHERE ${chatThreads.id} = ${args.threadId}
+          AND ${chatThreads.userId} = ${args.userId}
+        FOR UPDATE
+      `);
+      const ownedThread = lockedRows.rows[0];
+      if (!ownedThread) {
+        return {
+          deleted: false,
+          activeRuns: [] as readonly ThreadRunToCancel[],
+        };
+      }
+
+      // Stop related automations first so none of them can spawn a fresh run
+      // while we are cancelling the in-flight ones (their triggers cascade).
+      await tx
+        .delete(automations)
+        .where(eq(automations.chatThreadId, ownedThread.id));
+
+      // Capture related active runs while the thread row blocks new FK attaches.
+      // Terminal runs (completed/failed/cancelled) are left untouched; only
+      // queued/pending/running runs need stopping.
+      const activeRuns = await tx
+        .select({ runId: agentRuns.id, orgId: agentRuns.orgId })
+        .from(zeroRuns)
+        .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+        .where(
+          and(
+            eq(zeroRuns.chatThreadId, ownedThread.id),
+            eq(agentRuns.userId, args.userId),
+            inArray(agentRuns.status, [...ACTIVE_RUN_STATUSES]),
+          ),
+        );
+
+      // Delete the thread last inside the lock. Cascades chat_messages; captured
+      // active runs will have their zero_runs.chatThreadId set to NULL.
+      const [deletedThread] = await tx
+        .delete(chatThreads)
+        .where(eq(chatThreads.id, ownedThread.id))
+        .returning({ id: chatThreads.id });
+
+      return { deleted: Boolean(deletedThread), activeRuns };
+    });
     signal.throwIfAborted();
-    if (!ownedThread) {
+    if (!deletion.deleted) {
       return { deleted: false, cancelledRuns: [] };
     }
 
-    // Stop related automations first so none of them can spawn a fresh run
-    // while we are cancelling the in-flight ones (their triggers cascade).
-    await writeDb
-      .delete(automations)
-      .where(eq(automations.chatThreadId, ownedThread.id));
-    signal.throwIfAborted();
-
-    // Cancel related active runs. Terminal runs (completed/failed/cancelled)
-    // are left untouched; only queued/pending/running runs need stopping.
-    const activeRuns = await writeDb
-      .select({ runId: agentRuns.id, orgId: agentRuns.orgId })
-      .from(zeroRuns)
-      .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-      .where(
-        and(
-          eq(zeroRuns.chatThreadId, ownedThread.id),
-          eq(agentRuns.userId, args.userId),
-          inArray(agentRuns.status, [...ACTIVE_RUN_STATUSES]),
-        ),
-      );
-    signal.throwIfAborted();
-
     const cancelledRuns: CancelRunResult[] = [];
-    for (const run of activeRuns) {
+    for (const run of deletion.activeRuns) {
       const result = await set(
         cancelRun$,
         { runId: run.runId, userId: args.userId, orgId: run.orgId },
@@ -1497,15 +1582,7 @@ export const deleteChatThread$ = command(
       }
     }
 
-    // Delete the thread last. Cascades chat_messages; the now-cancelled runs
-    // have their zero_runs.chatThreadId set to NULL.
-    const [deletedThread] = await writeDb
-      .delete(chatThreads)
-      .where(eq(chatThreads.id, ownedThread.id))
-      .returning({ id: chatThreads.id });
-    signal.throwIfAborted();
-
-    return { deleted: Boolean(deletedThread), cancelledRuns };
+    return { deleted: true, cancelledRuns };
   },
 );
 

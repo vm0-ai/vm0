@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroBillingDowngradeContract } from "@vm0/api-contracts/contracts/zero-billing";
+import {
+  zeroBillingDowngradeContract,
+  zeroBillingStatusContract,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import { createStore } from "ccstate";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
-import { writeDb$ } from "../../external/db";
 import {
   deleteInvoicesOrg$,
   seedInvoicesOrg$,
@@ -25,6 +25,15 @@ const mocks = createZeroRouteMocks(context);
 
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
+
+async function readBillingStatus() {
+  return await accept(
+    setupApp({ context })(zeroBillingStatusContract).get({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
+}
 
 describe("POST /api/zero/billing/downgrade", () => {
   const track = createFixtureTracker<InvoicesOrgFixture>((fixture) => {
@@ -254,29 +263,15 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
-        currentPeriodEnd: orgMetadata.currentPeriodEnd,
-        pendingSubscriptionScheduleId:
-          orgMetadata.pendingSubscriptionScheduleId,
-        pendingSubscriptionTargetTier:
-          orgMetadata.pendingSubscriptionTargetTier,
-        pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId))
-      .limit(1);
-    expect(row?.cancelAtPeriodEnd).toBeFalsy();
-    expect(row?.pendingSubscriptionScheduleId).toBe(scheduleId);
-    expect(row?.pendingSubscriptionTargetTier).toBe("pro");
-    expect(row?.pendingSubscriptionChangeAt?.toISOString()).toBe(
-      new Date(periodEnd * 1000).toISOString(),
-    );
-    expect(row?.currentPeriodEnd?.toISOString()).toBe(
-      new Date(periodEnd * 1000).toISOString(),
-    );
+    const status = await readBillingStatus();
+    const effectiveDate = new Date(periodEnd * 1000).toISOString();
+    expect(status.body.cancelAtPeriodEnd).toBeFalsy();
+    expect(status.body.currentPeriodEnd).toBe(effectiveDate);
+    expect(status.body.scheduledChange).toStrictEqual({
+      type: "downgrade",
+      targetTier: "pro",
+      effectiveDate,
+    });
   });
 
   it("reuses an existing Stripe schedule when scheduling team to pro", async () => {
@@ -357,23 +352,12 @@ describe("POST /api/zero/billing/downgrade", () => {
       ],
     });
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        pendingSubscriptionScheduleId:
-          orgMetadata.pendingSubscriptionScheduleId,
-        pendingSubscriptionTargetTier:
-          orgMetadata.pendingSubscriptionTargetTier,
-        pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId))
-      .limit(1);
-    expect(row?.pendingSubscriptionScheduleId).toBe(scheduleId);
-    expect(row?.pendingSubscriptionTargetTier).toBe("pro");
-    expect(row?.pendingSubscriptionChangeAt?.toISOString()).toBe(
-      new Date(periodEnd * 1000).toISOString(),
-    );
+    const status = await readBillingStatus();
+    expect(status.body.scheduledChange).toStrictEqual({
+      type: "downgrade",
+      targetTier: "pro",
+      effectiveDate: new Date(periodEnd * 1000).toISOString(),
+    });
   });
 
   it("returns setup checkout URL when team to pro needs a payment method", async () => {
@@ -530,25 +514,13 @@ describe("POST /api/zero/billing/downgrade", () => {
       context.mocks.stripe.subscriptionSchedules.update,
     ).not.toHaveBeenCalled();
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
-        pendingSubscriptionScheduleId:
-          orgMetadata.pendingSubscriptionScheduleId,
-        pendingSubscriptionTargetTier:
-          orgMetadata.pendingSubscriptionTargetTier,
-        pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId))
-      .limit(1);
-    expect(row?.cancelAtPeriodEnd).toBeTruthy();
-    expect(row?.pendingSubscriptionScheduleId).toBeNull();
-    expect(row?.pendingSubscriptionTargetTier).toBe("pro-suspend");
-    expect(row?.pendingSubscriptionChangeAt?.toISOString()).toBe(
-      periodEnd.toISOString(),
-    );
+    const status = await readBillingStatus();
+    expect(status.body.cancelAtPeriodEnd).toBeTruthy();
+    expect(status.body.scheduledChange).toStrictEqual({
+      type: "cancel",
+      targetTier: "pro-suspend",
+      effectiveDate: periodEnd.toISOString(),
+    });
   });
 
   it("downgrades team to pro-suspend via cancel at period end", async () => {
@@ -672,23 +644,14 @@ describe("POST /api/zero/billing/downgrade", () => {
       context.mocks.stripe.subscriptionSchedules.update,
     ).not.toHaveBeenCalled();
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
-        currentPeriodEnd: orgMetadata.currentPeriodEnd,
-        pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId))
-      .limit(1);
-    expect(row?.cancelAtPeriodEnd).toBeTruthy();
-    expect(row?.currentPeriodEnd?.toISOString()).toBe(
-      finalEndDate.toISOString(),
-    );
-    expect(row?.pendingSubscriptionChangeAt?.toISOString()).toBe(
-      finalEndDate.toISOString(),
-    );
+    const status = await readBillingStatus();
+    expect(status.body.cancelAtPeriodEnd).toBeTruthy();
+    expect(status.body.currentPeriodEnd).toBe(finalEndDate.toISOString());
+    expect(status.body.scheduledChange).toStrictEqual({
+      type: "cancel",
+      targetTier: "pro-suspend",
+      effectiveDate: finalEndDate.toISOString(),
+    });
   });
 
   it("does not overwrite an existing subscription cancel_at", async () => {
@@ -749,23 +712,14 @@ describe("POST /api/zero/billing/downgrade", () => {
       context.mocks.stripe.subscriptionSchedules.update,
     ).not.toHaveBeenCalled();
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
-        currentPeriodEnd: orgMetadata.currentPeriodEnd,
-        pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId))
-      .limit(1);
-    expect(row?.cancelAtPeriodEnd).toBeTruthy();
-    expect(row?.currentPeriodEnd?.toISOString()).toBe(
-      cancelAtDate.toISOString(),
-    );
-    expect(row?.pendingSubscriptionChangeAt?.toISOString()).toBe(
-      cancelAtDate.toISOString(),
-    );
+    const status = await readBillingStatus();
+    expect(status.body.cancelAtPeriodEnd).toBeTruthy();
+    expect(status.body.currentPeriodEnd).toBe(cancelAtDate.toISOString());
+    expect(status.body.scheduledChange).toStrictEqual({
+      type: "cancel",
+      targetTier: "pro-suspend",
+      effectiveDate: cancelAtDate.toISOString(),
+    });
   });
 
   it("preserves external schedule phases when cancelling at schedule end", async () => {
@@ -843,29 +797,14 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
-        currentPeriodEnd: orgMetadata.currentPeriodEnd,
-        pendingSubscriptionScheduleId:
-          orgMetadata.pendingSubscriptionScheduleId,
-        pendingSubscriptionTargetTier:
-          orgMetadata.pendingSubscriptionTargetTier,
-        pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId))
-      .limit(1);
-    expect(row?.cancelAtPeriodEnd).toBeTruthy();
-    expect(row?.currentPeriodEnd?.toISOString()).toBe(
-      finalEndDate.toISOString(),
-    );
-    expect(row?.pendingSubscriptionScheduleId).toBe(scheduleId);
-    expect(row?.pendingSubscriptionTargetTier).toBe("pro-suspend");
-    expect(row?.pendingSubscriptionChangeAt?.toISOString()).toBe(
-      finalEndDate.toISOString(),
-    );
+    const status = await readBillingStatus();
+    expect(status.body.cancelAtPeriodEnd).toBeTruthy();
+    expect(status.body.currentPeriodEnd).toBe(finalEndDate.toISOString());
+    expect(status.body.scheduledChange).toStrictEqual({
+      type: "cancel",
+      targetTier: "pro-suspend",
+      effectiveDate: finalEndDate.toISOString(),
+    });
   });
 
   it("replaces a pending team to pro schedule with cancellation at period end", async () => {
@@ -945,24 +884,12 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
-        pendingSubscriptionScheduleId:
-          orgMetadata.pendingSubscriptionScheduleId,
-        pendingSubscriptionTargetTier:
-          orgMetadata.pendingSubscriptionTargetTier,
-        pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId))
-      .limit(1);
-    expect(row?.cancelAtPeriodEnd).toBeTruthy();
-    expect(row?.pendingSubscriptionScheduleId).toBe(scheduleId);
-    expect(row?.pendingSubscriptionTargetTier).toBe("pro-suspend");
-    expect(row?.pendingSubscriptionChangeAt?.toISOString()).toBe(
-      currentPeriodEnd.toISOString(),
-    );
+    const status = await readBillingStatus();
+    expect(status.body.cancelAtPeriodEnd).toBeTruthy();
+    expect(status.body.scheduledChange).toStrictEqual({
+      type: "cancel",
+      targetTier: "pro-suspend",
+      effectiveDate: currentPeriodEnd.toISOString(),
+    });
   });
 });

@@ -17,7 +17,7 @@ export const setupAutomationsPage$ = command(
     set(updatePage$, createElement(ZeroAutomationsPage), "sidebar");
     set(updateDocumentTitle$, "Automations");
     const features = get(featureSwitch$);
-    if (features[FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]) {
+    if (features[FeatureSwitchKey.WorkflowAutomation]) {
       set(reloadWorkflows$);
     } else {
       set(initAutomationListTab$);

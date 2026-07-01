@@ -20,6 +20,7 @@ export const workos = {
           fields: {
             WORKOS_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "sk_live_...",
             },

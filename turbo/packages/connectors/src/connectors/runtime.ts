@@ -20,6 +20,7 @@ export const runtime = {
           fields: {
             RUNTIME_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-runtime-api-key",
             },

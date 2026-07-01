@@ -21,6 +21,7 @@ export const sponge = {
           fields: {
             SPONGE_MASTER_KEY: {
               label: "Master API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "sponge_master_...",
             },

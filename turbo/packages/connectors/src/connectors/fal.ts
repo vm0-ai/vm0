@@ -21,6 +21,7 @@ export const fal = {
           fields: {
             FAL_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "fal_...",
             },

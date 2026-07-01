@@ -21,6 +21,7 @@ export const sendgrid = {
           fields: {
             SENDGRID_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "SG.xxxxxxxxxxxxxxxxxxxxxx",
             },

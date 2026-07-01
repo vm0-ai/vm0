@@ -492,30 +492,16 @@ function GlobalConnectorCard({
               </TooltipProvider>
             ) : null}
           </span>
-          <button
-            type="button"
-            onClick={onConnect}
-            className="font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
-          >
-            Reconnect
-          </button>
         </span>
       );
     }
     if (connector.connected && connectionStatus === "scope-mismatch") {
       return (
-        <span className="flex items-center gap-2 text-xs truncate">
+        <span className="flex min-w-0 items-center gap-2 text-[11px]">
           <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-          <span className="text-amber-600 dark:text-amber-400">
-            Permissions update available
+          <span className="min-w-0 truncate text-amber-600 dark:text-amber-400">
+            Update permissions
           </span>
-          <button
-            type="button"
-            onClick={onReviewScopes}
-            className="font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
-          >
-            Review
-          </button>
         </span>
       );
     }
@@ -566,7 +552,9 @@ function GlobalConnectorCard({
         </span>
       </div>
       <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
-        <div className="flex items-center gap-2 min-w-0">{status}</div>
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+          {status}
+        </div>
         {connector.connected && (
           <div className="flex shrink-0 items-center gap-1">
             {showManageAccess && (
@@ -588,6 +576,16 @@ function GlobalConnectorCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
+                {connectionStatus === "reconnect-required" ? (
+                  <DropdownMenuItem onClick={onConnect}>
+                    Reconnect
+                  </DropdownMenuItem>
+                ) : null}
+                {connectionStatus === "scope-mismatch" && onReviewScopes ? (
+                  <DropdownMenuItem onClick={onReviewScopes}>
+                    Review permissions
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuItem
                   onClick={onDisconnect}
                   disabled={isDisconnecting}
@@ -910,7 +908,7 @@ export function ZeroConnectorsPage() {
     filteredCount: filteredConnectors.length,
     renderCard,
     search,
-    connectionFilter: showConnectorAccessManagement ? connectionFilter : "all",
+    connectionFilter,
   });
   return (
     <div
@@ -972,7 +970,7 @@ export function ZeroConnectorsPage() {
                 </TabsList>
               </Tabs>
               <div className="flex items-center gap-2">
-                {activeTab === "builtin" && showConnectorAccessManagement && (
+                {activeTab === "builtin" && (
                   <ConnectorConnectionFilter
                     value={connectionFilter}
                     onChange={setConnectionFilter}

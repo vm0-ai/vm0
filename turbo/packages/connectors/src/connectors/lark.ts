@@ -20,11 +20,13 @@ export const lark = {
           fields: {
             LARK_APP_ID: {
               label: "App ID",
+              publicId: "appId",
               required: true,
               storage: "variable",
             },
             LARK_APP_SECRET: {
               label: "App Secret",
+              publicId: "appSecret",
               required: true,
               storage: "secret",
             },

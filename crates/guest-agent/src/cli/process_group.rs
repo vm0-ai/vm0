@@ -46,28 +46,6 @@ impl ChildProcessGroup {
     }
 }
 
-pub(super) struct ProcessGroupKillGuard {
-    process_group: Option<ChildProcessGroup>,
-}
-
-impl ProcessGroupKillGuard {
-    pub(super) fn new(process_group: Option<ChildProcessGroup>) -> Self {
-        Self { process_group }
-    }
-
-    pub(super) fn disarm(&mut self) {
-        self.process_group = None;
-    }
-}
-
-impl Drop for ProcessGroupKillGuard {
-    fn drop(&mut self) {
-        if let Some(process_group) = self.process_group {
-            process_group.sigkill();
-        }
-    }
-}
-
 fn is_signalable_child_pgid(pgid: i32) -> bool {
     pgid > 1 && pgid != current_process_group()
 }

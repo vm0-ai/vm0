@@ -1024,6 +1024,8 @@ jobs:
           needs.prepare.outputs.ci-changed == 'true'
         )
       }}
+    outputs:
+      preview-url: ${{ steps.app-alias.outputs.url || steps.deploy.outputs.url }}
     permissions:
       contents: read
       pull-requests: write
@@ -1062,6 +1064,7 @@ jobs:
           skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
 
       - name: Create Vercel Alias
+        id: app-alias
         if: vars.PREVIEW_DOMAIN != ''
         uses: ./.github/actions/vercel-alias
         with:
@@ -1149,6 +1152,157 @@ jobs:
             playbooks/start-stripe-listener.yml \
             --extra-vars "$EXTRA_VARS" \
             -v
+
+  # Exercise the hosted Clerk UI via agent-browser. This is intentionally
+  # separate from Playwright because Playwright signs in through Clerk's
+  # testing helper instead of the third-party form UI.
+  cli-e2e-02-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    concurrency:
+      group: cli-e2e-02-browser-${{ needs.prepare.outputs.job-ref }}
+      cancel-in-progress: true
+    needs: [prepare, deploy-api, deploy-app]
+    if: |
+      always() &&
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.platform-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true' ||
+        needs.prepare.outputs.e2e-changed == 'true'
+      ) &&
+      needs.deploy-api.result == 'success' &&
+      needs.deploy-app.result == 'success'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Install E2E dependencies
+        run: npm install -g agent-browser@0.22.0
+      - name: Run browser E2E tests
+        continue-on-error: ${{ vars.CI_CHECK_BROWSER_E2E != '1' }}
+        run: |
+          BATS_TEST_TIMEOUT=180 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/02-browser/*.bats
+        env:
+          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          VM0_AUTH_URL: ${{ needs.deploy-app.outputs.preview-url }}
+          VM0_AUTH_REDIRECT_URL: ${{ needs.deploy-app.outputs.preview-url }}/_/skeleton
+          VM0_AUTH_DOMAIN: ${{ startsWith(needs.prepare.outputs.job-ref, 'pr-') && needs.prepare.outputs.api-preview-url != '' && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+browser@vm0-e2e.ai
+      - name: Upload auth screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-e2e-02-browser-screenshots
+          path: /tmp/e2e-auth-screenshots/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  cli-e2e-02-playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    concurrency:
+      group: cli-e2e-02-playwright-${{ needs.prepare.outputs.job-ref }}
+      cancel-in-progress: true
+    needs: [prepare, deploy-api, deploy-app, deploy-stripe-listener]
+    if: |
+      always() &&
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.platform-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true' ||
+        needs.prepare.outputs.e2e-changed == 'true'
+      ) &&
+      needs.deploy-api.result == 'success' &&
+      needs.deploy-app.result == 'success' &&
+      (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Install E2E dependencies
+        run: cd e2e && npm ci
+      - name: Install Playwright browsers
+        run: cd e2e && npx playwright install --with-deps chromium
+      - name: Start Stripe webhook forwarding
+        # Staging receives webhooks from the Dashboard endpoint; PR previews use
+        # the long-running listener from deploy-stripe-listener.
+        if: github.event_name == 'push' && needs.prepare.outputs.job-ref != 'staging'
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+          bash e2e/scripts/ensure-stripe-cli.sh
+
+          stripe_webhook_secret="$(stripe listen --api-key "$STRIPE_SECRET_KEY" --print-secret 2>/dev/null)"
+          echo "::add-mask::$stripe_webhook_secret"
+
+          forward_url="${API_PREVIEW_URL%/}/api/webhooks/stripe"
+          stripe listen \
+            --api-key "$STRIPE_SECRET_KEY" \
+            --events checkout.session.completed,invoice.paid,customer.subscription.updated,customer.subscription.deleted \
+            --forward-to "$forward_url" \
+            > /tmp/stripe-listen.log 2>&1 &
+          stripe_pid="$!"
+          echo "$stripe_pid" > /tmp/stripe-listen.pid
+
+          for _ in {1..10}; do
+            if grep -qi 'ready' /tmp/stripe-listen.log; then
+              echo "Stripe webhook forwarding started for $forward_url"
+              exit 0
+            fi
+            if ! kill -0 "$stripe_pid" 2>/dev/null; then
+              sed -E 's/whsec_[[:alnum:]_]+/[masked-stripe-webhook-secret]/g' /tmp/stripe-listen.log >&2
+              exit 1
+            fi
+            sleep 1
+          done
+
+          echo "Stripe CLI did not become ready" >&2
+          sed -E 's/whsec_[[:alnum:]_]+/[masked-stripe-webhook-secret]/g' /tmp/stripe-listen.log >&2
+          exit 1
+        env:
+          API_PREVIEW_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      - name: Run Playwright E2E tests
+        run: cd e2e && npx playwright test --config playwright/playwright.config.ts
+        env:
+          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          VM0_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+      - name: Print Stripe webhook forwarding log
+        if: always() && github.event_name == 'push' && needs.prepare.outputs.job-ref != 'staging'
+        run: |
+          if [[ -f /tmp/stripe-listen.log ]]; then
+            tail -200 /tmp/stripe-listen.log | sed -E 's/whsec_[[:alnum:]_]+/[masked-stripe-webhook-secret]/g'
+          fi
+      - name: Stop Stripe webhook forwarding
+        if: always() && github.event_name == 'push' && needs.prepare.outputs.job-ref != 'staging'
+        run: |
+          if [[ -f /tmp/stripe-listen.pid ]]; then
+            kill "$(cat /tmp/stripe-listen.pid)" 2>/dev/null || true
+          fi
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
 
   build-cli:
     runs-on: ubuntu-latest
@@ -1875,6 +2029,8 @@ jobs:
       - deploy-stripe-listener
       - build-cli
       - build-e2b-template
+      - cli-e2e-02-browser
+      - cli-e2e-02-playwright
       - cli-e2e-01-serial
       - deploy-runner-prepare
       - deploy-runner-start
@@ -1951,6 +2107,8 @@ jobs:
           check_result "deploy-stripe-listener" "${{ needs.deploy-stripe-listener.result }}" "true"
           check_result "build-cli" "${{ needs.build-cli.result }}" "true"
           check_result "build-e2b-template" "${{ needs.build-e2b-template.result }}" "true"
+          check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
+          check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "true"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
           check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "$RUNNER_E2E_SKIP_ALLOWED"

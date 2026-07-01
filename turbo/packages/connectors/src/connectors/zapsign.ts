@@ -20,6 +20,7 @@ export const zapsign = {
           fields: {
             ZAPSIGN_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "your-zapsign-api-token",
             },

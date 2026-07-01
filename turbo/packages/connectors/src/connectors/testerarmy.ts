@@ -20,6 +20,7 @@ export const testerarmy = {
           fields: {
             TESTERARMY_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-testerarmy-api-key",
             },

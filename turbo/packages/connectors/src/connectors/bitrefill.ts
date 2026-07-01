@@ -24,6 +24,7 @@ export const bitrefill = {
           fields: {
             BITREFILL_TOKEN: {
               label: "Personal API Token",
+              publicId: "apiToken",
               required: true,
             },
           },

@@ -22,6 +22,7 @@ import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-t
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { accept } from "../../lib/accept.ts";
 import {
+  OAUTH_WEB_API_BASE,
   zeroClient$,
   type ZeroClientFactory,
 } from "../../signals/api-client.ts";
@@ -147,7 +148,7 @@ function startGoogleDriveConnectAndSync(params: {
   detach(
     (async () => {
       const client = params.createClient(zeroConnectorOauthStartContract, {
-        apiBase: "www",
+        apiBase: OAUTH_WEB_API_BASE,
       });
       const result = await accept(
         client.start({

@@ -20,17 +20,20 @@ export const zendesk = {
           fields: {
             ZENDESK_API_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "your-zendesk-api-token",
             },
             ZENDESK_EMAIL: {
               label: "Email",
+              publicId: "email",
               required: true,
               placeholder: "your-email@company.com",
               storage: "variable",
             },
             ZENDESK_SUBDOMAIN: {
               label: "Subdomain",
+              publicId: "subdomain",
               required: true,
               placeholder: "yourcompany",
               storage: "variable",
