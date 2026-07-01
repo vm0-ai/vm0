@@ -6356,7 +6356,7 @@ export function ZeroChatComposer({
   });
 
   const handleConnectSuccess = async (type: ConnectorType) => {
-    const label = connectorMap.get(type)!.label;
+    const label = connectorMap.get(type)?.label ?? type;
     await tapError(authorizeFn(type, pageSignal), () => {
       toast.error(`${label} was authorized but could not be saved`, {
         id: `connector-save-error-${type}`,
