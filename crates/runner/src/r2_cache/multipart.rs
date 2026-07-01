@@ -135,16 +135,8 @@ where
     Upload: Fn(i32, bytes::Bytes) -> UploadFuture + Clone + Send + Sync + 'static,
     UploadFuture: Future<Output = Result<CompletedPart, R2Error>> + Send + 'static,
 {
-    if part_size == 0 {
-        return Err(R2Error::Io(io_other(
-            "multipart part_size must be non-zero",
-        )));
-    }
-    if concurrency == 0 {
-        return Err(R2Error::Io(io_other(
-            "multipart concurrency must be non-zero",
-        )));
-    }
+    assert!(part_size > 0, "multipart part_size must be non-zero");
+    assert!(concurrency > 0, "multipart concurrency must be non-zero");
 
     let mut tasks: tokio::task::JoinSet<Result<(i32, CompletedPart), R2Error>> =
         tokio::task::JoinSet::new();
