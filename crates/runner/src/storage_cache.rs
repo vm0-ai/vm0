@@ -65,6 +65,11 @@ const STORAGE_CACHE_STAGE_TOTAL: &str = "storage_cache_stage_total";
 const STORAGE_CACHE_STAGE_BATCH_WRITE: &str = "storage_cache_stage_batch_write";
 const STORAGE_CACHE_STAGE_SINGLE_WRITE: &str = "storage_cache_stage_single_write";
 const STORAGE_CACHE_STAGE_FAILED: &str = "storage-cache-stage-failed";
+const STORAGE_CACHE_PROCESS_GROUP: &str = "storage_cache_process_group";
+const STORAGE_CACHE_PROCESS_GROUP_FAILED: &str = "storage-cache-process-group-failed";
+const STORAGE_CACHE_LOCK_WAIT: &str = "storage_cache_lock_wait";
+const STORAGE_CACHE_LOCK_WAIT_FAILED: &str = "storage-cache-lock-wait-failed";
+const STORAGE_CACHE_HIT_READ: &str = "storage_cache_hit_read";
 
 /// Guest-side filename for a cached archive.
 ///
@@ -129,6 +134,46 @@ struct StorageCacheStageMetrics {
     failed: bool,
 }
 
+struct CacheProcessMetric {
+    action_type: &'static str,
+    duration: Duration,
+    success: bool,
+    error: Option<&'static str>,
+}
+
+#[derive(Default)]
+struct CacheProcessMetrics {
+    records: Vec<CacheProcessMetric>,
+}
+
+impl CacheProcessMetrics {
+    fn record(
+        &mut self,
+        action_type: &'static str,
+        duration: Duration,
+        success: bool,
+        error: Option<&'static str>,
+    ) {
+        self.records.push(CacheProcessMetric {
+            action_type,
+            duration,
+            success,
+            error,
+        });
+    }
+
+    fn record_to(self, telemetry: &mut JobTelemetry) {
+        for record in self.records {
+            telemetry.record(
+                record.action_type,
+                record.duration,
+                record.success,
+                record.error,
+            );
+        }
+    }
+}
+
 struct GuestStageRecorder<'a> {
     sandbox: &'a dyn Sandbox,
     guest_writes: &'a GuestWriteLocks,
@@ -136,7 +181,13 @@ struct GuestStageRecorder<'a> {
     metrics: &'a mut StorageCacheStageMetrics,
 }
 
-type ProcessedGroupTaskResult = (CacheTargetGroup, RunnerResult<ProcessedGroup>);
+struct ProcessedGroupTask {
+    group: CacheTargetGroup,
+    metrics: CacheProcessMetrics,
+    processed: RunnerResult<ProcessedGroup>,
+}
+
+type ProcessedGroupTaskResult = ProcessedGroupTask;
 
 #[derive(Clone, Copy)]
 enum TargetKind {
@@ -424,12 +475,17 @@ async fn stage_processed_group(
 
 async fn stage_joined_processed_group(
     groups: &mut JoinSet<ProcessedGroupTaskResult>,
-    group: CacheTargetGroup,
-    processed: RunnerResult<ProcessedGroup>,
+    task: ProcessedGroupTask,
     outcomes: &mut Vec<(CacheTargetGroup, GroupOutcome)>,
     stage_batch: &mut GuestStageBatch,
     stage: &mut GuestStageRecorder<'_>,
 ) -> RunnerResult<()> {
+    let ProcessedGroupTask {
+        group,
+        metrics,
+        processed,
+    } = task;
+    metrics.record_to(stage.telemetry);
     let processed = match processed {
         Ok(processed) => processed,
         Err(error) => {
@@ -490,13 +546,12 @@ pub async fn populate_cache(
 
         for group in target_groups {
             while groups.len() >= CONCURRENCY {
-                let Some((group, outcome)) = join_next_processed_group(&mut groups).await? else {
+                let Some(task) = join_next_processed_group(&mut groups).await? else {
                     break;
                 };
                 stage_joined_processed_group(
                     &mut groups,
-                    group,
-                    outcome,
+                    task,
                     &mut outcomes,
                     &mut stage_batch,
                     &mut stage,
@@ -507,16 +562,28 @@ pub async fn populate_cache(
             let http = http.clone();
             let home = home.clone();
             groups.spawn(async move {
-                let res = process_group(&group, &http, &home).await;
-                (group, res)
+                let mut metrics = CacheProcessMetrics::default();
+                let started_at = Instant::now();
+                let processed = process_group(&group, &http, &home, &mut metrics).await;
+                let success = processed.is_ok();
+                metrics.record(
+                    STORAGE_CACHE_PROCESS_GROUP,
+                    started_at.elapsed(),
+                    success,
+                    (!success).then_some(STORAGE_CACHE_PROCESS_GROUP_FAILED),
+                );
+                ProcessedGroupTask {
+                    group,
+                    metrics,
+                    processed,
+                }
             });
         }
 
-        while let Some((group, outcome)) = join_next_processed_group(&mut groups).await? {
+        while let Some(task) = join_next_processed_group(&mut groups).await? {
             stage_joined_processed_group(
                 &mut groups,
-                group,
-                outcome,
+                task,
                 &mut outcomes,
                 &mut stage_batch,
                 &mut stage,
@@ -622,6 +689,7 @@ async fn process_group(
     group: &CacheTargetGroup,
     http: &Client,
     home: &HomePaths,
+    metrics: &mut CacheProcessMetrics,
 ) -> RunnerResult<ProcessedGroup> {
     // Same-key targets are expected to refer to the same archive content, so a
     // definitive cache outcome can be shared across the group. Probe and full
@@ -632,7 +700,7 @@ async fn process_group(
         let ProcessedTarget {
             outcome,
             stage_write,
-        } = process_one(target, http, home).await?;
+        } = process_one(target, http, home, metrics).await?;
         match outcome {
             TargetOutcome::SkippedHeadFailed { .. }
             | TargetOutcome::SkippedInvalidDownload { .. } => {
@@ -666,6 +734,7 @@ async fn process_one(
     target: &CacheTarget,
     http: &Client,
     home: &HomePaths,
+    metrics: &mut CacheProcessMetrics,
 ) -> RunnerResult<ProcessedTarget> {
     let lock_path = home.storage_lock(&target.name, &target.version);
     let cache_dir = home.storage_cache_dir(&target.name, &target.version);
@@ -674,8 +743,19 @@ async fn process_one(
     // Fast path: a cache hit only needs reader ownership. Once bytes are in
     // memory, the guest copy no longer depends on the on-disk cache entry.
     {
-        let reader = lock::acquire_shared(lock_path.clone()).await?;
-        if let CachedArchive::Hit(bytes) = read_cache_entry(&cache_dir, &archive_path).await? {
+        let started_at = Instant::now();
+        let reader_result = lock::acquire_shared(lock_path.clone()).await;
+        let success = reader_result.is_ok();
+        metrics.record(
+            STORAGE_CACHE_LOCK_WAIT,
+            started_at.elapsed(),
+            success,
+            (!success).then_some(STORAGE_CACHE_LOCK_WAIT_FAILED),
+        );
+        let reader = reader_result?;
+        if let CachedArchive::Hit(bytes) =
+            read_cache_entry(&cache_dir, &archive_path, metrics).await?
+        {
             let guest_path = guest_archive_path(&target.name, &target.version);
             drop(reader);
             return Ok(ProcessedTarget {
@@ -687,8 +767,17 @@ async fn process_one(
 
     // Mutation path: re-check under exclusive ownership because another runner
     // may have populated or repaired the cache while this task waited.
-    let writer = lock::acquire(lock_path).await?;
-    match read_cache_entry(&cache_dir, &archive_path).await? {
+    let started_at = Instant::now();
+    let writer_result = lock::acquire(lock_path).await;
+    let success = writer_result.is_ok();
+    metrics.record(
+        STORAGE_CACHE_LOCK_WAIT,
+        started_at.elapsed(),
+        success,
+        (!success).then_some(STORAGE_CACHE_LOCK_WAIT_FAILED),
+    );
+    let writer = writer_result?;
+    match read_cache_entry(&cache_dir, &archive_path, metrics).await? {
         CachedArchive::Hit(bytes) => {
             let guest_path = guest_archive_path(&target.name, &target.version);
             drop(writer);
@@ -817,12 +906,18 @@ async fn process_one(
     })
 }
 
-async fn read_cache_entry(cache_dir: &Path, archive_path: &Path) -> RunnerResult<CachedArchive> {
+async fn read_cache_entry(
+    cache_dir: &Path,
+    archive_path: &Path,
+    metrics: &mut CacheProcessMetrics,
+) -> RunnerResult<CachedArchive> {
     match fs::metadata(archive_path).await {
         Ok(metadata) if metadata.len() == 0 => Ok(CachedArchive::Empty),
         Ok(metadata) if metadata.len() <= CACHE_MAX_SIZE => {
+            let started_at = Instant::now();
             match read_cached_archive(archive_path, CACHE_MAX_SIZE).await? {
                 DownloadBody::Complete(bytes) => {
+                    metrics.record(STORAGE_CACHE_HIT_READ, started_at.elapsed(), true, None);
                     touch_mtime(cache_dir);
                     Ok(CachedArchive::Hit(bytes))
                 }
@@ -1433,6 +1528,18 @@ mod tests {
         );
     }
 
+    fn op_count(ops: &[(String, bool, Option<String>)], action_type: &str) -> usize {
+        ops.iter().filter(|(key, _, _)| key == action_type).count()
+    }
+
+    fn assert_op_count(ops: &[(String, bool, Option<String>)], action_type: &str, expected: usize) {
+        assert_eq!(
+            op_count(ops, action_type),
+            expected,
+            "expected {expected} {action_type} ops in {ops:?}"
+        );
+    }
+
     fn op_duration_ms(ops: &[(String, u64, bool, Option<String>)], action_type: &str) -> u64 {
         ops.iter()
             .find(|(key, _, _, _)| key == action_type)
@@ -1742,6 +1849,12 @@ mod tests {
             ops.iter().any(|(k, _, _)| k == "storage_cache_hit"),
             "expected storage_cache_hit in {ops:?}"
         );
+        assert_op(&ops, STORAGE_CACHE_PROCESS_GROUP, true);
+        assert_op(&ops, STORAGE_CACHE_LOCK_WAIT, true);
+        assert_op(&ops, STORAGE_CACHE_HIT_READ, true);
+        assert_op_count(&ops, STORAGE_CACHE_PROCESS_GROUP, 1);
+        assert_op_count(&ops, STORAGE_CACHE_LOCK_WAIT, 1);
+        assert_op_count(&ops, STORAGE_CACHE_HIT_READ, 1);
         let batches = sandbox.write_files_calls();
         assert_eq!(batches.len(), 1);
         assert_eq!(batches[0].files.len(), 1);
@@ -1914,6 +2027,11 @@ mod tests {
         );
         assert!(ops.iter().any(|(k, _, _)| k == "storage_cache_miss"));
         assert!(ops.iter().any(|(k, _, _)| k == "storage_cache_download"));
+        assert_op(&ops, STORAGE_CACHE_PROCESS_GROUP, true);
+        assert_op(&ops, STORAGE_CACHE_LOCK_WAIT, true);
+        assert_op_count(&ops, STORAGE_CACHE_PROCESS_GROUP, 1);
+        assert_op_count(&ops, STORAGE_CACHE_LOCK_WAIT, 2);
+        assert_no_op(&ops, STORAGE_CACHE_HIT_READ);
     }
 
     #[tokio::test]
@@ -4105,11 +4223,29 @@ mod tests {
                 .iter()
                 .filter(|(k, _, _)| k == "storage_cache_hit")
                 .count();
+        let total_process_group = op_count(&ops_a, STORAGE_CACHE_PROCESS_GROUP)
+            + op_count(&ops_b, STORAGE_CACHE_PROCESS_GROUP);
+        let total_lock_wait =
+            op_count(&ops_a, STORAGE_CACHE_LOCK_WAIT) + op_count(&ops_b, STORAGE_CACHE_LOCK_WAIT);
+        let total_hit_read =
+            op_count(&ops_a, STORAGE_CACHE_HIT_READ) + op_count(&ops_b, STORAGE_CACHE_HIT_READ);
         assert_eq!(
             total_miss, 1,
             "exactly one miss across concurrent populates"
         );
         assert_eq!(total_hit, 1, "second populate must see the warmed cache");
+        assert_eq!(
+            total_process_group, 2,
+            "each concurrent populate should record group processing"
+        );
+        assert!(
+            total_lock_wait >= 3,
+            "miss plus hit paths should record lock wait telemetry in {ops_a:?} / {ops_b:?}"
+        );
+        assert_eq!(
+            total_hit_read, 1,
+            "the warmed-cache caller should record one hit read"
+        );
     }
 
     #[tokio::test]
