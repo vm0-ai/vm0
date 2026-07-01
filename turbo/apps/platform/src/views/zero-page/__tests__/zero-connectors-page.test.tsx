@@ -604,7 +604,9 @@ describe("connectors page", () => {
   });
 
   it("clears connector status filter", async () => {
-    setupConnectorStatusFilterPage("/connectors?connection=not-connected");
+    setupConnectorStatusFilterPage(
+      "/connectors?debug=1&connection=not-connected",
+    );
     await expectConnectorCardsVisible({ github: false, asana: true });
 
     const filterTrigger = screen.getByLabelText("Filter connectors");
@@ -612,7 +614,7 @@ describe("connectors page", () => {
     click(menuItemByText("All"));
 
     await expectConnectorCardsVisible({ github: true, asana: true });
-    expect(search()).toBe("");
+    expect(search()).toBe("?debug=1");
   });
 
   it("filters connectors by agent when access management is enabled", async () => {
