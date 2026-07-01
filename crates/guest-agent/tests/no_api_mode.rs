@@ -11,47 +11,11 @@ use common::SystemLogOverrideGuard;
 use guest_agent::active_input::ActiveInputRuntime;
 use guest_agent::error::AgentError;
 use guest_agent::masker::SecretMasker;
-use guest_agent::paths::GuestPaths;
 use guest_agent::run_context::GuestRuntime;
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
-
-fn cleanup_session_files(paths: &GuestPaths) {
-    let _ = std::fs::remove_file(paths.session_id_file());
-    let _ = std::fs::remove_file(paths.session_history_path_file());
-}
-
-fn cleanup_run_files(paths: &GuestPaths) {
-    let _ = std::fs::remove_file(paths.agent_log_file());
-    let _ = std::fs::remove_file(paths.event_error_flag());
-    cleanup_session_files(paths);
-    let _ = std::fs::remove_file(paths.sandbox_ops_file());
-}
-
-struct RunFilesGuard {
-    paths: GuestPaths,
-}
-
-impl RunFilesGuard {
-    fn new(paths: &GuestPaths) -> Self {
-        cleanup_run_files(paths);
-        Self {
-            paths: paths.clone(),
-        }
-    }
-
-    fn ops_file(&self) -> &str {
-        self.paths.sandbox_ops_file()
-    }
-}
-
-impl Drop for RunFilesGuard {
-    fn drop(&mut self) {
-        cleanup_run_files(&self.paths);
-    }
-}
 
 #[tokio::test]
 async fn no_api_mode_drains_background_webhook_users_without_network_client()
@@ -64,8 +28,8 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
 
     let runtime = GuestRuntime::from_process_env()?;
     let http = runtime.http.clone();
-    let run_files = RunFilesGuard::new(&runtime.paths);
-    let ops_file = run_files.ops_file();
+    let run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
+    let ops_file = run_files.sandbox_ops_file();
 
     let disabled = http
         .post_json("http://127.0.0.1:1/should-not-send", &json!({}), 1)
@@ -106,7 +70,8 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         std::fs::read_to_string(runtime.paths.session_id_file())?,
         "session-no-api"
     );
-    cleanup_session_files(&runtime.paths);
+    let _ = std::fs::remove_file(runtime.paths.session_id_file());
+    let _ = std::fs::remove_file(runtime.paths.session_history_path_file());
 
     let complete_log_path = tmp.path().join("complete-system.log");
     let complete_log_guard = SystemLogOverrideGuard::set(&complete_log_path);

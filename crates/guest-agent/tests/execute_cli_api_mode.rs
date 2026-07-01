@@ -7,38 +7,10 @@
 mod common;
 
 use guest_agent::masker::SecretMasker;
-use guest_agent::paths::GuestPaths;
 use guest_agent::run_context::GuestRuntime;
 use httpmock::prelude::*;
 use std::path::Path;
 use std::time::Duration;
-
-struct RunFilesGuard {
-    paths: GuestPaths,
-}
-
-impl RunFilesGuard {
-    fn new(paths: &GuestPaths) -> Self {
-        cleanup_run_files(paths);
-        Self {
-            paths: paths.clone(),
-        }
-    }
-}
-
-impl Drop for RunFilesGuard {
-    fn drop(&mut self) {
-        cleanup_run_files(&self.paths);
-    }
-}
-
-fn cleanup_run_files(paths: &GuestPaths) {
-    let _ = std::fs::remove_file(paths.agent_log_file());
-    let _ = std::fs::remove_file(paths.event_error_flag());
-    let _ = std::fs::remove_file(paths.session_id_file());
-    let _ = std::fs::remove_file(paths.session_history_path_file());
-    let _ = std::fs::remove_file(paths.sandbox_ops_file());
-}
 
 unsafe fn setup_api_env(
     mock_path: &Path,
@@ -92,7 +64,7 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
         setup_api_env(&mock_cli, tmp.path(), &server.base_url(), &prompt)?;
     }
     let runtime = GuestRuntime::from_process_env()?;
-    let _run_files = RunFilesGuard::new(&runtime.paths);
+    let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
     let expected_run_id = runtime.config.run_id.clone();
     unsafe {
         std::env::set_var("VM0_RUN_ID", "stale-run-id-after-runtime-construction");

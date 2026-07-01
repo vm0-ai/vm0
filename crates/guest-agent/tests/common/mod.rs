@@ -187,6 +187,10 @@ impl RunFilesGuard {
             paths: paths.clone(),
         }
     }
+
+    pub fn sandbox_ops_file(&self) -> &str {
+        self.paths.sandbox_ops_file()
+    }
 }
 
 impl Drop for RunFilesGuard {
