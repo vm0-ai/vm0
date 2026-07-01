@@ -13,9 +13,6 @@ pub const FINAL_SESSION_HISTORY_IDENTITY_VERSION: u8 = 1;
 /// Maximum size of the serialized final identity metadata file.
 pub const FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES: u64 = 16 * 1024;
 
-/// Maximum decoded session-history bytes the guest helper may verify locally.
-pub const SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES: u64 = 32 * 1024 * 1024;
-
 /// Guest helper exit code for successful final identity verification.
 pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS: i32 = 0;
 /// Guest helper exit code for uncategorized final identity verification failure.
@@ -417,15 +414,12 @@ mod tests {
             "a".repeat(64),
             FinalSessionHistoryRefKind::Blob,
             "b".repeat(64),
-            SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES + 1,
+            u64::MAX,
             "/history.jsonl",
         )
         .unwrap();
 
-        assert_eq!(
-            identity.history_size_bytes,
-            SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES + 1
-        );
+        assert_eq!(identity.history_size_bytes, u64::MAX);
         assert_eq!(
             FinalSessionHistoryIdentity::from_json_slice(&identity.to_json_vec().unwrap()).unwrap(),
             identity
@@ -479,14 +473,11 @@ mod tests {
             "a".repeat(64),
             FinalSessionHistoryRefKind::Blob,
             "b".repeat(64),
-            SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES + 1,
+            u64::MAX,
         )
         .unwrap();
 
-        assert_eq!(
-            expectation.history_size_bytes,
-            SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES + 1
-        );
+        assert_eq!(expectation.history_size_bytes, u64::MAX);
     }
 
     #[test]

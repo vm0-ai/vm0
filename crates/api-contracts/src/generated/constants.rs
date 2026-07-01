@@ -61,8 +61,8 @@ pub mod model_provider_env {
 
 /// Runner contract constants shared by TypeScript and Rust.
 pub mod runners {
-    /// Maximum resume session history blob size accepted by the API and runner.
-    /// Rust and TypeScript components use this shared contract value when validating resume history refs and downloads.
+    /// Maximum resume session history blob size accepted by the API, runner, and guest verifier.
+    /// Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.
     pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = 134217728;
 
     /// Runner and guest filesystem path constants shared across Rust and TypeScript.
