@@ -1020,6 +1020,7 @@ enum CacheHttpError {
     Transport {
         phase: &'static str,
         detail: String,
+        retryable: bool,
     },
 }
 
@@ -1036,9 +1037,11 @@ impl CacheHttpError {
         if let Some(status) = error.status() {
             return Self::status(phase, status);
         }
+        let retryable = reqwest_error_is_retryable(&error);
         Self::Transport {
             phase,
             detail: reqwest_error(error),
+            retryable,
         }
     }
 }
@@ -1050,7 +1053,7 @@ impl fmt::Display for CacheHttpError {
             Self::UnexpectedStatus { phase, status } => {
                 write!(f, "{phase}: unexpected status {status}")
             }
-            Self::Transport { phase, detail } => write!(f, "{phase}: {detail}"),
+            Self::Transport { phase, detail, .. } => write!(f, "{phase}: {detail}"),
         }
     }
 }
@@ -1062,7 +1065,7 @@ impl CacheRetryableError for CacheHttpError {
                 *status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
             }
             Self::UnexpectedStatus { .. } => false,
-            Self::Transport { .. } => true,
+            Self::Transport { retryable, .. } => *retryable,
         }
     }
 }
@@ -1229,6 +1232,12 @@ async fn probe_size(http: &Client, url: &str) -> Result<SizeProbe, CacheHttpErro
 
 fn reqwest_error(e: reqwest::Error) -> String {
     e.without_url().to_string()
+}
+
+fn reqwest_error_is_retryable(e: &reqwest::Error) -> bool {
+    // Truncated/protocol-level body reads can surface as decode-style errors
+    // without a status, and those should retry like other transient cache fetches.
+    !(e.is_builder() || e.is_redirect())
 }
 
 /// Parse the total size from the response to our `Range: bytes=0-0` probe.
@@ -2378,6 +2387,38 @@ mod tests {
         assert!(
             !reason.contains("retry exhausted"),
             "4xx errors must not retry: {reason}"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_builder_error_does_not_retry() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let original = "not-a-url".to_string();
+        let name = "probe-builder-error";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        let reason = ops
+            .iter()
+            .find(|(key, _, _)| key == "storage_cache_skipped_head_failed")
+            .and_then(|(_, _, error)| error.as_deref())
+            .expect("expected storage_cache_skipped_head_failed reason");
+        assert!(
+            !reason.contains("retry exhausted"),
+            "builder errors must not retry: {reason}"
         );
     }
 
