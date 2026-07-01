@@ -1,6 +1,8 @@
 import { command, state, type Command } from "ccstate";
 import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
+import { delay } from "signal-timers";
+import { IN_VITEST } from "../env.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { clerk$ } from "./auth.ts";
 import { createAblyAuthCallback } from "../lib/ably-auth.ts";
@@ -8,6 +10,9 @@ import { createDeferredPromise, throwIfAbort } from "./utils.ts";
 import { logger } from "./log.ts";
 
 const L = logger("Realtime");
+const REALTIME_TRANSIENT_RETRY_DELAYS_MS = [
+  1000, 2000, 5000, 10_000, 30_000,
+] as const;
 
 const internalUserChannel$ = state<RealtimeChannel | null>(null);
 
@@ -85,6 +90,19 @@ async function subscribeChannel(
   return true;
 }
 
+async function waitForTransientRetry(
+  signal: AbortSignal,
+  retryCount: number,
+): Promise<void> {
+  const delayMs = IN_VITEST
+    ? 0
+    : (REALTIME_TRANSIENT_RETRY_DELAYS_MS[
+        Math.min(retryCount, REALTIME_TRANSIENT_RETRY_DELAYS_MS.length - 1)
+      ] ?? 30_000);
+  await delay(delayMs, { signal });
+  signal.throwIfAborted();
+}
+
 const runWithChannel$ = command(
   async (
     { set },
@@ -99,9 +117,10 @@ const runWithChannel$ = command(
     signal.throwIfAborted();
     let deferred = createDeferredPromise(signal);
     let poked = false;
+    let transientRetryCount = 0;
 
     const pokeLoop = () => {
-      if (poked) {
+      if (signal.aborted || poked || deferred.settled()) {
         return;
       }
       poked = true;
@@ -109,6 +128,9 @@ const runWithChannel$ = command(
     };
 
     const callback = (message: InboundMessage) => {
+      if (signal.aborted) {
+        return;
+      }
       L.debug("got message from topic", topic, message);
       pokeLoop();
     };
@@ -167,6 +189,7 @@ const runWithChannel$ = command(
         try {
           const done = await set(loopCommand$, signal);
           signal.throwIfAborted();
+          transientRetryCount = 0;
           if (done) {
             cleanup();
             return;
@@ -175,6 +198,10 @@ const runWithChannel$ = command(
           signal.throwIfAborted();
           throwIfAbort(error);
           L.warn(`transient error in ably notification`, error);
+          await waitForTransientRetry(signal, transientRetryCount);
+          signal.throwIfAborted();
+          transientRetryCount++;
+          pokeLoop();
         }
       }
     } catch (error) {
@@ -194,27 +221,6 @@ const runWithChannel$ = command(
   },
 );
 
-const runPayloadNotification$ = command(
-  async (
-    { set },
-    loopCommand$: Command<Promise<boolean> | boolean, [unknown, AbortSignal]>,
-    payload: unknown,
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
-    try {
-      const done = await set(loopCommand$, payload, signal);
-      signal.throwIfAborted();
-      return done;
-    } catch (error) {
-      signal.throwIfAborted();
-      throwIfAbort(error);
-      L.warn(`transient error in ably payload notification`, error);
-      return false;
-    }
-  },
-);
-
 const runWithChannelPayload$ = command(
   async (
     { set },
@@ -224,10 +230,11 @@ const runWithChannelPayload$ = command(
     signal.throwIfAborted();
     let deferred = createDeferredPromise(signal);
     let poked = false;
+    let transientRetryCount = 0;
     const pendingPayloads: unknown[] = [];
 
     const pokeLoop = () => {
-      if (poked) {
+      if (signal.aborted || poked || deferred.settled()) {
         return;
       }
       poked = true;
@@ -235,6 +242,9 @@ const runWithChannelPayload$ = command(
     };
 
     const callback = (message: InboundMessage) => {
+      if (signal.aborted) {
+        return;
+      }
       L.debug("got payload message from topic", topic, message);
       pendingPayloads.push(message.data);
       pokeLoop();
@@ -291,14 +301,24 @@ const runWithChannelPayload$ = command(
         poked = false;
 
         while (pendingPayloads.length > 0) {
-          const payload = pendingPayloads.shift();
-          const done = await set(
-            runPayloadNotification$,
-            loopCommand$,
-            payload,
-            signal,
-          );
-          signal.throwIfAborted();
+          const payload = pendingPayloads[0];
+          let done = false;
+          // eslint-disable-next-line no-restricted-syntax -- payload notifications must retry transient handler failures without dropping the payload
+          try {
+            done = await set(loopCommand$, payload, signal);
+            signal.throwIfAborted();
+          } catch (error) {
+            signal.throwIfAborted();
+            throwIfAbort(error);
+            L.warn(`transient error in ably payload notification`, error);
+            await waitForTransientRetry(signal, transientRetryCount);
+            signal.throwIfAborted();
+            transientRetryCount++;
+            pokeLoop();
+            break;
+          }
+          pendingPayloads.shift();
+          transientRetryCount = 0;
           if (done) {
             cleanup();
             return;

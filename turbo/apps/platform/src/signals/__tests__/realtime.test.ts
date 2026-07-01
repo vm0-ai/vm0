@@ -375,6 +375,37 @@ describe("realtime signals", () => {
     expect(runs).toBe(2);
   });
 
+  it("retries an active loop after a transient handler error", async () => {
+    mockSignedInUser();
+    const topic = "test:transient-loop-error";
+    let runs = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      runs += 1;
+      if (runs === 1) {
+        throw new Error("temporary loop failure");
+      }
+      return true;
+    });
+
+    await context.store.set(setupRealtime$, context.signal);
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      {
+        topic,
+        loopCommand$: loop$,
+      },
+      context.signal,
+    );
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    context.mocks.ably.trigger(topic);
+
+    await expect(loopPromise).resolves.toBeUndefined();
+    expect(runs).toBe(2);
+  });
+
   it("removes settled realtime wait abort listeners between notifications", async () => {
     mockSignedInUser();
     const topic = "test:listener-cleanup";
@@ -453,6 +484,40 @@ describe("realtime signals", () => {
 
     subscriber.abort(abortError("test done"));
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("retries a payload notification after a transient handler error", async () => {
+    mockSignedInUser();
+    const topic = "test:transient-payload-error";
+    const payloads: unknown[] = [];
+    let runs = 0;
+    const loop$ = command((_ctx, payload: unknown, _signal: AbortSignal) => {
+      runs += 1;
+      if (runs === 1) {
+        throw new Error("temporary payload failure");
+      }
+      payloads.push(payload);
+      return true;
+    });
+
+    await context.store.set(setupRealtime$, context.signal);
+    const loopPromise = context.store.set(
+      setAblyPayloadLoop$,
+      {
+        topic,
+        loopCommand$: loop$,
+      },
+      context.signal,
+    );
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    context.mocks.ably.trigger(topic, { messageId: "message-1" });
+
+    await expect(loopPromise).resolves.toBeUndefined();
+    expect(runs).toBe(2);
+    expect(payloads).toStrictEqual([{ messageId: "message-1" }]);
   });
 
   it("fails and cleans up when a chat realtime subscription ends before ready", async () => {
