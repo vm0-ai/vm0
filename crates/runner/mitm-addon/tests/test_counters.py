@@ -11,6 +11,14 @@ from tests.pending_helpers import assert_current_pending, assert_pending
 from tests.usage_buffer_helpers import RecordingEnqueue, event
 
 
+def assert_counter_underflow_message(message: str, counter: str) -> None:
+    assert "type=usage_underbilling" in message
+    assert "reason=usage_pending_counter_underflow" in message
+    assert "underbilling_class=risk" in message
+    assert "component=mitm_addon" in message
+    assert f"counter={counter}" in message
+
+
 class TestUsagePendingCounter:
     """Tests for usage pending counters."""
 
@@ -99,6 +107,38 @@ class TestUsagePendingCounter:
         usage.counters.decrement_pending_reports()
         assert_current_pending(
             pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2"
+        )
+
+    def test_pending_report_lease_release_drains_report(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+        lease = usage.counters.admit_pending_report()
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=1, flush_request_id="admitted"
+        )
+
+        lease.release()
+
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=0, flush_request_id="released"
+        )
+
+    def test_balanced_counter_releases_do_not_log_underflow(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+
+        mock_log = MagicMock()
+        with patch.object(usage.counters.ctx, "log", mock_log, create=True):
+            usage.increment_in_flight_flows()
+            usage.decrement_in_flight_flows()
+            usage.counters.increment_pending_reports()
+            usage.counters.decrement_pending_reports()
+            lease = usage.counters.admit_pending_report()
+            lease.release()
+
+        assert mock_log.error.call_count == 0
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=0, flush_request_id="balanced"
         )
 
     def test_set_buffered_usage_events(self, tmp_path):
@@ -243,14 +283,68 @@ class TestUsagePendingCounter:
 
         assert usage.read_usage_flush_request_id() is None
 
-    def test_decrement_does_not_go_negative(self, tmp_path):
+    def test_decrement_underflow_stays_non_negative_and_logs_once_per_counter(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
-        usage.decrement_in_flight_flows()
-        usage.counters.decrement_pending_reports()
+
+        mock_log = MagicMock()
+        with patch.object(usage.counters.ctx, "log", mock_log, create=True):
+            usage.decrement_in_flight_flows()
+            usage.decrement_in_flight_flows()
+            usage.counters.decrement_pending_reports()
+            usage.counters.decrement_pending_reports()
+
         assert_current_pending(
             pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1"
         )
+
+        assert mock_log.error.call_count == 2
+        messages = [call.args[0] for call in mock_log.error.call_args_list]
+        assert_counter_underflow_message(messages[0], "flows")
+        assert_counter_underflow_message(messages[1], "reports")
+        assert mock_log.warn.call_count == 0
+
+    def test_pending_report_lease_double_release_logs_without_decrementing_other_reports(
+        self, tmp_path
+    ):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+        first = usage.counters.admit_pending_report()
+        second = usage.counters.admit_pending_report()
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=2, flush_request_id="admitted"
+        )
+
+        mock_log = MagicMock()
+        with patch.object(usage.counters.ctx, "log", mock_log, create=True):
+            first.release()
+            first.release()
+
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=1, flush_request_id="first-released"
+        )
+        assert mock_log.error.call_count == 1
+        assert_counter_underflow_message(mock_log.error.call_args[0][0], "reports")
+
+        second.release()
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=0, flush_request_id="all-released"
+        )
+
+    def test_reset_for_tests_reenables_counter_underflow_signal(self, tmp_path):
+        usage.set_pending_path(str(tmp_path / "usage-pending-before-reset"))
+
+        mock_log = MagicMock()
+        with patch.object(usage.counters.ctx, "log", mock_log, create=True):
+            usage.decrement_in_flight_flows()
+            usage.counters.reset_for_tests()
+            usage.set_pending_path(str(tmp_path / "usage-pending-after-reset"))
+            usage.decrement_in_flight_flows()
+
+        assert mock_log.error.call_count == 2
+        messages = [call.args[0] for call in mock_log.error.call_args_list]
+        assert_counter_underflow_message(messages[0], "flows")
+        assert_counter_underflow_message(messages[1], "flows")
 
     def test_no_op_when_path_not_set(self, tmp_path):
         usage.set_pending_path("")
