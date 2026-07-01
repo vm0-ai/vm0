@@ -1235,11 +1235,14 @@ function ChatThreadEmojiMenuButton({
               </button>
             </UiDropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Change emoji</TooltipContent>
+          <TooltipContent side="bottom">Chat thread icon</TooltipContent>
         </Tooltip>
         <UiDropdownMenuContent
           align="start"
           className="w-40"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+          }}
           onKeyDown={(event) => {
             const index = chatThreadEmojiShortcutIndex(event);
             if (index === null) {

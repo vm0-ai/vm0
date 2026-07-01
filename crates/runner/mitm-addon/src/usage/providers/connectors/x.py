@@ -22,11 +22,11 @@ from body_limits import (
     REQUEST_BODY_BILLING_INSPECTION_LIMIT,
 )
 from logging_utils import log_proxy_entry
-from platform_api import get_api_url
 
 from ...buffer import UsageEvent, buffer_usage_events
 from ...idempotency import USAGE_EVENT_NAMESPACE_CONNECTOR, derive_usage_idempotency_key
 from ...json_selective import JsonExtractionResult, JsonSelectiveExtractor, ScalarField
+from ...reporting_context import usage_reporting_context
 from ...underbilling import log_usage_underbilling
 from .response_parser import ConnectorResponseParser
 from .x_billing import (
@@ -1059,22 +1059,20 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
     if not billable_counts:
         return
 
-    sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY, "")
-    api_url = get_api_url()
-    if not sandbox_token or not api_url:
+    reporting_context = usage_reporting_context(flow)
+    if not reporting_context.is_complete:
         log_usage_underbilling(
-            proxy_log_path,
+            reporting_context.proxy_log_path,
             "Cannot report usage event: missing sandbox_token or api_url",
             "missing_reporting_context",
             "confirmed",
             run_id=run_id,
             firewall_name=firewall_name,
             permission=permission,
-            missing_sandbox_token=not bool(sandbox_token),
-            missing_api_url=not bool(api_url),
+            missing_sandbox_token=reporting_context.missing_sandbox_token,
+            missing_api_url=reporting_context.missing_api_url,
         )
         return
-    url = f"{api_url}/api/webhooks/agent/usage-event"
     events: list[UsageEvent] = []
     for category, qty in billable_counts.items():
         # UUIDv5 from stable source inputs. The usage buffer uses this key to
@@ -1092,4 +1090,10 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
                 "quantity": qty,
             }
         )
-    buffer_usage_events(url, sandbox_token, run_id, events, proxy_log_path)
+    buffer_usage_events(
+        reporting_context.usage_event_url(),
+        reporting_context.sandbox_token,
+        run_id,
+        events,
+        reporting_context.proxy_log_path,
+    )
