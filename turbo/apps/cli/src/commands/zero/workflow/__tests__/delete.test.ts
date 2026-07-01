@@ -15,6 +15,7 @@ import chalk from "chalk";
 
 const AGENT_ID = "11111111-1111-1111-1111-111111111111";
 const WORKFLOW_ID = "22222222-2222-2222-2222-222222222222";
+const RESOLVED_WORKFLOW_ID = "33333333-3333-4333-8333-333333333333";
 
 function detailResponse(overrides: Record<string, unknown> = {}) {
   return {
@@ -33,6 +34,24 @@ function detailResponse(overrides: Record<string, unknown> = {}) {
     files: [],
     fileContents: [],
     triggers: [],
+    ...overrides,
+  };
+}
+
+function workflowSummary(overrides: Record<string, unknown> = {}) {
+  return {
+    id: RESOLVED_WORKFLOW_ID,
+    agentId: AGENT_ID,
+    agentName: "my-agent",
+    agentDisplayName: "My Agent",
+    name: "tell-a-joke",
+    displayName: "Tell a joke",
+    description: null,
+    visibility: "private",
+    requestToPublish: false,
+    ownerUserId: "user-123",
+    canManage: true,
+    shadowedBy: null,
     ...overrides,
   };
 }
@@ -56,6 +75,7 @@ describe("zero workflow delete command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
   });
 
   describe("successful delete", () => {
@@ -80,6 +100,45 @@ describe("zero workflow delete command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("my-workflow");
       expect(logCalls).toContain("deleted");
+    });
+
+    it("should resolve a workflow name before deleting", async () => {
+      let deletedWorkflowId: string | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/zero/workflows", () => {
+          return HttpResponse.json([workflowSummary()]);
+        }),
+        http.get(
+          `http://localhost:3000/api/zero/workflows/${RESOLVED_WORKFLOW_ID}`,
+          () => {
+            return HttpResponse.json(
+              detailResponse({
+                id: RESOLVED_WORKFLOW_ID,
+                name: "tell-a-joke",
+                displayName: "Tell a joke",
+              }),
+            );
+          },
+        ),
+        http.delete(
+          "http://localhost:3000/api/zero/workflows/:workflowId",
+          ({ params }) => {
+            deletedWorkflowId = params.workflowId as string;
+            return new HttpResponse(null, { status: 204 });
+          },
+        ),
+      );
+
+      await deleteCommand.parseAsync([
+        "node",
+        "cli",
+        "tell-a-joke",
+        "--agent",
+        AGENT_ID,
+        "--yes",
+      ]);
+
+      expect(deletedWorkflowId).toBe(RESOLVED_WORKFLOW_ID);
     });
   });
 
