@@ -371,6 +371,26 @@ describe("AUTH-03 agent user connectors", () => {
     expect(readBack.enabledTypes).toHaveLength(1);
     const enabledType = readBack.enabledTypes[0];
     expect(["github", "slack"]).toContain(enabledType);
+
+    await cfg.updateUserConnectors(admin, agent.agentId, [], "replace");
+    await Promise.all([
+      cfg.updateUserConnectors(admin, agent.agentId, ["github"], "add"),
+      cfg.updateUserConnectors(admin, agent.agentId, ["slack"], "add"),
+    ]);
+    const readAfterAdds = await cfg.readUserConnectors(admin, agent.agentId);
+    expect(new Set(readAfterAdds.enabledTypes)).toStrictEqual(
+      new Set(["github", "slack"]),
+    );
+
+    await Promise.all([
+      cfg.updateUserConnectors(admin, agent.agentId, ["github"], "remove"),
+      cfg.updateUserConnectors(admin, agent.agentId, ["slack"], "add"),
+    ]);
+    const readAfterRemoveAdd = await cfg.readUserConnectors(
+      admin,
+      agent.agentId,
+    );
+    expect(readAfterRemoveAdd.enabledTypes).toStrictEqual(["slack"]);
   });
 
   it("recomposes a stale compose-target on user-connector updates through public APIs", async () => {

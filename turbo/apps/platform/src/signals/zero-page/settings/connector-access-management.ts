@@ -186,27 +186,13 @@ export const setConnectorAgentAuthorization$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const client = get(zeroClient$)(zeroUserConnectorsContract);
-    const current = await accept(
-      client.get({
-        params: { id: params.agentId },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-
-    const nextEnabledTypes = params.authorized
-      ? Array.from(
-          new Set([...current.body.enabledTypes, params.connectorType]),
-        )
-      : current.body.enabledTypes.filter((type) => {
-          return type !== params.connectorType;
-        });
-
     await accept(
       client.update({
         params: { id: params.agentId },
-        body: { enabledTypes: nextEnabledTypes },
+        body: {
+          enabledTypes: [params.connectorType],
+          operation: params.authorized ? "add" : "remove",
+        },
         fetchOptions: { signal },
       }),
       [200],

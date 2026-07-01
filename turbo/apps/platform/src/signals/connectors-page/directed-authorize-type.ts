@@ -66,30 +66,15 @@ export const authorizeConnector$ = command(
     const createClient = get(zeroClient$);
     const client = createClient(zeroUserConnectorsContract);
 
-    // Get current enabled types for this agent
-    const current = await accept(
-      client.get({
+    await accept(
+      client.update({
         params: { id: agentId },
+        body: { enabledTypes: [connectorType], operation: "add" },
         fetchOptions: { signal },
       }),
       [200],
     );
     signal.throwIfAborted();
-
-    const currentTypes = current.body.enabledTypes;
-
-    // Add the new type if not already present
-    if (!currentTypes.includes(connectorType)) {
-      await accept(
-        client.update({
-          params: { id: agentId },
-          body: { enabledTypes: [...currentTypes, connectorType] },
-          fetchOptions: { signal },
-        }),
-        [200],
-      );
-      signal.throwIfAborted();
-    }
 
     // Optimistic update
     set(internalAuthorized$, (prev) => {

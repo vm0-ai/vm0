@@ -61,22 +61,10 @@ export const confirmPermissionDialog$ = command(
     const results = await Promise.allSettled(
       [...selected].map(async (agentId) => {
         signal.throwIfAborted();
-        const existing = await accept(
-          client.get({
-            params: { id: agentId },
-            fetchOptions: { signal },
-          }),
-          [200],
-        );
-        signal.throwIfAborted();
-        const current = existing.body.enabledTypes;
-        if (current.includes(connectorType)) {
-          return;
-        }
         await accept(
           client.update({
             params: { id: agentId },
-            body: { enabledTypes: [...current, connectorType] },
+            body: { enabledTypes: [connectorType], operation: "add" },
             fetchOptions: { signal },
           }),
           [200],

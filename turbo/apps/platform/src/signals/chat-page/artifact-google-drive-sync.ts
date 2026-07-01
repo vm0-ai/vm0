@@ -1,10 +1,7 @@
 import { command } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  zeroUserConnectorsContract,
-  type UserConnectorEnabledTypes,
-} from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { connectors$, reloadConnectors$ } from "../external/connectors.ts";
@@ -145,23 +142,10 @@ async function authorizeGoogleDriveForAgent(params: {
   readonly signal: AbortSignal;
 }): Promise<void> {
   const client = params.createClient(zeroUserConnectorsContract);
-  const current = (await accept(
-    client.get({
-      params: { id: params.agentId },
-      fetchOptions: { signal: params.signal },
-    }),
-    [200],
-  )) as { body: UserConnectorEnabledTypes };
-  params.signal.throwIfAborted();
-
-  if (current.body.enabledTypes.includes("google-drive")) {
-    return;
-  }
-
   await accept(
     client.update({
       params: { id: params.agentId },
-      body: { enabledTypes: [...current.body.enabledTypes, "google-drive"] },
+      body: { enabledTypes: ["google-drive"], operation: "add" },
       fetchOptions: { signal: params.signal },
     }),
     [200],

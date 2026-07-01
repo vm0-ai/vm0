@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
@@ -9,8 +9,13 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import type { Db } from "../external/db";
 
 type ReplaceUserConnectorsResult =
-  | { readonly status: "replaced" }
+  | {
+      readonly status: "replaced";
+      readonly enabledTypes: readonly ConnectorType[];
+    }
   | { readonly status: "agentNotFound" };
+
+export type UserConnectorUpdateOperation = "replace" | "add" | "remove";
 
 type ReplaceUserCustomConnectorsResult =
   | { readonly status: "replaced" }
@@ -45,6 +50,7 @@ async function lockZeroAgentForConnectorReplace(
   db: Pick<Db, "select">,
   args: {
     readonly orgId: string;
+    readonly userId: string;
     readonly agentId: string;
   },
 ): Promise<boolean> {
@@ -52,7 +58,14 @@ async function lockZeroAgentForConnectorReplace(
     .select({ id: zeroAgents.id })
     .from(zeroAgents)
     .where(
-      and(eq(zeroAgents.orgId, args.orgId), eq(zeroAgents.id, args.agentId)),
+      and(
+        eq(zeroAgents.orgId, args.orgId),
+        eq(zeroAgents.id, args.agentId),
+        or(
+          eq(zeroAgents.visibility, "public"),
+          eq(zeroAgents.owner, args.userId),
+        ),
+      ),
     )
     .for("update")
     .limit(1);
@@ -101,10 +114,12 @@ export async function replaceUserConnectors(
     readonly userId: string;
     readonly agentId: string;
     readonly enabledTypes: readonly ConnectorType[];
+    readonly operation?: UserConnectorUpdateOperation;
     readonly allowMissingZeroAgentForEmptyReplace: boolean;
   },
 ): Promise<ReplaceUserConnectorsResult> {
   const enabledTypes = Array.from(new Set(args.enabledTypes));
+  const operation = args.operation ?? "replace";
 
   return await db.transaction(async (tx) => {
     const composeLocked = await lockAgentComposeForConnectorReplace(tx, args);
@@ -120,31 +135,55 @@ export async function replaceUserConnectors(
       return { status: "agentNotFound" };
     }
 
-    await tx
-      .delete(userConnectors)
-      .where(
-        and(
-          eq(userConnectors.orgId, args.orgId),
-          eq(userConnectors.userId, args.userId),
-          eq(userConnectors.agentId, args.agentId),
-        ),
-      );
+    const connectorScope = and(
+      eq(userConnectors.orgId, args.orgId),
+      eq(userConnectors.userId, args.userId),
+      eq(userConnectors.agentId, args.agentId),
+    );
 
-    if (enabledTypes.length === 0) {
-      return { status: "replaced" };
+    if (operation === "replace") {
+      await tx.delete(userConnectors).where(connectorScope);
+    } else if (operation === "remove" && enabledTypes.length > 0) {
+      await tx
+        .delete(userConnectors)
+        .where(
+          and(
+            connectorScope,
+            inArray(userConnectors.connectorType, enabledTypes),
+          ),
+        );
     }
 
-    await tx.insert(userConnectors).values(
-      enabledTypes.map((connectorType) => {
-        return {
-          orgId: args.orgId,
-          userId: args.userId,
-          agentId: args.agentId,
-          connectorType,
-        };
+    if (operation !== "remove" && enabledTypes.length > 0) {
+      await tx
+        .insert(userConnectors)
+        .values(
+          enabledTypes.map((connectorType) => {
+            return {
+              orgId: args.orgId,
+              userId: args.userId,
+              agentId: args.agentId,
+              connectorType,
+            };
+          }),
+        )
+        .onConflictDoNothing();
+    }
+
+    if (operation === "replace") {
+      return { status: "replaced", enabledTypes };
+    }
+
+    const rows = await tx
+      .select({ connectorType: userConnectors.connectorType })
+      .from(userConnectors)
+      .where(connectorScope);
+    return {
+      status: "replaced",
+      enabledTypes: rows.map((row) => {
+        return row.connectorType as ConnectorType;
       }),
-    );
-    return { status: "replaced" };
+    };
   });
 }
 

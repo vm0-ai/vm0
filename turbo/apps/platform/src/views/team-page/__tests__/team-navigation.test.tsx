@@ -42,6 +42,24 @@ const context = testContext();
 const zeroAgentId = "c0000000-0000-4000-a000-000000000001";
 const researchAgentId = "a0000000-0000-4000-a000-000000000401";
 
+function applyUserConnectorUpdate(
+  current: readonly string[],
+  body: {
+    readonly enabledTypes: readonly string[];
+    readonly operation?: "replace" | "add" | "remove";
+  },
+): string[] {
+  if (body.operation === "add") {
+    return Array.from(new Set([...current, ...body.enabledTypes]));
+  }
+  if (body.operation === "remove") {
+    return current.filter((type) => {
+      return !body.enabledTypes.includes(type);
+    });
+  }
+  return [...body.enabledTypes];
+}
+
 function createAgent(id: string, displayName: string): TeamComposeItem {
   return {
     id,
@@ -266,7 +284,7 @@ function mockTeamAPIs(): void {
     return respond(200, { enabledTypes });
   });
   context.mocks.api(zeroUserConnectorsContract.update, ({ body, respond }) => {
-    enabledTypes = body.enabledTypes;
+    enabledTypes = applyUserConnectorUpdate(enabledTypes, body);
     return respond(200, { enabledTypes });
   });
   context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {

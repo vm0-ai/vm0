@@ -269,7 +269,9 @@ describe("directed connector authorize page", () => {
       zeroUserConnectorsContract.update,
       ({ body, respond }) => {
         updateCalls += 1;
-        return respond(200, { enabledTypes: body.enabledTypes });
+        return respond(200, {
+          enabledTypes: body.operation === "remove" ? [] : body.enabledTypes,
+        });
       },
     );
 

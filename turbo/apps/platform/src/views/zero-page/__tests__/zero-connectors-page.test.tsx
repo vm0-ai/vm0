@@ -119,6 +119,24 @@ function connectorCardByLabel(label: string): HTMLElement {
   return card;
 }
 
+function applyUserConnectorUpdate(
+  current: readonly string[],
+  body: {
+    readonly enabledTypes: readonly string[];
+    readonly operation?: "replace" | "add" | "remove";
+  },
+): string[] {
+  if (body.operation === "add") {
+    return Array.from(new Set([...current, ...body.enabledTypes]));
+  }
+  if (body.operation === "remove") {
+    return current.filter((type) => {
+      return !body.enabledTypes.includes(type);
+    });
+  }
+  return [...body.enabledTypes];
+}
+
 function reconnectReasonHelpButton(container: ParentNode): HTMLElement | null {
   return (
     queryAllByRoleFast("button", container).find((button) => {
@@ -768,8 +786,12 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroUserConnectorsContract.update,
       ({ params, body, respond }) => {
-        enabledByAgent.set(params.id, body.enabledTypes);
-        return respond(200, { enabledTypes: body.enabledTypes });
+        const nextEnabledTypes = applyUserConnectorUpdate(
+          enabledByAgent.get(params.id) ?? [],
+          body,
+        );
+        enabledByAgent.set(params.id, nextEnabledTypes);
+        return respond(200, { enabledTypes: nextEnabledTypes });
       },
     );
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {

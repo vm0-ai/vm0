@@ -70,6 +70,16 @@ export function resetMockComposesList(): void {
   mockComposesList = [...DEFAULT_COMPOSES_LIST];
 }
 
+function mockUserConnectorUpdateResponse(body: {
+  readonly enabledTypes: readonly string[];
+  readonly operation?: "replace" | "add" | "remove";
+}): string[] {
+  if (body.operation === "remove") {
+    return [];
+  }
+  return [...body.enabledTypes];
+}
+
 export const apiAgentsHandlers = [
   // GET /api/zero/team
   mockApi(zeroTeamContract.list, ({ respond }) => {
@@ -103,7 +113,9 @@ export const apiAgentsHandlers = [
 
   // PUT /api/zero/agents/:id/user-connectors
   mockApi(zeroUserConnectorsContract.update, ({ body, respond }) => {
-    return respond(200, { enabledTypes: body.enabledTypes });
+    return respond(200, {
+      enabledTypes: mockUserConnectorUpdateResponse(body),
+    });
   }),
 
   // GET /api/zero/agents/:id
