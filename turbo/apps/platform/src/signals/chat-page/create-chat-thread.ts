@@ -73,6 +73,7 @@ import {
   enrichBlocksWithTextPreviews,
   parseBodyRenderBlocks,
 } from "./parse-body-blocks.ts";
+import { getChatThreadTitleParts } from "./chat-thread-title.ts";
 import {
   previousRunGroupVisualWindowStartIndex,
   runGroupVisualWindowStartIndex,
@@ -528,6 +529,22 @@ function createThreadData(dataSource: ChatThreadDataSource) {
     threadData$: dataSource.getThread$,
     reloadThread$: dataSource.reloadThread$,
   };
+}
+
+function createThreadTitleParts(
+  threadData$: Computed<Promise<ChatThread | null>>,
+) {
+  const threadTitleParts$ = computed(async (get) => {
+    const threadData = await get(threadData$);
+    return getChatThreadTitleParts(threadData?.title);
+  });
+  const threadTitleEmoji$ = computed(async (get) => {
+    return (await get(threadTitleParts$)).emoji;
+  });
+  const threadTitleText$ = computed(async (get) => {
+    return (await get(threadTitleParts$)).text;
+  });
+  return { threadTitleEmoji$, threadTitleText$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -2829,6 +2846,8 @@ export function createChatThreadSignals(
   dataSource: ChatThreadDataSource = createRemoteChatThreadDataSource(threadId),
 ): ChatThreadSignals {
   const { threadData$, reloadThread$ } = createThreadData(dataSource);
+  const { threadTitleEmoji$, threadTitleText$ } =
+    createThreadTitleParts(threadData$);
   const { modelSelection$, setModelSelection$ } = createModelSelection(
     threadId,
     threadData$,
@@ -2901,6 +2920,9 @@ export function createChatThreadSignals(
   return {
     threadId,
     threadData$,
+    reloadThread$,
+    threadTitleEmoji$,
+    threadTitleText$,
     modelSelection$,
     setModelSelection$,
     ...computerUseHostSelection,

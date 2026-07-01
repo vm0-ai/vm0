@@ -15,7 +15,6 @@ import {
   IconLoader2,
   IconPin,
   IconPinnedOff,
-  IconMoodSmile,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
@@ -53,6 +52,10 @@ import {
   unpinChatThread$,
   renameChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
+import {
+  openRenameChatThreadDialogFromThreadData$,
+  reloadChatThreadDataForId$,
+} from "../../signals/chat-page/chat-thread-rename.ts";
 import {
   SIDEBAR_PARAM,
   currentLeftThread$,
@@ -93,16 +96,10 @@ import {
   setChatThreadOnlyUnread$,
 } from "../../signals/chat-page/chat-thread-only-unread.ts";
 import {
-  emojiDialogThreadId$,
-  emojiDialogTitle$,
-  openChatThreadEmojiDialog$,
-  openRenameChatThreadDialog$,
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
   renameDialogThreadId$,
   renameDialogInput$,
-  setEmojiDialogThreadId$,
-  setEmojiDialogTitle$,
   setRenameDialogThreadId$,
   setRenameDialogInput$,
   sessionListCollapsed$,
@@ -112,50 +109,6 @@ import { Link } from "../router/link.tsx";
 
 type IndicatorState = "running" | "unread" | "draft";
 type ChatThreadPaneIndicator = "main" | "sidebar";
-
-const PRIMARY_CHAT_THREAD_EMOJI_OPTIONS = [
-  { emoji: "✅", label: "Done" },
-  { emoji: "🔥", label: "Urgent" },
-  { emoji: "❌", label: "No" },
-  { emoji: "⚠️", label: "Risk" },
-  { emoji: "💡", label: "Idea" },
-  { emoji: "❓", label: "Question" },
-  { emoji: "⏳", label: "Waiting" },
-] as const;
-
-const SECONDARY_CHAT_THREAD_EMOJI_OPTIONS = [
-  { emoji: "📌", label: "Important" },
-  { emoji: "👀", label: "Review" },
-  { emoji: "🧪", label: "Test" },
-  { emoji: "📝", label: "Notes" },
-  { emoji: "🚧", label: "Building" },
-  { emoji: "📣", label: "Announcement" },
-  { emoji: "🔒", label: "Private" },
-] as const;
-
-const CHAT_THREAD_EMOJI_PATTERN =
-  /(?:[\u{1f1e6}-\u{1f1ff}]{2}|[#*0-9]\ufe0f?\u20e3|\p{Extended_Pictographic}(?:\ufe0f|\ufe0e)?(?:[\u{1f3fb}-\u{1f3ff}])?(?:\u200d\p{Extended_Pictographic}(?:\ufe0f|\ufe0e)?(?:[\u{1f3fb}-\u{1f3ff}])?)*)/u;
-
-function applyChatThreadEmoji(
-  title: string | null | undefined,
-  emoji: string,
-): string {
-  const trimmedTitle = title?.trim() ?? "";
-  if (!trimmedTitle) {
-    return emoji;
-  }
-  const match = trimmedTitle.match(CHAT_THREAD_EMOJI_PATTERN);
-  if (!match || match.index === undefined) {
-    return `${emoji} ${trimmedTitle}`;
-  }
-  const beforeEmoji = trimmedTitle.slice(0, match.index);
-  const afterEmoji = trimmedTitle
-    .slice(match.index + match[0].length)
-    .trimStart();
-  return afterEmoji
-    ? `${beforeEmoji}${emoji} ${afterEmoji}`
-    : `${beforeEmoji}${emoji}`;
-}
 
 function SessionStateIndicator({ state }: { state: IndicatorState }) {
   if (state === "running") {
@@ -297,14 +250,12 @@ function handleChatThreadClick(
 
 function ChatThreadMenu({
   threadId,
-  title,
   isPinned,
   isHighlighted,
   hasOtherIndicator,
   usePinnedIndicatorTrigger,
 }: {
   threadId: string;
-  title: string | null;
   isPinned: boolean;
   isHighlighted: boolean;
   hasOtherIndicator: boolean;
@@ -314,8 +265,9 @@ function ChatThreadMenu({
   const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
   const pinChatThread = useSet(pinChatThread$);
   const unpinChatThread = useSet(unpinChatThread$);
-  const openRenameChatThreadDialog = useSet(openRenameChatThreadDialog$);
-  const openChatThreadEmojiDialog = useSet(openChatThreadEmojiDialog$);
+  const openRenameChatThreadDialog = useSet(
+    openRenameChatThreadDialogFromThreadData$,
+  );
   const pageSignal = useGet(pageSignal$);
 
   function handleTogglePin() {
@@ -332,11 +284,10 @@ function ChatThreadMenu({
   }
 
   function openRenameDialog() {
-    openRenameChatThreadDialog({ threadId, title });
-  }
-
-  function openEmojiDialog() {
-    openChatThreadEmojiDialog({ threadId, title });
+    detach(
+      openRenameChatThreadDialog(threadId, pageSignal),
+      Reason.DomCallback,
+    );
   }
 
   const showMobileTrigger = !hasOtherIndicator || usePinnedIndicatorTrigger;
@@ -407,10 +358,6 @@ function ChatThreadMenu({
             <IconPencil size={16} stroke={2} className="mr-2" />
             Rename chat
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={openEmojiDialog}>
-            <IconMoodSmile size={16} stroke={2} className="mr-2" />
-            Change emoji
-          </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => {
               // Refetch automations so the delete confirmation reflects the
@@ -431,13 +378,11 @@ function ChatThreadMenu({
 
 function ChatThreadSideDecorator({
   threadId,
-  title,
   isPinned,
   isHighlighted,
   indicatorState,
 }: {
   threadId: string;
-  title: string | null;
   isPinned: boolean;
   isHighlighted: boolean;
   indicatorState: IndicatorState | null;
@@ -457,7 +402,6 @@ function ChatThreadSideDecorator({
     <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
       <ChatThreadMenu
         threadId={threadId}
-        title={title}
         isPinned={isPinned}
         isHighlighted={isHighlighted}
         hasOtherIndicator={hasOtherIndicator}
@@ -552,7 +496,9 @@ function ChatThreadItemLink({
   session: ChatThreadListItem;
   state: ReturnType<typeof useChatThreadItemState>;
 }) {
-  const openRenameChatThreadDialog = useSet(openRenameChatThreadDialog$);
+  const openRenameChatThreadDialog = useSet(
+    openRenameChatThreadDialogFromThreadData$,
+  );
   const closeSidebarOnSelect = () => {
     state.setSidebarExpanded(false);
   };
@@ -578,10 +524,10 @@ function ChatThreadItemLink({
       }}
       onDoubleClick={(e) => {
         e.preventDefault();
-        openRenameChatThreadDialog({
-          threadId: session.id,
-          title: session.title,
-        });
+        detach(
+          openRenameChatThreadDialog(session.id, state.pageSignal),
+          Reason.DomCallback,
+        );
       }}
       className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors ${
         state.isHighlighted
@@ -609,7 +555,6 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
       <ChatThreadItemLink session={session} state={state} />
       <ChatThreadSideDecorator
         threadId={session.id}
-        title={session.title}
         isPinned={state.isPinned}
         isHighlighted={state.isHighlighted}
         indicatorState={state.indicatorState}
@@ -638,6 +583,7 @@ function ChatThreadRenameDialog() {
   const setRenameDialogInput = useSet(setRenameDialogInput$);
   const setRenameDialogThreadId = useSet(setRenameDialogThreadId$);
   const renameChatThread = useSet(renameChatThread$);
+  const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
   const pageSignal = useGet(pageSignal$);
 
   function closeRenameDialog() {
@@ -655,11 +601,13 @@ function ChatThreadRenameDialog() {
     if (!renameDialogThreadId || !renameDialogInput.trim()) {
       return;
     }
+    const threadId = renameDialogThreadId;
+    const title = renameDialogInput.trim();
     detach(
-      renameChatThread(
-        { threadId: renameDialogThreadId, title: renameDialogInput.trim() },
-        pageSignal,
-      ),
+      (async () => {
+        await renameChatThread({ threadId, title }, pageSignal);
+        reloadChatThreadDataForId(threadId);
+      })(),
       Reason.DomCallback,
     );
     closeRenameDialog();
@@ -722,156 +670,6 @@ function ChatThreadRenameDialog() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function emojiShortcutIndex(event: {
-  key: string;
-  code?: string;
-}): number | null {
-  const codeMatch = event.code?.match(/^(?:Digit|Numpad)([1-7])$/);
-  const key = codeMatch?.[1] ?? event.key;
-  const fallbackShiftedKeys: Record<string, string> = {
-    "!": "1",
-    "@": "2",
-    "#": "3",
-    $: "4",
-    "%": "5",
-    "^": "6",
-    "&": "7",
-  };
-  const digit = fallbackShiftedKeys[key] ?? key;
-  if (!/^[1-7]$/.test(digit)) {
-    return null;
-  }
-  return Number(digit) - 1;
-}
-
-function ChatThreadEmojiDialog() {
-  const emojiDialogThreadId = useGet(emojiDialogThreadId$);
-  const emojiDialogTitle = useGet(emojiDialogTitle$);
-  const setEmojiDialogThreadId = useSet(setEmojiDialogThreadId$);
-  const setEmojiDialogTitle = useSet(setEmojiDialogTitle$);
-  const renameChatThread = useSet(renameChatThread$);
-  const pageSignal = useGet(pageSignal$);
-
-  function closeEmojiDialog() {
-    const threadId = emojiDialogThreadId;
-    setEmojiDialogThreadId(null);
-    setEmojiDialogTitle(null);
-    if (threadId) {
-      queueMicrotask(() => {
-        focusChatThreadContainer(threadId);
-      });
-    }
-  }
-
-  function selectEmoji(emoji: string) {
-    if (!emojiDialogThreadId) {
-      return;
-    }
-    detach(
-      renameChatThread(
-        {
-          threadId: emojiDialogThreadId,
-          title: applyChatThreadEmoji(emojiDialogTitle, emoji),
-        },
-        pageSignal,
-      ),
-      Reason.DomCallback,
-    );
-    closeEmojiDialog();
-  }
-
-  return (
-    <Dialog
-      open={emojiDialogThreadId !== null}
-      onOpenChange={(open) => {
-        if (!open) {
-          closeEmojiDialog();
-        }
-      }}
-    >
-      <DialogContent
-        className="max-w-sm"
-        onCloseAutoFocus={(event) => {
-          const threadContainer = emojiDialogThreadId
-            ? chatThreadContainer(emojiDialogThreadId)
-            : null;
-          if (threadContainer) {
-            event.preventDefault();
-            threadContainer.focus({ preventScroll: true });
-          }
-        }}
-        onKeyDown={(event) => {
-          const index = emojiShortcutIndex(event);
-          if (index === null) {
-            return;
-          }
-          event.preventDefault();
-          const options = event.shiftKey
-            ? SECONDARY_CHAT_THREAD_EMOJI_OPTIONS
-            : PRIMARY_CHAT_THREAD_EMOJI_OPTIONS;
-          const option = options[index];
-          if (option) {
-            selectEmoji(option.emoji);
-          }
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle>Change emoji</DialogTitle>
-          <DialogDescription className="sr-only">
-            Choose an emoji for this chat.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-2">
-          <EmojiOptionGrid
-            options={PRIMARY_CHAT_THREAD_EMOJI_OPTIONS}
-            shortcutPrefix=""
-            onSelect={selectEmoji}
-          />
-          <EmojiOptionGrid
-            options={SECONDARY_CHAT_THREAD_EMOJI_OPTIONS}
-            shortcutPrefix="Shift+"
-            onSelect={selectEmoji}
-          />
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function EmojiOptionGrid({
-  onSelect,
-  options,
-  shortcutPrefix,
-}: {
-  onSelect: (emoji: string) => void;
-  options: readonly { emoji: string; label: string }[];
-  shortcutPrefix: string;
-}) {
-  return (
-    <div className="grid grid-cols-7 gap-1.5">
-      {options.map((option, index) => {
-        const shortcut = `${shortcutPrefix}${index + 1}`;
-        return (
-          <button
-            key={option.emoji}
-            type="button"
-            aria-label={`${option.label} ${option.emoji}`}
-            onClick={() => {
-              onSelect(option.emoji);
-            }}
-            className="flex h-14 min-w-0 flex-col items-center justify-center rounded-lg border border-border bg-background text-2xl leading-none transition-colors hover:bg-gray-50 hover:text-foreground"
-          >
-            <span aria-hidden="true">{option.emoji}</span>
-            <span className="mt-1 text-[9px] leading-none text-muted-foreground">
-              {shortcut}
-            </span>
-          </button>
-        );
-      })}
-    </div>
   );
 }
 
@@ -1032,7 +830,6 @@ function ChatThreads() {
             : "Start a conversation and it'll show up here"}
         </p>
         <ChatThreadRenameDialog />
-        <ChatThreadEmojiDialog />
         <DeleteChatThreadDialog />
       </>
     );
@@ -1049,7 +846,6 @@ function ChatThreads() {
         />
       )}
       <ChatThreadRenameDialog />
-      <ChatThreadEmojiDialog />
       <DeleteChatThreadDialog />
     </>
   );

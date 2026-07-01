@@ -119,6 +119,7 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
@@ -134,6 +135,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
@@ -157,6 +159,15 @@ describe("getAllFeatureStates", () => {
       },
     });
     expect(states[FeatureSwitchKey.ChatGithubPrTracking]).toBe(true);
+  });
+
+  it("should let individuals opt in to chat thread emoji", () => {
+    const states = getAllFeatureStates({
+      overrides: {
+        [FeatureSwitchKey.ChatThreadEmoji]: true,
+      },
+    });
+    expect(states[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
   });
 
   it("should apply overrides to disable enabled features", () => {

@@ -1,19 +1,18 @@
 import { command } from "ccstate";
 import { isEditableTarget, matchShortcut } from "@vm0/ui";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   currentLeftThread$,
   currentRightThread$,
   loadLeftThread$,
   loadRightThread$,
 } from "./chat-thread-panes.ts";
-import { sidebarChatThreads$ } from "./optimistic-chat-thread-page.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
+import { openRenameChatThreadDialogFromThreadData$ } from "./chat-thread-rename.ts";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onDomEventFn, onRef } from "../utils.ts";
-import {
-  openChatThreadEmojiDialog$,
-  openRenameChatThreadDialog$,
-} from "../zero-page/zero-sidebar-state.ts";
+import { openChatThreadEmojiMenu$ } from "../zero-page/zero-sidebar-state.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 
 /**
  * Snapshot row shape consumed by `navigateToAdjacentThread$`. The caller
@@ -76,21 +75,6 @@ function hasOpenDialog(doc: Document): boolean {
   return doc.querySelector('[role="dialog"]') !== null;
 }
 
-function resolveChatThreadShortcutTitle(
-  threadId: string,
-  threadDataTitle: string | null | undefined,
-  sidebarThreads: readonly { id: string; title: string | null }[],
-): string | null | undefined {
-  if (threadDataTitle?.trim()) {
-    return threadDataTitle;
-  }
-  return (
-    sidebarThreads.find((thread) => {
-      return thread.id === threadId;
-    })?.title ?? threadDataTitle
-  );
-}
-
 function isKeyboardScrollAllowedTarget(
   root: HTMLElement,
   target: EventTarget | null,
@@ -146,12 +130,18 @@ export const setChatKeyboardScrollRoot$ = onRef(
     };
 
     const onGlobalChatKeyDown = onDomEventFn(async (event: KeyboardEvent) => {
+      const renameShortcut = matchShortcut("f2", event);
+      const emojiShortcut = matchShortcut("shift+f2", event);
       if (
         event.defaultPrevented ||
-        (!matchShortcut("f2", event) && !matchShortcut("shift+f2", event)) ||
+        (!renameShortcut && !emojiShortcut) ||
         hasOpenDialog(el.ownerDocument) ||
         !isChatShortcutTarget(el, event.target)
       ) {
+        return;
+      }
+      const features = get(featureSwitch$);
+      if (emojiShortcut && !features[FeatureSwitchKey.ChatThreadEmoji]) {
         return;
       }
       const mainThread = get(currentLeftThread$);
@@ -160,21 +150,19 @@ export const setChatKeyboardScrollRoot$ = onRef(
       }
 
       event.preventDefault();
-      const threadData = await get(mainThread.threadData$);
-      const sidebarThreads = await get(sidebarChatThreads$);
-      signal.throwIfAborted();
-      const dialogPayload = {
-        threadId: mainThread.threadId,
-        title: resolveChatThreadShortcutTitle(
-          mainThread.threadId,
-          threadData?.title,
-          sidebarThreads,
-        ),
-      };
-      if (matchShortcut("shift+f2", event)) {
-        set(openChatThreadEmojiDialog$, dialogPayload);
+      if (emojiShortcut) {
+        const threadData = await get(mainThread.threadData$);
+        signal.throwIfAborted();
+        set(openChatThreadEmojiMenu$, {
+          threadId: mainThread.threadId,
+          title: threadData?.title,
+        });
       } else {
-        set(openRenameChatThreadDialog$, dialogPayload);
+        await set(
+          openRenameChatThreadDialogFromThreadData$,
+          mainThread.threadId,
+          signal,
+        );
       }
     });
 

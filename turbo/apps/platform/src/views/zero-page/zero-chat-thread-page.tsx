@@ -50,6 +50,7 @@ import {
   IconClock,
   IconCoins,
   IconHourglass,
+  IconMoodSmile,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -57,6 +58,10 @@ import {
   matchShortcut,
   Button,
   Skeleton,
+  DropdownMenu as UiDropdownMenu,
+  DropdownMenuContent as UiDropdownMenuContent,
+  DropdownMenuItem as UiDropdownMenuItem,
+  DropdownMenuTrigger as UiDropdownMenuTrigger,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -225,8 +230,10 @@ import {
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 import {
-  openChatThreadEmojiDialog$,
-  openRenameChatThreadDialog$,
+  closeChatThreadEmojiMenu$,
+  emojiMenuThreadId$,
+  emojiMenuTitle$,
+  openChatThreadEmojiMenu$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
@@ -251,12 +258,22 @@ import {
   type WorkflowTriggerCardRow,
 } from "../workflows-page/workflow-trigger-card.tsx";
 
-import type {
-  EnrichedChatMessage,
-  GroupedChatMessageGroup,
-  PagedChatMessage,
+import {
+  renameChatThread$,
+  type EnrichedChatMessage,
+  type GroupedChatMessageGroup,
+  type PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
 import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
+import {
+  openRenameChatThreadDialogFromThreadData$,
+  reloadChatThreadDataForId$,
+} from "../../signals/chat-page/chat-thread-rename.ts";
+import {
+  applyChatThreadEmoji,
+  chatThreadEmojiShortcutIndex,
+  CHAT_THREAD_EMOJI_OPTIONS,
+} from "../../signals/chat-page/chat-thread-title.ts";
 import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import {
@@ -1081,11 +1098,24 @@ function GithubPrTrackingDock({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
+function focusChatThreadContainer(threadId: string) {
+  const threadContainer = Array.from(
+    document.querySelectorAll<HTMLElement>("[data-chat-thread-container-id]"),
+  ).find((candidate) => {
+    return candidate.dataset.chatThreadContainerId === threadId;
+  });
+  threadContainer?.focus({ preventScroll: true });
+}
+
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const threadDataLoadable = useLastLoadable(thread.threadData$);
+  const threadTitleEmoji = useLastResolved(thread.threadTitleEmoji$);
+  const threadTitleText = useLastResolved(thread.threadTitleText$) ?? "";
   const features = useLastResolved(featureSwitch$);
   const githubPrTrackingEnabled =
     features?.[FeatureSwitchKey.ChatGithubPrTracking] ?? false;
+  const chatThreadEmojiEnabled =
+    features?.[FeatureSwitchKey.ChatThreadEmoji] ?? false;
   const agentId =
     threadDataLoadable.state === "hasData"
       ? (threadDataLoadable.data?.agentId ?? null)
@@ -1094,16 +1124,28 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
     threadDataLoadable.state === "hasData"
       ? (threadDataLoadable.data?.title?.trim() ?? "")
       : "";
+  const displayTitle = chatThreadEmojiEnabled ? threadTitleText : threadTitle;
 
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-2">
         {threadDataLoadable.state === "loading" ? (
           <Skeleton className="h-5 w-48 rounded" />
         ) : (
-          <span className="min-w-0 truncate text-sm font-medium text-foreground">
-            {threadTitle}
-          </span>
+          <>
+            {chatThreadEmojiEnabled && (
+              <ChatThreadEmojiMenuButton
+                threadId={thread.threadId}
+                title={threadTitle}
+                emoji={threadTitleEmoji}
+              />
+            )}
+            {displayTitle && (
+              <span className="min-w-0 truncate text-sm font-medium text-foreground">
+                {displayTitle}
+              </span>
+            )}
+          </>
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
@@ -1114,6 +1156,127 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         )}
       </div>
     </header>
+  );
+}
+
+function ChatThreadEmojiMenuButton({
+  emoji,
+  threadId,
+  title,
+}: {
+  emoji: string | null | undefined;
+  threadId: string;
+  title: string | null | undefined;
+}) {
+  const emojiMenuThreadId = useGet(emojiMenuThreadId$);
+  const emojiMenuTitle = useGet(emojiMenuTitle$);
+  const openChatThreadEmojiMenu = useSet(openChatThreadEmojiMenu$);
+  const closeChatThreadEmojiMenu = useSet(closeChatThreadEmojiMenu$);
+  const renameChatThread = useSet(renameChatThread$);
+  const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
+  const pageSignal = useGet(pageSignal$);
+  const open = emojiMenuThreadId === threadId;
+
+  function closeMenu() {
+    const openThreadId = emojiMenuThreadId;
+    closeChatThreadEmojiMenu();
+    if (openThreadId) {
+      queueMicrotask(() => {
+        focusChatThreadContainer(openThreadId);
+      });
+    }
+  }
+
+  function selectEmoji(nextEmoji: string) {
+    const activeThreadId = emojiMenuThreadId;
+    if (!activeThreadId) {
+      return;
+    }
+    detach(
+      (async () => {
+        await renameChatThread(
+          {
+            threadId: activeThreadId,
+            title: applyChatThreadEmoji(emojiMenuTitle ?? title, nextEmoji),
+          },
+          pageSignal,
+        );
+        reloadChatThreadDataForId(activeThreadId);
+        closeMenu();
+      })(),
+      Reason.DomCallback,
+    );
+  }
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <UiDropdownMenu
+        open={open}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) {
+            openChatThreadEmojiMenu({ threadId, title });
+          } else {
+            closeMenu();
+          }
+        }}
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <UiDropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="Change emoji"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                {emoji ? (
+                  <span aria-hidden="true" className="text-base leading-none">
+                    {emoji}
+                  </span>
+                ) : (
+                  <IconMoodSmile size={16} stroke={1.8} />
+                )}
+              </button>
+            </UiDropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Change emoji</TooltipContent>
+        </Tooltip>
+        <UiDropdownMenuContent
+          align="start"
+          className="w-40"
+          onKeyDown={(event) => {
+            const index = chatThreadEmojiShortcutIndex(event);
+            if (index === null) {
+              return;
+            }
+            event.preventDefault();
+            const option = CHAT_THREAD_EMOJI_OPTIONS[index];
+            if (option) {
+              selectEmoji(option.emoji);
+            }
+          }}
+        >
+          {CHAT_THREAD_EMOJI_OPTIONS.map((option, index) => {
+            return (
+              <UiDropdownMenuItem
+                key={option.emoji}
+                aria-label={`${option.label} ${option.emoji}`}
+                onSelect={() => {
+                  selectEmoji(option.emoji);
+                }}
+              >
+                <span className="mr-2 text-base leading-none" aria-hidden>
+                  {option.emoji}
+                </span>
+                <span>{option.label}</span>
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {index + 1}
+                </span>
+              </UiDropdownMenuItem>
+            );
+          })}
+        </UiDropdownMenuContent>
+      </UiDropdownMenu>
+    </TooltipProvider>
   );
 }
 
@@ -2835,14 +2998,17 @@ function ChatThread({
   onFocusFallbackRef?: (el: HTMLElement | null) => void;
 }) {
   const openRenameDialog = useOpenCurrentChatThreadRenameDialog(thread);
-  const openEmojiDialog = useOpenCurrentChatThreadEmojiDialog(thread);
+  const openEmojiMenu = useOpenCurrentChatThreadEmojiMenu(thread);
+  const features = useLastResolved(featureSwitch$);
+  const chatThreadEmojiEnabled =
+    features?.[FeatureSwitchKey.ChatThreadEmoji] ?? false;
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.defaultPrevented) {
       return;
     }
-    if (matchShortcut("shift+f2", event)) {
+    if (chatThreadEmojiEnabled && matchShortcut("shift+f2", event)) {
       event.preventDefault();
-      openEmojiDialog();
+      openEmojiMenu();
       return;
     }
     if (matchShortcut("f2", event)) {
@@ -2868,21 +3034,23 @@ function ChatThread({
 }
 
 function useOpenCurrentChatThreadRenameDialog(thread: ChatThreadSignals) {
-  const openRenameChatThreadDialog = useSet(openRenameChatThreadDialog$);
-  const title = useCurrentChatThreadDialogTitle(thread);
+  const openRenameChatThreadDialog = useSet(
+    openRenameChatThreadDialogFromThreadData$,
+  );
+  const pageSignal = useGet(pageSignal$);
   return () => {
-    openRenameChatThreadDialog({
-      threadId: thread.threadId,
-      title,
-    });
+    detach(
+      openRenameChatThreadDialog(thread.threadId, pageSignal),
+      Reason.DomCallback,
+    );
   };
 }
 
-function useOpenCurrentChatThreadEmojiDialog(thread: ChatThreadSignals) {
-  const openChatThreadEmojiDialog = useSet(openChatThreadEmojiDialog$);
+function useOpenCurrentChatThreadEmojiMenu(thread: ChatThreadSignals) {
+  const openChatThreadEmojiMenu = useSet(openChatThreadEmojiMenu$);
   const title = useCurrentChatThreadDialogTitle(thread);
   return () => {
-    openChatThreadEmojiDialog({
+    openChatThreadEmojiMenu({
       threadId: thread.threadId,
       title,
     });
@@ -2893,15 +3061,7 @@ function useCurrentChatThreadDialogTitle(
   thread: ChatThreadSignals,
 ): string | null | undefined {
   const threadData = useLastResolved(thread.threadData$);
-  const sidebarThreads = useLastResolved(sidebarChatThreads$) ?? [];
-  if (threadData?.title?.trim()) {
-    return threadData.title;
-  }
-  return (
-    sidebarThreads.find((sidebarThread) => {
-      return sidebarThread.id === thread.threadId;
-    })?.title ?? threadData?.title
-  );
+  return threadData?.title;
 }
 
 // Drag the divider to resize the artifact preview against the chat thread.
@@ -3048,6 +3208,9 @@ function ChatThreadArea({
 export function ZeroChatThreadPage() {
   const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
   const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
+  const features = useLastResolved(featureSwitch$);
+  const chatThreadEmojiEnabled =
+    features?.[FeatureSwitchKey.ChatThreadEmoji] ?? false;
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
@@ -3083,6 +3246,19 @@ export function ZeroChatThreadPage() {
       />
     </div>
   ) : null;
+  const shortcutSections = chatThreadEmojiEnabled
+    ? CHAT_SHORTCUT_SECTIONS
+    : CHAT_SHORTCUT_SECTIONS.map((section) => {
+        if (section.title !== "Global") {
+          return section;
+        }
+        return {
+          ...section,
+          shortcuts: section.shortcuts.filter((shortcut) => {
+            return shortcut.key !== "shift+f2";
+          }),
+        };
+      });
 
   return (
     <>
@@ -3144,7 +3320,7 @@ export function ZeroChatThreadPage() {
         open={shortcutHelpOpen}
         onOpenChange={setShortcutHelpOpen}
         description="Available shortcuts on this page"
-        sections={CHAT_SHORTCUT_SECTIONS}
+        sections={shortcutSections}
       />
       <ChatConnectorActionConnectModal />
     </>

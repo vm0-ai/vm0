@@ -215,6 +215,9 @@ function openChatListMenu(): void {
 function mockSidebarThreadStory(
   firstPageThreads: SidebarThread[],
   extraThreads: SidebarThread[] = [],
+  options: {
+    readonly detailTitles?: Readonly<Record<string, string | null>>;
+  } = {},
 ): {
   threads: SidebarThread[];
 } {
@@ -239,9 +242,12 @@ function mockSidebarThreadStory(
     const thread = [...threads, ...extraThreads].find((candidate) => {
       return candidate.id === params.id;
     });
+    const detailTitle = Object.hasOwn(options.detailTitles ?? {}, params.id)
+      ? options.detailTitles?.[params.id]
+      : thread?.title;
     return respond(200, {
       id: params.id,
-      title: thread?.title ?? null,
+      title: detailTitle ?? null,
       agentId: thread?.agent.id ?? AGENT_ID,
       activeRunIds: [],
       draftContent: null,
@@ -835,10 +841,18 @@ describe("zero sidebar", () => {
 
   it("renames a chat thread from the sidebar menu", async () => {
     prepareDefaultAgent();
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(INCIDENT_THREAD_ID, "Incident notes"),
-    ]);
+    mockSidebarThreadStory(
+      [
+        createThread(EXISTING_THREAD_ID, "Release plan"),
+        createThread(INCIDENT_THREAD_ID, "Incident notes"),
+      ],
+      [],
+      {
+        detailTitles: {
+          [EXISTING_THREAD_ID]: "Thread data release plan",
+        },
+      },
+    );
 
     detachedSetupPage({
       context,
@@ -855,7 +869,7 @@ describe("zero sidebar", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
     const titleInput = within(dialog).getByPlaceholderText("Chat title");
-    expect(titleInput).toHaveValue("Release plan");
+    expect(titleInput).toHaveValue("Thread data release plan");
 
     await fill(titleInput, "Launch plan");
     click(buttonByText("Rename", dialog));
@@ -868,12 +882,44 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("renames a chat thread by double-clicking from the sidebar", async () => {
+  it("does not prefill sidebar rename from the list title", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Release plan"),
       createThread(INCIDENT_THREAD_ID, "Incident notes"),
     ]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
+    });
+
+    openThreadMenu("Incident notes");
+    click(menuItemByText("Rename chat"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue("");
+  });
+
+  it("renames a chat thread by double-clicking from the sidebar", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory(
+      [
+        createThread(EXISTING_THREAD_ID, "Release plan"),
+        createThread(INCIDENT_THREAD_ID, "Incident notes"),
+      ],
+      [],
+      {
+        detailTitles: {
+          [EXISTING_THREAD_ID]: "Thread data release plan",
+        },
+      },
+    );
 
     detachedSetupPage({
       context,
@@ -888,7 +934,7 @@ describe("zero sidebar", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
     const titleInput = within(dialog).getByPlaceholderText("Chat title");
-    expect(titleInput).toHaveValue("Release plan");
+    expect(titleInput).toHaveValue("Thread data release plan");
 
     await fill(titleInput, "Launch plan");
     click(buttonByText("Rename", dialog));
