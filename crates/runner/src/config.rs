@@ -174,7 +174,17 @@ pub async fn load(path: &Path) -> RunnerResult<RunnerConfig> {
     let home = HomePaths::new()?;
     // Image artifacts are mutable cache outputs. Runtime callers validate
     // them only after acquiring the matching shared rootfs/snapshot locks.
-    load_with_home(path, &home, false).await
+    load_with_home_inner(path, &home, false, None).await
+}
+
+/// Load a runner config for `runner start`, applying the API URL override
+/// before validating `server.url`.
+pub(crate) async fn load_for_start(
+    path: &Path,
+    api_url_override: Option<&str>,
+) -> RunnerResult<RunnerConfig> {
+    let home = HomePaths::new()?;
+    load_with_home_inner(path, &home, false, api_url_override).await
 }
 
 /// Read a runner config selected by diagnostic/discovery code.
@@ -191,10 +201,20 @@ pub(crate) async fn read_diagnostic_config_to_string(path: &Path) -> RunnerResul
     .await
 }
 
+#[cfg(test)]
 async fn load_with_home(
     path: &Path,
     home: &HomePaths,
     validate_image_artifacts: bool,
+) -> RunnerResult<RunnerConfig> {
+    load_with_home_inner(path, home, validate_image_artifacts, None).await
+}
+
+async fn load_with_home_inner(
+    path: &Path,
+    home: &HomePaths,
+    validate_image_artifacts: bool,
+    api_url_override: Option<&str>,
 ) -> RunnerResult<RunnerConfig> {
     let content = tokio::fs::read_to_string(path)
         .await
@@ -203,6 +223,18 @@ async fn load_with_home(
         .map_err(|e| RunnerError::Config(format!("parse {}: {e}", path.display())))?;
     if let Some(config_dir) = path.parent() {
         config.resolve_relative_paths(config_dir);
+    }
+    if let Some(api_url) = api_url_override {
+        let server = config.server.get_or_insert_with(|| ServerConfig {
+            url: String::new(),
+            token: String::new(),
+        });
+        server.url = api_url.to_string();
+    }
+    if let Some(server) = &mut config.server
+        && !server.url.is_empty()
+    {
+        server.url = normalize_api_base_url(&server.url)?;
     }
     validate(&config, home, validate_image_artifacts).await?;
     Ok(config)
@@ -232,6 +264,59 @@ pub(crate) fn validate_concurrency_factor(value: f64) -> RunnerResult<()> {
         ));
     }
     Ok(())
+}
+
+/// Validate and normalize the runner API base URL.
+///
+/// The URL is later copied into guest-visible config and log-adjacent paths,
+/// so reject components that can carry credentials or other sensitive values.
+pub(crate) fn normalize_api_base_url(value: &str) -> RunnerResult<String> {
+    let parsed = url::Url::parse(value)
+        .map_err(|_| RunnerError::Config("server.url must be an absolute http(s) URL".into()))?;
+
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(RunnerError::Config(
+            "server.url must use the http or https scheme".into(),
+        ));
+    }
+    if parsed.host_str().is_none() {
+        return Err(RunnerError::Config("server.url must include a host".into()));
+    }
+    if parsed_has_userinfo(value, &parsed) {
+        return Err(RunnerError::Config(
+            "server.url must not include credentials".into(),
+        ));
+    }
+    if parsed.query().is_some() {
+        return Err(RunnerError::Config(
+            "server.url must not include a query string".into(),
+        ));
+    }
+    if parsed.fragment().is_some() {
+        return Err(RunnerError::Config(
+            "server.url must not include a fragment".into(),
+        ));
+    }
+
+    Ok(parsed.as_str().trim_end_matches('/').to_string())
+}
+
+fn parsed_has_userinfo(raw_value: &str, url: &url::Url) -> bool {
+    !url.username().is_empty()
+        || url.password().is_some()
+        || authority_has_userinfo_marker(raw_value)
+        || authority_has_userinfo_marker(url.as_str())
+}
+
+fn authority_has_userinfo_marker(value: &str) -> bool {
+    let Some((_, after_scheme)) = value.split_once("://") else {
+        return false;
+    };
+    let authority = after_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(after_scheme);
+    authority.contains('@')
 }
 
 async fn check_path_exists(path: &Path, label: &str) -> RunnerResult<()> {
