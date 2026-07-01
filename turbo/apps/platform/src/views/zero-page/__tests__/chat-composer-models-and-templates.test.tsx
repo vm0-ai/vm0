@@ -506,8 +506,12 @@ function mockImmediateIdleCallback(): () => void {
   };
 }
 
-function findComposerModel(label: string): Promise<HTMLElement> {
-  return screen.findByRole("combobox", { name: label }, { timeout: 5000 });
+async function findComposerModel(label: string): Promise<HTMLElement> {
+  return await waitFor(() => {
+    const combobox = screen.getByRole("combobox", { name: label });
+    expect(combobox).toBeInTheDocument();
+    return combobox;
+  });
 }
 
 async function expectComposerModel(label: string): Promise<void> {
@@ -1161,6 +1165,9 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
+    await waitFor(() => {
+      expect(document.title).toBe("My thread | VM0");
+    });
     await user.click(await findComposerModel("GLM-5.1"));
     await user.click(
       await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
