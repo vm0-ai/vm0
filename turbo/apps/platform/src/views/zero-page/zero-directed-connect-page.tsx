@@ -19,8 +19,8 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnectorOAuthAuthCode$,
-  getOnlyAvailableAuthCodeAuthMethod,
-  getConnectorConnectLaunchMode,
+  getOnlyAvailableStatusAuthCodeAuthMethod,
+  getConnectorStatusConnectLaunchMode,
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
   pollingOAuthDeviceAuthConnectorType$,
@@ -32,6 +32,7 @@ import {
   clearManualGrantForm$,
   manualGrantFormValuesFor$,
   setManualGrantFormSubmitting$,
+  type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { hasTokenInputValue } from "../../signals/zero-page/settings/token-input.ts";
 import {
@@ -115,7 +116,7 @@ function hasProviderDrivenConnectMethod(
 }
 
 function runDirectedConnect(params: {
-  authMethods: readonly ConnectorAuthMethodId[];
+  item: ConnectorTypeWithStatus;
   connectorType: ConnectorType;
   signal: AbortSignal;
   connect: (
@@ -128,13 +129,13 @@ function runDirectedConnect(params: {
   openConnectModal: () => void;
   openManualGrantDialog: () => void;
 }): void {
-  const launchMode = getConnectorConnectLaunchMode({
-    type: params.connectorType,
-    availableAuthMethods: params.authMethods,
-  });
+  const launchMode = getConnectorStatusConnectLaunchMode(params.item);
   if (
     launchMode === "modal" &&
-    hasProviderDrivenConnectMethod(params.connectorType, params.authMethods)
+    hasProviderDrivenConnectMethod(
+      params.connectorType,
+      params.item.availableAuthMethods,
+    )
   ) {
     params.openConnectModal();
     return;
@@ -142,7 +143,7 @@ function runDirectedConnect(params: {
 
   const manualGrantMethod = getOnlyManualGrantMethod(
     params.connectorType,
-    params.authMethods,
+    params.item.availableAuthMethods,
   );
 
   if (launchMode === "modal" && manualGrantMethod) {
@@ -154,10 +155,7 @@ function runDirectedConnect(params: {
     return;
   }
 
-  const authMethod = getOnlyAvailableAuthCodeAuthMethod(
-    params.connectorType,
-    params.authMethods,
-  );
+  const authMethod = getOnlyAvailableStatusAuthCodeAuthMethod(params.item);
   if (!authMethod) {
     params.openConnectModal();
     return;
@@ -506,11 +504,11 @@ function DirectedConnectCard() {
   };
 
   const handleConnect = () => {
-    if (!canConnect) {
+    if (!canConnect || !item) {
       return;
     }
     runDirectedConnect({
-      authMethods,
+      item,
       connectorType,
       signal,
       connect,

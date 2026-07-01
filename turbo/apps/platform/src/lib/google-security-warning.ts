@@ -6,7 +6,3 @@ export function shouldShowGoogleSecurityWarningNotice(
 ): boolean {
   return isGoogleOAuthConnector(type);
 }
-
-export function shouldShowConnectorConnectNotice(type: ConnectorType): boolean {
-  return shouldShowGoogleSecurityWarningNotice(type);
-}

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
+import { connectorReconnectReasonSchema } from "./connector-schemas";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -77,6 +78,36 @@ const publicConnectorCatalogDetailResponseSchema = z.object({
   connector: publicConnectorCatalogDetailSchema,
 });
 
+const publicConnectorCatalogConnectionStatusSchema = z.enum([
+  "not-connected",
+  "connected",
+  "scope-mismatch",
+  "reconnect-required",
+]);
+
+const publicConnectorCatalogConnectionSchema = z.object({
+  authMethod: z.string(),
+  externalUsername: z.string().nullable(),
+  externalEmail: z.string().nullable(),
+  reconnectReason: connectorReconnectReasonSchema.nullable(),
+});
+
+const publicConnectorCatalogStatusItemSchema =
+  publicConnectorCatalogDetailSchema.extend({
+    connection: publicConnectorCatalogConnectionSchema.nullable(),
+    connected: z.boolean(),
+    connectionStatus: publicConnectorCatalogConnectionStatusSchema,
+    scopeMismatch: z.boolean(),
+    authMethodSupportsRefresh: z.boolean(),
+    tokenExpiresAt: z.string().nullable(),
+    singleAuthCodeAuthMethodId: z.string().nullable(),
+    connectNotice: z.enum(["google-security-warning"]).nullable(),
+  });
+
+const publicConnectorCatalogStatusResponseSchema = z.object({
+  connectors: z.array(publicConnectorCatalogStatusItemSchema),
+});
+
 const publicFirewallPolicyValueSchema = z.enum(["allow", "deny", "ask"]);
 
 const publicConnectorCatalogPermissionSchema = z.object({
@@ -139,6 +170,18 @@ export type PublicConnectorCatalogListResponse = z.infer<
 export type PublicConnectorCatalogDetailResponse = z.infer<
   typeof publicConnectorCatalogDetailResponseSchema
 >;
+export type PublicConnectorCatalogConnectionStatus = z.infer<
+  typeof publicConnectorCatalogConnectionStatusSchema
+>;
+export type PublicConnectorCatalogConnection = z.infer<
+  typeof publicConnectorCatalogConnectionSchema
+>;
+export type PublicConnectorCatalogStatusItem = z.infer<
+  typeof publicConnectorCatalogStatusItemSchema
+>;
+export type PublicConnectorCatalogStatusResponse = z.infer<
+  typeof publicConnectorCatalogStatusResponseSchema
+>;
 export type PublicConnectorCatalogPermissionDetail = z.infer<
   typeof publicConnectorCatalogPermissionDetailSchema
 >;
@@ -157,6 +200,17 @@ export const zeroConnectorCatalogContract = c.router({
       403: apiErrorSchema,
     },
     summary: "List public connector catalog metadata",
+  },
+  status: {
+    method: "GET",
+    path: "/api/zero/connector-catalog/status",
+    headers: authHeadersSchema,
+    responses: {
+      200: publicConnectorCatalogStatusResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "List public connector catalog metadata with connection status",
   },
   get: {
     method: "GET",
