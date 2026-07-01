@@ -728,6 +728,17 @@ function isRouteError(value: unknown): value is CreateRunErrorResult {
   );
 }
 
+function isReturnableRouteError(
+  value: AtomicLaunchCommitResult | CreateRunErrorResult,
+  signal: AbortSignal,
+): value is CreateRunErrorResult {
+  if (!isRouteError(value)) {
+    return false;
+  }
+  signal.throwIfAborted();
+  return true;
+}
+
 function firstAgent(content: AgentComposeContent): AgentConfig | undefined {
   if (content.agent) {
     return content.agent;
@@ -6716,12 +6727,12 @@ function createAtomicLaunchRun(input: {
     };
 
     let committed = await commitLaunch(undefined);
-    input.signal.throwIfAborted();
-    if (isRouteError(committed)) {
+    if (isReturnableRouteError(committed, input.signal)) {
       return committed;
     }
 
     if (committed.kind === "queue-payload-required") {
+      input.signal.throwIfAborted();
       const encryptedQueuedParamsResult = await settle(
         encryptQueuedRunnerJobPayload(
           launchResult.value.runnerJobPayload,
@@ -6731,8 +6742,7 @@ function createAtomicLaunchRun(input: {
       input.signal.throwIfAborted();
       if (!encryptedQueuedParamsResult.ok) {
         const retryWithoutQueuedPayload = await commitLaunch(undefined);
-        input.signal.throwIfAborted();
-        if (isRouteError(retryWithoutQueuedPayload)) {
+        if (isReturnableRouteError(retryWithoutQueuedPayload, input.signal)) {
           return retryWithoutQueuedPayload;
         }
         if (retryWithoutQueuedPayload.kind !== "queue-payload-required") {
@@ -6743,6 +6753,7 @@ function createAtomicLaunchRun(input: {
             timing: input.timing,
           });
         }
+        input.signal.throwIfAborted();
         return await commitFailedLaunch({
           db: input.db,
           createArgs: input.args,
@@ -6754,11 +6765,11 @@ function createAtomicLaunchRun(input: {
       }
 
       committed = await commitLaunch(encryptedQueuedParamsResult.value);
-      input.signal.throwIfAborted();
-      if (isRouteError(committed)) {
+      if (isReturnableRouteError(committed, input.signal)) {
         return committed;
       }
       if (committed.kind === "queue-payload-required") {
+        input.signal.throwIfAborted();
         throw new Error("Queued launch still required encrypted payload");
       }
     }
