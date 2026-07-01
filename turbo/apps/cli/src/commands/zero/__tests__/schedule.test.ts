@@ -33,6 +33,8 @@ describe("zero schedule (rename stub)", () => {
     const notice = errorSpy.mock.calls[0]?.[0] as string;
     expect(notice).toContain("renamed");
     expect(notice).toContain("zero automation");
+    expect(notice).toContain("--agent <agent-id>");
+    expect(notice).not.toContain("--agent <agent>");
     expect(process.exitCode).toBe(1);
   });
 });

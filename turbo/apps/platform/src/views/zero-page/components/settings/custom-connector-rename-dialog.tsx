@@ -17,6 +17,7 @@ import {
   renameCustomConnector$,
   setCustomConnectorRenameInput$,
 } from "../../../../signals/zero-page/settings/custom-connectors.ts";
+import type { FormEvent } from "react";
 
 export function CustomConnectorRenameDialog({
   id,
@@ -36,7 +37,8 @@ export function CustomConnectorRenameDialog({
   const canSubmit =
     !submitting && trimmed.length > 0 && trimmed !== currentDisplayName;
 
-  const onSubmit = () => {
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     if (!canSubmit) {
       return;
     }
@@ -60,30 +62,37 @@ export function CustomConnectorRenameDialog({
         <DialogHeader>
           <DialogTitle>Rename custom connector</DialogTitle>
         </DialogHeader>
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="cc-rename-name"
-            className="text-sm font-medium text-foreground"
-          >
-            Display name
-          </label>
-          <Input
-            id="cc-rename-name"
-            value={displayName}
-            onChange={(e) => {
-              return setDisplayName(e.target.value);
-            }}
-            autoFocus
-          />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={closeDialog} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button onClick={onSubmit} disabled={!canSubmit}>
-            {submitting ? "Saving…" : "Save"}
-          </Button>
-        </DialogFooter>
+        <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+          <div className="flex flex-col gap-2">
+            <label
+              htmlFor="cc-rename-name"
+              className="text-sm font-medium text-foreground"
+            >
+              Display name
+            </label>
+            <Input
+              id="cc-rename-name"
+              value={displayName}
+              onChange={(e) => {
+                return setDisplayName(e.target.value);
+              }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeDialog}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!canSubmit}>
+              {submitting ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

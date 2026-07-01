@@ -1,4 +1,4 @@
-import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { MouseEvent } from "react";
 import { isMap, isScalar, isSeq, parseDocument } from "yaml";
@@ -12,12 +12,8 @@ import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
   expandedMemoryEntries$,
   expandedMemoryItems$,
-  loadMoreMemoryActivity$,
+  MEMORY_ACTIVITY_RECENT_LIMIT,
   memoryActivity$,
-  memoryActivityExtraEntries$,
-  memoryActivityExtraHasMore$,
-  memoryActivityHasLoadedExtraPages$,
-  memoryActivityLatestCursor$,
   memoryDetail$,
   memoryTab$,
   refreshMemoryDevSummaries$,
@@ -196,7 +192,7 @@ function MemoryDevRefreshButton({
   const [refreshLoadable, refresh] = useLoadableSet(refreshMemoryDevSummaries$);
   const pageSignal = useGet(pageSignal$);
 
-  if (!features[FeatureSwitchKey.MemoryDevRefresh]) {
+  if (!features[FeatureSwitchKey.ZeroDebug]) {
     return null;
   }
 
@@ -231,53 +227,42 @@ export function MemoryPage() {
   const setTab = useSet(setMemoryTab$);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto [scrollbar-gutter:stable]">
       <header className="shrink-0 bg-transparent px-4 pb-0 pt-3 sm:px-6 md:pb-3 md:pt-10">
         <div className="mx-auto w-full max-w-[900px]">
-          <div className="hidden min-w-0 items-start justify-between gap-4 md:flex">
-            <div className="min-w-0">
-              <h1 className="text-lg font-semibold tracking-tight text-foreground">
-                Memory
-              </h1>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                What Zero remembers from previous work.
-              </p>
-            </div>
-            <MemoryDevRefreshButton />
-          </div>
-          <div className="mt-3 flex min-w-0 items-start justify-between gap-3">
-            <Tabs
-              value={activeTab}
-              onValueChange={(value) => {
-                if (isMemoryTab(value)) {
-                  setTab(value);
-                }
-              }}
-              className="min-w-0"
-            >
-              <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-                <TabsTrigger
-                  value="updates"
-                  className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
-                >
-                  Updates
-                </TabsTrigger>
-                <TabsTrigger
-                  value="raw"
-                  className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
-                >
-                  Memory files
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-            <MemoryDevRefreshButton className="md:hidden" />
+          <div className="hidden min-w-0 md:block">
+            <h1 className="text-lg font-semibold tracking-tight text-foreground">
+              Memory
+            </h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              What Zero remembers from previous work.
+            </p>
           </div>
         </div>
       </header>
 
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-8 pt-3 sm:px-6">
-        <div className="mx-auto flex min-h-0 w-full max-w-[900px] flex-1 flex-col">
-          {activeTab === "updates" ? <MemoryUpdates /> : <MemoryRawFiles />}
+      <main className="flex-1 px-4 pb-16 pt-3 sm:px-6">
+        <div className="relative mx-auto w-full max-w-[900px]">
+          <div className="flex min-w-0 w-full max-w-[900px] flex-col gap-6">
+            <div className="flex items-center justify-between gap-3">
+              <Tabs
+                value={activeTab}
+                onValueChange={(value) => {
+                  if (isMemoryTab(value)) {
+                    setTab(value);
+                  }
+                }}
+              >
+                <TabsList>
+                  <TabsTrigger value="updates">Updates</TabsTrigger>
+                  <TabsTrigger value="raw">Memory files</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <MemoryDevRefreshButton />
+            </div>
+
+            {activeTab === "updates" ? <MemoryUpdates /> : <MemoryRawFiles />}
+          </div>
         </div>
       </main>
     </div>
@@ -339,10 +324,9 @@ function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
   };
 
   return (
-    <section className="zero-card flex min-h-[420px] min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
-        {/* Content (left) — scrolls independently of the file panel. */}
-        <div className="order-1 flex min-h-0 min-w-0 flex-1 flex-col">
+    <section className="zero-card flex min-h-[420px] min-w-0 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-col lg:flex-row">
+        <div className="order-1 flex min-w-0 flex-1 flex-col">
           <div className="flex h-9 shrink-0 items-center border-b border-border/70 px-4 text-xs font-medium text-muted-foreground">
             <span className="truncate">
               {selectedPath ?? "No file selected"}
@@ -352,7 +336,7 @@ function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
             selectedMarkdown !== null ? (
               <div
                 aria-label="Memory content"
-                className="min-h-0 min-w-0 flex-1 overflow-auto bg-background px-4 py-3"
+                className="min-w-0 bg-background px-4 py-3"
                 onClick={handleContentClick}
               >
                 <MemoryFrontmatter fields={selectedMarkdown.frontmatter} />
@@ -361,20 +345,19 @@ function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
             ) : (
               <pre
                 aria-label="Memory content"
-                className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap bg-background px-4 py-3 font-mono text-sm leading-6 text-foreground"
+                className="whitespace-pre-wrap bg-background px-4 py-3 font-mono text-sm leading-6 text-foreground"
               >
                 {selectedContent}
               </pre>
             )
           ) : (
-            <div className="flex min-h-0 flex-1 items-center justify-center px-4 text-sm text-muted-foreground">
+            <div className="flex min-h-[360px] items-center justify-center px-4 text-sm text-muted-foreground">
               No content available for this file.
             </div>
           )}
         </div>
 
-        {/* File panel (right) — fixed; its own scroll, doesn't move with content. */}
-        <aside className="order-2 flex min-h-0 flex-col border-t border-border/70 bg-muted/20 lg:w-[240px] lg:shrink-0 lg:border-l lg:border-t-0">
+        <aside className="order-2 flex flex-col border-t border-border/70 bg-muted/20 lg:w-[240px] lg:shrink-0 lg:border-l lg:border-t-0">
           <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/70 px-3">
             <span className="text-xs font-medium text-muted-foreground">
               Files
@@ -581,14 +564,8 @@ function formatMemoryFileCount(count: number): string {
 
 function MemoryUpdates() {
   const activityLoadable = useLoadable(memoryActivity$);
-  const extraEntries = useLastResolved(memoryActivityExtraEntries$) ?? [];
-  const hasLoadedExtraPages =
-    useLastResolved(memoryActivityHasLoadedExtraPages$) ?? false;
-  const extraHasMore = useLastResolved(memoryActivityExtraHasMore$) ?? false;
-  const latestCursor = useLastResolved(memoryActivityLatestCursor$);
-  const [loadMoreLoadable, loadMore] = useLoadableSet(loadMoreMemoryActivity$);
-  const loadingMore = loadMoreLoadable.state === "loading";
-  const pageSignal = useGet(pageSignal$);
+  const features = useGet(featureSwitch$);
+  const showDebug = features[FeatureSwitchKey.ZeroDebug] ?? false;
 
   if (activityLoadable.state === "loading") {
     return <MemoryUpdatesSkeleton />;
@@ -597,73 +574,44 @@ function MemoryUpdates() {
     return <MemoryEmptyState errored />;
   }
 
-  const entries = [...activityLoadable.data.entries, ...extraEntries];
+  const entries = activityLoadable.data.entries.slice(
+    0,
+    MEMORY_ACTIVITY_RECENT_LIMIT,
+  );
   if (entries.length === 0) {
     return <MemoryUpdatesEmptyState />;
   }
-  const cursorForLoadMore = hasLoadedExtraPages
-    ? latestCursor
-    : activityLoadable.data.nextCursor;
-  const hasMore = hasLoadedExtraPages
-    ? extraHasMore
-    : activityLoadable.data.nextCursor !== null;
-
-  function handleLoadMore() {
-    if (!cursorForLoadMore || loadingMore) {
-      return;
-    }
-    detach(loadMore(cursorForLoadMore, pageSignal), Reason.DomCallback);
-  }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-2">
+    <div className="flex flex-col gap-4 pb-2">
       {entries.map((entry) => {
-        return <MemoryUpdateCard key={entry.toVersionId} entry={entry} />;
+        return (
+          <MemoryUpdateCard
+            key={entry.toVersionId}
+            entry={entry}
+            showDebug={showDebug}
+          />
+        );
       })}
-      {hasMore ? (
-        <MemoryUpdatesLoadMore
-          loading={loadingMore}
-          onLoadMore={handleLoadMore}
-        />
-      ) : null}
     </div>
   );
 }
 
-function MemoryUpdatesLoadMore({
-  loading,
-  onLoadMore,
+function MemoryUpdateCard({
+  entry,
+  showDebug,
 }: {
-  readonly loading: boolean;
-  readonly onLoadMore: () => void;
+  readonly entry: MemoryActivityEntry;
+  readonly showDebug: boolean;
 }) {
-  return (
-    <div className="flex shrink-0 flex-col items-center gap-2 py-1">
-      <button
-        type="button"
-        disabled={loading}
-        onClick={onLoadMore}
-        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border/70 bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-accent/50 disabled:pointer-events-none disabled:opacity-50"
-      >
-        {loading ? (
-          <IconLoader2 size={14} className="animate-spin" />
-        ) : (
-          <IconChevronDown size={14} />
-        )}
-        <span>{loading ? "Loading..." : "Load more"}</span>
-      </button>
-    </div>
-  );
-}
-
-function MemoryUpdateCard({ entry }: { readonly entry: MemoryActivityEntry }) {
   const expandedByKey = useGet(expandedMemoryEntries$);
   const toggleExpanded = useSet(toggleMemoryEntryExpanded$);
-  const summary = entry.summary ?? buildFallbackSummary(entry.items);
+  const summary =
+    entry.summary ?? (showDebug ? buildFallbackSummary(entry.items) : null);
   const entryKey = entry.toVersionId;
   const expanded = expandedByKey[entryKey] ?? false;
   const hasFiles = entry.items.length > 0;
-  const stats = getMemoryItemsStats(entry.items);
+  const stats = showDebug ? getMemoryItemsStats(entry.items) : null;
   const filesListId = `memory-update-files-${entryKey}`;
 
   return (
@@ -672,64 +620,74 @@ function MemoryUpdateCard({ entry }: { readonly entry: MemoryActivityEntry }) {
         <h2 className="text-sm font-semibold tracking-tight text-foreground">
           {formatActivityDate(entry.date)}
         </h2>
-        <Markdown
-          source={summary}
-          className="mt-2 [&_p]:my-0 [&_p]:text-muted-foreground [&_ul]:my-1.5 [&_ul]:pl-5 [&_li]:my-0.5 [&_li]:text-muted-foreground [&_strong]:text-foreground"
-        />
-      </header>
-      <div className="mx-4 border-t border-border/70">
-        <div className="flex min-h-10 items-center justify-between gap-3 py-1.5">
-          <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-            <span
-              aria-hidden="true"
-              className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/60"
-            />
-            <span className="truncate">
-              {formatMemoryFileCount(entry.items.length)}
-            </span>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <MemorySummaryLineStats stats={stats} />
-            {hasFiles ? (
-              <button
-                type="button"
-                aria-label={expanded ? "Hide files" : "View files"}
-                aria-controls={filesListId}
-                aria-expanded={expanded}
-                onClick={() => {
-                  toggleExpanded(entryKey);
-                }}
-                className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-              >
-                <span className="hidden sm:inline">
-                  {expanded ? "Hide files" : "View files"}
-                </span>
-                <span className="sm:hidden">{expanded ? "Hide" : "View"}</span>
-                <IconChevronDown
-                  size={13}
-                  className={cn(
-                    "transition-transform",
-                    expanded && "rotate-180",
-                  )}
-                />
-              </button>
-            ) : null}
-          </div>
-        </div>
-        {expanded && hasFiles ? (
-          <div
-            id={filesListId}
-            className="flex flex-col border-t border-border/70 py-2"
-          >
-            {entry.items.map((item) => {
-              const itemKey = `${entry.toVersionId}:${item.filePath}`;
-              return (
-                <MemoryUpdateItem key={itemKey} itemKey={itemKey} item={item} />
-              );
-            })}
-          </div>
+        {summary !== null ? (
+          <Markdown
+            source={summary}
+            className="mt-2 [&_p]:my-0 [&_p]:text-muted-foreground [&_ul]:my-1.5 [&_ul]:pl-5 [&_li]:my-0.5 [&_li]:text-muted-foreground [&_strong]:text-foreground"
+          />
         ) : null}
-      </div>
+      </header>
+      {showDebug ? (
+        <div className="mx-4 border-t border-border/70">
+          <div className="flex min-h-10 items-center justify-between gap-3 py-1.5">
+            <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/60"
+              />
+              <span className="truncate">
+                {formatMemoryFileCount(entry.items.length)}
+              </span>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {stats !== null ? <MemorySummaryLineStats stats={stats} /> : null}
+              {hasFiles ? (
+                <button
+                  type="button"
+                  aria-label={expanded ? "Hide files" : "View files"}
+                  aria-controls={filesListId}
+                  aria-expanded={expanded}
+                  onClick={() => {
+                    toggleExpanded(entryKey);
+                  }}
+                  className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+                >
+                  <span className="hidden sm:inline">
+                    {expanded ? "Hide files" : "View files"}
+                  </span>
+                  <span className="sm:hidden">
+                    {expanded ? "Hide" : "View"}
+                  </span>
+                  <IconChevronDown
+                    size={13}
+                    className={cn(
+                      "transition-transform",
+                      expanded && "rotate-180",
+                    )}
+                  />
+                </button>
+              ) : null}
+            </div>
+          </div>
+          {expanded && hasFiles ? (
+            <div
+              id={filesListId}
+              className="flex flex-col border-t border-border/70 py-2"
+            >
+              {entry.items.map((item) => {
+                const itemKey = `${entry.toVersionId}:${item.filePath}`;
+                return (
+                  <MemoryUpdateItem
+                    key={itemKey}
+                    itemKey={itemKey}
+                    item={item}
+                  />
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -910,7 +868,7 @@ function MemoryEmptyState({ errored }: { readonly errored: boolean }) {
 function MemoryUpdatesSkeleton() {
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-2"
+      className="flex flex-col gap-4 pb-2"
       data-testid="memory-updates-loading"
     >
       {[0, 1].map((cardIndex) => {
@@ -947,7 +905,7 @@ function MemoryUpdatesSkeleton() {
 
 function MemoryRawFilesSkeleton() {
   return (
-    <section className="zero-card flex min-h-[420px] flex-1 flex-col overflow-hidden">
+    <section className="zero-card flex min-h-[420px] flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <div className="order-1 flex min-h-0 flex-1 flex-col p-4">
           <div className="min-h-[260px] flex-1 rounded bg-muted/50" />
