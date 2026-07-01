@@ -249,9 +249,10 @@ async fn upload_session_history(
         .unwrap_or(false);
     let response_encoding = prep_resp.get("encoding").and_then(|v| v.as_str());
     if existing {
+        let accepted_encoding = response_encoding.unwrap_or(SESSION_HISTORY_ENCODING_IDENTITY);
         log_info!(
             LOG_TAG,
-            "Session history already exists in S3 (deduplicated, encoding={requested_encoding})"
+            "Session history already exists in S3 (deduplicated, encoding={accepted_encoding})"
         );
         return Ok(());
     }

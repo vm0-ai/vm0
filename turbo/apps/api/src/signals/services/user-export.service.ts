@@ -794,49 +794,39 @@ async function collectConversationMessages(
     }
   }
 
-  const sessionsWithConversations = await runtime.db
+  const sessionsWithHistory = await runtime.db
     .select({
       id: agentSessions.id,
-      conversationId: agentSessions.conversationId,
+      cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
+      cliAgentSessionHistory: conversations.cliAgentSessionHistory,
+      sessionHistoryBlobEncoding: blobs.encoding,
+      sessionHistoryBlobSize: blobs.size,
     })
     .from(agentSessions)
-    .where(eq(agentSessions.userId, userId));
+    .innerJoin(
+      conversations,
+      eq(conversations.id, agentSessions.conversationId),
+    )
+    .leftJoin(blobs, eq(conversations.cliAgentSessionHistoryHash, blobs.hash))
+    .where(eq(agentSessions.userId, userId))
+    .orderBy(asc(agentSessions.createdAt), asc(agentSessions.id));
   runtime.signal.throwIfAborted();
 
-  for (const session of sessionsWithConversations) {
-    if (!session.conversationId) {
-      continue;
-    }
+  for (const session of sessionsWithHistory) {
+    const history = await resolveSessionHistory(
+      runtime,
+      session.cliAgentSessionHistoryHash,
+      session.sessionHistoryBlobEncoding,
+      session.sessionHistoryBlobSize,
+      session.cliAgentSessionHistory,
+    );
 
-    const [conversation] = await runtime.db
-      .select({
-        cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
-        cliAgentSessionHistory: conversations.cliAgentSessionHistory,
-        sessionHistoryBlobEncoding: blobs.encoding,
-        sessionHistoryBlobSize: blobs.size,
-      })
-      .from(conversations)
-      .leftJoin(blobs, eq(conversations.cliAgentSessionHistoryHash, blobs.hash))
-      .where(eq(conversations.id, session.conversationId))
-      .limit(1);
-    runtime.signal.throwIfAborted();
-
-    if (conversation) {
-      const history = await resolveSessionHistory(
-        runtime,
-        conversation.cliAgentSessionHistoryHash,
-        conversation.sessionHistoryBlobEncoding,
-        conversation.sessionHistoryBlobSize,
-        conversation.cliAgentSessionHistory,
-      );
-
-      if (history) {
-        entries.push({
-          path: `conversations/${session.id}-history.jsonl`,
-          content: history,
-        });
-        sessionHistoryCount += 1;
-      }
+    if (history) {
+      entries.push({
+        path: `conversations/${session.id}-history.jsonl`,
+        content: history,
+      });
+      sessionHistoryCount += 1;
     }
   }
 
