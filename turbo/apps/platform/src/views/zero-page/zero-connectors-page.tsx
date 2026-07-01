@@ -708,7 +708,7 @@ function GlobalConnectorCard({
           {status}
         </div>
         {connector.connected && (
-          <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-0">
             {showManageAccess && (
               <ConnectorAccessButton
                 connectorType={connector.type}

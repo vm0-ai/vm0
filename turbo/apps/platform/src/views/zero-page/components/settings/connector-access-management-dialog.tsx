@@ -146,9 +146,6 @@ function AgentAccessRow({
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">{name}</p>
       </div>
-      <p className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
-        {row.authorized ? "Authorized" : "Not authorized"}
-      </p>
       {canManage && (
         <button
           type="button"
