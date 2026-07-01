@@ -9,7 +9,7 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnectorOAuthAuthCode$,
-  getOnlyAvailableAuthCodeAuthMethod,
+  getOnlyAvailableStatusAuthCodeAuthMethod,
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
   selectedConnectorType$,
@@ -174,10 +174,7 @@ function DirectedAuthorizeCard() {
   const isLoading = catalogLoading || permissionLoading;
   const canAuthorize = canAuthorizeConnector(item, isConnected);
   const selectedAuthMethod = item
-    ? getOnlyAvailableAuthCodeAuthMethod(
-        connectorType,
-        item.availableAuthMethods,
-      )
+    ? getOnlyAvailableStatusAuthCodeAuthMethod(item)
     : null;
   const showGoogleSecurityWarningNotice =
     !isAuthorized &&
@@ -193,7 +190,15 @@ function DirectedAuthorizeCard() {
     } else if (selectedAuthMethod) {
       detach(
         (async () => {
-          await connect(connectorType, selectedAuthMethod, {}, signal);
+          const connected = await connect(
+            connectorType,
+            selectedAuthMethod,
+            {},
+            signal,
+          );
+          if (!connected) {
+            return;
+          }
           await authorize(connectorType, agentId, signal);
         })(),
         Reason.DomCallback,

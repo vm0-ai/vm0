@@ -23,6 +23,7 @@ import { parse as parseYaml } from "yaml";
 import {
   ALL_METHODS,
   OPENAPI_PATH_KEYS,
+  applyPermissionDescriptions,
   fetchSpec,
   logStats,
   renderCategories,
@@ -45,6 +46,11 @@ interface ClerkOperation {
   tags?: string[];
 }
 
+interface ClerkOpenApiTag {
+  readonly name?: string;
+  readonly description?: string;
+}
+
 interface ClerkOwnerOverride {
   readonly tags: readonly string[];
   readonly permission: string;
@@ -52,6 +58,16 @@ interface ClerkOwnerOverride {
 
 interface ClerkSpec extends OpenApiSpec {
   servers?: Array<{ url: string }>;
+  tags?: ClerkOpenApiTag[];
+}
+
+interface ClerkPermissionGroup extends PermissionGroup {
+  readonly tag: string;
+}
+
+interface ClerkPermissionOwner {
+  readonly permission: string;
+  readonly tag: string;
 }
 
 /**
@@ -92,6 +108,11 @@ const RUNTIME_METHODS = [
   "HEAD",
   "OPTIONS",
 ] as const;
+
+const CLERK_TAG_DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = {
+  "Admin Portal Link Tokens":
+    "Create and revoke single-use admin portal link tokens for Clerk admin portal access.",
+};
 
 // Clerk tags nested billing operations as both Users/Organizations and Billing.
 // Keep these billing-specific routes under Billing while validating the
@@ -177,15 +198,21 @@ function resolveOwnerPermissions(
   tags: readonly string[],
   access: string,
   usedOwnerOverrides: Set<string>,
-): string[] {
-  const ownerPermissions = uniqueSorted(
-    tags.map((tag) => {
-      return permissionNameForTag(tag, access);
-    }),
-  );
+): ClerkPermissionOwner[] {
+  const ownerTags = uniqueSorted(tags);
+  const ownerPermissions = ownerTags.map((tag) => {
+    return permissionNameForTag(tag, access);
+  });
   const key = operationKey(methodLower, apiPath);
   const override = OWNER_OVERRIDES.get(key);
-  if (!override) return ownerPermissions;
+  if (!override) {
+    return ownerTags.map((tag, index) => {
+      return {
+        permission: ownerPermissions[index]!,
+        tag,
+      };
+    });
+  }
 
   usedOwnerOverrides.add(key);
 
@@ -210,7 +237,21 @@ function resolveOwnerPermissions(
     );
   }
 
-  return [override.permission];
+  const sourceTag = override.tags.find((tag) => {
+    return permissionNameForTag(tag, access) === override.permission;
+  });
+  if (!sourceTag) {
+    throw new Error(
+      `Clerk operation "${key}" owner override permission "${override.permission}" has no source tag`,
+    );
+  }
+
+  return [
+    {
+      permission: override.permission,
+      tag: sourceTag,
+    },
+  ];
 }
 
 function assertAllOwnerOverridesUsed(usedOwnerOverrides: Set<string>): void {
@@ -274,8 +315,27 @@ function assertUniqueClerkRules(permissions: readonly PermissionGroup[]): void {
   }
 }
 
-function buildGroups(spec: ClerkSpec): PermissionGroup[] {
+function recordPermissionTag(
+  permissionTags: Map<string, string>,
+  permission: string,
+  tag: string,
+): void {
+  const existingTag = permissionTags.get(permission);
+  if (!existingTag) {
+    permissionTags.set(permission, tag);
+    return;
+  }
+  if (existingTag === tag) {
+    return;
+  }
+  throw new Error(
+    `Clerk permission "${permission}" has ambiguous source tags: ${existingTag}, ${tag}`,
+  );
+}
+
+function buildGroups(spec: ClerkSpec): ClerkPermissionGroup[] {
   const groups = new Map<string, Set<string>>();
+  const permissionTags = new Map<string, string>();
   const usedOwnerOverrides = new Set<string>();
   if (!spec.paths) {
     throw new Error("OpenAPI spec has no 'paths'");
@@ -305,11 +365,12 @@ function buildGroups(spec: ClerkSpec): PermissionGroup[] {
         usedOwnerOverrides,
       );
 
-      for (const groupName of ownerPermissions) {
-        let ruleSet = groups.get(groupName);
+      for (const owner of ownerPermissions) {
+        recordPermissionTag(permissionTags, owner.permission, owner.tag);
+        let ruleSet = groups.get(owner.permission);
         if (!ruleSet) {
           ruleSet = new Set();
-          groups.set(groupName, ruleSet);
+          groups.set(owner.permission, ruleSet);
         }
         ruleSet.add(rule);
       }
@@ -323,12 +384,133 @@ function buildGroups(spec: ClerkSpec): PermissionGroup[] {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, ruleSet]) => ({
       name,
+      tag: permissionTags.get(name) ?? "",
       rules: sanitizeAndSortRules([...ruleSet]),
     }));
+
+  const missingSourceTags = permissions
+    .filter((permission) => {
+      return permission.tag.length === 0;
+    })
+    .map((permission) => {
+      return permission.name;
+    });
+  if (missingSourceTags.length > 0) {
+    throw new Error(
+      "Clerk generated permissions are missing source tags:\n" +
+        missingSourceTags
+          .sort((left, right) => {
+            return left.localeCompare(right);
+          })
+          .join("\n"),
+    );
+  }
 
   assertUniqueClerkRules(permissions);
 
   return permissions;
+}
+
+// ── Permission descriptions ─────────────────────────────────────────────
+
+function normalizeDescription(description: string): string {
+  return description.replace(/\s+/g, " ").trim();
+}
+
+function tagDescriptionMap(spec: ClerkSpec): Map<string, string> {
+  const descriptions = new Map<string, string>();
+  for (const tag of spec.tags ?? []) {
+    if (typeof tag.name !== "string" || tag.name.length === 0) {
+      continue;
+    }
+    const description =
+      typeof tag.description === "string"
+        ? normalizeDescription(tag.description)
+        : "";
+    if (description.length > 0) {
+      descriptions.set(tag.name, description);
+    }
+  }
+  return descriptions;
+}
+
+function accessDescriptionPrefix(permission: ClerkPermissionGroup): string {
+  const colonIndex = permission.name.lastIndexOf(":");
+  const access = colonIndex === -1 ? "" : permission.name.slice(colonIndex + 1);
+  if (access === "read") {
+    return `Read Clerk ${permission.tag}.`;
+  }
+  if (access === "write") {
+    return `Manage Clerk ${permission.tag}.`;
+  }
+  throw new Error(
+    `Unexpected Clerk permission access for "${permission.name}": ${access}`,
+  );
+}
+
+function assertNoStaleTagDescriptionOverrides(
+  usedTags: ReadonlySet<string>,
+): void {
+  const staleTags = Object.keys(CLERK_TAG_DESCRIPTION_OVERRIDES).filter(
+    (tag) => {
+      return !usedTags.has(tag);
+    },
+  );
+  if (staleTags.length === 0) {
+    return;
+  }
+  throw new Error(
+    "Clerk tag description overrides reference unused tags:\n" +
+      staleTags
+        .sort((left, right) => {
+          return left.localeCompare(right);
+        })
+        .join("\n"),
+  );
+}
+
+function clerkPermissionDescriptions(
+  spec: ClerkSpec,
+  permissions: readonly ClerkPermissionGroup[],
+): Record<string, string> {
+  const usedTags = new Set(
+    permissions.map((permission) => {
+      return permission.tag;
+    }),
+  );
+  assertNoStaleTagDescriptionOverrides(usedTags);
+
+  const tagDescriptions = tagDescriptionMap(spec);
+  for (const [tag, description] of Object.entries(
+    CLERK_TAG_DESCRIPTION_OVERRIDES,
+  )) {
+    tagDescriptions.set(tag, description);
+  }
+
+  const missingTags = [...usedTags].filter((tag) => {
+    return !tagDescriptions.has(tag);
+  });
+  if (missingTags.length > 0) {
+    throw new Error(
+      "Clerk OpenAPI tags missing descriptions:\n" +
+        missingTags
+          .sort((left, right) => {
+            return left.localeCompare(right);
+          })
+          .join("\n"),
+    );
+  }
+
+  return Object.fromEntries(
+    permissions.map((permission) => {
+      return [
+        permission.name,
+        `${accessDescriptionPrefix(permission)} ${tagDescriptions.get(
+          permission.tag,
+        )}`,
+      ];
+    }),
+  );
 }
 
 // ── Category assignment ─────────────────────────────────────────────────
@@ -452,7 +634,12 @@ export async function generate(): Promise<void> {
   const spec = parseYaml(text) as ClerkSpec;
   console.error(`  Spec version: ${spec.info?.version ?? "unknown"}`);
 
-  const permissions = buildGroups(spec);
+  const groups = buildGroups(spec);
+  const permissions = applyPermissionDescriptions(
+    "Clerk",
+    groups,
+    clerkPermissionDescriptions(spec, groups),
+  );
   const ts = generateTypeScript(permissions);
 
   logStats(permissions);

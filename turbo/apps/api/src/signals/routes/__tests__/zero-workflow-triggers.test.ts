@@ -326,6 +326,7 @@ describe("zero workflow triggers", () => {
   it("creates a cron trigger and eagerly binds a chat thread", async () => {
     const { workflowId } = await setupFixture();
 
+    context.mocks.ably.publish.mockClear();
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
@@ -353,6 +354,10 @@ describe("zero workflow triggers", () => {
     expect(created.body.chatThreadId).toBeTruthy();
     expect(created.body.nextRunAt).toBeTruthy();
     expect(created.body.kind).toBe("schedule");
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadAutomationsChanged:${created.body.chatThreadId}`,
+      null,
+    );
     if (created.body.kind !== "schedule") {
       throw new Error("Expected a schedule trigger");
     }
@@ -1475,12 +1480,17 @@ describe("zero workflow triggers", () => {
     const threadId = created.body.chatThreadId;
     expect(threadId).toBeTruthy();
 
+    context.mocks.ably.publish.mockClear();
     await accept(
       triggersClient().delete({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
       [204],
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadAutomationsChanged:${threadId}`,
+      null,
     );
 
     const threadState = await workflowTriggerStateAction({
