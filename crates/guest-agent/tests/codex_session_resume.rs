@@ -12,7 +12,7 @@
 //!
 //! Each test still serialises behind a `std::sync::Mutex` because they share
 //! that single set of LazyLocks and because they touch the same on-disk
-//! session-id / history-path files (run-id-scoped under `/tmp`).
+//! session-id / history-path files.
 //!
 //! # Coverage
 //!
@@ -52,9 +52,12 @@ fn setup_env_once() {
             std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
             std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
             std::env::set_var("VM0_PROMPT", "test prompt");
-            // `home_dir` is loaded eagerly via `expect`. The marker
-            // payload embeds it, so set a stable dummy.
-            std::env::set_var("HOME", "/tmp/codex-resume-home");
+            // `home_dir` is loaded eagerly via `expect`. Keep it stable within
+            // this process while avoiding cross-runner collisions on /tmp.
+            std::env::set_var(
+                "HOME",
+                std::env::temp_dir().join(format!("codex-resume-home-{}", std::process::id())),
+            );
         }
     });
 }
