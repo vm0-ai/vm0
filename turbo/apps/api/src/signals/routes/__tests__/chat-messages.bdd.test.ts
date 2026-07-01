@@ -5,6 +5,7 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
 import {
   chatMessagesContract,
@@ -1055,6 +1056,62 @@ describe("CHAT-02: queueing and recalling messages", () => {
 });
 
 describe("CHAT-02: org queue markers", () => {
+  it("drains queued chat runs when an interrupt request aborts post-cancel", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    const controller = new AbortController();
+
+    const blocker = await chat.requestSendMessage(
+      actor,
+      { agentId, prompt: "occupy org concurrency before interrupt abort" },
+      [201],
+    );
+    if (blocker.status !== 201 || blocker.body.runId === null) {
+      throw new Error("Expected the blocking send to create a run");
+    }
+    expect(blocker.body.status).toBe("pending");
+
+    const queued = await chat.requestSendMessage(
+      actor,
+      { agentId, prompt: "drain after interrupt abort" },
+      [201],
+    );
+    if (queued.status !== 201 || queued.body.runId === null) {
+      throw new Error("Expected the second send to create a queued run");
+    }
+    expect(queued.body.status).toBe("queued");
+
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        const error = new Error("abort after interrupt cancel commit");
+        error.name = "AbortError";
+        controller.abort(error);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: blocker.body.threadId,
+        interruptsRunId: blocker.body.runId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+      controller.signal,
+    );
+
+    await waitForRunStatus(actor, blocker.body.runId, "cancelled");
+    await waitForRunStatus(actor, queued.body.runId, "pending");
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(queued.body.runId);
+    expect(claim.prompt).toBe("drain after interrupt abort");
+
+    await api.requestCancelRun(actor, queued.body.runId, [200]);
+  });
+
   it("marks queued chat runs and revokes the marker on dequeue", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2220,6 +2277,67 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, fresh.runId);
   }, 120_000);
 
+  it("injects workflow templates as one-shot context without merging sticky artifact templates", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    const workflowTemplate = WORKFLOW_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    if (!workflowTemplate) {
+      throw new Error("Expected a registered workflow template");
+    }
+
+    const sticky = await sendChatRun(actor, {
+      agentId,
+      prompt: "draw a labeled inbox",
+      generationTemplate: {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      },
+    });
+    const stickyPrompt = (await api.readRun(actor, sticky.runId))
+      .appendSystemPrompt;
+    expect(stickyPrompt).toContain("# Artifact Template Context");
+    expect(stickyPrompt).toContain(style.illustrationStyleId);
+    await cancelChatRun(actor, sticky.runId);
+
+    const workflow = await sendChatRun(actor, {
+      agentId,
+      threadId: sticky.threadId,
+      prompt: "create the workflow version",
+      generationTemplate: {
+        type: "workflow",
+        selection: { workflowTemplateId: workflowTemplate.id },
+      },
+    });
+    const workflowPrompt = (await api.readRun(actor, workflow.runId))
+      .appendSystemPrompt;
+    expect(workflowPrompt).toContain("# Workflow Template Context");
+    expect(workflowPrompt).toContain(
+      `Auto-inbox label (${workflowTemplate.id})`,
+    );
+    expect(workflowPrompt).toContain("Use the workflow-setup skill");
+    expect(workflowPrompt).toContain("Gmail label-applied automation");
+    expect(workflowPrompt).not.toContain("# Artifact Template Context");
+    expect(workflowPrompt).not.toContain(style.illustrationStyleId);
+    await cancelChatRun(actor, workflow.runId);
+
+    const followUp = await sendChatRun(actor, {
+      agentId,
+      threadId: sticky.threadId,
+      prompt: "continue the thread",
+    });
+    const followUpPrompt = (await api.readRun(actor, followUp.runId))
+      .appendSystemPrompt;
+    expect(followUpPrompt).not.toContain("# Workflow Template Context");
+    expect(followUpPrompt).not.toContain(workflowTemplate.id);
+    expect(followUpPrompt).toContain("# Artifact Template Context");
+    expect(followUpPrompt).toContain(style.illustrationStyleId);
+    await cancelChatRun(actor, followUp.runId);
+  }, 120_000);
+
   it("rejects unknown generation template selections", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
@@ -2282,6 +2400,13 @@ describe("CHAT-02: generation templates and attachments", () => {
           selection: { stylePresetId: "video-style:missing" },
         },
         message: "Unknown video template",
+      },
+      {
+        generationTemplate: {
+          type: "workflow",
+          selection: { workflowTemplateId: "workflow-template:missing" },
+        },
+        message: "Unknown workflow template",
       },
     ];
     for (const arm of arms) {

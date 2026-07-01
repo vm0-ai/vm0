@@ -1,4 +1,10 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -11,12 +17,14 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WORKFLOW_TEMPLATE_ITEMS,
   r2ImageTransformUrl,
   type PresentationTemplateItem,
 } from "@vm0/core";
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
+  type GenerationTemplateRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
@@ -35,9 +43,11 @@ import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { reloadUserModelPreference$ } from "../../../signals/external/user-model-preference.ts";
 import { templateCardThemeIdBySlug$ } from "../../../signals/zero-page/zero-chat-composer.ts";
 import {
   click,
@@ -80,10 +90,16 @@ function expectTextBefore(firstText: string, secondText: string): void {
   ).toBeTruthy();
 }
 
+function queryTabByText(text: string): HTMLElement | null {
+  return (
+    queryAllByRoleFast("tab").find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+    }) ?? null
+  );
+}
+
 function tabByText(text: string): HTMLElement {
-  const tab = queryAllByRoleFast("tab").find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
+  const tab = queryTabByText(text);
   if (!tab) {
     throw new Error(`${text} tab not found`);
   }
@@ -1063,6 +1079,64 @@ describe("chat composer models", () => {
     await expectComposerModel("Claude Opus 4.7");
   });
 
+  it("keeps the agent chat model picker open while user model preference refreshes", async () => {
+    const user = userEvent.setup({ delay: null });
+    const pendingPreferenceReload = context.mocks.deferred<void>();
+    let holdPreferenceReload = false;
+    let preferenceReloadStarted = false;
+
+    mockOrgModelRoutes("kimi-k2.7-code");
+    context.mocks.api(
+      zeroUserModelPreferenceContract.get,
+      async ({ respond, withSignal }) => {
+        if (holdPreferenceReload) {
+          preferenceReloadStarted = true;
+          await withSignal(pendingPreferenceReload.promise);
+        }
+        return respond(200, { selectedModel: null, updatedAt: null });
+      },
+    );
+    mockAgent();
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      expect(document.title).toContain("Scout");
+    });
+    await user.click(
+      await screen.findByRole("combobox", { name: "Kimi K2.7 Code" }),
+    );
+    await expect(
+      screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    ).resolves.toBeInTheDocument();
+
+    holdPreferenceReload = true;
+    act(() => {
+      context.store.set(reloadUserModelPreference$);
+    });
+    await waitFor(() => {
+      expect(preferenceReloadStarted).toBeTruthy();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    try {
+      expect(
+        screen.getByRole("combobox", {
+          hidden: true,
+          name: "Kimi K2.7 Code",
+        }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: /Claude Sonnet 4\.6/ }),
+      ).toBeInTheDocument();
+    } finally {
+      pendingPreferenceReload.resolve();
+    }
+  });
+
   it("shows thread override over user and workspace defaults, then remains editable", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
@@ -1091,6 +1165,53 @@ describe("chat composer models", () => {
       await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
     );
     await expectComposerModel("Claude Sonnet 4.6");
+  });
+
+  it("edits thread override before user default model selection resolves", async () => {
+    const user = userEvent.setup({ delay: null });
+    const pendingPreference = context.mocks.deferred<void>();
+    let preferenceRequestStarted = false;
+
+    mockOrgModelRoutes("kimi-k2.7-code");
+    context.mocks.api(
+      zeroUserModelPreferenceContract.get,
+      async ({ respond, withSignal }) => {
+        preferenceRequestStarted = true;
+        await withSignal(pendingPreference.promise);
+        return respond(200, {
+          selectedModel: "claude-opus-4-7",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      },
+    );
+    mockAgent();
+    mockThread({
+      selectedModel: "glm-5.1",
+      messages: [
+        {
+          id: "msg-user",
+          role: "user",
+          content: "Use GLM",
+          createdAt: "2026-03-10T00:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    try {
+      await waitFor(() => {
+        expect(preferenceRequestStarted).toBeTruthy();
+      });
+      await expectComposerModel("GLM-5.1");
+      await user.click(screen.getByRole("combobox", { name: "GLM-5.1" }));
+      await user.click(
+        await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+      );
+      await expectComposerModel("Claude Sonnet 4.6");
+    } finally {
+      pendingPreference.resolve();
+    }
   });
 
   it("opens compare plans from limited-free-1 Pro composer model items", async () => {
@@ -3518,6 +3639,110 @@ describe("chat composer templates", () => {
       );
       expect(
         screen.queryByLabelText(`Remove video template ${videoStyle.title}`),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("hides workflow templates when workflow automation is disabled", async () => {
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(tabByText("Presentation")).toBeInTheDocument();
+      expect(tabByText("Illustration")).toBeInTheDocument();
+      expect(tabByText("Video")).toBeInTheDocument();
+      expect(queryTabByText("Workflow")).not.toBeInTheDocument();
+    });
+  });
+
+  it("selects and sends a workflow template from the picker", async () => {
+    const user = userEvent.setup({ delay: null });
+    const workflowTemplate = WORKFLOW_TEMPLATE_ITEMS[0]!;
+    let submittedTemplate: GenerationTemplateRequest | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate: (body) => {
+        submittedTemplate = body.generationTemplate;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(tabByText("Workflow")).toBeInTheDocument();
+    });
+    click(tabByText("Workflow"));
+
+    await waitFor(() => {
+      expect(screen.getByText(workflowTemplate.title)).toBeInTheDocument();
+      expect(
+        screen.getByText(workflowTemplate.description),
+      ).toBeInTheDocument();
+    });
+
+    await fill(screen.getByLabelText("Search templates"), "no workflow match");
+    await waitFor(() => {
+      expect(screen.getByText("No matches")).toBeInTheDocument();
+    });
+
+    await fill(screen.getByLabelText("Search templates"), "auto-inbox");
+    click(
+      screen.getByLabelText(
+        `Select workflow template ${workflowTemplate.title}`,
+      ),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(
+        screen.getByLabelText(
+          `Remove workflow template ${workflowTemplate.title}`,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("Create this inbox workflow");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(submittedTemplate).toStrictEqual({
+        type: "workflow",
+        selection: { workflowTemplateId: workflowTemplate.id },
+      });
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+      expect(
+        screen.queryByLabelText(
+          `Remove workflow template ${workflowTemplate.title}`,
+        ),
       ).not.toBeInTheDocument();
     });
   });

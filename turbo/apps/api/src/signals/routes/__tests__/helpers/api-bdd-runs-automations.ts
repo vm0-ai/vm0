@@ -27,6 +27,7 @@ import {
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import {
   cronAggregateInsightsContract,
   cronAggregateUsageContract,
@@ -780,6 +781,18 @@ export function createRunsAutomationsApi(context: TestContext) {
       return response.body.enabledTypes;
     },
 
+    async listOrgModelProviders(
+      actor: ApiTestUser,
+    ): Promise<readonly ModelProviderResponse[]> {
+      const response = await accept(
+        runsAutomationApp(context)(zeroModelProvidersMainContract).list({
+          headers: authenticate(context, actor),
+        }),
+        [200],
+      );
+      return response.body.modelProviders;
+    },
+
     /**
      * Upserts an org-level model provider with an arbitrary contract body
      * (single secret or multi-auth secrets map) and returns the provider id.
@@ -993,6 +1006,24 @@ export function createRunsAutomationsApi(context: TestContext) {
         }),
         statuses,
       );
+    },
+
+    async requestCancelRunWithSignal(
+      actor: ApiTestUser,
+      runId: string,
+      signal: AbortSignal,
+    ): Promise<{ readonly status: number; readonly body: unknown }> {
+      const { authorization } = authenticate(context, actor);
+      const app = createAppWithRoutes({
+        signal,
+        routes: runsAutomationRoutes,
+      });
+      const response = await app.request(`/api/zero/runs/${runId}/cancel`, {
+        method: "POST",
+        headers: authorization === undefined ? {} : { authorization },
+      });
+      const body: unknown = await response.json();
+      return { status: response.status, body };
     },
 
     async heartbeatRunner(group?: string) {

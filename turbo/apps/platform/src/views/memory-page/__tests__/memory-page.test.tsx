@@ -221,8 +221,9 @@ function memoryActivityPage(
 }
 
 describe("memory page", () => {
-  it("shows memory updates, loads older entries, and browses raw files", async () => {
+  it("shows debug memory updates and browses raw files", async () => {
     context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      expect(query.limit).toBe(7);
       return respond(200, memoryActivityPage(query.cursor));
     });
     context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
@@ -237,7 +238,7 @@ describe("memory page", () => {
       path: "/memory",
       featureSwitches: {
         [FeatureSwitchKey.MemoryViewer]: true,
-        [FeatureSwitchKey.MemoryDevRefresh]: true,
+        [FeatureSwitchKey.ZeroDebug]: true,
       },
     });
 
@@ -264,13 +265,6 @@ describe("memory page", () => {
     expect(
       screen.getByText("Route support escalations to Dana."),
     ).toBeInTheDocument();
-
-    click(getButtonContaining("Load more"));
-    await waitFor(() => {
-      expect(
-        screen.getByText("1 memory file changed (+1)."),
-      ).toBeInTheDocument();
-    });
 
     click(getTabByText("Memory files"));
 
@@ -307,6 +301,33 @@ describe("memory page", () => {
         screen.getByText("No content available for this file."),
       ).toBeInTheDocument();
     });
+  });
+
+  it("hides debug-only memory update controls without ZeroDebug", async () => {
+    context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      expect(query.limit).toBe(7);
+      return respond(200, memoryActivityPage(query.cursor));
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, memoryDetailResponse());
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("2 memory files changed"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("View files")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTitle("Force-refresh memory summaries"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows empty memory activity and raw memory states", async () => {
@@ -352,26 +373,33 @@ describe("memory page", () => {
     ).toBeInTheDocument();
   });
 
-  it("toasts a load-more failure and retries older memory updates", async () => {
-    let olderPageAttempts = 0;
-
+  it("shows at most the seven most recent memory updates", async () => {
     context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
-      if (query.cursor === "older-memory") {
-        olderPageAttempts += 1;
-        if (olderPageAttempts === 1) {
-          return respond(500, {
-            error: {
-              code: "INTERNAL_SERVER_ERROR",
-              message: "Failed to load older memory updates",
-            },
-          });
-        }
-      }
-
-      return respond(200, memoryActivityPage(query.cursor));
-    });
-    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
-      return respond(200, memoryDetailResponse());
+      expect(query.limit).toBe(7);
+      return respond(200, {
+        entries: Array.from({ length: 8 }, (_, index) => {
+          return {
+            date: localDateDaysAgo(index + 1),
+            summary: `Memory update ${index + 1}`,
+            fromVersionId: index === 0 ? null : `memory-v${index}`,
+            toVersionId: `memory-v${index + 1}`,
+            items: [
+              {
+                filePath: `memory-${index + 1}.md`,
+                diff: {
+                  format: "line" as const,
+                  beforeExists: true,
+                  afterExists: true,
+                  truncated: false,
+                  stats: { added: 1, removed: 0 },
+                  hunks: [],
+                },
+              },
+            ],
+          };
+        }),
+        nextCursor: "older-memory",
+      });
     });
 
     detachedSetupPage({
@@ -381,27 +409,10 @@ describe("memory page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+      expect(screen.getByText("Memory update 1")).toBeInTheDocument();
     });
-
-    click(getButtonContaining("Load more"));
-    await waitFor(() => {
-      expect(
-        screen.getByText("Failed to load older memory updates"),
-      ).toBeInTheDocument();
-    });
-    toast.dismiss();
-    await waitFor(() => {
-      expect(
-        screen.queryByText("Failed to load older memory updates"),
-      ).not.toBeInTheDocument();
-    });
-
-    click(getButtonContaining("Load more"));
-    await waitFor(() => {
-      expect(
-        screen.getByText("1 memory file changed (+1)."),
-      ).toBeInTheDocument();
-    });
+    expect(screen.getByText("Memory update 7")).toBeInTheDocument();
+    expect(screen.queryByText("Memory update 8")).not.toBeInTheDocument();
+    expect(screen.queryByText("Load more")).not.toBeInTheDocument();
   });
 });

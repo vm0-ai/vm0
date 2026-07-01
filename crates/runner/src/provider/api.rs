@@ -795,7 +795,6 @@ fn is_static_json_field(field: &str) -> bool {
             | "keyName"
             | "kind"
             | "mac"
-            | "manifestUrl"
             | "metadataKey"
             | "missingRootPolicy"
             | "modelUsageProvider"

@@ -3,6 +3,8 @@
 //! This test lives in its own binary because `guest_agent::env` caches
 //! environment values in process-wide once cells.
 
+mod common;
+
 use std::time::Duration;
 
 #[test]
@@ -11,6 +13,7 @@ fn runtime_bootstrap_installs_system_log_and_sandbox_ops_paths() {
     let runtime_dir = tmp.path().join("runtime");
 
     unsafe {
+        common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var(
             guest_contracts::env::RUN_ID_ENV,
             "guest-runtime-process-env",

@@ -86,13 +86,17 @@ const cancelRunInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   if (!result.alreadyCancelled) {
+    const backgroundSignal = new AbortController().signal;
     waitUntil(
-      tapError(set(dispatchCancelSideEffects$, result, signal), (error) => {
-        L.error("dispatchCancelSideEffects failed", {
-          runId: result.runId,
-          error,
-        });
-      }),
+      tapError(
+        set(dispatchCancelSideEffects$, result, backgroundSignal),
+        (error) => {
+          L.error("dispatchCancelSideEffects failed", {
+            runId: result.runId,
+            error,
+          });
+        },
+      ),
     );
   }
 

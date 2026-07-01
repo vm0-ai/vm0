@@ -29,6 +29,7 @@ import {
 } from "./log-pagination";
 import { sanitizeAxiomNetworkEvents } from "./network-log-sanitizer";
 import { normalizeRunContextSnapshot } from "./run-context-snapshot.service";
+import { runContextCliAgentType } from "./run-context-framework.service";
 
 type ServiceDb = Pick<Db, "select">;
 
@@ -139,6 +140,7 @@ export function zeroRunContext(
         appendSystemPrompt: run.appendSystemPrompt ?? null,
         runId,
         sessionId: normalizedSnapshot.sessionId,
+        cliAgentType: normalizedSnapshot.cliAgentType ?? undefined,
         secretNames: (run.secretNames as string[]) ?? [],
         vars: (run.vars as Record<string, string> | undefined) ?? null,
         environment: normalizedSnapshot.environment,
@@ -296,7 +298,9 @@ export function zeroRunAgentEvents(
       return null;
     }
 
-    const framework = extractFramework(runWithCompose.composeContent);
+    const framework =
+      (await get(runContextCliAgentType(params.runId))) ??
+      extractFramework(runWithCompose.composeContent);
 
     const { since, limit, order } = params;
     const previousCursorValue = sequenceCursorValue(params.cursor, order);

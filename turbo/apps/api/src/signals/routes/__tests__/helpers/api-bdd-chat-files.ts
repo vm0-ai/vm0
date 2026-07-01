@@ -1042,7 +1042,13 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       body: BddSendMessageBody,
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 409 | 422)[],
+      signal?: AbortSignal,
     ) {
+      const client = signal
+        ? setupAppWithRoutes({ context, routes: chatFilesRoutes, signal })(
+            chatMessagesContract,
+          )
+        : chatMessagesClient();
       const requestBody =
         "prompt" in body
           ? {
@@ -1100,7 +1106,7 @@ export function createChatFilesBddApi(context: TestContext) {
               };
 
       return await accept(
-        chatMessagesClient().send({
+        client.send({
           headers: authenticate(context, actor),
           body: requestBody,
         }),

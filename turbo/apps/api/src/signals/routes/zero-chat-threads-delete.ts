@@ -37,13 +37,17 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   // Dispatch post-cancel side effects (runner halt, queue drain, credit
   // reconciliation) for every run we stopped while tearing down the thread.
   for (const cancelled of result.cancelledRuns) {
+    const backgroundSignal = new AbortController().signal;
     waitUntil(
-      tapError(set(dispatchCancelSideEffects$, cancelled, signal), (error) => {
-        L.error("dispatchCancelSideEffects failed", {
-          runId: cancelled.runId,
-          error,
-        });
-      }),
+      tapError(
+        set(dispatchCancelSideEffects$, cancelled, backgroundSignal),
+        (error) => {
+          L.error("dispatchCancelSideEffects failed", {
+            runId: cancelled.runId,
+            error,
+          });
+        },
+      ),
     );
   }
 

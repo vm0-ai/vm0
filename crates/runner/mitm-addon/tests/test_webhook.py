@@ -30,6 +30,13 @@ class _QueuedUsageExecutor:
         return future
 
 
+def _release_queued_pending_reports(executor: _QueuedUsageExecutor) -> None:
+    for _, args, _ in executor.submissions:
+        pending_report = args[5]
+        assert isinstance(pending_report, usage.counters.PendingReportLease)
+        pending_report.release()
+
+
 def _assert_body_free_webhook_entry(
     entry: dict,
     *,
@@ -46,6 +53,20 @@ def _assert_body_free_webhook_entry(
         assert entry["payload_bytes"] == payload_bytes
     else:
         assert "payload_bytes" not in entry
+
+
+SENSITIVE_WEBHOOK_URL = (
+    "https://user:pass@api.vm0.ai/api/webhooks/agent/usage-event?token=secret#frag"
+)
+SANITIZED_WEBHOOK_URL = "https://api.vm0.ai/api/webhooks/agent/usage-event"
+
+
+def _assert_sensitive_webhook_url_parts_absent(entry: dict) -> None:
+    serialized = json.dumps(entry)
+    assert "user:pass" not in serialized
+    assert "token=secret" not in serialized
+    assert "#frag" not in serialized
+    assert "pass@api.vm0.ai" not in serialized
 
 
 class TestUsageWebhookDelivery:
@@ -335,6 +356,41 @@ class TestUsageWebhookDelivery:
                 payload_bytes=payload_bytes,
             )
 
+    def test_retry_failure_sanitizes_sensitive_webhook_url_in_message_and_error(self, tmp_path):
+        proxy_log = tmp_path / "proxy.jsonl"
+        payload = {"runId": "run-1", "events": []}
+        payload_bytes = len(json.dumps(payload).encode())
+
+        with patch.object(
+            usage.webhook._opener,
+            "open",
+            side_effect=urllib.error.URLError(
+                f"failed {SENSITIVE_WEBHOOK_URL} and {SENSITIVE_WEBHOOK_URL.removesuffix('#frag')}"
+            ),
+        ):
+            outcome = usage.webhook._do_post_webhook_attempts(
+                SENSITIVE_WEBHOOK_URL,
+                "tok",
+                payload,
+                str(proxy_log),
+                "usage",
+                max_retries=0,
+            )
+
+        assert outcome == "retryable_failure"
+        [entry] = read_jsonl_entries_after_flush(proxy_log)
+        assert entry["url"] == SANITIZED_WEBHOOK_URL
+        assert SANITIZED_WEBHOOK_URL in entry["message"]
+        assert SANITIZED_WEBHOOK_URL in entry["error"]
+        assert "failed after 1 attempts" in entry["message"]
+        _assert_body_free_webhook_entry(
+            entry,
+            run_id="run-1",
+            event_count=0,
+            payload_bytes=payload_bytes,
+        )
+        _assert_sensitive_webhook_url_parts_absent(entry)
+
     def test_http_400_is_permanent(self, tmp_path, usage_webhook_server):
         proxy_log = tmp_path / "proxy.jsonl"
         usage_webhook_server.queue_response(400)
@@ -407,7 +463,7 @@ class TestUsageWebhookDelivery:
                 )
             assert len(executor.submissions) == 1
         finally:
-            usage.counters.decrement_pending_reports()
+            _release_queued_pending_reports(executor)
             usage.webhook.reset_delivery_capacity_for_tests()
 
         [entry] = read_jsonl_entries_after_flush(proxy_log)
@@ -415,6 +471,32 @@ class TestUsageWebhookDelivery:
         assert entry["type"] == "usage_event"
         _assert_body_free_webhook_entry(entry, run_id="run-1", event_count=0)
         assert "payload_bytes" not in entry
+
+    def test_enqueue_sanitizes_sensitive_webhook_url_in_message(self, tmp_path):
+        proxy_log = tmp_path / "proxy.jsonl"
+        executor = _QueuedUsageExecutor()
+        payload = {"runId": "run-1", "events": []}
+
+        try:
+            with patch.object(usage.webhook, "usage_executor", executor):
+                assert usage.webhook._enqueue_webhook(
+                    SENSITIVE_WEBHOOK_URL,
+                    "tok",
+                    payload,
+                    str(proxy_log),
+                    "usage_event",
+                )
+            assert len(executor.submissions) == 1
+        finally:
+            _release_queued_pending_reports(executor)
+            usage.webhook.reset_delivery_capacity_for_tests()
+
+        [entry] = read_jsonl_entries_after_flush(proxy_log)
+        assert entry["url"] == SANITIZED_WEBHOOK_URL
+        assert entry["message"] == f"Webhook POST to {SANITIZED_WEBHOOK_URL} enqueued"
+        assert entry["type"] == "usage_event"
+        _assert_body_free_webhook_entry(entry, run_id="run-1", event_count=0)
+        _assert_sensitive_webhook_url_parts_absent(entry)
 
     def test_submit_failure_rolls_back_pending_report(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
@@ -651,6 +733,39 @@ class TestUsageWebhookDelivery:
             buffered=0,
             reports=0,
             flush_request_id="success",
+        )
+
+    def test_delivery_capacity_released_when_outcome_callback_fails(
+        self, tmp_path, sync_usage_executor, usage_webhook_server
+    ):
+        proxy_log = tmp_path / "proxy.jsonl"
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+        usage_webhook_server.queue_response(204)
+
+        def fail_callback(_outcome: usage.webhook.WebhookDeliveryOutcome) -> None:
+            raise RuntimeError("callback failed")
+
+        assert usage.webhook._enqueue_webhook(
+            usage_webhook_server.url("/usage"),
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(proxy_log),
+            "usage_event",
+            delivery_outcome_callback=fail_callback,
+        )
+
+        with pytest.raises(RuntimeError, match="callback failed"):
+            sync_usage_executor.shutdown(wait=True)
+
+        assert usage_webhook_server.request_count == 1
+        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="callback-failed",
         )
 
     def test_delivery_capacity_released_after_retry_exhaustion(

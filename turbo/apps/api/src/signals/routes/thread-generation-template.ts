@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import type {
   GenerationTemplateRequest,
-  GenerationTemplateType,
+  StickyGenerationTemplateType,
   ThreadGenerationTemplates,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -11,7 +11,7 @@ import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
 
 // Fixed order so the combined prompt is deterministic regardless of the order in
 // which the user attached each type.
-const TEMPLATE_TYPE_ORDER: readonly GenerationTemplateType[] = [
+const TEMPLATE_TYPE_ORDER: readonly StickyGenerationTemplateType[] = [
   "illustration",
   "video",
   "presentation",
@@ -63,6 +63,13 @@ export async function resolveThreadGenerationTemplatePrompt(args: {
   readonly explicit: GenerationTemplateRequest | null | undefined;
   readonly presentationRunbookEnabled?: boolean;
 }): Promise<string> {
+  if (args.explicit?.type === "workflow") {
+    const built = buildGenerationTemplatePrompt(args.explicit, {
+      presentationRunbookEnabled: args.presentationRunbookEnabled,
+    });
+    return built.status === "resolved" ? built.prompt : "";
+  }
+
   const stored = await getStoredThreadGenerationTemplates(
     args.db,
     args.threadId,

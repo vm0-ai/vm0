@@ -32,6 +32,7 @@ import {
   IconPhoto,
   IconPlus,
   IconQuote,
+  IconRoute,
   IconSearch,
   IconTarget,
   IconTemplate,
@@ -120,11 +121,14 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WORKFLOW_TEMPLATE_ITEMS,
   findVideoTemplateItem,
+  findWorkflowTemplateItem,
   r2ImageTransformUrl,
   type IllustrationTemplateItem,
   type PresentationTemplateItem,
   type VideoTemplateItem,
+  type WorkflowTemplateItem,
 } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorType } from "@vm0/connectors/connectors";
@@ -944,6 +948,9 @@ function selectedTemplateTitle(
   if (value?.type === "video") {
     return selectedVideoTemplateItem(value)?.title;
   }
+  if (value?.type === "workflow") {
+    return selectedWorkflowTemplateItem(value)?.title;
+  }
   return (
     selectedPresentationTemplateItem(value)?.title ??
     selectedIllustrationTemplateItem(value)?.title
@@ -1073,6 +1080,45 @@ function videoTemplateMatchesSearch(
     item.description,
     item.sourcePath,
   ].join(" ");
+  return searchable.toLowerCase().includes(normalizedQuery);
+}
+
+function isSelectedWorkflowTemplate(
+  item: WorkflowTemplateItem,
+  value: GenerationTemplateRequest | undefined,
+): boolean {
+  return (
+    value?.type === "workflow" && value.selection.workflowTemplateId === item.id
+  );
+}
+
+function toWorkflowGenerationTemplate(
+  item: WorkflowTemplateItem,
+): GenerationTemplateRequest {
+  return {
+    type: "workflow",
+    selection: { workflowTemplateId: item.id },
+  };
+}
+
+function selectedWorkflowTemplateItem(
+  value: GenerationTemplateRequest | undefined,
+): WorkflowTemplateItem | undefined {
+  if (value?.type !== "workflow") {
+    return undefined;
+  }
+  return findWorkflowTemplateItem(value.selection.workflowTemplateId);
+}
+
+function workflowTemplateMatchesSearch(
+  item: WorkflowTemplateItem,
+  query: string,
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  const searchable = [item.title, item.id, item.description].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }
 
@@ -1262,6 +1308,81 @@ function VideoTemplateGrid({
             key={item.id}
             item={item}
             selected={isSelectedVideoTemplate(item, value)}
+            onSelect={onSelect}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function WorkflowTemplateCard({
+  item,
+  selected,
+  onSelect,
+}: {
+  item: WorkflowTemplateItem;
+  selected: boolean;
+  onSelect: (item: WorkflowTemplateItem) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "group flex min-h-44 flex-col rounded-lg border bg-card p-4 transition-colors hover:bg-muted/20",
+        TEMPLATE_CARD_SHADOW,
+        selected ? "border-primary ring-1 ring-primary" : "border-border",
+      )}
+    >
+      <div className="flex min-w-0 flex-1 gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          <IconRoute size={18} stroke={1.7} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground">{item.title}</p>
+          <p className="mt-2 line-clamp-4 text-sm leading-5 text-muted-foreground">
+            {item.description}
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 flex justify-end">
+        <button
+          type="button"
+          aria-label={`Select workflow template ${item.title}`}
+          aria-pressed={selected}
+          onClick={() => {
+            onSelect(item);
+          }}
+          className={cn(
+            "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            selected
+              ? "border-primary/40 bg-primary/10 text-primary"
+              : "border-border bg-background text-foreground hover:bg-muted",
+          )}
+        >
+          Use
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowTemplateGrid({
+  items,
+  value,
+  onSelect,
+}: {
+  items: readonly WorkflowTemplateItem[];
+  value: GenerationTemplateRequest | undefined;
+  onSelect: (item: WorkflowTemplateItem) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => {
+        return (
+          <WorkflowTemplateCard
+            key={item.id}
+            item={item}
+            selected={isSelectedWorkflowTemplate(item, value)}
             onSelect={onSelect}
           />
         );
@@ -4110,11 +4231,13 @@ function resolveTemplatePickerCategory({
   hasPptTab,
   hasIllustrationTab,
   hasVideoTab,
+  hasWorkflowTab,
 }: {
   category: string;
   hasPptTab: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
+  hasWorkflowTab: boolean;
 }): string {
   const categories: string[] = [];
   if (hasPptTab) {
@@ -4126,10 +4249,10 @@ function resolveTemplatePickerCategory({
   if (hasVideoTab) {
     categories.push("video");
   }
-  const defaultCategory = categories[0];
-  if (category === "video" && !hasVideoTab) {
-    return defaultCategory;
+  if (hasWorkflowTab) {
+    categories.push("workflow");
   }
+  const defaultCategory = categories[0] ?? "slides";
   return categories.includes(category) ? category : defaultCategory;
 }
 
@@ -4138,12 +4261,14 @@ function TemplatePickerTabs({
   hasPptTab,
   hasIllustrationTab,
   hasVideoTab,
+  hasWorkflowTab,
   onChange,
 }: {
   selectedCategory: string;
   hasPptTab: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
+  hasWorkflowTab: boolean;
   onChange: (value: string) => void;
 }) {
   return (
@@ -4223,6 +4348,28 @@ function TemplatePickerTabs({
               Video
             </TabsTrigger>
           )}
+          {hasWorkflowTab && (
+            <TabsTrigger
+              value="workflow"
+              className={cn(
+                "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
+                selectedCategory === "workflow"
+                  ? "border-foreground text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <IconRoute
+                className={cn(
+                  "h-5 w-5",
+                  selectedCategory === "workflow"
+                    ? "text-sky-500"
+                    : "text-muted-foreground",
+                )}
+                stroke={1.8}
+              />
+              Workflow
+            </TabsTrigger>
+          )}
         </TabsList>
       </Tabs>
     </div>
@@ -4300,6 +4447,7 @@ function TemplatePickerDialog({
   presentationItems,
   hasIllustrationTab,
   hasVideoTab,
+  hasWorkflowTab,
 }: {
   value: GenerationTemplateRequest | undefined;
   onChange: (value: GenerationTemplateRequest | undefined) => void;
@@ -4308,6 +4456,7 @@ function TemplatePickerDialog({
   presentationItems: readonly PresentationTemplateItem[];
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
+  hasWorkflowTab: boolean;
 }) {
   const category = useGet(templatePickerCategory$);
   const setCategory = useSet(setTemplatePickerCategory$);
@@ -4356,12 +4505,16 @@ function TemplatePickerDialog({
   const filteredVideoItems = VIDEO_TEMPLATE_ITEMS.filter((item) => {
     return videoTemplateMatchesSearch(item, search);
   });
+  const filteredWorkflowItems = WORKFLOW_TEMPLATE_ITEMS.filter((item) => {
+    return workflowTemplateMatchesSearch(item, search);
+  });
 
   const selectedCategory = resolveTemplatePickerCategory({
     category,
     hasPptTab,
     hasIllustrationTab,
     hasVideoTab,
+    hasWorkflowTab,
   });
 
   const filteredIllustrationItemsForSearch = (value: string) => {
@@ -4429,6 +4582,11 @@ function TemplatePickerDialog({
 
   const handleSelectVideo = (item: VideoTemplateItem) => {
     onChange(toVideoGenerationTemplate(item));
+    closeTemplatePicker();
+  };
+
+  const handleSelectWorkflow = (item: WorkflowTemplateItem) => {
+    onChange(toWorkflowGenerationTemplate(item));
     closeTemplatePicker();
   };
 
@@ -4596,6 +4754,7 @@ function TemplatePickerDialog({
                 hasPptTab={hasPptTab}
                 hasIllustrationTab={hasIllustrationTab}
                 hasVideoTab={hasVideoTab}
+                hasWorkflowTab={hasWorkflowTab}
                 onChange={handleCategoryChange}
               />
               <div className="w-full pb-3 sm:w-64">
@@ -4678,6 +4837,25 @@ function TemplatePickerDialog({
                     items={filteredVideoItems}
                     value={value}
                     onSelect={handleSelectVideo}
+                  />
+                ) : (
+                  <TemplateEmptyPanel
+                    title="No matches"
+                    description="Try a different search."
+                  />
+                )}
+              </div>
+            )}
+            {selectedCategory === "workflow" && hasWorkflowTab && (
+              <div
+                data-workflow-template-grid-scroll=""
+                className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+              >
+                {filteredWorkflowItems.length > 0 ? (
+                  <WorkflowTemplateGrid
+                    items={filteredWorkflowItems}
+                    value={value}
+                    onSelect={handleSelectWorkflow}
                   />
                 ) : (
                   <TemplateEmptyPanel
@@ -4944,6 +5122,55 @@ function SelectedIllustrationTemplateChip({
   );
 }
 
+function SelectedWorkflowTemplateChip({
+  item,
+  onOpen,
+  onRemove,
+}: {
+  item: WorkflowTemplateItem;
+  onOpen: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="px-4 pt-3">
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview workflow template ${item.title}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <IconRoute
+                size={12}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Workflow
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {item.title}
+            </span>
+          </button>
+          <button
+            type="button"
+            aria-label={`Remove workflow template ${item.title}`}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onRemove}
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 h-px bg-border/50" />
+    </div>
+  );
+}
+
 function SelectedTemplateChipSlot({
   picker,
   onDraftChange,
@@ -4959,6 +5186,7 @@ function SelectedTemplateChipSlot({
   const presentationItem = selectedPresentationTemplateItem(picker?.value);
   const illustrationItem = selectedIllustrationTemplateItem(picker?.value);
   const videoItem = selectedVideoTemplateItem(picker?.value);
+  const workflowItem = selectedWorkflowTemplateItem(picker?.value);
   if (!picker) {
     return null;
   }
@@ -5027,6 +5255,20 @@ function SelectedTemplateChipSlot({
       />
     );
   }
+  if (workflowItem) {
+    return (
+      <SelectedWorkflowTemplateChip
+        item={workflowItem}
+        onOpen={() => {
+          return openPicker("workflow");
+        }}
+        onRemove={() => {
+          picker.onChange(undefined);
+          onDraftChange?.();
+        }}
+      />
+    );
+  }
   return null;
 }
 
@@ -5036,12 +5278,14 @@ function TemplatePickerButton({
   presentationItems,
   hasIllustrationTab,
   hasVideoTab,
+  hasWorkflowTab,
 }: {
   picker: ComposerTemplatePicker;
   hasPptTab: boolean;
   presentationItems: readonly PresentationTemplateItem[];
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
+  hasWorkflowTab: boolean;
 }) {
   const open = useGet(templatePickerOpen$);
   const category = useGet(templatePickerCategory$);
@@ -5055,6 +5299,7 @@ function TemplatePickerButton({
     hasPptTab,
     hasIllustrationTab,
     hasVideoTab,
+    hasWorkflowTab,
   });
   const prewarmPicker = () => {
     prewarmTemplatePreviewImages(
@@ -5111,6 +5356,7 @@ function TemplatePickerButton({
           presentationItems={presentationItems}
           hasIllustrationTab={hasIllustrationTab}
           hasVideoTab={hasVideoTab}
+          hasWorkflowTab={hasWorkflowTab}
         />
       )}
     </>
@@ -5119,12 +5365,15 @@ function TemplatePickerButton({
 
 function ComposerTemplatePickerSlot({
   picker,
+  workflowAutomationEnabled,
 }: {
   picker: ComposerTemplatePicker | undefined;
+  workflowAutomationEnabled: boolean;
 }) {
   const hasPptTab = true;
   const hasIllustrationTab = true;
   const hasVideoTab = true;
+  const hasWorkflowTab = workflowAutomationEnabled;
   const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
   if (!picker) {
     return null;
@@ -5136,6 +5385,7 @@ function ComposerTemplatePickerSlot({
       presentationItems={presentationItems}
       hasIllustrationTab={hasIllustrationTab}
       hasVideoTab={hasVideoTab}
+      hasWorkflowTab={hasWorkflowTab}
     />
   );
 }
@@ -5893,9 +6143,7 @@ function ComposerInputSlot({
   readonly onKeyDown: (e: KeyboardEventLike) => void;
   readonly onPaste: (e: ComposerPasteEvent) => void;
 }) {
-  const features = useLastResolved(featureSwitch$);
-  const slashWorkflowCommandsEnabled =
-    features?.[FeatureSwitchKey.WorkflowAutomation] ?? false;
+  const slashWorkflowCommandsEnabled = useWorkflowAutomationEnabled();
   const singleLineOnMobile = enableMobileSingleLine;
 
   if (slashWorkflowCommandsEnabled) {
@@ -6103,6 +6351,11 @@ function ComposerModelPickerSlot({
 // Main composer
 // ---------------------------------------------------------------------------
 
+function useWorkflowAutomationEnabled(): boolean {
+  const features = useLastResolved(featureSwitch$);
+  return features?.[FeatureSwitchKey.WorkflowAutomation] ?? false;
+}
+
 export function ZeroChatComposer({
   input,
   onInputChange,
@@ -6138,6 +6391,7 @@ export function ZeroChatComposer({
   const modelPickerOpen = useGet(modelPickerOpen$);
   const setModelPickerOpen = useSet(setModelPickerOpen$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
+  const workflowAutomationEnabled = useWorkflowAutomationEnabled();
 
   const resolved = useResolvedComposerSignals(
     input,
@@ -6593,7 +6847,10 @@ export function ZeroChatComposer({
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                  <ComposerTemplatePickerSlot picker={templatePicker} />
+                  <ComposerTemplatePickerSlot
+                    picker={templatePicker}
+                    workflowAutomationEnabled={workflowAutomationEnabled}
+                  />
                   <ConnectorsPopoverButton
                     agentConnectors={agentConnectors}
                     connectorsLoading={connectorsLoading}

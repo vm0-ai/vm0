@@ -1,5 +1,74 @@
 # Changelog
 
+## [0.522.0](https://github.com/vm0-ai/vm0/compare/app-v0.521.0...app-v0.522.0) (2026-07-01)
+
+
+### Features
+
+* add workflow templates to composer ([#19660](https://github.com/vm0-ai/vm0/issues/19660)) ([1f110fd](https://github.com/vm0-ai/vm0/commit/1f110fd9d3ae503e731e957767a76d0094ce88a9))
+* show subscription usage in sidebar ([#19673](https://github.com/vm0-ai/vm0/issues/19673)) ([a186329](https://github.com/vm0-ai/vm0/commit/a1863296fc3b8545a9edf6ce4a12c0739d5dec88))
+
+
+### Bug Fixes
+
+* render thread model before defaults resolve ([#19676](https://github.com/vm0-ai/vm0/issues/19676)) ([39e5a35](https://github.com/vm0-ai/vm0/commit/39e5a35b215a46545ed7dba49a440ec2f914eb2a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.138.0
+    * @vm0/connectors bumped to 1.122.0
+    * @vm0/core bumped to 8.383.0
+
+## [0.521.0](https://github.com/vm0-ai/vm0/compare/app-v0.520.0...app-v0.521.0) (2026-07-01)
+
+
+### Features
+
+* add workflow prompt action to chat messages ([#19651](https://github.com/vm0-ai/vm0/issues/19651)) ([85f48a5](https://github.com/vm0-ai/vm0/commit/85f48a5f25a56078f933cd6d05359ffe73ef2da0))
+* gate MiniMax Codex framework routing ([#19616](https://github.com/vm0-ai/vm0/issues/19616)) ([ed9b1de](https://github.com/vm0-ai/vm0/commit/ed9b1dea4c8b95ed78074f6fa2f9197dded9cdbc))
+
+
+### Bug Fixes
+
+* keep composer model picker stable during refresh ([#19652](https://github.com/vm0-ai/vm0/issues/19652)) ([75cd367](https://github.com/vm0-ai/vm0/commit/75cd367e2f400911b04ac8e9df66171a785d14db))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.137.0
+    * @vm0/connectors bumped to 1.121.0
+    * @vm0/core bumped to 8.382.0
+
+## [0.520.0](https://github.com/vm0-ai/vm0/compare/app-v0.519.1...app-v0.520.0) (2026-07-01)
+
+
+### Features
+
+* add workflow trigger run now toast ([#19645](https://github.com/vm0-ai/vm0/issues/19645)) ([0214772](https://github.com/vm0-ai/vm0/commit/0214772b457fd6b037eb68e55dbcc065ce1abd0e))
+* expose connector catalog status view models ([#19580](https://github.com/vm0-ai/vm0/issues/19580)) ([697e259](https://github.com/vm0-ai/vm0/commit/697e25903a89443aa024dc38dfaca850133d99db))
+* show subscription account details ([#19500](https://github.com/vm0-ai/vm0/issues/19500)) ([b33f4ca](https://github.com/vm0-ai/vm0/commit/b33f4ca766b19a91ed782766ca29f8f9b50640aa))
+
+
+### Bug Fixes
+
+* align memory page layout ([#19635](https://github.com/vm0-ai/vm0/issues/19635)) ([fe7498a](https://github.com/vm0-ai/vm0/commit/fe7498a91a760509ca5e7031f594915ddbb5c593))
+* move workflows above connectors in sidebar ([#19638](https://github.com/vm0-ai/vm0/issues/19638)) ([0e2cfaa](https://github.com/vm0-ai/vm0/commit/0e2cfaae76fd1d8bcdb98ae696a59c1ea1078e09))
+* use form submit for input dialogs ([#19619](https://github.com/vm0-ai/vm0/issues/19619)) ([b46066a](https://github.com/vm0-ai/vm0/commit/b46066afa5b403d6f7e24a370d8ccbf454470aba))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.136.0
+    * @vm0/connectors bumped to 1.120.1
+    * @vm0/core bumped to 8.381.3
+
 ## [0.519.1](https://github.com/vm0-ai/vm0/compare/app-v0.519.0...app-v0.519.1) (2026-07-01)
 
 

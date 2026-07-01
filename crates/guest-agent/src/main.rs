@@ -1240,7 +1240,16 @@ mod tests {
 
     static TEST_STATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     static COMPLETE_EXECUTION_MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(MockServer::start);
-
+    static MAIN_TEST_RUNTIME_ROOT: LazyLock<std::path::PathBuf> = LazyLock::new(|| {
+        let timestamp_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        std::env::temp_dir().join(format!(
+            "vm0-guest-agent-main-tests-{}-{timestamp_nanos}",
+            std::process::id()
+        ))
+    });
     fn lock_test_state() -> std::sync::MutexGuard<'static, ()> {
         TEST_STATE_LOCK
             .lock()
@@ -1273,9 +1282,7 @@ mod tests {
     }
 
     fn test_runtime_dir() -> std::path::PathBuf {
-        std::env::temp_dir()
-            .join(format!("vm0-guest-agent-main-tests-{}", std::process::id()))
-            .join("main-recovery-checkpoint")
+        MAIN_TEST_RUNTIME_ROOT.join("main-recovery-checkpoint")
     }
 
     struct EnvVarRestoreGuard {
@@ -1322,8 +1329,18 @@ mod tests {
         assert!(framework_supports_active_input(env::Framework::Codex, true));
     }
 
-    unsafe fn set_test_env(server: &MockServer, prompt: Option<&str>) {
+    struct TestEnvGuard;
+
+    impl Drop for TestEnvGuard {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&*MAIN_TEST_RUNTIME_ROOT);
+        }
+    }
+
+    unsafe fn set_test_env(server: &MockServer, prompt: Option<&str>) -> TestEnvGuard {
+        let _ = std::fs::remove_dir_all(&*MAIN_TEST_RUNTIME_ROOT);
         unsafe {
+            clear_test_env();
             std::env::set_var("VM0_API_URL", server.base_url());
             std::env::set_var("VM0_API_TOKEN", "test-token");
             std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
@@ -1333,6 +1350,47 @@ mod tests {
             );
             if let Some(prompt) = prompt {
                 std::env::set_var("VM0_PROMPT", prompt);
+            }
+        }
+        TestEnvGuard
+    }
+
+    unsafe fn clear_test_env() {
+        for key in [
+            guest_contracts::env::API_URL_ENV,
+            guest_contracts::env::RUN_ID_ENV,
+            guest_contracts::env::API_TOKEN_ENV,
+            guest_contracts::env::SANDBOX_ID_ENV,
+            guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+            guest_contracts::env::PROMPT_ENV,
+            guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
+            guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
+            guest_contracts::env::RESUME_SESSION_ID_ENV,
+            guest_contracts::env::API_START_TIME_ENV,
+            guest_contracts::env::SECRET_VALUES_ENV,
+            guest_contracts::env::DISALLOWED_TOOLS_ENV,
+            guest_contracts::env::TOOLS_ENV,
+            guest_contracts::env::SETTINGS_ENV,
+            guest_contracts::env::CLI_AGENT_TYPE_ENV,
+            guest_contracts::env::USER_ENV_FILE_ENV,
+            guest_contracts::env::ARTIFACTS_ENV,
+            guest_contracts::env::FEATURE_FLAGS_ENV,
+            guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
+            guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
+            guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+            guest_contracts::env::USE_MOCK_CLAUDE_ENV,
+            guest_contracts::env::USE_MOCK_CODEX_ENV,
+            guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV,
+            guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
+            guest_contracts::env::MOCK_CODEX_PATH_ENV,
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            process_control_ipc::BOOTSTRAP_ENV,
+            "MOCK_CODEX_FIXTURE",
+            "MOCK_CODEX_APP_SERVER_SCENARIO",
+        ] {
+            unsafe {
+                std::env::remove_var(key);
             }
         }
     }
@@ -2699,9 +2757,7 @@ mod tests {
     async fn assert_final_telemetry_does_not_record_recursive_upload_op(status: u16) {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
-        unsafe {
-            set_test_env(server, None);
-        }
+        let _env_guard = unsafe { set_test_env(server, None) };
 
         let tmp = tempfile::tempdir().unwrap();
         let system_log_path = tmp.path().join("system.log");
@@ -2761,9 +2817,7 @@ mod tests {
             .block_on(async {
                 let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
                 server.reset_async().await;
-                unsafe {
-                    set_test_env(server, None);
-                }
+                let _env_guard = unsafe { set_test_env(server, None) };
 
                 let marker = "producer_after_shutdown_before_final_upload";
                 let cleanup_paths = [
@@ -2977,9 +3031,7 @@ mod tests {
     async fn complete_execution_writes_event_upload_failure_diagnostic_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
-        unsafe {
-            set_test_env(server, Some("/event-upload-failure"));
-        }
+        let _env_guard = unsafe { set_test_env(server, Some("/event-upload-failure")) };
 
         let cleanup_paths = [
             paths::session_id_file().to_string(),
@@ -3047,9 +3099,7 @@ mod tests {
     async fn complete_execution_writes_checkpoint_failure_diagnostic_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
-        unsafe {
-            set_test_env(server, Some("/checkpoint-failure"));
-        }
+        let _env_guard = unsafe { set_test_env(server, Some("/checkpoint-failure")) };
 
         let cleanup_paths = [
             paths::session_id_file().to_string(),
@@ -3114,9 +3164,7 @@ mod tests {
     async fn complete_execution_preserves_existing_failure_diagnostic_when_events_fail_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
-        unsafe {
-            set_test_env(server, Some("plain prompt"));
-        }
+        let _env_guard = unsafe { set_test_env(server, Some("plain prompt")) };
 
         let cleanup_paths = [
             paths::session_id_file().to_string(),
@@ -3187,9 +3235,7 @@ mod tests {
     async fn complete_execution_skips_recovery_checkpoint_for_no_history_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
-        unsafe {
-            set_test_env(server, Some("/help"));
-        }
+        let _env_guard = unsafe { set_test_env(server, Some("/help")) };
 
         let cleanup_paths = [
             paths::checkpoint_error_file().to_string(),
@@ -3270,9 +3316,7 @@ mod tests {
     async fn complete_execution_creates_recovery_checkpoint_after_cli_failure_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
-        unsafe {
-            set_test_env(server, Some("plain prompt"));
-        }
+        let _env_guard = unsafe { set_test_env(server, Some("plain prompt")) };
 
         let cleanup_paths = [
             paths::session_id_file().to_string(),

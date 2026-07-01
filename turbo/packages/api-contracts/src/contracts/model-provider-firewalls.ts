@@ -1,9 +1,12 @@
 import type { ExpandedFirewallConfig } from "@vm0/connectors/firewall-types";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import type {
   ModelProviderFramework,
   ModelProviderType,
 } from "./model-provider-types";
+
+type ModelProviderFeatureStates = Partial<Record<FeatureSwitchKey, boolean>>;
 
 type FirewallSupportedProvider = Exclude<
   ModelProviderType,
@@ -269,6 +272,24 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS = {
   },
 } as const satisfies Record<FirewallSupportedProvider, ExpandedFirewallConfig>;
 
+const MINIMAX_CODEX_FIREWALL_CONFIG = {
+  name: "model-provider:minimax-api-key",
+  apis: [
+    {
+      base: "https://api.minimax.io/v1",
+      auth: {
+        headers: {
+          Authorization: "Bearer ${{ secrets.MINIMAX_API_KEY }}",
+        },
+      },
+      permissions: [],
+    },
+  ],
+  placeholders: {
+    MINIMAX_API_KEY: MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
+  },
+} as const satisfies ExpandedFirewallConfig;
+
 function isFirewallSupported(
   type: ModelProviderType,
 ): type is FirewallSupportedProvider {
@@ -277,8 +298,25 @@ function isFirewallSupported(
 
 export function getModelProviderFirewall(
   type: ModelProviderType,
+  featureStates?: ModelProviderFeatureStates,
 ): ExpandedFirewallConfig | undefined {
+  if (
+    type === "minimax-api-key" &&
+    featureStates?.[FeatureSwitchKey.CodexFrameworkForMinimax] === true
+  ) {
+    return MINIMAX_CODEX_FIREWALL_CONFIG;
+  }
   return isFirewallSupported(type)
     ? MODEL_PROVIDER_FIREWALL_CONFIGS[type]
     : undefined;
+}
+
+export function shouldInlineModelProviderFirewall(
+  type: ModelProviderType,
+  featureStates?: ModelProviderFeatureStates,
+): boolean {
+  return (
+    type === "minimax-api-key" &&
+    featureStates?.[FeatureSwitchKey.CodexFrameworkForMinimax] === true
+  );
 }

@@ -170,6 +170,72 @@ async function requirePublicWorkflowSlugAvailable(
     : null;
 }
 
+async function privateWorkflowSlugExists(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly agentId: string;
+    readonly ownerUserId: string;
+    readonly name: string;
+    readonly excludeWorkflowId?: string;
+  },
+): Promise<boolean> {
+  const [existing] = await db
+    .select({ id: zeroWorkflows.id })
+    .from(zeroWorkflows)
+    .where(
+      and(
+        eq(zeroWorkflows.orgId, args.orgId),
+        eq(zeroWorkflows.agentId, args.agentId),
+        eq(zeroWorkflows.ownerUserId, args.ownerUserId),
+        eq(zeroWorkflows.name, args.name),
+        eq(zeroWorkflows.visibility, "private"),
+        args.excludeWorkflowId
+          ? ne(zeroWorkflows.id, args.excludeWorkflowId)
+          : undefined,
+      ),
+    )
+    .limit(1);
+
+  return existing !== undefined;
+}
+
+async function requirePrivateWorkflowSlugAvailable(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly agentId: string;
+    readonly ownerUserId: string;
+    readonly name: string;
+    readonly excludeWorkflowId?: string;
+  },
+) {
+  const exists = await privateWorkflowSlugExists(db, args);
+  return exists
+    ? conflict(
+        `You already have a private workflow named "/${args.name}" on this agent. Rename the existing workflow or choose a different name.`,
+      )
+    : null;
+}
+
+async function requireWorkflowSlugAvailableForVisibility(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly agentId: string;
+    readonly ownerUserId: string;
+    readonly name: string;
+    readonly visibility: "public" | "private";
+    readonly excludeWorkflowId?: string;
+  },
+) {
+  if (args.visibility === "public") {
+    return await requirePublicWorkflowSlugAvailable(db, args);
+  }
+
+  return await requirePrivateWorkflowSlugAvailable(db, args);
+}
+
 async function loadMatchingWorkflowCreationThreadId(
   db: Db,
   args: {
@@ -251,16 +317,16 @@ const createWorkflowInner$ = command(
       return permissionError;
     }
 
-    if (visibility === "public") {
-      const slugError = await requirePublicWorkflowSlugAvailable(writeDb, {
-        orgId: auth.orgId,
-        agentId: agent.id,
-        name: body.name,
-      });
-      signal.throwIfAborted();
-      if (slugError) {
-        return slugError;
-      }
+    const slugError = await requireWorkflowSlugAvailableForVisibility(writeDb, {
+      orgId: auth.orgId,
+      agentId: agent.id,
+      ownerUserId: auth.userId,
+      name: body.name,
+      visibility,
+    });
+    signal.throwIfAborted();
+    if (slugError) {
+      return slugError;
     }
 
     const currentTime = nowDate();
@@ -407,17 +473,20 @@ const updateWorkflowInner$ = command(
         );
       }
 
-      if (visible.workflow.visibility === "public") {
-        const slugConflict = await requirePublicWorkflowSlugAvailable(writeDb, {
+      const slugConflict = await requireWorkflowSlugAvailableForVisibility(
+        writeDb,
+        {
           orgId: auth.orgId,
           agentId: visible.workflow.agentId,
+          ownerUserId: visible.workflow.ownerUserId,
           name: bodyResult.data.name,
+          visibility: visible.workflow.visibility,
           excludeWorkflowId: visible.workflow.id,
-        });
-        signal.throwIfAborted();
-        if (slugConflict) {
-          return slugConflict;
-        }
+        },
+      );
+      signal.throwIfAborted();
+      if (slugConflict) {
+        return slugConflict;
       }
     }
 
@@ -723,6 +792,17 @@ const copyWorkflowInner$ = command(
     );
     if (permissionError) {
       return permissionError;
+    }
+
+    const slugError = await requirePrivateWorkflowSlugAvailable(writeDb, {
+      orgId: auth.orgId,
+      agentId: targetAgent.id,
+      ownerUserId: auth.userId,
+      name: source.workflow.name,
+    });
+    signal.throwIfAborted();
+    if (slugError) {
+      return slugError;
     }
 
     // A copy is a fork owned by the caller: a new private workflow under the
@@ -1234,6 +1314,17 @@ const demoteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
   if (reviewError) {
     return reviewError;
+  }
+
+  const slugError = await requirePrivateWorkflowSlugAvailable(writeDb, {
+    orgId: auth.orgId,
+    agentId: loaded.workflow.agentId,
+    ownerUserId: loaded.workflow.ownerUserId,
+    name: loaded.workflow.name,
+  });
+  signal.throwIfAborted();
+  if (slugError) {
+    return slugError;
   }
 
   await applyVisibilityUpdate(writeDb, {

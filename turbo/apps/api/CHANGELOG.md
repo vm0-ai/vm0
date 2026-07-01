@@ -1,5 +1,80 @@
 # Changelog
 
+## [1.202.0](https://github.com/vm0-ai/vm0/compare/api-v1.201.0...api-v1.202.0) (2026-07-01)
+
+
+### Features
+
+* add workflow templates to composer ([#19660](https://github.com/vm0-ai/vm0/issues/19660)) ([1f110fd](https://github.com/vm0-ai/vm0/commit/1f110fd9d3ae503e731e957767a76d0094ce88a9))
+
+
+### Bug Fixes
+
+* commit create-run launch rows atomically ([#19641](https://github.com/vm0-ai/vm0/issues/19641)) ([24c9414](https://github.com/vm0-ai/vm0/commit/24c941437c27b918c7cad1e36bc5a14ce8021869))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.138.0
+    * @vm0/connectors bumped to 1.122.0
+    * @vm0/core bumped to 8.383.0
+    * @vm0/db bumped to 1.83.0
+
+## [1.201.0](https://github.com/vm0-ai/vm0/compare/api-v1.200.0...api-v1.201.0) (2026-07-01)
+
+
+### Features
+
+* gate MiniMax Codex framework routing ([#19616](https://github.com/vm0-ai/vm0/issues/19616)) ([ed9b1de](https://github.com/vm0-ai/vm0/commit/ed9b1dea4c8b95ed78074f6fa2f9197dded9cdbc))
+* support scoped workflow name refs ([#19655](https://github.com/vm0-ai/vm0/issues/19655)) ([7018ee0](https://github.com/vm0-ai/vm0/commit/7018ee0446da472fb5b10370951513f189f52535))
+* update new org default models ([#19606](https://github.com/vm0-ai/vm0/issues/19606)) ([9fdc5db](https://github.com/vm0-ai/vm0/commit/9fdc5db1ab9dc77b6e20d731f84ddd5f226d48ac))
+
+
+### Bug Fixes
+
+* apply sandbox io limiters from host capacity ([#19668](https://github.com/vm0-ai/vm0/issues/19668)) ([8baa893](https://github.com/vm0-ai/vm0/commit/8baa893dbbae076adbde5e31f467103a0c06179e))
+
+
+### Performance Improvements
+
+* reduce artifact storage manifest presigning ([#19650](https://github.com/vm0-ai/vm0/issues/19650)) ([0672271](https://github.com/vm0-ai/vm0/commit/0672271c090e1a5431ac762c566328125958a218))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.137.0
+    * @vm0/connectors bumped to 1.121.0
+    * @vm0/core bumped to 8.382.0
+    * @vm0/db bumped to 1.82.0
+
+## [1.200.0](https://github.com/vm0-ai/vm0/compare/api-v1.199.2...api-v1.200.0) (2026-07-01)
+
+
+### Features
+
+* expose connector catalog status view models ([#19580](https://github.com/vm0-ai/vm0/issues/19580)) ([697e259](https://github.com/vm0-ai/vm0/commit/697e25903a89443aa024dc38dfaca850133d99db))
+* show subscription account details ([#19500](https://github.com/vm0-ai/vm0/issues/19500)) ([b33f4ca](https://github.com/vm0-ai/vm0/commit/b33f4ca766b19a91ed782766ca29f8f9b50640aa))
+
+
+### Bug Fixes
+
+* publish workflow trigger automation refreshes ([#19629](https://github.com/vm0-ai/vm0/issues/19629)) ([c719a69](https://github.com/vm0-ai/vm0/commit/c719a6909e762072901600b00b487c8c47618fa9))
+* remove workflow follow-up suggestions ([#19646](https://github.com/vm0-ai/vm0/issues/19646)) ([c21341b](https://github.com/vm0-ai/vm0/commit/c21341bb4e5d09d0879727a8efe5424081dfdb3f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.136.0
+    * @vm0/connectors bumped to 1.120.1
+    * @vm0/core bumped to 8.381.3
+    * @vm0/db bumped to 1.81.0
+
 ## [1.199.2](https://github.com/vm0-ai/vm0/compare/api-v1.199.1...api-v1.199.2) (2026-07-01)
 
 

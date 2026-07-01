@@ -1,5 +1,5 @@
-//! This test lives in its own binary because `guest_agent::env` caches
-//! environment values in process-wide `LazyLock`s.
+//! This test lives in its own binary to isolate process env, working directory,
+//! and guest runtime path overrides used during setup.
 
 mod common;
 

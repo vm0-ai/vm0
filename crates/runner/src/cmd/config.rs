@@ -67,6 +67,7 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
     for h in args.rootfs_hash.iter().chain(args.snapshot_hash.iter()) {
         crate::image_hash::validate_or_err(h)?;
     }
+    let api_url = config::normalize_api_base_url(&args.api_url)?;
 
     let paths = HomePaths::new()?;
 
@@ -126,7 +127,7 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
             ..SandboxConfig::default()
         },
         server: Some(ServerConfig {
-            url: args.api_url,
+            url: api_url,
             token: args.token,
         }),
     };
@@ -155,6 +156,15 @@ mod tests {
             api_url: "http://localhost".into(),
             token: "x".into(),
         }
+    }
+
+    fn args_with_valid_image_hashes() -> ConfigArgs {
+        let mut args = args_with_dirname("runner-01");
+        args.rootfs_hash =
+            vec!["0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into()];
+        args.snapshot_hash =
+            vec!["fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210".into()];
+        args
     }
 
     /// Asserts that `--runner-dirname` validation is wired into `run_config`.
@@ -214,6 +224,25 @@ mod tests {
         assert!(
             !msg.contains(&dirname),
             "overlong dirname should be previewed, not echoed in full: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_config_rejects_invalid_api_url_before_filesystem_setup() {
+        let mut args = args_with_valid_image_hashes();
+        args.api_url = "https://user:pass@api.example.com?token=secret".into();
+
+        let err = run_config(args).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("server.url"), "got: {msg}");
+        assert!(msg.contains("credentials"), "got: {msg}");
+        assert!(
+            !msg.contains("user:pass") && !msg.contains("token=secret"),
+            "error should not echo sensitive URL components: {msg}"
+        );
+        assert!(
+            !msg.contains("rootfs not found"),
+            "API URL validation should happen before rootfs checks: {msg}"
         );
     }
 

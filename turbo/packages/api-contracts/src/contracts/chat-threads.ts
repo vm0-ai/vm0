@@ -203,10 +203,18 @@ const illustrationGenerationTemplateRequestSchema = z.object({
   }),
 });
 
+const workflowGenerationTemplateRequestSchema = z.object({
+  type: z.literal("workflow"),
+  selection: z.object({
+    workflowTemplateId: z.string().min(1),
+  }),
+});
+
 const generationTemplateRequestSchema = z.discriminatedUnion("type", [
   presentationGenerationTemplateRequestSchema,
   videoGenerationTemplateRequestSchema,
   illustrationGenerationTemplateRequestSchema,
+  workflowGenerationTemplateRequestSchema,
 ]);
 
 const pagedChatMessageBaseSchema = z.object({
@@ -1043,14 +1051,21 @@ export type GenerationTemplateRequest = z.infer<
   typeof generationTemplateRequestSchema
 >;
 export type GenerationTemplateType = GenerationTemplateRequest["type"];
+export type StickyGenerationTemplateType = Exclude<
+  GenerationTemplateType,
+  "workflow"
+>;
 /**
  * Per-thread sticky generation templates, keyed by template type so a single
  * thread can keep an illustration style, a video preset, and a presentation
- * design active at the same time. Each explicit selection updates only its own
- * type's slot, leaving the others untouched.
+ * design active at the same time. Workflow templates are intentionally omitted
+ * because they are one-shot context for the current run.
  */
 export type ThreadGenerationTemplates = Partial<
-  Record<GenerationTemplateType, GenerationTemplateRequest>
+  Record<
+    StickyGenerationTemplateType,
+    Extract<GenerationTemplateRequest, { type: StickyGenerationTemplateType }>
+  >
 >;
 export type PresentationGenerationTemplateRequest = z.infer<
   typeof presentationGenerationTemplateRequestSchema
@@ -1060,6 +1075,9 @@ export type VideoGenerationTemplateRequest = z.infer<
 >;
 export type IllustrationGenerationTemplateRequest = z.infer<
   typeof illustrationGenerationTemplateRequestSchema
+>;
+export type WorkflowGenerationTemplateRequest = z.infer<
+  typeof workflowGenerationTemplateRequestSchema
 >;
 
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;

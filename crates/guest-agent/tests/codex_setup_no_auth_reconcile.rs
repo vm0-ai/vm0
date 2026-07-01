@@ -3,6 +3,8 @@
 //! This test lives in its own binary because `guest_agent::env` caches values
 //! in process-wide `LazyLock`s.
 
+mod common;
+
 use guest_agent::masker::SecretMasker;
 use std::time::Duration;
 
@@ -26,6 +28,7 @@ async fn codex_setup_no_auth_removes_stale_auth_json() -> TestResult {
     )?;
 
     unsafe {
+        common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("CLI_AGENT_TYPE", "codex");
         std::env::set_var(guest_contracts::env::RUN_ID_ENV, "codex-setup-no-auth");
         std::env::set_var(guest_contracts::env::USER_ENV_FILE_ENV, &user_env_path);

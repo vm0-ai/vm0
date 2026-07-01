@@ -231,18 +231,18 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.CodexFrameworkForMinimax]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Expose the experimental MiniMax Codex framework provider route for Responses API compatibility testing.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
-  },
-  [FeatureSwitchKey.SandboxIoLimiters]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable runner-provided disk and network device rate limiters for sandbox VMs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatGithubPrTracking]: {
     maintainer: "linghan@vm0.ai",
@@ -261,13 +261,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Show the read-only memory viewer page in the Zero sidebar and at /memory, listing the files in the user's memory artifact.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.MemoryDevRefresh]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Show the internal Memory page dev refresh action for staff prompt iteration.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -308,6 +301,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Enable left/right keyboard and button navigation between image artifacts within the same chat message, in both the lightbox modal and the artifact sidebar.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.AgentsPageRedesign]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "New Agents page with Public/Private tabs, a public-slot indicator, a Created by footer on every card, a name-first create dialog with a visibility select, and a private empty state.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.SidebarSubscriptionUsage]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show Codex and Claude Code personal subscription usage in the Zero sidebar footer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

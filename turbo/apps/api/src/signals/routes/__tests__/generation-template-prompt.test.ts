@@ -4,6 +4,7 @@ import {
   PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
 import { buildGenerationTemplatePrompt } from "../generation-template-prompt";
 
@@ -217,5 +218,43 @@ describe("buildGenerationTemplatePrompt", () => {
       "read its SKILL.md before final generation",
     );
     expect(result.prompt).toContain("without `--template`");
+  });
+
+  it("builds workflow template guidance", () => {
+    const item = WORKFLOW_TEMPLATE_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt({
+      type: "workflow",
+      selection: {
+        workflowTemplateId: item.id,
+      },
+    });
+
+    expect(result).toStrictEqual({
+      status: "resolved",
+      prompt: item.promptGuidance,
+    });
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("# Workflow Template Context");
+    expect(result.prompt).toContain(`Auto-inbox label (${item.id})`);
+    expect(result.prompt).toContain("Use the workflow-setup skill");
+    expect(result.prompt).toContain("Gmail label-applied automation");
+    expect(result.prompt).not.toContain("# Artifact Template Context");
+  });
+
+  it("rejects unknown workflow templates", () => {
+    const result = buildGenerationTemplatePrompt({
+      type: "workflow",
+      selection: {
+        workflowTemplateId: "workflow-template:missing",
+      },
+    });
+
+    expect(result).toStrictEqual({
+      status: "invalid",
+      message: "Unknown workflow template",
+    });
   });
 });

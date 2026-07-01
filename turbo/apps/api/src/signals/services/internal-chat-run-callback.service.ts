@@ -9,7 +9,6 @@ import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
-  type ChatMessageRecommendedFollowup,
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -68,7 +67,6 @@ import {
   type ChatCompletionContextMessage,
   generateAndPersistChatThreadTitleFromCallback,
   generateChatThreadRecommendedFollowupsFromContext,
-  generateChatThreadWorkflowAutomationSuggestionFromContext,
   generateChatNotificationSummary,
   loadChatThreadRecommendedFollowupContext,
 } from "./zero-chat-title.service";
@@ -968,60 +966,6 @@ async function generateRecommendedFollowupsForCompletedRun(args: {
   return suggestions.length > 0 ? suggestions : undefined;
 }
 
-async function generateWorkflowAutomationSuggestionForCompletedRun(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly threadId: string;
-  readonly followupContext: readonly ChatCompletionContextMessage[];
-  readonly signal: AbortSignal;
-}): Promise<ChatMessageRecommendedFollowup | undefined> {
-  args.signal.throwIfAborted();
-  const enabled = isFeatureEnabled(
-    FeatureSwitchKey.WorkflowAutomation,
-    await loadUserFeatureSwitchContext(args.db, args.orgId, args.userId),
-  );
-  args.signal.throwIfAborted();
-  if (!enabled) {
-    return undefined;
-  }
-
-  const suggestion =
-    await generateChatThreadWorkflowAutomationSuggestionFromContext({
-      messages: args.followupContext,
-      threadId: args.threadId,
-    });
-  args.signal.throwIfAborted();
-  return suggestion ?? undefined;
-}
-
-function mergeRecommendedFollowups(
-  followups: ChatMessageRecommendedFollowups | undefined,
-  workflowAutomationSuggestion: ChatMessageRecommendedFollowup | undefined,
-): ChatMessageRecommendedFollowups | undefined {
-  const merged: ChatMessageRecommendedFollowups = followups
-    ? [...followups]
-    : [];
-  if (!workflowAutomationSuggestion) {
-    return merged.length > 0 ? merged : undefined;
-  }
-  if (
-    merged.some((item) => {
-      return item.prompt === workflowAutomationSuggestion.prompt;
-    })
-  ) {
-    return merged.length > 0 ? merged : undefined;
-  }
-
-  if (merged.length === 0) {
-    return [workflowAutomationSuggestion];
-  }
-
-  const replacementIndex = Math.floor(Math.random() * merged.length);
-  merged[replacementIndex] = workflowAutomationSuggestion;
-  return merged.length > 0 ? merged : undefined;
-}
-
 async function loadRecommendedFollowupContextForCompletedRun(args: {
   readonly db: Db;
   readonly threadId: string;
@@ -1182,27 +1126,13 @@ async function runCompletedChatCallbackSideEffects(args: {
   });
 
   const lifecycleMarkerStep = (async () => {
-    const [recommendedFollowups, workflowAutomationSuggestion] =
-      await Promise.all([
-        generateRecommendedFollowupsForCompletedRun({
-          followupContext: args.followupContext,
-          threadId: args.chatThread.chatThreadId,
-          signal: args.signal,
-        }),
-        generateWorkflowAutomationSuggestionForCompletedRun({
-          db: args.db,
-          orgId: args.chatThread.orgId,
-          userId: args.chatThread.userId,
-          threadId: args.chatThread.chatThreadId,
-          followupContext: args.followupContext,
-          signal: args.signal,
-        }),
-      ]);
-    const mergedRecommendedFollowups = mergeRecommendedFollowups(
-      recommendedFollowups,
-      workflowAutomationSuggestion,
-    );
-    if (!mergedRecommendedFollowups) {
+    const recommendedFollowups =
+      await generateRecommendedFollowupsForCompletedRun({
+        followupContext: args.followupContext,
+        threadId: args.chatThread.chatThreadId,
+        signal: args.signal,
+      });
+    if (!recommendedFollowups) {
       return;
     }
     await updateCompletedLifecycleMarkerFollowups({
@@ -1210,7 +1140,7 @@ async function runCompletedChatCallbackSideEffects(args: {
       runId: args.runId,
       threadId: args.chatThread.chatThreadId,
       userId: args.chatThread.userId,
-      recommendedFollowups: mergedRecommendedFollowups,
+      recommendedFollowups,
     });
   })();
 

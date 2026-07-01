@@ -1,5 +1,56 @@
 # Changelog
 
+## [8.383.0](https://github.com/vm0-ai/vm0/compare/core-v8.382.0...core-v8.383.0) (2026-07-01)
+
+
+### Features
+
+* add workflow templates to composer ([#19660](https://github.com/vm0-ai/vm0/issues/19660)) ([1f110fd](https://github.com/vm0-ai/vm0/commit/1f110fd9d3ae503e731e957767a76d0094ce88a9))
+* show subscription usage in sidebar ([#19673](https://github.com/vm0-ai/vm0/issues/19673)) ([a186329](https://github.com/vm0-ai/vm0/commit/a1863296fc3b8545a9edf6ce4a12c0739d5dec88))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.138.0
+    * @vm0/connectors bumped to 1.122.0
+
+## [8.382.0](https://github.com/vm0-ai/vm0/compare/core-v8.381.3...core-v8.382.0) (2026-07-01)
+
+
+### Features
+
+* gate MiniMax Codex framework routing ([#19616](https://github.com/vm0-ai/vm0/issues/19616)) ([ed9b1de](https://github.com/vm0-ai/vm0/commit/ed9b1dea4c8b95ed78074f6fa2f9197dded9cdbc))
+
+
+### Bug Fixes
+
+* apply sandbox io limiters from host capacity ([#19668](https://github.com/vm0-ai/vm0/issues/19668)) ([8baa893](https://github.com/vm0-ai/vm0/commit/8baa893dbbae076adbde5e31f467103a0c06179e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.137.0
+    * @vm0/connectors bumped to 1.121.0
+
+## [8.381.3](https://github.com/vm0-ai/vm0/compare/core-v8.381.2...core-v8.381.3) (2026-07-01)
+
+
+### Bug Fixes
+
+* align memory page layout ([#19635](https://github.com/vm0-ai/vm0/issues/19635)) ([fe7498a](https://github.com/vm0-ai/vm0/commit/fe7498a91a760509ca5e7031f594915ddbb5c593))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.136.0
+    * @vm0/connectors bumped to 1.120.1
+
 ## [8.381.2](https://github.com/vm0-ai/vm0/compare/core-v8.381.1...core-v8.381.2) (2026-07-01)
 
 

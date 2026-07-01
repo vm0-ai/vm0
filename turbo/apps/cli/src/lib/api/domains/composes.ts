@@ -6,11 +6,7 @@ import {
   agentComposeApiContentSchema,
 } from "@vm0/api-contracts/contracts/composes";
 import type { z } from "zod";
-import {
-  ApiRequestError,
-  getClientConfig,
-  handleError,
-} from "../core/client-factory";
+import { getClientConfig, handleError } from "../core/client-factory";
 import type {
   GetComposeResponse,
   CreateComposeResponse,
@@ -36,30 +32,6 @@ export async function getComposeByName(
   }
 
   handleError(result, `Compose not found: ${name}`);
-}
-
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * Resolve an agent identifier to a compose.
- * Accepts either a UUID (compose ID) or a human-readable compose name.
- * UUID is tried first; if the identifier is not a UUID, falls back to name lookup.
- */
-export async function resolveCompose(
-  identifier: string,
-): Promise<GetComposeResponse | null> {
-  if (UUID_PATTERN.test(identifier)) {
-    try {
-      return await getComposeById(identifier);
-    } catch (error) {
-      if (error instanceof ApiRequestError && error.status === 404) {
-        return null;
-      }
-      throw error;
-    }
-  }
-  return getComposeByName(identifier);
 }
 
 export async function getComposeById(id: string): Promise<GetComposeResponse> {
