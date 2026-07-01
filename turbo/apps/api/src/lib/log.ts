@@ -214,11 +214,9 @@ export async function flushLogs(): Promise<void> {
   if (!axiomLogger) {
     return;
   }
-  try {
-    await axiomLogger.flush();
-  } catch (error) {
-    console.error("Failed to flush Axiom logs", error);
-  }
+  await axiomLogger.flush().catch((error: unknown) => {
+    writeError("Failed to flush Axiom logs", error);
+  });
 }
 
 // ── Logger creation ──────────────────────────────────────────────────────
