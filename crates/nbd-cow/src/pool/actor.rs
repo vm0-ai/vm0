@@ -152,9 +152,9 @@ impl DevicePoolHandle {
     /// Clean up the underlying pool state.
     ///
     /// If the actor is still accepting commands, this waits for cleanup to be
-    /// acknowledged. Cleanup deactivates the pool, fails queued and future pool
-    /// acquires, aborts pending scans, and drains tracked cooldown and in-flight
-    /// state.
+    /// acknowledged. Cleanup deactivates the pool, fails queued and later
+    /// acquire attempts, aborts pending scans, and clears the pool's cooldown
+    /// queue and in-flight bookkeeping.
     ///
     /// Cleanup does not replace per-device finalization. Outstanding
     /// [`DeviceLease`] values still own their NBD claim until they are returned
