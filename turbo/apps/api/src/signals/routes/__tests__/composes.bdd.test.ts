@@ -476,13 +476,6 @@ describe("COMPOSE-01 token access", () => {
     );
     expect(versions.body).toStrictEqual(unauthenticatedBody);
 
-    const zeroByName = await composes.requestReadZeroComposeByName(
-      null,
-      "missing",
-      [401],
-    );
-    expect(zeroByName.body).toStrictEqual(unauthenticatedBody);
-
     const zeroById = await api.requestReadZeroComposeById(
       null,
       missingId,
@@ -521,27 +514,7 @@ describe("COMPOSE-01 zero route errors", () => {
       sound: "quiet",
     });
 
-    const missingName = slug("bdd-zero-missing");
-    const byNameMiss = await composes.requestReadZeroComposeByName(
-      admin,
-      missingName,
-      [404],
-    );
-    expectApiError(byNameMiss.body);
-    expect(byNameMiss.body.error.message).toBe(
-      `Agent compose not found: ${missingName}`,
-    );
-
     const noOrg = api.user({ orgId: null });
-    const noOrgByName = await composes.requestReadZeroComposeByName(
-      noOrg,
-      name,
-      [401],
-    );
-    expect(noOrgByName.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-
     const noOrgList = await composes.requestListZeroComposes(noOrg, [400]);
     expect(noOrgList.body).toStrictEqual({
       error: { message: "Invalid request", code: "BAD_REQUEST" },

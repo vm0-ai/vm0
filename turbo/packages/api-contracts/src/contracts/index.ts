@@ -1188,10 +1188,8 @@ export {
   type ZeroOrgMembershipRequestsContract,
 } from "./zero-org-members";
 export {
-  zeroComposesMainContract,
   zeroComposesByIdContract,
   zeroComposesListContract,
-  type ZeroComposesMainContract,
   type ZeroComposesByIdContract,
   type ZeroComposesListContract,
 } from "./zero-composes";
