@@ -48,8 +48,8 @@ fn env_and_paths_modules_do_not_reintroduce_run_scoped_facades() -> std::io::Res
     let env_rs = read_source(manifest_dir, "src/env.rs")?;
     let paths_rs = read_source(manifest_dir, "src/paths.rs")?;
 
-    assert_no_process_global_state(&env_rs, "src/env.rs");
-    assert_no_process_global_state(&paths_rs, "src/paths.rs");
+    assert_no_module_static_state(&env_rs, "src/env.rs");
+    assert_no_module_static_state(&paths_rs, "src/paths.rs");
 
     for name in RUN_SCOPED_ENV_READER_NAMES {
         assert_no_zero_arg_reader(&env_rs, "src/env.rs", name);
@@ -68,19 +68,41 @@ fn read_source(manifest_dir: &Path, relative_path: &str) -> Result<String, std::
     })
 }
 
-fn assert_no_process_global_state(source: &str, label: &str) {
-    for forbidden in ["LazyLock", "OnceLock"] {
-        assert!(
-            !source.contains(forbidden),
-            "{label} must not reintroduce {forbidden}; use explicit GuestConfig/GuestPaths ownership"
-        );
-    }
+fn assert_no_module_static_state(source: &str, label: &str) {
+    assert!(
+        !non_comment_lines(source).any(is_static_item),
+        "{label} must not reintroduce static module state; use explicit GuestConfig/GuestPaths ownership"
+    );
+    assert!(
+        !non_comment_lines(source).any(|line| line.contains("thread_local!")),
+        "{label} must not reintroduce thread-local module state; use explicit GuestConfig/GuestPaths ownership"
+    );
 }
 
 fn assert_no_zero_arg_reader(source: &str, label: &str, name: &str) {
-    let pattern = format!("fn {name}()");
+    let compact_source = non_comment_lines(source)
+        .flat_map(str::chars)
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>();
+    let pattern = format!("fn{name}()");
     assert!(
-        !source.contains(&pattern),
+        !compact_source.contains(&pattern),
         "{label} must not expose zero-argument run-scoped reader {name}(); use GuestConfig/GuestPaths"
     );
+}
+
+fn non_comment_lines(source: &str) -> impl Iterator<Item = &str> {
+    source
+        .lines()
+        .map(str::trim_start)
+        .filter(|line| !line.starts_with("//"))
+}
+
+fn is_static_item(line: &str) -> bool {
+    let mut tokens = line.split_whitespace();
+    match tokens.next() {
+        Some("static") => true,
+        Some(vis) if vis.starts_with("pub") => matches!(tokens.next(), Some("static")),
+        _ => false,
+    }
 }
