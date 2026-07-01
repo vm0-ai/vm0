@@ -82,10 +82,16 @@ function expectTextBefore(firstText: string, secondText: string): void {
   ).toBeTruthy();
 }
 
+function queryTabByText(text: string): HTMLElement | null {
+  return (
+    queryAllByRoleFast("tab").find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+    }) ?? null
+  );
+}
+
 function tabByText(text: string): HTMLElement {
-  const tab = queryAllByRoleFast("tab").find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
+  const tab = queryTabByText(text);
   if (!tab) {
     throw new Error(`${text} tab not found`);
   }
@@ -3524,6 +3530,29 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("hides workflow templates when workflow automation is disabled", async () => {
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(tabByText("Presentation")).toBeInTheDocument();
+      expect(tabByText("Illustration")).toBeInTheDocument();
+      expect(tabByText("Video")).toBeInTheDocument();
+      expect(queryTabByText("Workflow")).not.toBeInTheDocument();
+    });
+  });
+
   it("selects and sends a workflow template from the picker", async () => {
     const user = userEvent.setup({ delay: null });
     const workflowTemplate = WORKFLOW_TEMPLATE_ITEMS[0]!;
@@ -3538,6 +3567,7 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     click(
@@ -3582,11 +3612,10 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    await sendMessageInUI(
-      user,
-      (await screen.findByPlaceholderText(PLACEHOLDER)) as HTMLTextAreaElement,
-      "Create this inbox workflow",
-    );
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("Create this inbox workflow");
+    await user.keyboard("{Enter}");
 
     await waitFor(() => {
       expect(submittedTemplate).toStrictEqual({

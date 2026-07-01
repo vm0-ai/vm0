@@ -5365,13 +5365,15 @@ function TemplatePickerButton({
 
 function ComposerTemplatePickerSlot({
   picker,
+  workflowAutomationEnabled,
 }: {
   picker: ComposerTemplatePicker | undefined;
+  workflowAutomationEnabled: boolean;
 }) {
   const hasPptTab = true;
   const hasIllustrationTab = true;
   const hasVideoTab = true;
-  const hasWorkflowTab = true;
+  const hasWorkflowTab = workflowAutomationEnabled;
   const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
   if (!picker) {
     return null;
@@ -6141,9 +6143,7 @@ function ComposerInputSlot({
   readonly onKeyDown: (e: KeyboardEventLike) => void;
   readonly onPaste: (e: ComposerPasteEvent) => void;
 }) {
-  const features = useLastResolved(featureSwitch$);
-  const slashWorkflowCommandsEnabled =
-    features?.[FeatureSwitchKey.WorkflowAutomation] ?? false;
+  const slashWorkflowCommandsEnabled = useWorkflowAutomationEnabled();
   const singleLineOnMobile = enableMobileSingleLine;
 
   if (slashWorkflowCommandsEnabled) {
@@ -6351,6 +6351,11 @@ function ComposerModelPickerSlot({
 // Main composer
 // ---------------------------------------------------------------------------
 
+function useWorkflowAutomationEnabled(): boolean {
+  const features = useLastResolved(featureSwitch$);
+  return features?.[FeatureSwitchKey.WorkflowAutomation] ?? false;
+}
+
 export function ZeroChatComposer({
   input,
   onInputChange,
@@ -6386,6 +6391,7 @@ export function ZeroChatComposer({
   const modelPickerOpen = useGet(modelPickerOpen$);
   const setModelPickerOpen = useSet(setModelPickerOpen$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
+  const workflowAutomationEnabled = useWorkflowAutomationEnabled();
 
   const resolved = useResolvedComposerSignals(
     input,
@@ -6841,7 +6847,10 @@ export function ZeroChatComposer({
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                  <ComposerTemplatePickerSlot picker={templatePicker} />
+                  <ComposerTemplatePickerSlot
+                    picker={templatePicker}
+                    workflowAutomationEnabled={workflowAutomationEnabled}
+                  />
                   <ConnectorsPopoverButton
                     agentConnectors={agentConnectors}
                     connectorsLoading={connectorsLoading}
