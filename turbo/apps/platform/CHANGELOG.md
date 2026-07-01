@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.521.0](https://github.com/vm0-ai/vm0/compare/app-v0.520.0...app-v0.521.0) (2026-07-01)
+
+
+### Features
+
+* add workflow prompt action to chat messages ([#19651](https://github.com/vm0-ai/vm0/issues/19651)) ([85f48a5](https://github.com/vm0-ai/vm0/commit/85f48a5f25a56078f933cd6d05359ffe73ef2da0))
+* gate MiniMax Codex framework routing ([#19616](https://github.com/vm0-ai/vm0/issues/19616)) ([ed9b1de](https://github.com/vm0-ai/vm0/commit/ed9b1dea4c8b95ed78074f6fa2f9197dded9cdbc))
+
+
+### Bug Fixes
+
+* keep composer model picker stable during refresh ([#19652](https://github.com/vm0-ai/vm0/issues/19652)) ([75cd367](https://github.com/vm0-ai/vm0/commit/75cd367e2f400911b04ac8e9df66171a785d14db))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.137.0
+    * @vm0/connectors bumped to 1.121.0
+    * @vm0/core bumped to 8.382.0
+
 ## [0.520.0](https://github.com/vm0-ai/vm0/compare/app-v0.519.1...app-v0.520.0) (2026-07-01)
 
 
