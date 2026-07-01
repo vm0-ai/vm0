@@ -48,16 +48,93 @@ pub(super) enum SessionHistoryMaterialization {
     Downloaded {
         session: MaterializedResumeSession<'static>,
         elapsed: Duration,
+        timings: SessionHistoryDownloadTimings,
     },
     Failed {
         elapsed: Duration,
+        timings: SessionHistoryDownloadTimings,
         error: RunnerError,
     },
 }
 
 struct SessionHistoryDownloadTaskResult {
     elapsed: Duration,
+    timings: SessionHistoryDownloadTimings,
     result: RunnerResult<MaterializedResumeSession<'static>>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct SessionHistoryDownloadTimings {
+    request_status: Option<SessionHistoryDownloadPhaseTiming>,
+    body_read: Option<SessionHistoryDownloadPhaseTiming>,
+    validation: Option<SessionHistoryDownloadPhaseTiming>,
+    hash_verification: Option<SessionHistoryDownloadPhaseTiming>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct SessionHistoryDownloadPhaseTiming {
+    elapsed: Duration,
+    success: bool,
+}
+
+impl SessionHistoryDownloadTimings {
+    pub(super) fn request_status(&self) -> Option<SessionHistoryDownloadPhaseTiming> {
+        self.request_status
+    }
+
+    pub(super) fn body_read(&self) -> Option<SessionHistoryDownloadPhaseTiming> {
+        self.body_read
+    }
+
+    pub(super) fn validation(&self) -> Option<SessionHistoryDownloadPhaseTiming> {
+        self.validation
+    }
+
+    pub(super) fn hash_verification(&self) -> Option<SessionHistoryDownloadPhaseTiming> {
+        self.hash_verification
+    }
+
+    fn record_request_status(&mut self, elapsed: Duration, success: bool) {
+        self.request_status = Some(SessionHistoryDownloadPhaseTiming { elapsed, success });
+    }
+
+    fn record_body_read(&mut self, elapsed: Duration, success: bool) {
+        self.body_read = Some(SessionHistoryDownloadPhaseTiming { elapsed, success });
+    }
+
+    fn record_hash_verification(&mut self, elapsed: Duration, success: bool) {
+        self.hash_verification = Some(SessionHistoryDownloadPhaseTiming { elapsed, success });
+    }
+
+    fn add_validation(&mut self, elapsed: Duration, success: bool) {
+        merge_phase_timing(&mut self.validation, elapsed, success);
+    }
+}
+
+impl SessionHistoryDownloadPhaseTiming {
+    pub(super) fn elapsed(self) -> Duration {
+        self.elapsed
+    }
+
+    pub(super) fn success(self) -> bool {
+        self.success
+    }
+}
+
+fn merge_phase_timing(
+    phase: &mut Option<SessionHistoryDownloadPhaseTiming>,
+    elapsed: Duration,
+    success: bool,
+) {
+    match phase {
+        Some(phase) => {
+            phase.elapsed += elapsed;
+            phase.success &= success;
+        }
+        None => {
+            *phase = Some(SessionHistoryDownloadPhaseTiming { elapsed, success });
+        }
+    }
 }
 
 impl SessionHistoryMaterializer {
@@ -105,6 +182,16 @@ impl SessionHistoryMaterializer {
         )
     }
 
+    pub(super) fn is_download_finished(&self) -> bool {
+        matches!(
+            &self.state,
+            SessionHistoryMaterializerState::Downloading {
+                task: Some(task),
+                ..
+            } if task.is_finished()
+        )
+    }
+
     pub(super) async fn finish(
         mut self,
         cancel: &CancellationToken,
@@ -129,6 +216,7 @@ impl SessionHistoryMaterializer {
                 let Some(mut task) = task.take() else {
                     return SessionHistoryMaterialization::Failed {
                         elapsed: Duration::ZERO,
+                        timings: SessionHistoryDownloadTimings::default(),
                         error: RunnerError::Internal(
                             "session history materializer lost download task".into(),
                         ),
@@ -145,6 +233,7 @@ impl SessionHistoryMaterializer {
                         joined.unwrap_or_else(|error| {
                             SessionHistoryDownloadTaskResult {
                                 elapsed: started_at.elapsed(),
+                                timings: SessionHistoryDownloadTimings::default(),
                                 result: Err(RunnerError::Internal(format!(
                                     "session history download task failed: {error}"
                                 ))),
@@ -170,9 +259,11 @@ impl SessionHistoryDownloadTaskResult {
             Ok(session) => SessionHistoryMaterialization::Downloaded {
                 session,
                 elapsed: self.elapsed,
+                timings: self.timings,
             },
             Err(error) => SessionHistoryMaterialization::Failed {
                 elapsed: self.elapsed,
+                timings: self.timings,
                 error,
             },
         }
@@ -181,6 +272,7 @@ impl SessionHistoryDownloadTaskResult {
     fn cancelled(started_at: Instant) -> Self {
         Self {
             elapsed: started_at.elapsed(),
+            timings: SessionHistoryDownloadTimings::default(),
             result: Err(RunnerError::Internal(
                 "session history download cancelled".into(),
             )),
@@ -206,9 +298,11 @@ async fn download_resume_session_history_timed(
     session: ResumeSession,
 ) -> SessionHistoryDownloadTaskResult {
     let started_at = Instant::now();
-    let result = download_resume_session_history(http, session).await;
+    let mut timings = SessionHistoryDownloadTimings::default();
+    let result = download_resume_session_history(http, session, &mut timings).await;
     SessionHistoryDownloadTaskResult {
         elapsed: started_at.elapsed(),
+        timings,
         result,
     }
 }
@@ -216,6 +310,7 @@ async fn download_resume_session_history_timed(
 async fn download_resume_session_history(
     http: HttpClient,
     session: ResumeSession,
+    timings: &mut SessionHistoryDownloadTimings,
 ) -> RunnerResult<MaterializedResumeSession<'static>> {
     // The history ref is treated as untrusted input. The request timeout and
     // 128 MiB cap bound resource use; declared size, HTTP content-length, final
@@ -229,30 +324,39 @@ async fn download_resume_session_history(
     match history_ref.kind {
         ResumeSessionHistoryRefKind::Blob => {}
     }
+    let validation_started = Instant::now();
     if let Some(expected_size) = history_ref.size
         && expected_size > RESUME_SESSION_HISTORY_MAX_BYTES
     {
+        timings.add_validation(validation_started.elapsed(), false);
         return Err(RunnerError::Internal(format!(
             "session history is too large: {expected_size} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
         )));
     }
 
-    let bytes = download_body(&http, &history_ref.url, history_ref.size).await?;
+    let bytes = download_body(&http, &history_ref.url, history_ref.size, timings).await?;
+
+    let validation_started = Instant::now();
     if let Some(expected_size) = history_ref.size
         && bytes.len() as u64 != expected_size
     {
+        timings.add_validation(validation_started.elapsed(), false);
         return Err(RunnerError::Internal(format!(
             "session history size mismatch: expected {expected_size} bytes, got {} bytes",
             bytes.len()
         )));
     }
+    timings.add_validation(validation_started.elapsed(), true);
 
+    let hash_started = Instant::now();
     let actual_hash = hex::encode(Sha256::digest(&bytes));
     if actual_hash != history_ref.hash {
+        timings.record_hash_verification(hash_started.elapsed(), false);
         return Err(RunnerError::Internal(
             "session history hash mismatch".into(),
         ));
     }
+    timings.record_hash_verification(hash_started.elapsed(), true);
 
     Ok(MaterializedResumeSession::new(
         session.cli_agent_session_id,
@@ -264,8 +368,10 @@ async fn download_body(
     http: &HttpClient,
     url: &str,
     expected_size: Option<u64>,
+    timings: &mut SessionHistoryDownloadTimings,
 ) -> RunnerResult<Vec<u8>> {
-    let mut response = http
+    let request_started = Instant::now();
+    let response_result = http
         .get(url)
         .timeout(DOWNLOAD_TIMEOUT)
         .send()
@@ -284,10 +390,22 @@ async fn download_body(
                 redact_url_query(url),
                 error.without_url()
             ))
-        })?;
+        });
+    let mut response = match response_result {
+        Ok(response) => {
+            timings.record_request_status(request_started.elapsed(), true);
+            response
+        }
+        Err(error) => {
+            timings.record_request_status(request_started.elapsed(), false);
+            return Err(error);
+        }
+    };
 
+    let validation_started = Instant::now();
     if let Some(content_length) = response.content_length() {
         if content_length > RESUME_SESSION_HISTORY_MAX_BYTES {
+            timings.add_validation(validation_started.elapsed(), false);
             return Err(RunnerError::Internal(format!(
                 "session history is too large: {content_length} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
             )));
@@ -295,11 +413,13 @@ async fn download_body(
         if let Some(expected_size) = expected_size
             && content_length != expected_size
         {
+            timings.add_validation(validation_started.elapsed(), false);
             return Err(RunnerError::Internal(format!(
                 "session history content-length mismatch: expected {expected_size} bytes, got {content_length} bytes"
             )));
         }
     }
+    timings.add_validation(validation_started.elapsed(), true);
 
     let capacity = expected_size
         .unwrap_or(64 * 1024)
@@ -307,21 +427,28 @@ async fn download_body(
         .min(usize::MAX as u64) as usize;
     let mut body = Vec::with_capacity(capacity);
     let mut downloaded = 0u64;
-    while let Some(chunk) = response.chunk().await.map_err(|error| {
-        RunnerError::Internal(format!(
-            "read {}: {}",
-            redact_url_query(url),
-            error.without_url()
-        ))
-    })? {
+    let body_started = Instant::now();
+    while let Some(chunk) = match response.chunk().await {
+        Ok(chunk) => chunk,
+        Err(error) => {
+            timings.record_body_read(body_started.elapsed(), false);
+            return Err(RunnerError::Internal(format!(
+                "read {}: {}",
+                redact_url_query(url),
+                error.without_url()
+            )));
+        }
+    } {
         downloaded += chunk.len() as u64;
         if downloaded > RESUME_SESSION_HISTORY_MAX_BYTES {
+            timings.record_body_read(body_started.elapsed(), false);
             return Err(RunnerError::Internal(format!(
                 "session history is too large: {downloaded} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
             )));
         }
         body.extend_from_slice(&chunk);
     }
+    timings.record_body_read(body_started.elapsed(), true);
 
     Ok(body)
 }
@@ -384,6 +511,20 @@ mod tests {
         )
     }
 
+    fn assert_phase_success(phase: Option<SessionHistoryDownloadPhaseTiming>) {
+        let phase = phase.expect("phase should be recorded");
+        assert!(phase.success(), "phase should succeed: {phase:?}");
+    }
+
+    fn assert_phase_failure(phase: Option<SessionHistoryDownloadPhaseTiming>) {
+        let phase = phase.expect("phase should be recorded");
+        assert!(!phase.success(), "phase should fail: {phase:?}");
+    }
+
+    fn assert_no_phase(phase: Option<SessionHistoryDownloadPhaseTiming>) {
+        assert!(phase.is_none(), "phase should not be recorded: {phase:?}");
+    }
+
     async fn serve_once(
         status: &'static str,
         body: &'static [u8],
@@ -419,9 +560,15 @@ mod tests {
         let result = materializer.finish(&CancellationToken::new()).await;
 
         match result {
-            SessionHistoryMaterialization::Downloaded { session, .. } => {
+            SessionHistoryMaterialization::Downloaded {
+                session, timings, ..
+            } => {
                 assert_eq!(session.cli_agent_session_id(), "sess-123");
                 assert_eq!(session.history_bytes(), body);
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_phase_success(timings.hash_verification());
             }
             _ => panic!("expected downloaded session"),
         }
@@ -442,12 +589,16 @@ mod tests {
             .await;
 
         match result {
-            SessionHistoryMaterialization::Failed { error, .. } => {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
                 let message = error.to_string();
                 assert!(message.contains("hash mismatch"));
                 assert!(!message.contains("token=secret"));
                 assert!(!message.contains(&expected_hash));
                 assert!(!message.contains(&actual_hash));
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_phase_failure(timings.hash_verification());
             }
             _ => panic!("expected failed download"),
         }
@@ -466,10 +617,14 @@ mod tests {
             .await;
 
         match result {
-            SessionHistoryMaterialization::Failed { error, .. } => {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
                 let message = error.to_string();
                 assert!(message.contains("history.blob?<redacted>"));
                 assert!(!message.contains("token=secret"));
+                assert_phase_failure(timings.request_status());
+                assert_no_phase(timings.body_read());
+                assert_no_phase(timings.validation());
+                assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed download"),
         }
@@ -488,8 +643,35 @@ mod tests {
             .await;
 
         match result {
-            SessionHistoryMaterialization::Failed { error, .. } => {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
                 assert!(error.to_string().contains("too large"));
+                assert_phase_success(timings.request_status());
+                assert_no_phase(timings.body_read());
+                assert_phase_failure(timings.validation());
+                assert_no_phase(timings.hash_verification());
+            }
+            _ => panic!("expected failed download"),
+        }
+    }
+
+    #[tokio::test]
+    async fn materializer_records_body_read_failure_timing() {
+        let session = ref_session(
+            serve_once("200 OK", b"short", Some(999)).await,
+            hex::encode(Sha256::digest(b"short")),
+            None,
+        );
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { timings, .. } => {
+                assert_phase_success(timings.request_status());
+                assert_phase_failure(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed download"),
         }
@@ -529,8 +711,12 @@ mod tests {
         let result = start_materializer(&session).finish(&cancel).await;
 
         match result {
-            SessionHistoryMaterialization::Failed { error, .. } => {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
                 assert!(error.to_string().contains("cancelled"));
+                assert_no_phase(timings.request_status());
+                assert_no_phase(timings.body_read());
+                assert_no_phase(timings.validation());
+                assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected cancelled download"),
         }
@@ -615,8 +801,12 @@ mod tests {
         assert_eq!(closed, 0);
         let result = materializer.finish(&CancellationToken::new()).await;
         match result {
-            SessionHistoryMaterialization::Failed { error, .. } => {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
                 assert!(error.to_string().contains("cancelled"));
+                assert_no_phase(timings.request_status());
+                assert_no_phase(timings.body_read());
+                assert_no_phase(timings.validation());
+                assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected cancelled download"),
         }
@@ -642,8 +832,12 @@ mod tests {
         );
         let result = materializer.finish(&cancel).await;
         match result {
-            SessionHistoryMaterialization::Failed { error, .. } => {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
                 assert!(error.to_string().contains("cancelled"));
+                assert_no_phase(timings.request_status());
+                assert_no_phase(timings.body_read());
+                assert_no_phase(timings.validation());
+                assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected cancelled download"),
         }
@@ -656,6 +850,7 @@ mod tests {
         let task = tokio::spawn(async {
             SessionHistoryDownloadTaskResult {
                 elapsed: Duration::from_millis(1),
+                timings: SessionHistoryDownloadTimings::default(),
                 result: Ok(MaterializedResumeSession::new(
                     "sess-123".to_string(),
                     br#"{"type":"init"}"#.to_vec(),
@@ -691,6 +886,7 @@ mod tests {
             cancel_for_task.cancel();
             SessionHistoryDownloadTaskResult {
                 elapsed: Duration::from_millis(1),
+                timings: SessionHistoryDownloadTimings::default(),
                 result: Ok(MaterializedResumeSession::new(
                     "sess-123".to_string(),
                     br#"{"type":"init"}"#.to_vec(),

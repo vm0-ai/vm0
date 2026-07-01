@@ -26,6 +26,35 @@ impl RestoredSessionFramework {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RestoredSessionIdentityMismatchReason {
+    Framework,
+    RestoreFormatVersion,
+    SessionIdentity,
+    HistoryRefKind,
+    HistoryHash,
+    HistorySize,
+    MissingRequestedIdentity,
+}
+
+impl RestoredSessionIdentityMismatchReason {
+    pub(crate) const fn action_type(self) -> &'static str {
+        match self {
+            Self::Framework => "session_history_identity_mismatch_framework",
+            Self::RestoreFormatVersion => {
+                "session_history_identity_mismatch_restore_format_version"
+            }
+            Self::SessionIdentity => "session_history_identity_mismatch_session_identity",
+            Self::HistoryRefKind => "session_history_identity_mismatch_history_ref_kind",
+            Self::HistoryHash => "session_history_identity_mismatch_history_hash",
+            Self::HistorySize => "session_history_identity_mismatch_history_size",
+            Self::MissingRequestedIdentity => {
+                "session_history_identity_mismatch_missing_requested_identity"
+            }
+        }
+    }
+}
+
 #[derive(Clone, Eq)]
 pub(crate) struct RestoredSessionIdentity {
     framework: RestoredSessionFramework,
@@ -167,6 +196,33 @@ impl RestoredSessionIdentity {
             && requested
                 .history_size_bytes
                 .is_none_or(|requested_size| self.history_size_bytes == Some(requested_size))
+    }
+
+    pub(crate) fn mismatch_reason_for_request(
+        &self,
+        requested: &Self,
+    ) -> Option<RestoredSessionIdentityMismatchReason> {
+        if self.framework != requested.framework {
+            return Some(RestoredSessionIdentityMismatchReason::Framework);
+        }
+        if self.restore_format_version != requested.restore_format_version {
+            return Some(RestoredSessionIdentityMismatchReason::RestoreFormatVersion);
+        }
+        if self.session_id_hash != requested.session_id_hash {
+            return Some(RestoredSessionIdentityMismatchReason::SessionIdentity);
+        }
+        if self.history_ref_kind != requested.history_ref_kind {
+            return Some(RestoredSessionIdentityMismatchReason::HistoryRefKind);
+        }
+        if self.history_hash != requested.history_hash {
+            return Some(RestoredSessionIdentityMismatchReason::HistoryHash);
+        }
+        if let Some(requested_size) = requested.history_size_bytes
+            && self.history_size_bytes != Some(requested_size)
+        {
+            return Some(RestoredSessionIdentityMismatchReason::HistorySize);
+        }
+        None
     }
 }
 
