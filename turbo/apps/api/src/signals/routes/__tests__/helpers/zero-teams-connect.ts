@@ -123,7 +123,7 @@ function teamsToken(): string {
   });
 }
 
-function teamsMessageActivity(
+export function teamsMessageActivityForTest(
   fixture: TeamsConnectFixture,
   overrides: Readonly<Record<string, unknown>> = {},
 ): Record<string, unknown> {
@@ -187,7 +187,7 @@ function teamsBotRemovedActivity(
   };
 }
 
-async function postTeamsActivityForTest(args: {
+export async function postTeamsActivityForTest(args: {
   readonly signal: AbortSignal;
   readonly activity: Record<string, unknown>;
 }): Promise<Response> {
@@ -214,7 +214,7 @@ export async function installTeamsForTest(
 ): Promise<void> {
   const response = await postTeamsActivityForTest({
     signal,
-    activity: teamsMessageActivity(fixture),
+    activity: teamsMessageActivityForTest(fixture),
   });
   if (!response.ok) {
     throw new Error(`Teams install seed failed with ${response.status}`);
