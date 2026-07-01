@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{future::Future, path::PathBuf};
 
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
@@ -78,85 +78,108 @@ impl R2ImageCache {
         &self,
         key: &str,
         upload_id: &str,
-        mut reader: tokio::io::DuplexStream,
+        reader: tokio::io::DuplexStream,
     ) -> Result<Vec<CompletedPart>, R2Error> {
         // Bounded concurrency: 4 in-flight parts gives ~75% reduction in wall
         // time vs serial without saturating the bucket's per-prefix throughput.
         const CONCURRENCY: usize = 4;
 
-        let mut tasks: tokio::task::JoinSet<Result<(i32, CompletedPart), R2Error>> =
-            tokio::task::JoinSet::new();
-        let mut parts: Vec<(i32, CompletedPart)> = Vec::new();
-        let mut part_number: i32 = 1;
-        let mut eof = false;
+        let client = self.client.clone();
+        let bucket = self.bucket.clone();
+        let key_owned = key.to_string();
+        let upload_id_owned = upload_id.to_string();
 
-        while !eof || !tasks.is_empty() {
-            // Refill the in-flight window by reading and spawning more parts.
-            while !eof && tasks.len() < CONCURRENCY {
-                let mut buf = vec![0u8; PART_SIZE];
-                let n = read_full(&mut reader, &mut buf).await?;
-                if n == 0 {
-                    eof = true;
-                    break;
-                }
-                buf.truncate(n);
-                // Vec → Bytes is zero-copy (transfers ownership). Avoids the
-                // ~16 MiB memcpy per part that `to_vec()` would do.
-                let chunk = bytes::Bytes::from(buf);
-                let pn = part_number;
-                let client = self.client.clone();
-                let bucket = self.bucket.clone();
-                let key_owned = key.to_string();
-                let upload_id_owned = upload_id.to_string();
-                tasks.spawn(async move {
-                    let resp = client
-                        .upload_part()
-                        .bucket(&bucket)
-                        .key(&key_owned)
-                        .upload_id(&upload_id_owned)
-                        .part_number(pn)
-                        .body(ByteStream::from(chunk))
-                        .send()
-                        .await?;
-                    // S3 / R2 always return ETag for a successful upload_part.
-                    // A missing ETag here would silently produce a CompletedPart
-                    // that fails Complete with "InvalidPart"; surface a clearer
-                    // error pinned to the offending part_number instead.
-                    let e_tag = resp
-                        .e_tag()
-                        .ok_or_else(|| {
-                            R2Error::S3(format!("upload_part {pn}: missing e_tag in response"))
-                        })?
-                        .to_string();
-                    Ok((
-                        pn,
-                        CompletedPart::builder()
-                            .e_tag(e_tag)
-                            .part_number(pn)
-                            .build(),
-                    ))
-                });
-                part_number = part_number
-                    .checked_add(1)
-                    .ok_or_else(|| R2Error::Io(io_other("part_number overflow")))?;
-                if n < PART_SIZE {
-                    eof = true;
-                    break;
-                }
+        upload_parts_streaming_with(reader, PART_SIZE, CONCURRENCY, move |pn, chunk| {
+            let client = client.clone();
+            let bucket = bucket.clone();
+            let key_owned = key_owned.clone();
+            let upload_id_owned = upload_id_owned.clone();
+            async move {
+                let resp = client
+                    .upload_part()
+                    .bucket(&bucket)
+                    .key(&key_owned)
+                    .upload_id(&upload_id_owned)
+                    .part_number(pn)
+                    .body(ByteStream::from(chunk))
+                    .send()
+                    .await?;
+                // S3 / R2 always return ETag for a successful upload_part.
+                // A missing ETag here would silently produce a CompletedPart
+                // that fails Complete with "InvalidPart"; surface a clearer
+                // error pinned to the offending part_number instead.
+                let e_tag = resp
+                    .e_tag()
+                    .ok_or_else(|| {
+                        R2Error::S3(format!("upload_part {pn}: missing e_tag in response"))
+                    })?
+                    .to_string();
+                Ok(CompletedPart::builder()
+                    .e_tag(e_tag)
+                    .part_number(pn)
+                    .build())
             }
+        })
+        .await
+    }
+}
 
-            // Drain at least one completion. JoinSet returns None only when
-            // empty, which our outer loop condition prevents.
-            if let Some(joined) = tasks.join_next().await {
-                let (pn, part) = joined.map_err(|e| R2Error::Io(io_other(e)))??;
-                parts.push((pn, part));
+async fn upload_parts_streaming_with<R, Upload, UploadFuture>(
+    mut reader: R,
+    part_size: usize,
+    concurrency: usize,
+    upload: Upload,
+) -> Result<Vec<CompletedPart>, R2Error>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    Upload: Fn(i32, bytes::Bytes) -> UploadFuture + Clone + Send + Sync + 'static,
+    UploadFuture: Future<Output = Result<CompletedPart, R2Error>> + Send + 'static,
+{
+    assert!(part_size > 0, "multipart part_size must be non-zero");
+    assert!(concurrency > 0, "multipart concurrency must be non-zero");
+
+    let mut tasks: tokio::task::JoinSet<Result<(i32, CompletedPart), R2Error>> =
+        tokio::task::JoinSet::new();
+    let mut parts: Vec<(i32, CompletedPart)> = Vec::new();
+    let mut part_number: i32 = 1;
+    let mut eof = false;
+
+    while !eof || !tasks.is_empty() {
+        // Refill the in-flight window by reading and spawning more parts.
+        while !eof && tasks.len() < concurrency {
+            let mut buf = vec![0u8; part_size];
+            let n = read_full(&mut reader, &mut buf).await?;
+            if n == 0 {
+                eof = true;
+                break;
+            }
+            buf.truncate(n);
+            // Vec → Bytes is zero-copy (transfers ownership). Avoids the
+            // ~16 MiB memcpy per part that `to_vec()` would do.
+            let chunk = bytes::Bytes::from(buf);
+            let pn = part_number;
+            let upload_part = upload.clone();
+            tasks.spawn(async move { upload_part(pn, chunk).await.map(|part| (pn, part)) });
+            part_number = part_number
+                .checked_add(1)
+                .ok_or_else(|| R2Error::Io(io_other("part_number overflow")))?;
+            if n < part_size {
+                eof = true;
+                break;
             }
         }
 
-        // Parts must be in part_number order for CompleteMultipartUpload.
-        parts.sort_by_key(|(pn, _)| *pn);
-        Ok(parts.into_iter().map(|(_, p)| p).collect())
+        // Drain at least one completion. JoinSet returns None only when
+        // empty, which our outer loop condition prevents.
+        if let Some(joined) = tasks.join_next().await {
+            let (pn, part) = joined.map_err(|e| R2Error::Io(io_other(e)))??;
+            parts.push((pn, part));
+        }
     }
+
+    // Parts must be in part_number order for CompleteMultipartUpload.
+    parts.sort_by_key(|(pn, _)| *pn);
+    Ok(parts.into_iter().map(|(_, p)| p).collect())
 }
 
 pub(super) struct MultipartUploadGuard {
@@ -271,4 +294,75 @@ async fn read_full<R: tokio::io::AsyncRead + Unpin>(
             .ok_or_else(|| R2Error::Io(io_other("read offset overflow")))?;
     }
     Ok(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        io::Cursor,
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
+
+    use tokio::sync::Notify;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn multipart_scheduler_returns_parts_ordered_after_out_of_order_completion() {
+        let completion_order = Arc::new(Mutex::new(Vec::new()));
+        let allow_part_one = Arc::new(Notify::new());
+
+        let upload = {
+            let completion_order = Arc::clone(&completion_order);
+            let allow_part_one = Arc::clone(&allow_part_one);
+            move |part_number: i32, chunk: bytes::Bytes| {
+                let completion_order = Arc::clone(&completion_order);
+                let allow_part_one = Arc::clone(&allow_part_one);
+                async move {
+                    match part_number {
+                        1 => {
+                            assert_eq!(&chunk[..], b"aaaa");
+                            allow_part_one.notified().await;
+                            completion_order.lock().unwrap().push(part_number);
+                        }
+                        2 => {
+                            assert_eq!(&chunk[..], b"bbbb");
+                            completion_order.lock().unwrap().push(part_number);
+                            allow_part_one.notify_one();
+                        }
+                        _ => panic!("unexpected part_number {part_number}"),
+                    }
+
+                    Ok(CompletedPart::builder()
+                        .e_tag(format!("etag-{part_number}"))
+                        .part_number(part_number)
+                        .build())
+                }
+            }
+        };
+
+        let parts = tokio::time::timeout(
+            Duration::from_secs(5),
+            upload_parts_streaming_with(Cursor::new(b"aaaabbbb".to_vec()), 4, 2, upload),
+        )
+        .await
+        .expect("multipart scheduler test timed out")
+        .expect("multipart scheduler failed");
+
+        let completed_parts = parts
+            .iter()
+            .map(|part| {
+                (
+                    part.part_number().expect("part_number"),
+                    part.e_tag().expect("e_tag").to_string(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            completed_parts,
+            vec![(1, "etag-1".to_string()), (2, "etag-2".to_string())]
+        );
+        assert_eq!(*completion_order.lock().unwrap(), vec![2, 1]);
+    }
 }
