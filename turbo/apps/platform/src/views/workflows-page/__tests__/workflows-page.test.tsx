@@ -13,7 +13,8 @@ import {
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   click,
@@ -48,6 +49,10 @@ const WORKFLOW_CHAT_THREAD_ID = "00000000-0000-4000-a000-000000000300";
 const TRIGGER_RUN_THREAD_ID = "00000000-0000-4000-a000-000000000301";
 
 type WorkflowDetailTestTab = "automations" | "instructions" | "info";
+
+afterEach(() => {
+  toast.dismiss();
+});
 
 function workflowDetailPath(tab: WorkflowDetailTestTab): string {
   return `/workflows/${SALES_WORKFLOW_ID}/${tab}`;
@@ -138,6 +143,23 @@ function weekdayWorkflowTrigger(): WorkflowScheduleTriggerSummary {
     chatThreadId: "thread_weekday_brief",
     nextRunAt: "2026-06-19T01:00:00.000Z",
     lastRunAt: "2026-06-18T01:00:00.000Z",
+  };
+}
+
+function intervalWorkflowTrigger(): WorkflowScheduleTriggerSummary {
+  return {
+    id: "workflow-trigger-interval-brief",
+    kind: "schedule",
+    schedule: {
+      type: "loop",
+      intervalSeconds: 15 * 60,
+    },
+    scheduleSummary: "Every 15 minutes",
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_interval_brief",
+    nextRunAt: "2026-06-19T01:15:00.000Z",
+    lastRunAt: "2026-06-19T01:00:00.000Z",
   };
 }
 
@@ -994,6 +1016,49 @@ describe("workflows routes", () => {
       expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
     });
     await expectComposerText(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
+  });
+
+  it("runs a fixed interval trigger from the workflows page and links to the chat in a toast", async () => {
+    const runTriggerIds: string[] = [];
+    context.mocks.data.userPreferences({ timezone: "UTC" });
+    mockAgentPageApis();
+    mockChatLifecycle(context, { threadId: TRIGGER_RUN_THREAD_ID });
+    mockWorkflowApis([
+      { ...salesResearch(), triggers: [intervalWorkflowTrigger()] },
+    ]);
+    mockRunWorkflowTrigger((triggerId) => {
+      runTriggerIds.push(triggerId);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/workflows",
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
+    });
+
+    await waitFor(() => {
+      expect(linkByAriaLabel("Open Sales Research")).toBeInTheDocument();
+    });
+    const salesCard = articleByText("Sales Research");
+    expect(within(salesCard).getByText("Every 15 minutes")).toBeInTheDocument();
+
+    click(buttonByText("Run now", salesCard));
+
+    await waitFor(() => {
+      expect(runTriggerIds).toStrictEqual(["workflow-trigger-interval-brief"]);
+    });
+    expect(pathname()).toBe("/workflows");
+    expect(search()).toBe("");
+    await expect(
+      screen.findByText("Workflow started"),
+    ).resolves.toBeInTheDocument();
+
+    click(buttonByText("View in chat"));
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/chats/${TRIGGER_RUN_THREAD_ID}`);
+    });
+    expect(search()).toBe("");
   });
 
   it("redirects the legacy agent workflows tab when workflow automation is enabled", async () => {

@@ -4327,6 +4327,7 @@ function TriggerControls({
   readonly displayTimezone: string;
 }) {
   const pageSignal = useGet(pageSignal$);
+  const navigate = useSet(detachedNavigateTo$);
   const setEditingTriggerId = useSet(setEditingWorkflowTriggerId$);
   const setEditingScheduleCronFields = useSet(setEditingScheduleCronFields$);
   const [enabledLoadable, setEnabled] = useLoadableSet(
@@ -4374,7 +4375,12 @@ function TriggerControls({
           className="zero-btn-morandi h-8 gap-1.5 rounded-lg px-3 text-xs font-medium"
           onClick={() => {
             detach(
-              runNow(trigger.id, pageSignal),
+              (async () => {
+                const result = await runNow(trigger.id, pageSignal);
+                navigate(ROUTES.chat, {
+                  pathParams: { threadId: result.chatThreadId },
+                });
+              })(),
               Reason.DomCallback,
               "run workflow trigger now",
             );
