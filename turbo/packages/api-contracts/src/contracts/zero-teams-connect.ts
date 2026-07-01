@@ -11,6 +11,7 @@ const teamsConnectStatusSchema = z.object({
   isInstalled: z.boolean(),
   isConnected: z.boolean(),
   isAdmin: z.boolean(),
+  installUrl: nullableStringSchema.optional(),
   tenantId: nullableStringSchema.optional(),
   tenantName: nullableStringSchema.optional(),
   teamId: nullableStringSchema.optional(),
@@ -70,9 +71,13 @@ export const zeroTeamsConnectContract = c.router({
     method: "DELETE",
     path: "/api/zero/integrations/teams/connect",
     headers: authHeadersSchema,
+    query: z.object({
+      action: z.string().optional(),
+    }),
     responses: {
       200: teamsDisconnectResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Disconnect user from Microsoft Teams installation",

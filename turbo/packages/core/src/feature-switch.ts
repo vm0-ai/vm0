@@ -310,6 +310,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.TeamsIntegration]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show standalone Microsoft Teams integration settings, connect flows, and Works page entry points.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

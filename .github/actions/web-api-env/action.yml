@@ -265,6 +265,7 @@ runs:
         if [[ "$INPUT_APP" == "api" ]]; then
           add_var MICROSOFT_TEAMS_BOT_APP_ID MICROSOFT_TEAMS_BOT_APP_ID
           add_secret MICROSOFT_TEAMS_BOT_APP_PASSWORD MICROSOFT_TEAMS_BOT_APP_PASSWORD
+          add_var MICROSOFT_TEAMS_APP_TENANT_ID MICROSOFT_TEAMS_APP_TENANT_ID
         fi
         add_env SLACK_REDIRECT_BASE_URL "$slack_redirect_base_url"
         if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then
