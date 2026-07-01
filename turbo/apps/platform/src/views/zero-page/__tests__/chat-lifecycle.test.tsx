@@ -3131,6 +3131,39 @@ describe("chat lifecycle", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
+  it("keeps shifted digit input editable in the chat composer", async () => {
+    const user = userEvent.setup({ delay: null });
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({ currentDetailTitle: null });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+    });
+
+    const composer = chatComposerTextarea();
+    await user.type(composer, "!");
+
+    expect(composer).toHaveValue("!");
+    expect(renameRequest).not.toHaveBeenCalled();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
   it("does not refocus the chat emoji button or show its tooltip after closing the picker from outside", async () => {
     const user = userEvent.setup({ delay: null });
     mockResizeObserver();

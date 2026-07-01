@@ -143,12 +143,15 @@ export const setChatKeyboardScrollRoot$ = onRef(
       const emojiShortcut = matchShortcut("shift+f2", event);
       const emojiOptionIndex = chatThreadEmojiShortcutIndex(event);
       const emojiClearShortcut = isChatThreadEmojiClearShortcut(event);
+      const emojiKeyboardShortcut =
+        emojiShortcut || emojiOptionIndex !== null || emojiClearShortcut;
       if (
         event.defaultPrevented ||
         (!renameShortcut &&
           !emojiShortcut &&
           emojiOptionIndex === null &&
           !emojiClearShortcut) ||
+        (emojiKeyboardShortcut && isEditableTarget(event.target)) ||
         hasOpenDialog(el.ownerDocument) ||
         !isChatShortcutTarget(el, event.target)
       ) {
@@ -156,7 +159,7 @@ export const setChatKeyboardScrollRoot$ = onRef(
       }
       const features = get(featureSwitch$);
       if (
-        (emojiShortcut || emojiOptionIndex !== null || emojiClearShortcut) &&
+        emojiKeyboardShortcut &&
         !features[FeatureSwitchKey.ChatThreadEmoji]
       ) {
         return;
