@@ -44,7 +44,6 @@ export enum FeatureSwitchKey {
   CodexFrameworkForMinimax = "codexFrameworkForMinimax",
 
   ZapierConnector = "zapierConnector",
-  SandboxIoLimiters = "sandboxIoLimiters",
   ChatGithubPrTracking = "chatGithubPrTracking",
   ChatThreadEmoji = "chatThreadEmoji",
   MemoryViewer = "memoryViewer",
