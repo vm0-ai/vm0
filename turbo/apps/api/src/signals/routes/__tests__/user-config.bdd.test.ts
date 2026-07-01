@@ -337,6 +337,34 @@ describe("AUTH-03 agent user connectors", () => {
     expect(readAfterPat.enabledTypes).toStrictEqual(["github"]);
   });
 
+  it("serializes concurrent user-connector replaces for the same agent", async () => {
+    const admin = api.user();
+    await onboardAdmin(admin, { slug: slug("bdd-uc-b1r") });
+    api.acceptAgentStorageWrites();
+    const agent = await api.createAgent(admin, {
+      displayName: "BDD Concurrent Connector Agent",
+    });
+
+    const sameSetUpdates = await Promise.all([
+      cfg.updateUserConnectors(admin, agent.agentId, ["github", "slack"]),
+      cfg.updateUserConnectors(admin, agent.agentId, ["github", "slack"]),
+    ]);
+    for (const update of sameSetUpdates) {
+      expect(new Set(update.enabledTypes)).toStrictEqual(
+        new Set(["github", "slack"]),
+      );
+    }
+
+    await Promise.all([
+      cfg.updateUserConnectors(admin, agent.agentId, ["github"]),
+      cfg.updateUserConnectors(admin, agent.agentId, ["slack"]),
+    ]);
+    const readBack = await cfg.readUserConnectors(admin, agent.agentId);
+    expect(readBack.enabledTypes).toHaveLength(1);
+    const enabledType = readBack.enabledTypes[0];
+    expect(["github", "slack"]).toContain(enabledType);
+  });
+
   it("recomposes a stale compose-target on user-connector updates through public APIs", async () => {
     const admin = api.user();
     await onboardAdmin(admin, { slug: slug("bdd-uc-b1c") });

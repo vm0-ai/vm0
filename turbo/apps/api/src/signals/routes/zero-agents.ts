@@ -15,7 +15,6 @@ import {
 } from "@vm0/connectors/connectors";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
@@ -49,6 +48,7 @@ import {
   unavailableUserConnectorTypes,
   userConnectorAvailability,
 } from "../services/connector-availability.service";
+import { replaceUserConnectors } from "../services/user-connectors.service";
 import type { RouteEntry } from "../route-entry";
 
 const PUBLIC_AGENT_LIMIT = 7;
@@ -875,29 +875,11 @@ const updateAgentUserConnectorsInner$ = command(
       );
     }
 
-    await writeDb.transaction(async (tx) => {
-      await tx
-        .delete(userConnectors)
-        .where(
-          and(
-            eq(userConnectors.orgId, auth.orgId),
-            eq(userConnectors.userId, auth.userId),
-            eq(userConnectors.agentId, params.id),
-          ),
-        );
-
-      if (parsedTypes.length > 0) {
-        await tx.insert(userConnectors).values(
-          parsedTypes.map((connectorType) => {
-            return {
-              orgId: auth.orgId,
-              userId: auth.userId,
-              agentId: params.id,
-              connectorType,
-            };
-          }),
-        );
-      }
+    await replaceUserConnectors(writeDb, {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      agentId: params.id,
+      enabledTypes: parsedTypes,
     });
     signal.throwIfAborted();
 
