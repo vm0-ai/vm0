@@ -140,7 +140,8 @@ function useDirectedAuthorizePermissionState(
         enabledTypes.includes(connectorType)),
     permissionLoading:
       agentId !== null &&
-      (enabledLoadable.state === "loading" || enabledData === null),
+      (enabledLoadable.state === "loading" ||
+        (enabledLoadable.state === "hasData" && enabledData === null)),
   };
 }
 

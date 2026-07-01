@@ -19,7 +19,8 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { pushState } from "../../../signals/location.ts";
+import { detachedNavigateTo$ } from "../../../signals/route.ts";
+import { ROUTES } from "../../../signals/route-paths.ts";
 
 const context = testContext();
 
@@ -163,8 +164,10 @@ describe("directed connector authorize page", () => {
       expect(screen.getByText("Authorized")).toBeInTheDocument();
     });
 
-    pushState({}, "", `/connectors/gmail/authorize?agentId=${SECOND_AGENT_ID}`);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    context.store.set(detachedNavigateTo$, ROUTES.directedAuthorize, {
+      pathParams: { type: "gmail" },
+      searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
+    });
 
     await waitFor(() => {
       expect(
@@ -201,8 +204,10 @@ describe("directed connector authorize page", () => {
       expect(screen.getByText("Authorized")).toBeInTheDocument();
     });
 
-    pushState({}, "", `/connectors/gmail/authorize?agentId=${SECOND_AGENT_ID}`);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    context.store.set(detachedNavigateTo$, ROUTES.directedAuthorize, {
+      pathParams: { type: "gmail" },
+      searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
+    });
 
     await waitFor(() => {
       expect(secondAgentRequested).toBeTruthy();
@@ -211,6 +216,27 @@ describe("directed connector authorize page", () => {
     expect(screen.queryByText("Authorized")).not.toBeInTheDocument();
 
     secondAgentResponse.resolve();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Gmail to proceed"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Authorize Zero")).toBeInTheDocument();
+    });
+  });
+
+  it("does not stay loading when the authorization lookup fails", async () => {
+    mockConnectedConnector("gmail");
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(404, {
+        error: { message: "Agent not found", code: "NOT_FOUND" },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
+    });
 
     await waitFor(() => {
       expect(
