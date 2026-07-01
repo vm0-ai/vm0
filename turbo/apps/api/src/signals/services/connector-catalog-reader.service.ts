@@ -237,14 +237,9 @@ function connectionForCatalogStatus(
   }
   return {
     authMethod: connector.authMethod,
-    externalId: connector.externalId,
     externalUsername: connector.externalUsername,
     externalEmail: connector.externalEmail,
-    connectionStatus: connector.connectionStatus,
     reconnectReason: connector.reconnectReason,
-    tokenExpiresAt: connector.tokenExpiresAt,
-    createdAt: connector.createdAt,
-    updatedAt: connector.updatedAt,
   };
 }
 

@@ -367,16 +367,14 @@ describe("GET /api/zero/connector-catalog", () => {
     });
     expect(openai?.connection).toStrictEqual({
       authMethod: "api-token",
-      externalId: null,
       externalUsername: null,
       externalEmail: null,
-      connectionStatus: "connected",
       reconnectReason: null,
-      tokenExpiresAt: null,
-      createdAt: expect.any(String),
-      updatedAt: expect.any(String),
     });
     expect(openai?.connection).not.toHaveProperty("oauthScopes");
+    expect(openai?.connection).not.toHaveProperty("externalId");
+    expect(openai?.connection).not.toHaveProperty("createdAt");
+    expect(openai?.connection).not.toHaveProperty("updatedAt");
   });
 
   it("returns connected auth-code status without exposing stored scopes", async () => {
@@ -409,7 +407,6 @@ describe("GET /api/zero/connector-catalog", () => {
     expect(github?.connection).toMatchObject({
       authMethod: "oauth",
       externalUsername: "bdd-github-user",
-      connectionStatus: "connected",
     });
     expect(github?.connection).not.toHaveProperty("oauthScopes");
   });
@@ -448,7 +445,6 @@ describe("GET /api/zero/connector-catalog", () => {
     });
     expect(github?.connection).toMatchObject({
       authMethod: "oauth",
-      connectionStatus: "connected",
       reconnectReason: null,
     });
     expect(github?.connection).not.toHaveProperty("oauthScopes");
@@ -488,7 +484,6 @@ describe("GET /api/zero/connector-catalog", () => {
     });
     expect(github?.connection).toMatchObject({
       authMethod: "oauth",
-      connectionStatus: "reconnect-required",
       reconnectReason: "credential_expired",
     });
     expect(github?.tokenExpiresAt).toStrictEqual(expect.any(String));

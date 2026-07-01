@@ -1,10 +1,7 @@
 import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
-import {
-  connectorReconnectReasonSchema,
-  connectorResponseConnectionStatusSchema,
-} from "./connector-schemas";
+import { connectorReconnectReasonSchema } from "./connector-schemas";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -90,14 +87,9 @@ const publicConnectorCatalogConnectionStatusSchema = z.enum([
 
 const publicConnectorCatalogConnectionSchema = z.object({
   authMethod: z.string(),
-  externalId: z.string().nullable(),
   externalUsername: z.string().nullable(),
   externalEmail: z.string().nullable(),
-  connectionStatus: connectorResponseConnectionStatusSchema,
   reconnectReason: connectorReconnectReasonSchema.nullable(),
-  tokenExpiresAt: z.string().nullable(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
 });
 
 const publicConnectorCatalogStatusItemSchema =
