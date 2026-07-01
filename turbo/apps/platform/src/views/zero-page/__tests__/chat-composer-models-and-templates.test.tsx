@@ -1159,6 +1159,47 @@ describe("chat composer models", () => {
     await expectComposerModel("Claude Sonnet 4.6");
   });
 
+  it("renders thread override before user default model selection resolves", async () => {
+    const pendingPreference = context.mocks.deferred<void>();
+    let preferenceRequestStarted = false;
+
+    mockOrgModelRoutes("kimi-k2.7-code");
+    context.mocks.api(
+      zeroUserModelPreferenceContract.get,
+      async ({ respond, withSignal }) => {
+        preferenceRequestStarted = true;
+        await withSignal(pendingPreference.promise);
+        return respond(200, {
+          selectedModel: "claude-opus-4-7",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      },
+    );
+    mockAgent();
+    mockThread({
+      selectedModel: "glm-5.1",
+      messages: [
+        {
+          id: "msg-user",
+          role: "user",
+          content: "Use GLM",
+          createdAt: "2026-03-10T00:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(preferenceRequestStarted).toBeTruthy();
+    });
+    try {
+      await expectComposerModel("GLM-5.1");
+    } finally {
+      pendingPreference.resolve();
+    }
+  });
+
   it("opens compare plans from limited-free-1 Pro composer model items", async () => {
     const user = userEvent.setup({ delay: null });
     mockBillingTier("limited-free-1");

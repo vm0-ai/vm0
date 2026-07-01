@@ -4689,7 +4689,8 @@ function useChatComposerModel(
   const modelPickerLoading =
     threadDataResolved === undefined ||
     modelSelectionResolved === undefined ||
-    defaultModelSelectionResolved === undefined;
+    (modelSelectionResolved === null &&
+      defaultModelSelectionResolved === undefined);
   const submitBlockerProps = resolveChatComposerSubmitBlocker({
     state: modelFirstOauthState,
     modelSelection,
