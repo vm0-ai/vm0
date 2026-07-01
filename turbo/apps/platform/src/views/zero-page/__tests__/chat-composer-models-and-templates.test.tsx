@@ -1190,10 +1190,10 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    await waitFor(() => {
-      expect(preferenceRequestStarted).toBeTruthy();
-    });
     try {
+      await waitFor(() => {
+        expect(preferenceRequestStarted).toBeTruthy();
+      });
       await expectComposerModel("GLM-5.1");
     } finally {
       pendingPreference.resolve();
