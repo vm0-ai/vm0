@@ -816,8 +816,11 @@ const finishConnectorConnection$ = command(
       );
     }
     if (options.showPermissionDialog) {
-      set(internalPermissionDialogType$, type);
-      set(internalPermissionDialogLabel$, options.connectorLabel ?? type);
+      set(resetPermissionDialog$);
+      set(internalPermissionDialog$, {
+        type,
+        label: options.connectorLabel ?? type,
+      });
     }
     if (options.clearSelectedConnector) {
       set(internalSelectedConnectorType$, null);
@@ -970,27 +973,22 @@ export const disconnectConnector$ = command(
 // Post-connect permission dialog state
 // ---------------------------------------------------------------------------
 
-const internalPermissionDialogType$ = state<ConnectorType | null>(null);
-const internalPermissionDialogLabel$ = state<string | null>(null);
+interface PermissionDialogState {
+  readonly type: ConnectorType;
+  readonly label: string;
+}
 
-/** Connector type to show the permission dialog for (null = hidden). */
-export const permissionDialogType$ = computed((get) => {
-  return get(internalPermissionDialogType$);
+const internalPermissionDialog$ = state<PermissionDialogState | null>(null);
+
+/** Connector permission dialog to show after a successful connection. */
+export const permissionDialog$ = computed((get) => {
+  return get(internalPermissionDialog$);
 });
 
-export const permissionDialogLabel$ = computed((get) => {
-  return get(internalPermissionDialogLabel$);
+export const closePermissionDialog$ = command(({ set }) => {
+  set(resetPermissionDialog$);
+  set(internalPermissionDialog$, null);
 });
-
-export const setPermissionDialogType$ = command(
-  ({ set }, type: ConnectorType | null) => {
-    if (type !== null) {
-      set(resetPermissionDialog$);
-    }
-    set(internalPermissionDialogType$, type);
-    set(internalPermissionDialogLabel$, type);
-  },
-);
 
 function createConnectorConnectFlowState(
   type: ConnectorType,

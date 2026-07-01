@@ -90,6 +90,14 @@ function menuItemByText(text: string): HTMLElement {
   return menuItem;
 }
 
+function dialogForElement(element: HTMLElement): HTMLElement {
+  const dialog = element.closest('[role="dialog"]');
+  if (!(dialog instanceof HTMLElement)) {
+    throw new Error("dialog not found for element");
+  }
+  return dialog;
+}
+
 function queryConnectorCardByLabel(label: string): HTMLElement | null {
   const labelElement = screen
     .queryAllByTestId("connector-card-label")
@@ -1486,6 +1494,139 @@ describe("connectors page", () => {
       expect(submittedAuthMethod).toBe("api");
       expect(submittedValues).toStrictEqual({ apiKey: "api-key-test" });
     });
+  });
+
+  it("clears post-connect permission selections between connector dialogs", async () => {
+    const researchAgentId = "c0000000-0000-4000-a000-000000000001";
+    mockConnectors([]);
+    context.mocks.data.team([teamAgent(researchAgentId, "Research Agent")]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "axiom",
+        label: "Public Axiom",
+        authMethods: [
+          {
+            id: "api-token",
+            label: "Public API Token",
+            description: null,
+            grantKind: "manual",
+            manualFields: [
+              {
+                id: "apiToken",
+                label: "Public API token",
+                required: true,
+                placeholder: "public-xaat",
+                inputType: "password",
+              },
+            ],
+            startOptions: [],
+          },
+        ],
+      }),
+      publicStatusItem({
+        connectorRef: "stripe",
+        label: "Public Stripe",
+        authMethods: [
+          {
+            id: "api-token",
+            label: "Public API Token",
+            description: null,
+            grantKind: "manual",
+            manualFields: [
+              {
+                id: "apiKey",
+                label: "Public API key",
+                required: true,
+                placeholder: "public-stripe-key",
+                inputType: "password",
+              },
+            ],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+    context.mocks.api(
+      zeroConnectorManualGrantContract.connect,
+      ({ body, params, respond }) => {
+        return respond(200, {
+          id: crypto.randomUUID(),
+          type: params.type,
+          authMethod: body.authMethod,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        });
+      },
+    );
+    let authorizationUpdateCount = 0;
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: [] });
+    });
+    context.mocks.api(zeroUserConnectorsContract.update, ({ respond }) => {
+      authorizationUpdateCount += 1;
+      return respond(200, { enabledTypes: [] });
+    });
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await fill(await screen.findByPlaceholderText("Find connectors"), "axiom");
+    click(await screen.findByLabelText("Connect Public Axiom"));
+    const axiomDialog = await screen.findByRole("dialog", {
+      name: "Public Axiom",
+    });
+    await fill(
+      within(axiomDialog).getByPlaceholderText("public-xaat"),
+      "xaat-test",
+    );
+    click(buttonByText("Save", axiomDialog));
+
+    const axiomPermissionDialog = dialogForElement(
+      await screen.findByText(
+        "You've successfully connected with Public Axiom!",
+      ),
+    );
+    click(buttonByText("Research Agent", axiomPermissionDialog));
+    click(buttonByText("Later", axiomPermissionDialog));
+    await waitFor(() => {
+      expect(
+        screen.queryByText("You've successfully connected with Public Axiom!"),
+      ).not.toBeInTheDocument();
+    });
+
+    await fill(screen.getByPlaceholderText("Find connectors"), "stripe");
+    click(await screen.findByLabelText("Connect Public Stripe"));
+    const stripeDialog = await screen.findByRole("dialog", {
+      name: "Public Stripe",
+    });
+    await fill(
+      within(stripeDialog).getByPlaceholderText("public-stripe-key"),
+      "sk-test",
+    );
+    click(buttonByText("Save", stripeDialog));
+
+    const stripePermissionDialog = dialogForElement(
+      await screen.findByText(
+        "You've successfully connected with Public Stripe!",
+      ),
+    );
+    click(buttonByText("Confirm", stripePermissionDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("You've successfully connected with Public Stripe!"),
+      ).not.toBeInTheDocument();
+    });
+    expect(authorizationUpdateCount).toBe(0);
+    expect(
+      screen.queryByText("Public Stripe enabled for 1 agent"),
+    ).not.toBeInTheDocument();
   });
 
   it("connects AWS with an authorization code and authorizes an agent", async () => {

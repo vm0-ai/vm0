@@ -34,6 +34,7 @@ import {
   connectConnectorOAuthAuthCode$,
   connectorsSearch$,
   connectorsConnectionFilter$,
+  closePermissionDialog$,
   disconnectConnector$,
   filteredConnectorTypes$,
   setConnectorsConnectionFilter$,
@@ -45,9 +46,7 @@ import {
   justConnectedTypes$,
   scopeReviewType$,
   setScopeReviewType$,
-  permissionDialogLabel$,
-  permissionDialogType$,
-  setPermissionDialogType$,
+  permissionDialog$,
   isStandaloneMode,
   getAvailableStatusAuthCodeAuthMethod,
   getOnlyAvailableStatusAuthCodeAuthMethod,
@@ -944,9 +943,8 @@ export function ZeroConnectorsPage() {
   const setSelected = useSet(setSelectedConnectorType$);
   const scopeReviewType = useGet(scopeReviewType$);
   const setScopeReviewType = useSet(setScopeReviewType$);
-  const permissionDialogType = useGet(permissionDialogType$);
-  const permissionDialogLabel = useGet(permissionDialogLabel$);
-  const setPermissionDialogType = useSet(setPermissionDialogType$);
+  const permissionDialog = useGet(permissionDialog$);
+  const closePermissionDialog = useSet(closePermissionDialog$);
   const managedConnectorType = useGet(managedConnectorAccessType$);
   const setManagedConnectorType = useSet(setManagedConnectorAccessType$);
   const closeManagedConnector = useSet(closeConnectorAccessManagement$);
@@ -1197,13 +1195,11 @@ export function ZeroConnectorsPage() {
         />
       )}
 
-      {permissionDialogType && (
+      {permissionDialog && (
         <ConnectorPermissionDialog
-          connectorType={permissionDialogType}
-          connectorLabel={permissionDialogLabel ?? permissionDialogType}
-          onClose={() => {
-            setPermissionDialogType(null);
-          }}
+          connectorType={permissionDialog.type}
+          connectorLabel={permissionDialog.label}
+          onClose={closePermissionDialog}
         />
       )}
 
