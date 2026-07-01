@@ -81,6 +81,8 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_update_run_runner_group"
   | "api_dispatch_admission_lock_wait"
   | "api_dispatch_check_concurrency_limit"
+  | "api_dispatch_concurrency_preflight_lock_wait"
+  | "api_dispatch_concurrency_preflight_check"
   | "api_dispatch_insert_run_record"
   | "api_dispatch_prepare_storage_manifest"
   | "api_dispatch_prepare_storage_manifest_resolve_inputs"

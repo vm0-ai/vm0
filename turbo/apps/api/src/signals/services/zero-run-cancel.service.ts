@@ -147,7 +147,7 @@ export const cancelRun$ = command(
  * Post-cancel side effects:
  *  - Notify the runner group to halt the cancelled run (if it was
  *    running on a runner).
- *  - Publish org-level `queue:changed` and user-level `runChanged`.
+ *  - Publish org-level `queue:changed` and user-level `run:changed`.
  *  - Drain the org queue: promote one queued run to pending. The
  *    runner picks up pending runs on its existing poll loop.
  *  - Reconcile credits via `processOrgUsageEvents$` when the cancelled
@@ -160,8 +160,8 @@ export const cancelRun$ = command(
  *    run-creation migration.
  *  - `triggerAutoRecharge` (Stripe top-up) — sibling follow-up.
  *
- * Fire-and-forget caller: invoke from the route handler via
- * `waitUntil(tapError(set(dispatchCancelSideEffects$, result, signal), log))`.
+ * Fire-and-forget caller: invoke from the route handler via `waitUntil(...)`
+ * with a detached background signal after `cancelRun$` commits.
  */
 export const dispatchCancelSideEffects$ = command(
   async (
@@ -174,14 +174,38 @@ export const dispatchCancelSideEffects$ = command(
     }
     const db = set(writeDb$);
     if (result.previousStatus === "running" && result.runnerGroup) {
-      await publishCancelToRunnerGroup(result.runnerGroup, result.runId);
+      await tapError(
+        publishCancelToRunnerGroup(result.runnerGroup, result.runId),
+        (error) => {
+          L.error("Failed to publish cancel to runner group", {
+            runId: result.runId,
+            runnerGroup: result.runnerGroup,
+            error,
+          });
+        },
+      );
       signal.throwIfAborted();
     }
-    await publishOrgSignal(result.orgId, "queue:changed");
-    signal.throwIfAborted();
-    await publishUserSignal([result.userId], `runChanged:${result.runId}`, {
-      status: "cancelled",
+    await tapError(publishOrgSignal(result.orgId, "queue:changed"), (error) => {
+      L.error("Failed to publish queue changed after run cancellation", {
+        runId: result.runId,
+        orgId: result.orgId,
+        error,
+      });
     });
+    signal.throwIfAborted();
+    await tapError(
+      publishUserSignal([result.userId], `run:changed:${result.runId}`, {
+        status: "cancelled",
+      }),
+      (error) => {
+        L.error("Failed to publish cancelled run changed signal", {
+          runId: result.runId,
+          userId: result.userId,
+          error,
+        });
+      },
+    );
     signal.throwIfAborted();
 
     await tapError(
