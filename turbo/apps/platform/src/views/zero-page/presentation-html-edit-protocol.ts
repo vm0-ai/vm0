@@ -423,6 +423,13 @@ const SW_FONT_QUERY_SELECTOR_PATTERN =
 const SELECT_VALUE_ASSIGNMENT_PATTERN =
   /\b([A-Za-z_$][\w$]*)\.value\s*=\s*(['"])(.*?)\2/g;
 
+const SET_PALETTE_CALL_PATTERN = /\bsetPalette\s*\(\s*([^)]*?)\s*\)/g;
+const SET_FONT_CALL_PATTERN = /\bsetFont\s*\(\s*([^)]*?)\s*\)/g;
+
+const THEME_CALL_ARGUMENT_LITERAL_PATTERN = /^(['"])(.*)\1$/;
+const THEME_CALL_ARGUMENT_IDENTIFIER_PATTERN =
+  /^([A-Za-z_$][\w$]*)(?:\.value)?$/;
+
 function collectPatternVariableNames(
   scriptText: string,
   patterns: readonly RegExp[],
@@ -470,13 +477,63 @@ function extractAssignedString(
   return null;
 }
 
+function resolveThemeCallArgument(
+  scriptText: string,
+  argument: string,
+): string | null {
+  const literalMatch = THEME_CALL_ARGUMENT_LITERAL_PATTERN.exec(argument);
+  if (literalMatch) {
+    return literalMatch[2] ?? null;
+  }
+  const identifierMatch = THEME_CALL_ARGUMENT_IDENTIFIER_PATTERN.exec(argument);
+  if (!identifierMatch?.[1]) {
+    return null;
+  }
+  return extractAssignedString(scriptText, new Set([identifierMatch[1]]));
+}
+
+function extractAppliedThemeValue(
+  scriptText: string,
+  callPattern: RegExp,
+): string | null {
+  callPattern.lastIndex = 0;
+  let resolved: string | null = null;
+  for (const match of scriptText.matchAll(callPattern)) {
+    const argument = match[1]?.trim();
+    if (!argument) {
+      continue;
+    }
+    const value = resolveThemeCallArgument(scriptText, argument);
+    if (value) {
+      resolved = value;
+    }
+  }
+  return resolved;
+}
+
+function selectedThemeValueFromScript(
+  scriptText: string,
+  target: "font" | "palette",
+): string | null {
+  const applyPattern =
+    target === "palette" ? SET_PALETTE_CALL_PATTERN : SET_FONT_CALL_PATTERN;
+  const selectId =
+    target === "palette"
+      ? THEME_SWITCHER_SELECT_IDS.palette
+      : THEME_SWITCHER_SELECT_IDS.font;
+  return (
+    extractAppliedThemeValue(scriptText, applyPattern) ??
+    extractAssignedString(
+      scriptText,
+      extractSelectVariableNames(scriptText, selectId),
+    )
+  );
+}
+
 function selectedPaletteFromScript(
   scriptText: string,
 ): PresentationPalette | null {
-  const selectedPalette = extractAssignedString(
-    scriptText,
-    extractSelectVariableNames(scriptText, THEME_SWITCHER_SELECT_IDS.palette),
-  );
+  const selectedPalette = selectedThemeValueFromScript(scriptText, "palette");
   const paletteMatch = /^([MV]):(.+)$/.exec(selectedPalette ?? "");
   if (!paletteMatch?.[1] || !paletteMatch[2]) {
     return null;
@@ -491,10 +548,7 @@ function selectedPaletteFromScript(
 function selectedFontPairFromScript(
   scriptText: string,
 ): PresentationFontPair | null {
-  const selectedFont = extractAssignedString(
-    scriptText,
-    extractSelectVariableNames(scriptText, THEME_SWITCHER_SELECT_IDS.font),
-  );
+  const selectedFont = selectedThemeValueFromScript(scriptText, "font");
   if (!selectedFont) {
     return null;
   }
