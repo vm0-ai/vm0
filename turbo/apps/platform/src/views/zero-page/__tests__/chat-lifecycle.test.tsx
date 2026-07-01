@@ -3279,6 +3279,7 @@ describe("chat lifecycle", () => {
   });
 
   it("starts a workflow prompt from an assistant message when the composer is empty", async () => {
+    const user = userEvent.setup({ delay: null });
     const threadId = "assistant-message-create-workflow-empty";
     const assistantReply = "We can turn this into a workflow.";
     mockWorkflowComposerWorkflows();
@@ -3323,6 +3324,15 @@ describe("chat lifecycle", () => {
       copyButton.compareDocumentPosition(workflowButton) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+
+    await user.hover(workflowButton);
+    const workflowTooltip = await screen.findByText("Create workflow", {
+      selector: "div",
+    });
+    await waitFor(() => {
+      expect(workflowTooltip).toBeVisible();
+    });
+    await user.unhover(workflowButton);
 
     click(workflowButton);
 
