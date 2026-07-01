@@ -146,7 +146,10 @@ import {
   renderTemplateForRuntime,
 } from "./zero-custom-connector.service";
 import { activePendingRunPredicate } from "./agent-run-activity.service";
-import { prepareAgentRunStorageManifest } from "./agent-run-storage.service";
+import {
+  prepareAgentRunStorageManifest,
+  StorageManifestBuildStats,
+} from "./agent-run-storage.service";
 import {
   encryptQueuedRunnerJobPayload,
   queuedRunnerJobPayload,
@@ -4909,6 +4912,9 @@ function buildRunnerJobPayload(
           ),
         )
       : args.body;
+    const storageManifestStats = args.timing
+      ? new StorageManifestBuildStats()
+      : undefined;
     const storageManifest = await measureApiDispatchTiming(
       args.timing,
       "api_dispatch_prepare_storage_manifest",
@@ -4927,8 +4933,12 @@ function buildRunnerJobPayload(
             additionalVolumes: args.additionalVolumes,
             framework: args.framework,
             timing: args.timing,
+            stats: storageManifestStats,
           }),
         );
+      },
+      () => {
+        return storageManifestStats?.overallDimensions();
       },
     );
     const builtContext = await measureApiDispatchTiming(

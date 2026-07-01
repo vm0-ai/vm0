@@ -40,6 +40,7 @@ import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
@@ -883,6 +884,153 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
       prompt,
       headVersionId,
+    ]);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("emits bucketed storage manifest shape dimensions without leaking storage identifiers", async () => {
+    const api = createRunsAutomationsApi(context);
+    const storages = createStoragesBddApi(context);
+    const { actor } = await entitledRunActor();
+    const prompt = "storage manifest dimensions should not leak prompt";
+    const storageName = `bdd-manifest-shape-${randomUUID().slice(0, 8)}`;
+    const mountPath = "/cache";
+    const storageFile = storageTextFile(
+      "cache.txt",
+      `manifest shape payload ${storageName}`,
+    );
+    const prepared = await storages.prepareStorage(actor, {
+      storageName,
+      storageType: "volume",
+      files: [storageFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName,
+      storageType: "volume",
+      versionId: prepared.versionId,
+      files: [storageFile],
+    });
+
+    const composeName = `bdd-manifest-shape-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      volumes: {
+        cache: {
+          name: storageName,
+          version: prepared.versionId,
+        },
+      },
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          volumes: [`cache:${mountPath}`],
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const headVersionId = await readAutomationComposeHeadVersion(
+      context,
+      compose.composeId,
+    );
+
+    const created = await api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt,
+      additionalVolumes: [
+        {
+          name: storageName,
+          version: prepared.versionId,
+          mountPath,
+        },
+      ],
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_requested_compose_count_bucket: "1",
+        storage_manifest_requested_additional_count_bucket: "1",
+        storage_manifest_requested_artifact_count_bucket: "1",
+        storage_manifest_deduped_artifact_count_bucket: "1",
+        storage_manifest_resolved_compose_count_bucket: "1",
+        storage_manifest_resolved_additional_count_bucket: "1",
+        storage_manifest_resolved_artifact_count_bucket: "1",
+        storage_manifest_final_storage_count_bucket: "1",
+        storage_manifest_final_artifact_count_bucket: "1",
+        storage_manifest_dropped_compose_count_bucket: "1",
+        storage_manifest_planned_presign_count_bucket: "2_4",
+        storage_manifest_duplicate_presign_candidate_count_bucket: "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_build_entries",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_resolved_compose_count_bucket: "1",
+        storage_manifest_resolved_additional_count_bucket: "1",
+        storage_manifest_resolved_artifact_count_bucket: "1",
+        storage_manifest_planned_presign_count_bucket: "2_4",
+        storage_manifest_duplicate_presign_candidate_count_bucket: "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_generate_compose_urls",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_compose_planned_presign_count_bucket: "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_generate_additional_urls",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_additional_planned_presign_count_bucket: "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_generate_artifact_urls",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_artifact_planned_presign_count_bucket: "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_assemble",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_final_storage_count_bucket: "1",
+        storage_manifest_final_artifact_count_bucket: "1",
+        storage_manifest_dropped_compose_count_bucket: "1",
+      }),
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      prompt,
+      storageName,
+      mountPath,
+      prepared.versionId,
+      headVersionId,
+      "https://r2.example.com",
     ]);
 
     await api.requestCancelRun(actor, created.runId, [200]);
