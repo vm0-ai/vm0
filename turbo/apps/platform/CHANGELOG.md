@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.519.0](https://github.com/vm0-ai/vm0/compare/app-v0.518.0...app-v0.519.0) (2026-07-01)
+
+
+### Features
+
+* add website image edit controls ([#19513](https://github.com/vm0-ai/vm0/issues/19513)) ([a82ab85](https://github.com/vm0-ai/vm0/commit/a82ab854b53b27399509ed0ddfbf1c4f3149c8d1))
+* **platform:** collapse connector access rows to a single line ([#19587](https://github.com/vm0-ai/vm0/issues/19587)) ([a45c3a4](https://github.com/vm0-ai/vm0/commit/a45c3a4e88cf1ada0f5238fc30016824eb349d7a))
+* surface workflow automations on workflows page ([#19582](https://github.com/vm0-ai/vm0/issues/19582)) ([2ddc602](https://github.com/vm0-ai/vm0/commit/2ddc602bbe5186a4ac82a36c68847e57062ef9de))
+
+
+### Bug Fixes
+
+* **platform:** keep "Connection expired" badge on one line ([#19586](https://github.com/vm0-ai/vm0/issues/19586)) ([e0c9649](https://github.com/vm0-ai/vm0/commit/e0c9649bdd6467945308d9c1358115f460e80f4f))
+* remove workflow detail audit metadata ([#19591](https://github.com/vm0-ai/vm0/issues/19591)) ([a8dc21e](https://github.com/vm0-ai/vm0/commit/a8dc21eba9cfe3c8c7184a6c7e6fa45cfd838bd5))
+
+
+### Performance Improvements
+
+* skip Axiom chat output wait when DB complete ([#19563](https://github.com/vm0-ai/vm0/issues/19563)) ([f1283e3](https://github.com/vm0-ai/vm0/commit/f1283e36c2b2779dffbf8fbc33a18cb6a76a45d1))
+
 ## [0.518.0](https://github.com/vm0-ai/vm0/compare/app-v0.517.0...app-v0.518.0) (2026-07-01)
 
 
