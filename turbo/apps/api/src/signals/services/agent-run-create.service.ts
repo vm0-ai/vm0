@@ -4497,6 +4497,19 @@ function recordQueuedRunEnqueueTelemetry(args: {
   }
 }
 
+async function publishQueueChangedSafely(args: {
+  readonly orgId: string;
+  readonly runId: string;
+}): Promise<void> {
+  await tapError(publishOrgSignal(args.orgId, "queue:changed"), (error) => {
+    L.warn("Failed to publish queue changed signal after queued launch", {
+      orgId: args.orgId,
+      runId: args.runId,
+      error,
+    });
+  });
+}
+
 function buildStoredExecutionSecrets(args: {
   readonly connectorContext: ConnectorRuntimeContext;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
@@ -5035,7 +5048,10 @@ function enqueueRunForConcurrency(
         timestamp: queuedPersistence.telemetryTimestamp,
       });
       ingestRunContextSnapshot(launch.runContextSnapshot);
-      await publishOrgSignal(args.orgId, "queue:changed");
+      await publishQueueChangedSafely({
+        orgId: args.orgId,
+        runId: args.run.id,
+      });
     }
 
     return queuedPersistence;

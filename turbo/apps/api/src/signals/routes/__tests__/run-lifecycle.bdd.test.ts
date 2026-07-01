@@ -1300,6 +1300,43 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await api.requestCancelRun(actor, second.runId, [200]);
   });
 
+  it("keeps a queued launch visible when queue changed publish fails", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before queue publish failure one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before queue publish failure two",
+      modelProvider: "anthropic-api-key",
+    });
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("queue changed publish failed"),
+    );
+
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should survive queue publish failure",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(queued.status).toBe("queued");
+    const stored = await api.readRun(actor, queued.runId);
+    expect(stored.status).toBe("queued");
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).toContainEqual(
+      expect.objectContaining({ runId: queued.runId }),
+    );
+
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
   it("removes cancelled runs from the claimable queue", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
