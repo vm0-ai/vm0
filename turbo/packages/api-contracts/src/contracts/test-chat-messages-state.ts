@@ -54,6 +54,12 @@ export const testChatMessagesStateActionBodySchema = z.discriminatedUnion(
       run_id: z.uuid(),
     }),
     z.object({
+      action: z.literal("insert-errored-unassociated-user-message"),
+      thread_id: z.uuid(),
+      content: z.string(),
+      error: z.string(),
+    }),
+    z.object({
       action: z.literal("replace-openrouter-vm0-api-keys"),
       model: z.string(),
       keys: z.array(vm0ApiKeySeedSchema),
@@ -90,6 +96,7 @@ export const testChatMessagesStateActionResponseSchema = z.object({
     .nullable()
     .optional(),
   run_selected_model: z.string().nullable().optional(),
+  message_id: z.uuid().optional(),
 });
 
 export const testChatMessagesStateContract = c.router({

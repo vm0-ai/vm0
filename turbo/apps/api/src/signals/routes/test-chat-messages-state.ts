@@ -5,6 +5,7 @@ import {
   type TestChatMessagesStateActionBody,
 } from "@vm0/api-contracts/contracts/test-chat-messages-state";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { secrets } from "@vm0/db/schema/secret";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
@@ -117,6 +118,27 @@ async function readRunModelMetadataForAction(
     run_model_provider_credential_scope: run.modelProviderCredentialScope,
     run_selected_model: run.selectedModel,
   });
+}
+
+async function insertErroredUnassociatedUserMessageForAction(
+  db: Db,
+  body: ChatMessagesAction<"insert-errored-unassociated-user-message">,
+  signal: AbortSignal,
+) {
+  const [message] = await db
+    .insert(chatMessages)
+    .values({
+      chatThreadId: body.thread_id,
+      role: "user",
+      content: body.content,
+      error: body.error,
+    })
+    .returning({ id: chatMessages.id });
+  signal.throwIfAborted();
+  if (!message) {
+    throw new Error("Expected errored chat message insert to return a row");
+  }
+  return actionOk({ message_id: message.id });
 }
 
 async function replaceOpenRouterVm0ApiKeysForAction(
@@ -237,6 +259,13 @@ const mutateChatMessagesState$ = command(
       }
       case "read-run-model-metadata": {
         return await readRunModelMetadataForAction(db, body, signal);
+      }
+      case "insert-errored-unassociated-user-message": {
+        return await insertErroredUnassociatedUserMessageForAction(
+          db,
+          body,
+          signal,
+        );
       }
       case "replace-openrouter-vm0-api-keys": {
         return await replaceOpenRouterVm0ApiKeysForAction(db, body, signal);

@@ -1003,6 +1003,60 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
+  it("does not auto-send errored unassociated user messages", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before errored queued state",
+    });
+    const errored = await postChatMessagesStateAction({
+      action: "insert-errored-unassociated-user-message",
+      thread_id: first.threadId,
+      content: "failed send should stay failed",
+      error: "insufficient_credits",
+    });
+    if (!errored.message_id) {
+      throw new Error("Expected the errored message id");
+    }
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    context.mocks.ably.publish.mockClear();
+    chatCallbacks.mockChatOutputEvents([assistantEvent(0, "final answer")]);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    await waitForThreadMessages(actor, first.threadId, (messages) => {
+      return lifecycleMarkers(messages, first.runId, "completed").length === 1;
+    });
+    await flushWaitUntilForTest();
+
+    const afterComplete = await chat.listThreadMessages(actor, first.threadId);
+    const erroredRows = userMessages(afterComplete.messages).filter(
+      (message) => {
+        return message.content === "failed send should stay failed";
+      },
+    );
+    expect(erroredRows).toHaveLength(1);
+    expect(erroredRows[0]).toMatchObject({
+      id: errored.message_id,
+      error: "insufficient_credits",
+    });
+    expect(erroredRows[0]?.runId).toBeUndefined();
+    expect(
+      userMessages(afterComplete.messages).filter((message) => {
+        return message.revokesMessageId === errored.message_id;
+      }),
+    ).toHaveLength(0);
+    expect(
+      context.mocks.ably.publish.mock.calls.some((call) => {
+        return call[0] === `chatThreadRunCreated:${first.threadId}`;
+      }),
+    ).toBeFalsy();
+  }, 90_000);
+
   it("marks an auto-sent follow-up when org concurrency queues the new run", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
