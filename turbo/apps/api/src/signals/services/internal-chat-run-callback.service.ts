@@ -539,11 +539,13 @@ function extractCodexAgentMessageContent(item: CodexItem): string | null {
 }
 
 function extractAssistantContent(event: AxiomChatOutputEvent): string | null {
-  const content = event.eventData?.message?.content;
+  const content =
+    event.eventType === "assistant" ? event.eventData?.message?.content : null;
   if (content) {
     return extractAnthropicContent(content);
   }
-  const item = event.eventData?.item;
+  const item =
+    event.eventType === "item.completed" ? event.eventData?.item : null;
   if (item) {
     return extractCodexAgentMessageContent(item);
   }

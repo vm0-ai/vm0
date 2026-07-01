@@ -20,6 +20,10 @@ function recordOf(value: unknown): Record<string, unknown> | null {
 }
 
 function anthropicMessageText(event: AgentEvent): string | null {
+  if (event.type !== "assistant") {
+    return null;
+  }
+
   const message = recordOf(event.message);
   const content = message?.content;
   if (!Array.isArray(content)) {

@@ -1388,7 +1388,20 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     await webhooks.requestAgentEvents(
       {
         runId: silent.runId,
-        events: [{ type: "system", sequenceNumber: 0 }],
+        events: [
+          {
+            type: "user",
+            sequenceNumber: 0,
+            message: {
+              content: [
+                {
+                  type: "text",
+                  text: "non-assistant text must not become assistant output",
+                },
+              ],
+            },
+          },
+        ],
       },
       silentHeaders,
       [200],
