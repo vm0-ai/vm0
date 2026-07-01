@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.54](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.53...nbd-cow-v0.4.54) (2026-07-01)
+
+
+### Documentation
+
+* document nbd-cow pool handle lifecycle ([#19585](https://github.com/vm0-ai/vm0/issues/19585)) ([94ee14d](https://github.com/vm0-ai/vm0/commit/94ee14deb32c25ff6d127cac6dd69a70c5428d23))
+
 ## [0.4.53](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.52...nbd-cow-v0.4.53) (2026-06-30)
 
 

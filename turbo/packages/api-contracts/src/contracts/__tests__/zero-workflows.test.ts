@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  googleCalendarEventCancelledEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
   googleCalendarEventUpdatedEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
@@ -130,6 +131,38 @@ describe("Google Calendar event-updated workflow trigger contract", () => {
       eventConfig: {
         provider: "google-calendar",
         event: "event_updated",
+        calendarId: "primary",
+      },
+    });
+  });
+});
+
+describe("Google Calendar event-cancelled workflow trigger contract", () => {
+  it("defaults to the primary calendar", () => {
+    const parsed = googleCalendarEventCancelledEventConfigSchema.parse({
+      provider: "google-calendar",
+      event: "event_cancelled",
+    });
+
+    expect(parsed).toStrictEqual({
+      provider: "google-calendar",
+      event: "event_cancelled",
+      calendarId: "primary",
+    });
+  });
+
+  it("accepts event-cancelled trigger create requests without explicit config", () => {
+    const parsed = zeroWorkflowTriggerCreateRequestSchema.parse({
+      kind: "event",
+      eventType: "google-calendar-event-cancelled",
+    });
+
+    expect(parsed).toStrictEqual({
+      kind: "event",
+      eventType: "google-calendar-event-cancelled",
+      eventConfig: {
+        provider: "google-calendar",
+        event: "event_cancelled",
         calendarId: "primary",
       },
     });

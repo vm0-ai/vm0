@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.1...guest-contracts-v0.3.2) (2026-07-01)
+
+
+### Bug Fixes
+
+* classify codex context window failures ([#19607](https://github.com/vm0-ai/vm0/issues/19607)) ([34ed0ac](https://github.com/vm0-ai/vm0/commit/34ed0ac9d29d81ffda52c5ccd6bf69915d5cc80c))
+
 ## [0.3.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.0...guest-contracts-v0.3.1) (2026-07-01)
 
 

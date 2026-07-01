@@ -12,7 +12,7 @@ import { nowDate } from "../../lib/time";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
-import { putS3Object } from "../external/s3";
+import { deleteS3Objects, putS3Object } from "../external/s3";
 import { db$, writeDb$ } from "../external/db";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
 import type { RouteEntry } from "../route-entry";
@@ -202,6 +202,27 @@ const deleteHtmlArtifactEditSnapshotInner$ = command(
     signal.throwIfAborted();
     if (!thread) {
       return threadNotFound();
+    }
+
+    const [draft] = await get(db$)
+      .select({ id: htmlArtifactEditDrafts.id })
+      .from(htmlArtifactEditDrafts)
+      .where(
+        and(
+          eq(htmlArtifactEditDrafts.chatThreadId, params.threadId),
+          eq(htmlArtifactEditDrafts.artifactUrl, query.url),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (draft) {
+      await get(
+        deleteS3Objects(env("R2_USER_ARTIFACTS_BUCKET_NAME"), [
+          snapshotObjectKey(draft.id),
+        ]),
+      );
+      signal.throwIfAborted();
     }
 
     await set(writeDb$)

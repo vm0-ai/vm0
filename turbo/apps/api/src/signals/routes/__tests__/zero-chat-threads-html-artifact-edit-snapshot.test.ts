@@ -121,6 +121,15 @@ describe("HTML artifact edit snapshots", () => {
       }),
       [204],
     );
+    const deleteCall = context.mocks.s3.send.mock.calls.find(([command]) => {
+      return "Delete" in commandInput(command);
+    });
+    expect(commandInput(deleteCall?.[0])).toMatchObject({
+      Bucket: "test-user-artifacts",
+      Delete: {
+        Objects: [{ Key: firstPut.Key }],
+      },
+    });
 
     const afterDelete = await accept(
       client().getHtmlEditSnapshot({

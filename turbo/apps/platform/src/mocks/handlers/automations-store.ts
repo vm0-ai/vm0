@@ -13,7 +13,8 @@ type MockWorkflowTriggerOverrides = Partial<
     | "gmail-label-applied"
     | "github-label-applied"
     | "google-calendar-event-created"
-    | "google-calendar-event-updated";
+    | "google-calendar-event-updated"
+    | "google-calendar-event-cancelled";
   readonly eventConfig?: Extract<
     ChatThreadWorkflowTrigger,
     { kind: "event" }
@@ -126,6 +127,22 @@ export function createMockWorkflowTrigger(
         eventConfig: {
           provider: "google-calendar",
           event: "event_updated",
+          calendarId: "primary",
+        },
+        schedule: null,
+        scheduleSummary: null,
+        ...overrides,
+        workflow,
+      } as ChatThreadWorkflowTrigger;
+    }
+    if (overrides.eventType === "google-calendar-event-cancelled") {
+      return {
+        ...base,
+        kind: "event",
+        eventType: "google-calendar-event-cancelled",
+        eventConfig: {
+          provider: "google-calendar",
+          event: "event_cancelled",
           calendarId: "primary",
         },
         schedule: null,
