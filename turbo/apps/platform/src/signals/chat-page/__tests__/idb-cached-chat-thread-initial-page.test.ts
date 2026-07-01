@@ -59,7 +59,23 @@ const idbStoreMock = vi.hoisted(() => {
     return Promise.resolve();
   });
 
+  const createIdbMessageStores = vi.fn((_userId: string, _orgId: string) => {
+    return {
+      readStore: {
+        readLatest,
+        messageExists,
+        readBefore: () => {
+          return Promise.resolve([]);
+        },
+      },
+      writeStore: {
+        upsertMessages,
+      },
+    };
+  });
+
   return {
+    createIdbMessageStores,
     readLatest,
     messageExists,
     upsertMessages,
@@ -74,26 +90,14 @@ const idbStoreMock = vi.hoisted(() => {
       readLatest.mockClear();
       messageExists.mockClear();
       upsertMessages.mockClear();
+      createIdbMessageStores.mockClear();
     },
   };
 });
 
 vi.mock("../../external/idb-message-store.ts", () => {
   return {
-    createIdbMessageStores: () => {
-      return {
-        readStore: {
-          readLatest: idbStoreMock.readLatest,
-          messageExists: idbStoreMock.messageExists,
-          readBefore: () => {
-            return Promise.resolve([]);
-          },
-        },
-        writeStore: {
-          upsertMessages: idbStoreMock.upsertMessages,
-        },
-      };
-    },
+    createIdbMessageStores: idbStoreMock.createIdbMessageStores,
   };
 });
 
@@ -174,6 +178,42 @@ describe("createIdbCachedDataSource initial page cache", () => {
     expect(idbStoreMock.upsertMessages).toHaveBeenCalledTimes(2);
     expect(ids(idbStoreMock.getMessages() as PagedChatMessage[])).toStrictEqual(
       ids(range(1, 53)),
+    );
+  });
+
+  it("reuses one IndexedDB message store wrapper across repeated background warms", async () => {
+    mockUser(
+      { id: "user_store_reuse", fullName: "Test User" },
+      { token: "token" },
+    );
+    mockOrganization({
+      activeOrg: { id: "org_store_reuse", name: "Test Org" },
+      memberships: [{ id: "org_store_reuse" }],
+    });
+
+    idbStoreMock.setMessages([message(1)]);
+    ctx.mocks.api(chatThreadMessagesContract.list, ({ respond }) => {
+      return respond(200, { messages: [] });
+    });
+
+    const { warmLatestChatThreadMessages$ } =
+      await import("../idb-cached-chat-thread-data-source.ts");
+
+    await ctx.store.set(
+      warmLatestChatThreadMessages$,
+      "00000000-0000-4000-8000-000000000997",
+      ctx.signal,
+    );
+    await ctx.store.set(
+      warmLatestChatThreadMessages$,
+      "00000000-0000-4000-8000-000000000996",
+      ctx.signal,
+    );
+
+    expect(idbStoreMock.createIdbMessageStores).toHaveBeenCalledTimes(1);
+    expect(idbStoreMock.createIdbMessageStores).toHaveBeenCalledWith(
+      "user_store_reuse",
+      "org_store_reuse",
     );
   });
 
