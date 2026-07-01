@@ -416,7 +416,7 @@ interface InternalRunCallback {
 
 type RunCallback = HttpRunCallback | InternalRunCallback;
 
-interface ChatLaunchZeroRunModelPin {
+export interface ZeroRunModelMetadataOverride {
   readonly modelProvider: string | null | undefined;
   readonly modelProviderId: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
@@ -446,7 +446,6 @@ export type ChatLaunchAssociation =
         | null;
       readonly generationTemplate: ChatLaunchGenerationTemplate;
       readonly clearDraft: boolean;
-      readonly zeroRunModelPin: ChatLaunchZeroRunModelPin;
     })
   | (BaseChatLaunchAssociation & {
       readonly kind: "auto-send-queued-message-claim";
@@ -545,6 +544,7 @@ export interface CreateAgentRunArgs {
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
+  readonly zeroRunModelMetadataOverride?: ZeroRunModelMetadataOverride;
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
   readonly chatLaunchAssociation?: ChatLaunchAssociation;
@@ -4221,17 +4221,9 @@ function validateChatLaunchAssociationArgs(
   return null;
 }
 
-function chatLaunchZeroRunModelPin(
-  association: ChatLaunchAssociation | undefined,
-): ChatLaunchZeroRunModelPin | undefined {
-  return association?.kind === "normal-user-message"
-    ? association.zeroRunModelPin
-    : undefined;
-}
-
 function zeroRunModelProviderValues(
   modelProvider: ResolvedModelProviderEnvironment | null,
-  zeroRunModelPin: ChatLaunchZeroRunModelPin | undefined,
+  metadataOverride: ZeroRunModelMetadataOverride | undefined,
 ): Pick<
   typeof zeroRuns.$inferInsert,
   | "modelProvider"
@@ -4239,16 +4231,16 @@ function zeroRunModelProviderValues(
   | "modelProviderCredentialScope"
   | "selectedModel"
 > {
-  if (zeroRunModelPin) {
+  if (metadataOverride) {
     return {
       modelProvider:
-        zeroRunModelPin.modelProvider === undefined
+        metadataOverride.modelProvider === undefined
           ? (modelProvider?.type ?? null)
-          : zeroRunModelPin.modelProvider,
-      modelProviderId: zeroRunModelPin.modelProviderId,
+          : metadataOverride.modelProvider,
+      modelProviderId: metadataOverride.modelProviderId,
       modelProviderCredentialScope:
-        zeroRunModelPin.modelProviderCredentialScope,
-      selectedModel: zeroRunModelPin.selectedModel,
+        metadataOverride.modelProviderCredentialScope,
+      selectedModel: metadataOverride.selectedModel,
     };
   }
   if (!modelProvider) {
@@ -4325,7 +4317,9 @@ async function insertZeroRunRecord(
     readonly runId: string;
     readonly body: CreateRunBody;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
-    readonly zeroRunModelPin: ChatLaunchZeroRunModelPin | undefined;
+    readonly zeroRunModelMetadataOverride:
+      | ZeroRunModelMetadataOverride
+      | undefined;
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
   },
@@ -4341,7 +4335,10 @@ async function insertZeroRunRecord(
     runGroupId: metadata.runGroupId ?? null,
     goalId: metadata.goalId ?? null,
     triggerAgentId: metadata.triggerAgentId ?? null,
-    ...zeroRunModelProviderValues(args.modelProvider, args.zeroRunModelPin),
+    ...zeroRunModelProviderValues(
+      args.modelProvider,
+      args.zeroRunModelMetadataOverride,
+    ),
     chatThreadId: args.chatThreadId ?? null,
   });
 }
@@ -4358,7 +4355,9 @@ async function insertLaunchRunRows(
     readonly artifacts: readonly ContextArtifact[];
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
-    readonly zeroRunModelPin: ChatLaunchZeroRunModelPin | undefined;
+    readonly zeroRunModelMetadataOverride:
+      | ZeroRunModelMetadataOverride
+      | undefined;
     readonly callbackRows: readonly AgentRunCallbackInsert[];
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
@@ -4407,7 +4406,7 @@ async function insertLaunchRunRows(
     runId: args.identity.runId,
     body: args.body,
     modelProvider: args.modelProvider,
-    zeroRunModelPin: args.zeroRunModelPin,
+    zeroRunModelMetadataOverride: args.zeroRunModelMetadataOverride,
     chatThreadId: args.chatThreadId,
     zeroRunMetadata: args.zeroRunMetadata,
   });
@@ -4978,9 +4977,8 @@ async function commitFailedLaunch(args: {
       artifacts: args.context.artifacts,
       additionalVolumes: args.context.additionalVolumes,
       modelProvider: args.context.modelProvider,
-      zeroRunModelPin: chatLaunchZeroRunModelPin(
-        args.createArgs.chatLaunchAssociation,
-      ),
+      zeroRunModelMetadataOverride:
+        args.createArgs.zeroRunModelMetadataOverride,
       callbackRows: args.callbackRows,
       chatThreadId: args.createArgs.chatThreadId,
       zeroRunMetadata: args.createArgs.zeroRunMetadata,
@@ -5242,9 +5240,8 @@ async function insertAtomicLaunchRunRecord(args: {
         artifacts: args.commit.context.artifacts,
         additionalVolumes: args.commit.context.additionalVolumes,
         modelProvider: args.commit.context.modelProvider,
-        zeroRunModelPin: chatLaunchZeroRunModelPin(
-          args.commit.createArgs.chatLaunchAssociation,
-        ),
+        zeroRunModelMetadataOverride:
+          args.commit.createArgs.zeroRunModelMetadataOverride,
         callbackRows: args.commit.callbackRows,
         chatThreadId: args.commit.createArgs.chatThreadId,
         zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,

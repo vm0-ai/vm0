@@ -28,6 +28,7 @@ import {
   type ChatLaunchAssociation,
   type CreateAgentRunArgs,
   type DispatchFailedRunCallbacks,
+  type ZeroRunModelMetadataOverride,
 } from "./agent-run-create.service";
 import {
   ApiDispatchTimingCollector,
@@ -160,6 +161,7 @@ interface CreateZeroRunCommandArgs {
   readonly modelProviderId?: string;
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly selectedModelOverride?: string;
+  readonly zeroRunModelMetadataOverride?: ZeroRunModelMetadataOverride;
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly timing?: ApiDispatchTimingCollector;
@@ -754,6 +756,7 @@ function buildZeroCreateAgentRunArgs(args: {
     modelProviderType: command.body.modelProvider,
     selectedModelOverride:
       command.selectedModelOverride ?? args.agent.selectedModel ?? undefined,
+    zeroRunModelMetadataOverride: command.zeroRunModelMetadataOverride,
     chatThreadId: command.chatThreadId,
     chatLaunchAssociation: command.chatLaunchAssociation,
     extraEnvironment: buildZeroRunExtraEnvironment({

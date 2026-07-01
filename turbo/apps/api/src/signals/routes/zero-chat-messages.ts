@@ -2367,12 +2367,12 @@ function buildCreateZeroRunArgs(params: {
       ),
       generationTemplate: args.body.generationTemplate,
       clearDraft: true,
-      zeroRunModelPin: {
-        modelProvider: providerAdmission.effectiveModelProvider,
-        modelProviderId: modelPin.modelProviderId,
-        modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
-        selectedModel: modelPin.selectedModel,
-      },
+    },
+    zeroRunModelMetadataOverride: {
+      modelProvider: providerAdmission.effectiveModelProvider,
+      modelProviderId: modelPin.modelProviderId,
+      modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
+      selectedModel: modelPin.selectedModel,
     },
     computerUseHostId: prepared.computerUseHostGrant?.hostId,
     modelProviderId: modelPin.modelProviderId ?? undefined,
