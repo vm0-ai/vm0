@@ -3427,13 +3427,10 @@ mod tests {
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
         let mut telemetry = new_telemetry();
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        drop(listener);
+        let responses = vec![Vec::new(); CACHE_HTTP_MAX_ATTEMPTS];
+        let (url, handle) = raw_http_sequence_url(responses).await;
 
-        let original = format!(
-            "http://{addr}/transport-fails.tar.gz?X-Amz-Signature=secret&X-Amz-Credential=credential"
-        );
+        let original = format!("{url}?X-Amz-Signature=secret&X-Amz-Credential=credential");
         let name = "transport-retry-exhausted";
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
@@ -3441,6 +3438,7 @@ mod tests {
         populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
+        await_raw_http_sequence(handle).await;
 
         assert_eq!(
             manifest.storages[0].archive_url.as_deref(),
@@ -3461,7 +3459,7 @@ mod tests {
             !error.contains("X-Amz-Signature")
                 && !error.contains("secret")
                 && !error.contains("credential")
-                && !error.contains("/transport-fails.tar.gz"),
+                && !error.contains("/archive.tar.gz"),
             "telemetry error must not include presigned URL details: {error}"
         );
     }
