@@ -205,8 +205,7 @@ profiles:
   logs a warning and disables I/O limiter capacity. Valid I/O capacity keeps a
   fixed 20% host reserve and splits the remainder evenly across admitted
   sandboxes.
-- Even with valid host capacity, the runner only applies limiter fields to jobs
-  whose evaluated `sandboxIoLimiters` feature flag is true.
+- With valid host capacity, the runner applies limiter fields to all jobs.
 - I/O capacity is resolved per runner process. If multiple runner services share
   one host, split the host capacity across those services in their host env
   values; the runner does not coordinate I/O budgets across processes.

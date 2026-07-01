@@ -476,8 +476,7 @@ async fn run_start_with_home(
                 disk_ops_per_sec = limits.block.ops_per_sec,
                 net_rx_bytes_per_sec = limits.network.rx_bytes_per_sec,
                 net_tx_bytes_per_sec = limits.network.tx_bytes_per_sec,
-                feature_flag = crate::io_limits::SANDBOX_IO_LIMITERS_FEATURE_FLAG,
-                "I/O limiter capacity configured; applying limiters only for flagged jobs"
+                "I/O limiter capacity configured; applying limiters to all jobs"
             );
         }
     }

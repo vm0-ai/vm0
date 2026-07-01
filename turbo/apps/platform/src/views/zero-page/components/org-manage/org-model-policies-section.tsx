@@ -40,6 +40,7 @@ import {
   getCanonicalModelDisplayName,
   getProvidersForModel,
   isLimitedFree1RestrictedRunModel,
+  type ModelProviderFeatureStates,
   type ModelProviderResponse,
   type ModelProviderType,
   type OrgModelPolicy,
@@ -72,6 +73,7 @@ import {
   billingStatusAsync$,
   startCheckout$,
 } from "../../../../signals/zero-page/billing.ts";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { openBillingPlans$ } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { openSettingsBillingPlans$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import {
@@ -98,14 +100,20 @@ function isByokProviderType(type: ModelProviderType): boolean {
   return type !== "vm0" && !isOAuthMemberType(type);
 }
 
-function getApiProviderTypes(model: SupportedRunModel): ModelProviderType[] {
-  return getProvidersForModel(model).filter((type) => {
+function getApiProviderTypes(
+  model: SupportedRunModel,
+  featureStates: ModelProviderFeatureStates,
+): ModelProviderType[] {
+  return getProvidersForModel(model, featureStates).filter((type) => {
     return isByokProviderType(type);
   });
 }
 
-function getOAuthProviderTypes(model: SupportedRunModel): ModelProviderType[] {
-  return getProvidersForModel(model).filter((type) => {
+function getOAuthProviderTypes(
+  model: SupportedRunModel,
+  featureStates: ModelProviderFeatureStates,
+): ModelProviderType[] {
+  return getProvidersForModel(model, featureStates).filter((type) => {
     return isOAuthMemberType(type);
   });
 }
@@ -917,6 +925,7 @@ function ModelPolicyRouteDialog({
   policies,
   addableModels,
   providers,
+  featureStates,
   saving,
   limitedFree1,
   onSubmit,
@@ -924,6 +933,7 @@ function ModelPolicyRouteDialog({
   policies: OrgModelPolicy[];
   addableModels: SupportedRunModel[];
   providers: ModelProviderResponse[];
+  featureStates: ModelProviderFeatureStates;
   saving: boolean;
   limitedFree1: boolean;
   onSubmit: (next: UpdateOrgModelPolicy[]) => void;
@@ -952,8 +962,12 @@ function ModelPolicyRouteDialog({
     }) ?? null;
   const selectedModel = dialog.model ?? firstAllowedModel ?? null;
   const upgradeRequired = modelRequiresProUpgrade(selectedModel, limitedFree1);
-  const apiTypes = selectedModel ? getApiProviderTypes(selectedModel) : [];
-  const oauthTypes = selectedModel ? getOAuthProviderTypes(selectedModel) : [];
+  const apiTypes = selectedModel
+    ? getApiProviderTypes(selectedModel, featureStates)
+    : [];
+  const oauthTypes = selectedModel
+    ? getOAuthProviderTypes(selectedModel, featureStates)
+    : [];
   const selectedProviderType = getSelectedProviderType({
     routeKind: dialog.routeKind,
     providerType: dialog.providerType,
@@ -1197,6 +1211,7 @@ export function OrgModelPoliciesSection() {
   const lastProviders = useLastResolved(orgConfiguredProviders$);
   const billingLoadable = useLoadable(billingStatusAsync$);
   const lastBilling = useLastResolved(billingStatusAsync$);
+  const featureStates = useGet(featureSwitch$);
   const pageSignal = useGet(pageSignal$);
   const openAddModelDialog = useSet(openAddModelPolicyDialog$);
   const openEditModelDialog = useSet(openEditModelPolicyDialog$);
@@ -1335,6 +1350,7 @@ export function OrgModelPoliciesSection() {
         policies={policies}
         addableModels={addableModels}
         providers={providers}
+        featureStates={featureStates}
         saving={saving}
         limitedFree1={limitedFree1}
         onSubmit={submit}

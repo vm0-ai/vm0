@@ -827,6 +827,10 @@ pub fn openai_api_key() -> &'static str {
 pub fn openai_model() -> &'static str {
     user_env_value("OPENAI_MODEL")
 }
+/// OpenAI-compatible API base URL from loaded user env; empty string means unset.
+pub fn openai_base_url() -> &'static str {
+    user_env_value("OPENAI_BASE_URL")
+}
 /// Anthropic model from loaded user env; empty string means unset.
 pub fn anthropic_model() -> &'static str {
     user_env_value("ANTHROPIC_MODEL")

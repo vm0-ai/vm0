@@ -141,10 +141,7 @@ pub(super) async fn handle_discovered_job(
     );
     info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
     let started_at = Instant::now();
-    let device_rate_limits = crate::io_limits::device_rate_limits_for_context(
-        ctx.spawn_ctx.device_rate_limits.as_ref(),
-        claimed.context(),
-    );
+    let device_rate_limits = ctx.spawn_ctx.device_rate_limits.clone();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::DeviceRateLimits, started_at);
 
     let (reuse_entry, active_lease, reuse_result, idle_snapshot, needs_session_affinity_refresh) =
