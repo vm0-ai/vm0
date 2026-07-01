@@ -257,7 +257,7 @@ async function createStyledDmg({
       try {
         await run("hdiutil", ["detach", mountPath]);
       } catch (error) {
-        console.warn(`Failed to detach DMG mount ${mountPath}:`, error);
+        console.warn("Failed to detach DMG mount", { mountPath, error });
       }
     }
     if (process.env.ZERO_DESKTOP_KEEP_DMG_TEMP !== "true") {
