@@ -19,7 +19,6 @@ import {
   IconFilter,
   IconChevronDown,
   IconCheck,
-  IconUsers,
 } from "@tabler/icons-react";
 import {
   CONNECTOR_TYPES,
@@ -103,7 +102,8 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 
-const CONNECTOR_CARD_AGENT_AVATAR_LIMIT = 3;
+const CONNECTOR_CARD_AGENT_NAME_LIMIT = 2;
+const CONNECTOR_CARD_AGENT_NAME_MAX_CHARS = 12;
 
 // Callback ref that attaches scroll tracking while enabled. Each call returns
 // a fresh ref callback; React only invokes it when the underlying element
@@ -543,21 +543,14 @@ function connectorAgentName(agent: TeamComposeItem): string {
   return agent.displayName ?? "Unnamed";
 }
 
-function ConnectorAccessAvatar({ agent }: { readonly agent: TeamComposeItem }) {
-  const name = connectorAgentName(agent);
-  return (
-    <span key={agent.id} className="relative shrink-0" title={name}>
-      <AvatarFromUrl
-        avatarUrl={agent.avatarUrl}
-        alt={name}
-        className="block h-7 w-7 rounded-full bg-muted/80 object-cover zero-border"
-        data-testid="connector-card-agent-avatar"
-      />
-    </span>
-  );
+function truncateAgentName(name: string): string {
+  if (name.length <= CONNECTOR_CARD_AGENT_NAME_MAX_CHARS) {
+    return name;
+  }
+  return `${name.slice(0, CONNECTOR_CARD_AGENT_NAME_MAX_CHARS - 1)}…`;
 }
 
-function ConnectorAccessAvatarButton({
+function ConnectorAccessButton({
   connectorType,
   connectorLabel,
   onClick,
@@ -570,42 +563,47 @@ function ConnectorAccessAvatarButton({
     connectorAuthorizedAgents({ connectorType }),
   );
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
-  const visibleAgents = agents.slice(0, CONNECTOR_CARD_AGENT_AVATAR_LIMIT);
   const loading = agentsLoadable.state === "loading";
+  const visibleNames = agents
+    .slice(0, CONNECTOR_CARD_AGENT_NAME_LIMIT)
+    .map((agent) => {
+      return truncateAgentName(connectorAgentName(agent));
+    });
+  const overflowCount = agents.length - visibleNames.length;
 
   return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            className="inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            aria-label={`Manage ${connectorLabel} access`}
-            onClick={onClick}
+    <button
+      type="button"
+      className="inline-flex h-7 min-w-0 shrink items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-50))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      aria-label={`Manage ${connectorLabel} access`}
+      onClick={onClick}
+    >
+      {loading ? (
+        <span className="block h-3 w-20 animate-pulse rounded bg-muted" />
+      ) : agents.length === 0 ? (
+        <span
+          className="underline decoration-dotted decoration-muted-foreground/40 underline-offset-2"
+          data-testid="connector-card-access-empty"
+        >
+          Add access
+        </span>
+      ) : (
+        <>
+          <span className="shrink-0">Used by</span>
+          <span
+            className="truncate underline decoration-dotted decoration-muted-foreground/40 underline-offset-2"
+            data-testid="connector-card-access-names"
           >
-            {loading ? (
-              <span className="block h-7 w-7 animate-pulse rounded-full bg-muted zero-border" />
-            ) : visibleAgents.length > 0 ? (
-              <span className="flex items-center -space-x-1.5">
-                {visibleAgents.map((agent) => {
-                  return <ConnectorAccessAvatar key={agent.id} agent={agent} />;
-                })}
-              </span>
-            ) : (
-              <span
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-muted/80 text-muted-foreground zero-border"
-                data-testid="connector-card-agent-avatar-placeholder"
-              >
-                <IconUsers size={15} stroke={1.7} aria-hidden="true" />
-              </span>
-            )}
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="text-xs">
-          Manage access
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+            {visibleNames.join(", ")}
+          </span>
+          {overflowCount > 0 && (
+            <span className="shrink-0 text-muted-foreground/70">
+              +{overflowCount}
+            </span>
+          )}
+        </>
+      )}
+    </button>
   );
 }
 
@@ -734,7 +732,7 @@ function GlobalConnectorCard({
         {connector.connected && (
           <div className="flex shrink-0 items-center gap-1">
             {showManageAccess && (
-              <ConnectorAccessAvatarButton
+              <ConnectorAccessButton
                 connectorType={connector.type}
                 connectorLabel={connector.label}
                 onClick={onManageAccess}
