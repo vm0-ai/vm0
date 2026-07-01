@@ -275,6 +275,29 @@ describe("firewall metadata generator", () => {
   );
 
   it(
+    "keeps Sentry permission descriptions complete at the source boundary",
+    async () => {
+      const source = await loadGeneratedConnectorFirewallSource("sentry", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const missingDescriptions = source.firewall.apis.flatMap((api) => {
+        return (api.permissions ?? [])
+          .filter((permission) => {
+            return (
+              permission.rules.length > 0 && !permission.description?.trim()
+            );
+          })
+          .map((permission) => {
+            return permission.name;
+          });
+      });
+
+      expect(missingDescriptions).toStrictEqual([]);
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
     "validates generated firewall config shape before deriving metadata",
     async () => {
       await loadGeneratedConnectorFirewallSource("github", {
