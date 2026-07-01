@@ -48,6 +48,10 @@ import {
   resetMockTelegramIntegration,
 } from "./api-integrations-telegram.ts";
 import {
+  apiIntegrationsTeamsHandlers,
+  resetMockTeamsIntegration,
+} from "./api-integrations-teams.ts";
+import {
   apiIntegrationsAgentPhoneHandlers,
   resetMockAgentPhoneIntegration,
 } from "./api-integrations-agentphone.ts";
@@ -117,6 +121,7 @@ export const handlers = [
   ...appLogsHandlers,
   ...apiIntegrationsSlackOrgHandlers,
   ...apiIntegrationsTelegramHandlers,
+  ...apiIntegrationsTeamsHandlers,
   ...apiIntegrationsAgentPhoneHandlers,
   ...apiIntegrationsGithubHandlers,
   ...apiAgentsHandlers,
@@ -145,6 +150,7 @@ export function resetAllMockHandlers(): void {
   resetMockVariables();
   resetMockSlackOrgIntegration();
   resetMockTelegramIntegration();
+  resetMockTeamsIntegration();
   resetMockAgentPhoneIntegration();
   resetMockGithubIntegration();
   resetMockUserPreferences();

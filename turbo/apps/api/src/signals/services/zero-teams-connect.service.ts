@@ -36,6 +36,14 @@ type TeamsDisconnectResult =
       readonly userId: string;
     };
 
+type TeamsUninstallResult =
+  | { readonly kind: "not_found"; readonly message: string }
+  | {
+      readonly kind: "ok";
+      readonly orgId: string;
+      readonly userIds: readonly string[];
+    };
+
 type TeamsInstallationActivityResult =
   | { readonly kind: "ignored" }
   | { readonly kind: "upserted"; readonly installation: TeamsInstallation }
@@ -89,6 +97,16 @@ function buildTeamsBrowserConnectUrl(args: {
   setOptionalParam(params, "threadId", args.threadId);
   setOptionalParam(params, "orgId", args.orgId);
   return `${env("APP_URL")}/api/zero/teams/connect?${params.toString()}`;
+}
+
+function buildTeamsInstallUrl(tenantId?: string | null): string | null {
+  const appId = env("MICROSOFT_TEAMS_BOT_APP_ID");
+  if (!appId) {
+    return null;
+  }
+  const url = new URL(`https://teams.microsoft.com/l/app/${appId}`);
+  setOptionalParam(url.searchParams, "tenantId", tenantId);
+  return url.toString();
 }
 
 export function buildTeamsConnectUrlForActivity(args: {
@@ -234,6 +252,7 @@ export function zeroTeamsConnectStatus(args: {
     readonly isInstalled: boolean;
     readonly isConnected: boolean;
     readonly isAdmin: boolean;
+    readonly installUrl?: string | null;
     readonly tenantId?: string | null;
     readonly tenantName?: string | null;
     readonly teamId?: string | null;
@@ -254,6 +273,7 @@ export function zeroTeamsConnectStatus(args: {
         isInstalled: false,
         isConnected: false,
         isAdmin: args.isAdmin,
+        installUrl: buildTeamsInstallUrl(),
       };
     }
 
@@ -284,6 +304,7 @@ export function zeroTeamsConnectStatus(args: {
       isInstalled: true,
       isConnected: Boolean(connection),
       isAdmin: args.isAdmin,
+      installUrl: buildTeamsInstallUrl(installation.teamsTenantId),
       tenantId: installation.teamsTenantId,
       tenantName: installation.teamsTenantName,
       teamId: installation.teamsTeamId,
@@ -511,6 +532,59 @@ export const disconnectTeamsConnection$ = command(
     signal.throwIfAborted();
 
     return { kind: "ok", orgId: args.orgId, userId: args.userId };
+  },
+);
+
+export const uninstallTeamsInstallation$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<TeamsUninstallResult> => {
+    const writeDb = set(writeDb$);
+    const [installation] = await writeDb
+      .select()
+      .from(teamsOrgInstallations)
+      .where(eq(teamsOrgInstallations.orgId, args.orgId))
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!installation) {
+      return { kind: "not_found", message: installationNotFoundMessage };
+    }
+
+    const connections = await writeDb
+      .select({ userId: teamsOrgConnections.vm0UserId })
+      .from(teamsOrgConnections)
+      .where(eq(teamsOrgConnections.teamsTenantId, installation.teamsTenantId));
+    signal.throwIfAborted();
+
+    await writeDb
+      .delete(teamsOrgConnections)
+      .where(eq(teamsOrgConnections.teamsTenantId, installation.teamsTenantId));
+    signal.throwIfAborted();
+
+    await writeDb
+      .delete(teamsUserAgentPreferences)
+      .where(eq(teamsUserAgentPreferences.orgId, args.orgId));
+    signal.throwIfAborted();
+
+    await writeDb
+      .delete(teamsOrgInstallations)
+      .where(
+        eq(teamsOrgInstallations.teamsTenantId, installation.teamsTenantId),
+      );
+    signal.throwIfAborted();
+
+    return {
+      kind: "ok",
+      orgId: args.orgId,
+      userIds: connections.map((connection) => {
+        return connection.userId;
+      }),
+    };
   },
 );
 

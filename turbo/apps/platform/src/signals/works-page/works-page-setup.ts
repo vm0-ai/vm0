@@ -10,6 +10,7 @@ import {
   initSlackOrg$,
   watchSlackConnection$,
 } from "../zero-page/zero-slack.ts";
+import { watchTeamsConnection$ } from "../zero-page/zero-teams.ts";
 import {
   resetAgentPhoneConnectUi$,
   setAgentPhoneConnectDialogOpen$,
@@ -44,6 +45,7 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
   detach(
     Promise.all([
       set(watchSlackConnection$, signal),
+      set(watchTeamsConnection$, signal),
       set(watchAgentPhoneConnection$, signal),
     ]),
     Reason.Entrance,
