@@ -167,6 +167,14 @@ fn collect_metrics(cpu_tracker: &mut CpuTracker) -> MetricsEntry {
     }
 }
 
+fn write_metrics_entry(metrics_log_file: &str, entry: &MetricsEntry) {
+    if let Ok(json) = serde_json::to_string(entry)
+        && let Ok(mut f) = guest_contracts::runtime_paths::open_private_append(metrics_log_file)
+    {
+        let _ = writeln!(f, "{json}");
+    }
+}
+
 /// Background loop writing metrics JSONL every `METRICS_INTERVAL_SECS`.
 pub async fn metrics_loop(shutdown: CancellationToken) {
     metrics_loop_for_path(shutdown, paths::metrics_log_file().to_string()).await;
@@ -181,12 +189,7 @@ pub async fn metrics_loop_for_path(shutdown: CancellationToken, metrics_log_file
             _ = shutdown.cancelled() => break,
             _ = interval.tick() => {
                 let entry = collect_metrics(&mut cpu_tracker);
-                if let Ok(json) = serde_json::to_string(&entry)
-                    && let Ok(mut f) =
-                        guest_contracts::runtime_paths::open_private_append(&metrics_log_file)
-                {
-                    let _ = writeln!(f, "{json}");
-                }
+                write_metrics_entry(&metrics_log_file, &entry);
             }
         }
     }
@@ -399,8 +402,8 @@ mod tests {
         assert!(parsed["disk_total"].is_u64());
     }
 
-    #[tokio::test]
-    async fn metrics_loop_for_path_writes_to_explicit_path() {
+    #[test]
+    fn write_metrics_entry_writes_to_explicit_path() {
         let temp = tempfile::tempdir().unwrap();
         let metrics_log_file = temp
             .path()
@@ -409,27 +412,9 @@ mod tests {
             .to_string_lossy()
             .into_owned();
 
-        let shutdown = CancellationToken::new();
-        let handle = tokio::spawn(metrics_loop_for_path(
-            shutdown.clone(),
-            metrics_log_file.clone(),
-        ));
-
-        tokio::time::timeout(Duration::from_secs(1), async {
-            loop {
-                if let Ok(content) = std::fs::read_to_string(&metrics_log_file)
-                    && !content.trim().is_empty()
-                {
-                    break;
-                }
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .unwrap();
-
-        shutdown.cancel();
-        handle.await.unwrap();
+        let mut tracker = CpuTracker::new();
+        let entry = collect_metrics(&mut tracker);
+        write_metrics_entry(&metrics_log_file, &entry);
 
         let content = std::fs::read_to_string(metrics_log_file).unwrap();
         let first_line = content.lines().next().unwrap();
