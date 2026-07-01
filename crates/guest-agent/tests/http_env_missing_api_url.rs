@@ -1,8 +1,11 @@
+mod common;
+
 use guest_agent::http::HttpClient;
 
 #[test]
 fn for_current_env_requires_api_url_when_api_token_is_set() {
     unsafe {
+        common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("VM0_API_TOKEN", "test-token");
         std::env::set_var("VM0_API_URL", "");
     }

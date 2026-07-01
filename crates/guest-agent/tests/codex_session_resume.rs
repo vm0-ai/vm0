@@ -12,7 +12,7 @@
 //!
 //! Each test still serialises behind a `std::sync::Mutex` because they share
 //! that single set of LazyLocks and because they touch the same on-disk
-//! session-id / history-path files (run-id-scoped under `/tmp`).
+//! session-id / history-path files.
 //!
 //! # Coverage
 //!
@@ -41,6 +41,7 @@ fn setup_env_once() {
         // body has read `guest_agent::env::*`. No other thread is
         // touching the env at this point.
         unsafe {
+            common::clear_guest_agent_bootstrap_env_for_test();
             std::env::set_var("CLI_AGENT_TYPE", "codex");
             // Empty API token → `send_event` skips the HTTP POST after
             // running session-id extraction (which is the part we want
@@ -51,9 +52,9 @@ fn setup_env_once() {
             std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
             std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
             std::env::set_var("VM0_PROMPT", "test prompt");
-            // `home_dir` is loaded eagerly via `expect`. The marker
-            // payload embeds it, so set a stable dummy.
-            std::env::set_var("HOME", "/tmp/codex-resume-home");
+            // `home_dir` is loaded eagerly via `expect`. Keep it stable within
+            // this process while avoiding cross-runner and stale /tmp collisions.
+            std::env::set_var("HOME", common::unique_temp_path("codex-resume-home"));
         }
     });
 }
@@ -86,6 +87,34 @@ fn send_event_for_test(
 fn reset_session_files() {
     let _ = std::fs::remove_file(guest_agent::paths::session_id_file());
     let _ = std::fs::remove_file(guest_agent::paths::session_history_path_file());
+}
+
+struct CodexResumeFilesGuard;
+
+impl CodexResumeFilesGuard {
+    fn new() -> Self {
+        cleanup_codex_resume_files();
+        Self
+    }
+}
+
+impl Drop for CodexResumeFilesGuard {
+    fn drop(&mut self) {
+        cleanup_codex_resume_files();
+    }
+}
+
+fn cleanup_codex_resume_files() {
+    reset_session_files();
+    let home = Path::new(guest_agent::env::home_dir());
+    let is_test_home = home
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.starts_with("codex-resume-home-"))
+        .unwrap_or(false);
+    if is_test_home && home.starts_with(std::env::temp_dir()) {
+        let _ = std::fs::remove_dir_all(home);
+    }
 }
 
 fn write_codex_session_file(thread_id: &str, history: &str) -> Result<(), String> {
@@ -122,7 +151,7 @@ fn checkpoint_http_client(
 fn send_event_extracts_codex_thread_id_and_writes_marker() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
-    reset_session_files();
+    let _files_guard = CodexResumeFilesGuard::new();
     let tmp = tempfile::tempdir().unwrap();
     let system_log_path = tmp.path().join("system.log");
     let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
@@ -185,7 +214,7 @@ fn send_event_extracts_codex_thread_id_and_writes_marker() {
 fn send_event_canonicalizes_codex_thread_id_before_writing_marker() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
-    reset_session_files();
+    let _files_guard = CodexResumeFilesGuard::new();
 
     let masker = SecretMasker::from_raw("");
     let event = json!({
@@ -216,6 +245,7 @@ fn send_event_canonicalizes_codex_thread_id_before_writing_marker() {
 fn send_event_seeds_existing_codex_thread_id_without_repairing_history_marker() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
+    let _files_guard = CodexResumeFilesGuard::new();
 
     let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
     for seed_empty_marker in [false, true] {
@@ -258,10 +288,10 @@ fn send_event_seeds_existing_codex_thread_id_without_repairing_history_marker() 
 }
 
 #[test]
-fn recovery_checkpoint_derives_missing_codex_history_marker() {
+fn legacy_recovery_checkpoint_derives_missing_codex_history_marker() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
-    reset_session_files();
+    let _files_guard = CodexResumeFilesGuard::new();
 
     let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
     let history = r#"{"type":"thread.started"}"#.to_string() + "\n";
@@ -312,7 +342,7 @@ fn recovery_checkpoint_derives_missing_codex_history_marker() {
 fn send_event_codex_ignores_non_thread_started_event() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
-    reset_session_files();
+    let _files_guard = CodexResumeFilesGuard::new();
 
     let masker = SecretMasker::from_raw("");
     let event = json!({"type": "turn.completed"});
@@ -329,7 +359,7 @@ fn send_event_codex_ignores_non_thread_started_event() {
 fn send_event_codex_ignores_empty_thread_id() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
-    reset_session_files();
+    let _files_guard = CodexResumeFilesGuard::new();
 
     let masker = SecretMasker::from_raw("");
     let event = json!({"type": "thread.started", "thread_id": ""});
@@ -346,6 +376,7 @@ fn send_event_codex_ignores_empty_thread_id() {
 fn send_event_codex_ignores_malformed_thread_id() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
+    let _files_guard = CodexResumeFilesGuard::new();
 
     for thread_id in [
         "abc",

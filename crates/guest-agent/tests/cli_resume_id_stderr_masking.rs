@@ -1,11 +1,10 @@
 //! Resume session IDs must be masked even when the CLI fails before emitting JSONL.
 //!
-//! This test lives in its own binary because `guest_agent::env` caches values
-//! in process-wide `LazyLock`s.
+//! This test lives in its own binary to isolate process env, working directory,
+//! and guest runtime path overrides used during setup.
 
 mod common;
 
-use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use std::time::Duration;
 
@@ -26,14 +25,12 @@ async fn cli_failure_masks_resume_session_id_in_stderr() -> Result<(), Box<dyn s
         std::env::set_var("VM0_RESUME_SESSION_ID", resume_id);
     }
 
+    let runtime = common::guest_runtime_from_process_env()?;
+
     let masker = SecretMasker::from_raw("");
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
-        guest_agent::cli::execute_cli(
-            &masker,
-            common::spawn_dummy_heartbeat(),
-            HttpClient::for_current_env()?,
-        ),
+        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
     )
     .await
     .expect("execute_cli should return promptly")?;

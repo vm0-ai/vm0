@@ -1,8 +1,8 @@
 //! The guest-agent process receives the process-control bootstrap endpoint, but
 //! the child CLI must not inherit it.
 //!
-//! This test lives in its own binary because `guest_agent::env` caches
-//! environment values in process-wide `LazyLock`s.
+//! This test lives in its own binary to isolate process env, working directory,
+//! and guest runtime path overrides used during setup.
 
 mod common;
 
@@ -27,16 +27,14 @@ async fn process_control_endpoint_is_not_inherited_by_cli_child()
         );
     }
 
+    let runtime = common::guest_runtime_from_process_env()?;
+
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();
 
     let result = tokio::time::timeout(
         Duration::from_secs(15),
-        guest_agent::cli::execute_cli(
-            &masker,
-            heartbeat,
-            guest_agent::http::HttpClient::new().unwrap(),
-        ),
+        common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
     )
     .await
     .expect("execute_cli did not return within 15s");

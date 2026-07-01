@@ -1,12 +1,11 @@
 //! Heartbeat race coverage for the experimental Codex app-server backend.
 //!
-//! This test lives in its own binary because `guest_agent::env` caches values
-//! in process-wide `LazyLock`s.
+//! This test lives in its own binary to isolate process env, working directory,
+//! and guest runtime path overrides used during setup.
 
 mod common;
 
 use guest_agent::error::AgentError;
-use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -29,8 +28,9 @@ async fn codex_app_server_backend_heartbeat_interrupts_hung_turn_start()
             },
         )?;
     }
-    let _run_files = common::RunFilesGuard::new();
-    let session_id_path = PathBuf::from(guest_agent::paths::session_id_file());
+    let runtime = common::guest_runtime_from_process_env()?;
+    let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
+    let session_id_path = PathBuf::from(runtime.paths.session_id_file());
     if let Some(parent) = session_id_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -48,7 +48,7 @@ async fn codex_app_server_backend_heartbeat_interrupts_hung_turn_start()
     let masker = SecretMasker::from_raw("");
     let result = tokio::time::timeout(
         Duration::from_millis(1500),
-        guest_agent::cli::execute_cli(&masker, heartbeat, HttpClient::for_current_env()?),
+        common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
     )
     .await
     .expect("execute_cli should return promptly");

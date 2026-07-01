@@ -1,7 +1,7 @@
 //! CLI setup should fail before spawning the agent when local log setup fails.
 //!
-//! This test lives in its own binary because `guest_agent::env` and
-//! `guest_agent::paths` cache values in process-wide `LazyLock`s.
+//! This test lives in its own binary to isolate process env, working directory,
+//! and guest runtime path overrides used during setup.
 
 mod common;
 
@@ -20,6 +20,7 @@ async fn agent_log_open_failure_happens_before_cli_spawn() -> Result<(), Box<dyn
     std::fs::write(&log_parent, b"not a directory")?;
 
     unsafe {
+        common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("VM0_RUN_ID", &run_id);
         std::env::set_var(
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
@@ -38,16 +39,14 @@ async fn agent_log_open_failure_happens_before_cli_spawn() -> Result<(), Box<dyn
     }
     common::ensure_canonical_workspace_for_test()?;
 
+    let runtime = common::guest_runtime_from_process_env()?;
+
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_heartbeat_monitor(async { Ok::<(), AgentError>(()) });
 
     let result = tokio::time::timeout(
         Duration::from_secs(1),
-        guest_agent::cli::execute_cli(
-            &masker,
-            heartbeat,
-            guest_agent::http::HttpClient::for_current_env()?,
-        ),
+        common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
     )
     .await
     .expect("log setup failure should return promptly");

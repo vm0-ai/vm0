@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.201.0](https://github.com/vm0-ai/vm0/compare/api-v1.200.0...api-v1.201.0) (2026-07-01)
+
+
+### Features
+
+* gate MiniMax Codex framework routing ([#19616](https://github.com/vm0-ai/vm0/issues/19616)) ([ed9b1de](https://github.com/vm0-ai/vm0/commit/ed9b1dea4c8b95ed78074f6fa2f9197dded9cdbc))
+* support scoped workflow name refs ([#19655](https://github.com/vm0-ai/vm0/issues/19655)) ([7018ee0](https://github.com/vm0-ai/vm0/commit/7018ee0446da472fb5b10370951513f189f52535))
+* update new org default models ([#19606](https://github.com/vm0-ai/vm0/issues/19606)) ([9fdc5db](https://github.com/vm0-ai/vm0/commit/9fdc5db1ab9dc77b6e20d731f84ddd5f226d48ac))
+
+
+### Bug Fixes
+
+* apply sandbox io limiters from host capacity ([#19668](https://github.com/vm0-ai/vm0/issues/19668)) ([8baa893](https://github.com/vm0-ai/vm0/commit/8baa893dbbae076adbde5e31f467103a0c06179e))
+
+
+### Performance Improvements
+
+* reduce artifact storage manifest presigning ([#19650](https://github.com/vm0-ai/vm0/issues/19650)) ([0672271](https://github.com/vm0-ai/vm0/commit/0672271c090e1a5431ac762c566328125958a218))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.137.0
+    * @vm0/connectors bumped to 1.121.0
+    * @vm0/core bumped to 8.382.0
+    * @vm0/db bumped to 1.82.0
+
 ## [1.200.0](https://github.com/vm0-ai/vm0/compare/api-v1.199.2...api-v1.200.0) (2026-07-01)
 
 

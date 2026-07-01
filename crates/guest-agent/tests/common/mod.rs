@@ -2,13 +2,11 @@
 //!
 //! # Why separate test binaries instead of cases in one
 //!
-//! `guest_agent::env` caches all `VM0_*` values in process-wide
-//! `LazyLock`s on first read. Consolidating scenarios with different
-//! prompts or grace windows into one `#[tokio::test]` binary would
-//! require each test to see its own `VM0_PROMPT`, which is impossible
-//! once the `LazyLock` is initialised. Splitting into separate binaries
-//! gives each one a fresh process + fresh LazyLock state, paid for by
-//! a small cargo build-cache hit (idempotent).
+//! Many CLI tests mutate process env, current directory, and guest runtime path
+//! overrides as setup input. Consolidating scenarios with different prompts or
+//! grace windows into one `#[tokio::test]` binary would make those process-wide
+//! side effects race. Splitting into separate binaries gives each scenario a
+//! fresh process, paid for by a small cargo build-cache hit (idempotent).
 //!
 //! # Error handling
 //!
@@ -26,13 +24,18 @@ use serde_json::{Value, json};
 use std::io;
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicU64, Ordering},
+};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 pub type SystemLogOverrideGuard = system_log::SystemLogOverrideGuard;
+
+static UNIQUE_TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// 128 + SIGTERM(15). Rust / glibc's default signal handler maps a
 /// SIGTERM-terminated process to this exit code.
@@ -55,6 +58,18 @@ pub const CLI_STDERR_RESULT_MAX_LINE_BYTES: usize = 16 * 1024;
 /// Documented replacement for a stderr line that exceeds the diagnostic limit.
 pub const CLI_STDERR_OMITTED_LONG_LINE: &str =
     "[stderr line omitted: exceeded diagnostic size limit]";
+
+pub fn unique_temp_path(prefix: &str) -> PathBuf {
+    let timestamp_nanos = match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => duration.as_nanos(),
+        Err(error) => error.duration().as_nanos(),
+    };
+    let counter = UNIQUE_TEMP_PATH_COUNTER.fetch_add(1, Ordering::SeqCst);
+    std::env::temp_dir().join(format!(
+        "{prefix}-{}-{timestamp_nanos}-{counter}",
+        std::process::id()
+    ))
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecordedRequest {
@@ -179,35 +194,34 @@ impl Drop for RecordingServer {
 
 #[derive(Debug)]
 pub struct RunFilesGuard {
-    ops_file: String,
+    paths: guest_agent::paths::GuestPaths,
 }
 
 impl RunFilesGuard {
-    pub fn new() -> Self {
-        let ops_file = guest_common::telemetry::sandbox_ops_log().to_string();
-        cleanup_run_files(&ops_file);
-        Self { ops_file }
+    pub fn new_for_paths(paths: &guest_agent::paths::GuestPaths) -> Self {
+        cleanup_run_files_for_paths(paths);
+        Self {
+            paths: paths.clone(),
+        }
     }
-}
 
-impl Default for RunFilesGuard {
-    fn default() -> Self {
-        Self::new()
+    pub fn sandbox_ops_file(&self) -> &str {
+        self.paths.sandbox_ops_file()
     }
 }
 
 impl Drop for RunFilesGuard {
     fn drop(&mut self) {
-        cleanup_run_files(&self.ops_file);
+        cleanup_run_files_for_paths(&self.paths);
     }
 }
 
-fn cleanup_run_files(ops_file: &str) {
-    let _ = std::fs::remove_file(guest_agent::paths::agent_log_file());
-    let _ = std::fs::remove_file(guest_agent::paths::event_error_flag());
-    let _ = std::fs::remove_file(guest_agent::paths::session_id_file());
-    let _ = std::fs::remove_file(guest_agent::paths::session_history_path_file());
-    let _ = std::fs::remove_file(ops_file);
+fn cleanup_run_files_for_paths(paths: &guest_agent::paths::GuestPaths) {
+    let _ = std::fs::remove_file(paths.agent_log_file());
+    let _ = std::fs::remove_file(paths.event_error_flag());
+    let _ = std::fs::remove_file(paths.session_id_file());
+    let _ = std::fs::remove_file(paths.session_history_path_file());
+    let _ = std::fs::remove_file(paths.sandbox_ops_file());
 }
 
 async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Result<RecordedRequest, String> {
@@ -445,10 +459,56 @@ pub struct CodexAppServerEnvConfig<'a> {
     pub resume_session_id: Option<&'a str>,
 }
 
+/// Clear runner/bootstrap environment that could be inherited from a parent
+/// runner process. Test setup helpers then write the exact env snapshot they
+/// want `GuestRuntime::from_process_env` to capture.
+///
+/// # Safety
+/// Call before any other test thread reads process environment.
+pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
+    for key in [
+        guest_contracts::env::API_URL_ENV,
+        guest_contracts::env::RUN_ID_ENV,
+        guest_contracts::env::API_TOKEN_ENV,
+        guest_contracts::env::SANDBOX_ID_ENV,
+        guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+        guest_contracts::env::PROMPT_ENV,
+        guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
+        guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
+        guest_contracts::env::RESUME_SESSION_ID_ENV,
+        guest_contracts::env::API_START_TIME_ENV,
+        guest_contracts::env::SECRET_VALUES_ENV,
+        guest_contracts::env::DISALLOWED_TOOLS_ENV,
+        guest_contracts::env::TOOLS_ENV,
+        guest_contracts::env::SETTINGS_ENV,
+        guest_contracts::env::CLI_AGENT_TYPE_ENV,
+        guest_contracts::env::USER_ENV_FILE_ENV,
+        guest_contracts::env::ARTIFACTS_ENV,
+        guest_contracts::env::FEATURE_FLAGS_ENV,
+        guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
+        guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+        guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
+        guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+        guest_contracts::env::USE_MOCK_CLAUDE_ENV,
+        guest_contracts::env::USE_MOCK_CODEX_ENV,
+        guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV,
+        guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
+        guest_contracts::env::MOCK_CODEX_PATH_ENV,
+        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        process_control_ipc::BOOTSTRAP_ENV,
+        "MOCK_CODEX_FIXTURE",
+        "MOCK_CODEX_APP_SERVER_SCENARIO",
+    ] {
+        unsafe {
+            std::env::remove_var(key);
+        }
+    }
+}
+
 /// Configure one test binary for the experimental Codex app-server backend.
 ///
-/// Must be called before any `guest_agent::env::*` accessor because those
-/// values are cached in process-wide `LazyLock`s.
+/// Must be called before building a `GuestRuntime` or using legacy env accessors
+/// because those APIs capture process env at initialization time.
 ///
 /// # Safety
 /// Callers must use this from a single-test integration binary before any other
@@ -459,11 +519,11 @@ pub unsafe fn setup_codex_app_server_env(
     config: CodexAppServerEnvConfig<'_>,
 ) -> Result<(), String> {
     unsafe {
+        clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("CLI_AGENT_TYPE", "codex");
         std::env::set_var("VM0_CODEX_APP_SERVER_BACKEND", "1");
         std::env::set_var("VM0_MOCK_CODEX_PATH", mock_path);
         std::env::set_var("USE_MOCK_CODEX", "true");
-        std::env::remove_var("MOCK_CODEX_FIXTURE");
         if let Some(scenario) = config.scenario {
             std::env::set_var("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
         } else {
@@ -495,10 +555,16 @@ pub fn active_input_payload(text: &str) -> Result<Vec<u8>, serde_json::Error> {
     }))
 }
 
-pub fn read_codex_session_history_events() -> Result<Vec<Value>, Box<dyn std::error::Error>> {
-    let history = guest_agent::session_history::read_session_history(
-        guest_agent::paths::session_history_path_file(),
-    )?;
+pub fn read_codex_session_history_events_for_paths(
+    paths: &guest_agent::paths::GuestPaths,
+) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+    read_codex_session_history_events_for_path(paths.session_history_path_file())
+}
+
+fn read_codex_session_history_events_for_path(
+    session_history_path_file: &str,
+) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+    let history = guest_agent::session_history::read_session_history(session_history_path_file)?;
     let history = String::from_utf8(history)?;
     history
         .lines()
@@ -506,9 +572,9 @@ pub fn read_codex_session_history_events() -> Result<Vec<Value>, Box<dyn std::er
         .collect()
 }
 
-/// Configure the process environment for a reap test. Must be called
-/// BEFORE any `guest_agent::env::*` accessor — the library's LazyLocks
-/// capture these values on first read.
+/// Configure the process environment for a reap test. Must be called before
+/// building a `GuestRuntime` or using legacy env accessors because those APIs
+/// capture process env at initialization time.
 ///
 /// `prompt` decides which mock-claude test prefix runs:
 /// - `@hang-after-result` → SIGTERM path
@@ -535,7 +601,7 @@ pub fn read_codex_session_history_events() -> Result<Vec<Value>, Box<dyn std::er
 /// - Mutates the process-wide working directory (`set_current_dir`).
 ///
 /// Call AT MOST ONCE per test binary; calling from multiple `#[test]`s
-/// in the same binary races on CWD and on `LazyLock` capture order.
+/// in the same binary races on CWD and runtime capture order.
 ///
 /// SAFETY: callers run in a single-test test binary, so no other thread
 /// is reading the process env concurrently.
@@ -547,6 +613,7 @@ pub unsafe fn setup_env(
     sigkill_grace_secs: u64,
 ) -> Result<(), String> {
     unsafe {
+        clear_guest_agent_bootstrap_env_for_test();
         // Route the CLI binary resolution to the cargo-built mock.
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
         std::env::set_var("VM0_MOCK_CLAUDE_PATH", mock_path);
@@ -612,6 +679,46 @@ where
 /// code path entirely.
 pub fn spawn_dummy_heartbeat() -> guest_agent::cli::HeartbeatMonitor {
     None
+}
+
+pub fn guest_runtime_from_process_env() -> Result<guest_agent::run_context::GuestRuntime, String> {
+    guest_agent::run_context::GuestRuntime::from_process_env()
+}
+
+pub async fn execute_cli_for_runtime(
+    runtime: &guest_agent::run_context::GuestRuntime,
+    masker: &guest_agent::masker::SecretMasker,
+    heartbeat: guest_agent::cli::HeartbeatMonitor,
+) -> Result<guest_agent::cli::CliExecutionResult, guest_agent::error::AgentError> {
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
+        &runtime.config.run_id,
+        false,
+        &runtime.config.prompt,
+    );
+    execute_cli_with_active_input_for_runtime(
+        runtime,
+        masker,
+        heartbeat,
+        active_input.into_writer(),
+    )
+    .await
+}
+
+pub async fn execute_cli_with_active_input_for_runtime(
+    runtime: &guest_agent::run_context::GuestRuntime,
+    masker: &guest_agent::masker::SecretMasker,
+    heartbeat: guest_agent::cli::HeartbeatMonitor,
+    active_input: guest_agent::active_input::ActiveInputWriter,
+) -> Result<guest_agent::cli::CliExecutionResult, guest_agent::error::AgentError> {
+    guest_agent::cli::execute_cli_with_active_input_for_config(
+        masker,
+        heartbeat,
+        runtime.http.clone(),
+        active_input,
+        &runtime.config,
+        &runtime.paths,
+    )
+    .await
 }
 
 pub async fn wait_for_path(path: &Path, timeout: Duration) -> io::Result<()> {

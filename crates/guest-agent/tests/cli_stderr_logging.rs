@@ -1,12 +1,11 @@
 //! CLI stderr logging must preserve diagnostics without leaking secrets.
 //!
-//! This test lives in its own binary because `guest_agent::env` and
-//! `guest_agent::paths` cache values in process-wide `LazyLock`s.
+//! This test lives in its own binary to isolate process env, working directory,
+//! and guest runtime path overrides used during setup.
 
 mod common;
 
 use base64::Engine;
-use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use std::time::Duration;
 
@@ -78,6 +77,8 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
         common::setup_env(&mock, tmp.path(), &format!("@fail:{stderr_payload}"), 3, 1)?;
     }
 
+    let runtime = common::guest_runtime_from_process_env()?;
+
     let engine = base64::engine::general_purpose::STANDARD;
     let encoded_secret = engine.encode(secret);
     let encoded_multiline_secret = engine.encode(multiline_secret);
@@ -87,11 +88,7 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     ));
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
-        guest_agent::cli::execute_cli(
-            &masker,
-            common::spawn_dummy_heartbeat(),
-            HttpClient::for_current_env()?,
-        ),
+        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
     )
     .await
     .expect("execute_cli should return promptly")?;

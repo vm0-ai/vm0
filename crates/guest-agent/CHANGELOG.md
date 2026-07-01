@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.6...guest-agent-v0.44.0) (2026-07-01)
+
+
+### Features
+
+* gate MiniMax Codex framework routing ([#19616](https://github.com/vm0-ai/vm0/issues/19616)) ([ed9b1de](https://github.com/vm0-ai/vm0/commit/ed9b1dea4c8b95ed78074f6fa2f9197dded9cdbc))
+
 ## [0.43.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.5...guest-agent-v0.43.6) (2026-07-01)
 
 

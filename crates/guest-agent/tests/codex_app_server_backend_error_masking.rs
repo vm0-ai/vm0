@@ -1,11 +1,10 @@
 //! Error masking coverage for the experimental Codex app-server backend.
 //!
-//! This test lives in its own binary because `guest_agent::env` caches values
-//! in process-wide `LazyLock`s.
+//! This test lives in its own binary to isolate process env, working directory,
+//! and guest runtime path overrides used during setup.
 
 mod common;
 
-use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use std::time::Duration;
 
@@ -29,16 +28,13 @@ async fn codex_app_server_backend_masks_resume_id_in_rpc_errors()
             },
         )?;
     }
-    let _run_files = common::RunFilesGuard::new();
+    let runtime = common::guest_runtime_from_process_env()?;
+    let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
 
     let masker = SecretMasker::from_raw("");
     let result = tokio::time::timeout(
         Duration::from_secs(5),
-        guest_agent::cli::execute_cli(
-            &masker,
-            common::spawn_dummy_heartbeat(),
-            HttpClient::for_current_env()?,
-        ),
+        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
     )
     .await
     .expect("execute_cli should return promptly");

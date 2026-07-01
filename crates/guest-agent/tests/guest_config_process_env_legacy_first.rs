@@ -3,6 +3,8 @@
 //! This test lives in its own binary because `guest_agent::env` caches
 //! environment values in process-wide `LazyLock`s.
 
+mod common;
+
 #[test]
 fn legacy_accessors_and_process_env_config_share_user_env_load() {
     let tmp = tempfile::tempdir().unwrap();
@@ -17,6 +19,7 @@ fn legacy_accessors_and_process_env_config_share_user_env_load() {
     .unwrap();
 
     unsafe {
+        common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var(
             guest_contracts::env::RUN_ID_ENV,
             "guest-config-legacy-first",
