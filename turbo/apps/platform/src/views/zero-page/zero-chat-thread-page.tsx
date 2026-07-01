@@ -3901,6 +3901,16 @@ function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   );
 }
 
+function isThinkingOnlyAssistantMessage(message: EnrichedChatMessage): boolean {
+  return (
+    message.role === "assistant" &&
+    message.content === null &&
+    message.error === undefined &&
+    typeof message.thinking === "string" &&
+    message.thinking.trim().length > 0
+  );
+}
+
 type ThinkingIndicatorMarkerMessage = EnrichedChatMessage & {
   readonly role: "assistant";
   readonly content: null;
@@ -4004,7 +4014,9 @@ function buildCompletedWorkFolding(
     const precedingMessages =
       finalMessageIndex > 0 ? runMessages.slice(0, finalMessageIndex) : [];
     const hiddenMessages = precedingMessages.filter((message) => {
-      return message.role !== "user";
+      return (
+        message.role !== "user" && !isThinkingOnlyAssistantMessage(message)
+      );
     });
     const trailingMessages =
       finalMessageIndex >= 0 ? runMessages.slice(finalMessageIndex + 1) : [];

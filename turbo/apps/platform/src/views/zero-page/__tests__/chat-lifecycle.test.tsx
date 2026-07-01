@@ -2341,6 +2341,48 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("does not fold a completed run when the only prior assistant message is thinking", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-work-folding-thinking-only",
+      chatMessages: [
+        {
+          role: "user",
+          content: "Summarize the launch status",
+          runId: "run-work-folding-thinking-only",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: null,
+          thinking: "Reviewing launch context",
+          runId: "run-work-folding-thinking-only",
+          createdAt: "2026-06-09T10:00:05Z",
+        },
+        {
+          role: "assistant",
+          content: "Launch status is ready.",
+          runId: "run-work-folding-thinking-only",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:05Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-work-folding-thinking-only",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Summarize the launch status"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Launch status is ready.")).toBeInTheDocument();
+      expect(screen.queryByText("Worked for 5s")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Expand work history")).toBeNull();
+    });
+  });
+
   it("does not fold a completed run with a single message", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-single-message",
