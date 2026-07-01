@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://api.box.com",
       "permissions": [
         {
-          "description": "Read current user and user profile information.",
           "name": "users",
           "rules": [
             "GET /2.0/users/me",
@@ -22,7 +21,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read and manage folders and folder items.",
           "name": "folders",
           "rules": [
             "GET /2.0/folders/{folder-id}",
@@ -33,7 +31,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read and manage files, content, versions, and metadata.",
           "name": "files",
           "rules": [
             "GET /2.0/files/{file-id}",
@@ -45,7 +42,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read and manage collaborations, comments, tasks, and links.",
           "name": "collaboration",
           "rules": [
             "GET /2.0/collaborations/{collaboration-id}",
@@ -60,7 +56,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Search Box content and read event streams.",
           "name": "search-events",
           "rules": [
             "GET /2.0/search",
@@ -68,7 +63,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read and manage Box webhooks.",
           "name": "webhooks",
           "rules": [
             "GET /2.0/webhooks",
@@ -89,7 +83,6 @@ JSON_PART = r"""{
       "base": "https://upload.box.com",
       "permissions": [
         {
-          "description": "Upload file content and new file versions.",
           "name": "uploads",
           "rules": [
             "POST /api/2.0/files/content",

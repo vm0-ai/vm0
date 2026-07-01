@@ -14,14 +14,12 @@ JSON_PART = r"""{
       "base": "https://www.googleapis.com/calendar",
       "permissions": [
         {
-          "description": "Delete Google Calendar sharing ACL rules.",
           "name": "acl.delete",
           "rules": [
             "DELETE /v3/calendars/{calendarId}/acl/{ruleId}"
           ]
         },
         {
-          "description": "Read Google Calendar sharing ACL rules.",
           "name": "acl.read",
           "rules": [
             "GET /v3/calendars/{calendarId}/acl",
@@ -29,7 +27,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create and update Google Calendar sharing ACL rules.",
           "name": "acl.write",
           "rules": [
             "POST /v3/calendars/{calendarId}/acl",
@@ -38,14 +35,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Remove calendars from the user's calendar list.",
           "name": "calendar-list.delete",
           "rules": [
             "DELETE /v3/users/me/calendarList/{calendarId}"
           ]
         },
         {
-          "description": "Read the user's subscribed calendar list.",
           "name": "calendar-list.read",
           "rules": [
             "GET /v3/users/me/calendarList",
@@ -53,7 +48,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Add and update calendars in the user's calendar list.",
           "name": "calendar-list.write",
           "rules": [
             "POST /v3/users/me/calendarList",
@@ -62,28 +56,24 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Clear all events from a Google calendar.",
           "name": "calendars.clear",
           "rules": [
             "POST /v3/calendars/{calendarId}/clear"
           ]
         },
         {
-          "description": "Delete Google calendars.",
           "name": "calendars.delete",
           "rules": [
             "DELETE /v3/calendars/{calendarId}"
           ]
         },
         {
-          "description": "Read Google Calendar metadata.",
           "name": "calendars.read",
           "rules": [
             "GET /v3/calendars/{calendarId}"
           ]
         },
         {
-          "description": "Create and update secondary Google calendars.",
           "name": "calendars.write",
           "rules": [
             "POST /v3/calendars",
@@ -92,21 +82,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Google Calendar color definitions.",
           "name": "colors.read",
           "rules": [
             "GET /v3/colors"
           ]
         },
         {
-          "description": "Delete Google Calendar events.",
           "name": "events.delete",
           "rules": [
             "DELETE /v3/calendars/{calendarId}/events/{eventId}"
           ]
         },
         {
-          "description": "Read Google Calendar events and recurring instances.",
           "name": "events.read",
           "rules": [
             "GET /v3/calendars/{calendarId}/events",
@@ -115,7 +102,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create, update, import, quick-add, and move events.",
           "name": "events.write",
           "rules": [
             "POST /v3/calendars/{calendarId}/events",
@@ -127,14 +113,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Query free/busy availability for calendars.",
           "name": "freebusy.query",
           "rules": [
             "POST /v3/freeBusy"
           ]
         },
         {
-          "description": "Create and stop Google Calendar notification channels.",
           "name": "notifications.write",
           "rules": [
             "POST /v3/calendars/{calendarId}/acl/watch",
@@ -145,7 +129,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read the user's Google Calendar settings.",
           "name": "settings.read",
           "rules": [
             "GET /v3/users/me/settings",

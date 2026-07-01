@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://quickbooks.api.intuit.com/v3/company/${{ vars.QUICKBOOKS_REALM_ID }}",
       "permissions": [
         {
-          "description": "Read QuickBooks company information.",
           "name": "company-info",
           "rules": [
             "GET /companyinfo/{company-id}",
@@ -22,7 +21,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Run QuickBooks Online SQL-like entity queries.",
           "name": "query",
           "rules": [
             "GET /query",
@@ -30,7 +28,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read and manage customers.",
           "name": "customers",
           "rules": [
             "GET /customer/{customer-id}",
@@ -39,7 +36,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read and manage vendors.",
           "name": "vendors",
           "rules": [
             "GET /vendor/{vendor-id}",
@@ -48,7 +44,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read and manage products and services.",
           "name": "items",
           "rules": [
             "GET /item/{item-id}",
@@ -57,7 +52,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read and manage invoices and invoice payments.",
           "name": "invoices",
           "rules": [
             "GET /invoice/{invoice-id}",
@@ -69,7 +63,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read and manage bills and bill payments.",
           "name": "bills",
           "rules": [
             "GET /bill/{bill-id}",
@@ -81,7 +74,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read and manage chart-of-accounts entities.",
           "name": "accounts",
           "rules": [
             "GET /account/{account-id}",
@@ -90,14 +82,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read QuickBooks reports.",
           "name": "reports",
           "rules": [
             "GET /reports/{report-name}"
           ]
         },
         {
-          "description": "Use batch and change-data-capture endpoints.",
           "name": "batch-cdc",
           "rules": [
             "POST /batch",
@@ -105,7 +95,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read and upload attachable metadata and files.",
           "name": "attachments",
           "rules": [
             "GET /attachable/{attachable-id}",

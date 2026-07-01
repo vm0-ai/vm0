@@ -3,267 +3,7 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/firewalls-generator generate
 # ruff: noqa
 
-JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http_version",
-            "GET /v4/radar/attacks/layer7/timeseries_groups/industry",
-            "GET /v4/radar/attacks/layer7/timeseries_groups/ip_version",
-            "GET /v4/radar/attacks/layer7/timeseries_groups/managed_rules",
-            "GET /v4/radar/attacks/layer7/timeseries_groups/mitigation_product",
-            "GET /v4/radar/attacks/layer7/timeseries_groups/vertical",
-            "GET /v4/radar/attacks/layer7/timeseries_groups/{dimension}",
-            "GET /v4/radar/attacks/layer7/top/ases/origin",
-            "GET /v4/radar/attacks/layer7/top/attacks",
-            "GET /v4/radar/attacks/layer7/top/industry",
-            "GET /v4/radar/attacks/layer7/top/locations/origin",
-            "GET /v4/radar/attacks/layer7/top/locations/target",
-            "GET /v4/radar/attacks/layer7/top/vertical",
-            "GET /v4/radar/bgp/hijacks/events",
-            "GET /v4/radar/bgp/ips/timeseries",
-            "GET /v4/radar/bgp/ips/top/ases",
-            "GET /v4/radar/bgp/leaks/events",
-            "GET /v4/radar/bgp/routes/ases",
-            "GET /v4/radar/bgp/routes/moas",
-            "GET /v4/radar/bgp/routes/pfx2as",
-            "GET /v4/radar/bgp/routes/realtime",
-            "GET /v4/radar/bgp/routes/stats",
-            "GET /v4/radar/bgp/rpki/aspa/changes",
-            "GET /v4/radar/bgp/rpki/aspa/snapshot",
-            "GET /v4/radar/bgp/rpki/aspa/timeseries",
-            "GET /v4/radar/bgp/rpki/roas/timeseries",
-            "GET /v4/radar/bgp/timeseries",
-            "GET /v4/radar/bgp/top/ases",
-            "GET /v4/radar/bgp/top/ases/prefixes",
-            "GET /v4/radar/bgp/top/prefixes",
-            "GET /v4/radar/bots",
-            "GET /v4/radar/bots/crawlers/summary/{dimension}",
-            "GET /v4/radar/bots/crawlers/timeseries_groups/{dimension}",
-            "GET /v4/radar/bots/summary/{dimension}",
-            "GET /v4/radar/bots/timeseries",
-            "GET /v4/radar/bots/timeseries_groups/{dimension}",
-            "GET /v4/radar/bots/{bot_slug}",
-            "GET /v4/radar/ct/authorities",
-            "GET /v4/radar/ct/authorities/{ca_slug}",
-            "GET /v4/radar/ct/logs",
-            "GET /v4/radar/ct/logs/{log_slug}",
-            "GET /v4/radar/ct/summary/{dimension}",
-            "GET /v4/radar/ct/timeseries",
-            "GET /v4/radar/ct/timeseries_groups/{dimension}",
-            "GET /v4/radar/datasets",
-            "POST /v4/radar/datasets/download",
-            "GET /v4/radar/datasets/{alias}",
-            "GET /v4/radar/dns/summary/cache_hit",
-            "GET /v4/radar/dns/summary/dnssec",
-            "GET /v4/radar/dns/summary/dnssec_aware",
-            "GET /v4/radar/dns/summary/dnssec_e2e",
-            "GET /v4/radar/dns/summary/ip_version",
-            "GET /v4/radar/dns/summary/matching_answer",
-            "GET /v4/radar/dns/summary/protocol",
-            "GET /v4/radar/dns/summary/query_type",
-            "GET /v4/radar/dns/summary/response_code",
-            "GET /v4/radar/dns/summary/response_ttl",
-            "GET /v4/radar/dns/summary/{dimension}",
-            "GET /v4/radar/dns/timeseries",
-            "GET /v4/radar/dns/timeseries_groups/cache_hit",
-            "GET /v4/radar/dns/timeseries_groups/dnssec",
-            "GET /v4/radar/dns/timeseries_groups/dnssec_aware",
-            "GET /v4/radar/dns/timeseries_groups/dnssec_e2e",
-            "GET /v4/radar/dns/timeseries_groups/ip_version",
-            "GET /v4/radar/dns/timeseries_groups/matching_answer",
-            "GET /v4/radar/dns/timeseries_groups/protocol",
-            "GET /v4/radar/dns/timeseries_groups/query_type",
-            "GET /v4/radar/dns/timeseries_groups/response_code",
-            "GET /v4/radar/dns/timeseries_groups/response_ttl",
-            "GET /v4/radar/dns/timeseries_groups/{dimension}",
-            "GET /v4/radar/dns/top/ases",
-            "GET /v4/radar/dns/top/locations",
-            "GET /v4/radar/email/routing/summary/arc",
-            "GET /v4/radar/email/routing/summary/dkim",
-            "GET /v4/radar/email/routing/summary/dmarc",
-            "GET /v4/radar/email/routing/summary/encrypted",
-            "GET /v4/radar/email/routing/summary/ip_version",
-            "GET /v4/radar/email/routing/summary/spf",
-            "GET /v4/radar/email/routing/summary/{dimension}",
-            "GET /v4/radar/email/routing/timeseries_groups/arc",
-            "GET /v4/radar/email/routing/timeseries_groups/dkim",
-            "GET /v4/radar/email/routing/timeseries_groups/dmarc",
-            "GET /v4/radar/email/routing/timeseries_groups/encrypted",
-            "GET /v4/radar/email/routing/timeseries_groups/ip_version",
-            "GET /v4/radar/email/routing/timeseries_groups/spf",
-            "GET /v4/radar/email/routing/timeseries_groups/{dimension}",
-            "GET /v4/radar/email/security/summary/arc",
-            "GET /v4/radar/email/security/summary/dkim",
-            "GET /v4/radar/email/security/summary/dmarc",
-            "GET /v4/radar/email/security/summary/malicious",
-            "GET /v4/radar/email/security/summary/spam",
-            "GET /v4/radar/email/security/summary/spf",
-            "GET /v4/radar/email/security/summary/spoof",
-            "GET /v4/radar/email/security/summary/threat_category",
-            "GET /v4/radar/email/security/summary/tls_version",
-            "GET /v4/radar/email/security/summary/{dimension}",
-            "GET /v4/radar/email/security/timeseries_groups/arc",
-            "GET /v4/radar/email/security/timeseries_groups/dkim",
-            "GET /v4/radar/email/security/timeseries_groups/dmarc",
-            "GET /v4/radar/email/security/timeseries_groups/malicious",
-            "GET /v4/radar/email/security/timeseries_groups/spam",
-            "GET /v4/radar/email/security/timeseries_groups/spf",
-            "GET /v4/radar/email/security/timeseries_groups/spoof",
-            "GET /v4/radar/email/security/timeseries_groups/threat_category",
-            "GET /v4/radar/email/security/timeseries_groups/tls_version",
-            "GET /v4/radar/email/security/timeseries_groups/{dimension}",
-            "GET /v4/radar/email/security/top/tlds",
-            "GET /v4/radar/email/security/top/tlds/malicious/{malicious}",
-            "GET /v4/radar/email/security/top/tlds/spam/{spam}",
-            "GET /v4/radar/email/security/top/tlds/spoof/{spoof}",
-            "GET /v4/radar/entities/asns",
-            "GET /v4/radar/entities/asns/botnet_threat_feed",
-            "GET /v4/radar/entities/asns/ip",
-            "GET /v4/radar/entities/asns/{asn}",
-            "GET /v4/radar/entities/asns/{asn}/as_set",
-            "GET /v4/radar/entities/asns/{asn}/rel",
-            "GET /v4/radar/entities/ip",
-            "GET /v4/radar/entities/locations",
-            "GET /v4/radar/entities/locations/{location}",
-            "GET /v4/radar/geolocations",
-            "GET /v4/radar/geolocations/{geo_id}",
-            "GET /v4/radar/http/summary/bot_class",
-            "GET /v4/radar/http/summary/device_type",
-            "GET /v4/radar/http/summary/http_protocol",
-            "GET /v4/radar/http/summary/http_version",
-            "GET /v4/radar/http/summary/ip_version",
-            "GET /v4/radar/http/summary/os",
-            "GET /v4/radar/http/summary/post_quantum",
-            "GET /v4/radar/http/summary/tls_version",
-            "GET /v4/radar/http/summary/{dimension}",
-            "GET /v4/radar/http/timeseries",
-            "GET /v4/radar/http/timeseries_groups/bot_class",
-            "GET /v4/radar/http/timeseries_groups/browser",
-            "GET /v4/radar/http/timeseries_groups/browser_family",
-            "GET /v4/radar/http/timeseries_groups/device_type",
-            "GET /v4/radar/http/timeseries_groups/http_protocol",
-            "GET /v4/radar/http/timeseries_groups/http_version",
-            "GET /v4/radar/http/timeseries_groups/ip_version",
-            "GET /v4/radar/http/timeseries_groups/os",
-            "GET /v4/radar/http/timeseries_groups/post_quantum",
-            "GET /v4/radar/http/timeseries_groups/tls_version",
-            "GET /v4/radar/http/timeseries_groups/{dimension}",
-            "GET /v4/radar/http/top/ases",
-            "GET /v4/radar/http/top/ases/bot_class/{bot_class}",
-            "GET /v4/radar/http/top/ases/browser_family/{browser_family}",
-            "GET /v4/radar/http/top/ases/device_type/{device_type}",
-            "GET /v4/radar/http/top/ases/http_protocol/{http_protocol}",
-            "GET /v4/radar/http/top/ases/http_version/{http_version}",
-            "GET /v4/radar/http/top/ases/ip_version/{ip_version}",
-            "GET /v4/radar/http/top/ases/os/{os}",
-            "GET /v4/radar/http/top/ases/tls_version/{tls_version}",
-            "GET /v4/radar/http/top/browser",
-            "GET /v4/radar/http/top/browser_family",
-            "GET /v4/radar/http/top/locations",
-            "GET /v4/radar/http/top/locations/bot_class/{bot_class}",
-            "GET /v4/radar/http/top/locations/browser_family/{browser_family}",
-            "GET /v4/radar/http/top/locations/device_type/{device_type}",
-            "GET /v4/radar/http/top/locations/http_protocol/{http_protocol}",
-            "GET /v4/radar/http/top/locations/http_version/{http_version}",
-            "GET /v4/radar/http/top/locations/ip_version/{ip_version}",
-            "GET /v4/radar/http/top/locations/os/{os}",
-            "GET /v4/radar/http/top/locations/tls_version/{tls_version}",
-            "GET /v4/radar/leaked_credential_checks/summary/bot_class",
-            "GET /v4/radar/leaked_credential_checks/summary/compromised",
-            "GET /v4/radar/leaked_credential_checks/summary/{dimension}",
-            "GET /v4/radar/leaked_credential_checks/timeseries_groups/bot_class",
-            "GET /v4/radar/leaked_credential_checks/timeseries_groups/compromised",
-            "GET /v4/radar/leaked_credential_checks/timeseries_groups/{dimension}",
-            "GET /v4/radar/netflows/summary",
-            "GET /v4/radar/netflows/summary/{dimension}",
-            "GET /v4/radar/netflows/timeseries",
-            "GET /v4/radar/netflows/timeseries_groups/{dimension}",
-            "GET /v4/radar/netflows/top/ases",
-            "GET /v4/radar/netflows/top/locations",
-            "GET /v4/radar/origins",
-            "GET /v4/radar/origins/summary/{dimension}",
-            "GET /v4/radar/origins/timeseries",
-            "GET /v4/radar/origins/timeseries_groups/{dimension}",
-            "GET /v4/radar/origins/{slug}",
-            "GET /v4/radar/post_quantum/origin/summary/{dimension}",
-            "GET /v4/radar/post_quantum/origin/timeseries_groups/{dimension}",
-            "GET /v4/radar/post_quantum/tls/support",
-            "GET /v4/radar/quality/iqi/summary",
-            "GET /v4/radar/quality/iqi/timeseries_groups",
-            "GET /v4/radar/quality/speed/histogram",
-            "GET /v4/radar/quality/speed/summary",
-            "GET /v4/radar/quality/speed/top/ases",
-            "GET /v4/radar/quality/speed/top/locations",
-            "GET /v4/radar/ranking/domain/{domain}",
-            "GET /v4/radar/ranking/internet_services/categories",
-            "GET /v4/radar/ranking/internet_services/timeseries_groups",
-            "GET /v4/radar/ranking/internet_services/top",
-            "GET /v4/radar/ranking/timeseries_groups",
-            "GET /v4/radar/ranking/top",
-            "GET /v4/radar/robots_txt/top/domain_categories",
-            "GET /v4/radar/robots_txt/top/user_agents/directive",
-            "GET /v4/radar/search/global",
-            "GET /v4/radar/tcp_resets_timeouts/summary",
-            "GET /v4/radar/tcp_resets_timeouts/timeseries_groups",
-            "GET /v4/radar/tlds",
-            "GET /v4/radar/tlds/performance/summary/{dimension}",
-            "GET /v4/radar/tlds/performance/timeseries_groups/{dimension}",
-            "GET /v4/radar/tlds/{tld}",
-            "GET /v4/radar/traffic_anomalies",
-            "GET /v4/radar/traffic_anomalies/locations",
-            "GET /v4/radar/verified_bots/top/bots",
-            "GET /v4/radar/verified_bots/top/categories",
-            "GET /v4/user",
-            "GET /v4/user/tenants"
-          ]
-        },
-        {
-          "description": "Cloudflare API token group: User Details Write",
-          "name": "user-details.write",
-          "rules": [
-            "POST /v4/organizations",
-            "PATCH /v4/user"
-          ]
-        },
-        {
-          "description": "Cloudflare API token group: Vectorize Read",
-          "name": "vectorize.read",
-          "rules": [
-            "GET /v4/accounts/{account_id}/vectorize/indexes",
-            "GET /v4/accounts/{account_id}/vectorize/indexes/{index_name}",
-            "POST /v4/accounts/{account_id}/vectorize/indexes/{index_name}/get-by-ids",
-            "POST /v4/accounts/{account_id}/vectorize/indexes/{index_name}/query",
-            "GET /v4/accounts/{account_id}/vectorize/v2/indexes",
-            "GET /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}",
-            "POST /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/get_by_ids",
-            "GET /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/info",
-            "GET /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/list",
-            "GET /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/metadata_index/list",
-            "POST /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/query"
-          ]
-        },
-        {
-          "description": "Cloudflare API token group: Vectorize Write",
-          "name": "vectorize.write",
-          "rules": [
-            "POST /v4/accounts/{account_id}/vectorize/indexes",
-            "PUT /v4/accounts/{account_id}/vectorize/indexes/{index_name}",
-            "DELETE /v4/accounts/{account_id}/vectorize/indexes/{index_name}",
-            "POST /v4/accounts/{account_id}/vectorize/indexes/{index_name}/delete-by-ids",
-            "POST /v4/accounts/{account_id}/vectorize/indexes/{index_name}/insert",
-            "POST /v4/accounts/{account_id}/vectorize/indexes/{index_name}/upsert",
-            "POST /v4/accounts/{account_id}/vectorize/v2/indexes",
-            "DELETE /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}",
-            "POST /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/delete_by_ids",
-            "POST /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/insert",
-            "POST /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/metadata_index/create",
-            "POST /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/metadata_index/delete",
-            "POST /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/upsert"
-          ]
-        },
-        {
-          "description": "Cloudflare API token group: Waiting Rooms Read",
-          "name": "waiting-rooms.read",
-          "rules": [
-            "GET /v4/zones/{zone_id}/waiting_rooms",
-            "GET /v4/zones/{zone_id}/waiting_rooms/settings",
+JSON_PART = r"""            "GET /v4/zones/{zone_id}/waiting_rooms/settings",
             "GET /v4/zones/{zone_id}/waiting_rooms/{waiting_room_id}",
             "GET /v4/zones/{zone_id}/waiting_rooms/{waiting_room_id}/events",
             "GET /v4/zones/{zone_id}/waiting_rooms/{waiting_room_id}/events/{event_id}",
@@ -273,7 +13,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Waiting Rooms Write",
           "name": "waiting-rooms.write",
           "rules": [
             "POST /v4/zones/{zone_id}/waiting_rooms",
@@ -292,7 +31,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Web3 Hostnames Read",
           "name": "web3-hostnames.read",
           "rules": [
             "GET /v4/zones/{zone_id}/web3/hostnames",
@@ -303,7 +41,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Web3 Hostnames Write",
           "name": "web3-hostnames.write",
           "rules": [
             "POST /v4/zones/{zone_id}/web3/hostnames",
@@ -315,7 +52,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers CI Read",
           "name": "workers-ci.read",
           "rules": [
             "GET /v4/accounts/{account_id}/builds/account/limits",
@@ -333,7 +69,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers CI Write",
           "name": "workers-ci.write",
           "rules": [
             "PUT /v4/accounts/{account_id}/builds/builds/{build_uuid}/cancel",
@@ -354,7 +89,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers KV Storage Read",
           "name": "workers-kv-storage.read",
           "rules": [
             "GET /v4/accounts/{account_id}/storage/kv/namespaces",
@@ -366,7 +100,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers KV Storage Write",
           "name": "workers-kv-storage.write",
           "rules": [
             "POST /v4/accounts/{account_id}/storage/kv/namespaces",
@@ -380,7 +113,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers Observability Read",
           "name": "workers-observability.read",
           "rules": [
             "GET /v4/accounts/{account_id}/workers/observability/destinations",
@@ -391,7 +123,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers Observability Write",
           "name": "workers-observability.write",
           "rules": [
             "POST /v4/accounts/{account_id}/workers/observability/destinations",
@@ -409,7 +140,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers R2 Storage Read",
           "name": "workers-r2.read",
           "rules": [
             "GET /v4/accounts/{account_id}/event_notifications/r2/{bucket_name}/configuration",
@@ -426,7 +156,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers R2 Storage Write",
           "name": "workers-r2.write",
           "rules": [
             "PUT /v4/accounts/{account_id}/event_notifications/r2/{bucket_name}/configuration/queues/{queue_id}",
@@ -447,7 +176,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers Routes Read",
           "name": "workers-routes.read",
           "rules": [
             "GET /v4/zones/{zone_id}/workers/routes",
@@ -455,7 +183,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers Routes Write",
           "name": "workers-routes.write",
           "rules": [
             "POST /v4/zones/{zone_id}/workers/routes",
@@ -464,7 +191,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers Scripts Read",
           "name": "workers-scripts.read",
           "rules": [
             "GET /v4/accounts/{account_id}/workers/dispatch/namespaces/{dispatch_namespace}/scripts",
@@ -499,7 +225,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers Scripts Write",
           "name": "workers-scripts.write",
           "rules": [
             "POST /v4/accounts/{account_id}/workers/dispatch/namespaces",
@@ -553,7 +278,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers Tail Read",
           "name": "workers-tail.read",
           "rules": [
             "GET /v4/accounts/{account_id}/workers/dispatch/namespaces",
@@ -577,7 +301,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Zaraz Edit",
           "name": "zaraz.edit",
           "rules": [
             "PUT /v4/zones/{zone_id}/settings/zaraz/config",
@@ -586,7 +309,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Zaraz Read",
           "name": "zaraz.read",
           "rules": [
             "GET /v4/zones/{zone_id}/settings/zaraz/config",
@@ -598,14 +320,12 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Zaraz Admin",
           "name": "zaraz.write",
           "rules": [
             "POST /v4/zones/{zone_id}/settings/zaraz/publish"
           ]
         },
         {
-          "description": "Cloudflare API token group: Zone Settings Read",
           "name": "zone-settings.read",
           "rules": [
             "GET /v4/zones/{zone_id}/argo/smart_routing",
@@ -654,7 +374,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Zone Settings Write",
           "name": "zone-settings.write",
           "rules": [
             "PATCH /v4/zones/{zone_id}/argo/smart_routing",
@@ -704,14 +423,12 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Zone Versioning Read",
           "name": "zone-versioning.read",
           "rules": [
             "GET /v4/zones/{zone_id}/environments"
           ]
         },
         {
-          "description": "Cloudflare API token group: Zone Versioning Write",
           "name": "zone-versioning.write",
           "rules": [
             "POST /v4/zones/{zone_id}/environments",
@@ -722,7 +439,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Zone WAF Read",
           "name": "zone-waf.read",
           "rules": [
             "GET /v4/zones/{zone_id}/content-upload-scan/payloads",
@@ -741,7 +457,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Zone WAF Write",
           "name": "zone-waf.write",
           "rules": [
             "POST /v4/zones/{zone_id}/content-upload-scan/disable",
@@ -764,7 +479,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Zone Zone Read",
           "name": "zone.read",
           "rules": [
             "GET /v4/zones",
@@ -774,7 +488,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare API token group: Zone Zone Edit",
           "name": "zone.write",
           "rules": [
             "POST /v4/zones",
@@ -794,7 +507,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
       "base": "https://api.cloudflare.com/client",
       "permissions": [
         {
-          "description": "Cloudflare supplemental permission: page.write",
           "name": "page.write",
           "rules": [
             "POST /v4/pages/assets/check-missing",
@@ -803,7 +515,6 @@ JSON_PART = r"""            "GET /v4/radar/attacks/layer7/timeseries_groups/http
           ]
         },
         {
-          "description": "Cloudflare supplemental permission: workers-scripts.write",
           "name": "workers-scripts.write",
           "rules": [
             "POST /v4/accounts/{account_id}/workers/assets/upload"

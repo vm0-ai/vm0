@@ -14,14 +14,12 @@ JSON_PART = r"""{
       "base": "https://api.maskdb.ai",
       "permissions": [
         {
-          "description": "Run read-only structured queries (results masked).",
           "name": "db:query",
           "rules": [
             "POST /v1/databases/{db}/query"
           ]
         },
         {
-          "description": "List databases, tables, masked schema, and indexes.",
           "name": "db:metadata",
           "rules": [
             "GET /v1/databases",
@@ -31,7 +29,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Register/remove databases and read the raw (unmasked) schema.",
           "name": "db:manage",
           "rules": [
             "POST /v1/databases",
@@ -40,35 +37,30 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read a database's masking policy.",
           "name": "policy:read",
           "rules": [
             "GET /v1/databases/{db}/policy"
           ]
         },
         {
-          "description": "Change a database's masking policy (can unmask columns).",
           "name": "policy:write",
           "rules": [
             "PUT /v1/databases/{db}/policy"
           ]
         },
         {
-          "description": "Mint child tokens (scoped subsets).",
           "name": "token:mint",
           "rules": [
             "POST /v1/tokens"
           ]
         },
         {
-          "description": "List tokens.",
           "name": "token:read",
           "rules": [
             "GET /v1/tokens"
           ]
         },
         {
-          "description": "Revoke tokens.",
           "name": "token:revoke",
           "rules": [
             "DELETE /v1/tokens/{id}"

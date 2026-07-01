@@ -14,21 +14,18 @@ JSON_PART = r"""{
       "base": "https://api.axiom.co",
       "permissions": [
         {
-          "description": "Create Axiom annotations.",
           "name": "annotations|create",
           "rules": [
             "POST /v2/annotations"
           ]
         },
         {
-          "description": "Delete Axiom annotations.",
           "name": "annotations|delete",
           "rules": [
             "DELETE /v2/annotations/{id}"
           ]
         },
         {
-          "description": "Read Axiom annotations.",
           "name": "annotations|read",
           "rules": [
             "GET /v2/annotations",
@@ -36,28 +33,24 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Update Axiom annotations.",
           "name": "annotations|update",
           "rules": [
             "PUT /v2/annotations/{id}"
           ]
         },
         {
-          "description": "Create Axiom API tokens.",
           "name": "apiTokens|create",
           "rules": [
             "POST /v2/tokens"
           ]
         },
         {
-          "description": "Delete Axiom API tokens.",
           "name": "apiTokens|delete",
           "rules": [
             "DELETE /v2/tokens/{id}"
           ]
         },
         {
-          "description": "Read Axiom API tokens and token metadata.",
           "name": "apiTokens|read",
           "rules": [
             "GET /v2/tokens",
@@ -65,28 +58,24 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Regenerate Axiom API tokens.",
           "name": "apiTokens|update",
           "rules": [
             "POST /v2/tokens/{id}/regenerate"
           ]
         },
         {
-          "description": "Create Axiom dashboards.",
           "name": "dashboards|create",
           "rules": [
             "POST /v2/dashboards"
           ]
         },
         {
-          "description": "Delete Axiom dashboards.",
           "name": "dashboards|delete",
           "rules": [
             "DELETE /v2/dashboards/uid/{uid}"
           ]
         },
         {
-          "description": "Read Axiom dashboards.",
           "name": "dashboards|read",
           "rules": [
             "GET /v2/dashboards",
@@ -94,7 +83,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Update Axiom dashboards and dashboard charts.",
           "name": "dashboards|update",
           "rules": [
             "PUT /v2/dashboards/uid/{uid}",
@@ -102,21 +90,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create Axiom datasets.",
           "name": "datasets|create",
           "rules": [
             "POST /v2/datasets"
           ]
         },
         {
-          "description": "Delete Axiom datasets.",
           "name": "datasets|delete",
           "rules": [
             "DELETE /v2/datasets/{dataset_id}"
           ]
         },
         {
-          "description": "Read Axiom datasets, fields, and map fields.",
           "name": "datasets|read",
           "rules": [
             "GET /v1/datasets",
@@ -129,7 +114,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create, update, delete, and trim Axiom datasets, fields, and map fields.",
           "name": "datasets|update",
           "rules": [
             "POST /v1/datasets",
@@ -144,7 +128,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Ingest events into Axiom datasets.",
           "name": "ingest|create",
           "rules": [
             "POST /v1/datasets/{dataset_name}/ingest",
@@ -152,21 +135,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create Axiom monitors.",
           "name": "monitors|create",
           "rules": [
             "POST /v2/monitors"
           ]
         },
         {
-          "description": "Delete Axiom monitors.",
           "name": "monitors|delete",
           "rules": [
             "DELETE /v2/monitors/{id}"
           ]
         },
         {
-          "description": "Read Axiom monitors and monitor history.",
           "name": "monitors|read",
           "rules": [
             "GET /v2/monitors",
@@ -175,28 +155,24 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Update Axiom monitors.",
           "name": "monitors|update",
           "rules": [
             "PUT /v2/monitors/{id}"
           ]
         },
         {
-          "description": "Create Axiom notifiers.",
           "name": "notifiers|create",
           "rules": [
             "POST /v2/notifiers"
           ]
         },
         {
-          "description": "Delete Axiom notifiers.",
           "name": "notifiers|delete",
           "rules": [
             "DELETE /v2/notifiers/{id}"
           ]
         },
         {
-          "description": "Read Axiom notifiers.",
           "name": "notifiers|read",
           "rules": [
             "GET /v2/notifiers",
@@ -204,21 +180,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Update Axiom notifiers.",
           "name": "notifiers|update",
           "rules": [
             "PUT /v2/notifiers/{id}"
           ]
         },
         {
-          "description": "Create Axiom organizations.",
           "name": "orgs|create",
           "rules": [
             "POST /v2/orgs"
           ]
         },
         {
-          "description": "Read Axiom organizations.",
           "name": "orgs|read",
           "rules": [
             "GET /v2/orgs",
@@ -226,14 +199,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Update Axiom organizations.",
           "name": "orgs|update",
           "rules": [
             "PUT /v2/orgs/{id}"
           ]
         },
         {
-          "description": "Run Axiom queries and read query results.",
           "name": "query|read",
           "rules": [
             "POST /v1/datasets/_apl",
@@ -250,7 +221,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create, update, and delete Axiom RBAC groups and roles.",
           "name": "rbac|create",
           "rules": [
             "POST /v2/rbac/groups",
@@ -262,7 +232,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Axiom RBAC groups and roles.",
           "name": "rbac|read",
           "rules": [
             "GET /v2/rbac/groups",
@@ -272,21 +241,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create Axiom starred queries.",
           "name": "starredQueries|create",
           "rules": [
             "POST /v2/apl-starred-queries"
           ]
         },
         {
-          "description": "Delete Axiom starred queries.",
           "name": "starredQueries|delete",
           "rules": [
             "DELETE /v2/apl-starred-queries/{id}"
           ]
         },
         {
-          "description": "Read Axiom starred queries.",
           "name": "starredQueries|read",
           "rules": [
             "GET /v2/apl-starred-queries",
@@ -294,35 +260,30 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Update Axiom starred queries.",
           "name": "starredQueries|update",
           "rules": [
             "PUT /v2/apl-starred-queries/{id}"
           ]
         },
         {
-          "description": "Trim data from Axiom datasets.",
           "name": "trim|update",
           "rules": [
             "POST /v2/datasets/{dataset_id}/trim"
           ]
         },
         {
-          "description": "Create Axiom users.",
           "name": "users|create",
           "rules": [
             "POST /v2/users"
           ]
         },
         {
-          "description": "Delete Axiom users.",
           "name": "users|delete",
           "rules": [
             "DELETE /v2/users/{id}"
           ]
         },
         {
-          "description": "Read Axiom users and current user information.",
           "name": "users|read",
           "rules": [
             "GET /v1/user",
@@ -332,7 +293,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Update Axiom current user information and user roles.",
           "name": "users|update",
           "rules": [
             "PUT /v2/user",
@@ -340,28 +300,24 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Start Axiom dataset vacuum operations.",
           "name": "vacuum|update",
           "rules": [
             "POST /v2/datasets/{dataset_id}/vacuum"
           ]
         },
         {
-          "description": "Create Axiom views.",
           "name": "views|create",
           "rules": [
             "POST /v2/views"
           ]
         },
         {
-          "description": "Delete Axiom views.",
           "name": "views|delete",
           "rules": [
             "DELETE /v2/views/{id}"
           ]
         },
         {
-          "description": "Read Axiom views.",
           "name": "views|read",
           "rules": [
             "GET /v2/views",
@@ -369,28 +325,24 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Update Axiom views.",
           "name": "views|update",
           "rules": [
             "PUT /v2/views/{id}"
           ]
         },
         {
-          "description": "Create Axiom virtual fields.",
           "name": "virtualFields|create",
           "rules": [
             "POST /v2/vfields"
           ]
         },
         {
-          "description": "Delete Axiom virtual fields.",
           "name": "virtualFields|delete",
           "rules": [
             "DELETE /v2/vfields/{id}"
           ]
         },
         {
-          "description": "Read Axiom virtual fields.",
           "name": "virtualFields|read",
           "rules": [
             "GET /v2/vfields",
@@ -398,7 +350,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Update Axiom virtual fields.",
           "name": "virtualFields|update",
           "rules": [
             "PUT /v2/vfields/{id}"

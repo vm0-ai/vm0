@@ -14,14 +14,12 @@ JSON_PART = r"""{
       "base": "https://api.segmentapis.com",
       "permissions": [
         {
-          "description": "Read Segment resources",
           "name": "read",
           "rules": [
             "GET /{path+}"
           ]
         },
         {
-          "description": "Create, update, and delete Segment resources",
           "name": "write",
           "rules": [
             "POST /{path+}",

@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://gmail.googleapis.com/gmail",
       "permissions": [
         {
-          "description": "Read Gmail drafts.",
           "name": "drafts.read",
           "rules": [
             "GET /v1/users/{userId}/drafts",
@@ -22,14 +21,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Send Gmail drafts.",
           "name": "drafts.send",
           "rules": [
             "POST /v1/users/{userId}/drafts/send"
           ]
         },
         {
-          "description": "Create, update, and delete Gmail drafts.",
           "name": "drafts.write",
           "rules": [
             "POST /v1/users/{userId}/drafts",
@@ -38,14 +35,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Gmail mailbox history changes.",
           "name": "history.read",
           "rules": [
             "GET /v1/users/{userId}/history"
           ]
         },
         {
-          "description": "Read Gmail labels.",
           "name": "labels.read",
           "rules": [
             "GET /v1/users/{userId}/labels",
@@ -53,7 +48,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create, update, and delete Gmail labels.",
           "name": "labels.write",
           "rules": [
             "POST /v1/users/{userId}/labels",
@@ -63,7 +57,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Permanently delete Gmail messages.",
           "name": "messages.delete",
           "rules": [
             "POST /v1/users/{userId}/messages/batchDelete",
@@ -71,7 +64,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Gmail messages, message metadata, and attachments.",
           "name": "messages.read",
           "rules": [
             "GET /v1/users/{userId}/messages",
@@ -80,14 +72,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Send Gmail messages directly.",
           "name": "messages.send",
           "rules": [
             "POST /v1/users/{userId}/messages/send"
           ]
         },
         {
-          "description": "Import, insert, label, trash, and untrash Gmail messages.",
           "name": "messages.write",
           "rules": [
             "POST /v1/users/{userId}/messages",
@@ -99,7 +89,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create and stop Gmail mailbox notification watches.",
           "name": "notifications.write",
           "rules": [
             "POST /v1/users/{userId}/stop",
@@ -107,14 +96,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read the Gmail profile and mailbox email address.",
           "name": "profile.read",
           "rules": [
             "GET /v1/users/{userId}/profile"
           ]
         },
         {
-          "description": "Read Gmail mailbox settings.",
           "name": "settings.read",
           "rules": [
             "GET /v1/users/{userId}/settings/autoForwarding",
@@ -139,7 +126,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Manage Gmail forwarding, delegates, sending identities, and sharing-sensitive settings.",
           "name": "settings.sharing",
           "rules": [
             "PUT /v1/users/{userId}/settings/autoForwarding",
@@ -153,7 +139,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create, update, and delete ordinary Gmail settings.",
           "name": "settings.write",
           "rules": [
             "POST /v1/users/{userId}/settings/cse/identities",
@@ -177,14 +162,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Permanently delete Gmail threads.",
           "name": "threads.delete",
           "rules": [
             "DELETE /v1/users/{userId}/threads/{id}"
           ]
         },
         {
-          "description": "Read Gmail threads.",
           "name": "threads.read",
           "rules": [
             "GET /v1/users/{userId}/threads",
@@ -192,7 +175,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Modify, trash, and untrash Gmail threads.",
           "name": "threads.write",
           "rules": [
             "POST /v1/users/{userId}/threads/{id}/modify",
@@ -211,7 +193,6 @@ JSON_PART = r"""{
       "base": "https://gmail.googleapis.com/upload/gmail",
       "permissions": [
         {
-          "description": "Send Gmail drafts.",
           "name": "drafts.send",
           "rules": [
             "POST /v1/users/{userId}/drafts/send",
@@ -219,7 +200,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create, update, and delete Gmail drafts.",
           "name": "drafts.write",
           "rules": [
             "POST /v1/users/{userId}/drafts",
@@ -228,7 +208,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Send Gmail messages directly.",
           "name": "messages.send",
           "rules": [
             "POST /v1/users/{userId}/messages/send",
@@ -236,7 +215,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Import, insert, label, trash, and untrash Gmail messages.",
           "name": "messages.write",
           "rules": [
             "POST /v1/users/{userId}/messages",
@@ -256,7 +234,6 @@ JSON_PART = r"""{
       "base": "https://gmail.googleapis.com/resumable/upload/gmail",
       "permissions": [
         {
-          "description": "Send Gmail drafts.",
           "name": "drafts.send",
           "rules": [
             "POST /v1/users/{userId}/drafts/send",
@@ -264,7 +241,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create, update, and delete Gmail drafts.",
           "name": "drafts.write",
           "rules": [
             "POST /v1/users/{userId}/drafts",
@@ -273,7 +249,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Send Gmail messages directly.",
           "name": "messages.send",
           "rules": [
             "POST /v1/users/{userId}/messages/send",
@@ -281,7 +256,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Import, insert, label, trash, and untrash Gmail messages.",
           "name": "messages.write",
           "rules": [
             "POST /v1/users/{userId}/messages",

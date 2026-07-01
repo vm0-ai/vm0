@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://meet.googleapis.com",
       "permissions": [
         {
-          "description": "Read Google Meet conference records.",
           "name": "conference-records.read",
           "rules": [
             "GET /v2/conferenceRecords",
@@ -22,7 +21,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read participant sessions in Google Meet conference records.",
           "name": "participant-sessions.read",
           "rules": [
             "GET /v2/conferenceRecords/{conferenceRecordsId}/participants/{participantsId}/participantSessions",
@@ -30,7 +28,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read participants in Google Meet conference records.",
           "name": "participants.read",
           "rules": [
             "GET /v2/conferenceRecords/{conferenceRecordsId}/participants",
@@ -38,7 +35,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Google Meet conference recordings.",
           "name": "recordings.read",
           "rules": [
             "GET /v2/conferenceRecords/{conferenceRecordsId}/recordings",
@@ -46,7 +42,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Google Meet smart notes.",
           "name": "smart-notes.read",
           "rules": [
             "GET /v2/conferenceRecords/{conferenceRecordsId}/smartNotes",
@@ -54,35 +49,30 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create Google Meet spaces.",
           "name": "spaces.create",
           "rules": [
             "POST /v2/spaces"
           ]
         },
         {
-          "description": "End active conferences in Google Meet spaces.",
           "name": "spaces.end-active-conference",
           "rules": [
             "POST /v2/spaces/{spacesId}:endActiveConference"
           ]
         },
         {
-          "description": "Read Google Meet spaces.",
           "name": "spaces.read",
           "rules": [
             "GET /v2/spaces/{spacesId}"
           ]
         },
         {
-          "description": "Update Google Meet spaces.",
           "name": "spaces.write",
           "rules": [
             "PATCH /v2/spaces/{spacesId}"
           ]
         },
         {
-          "description": "Read Google Meet transcript entries.",
           "name": "transcript-entries.read",
           "rules": [
             "GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts/{transcriptsId}/entries",
@@ -90,7 +80,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Google Meet transcripts.",
           "name": "transcripts.read",
           "rules": [
             "GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts",

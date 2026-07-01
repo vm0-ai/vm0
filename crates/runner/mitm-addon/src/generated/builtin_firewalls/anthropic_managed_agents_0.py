@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://api.anthropic.com",
       "permissions": [
         {
-          "description": "List and retrieve agent definitions",
           "name": "agents:read",
           "rules": [
             "GET /v1/agents",
@@ -22,7 +21,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create, update, and delete agent definitions",
           "name": "agents:write",
           "rules": [
             "POST /v1/agents",
@@ -31,7 +29,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "List and retrieve execution environments",
           "name": "environments:read",
           "rules": [
             "GET /v1/environments",
@@ -39,7 +36,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create and manage execution environments",
           "name": "environments:write",
           "rules": [
             "POST /v1/environments",
@@ -48,7 +44,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "List and retrieve agent sessions and events",
           "name": "sessions:read",
           "rules": [
             "GET /v1/sessions",
@@ -56,7 +51,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create sessions and send events",
           "name": "sessions:write",
           "rules": [
             "POST /v1/sessions",
@@ -64,7 +58,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "List and retrieve credential vaults",
           "name": "vaults:read",
           "rules": [
             "GET /v1/vaults",
@@ -72,7 +65,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create and manage credential vaults",
           "name": "vaults:write",
           "rules": [
             "POST /v1/vaults",

@@ -14,21 +14,18 @@ JSON_PART = r"""{
       "base": "https://docs.googleapis.com",
       "permissions": [
         {
-          "description": "Create Google Docs documents.",
           "name": "documents.create",
           "rules": [
             "POST /v1/documents"
           ]
         },
         {
-          "description": "Read Google Docs documents.",
           "name": "documents.read",
           "rules": [
             "GET /v1/documents/{documentId}"
           ]
         },
         {
-          "description": "Apply batch updates to Google Docs documents.",
           "name": "documents.write",
           "rules": [
             "POST /v1/documents/{documentId}:batchUpdate"
