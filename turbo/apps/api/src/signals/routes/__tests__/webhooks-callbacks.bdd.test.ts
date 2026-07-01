@@ -1488,7 +1488,10 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     if (repeatedHistory.status !== 200) {
       throw new Error("Expected the repeated history prepare to succeed");
     }
-    expect(repeatedHistory.body).toStrictEqual({ existing: true });
+    expect(repeatedHistory.body).toStrictEqual({
+      existing: true,
+      encoding: "identity",
+    });
 
     const ghostRunId = randomUUID();
     const missingHistoryRun = await api.requestAgentCheckpointPrepareHistory(

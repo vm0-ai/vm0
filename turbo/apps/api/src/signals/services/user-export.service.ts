@@ -1,7 +1,5 @@
 import { isUtf8 } from "node:buffer";
 import { createHash, createHmac } from "node:crypto";
-import { Readable } from "node:stream";
-import { createGunzip } from "node:zlib";
 import archiver from "archiver";
 import { command, computed, type Computed } from "ccstate";
 import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
@@ -40,7 +38,6 @@ import {
   downloadS3BufferWithMaxBytes,
   generatePresignedGetUrl,
   putS3Object,
-  S3ObjectSizeLimitError,
 } from "../external/s3";
 import { nowDate } from "../external/time";
 import { settle } from "../utils";
@@ -50,6 +47,7 @@ import {
   SESSION_HISTORY_ENCODING_GZIP,
   SESSION_HISTORY_ENCODING_IDENTITY,
 } from "./session-history-blobs";
+import { gunzipSessionHistoryBufferWithMaxBytes } from "./session-history-decompression";
 import { loadWorkflowVolumeFiles } from "./zero-workflow-volume.service";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
@@ -708,36 +706,13 @@ async function loadSessionHistoryBlob(
   );
   const rawBuffer =
     args.encoding === SESSION_HISTORY_ENCODING_GZIP
-      ? await gunzipBufferWithMaxBytes(
+      ? await gunzipSessionHistoryBufferWithMaxBytes(
           args.key,
           encodedBuffer,
           args.expectedSize ?? RESUME_SESSION_HISTORY_MAX_BYTES,
         )
       : encodedBuffer;
   return decodeVerifiedSessionHistory(args.hash, rawBuffer, args.expectedSize);
-}
-
-async function gunzipBufferWithMaxBytes(
-  key: string,
-  buffer: Buffer,
-  maxBytes: number,
-): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  let totalLength = 0;
-  const gunzip = createGunzip();
-  for await (const chunk of Readable.from([buffer]).pipe(gunzip)) {
-    if (!(chunk instanceof Uint8Array)) {
-      throw new Error("gzip stream yielded a non-byte chunk");
-    }
-    const data = Buffer.from(chunk);
-    totalLength += data.length;
-    if (totalLength > maxBytes) {
-      gunzip.destroy();
-      throw new S3ObjectSizeLimitError(key, totalLength, maxBytes);
-    }
-    chunks.push(data);
-  }
-  return Buffer.concat(chunks, totalLength);
 }
 
 function decodeVerifiedSessionHistory(
@@ -763,8 +738,14 @@ function decodeVerifiedSessionHistory(
 async function collectConversationMessages(
   runtime: ExportRuntime,
   userId: string,
-): Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }> {
+): Promise<{
+  readonly entries: readonly ZipEntry[];
+  readonly threadCount: number;
+  readonly sessionHistoryCount: number;
+}> {
   const entries: ZipEntry[] = [];
+  let threadCount = 0;
+  let sessionHistoryCount = 0;
 
   const threads = await runtime.db
     .select({ id: chatThreads.id, createdAt: chatThreads.createdAt })
@@ -809,6 +790,7 @@ async function collectConversationMessages(
         path: `conversations/chat-thread-${thread.id}.json`,
         content: JSON.stringify(messages, null, 2),
       });
+      threadCount += 1;
     }
   }
 
@@ -853,11 +835,12 @@ async function collectConversationMessages(
           path: `conversations/${session.id}-history.jsonl`,
           content: history,
         });
+        sessionHistoryCount += 1;
       }
     }
   }
 
-  return { entries, count: entries.length };
+  return { entries, threadCount, sessionHistoryCount };
 }
 
 async function collectUserData(
@@ -890,7 +873,8 @@ async function collectUserData(
           agentInstructionFiles: agentInstructions.count,
           workflowFiles: workflows.count,
           memoryFiles: memory.count,
-          conversationThreads: conversationsResult.count,
+          conversationThreads: conversationsResult.threadCount,
+          sessionHistories: conversationsResult.sessionHistoryCount,
         },
       },
       null,

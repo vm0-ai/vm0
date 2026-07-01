@@ -853,6 +853,39 @@ mod tests {
     }
 
     #[test]
+    fn cli_agent_session_id_returns_id_from_gzip_resume_session_history_ref() {
+        let json = json!({
+            "runId": "550e8400-e29b-41d4-a716-446655440000",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "claude_code",
+            "resumeSession": {
+                "sessionId": "sess-ref-123",
+                "historyRef": {
+                    "kind": "blob",
+                    "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "url": "https://r2.example.com/blobs/a.blob.gz?sig=secret",
+                    "encoding": "gzip",
+                    "rawSize": 42
+                }
+            },
+            "billableFirewalls": []
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        let session = ctx.resume_session.as_ref().unwrap();
+        let history_ref = session.history_ref().unwrap();
+        assert_eq!(ctx.cli_agent_session_id(), Some("sess-ref-123"));
+        assert!(session.session_history().is_none());
+        assert_eq!(history_ref.kind, ResumeSessionHistoryRefKind::Blob);
+        assert_eq!(
+            history_ref.encoding,
+            Some(ResumeSessionHistoryEncoding::Gzip)
+        );
+        assert_eq!(history_ref.raw_size, Some(42));
+        assert!(history_ref.size.is_none());
+    }
+
+    #[test]
     fn storage_manifest_camel_case() {
         let json = json!({
             "storages": [{

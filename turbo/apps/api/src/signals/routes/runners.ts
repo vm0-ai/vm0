@@ -1,7 +1,5 @@
 import { isUtf8 } from "node:buffer";
 import { createHash } from "node:crypto";
-import { Readable } from "node:stream";
-import { createGunzip } from "node:zlib";
 
 import { command } from "ccstate";
 import {
@@ -47,6 +45,7 @@ import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
+import { gunzipSessionHistoryBufferWithMaxBytes } from "../services/session-history-decompression";
 import {
   resumeSessionHistoryGzipBlobKey,
   resumeSessionHistoryRawBlobKey,
@@ -968,7 +967,7 @@ async function gunzipBufferWithMaxBytes(
   maxBytes: number,
 ): Promise<Buffer> {
   const result = await settle(
-    collectGunzipBufferWithMaxBytes(key, buffer, maxBytes),
+    gunzipSessionHistoryBufferWithMaxBytes(key, buffer, maxBytes),
   );
   if (result.ok) {
     return result.value;
@@ -979,29 +978,6 @@ async function gunzipBufferWithMaxBytes(
   throw new Error("failed to decompress gzip session history", {
     cause: result.error,
   });
-}
-
-async function collectGunzipBufferWithMaxBytes(
-  key: string,
-  buffer: Buffer,
-  maxBytes: number,
-): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  let totalLength = 0;
-  const gunzip = createGunzip();
-  for await (const chunk of Readable.from([buffer]).pipe(gunzip)) {
-    if (!(chunk instanceof Uint8Array)) {
-      throw new Error("gzip stream yielded a non-byte chunk");
-    }
-    const data = Buffer.from(chunk);
-    totalLength += data.length;
-    if (totalLength > maxBytes) {
-      gunzip.destroy();
-      throw new S3ObjectSizeLimitError(key, totalLength, maxBytes);
-    }
-    chunks.push(data);
-  }
-  return Buffer.concat(chunks, totalLength);
 }
 
 const generateResumeSessionHistoryUrl$ = command(
