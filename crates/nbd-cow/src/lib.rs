@@ -23,6 +23,7 @@
 //! writes that were not flushed.
 
 pub mod cow;
+pub mod cow_io;
 mod device;
 pub mod device_lock;
 pub mod error;

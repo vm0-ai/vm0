@@ -1,5 +1,6 @@
 use super::*;
 use crate::cow::CowLayer;
+use crate::cow_io::CowIo;
 use crate::protocol_impl::{Command, NbdReply, NbdRequest, REPLY_MAGIC, serialize_request};
 use std::io::Write as _;
 use std::os::unix::io::{FromRawFd, IntoRawFd, OwnedFd};
@@ -32,7 +33,7 @@ fn create_test_cow(base_data: &[u8]) -> (NamedTempFile, NamedTempFile, CowLayer)
 }
 
 async fn setup_dispatch(
-    cow: Arc<RwLock<CowLayer>>,
+    cow: CowIo,
 ) -> (
     tokio::net::unix::OwnedReadHalf,
     tokio::net::unix::OwnedWriteHalf,
@@ -42,15 +43,14 @@ async fn setup_dispatch(
     let shutdown = CancellationToken::new();
     let (reader, writer, server_fd) = setup_dispatch_socket();
 
-    let cow_clone = cow.clone();
     let shutdown_clone = shutdown.clone();
-    let task = tokio::spawn(async move { dispatch(server_fd, cow_clone, shutdown_clone).await });
+    let task = tokio::spawn(async move { dispatch(server_fd, cow, shutdown_clone).await });
 
     (reader, writer, task, shutdown)
 }
 
 async fn setup_observed_dispatch(
-    cow: Arc<RwLock<CowLayer>>,
+    cow: CowIo,
 ) -> (
     tokio::net::unix::OwnedReadHalf,
     tokio::net::unix::OwnedWriteHalf,
@@ -62,12 +62,11 @@ async fn setup_observed_dispatch(
     let (reader, writer, server_fd) = setup_dispatch_socket();
     let (event_sender, read_events) = tokio::sync::mpsc::unbounded_channel();
 
-    let cow_clone = cow.clone();
     let shutdown_clone = shutdown.clone();
     let task = tokio::spawn(async move {
         dispatch_with_read_observer(
             server_fd,
-            cow_clone,
+            cow,
             shutdown_clone,
             DispatchReadObserver::new(event_sender),
         )
@@ -212,7 +211,7 @@ async fn dispatch_large_then_small_requests_keep_stream_aligned() {
     let mut base_data = vec![0x11; large_len + 2 * crate::BLOCK_SIZE];
     base_data[large_len + crate::BLOCK_SIZE..].fill(0x33);
     let (_base, _cow_file, cow) = create_test_cow(&base_data);
-    let cow = Arc::new(RwLock::new(cow));
+    let cow = CowIo::new(cow);
 
     let (mut reader, mut writer, task, _shutdown) = setup_dispatch(cow).await;
 
@@ -299,7 +298,7 @@ async fn dispatch_large_then_small_requests_keep_stream_aligned() {
 async fn dispatch_shutdown_flushes_data() {
     let base_data = vec![0x00; 2 * crate::BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data);
-    let cow = Arc::new(RwLock::new(cow));
+    let cow = CowIo::new(cow);
 
     let (mut reader, mut writer, task, shutdown) = setup_dispatch(cow.clone()).await;
 
@@ -313,29 +312,21 @@ async fn dispatch_shutdown_flushes_data() {
     let error = send_write_and_recv_reply(&mut reader, &mut writer, &write_req, &write_data).await;
     assert_eq!(error, 0, "write should succeed");
 
-    {
-        let cow = cow.read().await;
-        assert_eq!(cow.buffered_block_count(), 1);
-    }
+    let status = must(cow.status().await, "read COW status after write");
+    assert_eq!(status.buffered_blocks, 1);
 
     shutdown.cancel();
     wait_for_dispatch(task).await;
 
-    {
-        let cow = cow.read().await;
-        assert_eq!(
-            cow.buffered_block_count(),
-            0,
-            "shutdown should flush buffer"
-        );
-    }
+    let status = must(cow.status().await, "read COW status after shutdown");
+    assert_eq!(status.buffered_blocks, 0, "shutdown should flush buffer");
 }
 
 #[tokio::test]
 async fn dispatch_shutdown_while_write_payload_pending_exits() {
     let base_data = vec![0x00; 2 * crate::BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data);
-    let cow = Arc::new(RwLock::new(cow));
+    let cow = CowIo::new(cow);
 
     let (_reader, mut writer, task, shutdown, mut read_events) = setup_observed_dispatch(cow).await;
 
@@ -371,7 +362,7 @@ async fn dispatch_shutdown_while_write_payload_pending_exits() {
 async fn dispatch_shutdown_while_oversized_write_discard_pending_exits() {
     let base_data = vec![0x00; 2 * crate::BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data);
-    let cow = Arc::new(RwLock::new(cow));
+    let cow = CowIo::new(cow);
 
     let (_reader, mut writer, task, shutdown, mut read_events) = setup_observed_dispatch(cow).await;
 
@@ -407,7 +398,7 @@ async fn dispatch_shutdown_while_oversized_write_discard_pending_exits() {
 async fn dispatch_shutdown_during_partial_write_flushes_accepted_data() {
     let base_data = vec![0x00; 2 * crate::BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data);
-    let cow = Arc::new(RwLock::new(cow));
+    let cow = CowIo::new(cow);
 
     let (mut reader, mut writer, task, shutdown, mut read_events) =
         setup_observed_dispatch(cow.clone()).await;
@@ -422,10 +413,8 @@ async fn dispatch_shutdown_during_partial_write_flushes_accepted_data() {
     let error =
         send_write_and_recv_reply(&mut reader, &mut writer, &accepted_write, &accepted_data).await;
     assert_eq!(error, 0, "accepted write should succeed");
-    {
-        let cow = cow.read().await;
-        assert_eq!(cow.buffered_block_count(), 1);
-    }
+    let status = must(cow.status().await, "read COW status after accepted write");
+    assert_eq!(status.buffered_blocks, 1);
 
     let partial_write = NbdRequest {
         command: Command::Write,
@@ -454,7 +443,7 @@ async fn dispatch_shutdown_during_partial_write_flushes_accepted_data() {
     shutdown.cancel();
     assert_dispatch_exits_after_shutdown(task).await;
 
-    let cow = cow.read().await;
-    assert_eq!(cow.buffered_block_count(), 0);
-    assert_eq!(cow.dirty_block_count(), 1);
+    let status = must(cow.status().await, "read COW status after shutdown");
+    assert_eq!(status.buffered_blocks, 0);
+    assert_eq!(status.dirty_blocks, 1);
 }

@@ -438,10 +438,8 @@ impl PooledNbdCowDevice {
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
-    use std::sync::Arc;
 
-    use crate::{BLOCK_SIZE, DEFAULT_FLUSH_THRESHOLD, cow, pool};
-    use tokio::sync::RwLock;
+    use crate::{BLOCK_SIZE, DEFAULT_FLUSH_THRESHOLD, cow, cow_io, pool};
     use tokio_util::sync::CancellationToken;
 
     use super::*;
@@ -488,7 +486,7 @@ mod tests {
                     device_index: TEST_DEVICE_INDEX,
                     device_path: PathBuf::from(format!("/dev/nbd{TEST_DEVICE_INDEX}")),
                     cow_file: cow_file.clone(),
-                    cow: Arc::new(RwLock::new(cow)),
+                    cow: cow_io::CowIo::new(cow),
                     server_handles: Vec::new(),
                     shutdown: CancellationToken::new(),
                     disconnected: true,
