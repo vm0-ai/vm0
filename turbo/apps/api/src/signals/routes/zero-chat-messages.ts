@@ -2590,67 +2590,67 @@ const createNormalChatRun$ = command(
 
 export const sendNormalMessage$ = command(
   async ({ set }, args: NormalSendArgs, signal: AbortSignal) => {
-    const prepared = await measureApiDispatchTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
-      "nested",
-      async () => {
-        return await set(prepareNormalSend$, args, signal);
-      },
-    );
-    signal.throwIfAborted();
-    if ("status" in prepared) {
-      return prepared;
-    }
-
-    const clientMessageResolution = await measureApiDispatchTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
-      "nested",
-      async () => {
-        return await resolveClientMessageSend({
-          db: prepared.db,
-          userId: args.userId,
-          threadId: prepared.thread.threadId,
-          clientMessageId: args.body.clientMessageId,
-        });
-      },
-    );
-    signal.throwIfAborted();
-    if (clientMessageResolution) {
-      return clientMessageResolution;
-    }
-
-    const revocationError = await measureApiDispatchTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_web_chat_validate_revocation",
-      "nested",
-      async () => {
-        return await validateNormalRevocationTarget({
-          db: prepared.db,
-          threadId: prepared.thread.threadId,
-          revokesMessageId: args.body.revokesMessageId,
-        });
-      },
-    );
-    signal.throwIfAborted();
-    if (revocationError) {
-      return revocationError;
-    }
-
-    if (prepared.thread.isClientThreadRetry) {
-      const existingRun = await resolveClientThreadRetryRun(
-        prepared.db,
-        prepared.thread.threadId,
+    for (;;) {
+      const prepared = await measureApiDispatchTiming(
+        args.timing,
+        "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
+        "nested",
+        async () => {
+          return await set(prepareNormalSend$, args, signal);
+        },
       );
       signal.throwIfAborted();
-      if (existingRun) {
-        return existingRun;
+      if ("status" in prepared) {
+        return prepared;
       }
-      return badRequestMessage("Client thread id is already in use");
-    }
 
-    for (;;) {
+      const clientMessageResolution = await measureApiDispatchTiming(
+        args.timing,
+        "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
+        "nested",
+        async () => {
+          return await resolveClientMessageSend({
+            db: prepared.db,
+            userId: args.userId,
+            threadId: prepared.thread.threadId,
+            clientMessageId: args.body.clientMessageId,
+          });
+        },
+      );
+      signal.throwIfAborted();
+      if (clientMessageResolution) {
+        return clientMessageResolution;
+      }
+
+      const revocationError = await measureApiDispatchTiming(
+        args.timing,
+        "api_dispatch_pre_create_zero_web_chat_validate_revocation",
+        "nested",
+        async () => {
+          return await validateNormalRevocationTarget({
+            db: prepared.db,
+            threadId: prepared.thread.threadId,
+            revokesMessageId: args.body.revokesMessageId,
+          });
+        },
+      );
+      signal.throwIfAborted();
+      if (revocationError) {
+        return revocationError;
+      }
+
+      if (prepared.thread.isClientThreadRetry) {
+        const existingRun = await resolveClientThreadRetryRun(
+          prepared.db,
+          prepared.thread.threadId,
+        );
+        signal.throwIfAborted();
+        if (existingRun) {
+          return existingRun;
+        }
+        return badRequestMessage("Client thread id is already in use");
+      }
+
       const hasActiveRun = await measureApiDispatchTiming(
         args.timing,
         "api_dispatch_pre_create_zero_web_chat_check_active_run",
