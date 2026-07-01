@@ -297,6 +297,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
     enabled: false,
   },
+  [FeatureSwitchKey.AgentsPageRedesign]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "New Agents page with Public/Private tabs, a public-slot indicator, a Created by footer on every card, a name-first create dialog with a visibility select, and a private empty state.",
+    enabled: false,
+  },
 };
 
 interface ResolvedHashes {

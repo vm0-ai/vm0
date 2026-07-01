@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.520.0](https://github.com/vm0-ai/vm0/compare/app-v0.519.1...app-v0.520.0) (2026-07-01)
+
+
+### Features
+
+* add workflow trigger run now toast ([#19645](https://github.com/vm0-ai/vm0/issues/19645)) ([0214772](https://github.com/vm0-ai/vm0/commit/0214772b457fd6b037eb68e55dbcc065ce1abd0e))
+* expose connector catalog status view models ([#19580](https://github.com/vm0-ai/vm0/issues/19580)) ([697e259](https://github.com/vm0-ai/vm0/commit/697e25903a89443aa024dc38dfaca850133d99db))
+* show subscription account details ([#19500](https://github.com/vm0-ai/vm0/issues/19500)) ([b33f4ca](https://github.com/vm0-ai/vm0/commit/b33f4ca766b19a91ed782766ca29f8f9b50640aa))
+
+
+### Bug Fixes
+
+* align memory page layout ([#19635](https://github.com/vm0-ai/vm0/issues/19635)) ([fe7498a](https://github.com/vm0-ai/vm0/commit/fe7498a91a760509ca5e7031f594915ddbb5c593))
+* move workflows above connectors in sidebar ([#19638](https://github.com/vm0-ai/vm0/issues/19638)) ([0e2cfaa](https://github.com/vm0-ai/vm0/commit/0e2cfaae76fd1d8bcdb98ae696a59c1ea1078e09))
+* use form submit for input dialogs ([#19619](https://github.com/vm0-ai/vm0/issues/19619)) ([b46066a](https://github.com/vm0-ai/vm0/commit/b46066afa5b403d6f7e24a370d8ccbf454470aba))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.136.0
+    * @vm0/connectors bumped to 1.120.1
+    * @vm0/core bumped to 8.381.3
+
 ## [0.519.1](https://github.com/vm0-ai/vm0/compare/app-v0.519.0...app-v0.519.1) (2026-07-01)
 
 
