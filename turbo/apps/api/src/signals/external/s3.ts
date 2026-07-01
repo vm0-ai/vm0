@@ -245,6 +245,23 @@ function isAsyncIterableByteStream(
   return typeof iterator === "function";
 }
 
+function closeS3Body(body: unknown): void {
+  if (!body || typeof body !== "object") {
+    return;
+  }
+
+  const destroy = (body as { destroy?: unknown }).destroy;
+  if (typeof destroy === "function") {
+    destroy.call(body);
+    return;
+  }
+
+  const cancel = (body as { cancel?: unknown }).cancel;
+  if (typeof cancel === "function") {
+    void cancel.call(body);
+  }
+}
+
 function downloadS3BufferWithClient(
   client$: Computed<S3Client>,
   bucket: string,
@@ -260,6 +277,7 @@ function downloadS3BufferWithClient(
       throw new Error("S3 object body is empty");
     }
     if (!isAsyncIterableByteStream(response.Body)) {
+      closeS3Body(response.Body);
       throw new Error("S3 object body is not an async byte stream");
     }
     if (
@@ -267,6 +285,7 @@ function downloadS3BufferWithClient(
       response.ContentLength !== undefined &&
       response.ContentLength > options.maxBytes
     ) {
+      closeS3Body(response.Body);
       throw new S3ObjectSizeLimitError(
         key,
         response.ContentLength,
