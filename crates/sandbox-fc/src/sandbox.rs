@@ -7832,6 +7832,56 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn park_pauses_when_balloon_reclaim_is_pressure_limited() {
+        let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+        let stats =
+            MockBalloonStats::new(target_mib, 1250).with_memory(mib(64), mib(128), mib(2048));
+        let (sock, reqs, _dir) = spawn_mock_fc_api_with_stats(
+            std::collections::VecDeque::new(),
+            std::collections::VecDeque::from([MockBalloonStatsReply::Ok(stats)]),
+        )
+        .await;
+
+        let mut controller = Some(test_balloon_controller());
+        let mut is_parked = false;
+
+        let (result, events) = capture_async_log_events(park_inner(
+            &mut is_parked,
+            2048,
+            &mut controller,
+            &sock,
+            "pressure-limited-park",
+        ))
+        .await;
+        result.unwrap();
+
+        assert!(is_parked);
+        assert!(controller.is_none());
+        let event = captured_event(
+            &events,
+            "balloon pressure-limited partial reclaim, proceeding to pause",
+        );
+        assert_eq!(event.level, Level::INFO);
+        assert_event_field(event, "reason", "pressure_limited_partial_reclaim");
+
+        let reqs = reqs.lock().await;
+        let stats_gets = reqs
+            .iter()
+            .filter(|r| r.method == "GET" && r.path == "/balloon/statistics")
+            .count();
+        assert_eq!(
+            stats_gets, 1,
+            "pressure-limited balloon should settle on the first stats poll"
+        );
+
+        let ps = patches(&reqs);
+        assert_eq!(ps.len(), 2, "expected balloon inflate + vm pause");
+        assert_eq!(ps[0].path, "/balloon");
+        assert_eq!(ps[1].path, "/vm");
+        assert!(ps[1].body.contains("Paused"));
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn park_pauses_after_balloon_settle_timeout() {
         // Balloon never reaches target — wait_for_balloon must time out
         // and proceed to pause anyway. With `start_paused = true`, tokio
