@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import type {
@@ -99,28 +99,15 @@ function runTelegramSendDelaysImmediately(): {
   readonly restore: () => void;
 } {
   const delays: number[] = [];
-  const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((
-    handler: (...args: unknown[]) => void,
-    delay?: number,
-    ...args: unknown[]
-  ) => {
-    delays.push(delay ?? 0);
-    queueMicrotask(() => {
-      handler(...args);
-    });
-    const timeout = {
-      hasRef: () => false,
-      refresh: () => timeout,
-      ref: () => timeout,
-      unref: () => timeout,
-    };
-    return timeout as unknown as ReturnType<typeof setTimeout>;
-  }) as typeof setTimeout);
+  context.mocks.signalTimers.delay.mockImplementation((delayMs) => {
+    delays.push(delayMs);
+    return Promise.resolve();
+  });
 
   return {
     delays,
     restore: () => {
-      setTimeoutSpy.mockRestore();
+      context.mocks.signalTimers.delay.mockReset();
     },
   };
 }
@@ -517,8 +504,6 @@ async function findThreadSession(args: {
 }
 
 afterEach(() => {
-  vi.restoreAllMocks();
-  vi.useRealTimers();
   context.mocks.axiom.query.mockReset();
   clearMockedEnv();
 });
@@ -623,10 +608,12 @@ describe("POST /api/internal/callbacks/telegram", () => {
   it("returns the Telegram 429 after exhausting Fibonacci retries", async () => {
     const fixture = await track(seedFixture());
     const telegram = telegramApiMocks(TEST_BOT_TOKEN, {
-      sendMessageResponses: Array.from({ length: 6 }, () => ({
-        status: 429,
-        body: { ok: false, description: "Too Many Requests" },
-      })),
+      sendMessageResponses: Array.from({ length: 6 }, () => {
+        return {
+          status: 429,
+          body: { ok: false, description: "Too Many Requests" },
+        };
+      }),
     });
     completedOutput("Still limited");
 

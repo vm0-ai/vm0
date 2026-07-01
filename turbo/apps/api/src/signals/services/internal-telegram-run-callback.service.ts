@@ -7,6 +7,7 @@ import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq } from "drizzle-orm";
+import { delay } from "signal-timers";
 import { z } from "zod";
 
 import { buildTelegramResponse, splitMessage } from "../../lib/telegram-format";
@@ -40,7 +41,6 @@ import { settle } from "../utils";
 
 const L = logger("InternalCallbacksTelegram");
 const TELEGRAM_COMPLETION_CHUNK_THROTTLE_MS = 1100;
-const TELEGRAM_SEND_RETRY_DELAYS_MS = [1000, 1000, 2000, 3000, 5000];
 
 const telegramCallbackPayloadSchema = z
   .object({
@@ -81,38 +81,36 @@ type TelegramInternalCallbackResult =
       readonly status: 400 | 500 | 502;
     };
 
-function abortError(signal: AbortSignal): Error {
-  return signal.reason instanceof Error ? signal.reason : new Error("Aborted");
-}
-
-function waitForTelegramSendDelay(
+async function waitForTelegramSendDelay(
   delayMs: number,
   signal: AbortSignal,
 ): Promise<void> {
-  if (delayMs <= 0) {
-    signal.throwIfAborted();
-    return Promise.resolve();
-  }
-
   signal.throwIfAborted();
-  let onAbort: (() => void) | undefined;
-  return new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(resolve, delayMs);
-    onAbort = (): void => {
-      clearTimeout(timeout);
-      reject(abortError(signal));
-    };
+  if (delayMs > 0) {
+    await delay(delayMs, { signal });
+  }
+  signal.throwIfAborted();
+}
 
-    signal.addEventListener("abort", onAbort, { once: true });
-    if (signal.aborted) {
-      onAbort();
+function telegramSendRetryDelayMs(attempt: number): number | undefined {
+  switch (attempt) {
+    case 0:
+    case 1: {
+      return 1000;
     }
-  }).finally(() => {
-    if (onAbort) {
-      signal.removeEventListener("abort", onAbort);
+    case 2: {
+      return 2000;
     }
-    signal.throwIfAborted();
-  });
+    case 3: {
+      return 3000;
+    }
+    case 4: {
+      return 5000;
+    }
+    default: {
+      return undefined;
+    }
+  }
 }
 
 async function sendMessageWithTelegramRateLimitRetry(args: {
@@ -132,7 +130,7 @@ async function sendMessageWithTelegramRateLimitRetry(args: {
       return result;
     }
 
-    const retryDelayMs = TELEGRAM_SEND_RETRY_DELAYS_MS[attempt];
+    const retryDelayMs = telegramSendRetryDelayMs(attempt);
     if (retryDelayMs === undefined) {
       return result;
     }
