@@ -11,6 +11,8 @@ import {
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { exportJobs } from "@vm0/db/schema/export-job";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
@@ -282,6 +284,65 @@ async function seedQueueEntryForAction(
   return actionOk();
 }
 
+async function seedQueueMarkerForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readString(body, "run_id");
+  if (!runId) {
+    return actionBadRequest("run_id is required");
+  }
+  const [run] = await db
+    .select({
+      userId: agentRuns.userId,
+      sessionId: agentRuns.sessionId,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!run) {
+    return actionBadRequest("run not found");
+  }
+  const [session] = await db
+    .select({ composeId: agentSessions.agentComposeId })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, run.sessionId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!session) {
+    return actionBadRequest("session not found");
+  }
+  const [thread] = await db
+    .insert(chatThreads)
+    .values({
+      userId: run.userId,
+      agentComposeId: session.composeId,
+      title: "cron cleanup marker test",
+    })
+    .returning({ id: chatThreads.id });
+  signal.throwIfAborted();
+  if (!thread) {
+    return actionBadRequest("failed to seed chat thread");
+  }
+  const [marker] = await db
+    .insert(chatMessages)
+    .values({
+      chatThreadId: thread.id,
+      role: "assistant",
+      content: "Waiting in queue...",
+      runId,
+      runEventId: "queue:queued",
+    })
+    .returning({ id: chatMessages.id });
+  signal.throwIfAborted();
+  if (!marker) {
+    return actionBadRequest("failed to seed queue marker");
+  }
+  return actionOk({ marker_id: marker.id, thread_id: thread.id });
+}
+
 async function seedExportJobForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -377,6 +438,28 @@ async function getQueueEntryForAction(
   return actionOk({ queue_entry: entry ?? null });
 }
 
+async function getQueueMarkerRevokerForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const markerId = readString(body, "marker_id");
+  if (!markerId) {
+    return actionBadRequest("marker_id is required");
+  }
+  const [revoker] = await db
+    .select({
+      id: chatMessages.id,
+      revokesMessageId: chatMessages.revokesMessageId,
+      runEventId: chatMessages.runEventId,
+    })
+    .from(chatMessages)
+    .where(eq(chatMessages.revokesMessageId, markerId))
+    .limit(1);
+  signal.throwIfAborted();
+  return actionOk({ queue_marker_revoker: revoker ?? null });
+}
+
 async function getExportJobForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -400,11 +483,13 @@ const cronCleanupSandboxesActionHandlers = {
   "delete-run": deleteRunForAction,
   "seed-runner-job": seedRunnerJobForAction,
   "seed-queue-entry": seedQueueEntryForAction,
+  "seed-queue-marker": seedQueueMarkerForAction,
   "seed-export-job": seedExportJobForAction,
   "delete-export-job": deleteExportJobForAction,
   "get-run": getRunForAction,
   "get-runner-job": getRunnerJobForAction,
   "get-queue-entry": getQueueEntryForAction,
+  "get-queue-marker-revoker": getQueueMarkerRevokerForAction,
   "get-export-job": getExportJobForAction,
 } satisfies Record<
   CronCleanupSandboxesAction,

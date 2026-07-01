@@ -34,6 +34,17 @@ interface ExportJobFixture {
   readonly id: string;
 }
 
+interface QueueMarkerFixture {
+  readonly markerId: string;
+  readonly threadId: string;
+}
+
+interface QueueMarkerRevoker {
+  readonly id: string;
+  readonly revokesMessageId: string;
+  readonly runEventId: string | null;
+}
+
 function apiClient() {
   return setupApp({ context })(cronCleanupSandboxesContract);
 }
@@ -165,6 +176,19 @@ async function insertQueueEntry(
   });
 }
 
+async function insertQueueMarker(
+  fixture: RunFixture,
+): Promise<QueueMarkerFixture> {
+  const response = await postCronCleanupState({
+    action: "seed-queue-marker",
+    run_id: fixture.runId,
+  });
+  return {
+    markerId: stringField(response, "marker_id"),
+    threadId: stringField(response, "thread_id"),
+  };
+}
+
 async function insertRunnerJobEntry(
   fixture: RunFixture,
   expiresAt: Date,
@@ -232,6 +256,23 @@ async function findQueueEntry(runId: string): Promise<{
   });
   const row = recordField(response, "queue_entry");
   return row ? { runId: stringField(row, "runId") } : null;
+}
+
+async function findQueueMarkerRevoker(
+  markerId: string,
+): Promise<QueueMarkerRevoker | null> {
+  const response = await postCronCleanupState({
+    action: "get-queue-marker-revoker",
+    marker_id: markerId,
+  });
+  const row = recordField(response, "queue_marker_revoker");
+  return row
+    ? {
+        id: stringField(row, "id"),
+        revokesMessageId: stringField(row, "revokesMessageId"),
+        runEventId: nullableString(row.runEventId),
+      }
+    : null;
 }
 
 async function findExportJob(jobId: string): Promise<{
@@ -563,6 +604,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     const fixture = await trackRun(
       insertRunFixture({ status: "queued", createdAt: minutesAgo(6) }),
     );
+    const marker = await insertQueueMarker(fixture);
 
     const response = await accept(
       apiClient().cleanup({ headers: cronHeaders() }),
@@ -583,12 +625,26 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       error: "Queued run timed out before queue entry was persisted",
     });
     await expect(findQueueEntry(fixture.runId)).resolves.toBeNull();
+    await expect(
+      findQueueMarkerRevoker(marker.markerId),
+    ).resolves.toMatchObject({
+      revokesMessageId: marker.markerId,
+      runEventId: "queue:dequeued",
+    });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `run:changed:${fixture.runId}`,
       { status: "failed" },
     );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "queue:changed",
+      null,
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${marker.threadId}`,
+      null,
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "threadListChanged",
       null,
     );
   });
