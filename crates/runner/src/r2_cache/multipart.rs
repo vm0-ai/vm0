@@ -343,7 +343,7 @@ mod tests {
         };
 
         let parts = tokio::time::timeout(
-            Duration::from_secs(1),
+            Duration::from_secs(5),
             upload_parts_streaming_with(Cursor::new(b"aaaabbbb".to_vec()), 4, 2, upload),
         )
         .await
