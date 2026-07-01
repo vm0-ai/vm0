@@ -1219,6 +1219,87 @@ describe("OPS-01: user data export", () => {
     expect(manifest.counts.sessionHistories).toBe(1);
   });
 
+  it("fails user export when gzip-backed session history does not match its hash", async () => {
+    const api = createOpsLogsApi(context);
+    const bdd = createBddApi(context);
+    const misc = createMiscRoutesApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const actor = await createUserExportActor(bdd);
+    const exportStartAt = Date.UTC(2026, 4, 12, 7);
+
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD Export Corrupt History Agent",
+      visibility: "private",
+    });
+    const run = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "checkpoint corrupt compressed history",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await runs.claimRunnerJob(run.runId);
+    const headers = { authorization: `Bearer ${claim.sandboxToken}` };
+    const history = `{"type":"init"}\n{"type":"human","text":"exported-${randomUUID()}"}\n`;
+    const tamperedHistory = history.replace("exported-", "tampered-");
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const compressedKey = `blobs/${historyHash}.blob.gz`;
+
+    await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: historyHash,
+        size: Buffer.byteLength(history, "utf8"),
+        encoding: "gzip",
+      },
+      headers,
+      [200],
+    );
+    const checkpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-export-corrupt-session-${run.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      headers,
+      [200],
+    );
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected gzip history checkpoint to succeed");
+    }
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0 },
+      headers,
+      [200],
+    );
+
+    mockNow(exportStartAt);
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.com/bdd-export-corrupt-history.zip?sig=test",
+    );
+    misc.putS3Object(
+      compressedKey,
+      gzipSync(Buffer.from(tamperedHistory, "utf8")),
+    );
+
+    const started = await api.requestPostUserExport(actor, [202]);
+    const failedStatus = await waitForUserExportJobStatus(
+      api,
+      actor,
+      started.body.jobId,
+      "failed",
+    );
+    if (!failedStatus.job) {
+      throw new Error("Expected failed export job");
+    }
+    expect(failedStatus.job.error).toContain("session history hash mismatch");
+  });
+
   it("surfaces failed exports and allows an immediate retry", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);

@@ -672,14 +672,6 @@ async function resolveSessionHistory(
       return result.value;
     }
 
-    if (legacyText) {
-      log.warn("session history blob fetch failed, using legacy text", {
-        hash,
-        error: result.error,
-      });
-      return legacyText;
-    }
-
     throw result.error;
   }
 
