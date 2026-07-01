@@ -103,5 +103,8 @@ describe("createIdbMessageStores", () => {
     await expect(
       stores.readStore.readBefore(threadId, m2.id, 10),
     ).resolves.toStrictEqual([m1, m3]);
+    await expect(
+      stores.readStore.readBefore(threadId, otherThreadMessage.id, 10),
+    ).resolves.toStrictEqual([]);
   });
 });

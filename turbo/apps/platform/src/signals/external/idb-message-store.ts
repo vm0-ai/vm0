@@ -149,6 +149,10 @@ function createIdbMessageStores(userId: string, orgId: string) {
         L.debug("readBefore:anchorMiss", { threadId, beforeId });
         return [];
       }
+      if ((anchor as { threadId?: string }).threadId !== threadId) {
+        L.debug("readBefore:anchorThreadMismatch", { threadId, beforeId });
+        return [];
+      }
       const anchorMsg = validateMessage(anchor);
       signal?.throwIfAborted();
 
