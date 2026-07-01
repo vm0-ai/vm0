@@ -1171,11 +1171,23 @@ function compareCursorString(left: string, right: string): number {
   return 0;
 }
 
+function compareCreatedAt(left: string, right: string): number {
+  if (left === right) {
+    return 0;
+  }
+  const leftTime = Date.parse(left);
+  const rightTime = Date.parse(right);
+  if (Number.isNaN(leftTime) || Number.isNaN(rightTime)) {
+    return compareCursorString(left, right);
+  }
+  return leftTime - rightTime;
+}
+
 function compareServerMessageOrder(
   left: PagedChatMessage,
   right: PagedChatMessage,
 ): number {
-  const createdAtOrder = compareCursorString(left.createdAt, right.createdAt);
+  const createdAtOrder = compareCreatedAt(left.createdAt, right.createdAt);
   if (createdAtOrder !== 0) {
     return createdAtOrder;
   }
