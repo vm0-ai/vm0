@@ -21,6 +21,7 @@ export const gamma = {
           fields: {
             GAMMA_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "sk-gamma-...",
             },

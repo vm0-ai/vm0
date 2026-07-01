@@ -18,6 +18,7 @@ export const productlane = {
           fields: {
             PRODUCTLANE_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-productlane-api-key",
             },

@@ -20,6 +20,7 @@ export const calCom = {
           fields: {
             CALCOM_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "cal_live_xxxxxxxx",
             },

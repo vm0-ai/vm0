@@ -20,6 +20,7 @@ export const podchaser = {
           fields: {
             PODCHASER_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "your-podchaser-access-token",
             },

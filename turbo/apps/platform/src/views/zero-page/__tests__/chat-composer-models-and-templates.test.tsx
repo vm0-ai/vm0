@@ -740,7 +740,7 @@ describe("chat composer models", () => {
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: {
-        [FeatureSwitchKey.ChatSlashWorkflowCommands]: true,
+        [FeatureSwitchKey.WorkflowAutomation]: true,
       },
     });
 
@@ -761,7 +761,7 @@ describe("chat composer models", () => {
       context,
       path: `/chats/${THREAD_ID}`,
       featureSwitches: {
-        [FeatureSwitchKey.ChatSlashWorkflowCommands]: true,
+        [FeatureSwitchKey.WorkflowAutomation]: true,
       },
     });
 
@@ -804,7 +804,7 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatSlashWorkflowCommands]: true },
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     const editor = await findComposerEditor();
@@ -866,7 +866,7 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatSlashWorkflowCommands]: true },
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     const editor = await findComposerEditor();
@@ -879,7 +879,7 @@ describe("chat composer models", () => {
     expect(editor.textContent).toContain("/");
   });
 
-  it("links to the agent workflows tab from the slash workflow menu footer", async () => {
+  it("links to the workflows page from the slash workflow menu footer", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
@@ -897,8 +897,7 @@ describe("chat composer models", () => {
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: {
-        [FeatureSwitchKey.ChatSlashWorkflowCommands]: true,
-        [FeatureSwitchKey.WorkflowsViewer]: true,
+        [FeatureSwitchKey.WorkflowAutomation]: true,
       },
     });
 
@@ -911,7 +910,7 @@ describe("chat composer models", () => {
     ).resolves.toBeInTheDocument();
     expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
     const link = linkByText("View all workflows");
-    expect(link).toHaveAttribute("href", `/agents/${AGENT_ID}/workflows`);
+    expect(link).toHaveAttribute("href", "/workflows");
     expect(link.parentElement).toHaveClass("shrink-0", "border-t");
   });
 
@@ -933,7 +932,7 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatSlashWorkflowCommands]: false },
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -973,7 +972,7 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatSlashWorkflowCommands]: true },
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     const editor = await findComposerEditor();
@@ -1005,7 +1004,7 @@ describe("chat composer models", () => {
       detachedSetupPage({
         context,
         path: `/agents/${AGENT_ID}/chat`,
-        featureSwitches: { [FeatureSwitchKey.ChatSlashWorkflowCommands]: true },
+        featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
       });
 
       const editor = await findComposerEditor();

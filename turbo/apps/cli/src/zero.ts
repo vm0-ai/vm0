@@ -38,6 +38,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   "model-provider": null,
   logs: "agent-run:read",
   search: "chat-message:read",
+  chat: ["chat-thread:read", "chat-thread:write"],
   resource: null,
   github: ["github:read", "github:write"],
   slack: "slack:write",
@@ -137,7 +138,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
   {
     name: "github",
-    description: "Manage GitHub integration files and label listeners",
+    description: "Upload and download GitHub files",
     load: async () => {
       return (await import("./commands/zero/github")).zeroGithubCommand;
     },
@@ -184,6 +185,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     description: "Search logs, chat, or get a recipe for external sources",
     load: async () => {
       return (await import("./commands/zero/search")).zeroSearchCommand;
+    },
+  },
+  {
+    name: "chat",
+    description: "Manage the current web chat thread",
+    load: async () => {
+      return (await import("./commands/zero/chat")).zeroChatCommand;
     },
   },
   {
@@ -382,6 +390,9 @@ export function buildZeroHelpText(
     "  Model routing?        zero model-provider ls",
     "  Update yourself?       zero agent --help",
     "  Manage workflows?     zero workflow --help",
+    ...(shouldHideCommand("chat", payload)
+      ? []
+      : ['  Rename this chat?     zero chat rename "New title"']),
     "  List generators?       zero generate --help",
     '  Generate image?        zero generate image --prompt "..."',
     '  Generate website?      zero generate website --prompt "..."',

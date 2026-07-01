@@ -13,7 +13,6 @@ import {
   connectorCurrentConnectionStatus,
 } from "../zero-page/settings/connectors.ts";
 import { agentConnectorAuthorizationsReload$ } from "../zero-page/agent-connector-authorizations.ts";
-import { githubIntegrationData$ } from "../zero-page/zero-github.ts";
 import { detach, Reason, resetSignal } from "../utils.ts";
 
 const GITHUB_PR_TRACKING_POLL_INTERVAL_MS = 15_000;
@@ -61,26 +60,6 @@ export const setGithubPrTrackingOpenThreadId$ = command(
       Reason.Entrance,
       "github-pr-tracking-poll",
     );
-  },
-);
-
-export const githubPrTrackingLabelOptions$ = computed(
-  async (get): Promise<readonly string[]> => {
-    const data = await get(githubIntegrationData$);
-    const labels = new Map<string, string>();
-    for (const listener of data.labelListeners) {
-      const trimmed = listener.labelName.trim();
-      if (trimmed.length === 0) {
-        continue;
-      }
-      const key = trimmed.toLowerCase();
-      if (!labels.has(key)) {
-        labels.set(key, trimmed);
-      }
-    }
-    return [...labels.values()].sort((left, right) => {
-      return left.localeCompare(right);
-    });
   },
 );
 

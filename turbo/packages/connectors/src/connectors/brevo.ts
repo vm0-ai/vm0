@@ -20,6 +20,7 @@ export const brevo = {
           fields: {
             BREVO_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "xkeysib-...",
             },

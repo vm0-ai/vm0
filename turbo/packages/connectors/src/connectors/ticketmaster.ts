@@ -20,6 +20,7 @@ export const ticketmaster = {
           fields: {
             TICKETMASTER_API_KEY: {
               label: "Discovery API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-ticketmaster-api-key",
             },

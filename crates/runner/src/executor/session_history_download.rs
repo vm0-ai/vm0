@@ -1,5 +1,23 @@
+//! Resume-session history materialization for runner execution.
+//!
+//! Resume sessions can arrive with no history, inline history, or a hash-backed
+//! history reference. This module owns the hash-backed materializer lifecycle:
+//! no resume session, no download needed, or an in-flight download task. Inline
+//! history stays on the original `ResumeSession`; `agent_run` restores it after
+//! `finish` reports that no download was needed.
+//!
+//! Hash-backed downloads can be started before the final restore point so the
+//! network fetch overlaps sandbox preparation and reuse checks. `finish` is the
+//! single point that consumes the task result, and cancellation takes priority
+//! over a completed download so cancelled runs do not proceed into restore.
+//!
+//! Download diagnostics must not expose presigned URL query strings, and the
+//! downloaded bytes must satisfy the declared size, byte cap, and hash contract
+//! before they are restored into the sandbox.
+
 use std::time::{Duration, Instant};
 
+use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use sha2::{Digest, Sha256};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -10,8 +28,6 @@ use crate::http::HttpClient;
 use crate::types::{ResumeSession, ResumeSessionHistoryRefKind};
 
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
-// Must stay in sync with RESUME_SESSION_HISTORY_MAX_BYTES in the API contracts.
-const MAX_SESSION_HISTORY_BYTES: u64 = 128 * 1024 * 1024;
 
 pub(crate) struct SessionHistoryMaterializer {
     state: SessionHistoryMaterializerState,
@@ -19,7 +35,7 @@ pub(crate) struct SessionHistoryMaterializer {
 
 enum SessionHistoryMaterializerState {
     Missing,
-    Ready,
+    NoDownloadNeeded,
     Downloading {
         started_at: Instant,
         task: Option<JoinHandle<SessionHistoryDownloadTaskResult>>,
@@ -28,7 +44,7 @@ enum SessionHistoryMaterializerState {
 
 pub(super) enum SessionHistoryMaterialization {
     Missing,
-    Ready,
+    NoDownloadNeeded,
     Downloaded {
         session: MaterializedResumeSession<'static>,
         elapsed: Duration,
@@ -57,13 +73,15 @@ impl SessionHistoryMaterializer {
         };
         if session.history_ref().is_none() {
             return Self {
-                state: SessionHistoryMaterializerState::Ready,
+                state: SessionHistoryMaterializerState::NoDownloadNeeded,
             };
         }
 
         let http = http.clone();
         let session = session.clone();
         let started_at = Instant::now();
+        // The spawned task observes cancellation even before `finish` runs, so
+        // prestarted downloads do not need to wait for final materialization.
         Self {
             state: SessionHistoryMaterializerState::Downloading {
                 started_at,
@@ -91,9 +109,13 @@ impl SessionHistoryMaterializer {
         mut self,
         cancel: &CancellationToken,
     ) -> SessionHistoryMaterialization {
+        // `finish` transfers ownership of the background task into final
+        // materialization. Cancellation wins over any completed task result.
         match &mut self.state {
             SessionHistoryMaterializerState::Missing => SessionHistoryMaterialization::Missing,
-            SessionHistoryMaterializerState::Ready => SessionHistoryMaterialization::Ready,
+            SessionHistoryMaterializerState::NoDownloadNeeded => {
+                SessionHistoryMaterialization::NoDownloadNeeded
+            }
             SessionHistoryMaterializerState::Downloading { started_at, task } => {
                 let started_at = *started_at;
                 if cancel.is_cancelled() {
@@ -130,6 +152,8 @@ impl SessionHistoryMaterializer {
                         })
                     }
                 };
+                // Re-check after joining because the task itself can observe
+                // cancellation while still producing a successful result.
                 if cancel.is_cancelled() {
                     return SessionHistoryDownloadTaskResult::cancelled(started_at)
                         .into_materialization();
@@ -170,6 +194,8 @@ impl Drop for SessionHistoryMaterializer {
             task: Some(task), ..
         } = &mut self.state
         {
+            // Dropping means no owner will call `finish`. Abort the task so an
+            // abandoned prestarted download does not continue in the background.
             task.abort();
         }
     }
@@ -191,6 +217,11 @@ async fn download_resume_session_history(
     http: HttpClient,
     session: ResumeSession,
 ) -> RunnerResult<MaterializedResumeSession<'static>> {
+    // The history ref is treated as untrusted input. The request timeout and
+    // 128 MiB cap bound resource use; declared size, HTTP content-length, final
+    // byte count, and SHA-256 must all agree before the bytes become sandbox
+    // session history. URL diagnostics redact query strings because the ref URL
+    // can be presigned.
     let history_ref = session
         .history_ref()
         .ok_or_else(|| RunnerError::Internal("resume session history ref is missing".into()))?
@@ -199,10 +230,10 @@ async fn download_resume_session_history(
         ResumeSessionHistoryRefKind::Blob => {}
     }
     if let Some(expected_size) = history_ref.size
-        && expected_size > MAX_SESSION_HISTORY_BYTES
+        && expected_size > RESUME_SESSION_HISTORY_MAX_BYTES
     {
         return Err(RunnerError::Internal(format!(
-            "session history is too large: {expected_size} bytes exceeds {MAX_SESSION_HISTORY_BYTES} bytes"
+            "session history is too large: {expected_size} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
         )));
     }
 
@@ -256,9 +287,9 @@ async fn download_body(
         })?;
 
     if let Some(content_length) = response.content_length() {
-        if content_length > MAX_SESSION_HISTORY_BYTES {
+        if content_length > RESUME_SESSION_HISTORY_MAX_BYTES {
             return Err(RunnerError::Internal(format!(
-                "session history is too large: {content_length} bytes exceeds {MAX_SESSION_HISTORY_BYTES} bytes"
+                "session history is too large: {content_length} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
             )));
         }
         if let Some(expected_size) = expected_size
@@ -272,7 +303,7 @@ async fn download_body(
 
     let capacity = expected_size
         .unwrap_or(64 * 1024)
-        .min(MAX_SESSION_HISTORY_BYTES)
+        .min(RESUME_SESSION_HISTORY_MAX_BYTES)
         .min(usize::MAX as u64) as usize;
     let mut body = Vec::with_capacity(capacity);
     let mut downloaded = 0u64;
@@ -284,9 +315,9 @@ async fn download_body(
         ))
     })? {
         downloaded += chunk.len() as u64;
-        if downloaded > MAX_SESSION_HISTORY_BYTES {
+        if downloaded > RESUME_SESSION_HISTORY_MAX_BYTES {
             return Err(RunnerError::Internal(format!(
-                "session history is too large: {downloaded} bytes exceeds {MAX_SESSION_HISTORY_BYTES} bytes"
+                "session history is too large: {downloaded} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
             )));
         }
         body.extend_from_slice(&chunk);
@@ -447,7 +478,7 @@ mod tests {
     #[tokio::test]
     async fn materializer_rejects_oversized_content_length() {
         let session = ref_session(
-            serve_once("200 OK", b"", Some(MAX_SESSION_HISTORY_BYTES + 1)).await,
+            serve_once("200 OK", b"", Some(RESUME_SESSION_HISTORY_MAX_BYTES + 1)).await,
             hex::encode(Sha256::digest(b"")),
             None,
         );

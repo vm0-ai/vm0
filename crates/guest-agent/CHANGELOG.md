@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.43.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.2...guest-agent-v0.43.3) (2026-06-30)
+
+## [0.43.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.1...guest-agent-v0.43.2) (2026-06-30)
+
+## [0.43.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.0...guest-agent-v0.43.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* **guest-agent:** reconcile codex auth state locally ([#19487](https://github.com/vm0-ai/vm0/issues/19487)) ([30d3b65](https://github.com/vm0-ai/vm0/commit/30d3b65e43d77b6cebf47181363480d2b9c0d6db))
+
+## [0.43.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.42.2...guest-agent-v0.43.0) (2026-06-30)
+
+
+### Features
+
+* enable codex local active input ([#19463](https://github.com/vm0-ai/vm0/issues/19463)) ([5a34420](https://github.com/vm0-ai/vm0/commit/5a34420314311d9a290c195f33539d8359303660))
+
+## [0.42.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.42.1...guest-agent-v0.42.2) (2026-06-30)
+
+
+### Refactoring
+
+* **guest-agent:** add explicit run config and paths ([#19437](https://github.com/vm0-ai/vm0/issues/19437)) ([685db73](https://github.com/vm0-ai/vm0/commit/685db7388d2c935a518b5ca25b1e37bece8834c8))
+
+## [0.42.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.42.0...guest-agent-v0.42.1) (2026-06-30)
+
+
+### Performance Improvements
+
+* verify large session histories in guest ([#19386](https://github.com/vm0-ai/vm0/issues/19386)) ([a3f62a1](https://github.com/vm0-ai/vm0/commit/a3f62a1bd2b649e6d5dfe0a694894d020d196925))
+
+## [0.42.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.18...guest-agent-v0.42.0) (2026-06-30)
+
+
+### Features
+
+* add Codex app-server active input steering ([#19361](https://github.com/vm0-ai/vm0/issues/19361)) ([7a231a7](https://github.com/vm0-ai/vm0/commit/7a231a7e9069c817b314aeea7408859b496c60d2))
+
 ## [0.41.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.17...guest-agent-v0.41.18) (2026-06-29)
 
 

@@ -59,6 +59,7 @@ export const mercury = {
           fields: {
             MERCURY_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "secret-token:mercury_production_...",
             },

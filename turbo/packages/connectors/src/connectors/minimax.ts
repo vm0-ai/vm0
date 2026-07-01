@@ -21,6 +21,7 @@ export const minimax = {
           fields: {
             MINIMAX_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-minimax-api-key",
             },

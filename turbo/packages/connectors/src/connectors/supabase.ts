@@ -72,6 +72,7 @@ export const supabase = {
           fields: {
             SUPABASE_TOKEN: {
               label: "Service Role Key",
+              publicId: "serviceRoleKey",
               required: true,
               placeholder: "eyJhbGci... or sb_secret_...",
             },

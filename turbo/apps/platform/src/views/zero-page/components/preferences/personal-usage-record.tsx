@@ -54,6 +54,7 @@ const SOURCE_META = {
   chat: { label: "Chat", Icon: IconMessageCircle },
   automation: { label: "Automation", Icon: IconClock },
   slack: { label: "Slack", Icon: IconBrandSlack },
+  teams: { label: "Teams", Icon: IconMessageCircle },
   telegram: { label: "Telegram", Icon: IconBrandTelegram },
   email: { label: "Email", Icon: IconMail },
   agentphone: { label: "Phone", Icon: IconPhone },

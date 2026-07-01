@@ -20,11 +20,13 @@ export const porkbun = {
           fields: {
             PORKBUN_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "pk1_...",
             },
             PORKBUN_SECRET_API_KEY: {
               label: "Secret Key",
+              publicId: "secretKey",
               required: true,
               placeholder: "sk1_...",
             },

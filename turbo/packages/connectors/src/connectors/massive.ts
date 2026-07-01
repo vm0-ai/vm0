@@ -21,6 +21,7 @@ export const massive = {
           fields: {
             MASSIVE_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-massive-api-key",
             },

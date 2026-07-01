@@ -68,6 +68,7 @@ describe("model-first canonical catalog", () => {
       "claude-opus-4-8",
       "claude-opus-4-7",
       "claude-opus-4-6",
+      "claude-sonnet-5",
       "claude-sonnet-4-6",
       "deepseek-v4-pro",
       "kimi-k2.7-code",
@@ -84,6 +85,9 @@ describe("model-first canonical catalog", () => {
 
   it("validates canonical models and credential scopes", () => {
     expect(supportedRunModelSchema.safeParse("gpt-5.5").success).toBe(true);
+    expect(supportedRunModelSchema.safeParse("claude-sonnet-5").success).toBe(
+      true,
+    );
     expect(supportedRunModelSchema.safeParse("kimi-k2.7-code").success).toBe(
       true,
     );
@@ -123,6 +127,7 @@ describe("model-first canonical catalog", () => {
       true,
     );
     expect(isLimitedFree1RestrictedRunModel("gpt-5.4")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-5")).toBe(false);
     expect(isLimitedFree1RestrictedRunModel("claude-sonnet-4-6")).toBe(false);
     expect(isLimitedFree1RestrictedRunModel(null)).toBe(false);
   });
@@ -130,6 +135,9 @@ describe("model-first canonical catalog", () => {
   it("surfaces display labels for canonical models", () => {
     expect(getCanonicalModelDisplayName("claude-opus-4-8")).toBe(
       "Claude Opus 4.8",
+    );
+    expect(getCanonicalModelDisplayName("claude-sonnet-5")).toBe(
+      "Claude Sonnet 5",
     );
     expect(getCanonicalModelDisplayName("glm-5.2")).toBe("GLM-5.2");
     expect(getCanonicalModelDisplayName("mimo-v2.5")).toBe("MiMo-V2.5");
@@ -145,6 +153,9 @@ describe("model-first canonical catalog", () => {
     expect(normalizeRunModelId("z-ai/glm-5.1")).toBe("glm-5.1");
     expect(normalizeRunModelId("xiaomi/mimo-v2.5")).toBe("mimo-v2.5");
     expect(normalizeRunModelId("tencent/hy3-preview")).toBe("hy3-preview");
+    expect(normalizeRunModelId("anthropic/claude-sonnet-5")).toBe(
+      "claude-sonnet-5",
+    );
     expect(normalizeRunModelId("custom/model")).toBe("custom/model");
     expect(isSupportedRunModel("glm-5.2")).toBe(true);
     expect(isSupportedRunModel("glm-5.1")).toBe(true);
@@ -170,6 +181,13 @@ describe("model-first canonical catalog", () => {
     expect(getProvidersForModel("claude-fable-5")).toEqual([]);
     expect(getProvidersForModel("anthropic/claude-fable-5")).toEqual([]);
     expect(getProvidersForModel("claude-opus-4-8")).toEqual([
+      "vm0",
+      "claude-code-oauth-token",
+      "anthropic-api-key",
+      "openrouter-api-key",
+      "vercel-ai-gateway",
+    ]);
+    expect(getProvidersForModel("anthropic/claude-sonnet-5")).toEqual([
       "vm0",
       "claude-code-oauth-token",
       "anthropic-api-key",
@@ -281,6 +299,15 @@ describe("model-first canonical catalog", () => {
       getProviderRuntimeModel("anthropic-api-key", "claude-opus-4-8"),
     ).toBe("claude-opus-4-8");
     expect(
+      getProviderRuntimeModel("anthropic-api-key", "claude-sonnet-5"),
+    ).toBe("claude-sonnet-5");
+    expect(
+      getProviderRuntimeModel("openrouter-api-key", "claude-sonnet-5"),
+    ).toBe("anthropic/claude-sonnet-5");
+    expect(
+      getProviderRuntimeModel("vercel-ai-gateway", "claude-sonnet-5"),
+    ).toBe("anthropic/claude-sonnet-5");
+    expect(
       getProviderRuntimeModel("openrouter-api-key", "claude-fable-5"),
     ).toBe("claude-fable-5");
     expect(getProviderRuntimeModel("vercel-ai-gateway", "claude-fable-5")).toBe(
@@ -306,6 +333,7 @@ describe("model-first canonical catalog", () => {
   it("builds the default org policy seed from the workspace defaults", () => {
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).toEqual([
       "claude-opus-4-8",
+      "claude-sonnet-5",
       "claude-sonnet-4-6",
       "deepseek-v4-pro",
       "kimi-k2.7-code",
@@ -332,6 +360,7 @@ describe("model-first canonical catalog", () => {
         "claude-opus-4-8": "$$$",
         "claude-opus-4-7": "$$$",
         "claude-opus-4-6": "$$$",
+        "claude-sonnet-5": "$$",
         "deepseek-v4-pro": "$",
         "kimi-k2.7-code": "$",
         "glm-5.2": "$",
@@ -342,6 +371,7 @@ describe("model-first canonical catalog", () => {
     expect(getVm0ModelPriceTier("claude-opus-4-8")).toBe("$$$");
     expect(getVm0ModelPriceTier("claude-opus-4-7")).toBe("$$$");
     expect(getVm0ModelPriceTier("claude-opus-4-6")).toBe("$$$");
+    expect(getVm0ModelPriceTier("claude-sonnet-5")).toBe("$$");
     expect(getVm0ModelPriceTier("deepseek-v4-pro")).toBe("$");
     expect(getVm0ModelPriceTier("kimi-k2.7-code")).toBe("$");
     expect(getVm0ModelPriceTier("glm-5.2")).toBe("$");
@@ -452,6 +482,7 @@ describe("model selection for Anthropic-native providers", () => {
     (type) => {
       const models = getModels(type);
       expect(models).not.toContain("claude-fable-5");
+      expect(models).toContain("claude-sonnet-5");
       expect(models).toContain("claude-sonnet-4-6");
       expect(models).toContain("claude-opus-4-6");
       expect(models).toContain("claude-opus-4-7");
@@ -491,6 +522,7 @@ describe("model selection for Claude-compatible gateway providers", () => {
     expect(getModels("openrouter-api-key")).toEqual([
       "anthropic/claude-opus-4.8",
       "anthropic/claude-opus-4.7",
+      "anthropic/claude-sonnet-5",
       "anthropic/claude-sonnet-4.6",
       "anthropic/claude-opus-4.6",
       "anthropic/claude-opus-4.5",
@@ -542,6 +574,7 @@ describe("getVm0VisibleModels", () => {
 describe("normalizeVm0ModelId", () => {
   it.each([
     ["anthropic/claude-opus-4.8", "claude-opus-4-8"],
+    ["anthropic/claude-sonnet-5", "claude-sonnet-5"],
     ["anthropic/claude-sonnet-4.6", "claude-sonnet-4-6"],
     ["deepseek/deepseek-v4-pro", "deepseek-v4-pro"],
     ["z-ai/glm-5.2", "glm-5.2"],
@@ -563,6 +596,8 @@ describe("normalizeVm0ModelId", () => {
 describe("model image input support", () => {
   it.each([
     "claude-sonnet-4-6",
+    "claude-sonnet-5",
+    "anthropic/claude-sonnet-5",
     "claude-opus-4-8",
     "claude-opus-4-7",
     "kimi-k2.7-code",
@@ -922,6 +957,8 @@ describe("codex-oauth-token codex provider", () => {
     expect(config.apis[0]!.permissions).toEqual([
       {
         name: "codex:api",
+        description:
+          "Access the ChatGPT Codex backend with GET and POST requests.",
         rules: ["GET /{path*}", "POST /{path*}"],
       },
     ]);
@@ -955,15 +992,12 @@ describe("codex-oauth-token codex provider", () => {
     },
   );
 
-  it("firewall denies auth.openai.com via defaultPolicies + permission rule", () => {
+  it("firewall denies auth.openai.com via unknown endpoint policy", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
     expect(config.defaultPolicies).toEqual({
-      deny: ["denied"],
       unknownPolicy: "deny",
     });
-    expect(config.apis[1]!.permissions).toEqual([
-      { name: "denied", rules: ["ANY /*"] },
-    ]);
+    expect(config.apis[1]!.permissions).toEqual([]);
   });
 
   it.each([
@@ -973,12 +1007,10 @@ describe("codex-oauth-token codex provider", () => {
   ] as const)(
     "auth.openai.com matches no allow permission for %s %s",
     (method, path) => {
-      // The `ANY /*` rule on apis[1] is a literal-segment match on "*" and
-      // never matches real traffic — that's intentional. The deny is
-      // delivered by defaultPolicies.unknownPolicy: "deny" (asserted just
-      // above), so traffic to auth.openai.com must NOT resolve to any
-      // permission name on apis[1]. This pins behavior so a future edit
-      // to `apis[1].permissions` (e.g. adding an allow rule) breaks the
+      // auth.openai.com intentionally exposes no grantable permissions. The
+      // deny is delivered by defaultPolicies.unknownPolicy: "deny", so traffic
+      // to auth.openai.com must NOT resolve to any permission name on apis[1].
+      // This pins behavior so a future edit to `apis[1].permissions` breaks the
       // test rather than silently widening auth.openai.com.
       const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
       const fwConfig = { name: config.name, apis: [config.apis[1]!] };

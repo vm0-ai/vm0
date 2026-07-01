@@ -20,10 +20,12 @@ export const nyne = {
           fields: {
             NYNE_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
             NYNE_API_SECRET: {
               label: "API Secret",
+              publicId: "apiSecret",
               required: true,
             },
           },

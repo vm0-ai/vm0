@@ -21,6 +21,7 @@ export const elevenlabs = {
           fields: {
             ELEVENLABS_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-elevenlabs-api-key",
             },

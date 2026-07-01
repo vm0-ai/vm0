@@ -183,7 +183,10 @@ async function featureEnabledForRun(
     run.orgId,
     run.userId,
   );
-  return isFeatureEnabled(FeatureSwitchKey.GoalWorkflows, featureSwitchContext);
+  return isFeatureEnabled(
+    FeatureSwitchKey.WorkflowAutomation,
+    featureSwitchContext,
+  );
 }
 
 async function threadIsIdle(db: Db, chatThreadId: string): Promise<boolean> {

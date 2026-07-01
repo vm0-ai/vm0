@@ -21,6 +21,7 @@ export const pdf4me = {
           fields: {
             PDF4ME_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-pdf4me-api-key",
             },

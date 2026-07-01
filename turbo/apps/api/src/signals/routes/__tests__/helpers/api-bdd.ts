@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 
 import { authContract } from "@vm0/api-contracts/contracts/auth";
 import {
+  onboardingCompleteLimitedFreeContract,
   onboardingSetupContract,
   onboardingStatusContract,
   type OnboardingStatusResponse,
 } from "@vm0/api-contracts/contracts/onboarding";
+import { orgDefaultAgentContract } from "@vm0/api-contracts/contracts/orgs";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import {
@@ -21,6 +23,8 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { authMeRoutes } from "../../auth-me";
 import { zeroAgentsRoutes } from "../../zero-agents";
+import { zeroDefaultAgentRoutes } from "../../zero-default-agent";
+import { zeroOnboardingCompleteLimitedFreeRoutes } from "../../zero-onboarding-complete-limited-free";
 import { zeroOnboardingSetupRoutes } from "../../zero-onboarding-setup";
 import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
 import { zeroOrgReadRoutes } from "../../zero-org-read";
@@ -65,6 +69,11 @@ export interface OnboardingSetupBody {
   readonly selectedConnectors?: ConnectorType[];
   readonly timezone?: string;
   readonly role?: string;
+}
+
+interface OnboardingCompleteLimitedFreeBody {
+  readonly credits?: number;
+  readonly expiresAt?: string | null;
 }
 
 function authHeaders(user: ApiTestUser | null): AuthHeaders {
@@ -114,6 +123,13 @@ export function createBddApi(context: TestContext) {
     })(onboardingSetupContract);
   }
 
+  function onboardingCompleteLimitedFreeClient() {
+    return setupAppWithRoutes({
+      context,
+      routes: zeroOnboardingCompleteLimitedFreeRoutes,
+    })(onboardingCompleteLimitedFreeContract);
+  }
+
   function orgClient() {
     return setupAppWithRoutes({
       context,
@@ -133,6 +149,13 @@ export function createBddApi(context: TestContext) {
       context,
       routes: zeroAgentsRoutes,
     })(zeroAgentsByIdContract);
+  }
+
+  function defaultAgentClient() {
+    return setupAppWithRoutes({
+      context,
+      routes: zeroDefaultAgentRoutes,
+    })(orgDefaultAgentContract);
   }
 
   function user(options: ApiTestUserOptions = {}): ApiTestUser {
@@ -214,6 +237,19 @@ export function createBddApi(context: TestContext) {
           body,
         }),
         [200, 409],
+      );
+    },
+
+    async completeLimitedFreeOnboarding(
+      nextUser: ApiTestUser,
+      body: OnboardingCompleteLimitedFreeBody = {},
+    ) {
+      return await accept(
+        onboardingCompleteLimitedFreeClient().complete({
+          headers: authenticate(nextUser),
+          body,
+        }),
+        [200, 403, 409],
       );
     },
 
@@ -319,6 +355,21 @@ export function createBddApi(context: TestContext) {
           params: { id: agentId },
           headers: authenticate(nextUser),
           body,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async setDefaultAgent(
+      nextUser: ApiTestUser,
+      agentId: string | null,
+    ): Promise<{ readonly agentId: string | null }> {
+      const response = await accept(
+        defaultAgentClient().setDefaultAgent({
+          query: {},
+          headers: authenticate(nextUser),
+          body: { agentId },
         }),
         [200],
       );

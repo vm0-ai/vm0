@@ -20,6 +20,7 @@ export const chatwoot = {
           fields: {
             CHATWOOT_TOKEN: {
               label: "API Access Token",
+              publicId: "accessToken",
               required: true,
               placeholder: "your-chatwoot-access-token",
             },

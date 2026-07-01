@@ -22,6 +22,7 @@ export const openai = {
           fields: {
             OPENAI_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "sk-...",
             },

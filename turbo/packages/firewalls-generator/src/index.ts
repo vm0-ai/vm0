@@ -170,6 +170,7 @@ import { generate as generatePdfco } from "./pdfco";
 import { generate as generatePdforge } from "./pdforge";
 import { generate as generatePeopleDataLabs } from "./people-data-labs";
 import { generate as generatePerplexity } from "./perplexity";
+import { generate as generatePexels } from "./pexels";
 import { generate as generatePika } from "./pika";
 import { generate as generatePinecone } from "./pinecone";
 import { generate as generatePipedream } from "./pipedream";
@@ -444,6 +445,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   pdforge: generatePdforge,
   "people-data-labs": generatePeopleDataLabs,
   perplexity: generatePerplexity,
+  pexels: generatePexels,
   pika: generatePika,
   pinecone: generatePinecone,
   pipedream: generatePipedream,

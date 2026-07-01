@@ -29,7 +29,7 @@ mod process_group;
 mod termination;
 
 pub use codex_app_server_events::{CodexAppServerEventError, notification_to_codex_event};
-pub use codex_setup::setup_codex;
+pub use codex_setup::{setup_codex, setup_codex_for_config};
 pub use command::build_cli_command;
 pub use framework::{ClaudeResultStatus, ClaudeResultSummary};
 
@@ -50,6 +50,7 @@ use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{CliTerminationDiagnostic, FailureDetailSource, FailureReason};
 use process_group::ChildProcessGroup;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 use std::pin::Pin;
@@ -257,6 +258,134 @@ pub enum HeartbeatStatus {
 /// callers that do not own a heartbeat task.
 pub type HeartbeatMonitor = Option<oneshot::Receiver<HeartbeatStatus>>;
 
+pub(super) struct CliRuntimeConfig<'a> {
+    framework: env::Framework,
+    run_id: Cow<'a, str>,
+    prompt: Cow<'a, str>,
+    resume_session_id: Cow<'a, str>,
+    append_system_prompt: Cow<'a, str>,
+    disallowed_tools: Cow<'a, str>,
+    tools: Cow<'a, str>,
+    settings: Cow<'a, str>,
+    use_mock_claude: bool,
+    mock_claude_path: Cow<'a, str>,
+    use_mock_codex: bool,
+    use_codex_app_server_backend: bool,
+    mock_codex_path: Cow<'a, str>,
+    home_dir: Cow<'a, str>,
+    api_url: Cow<'a, str>,
+    openai_model: Cow<'a, str>,
+    codex_oauth_mode: bool,
+    stuck_tool_timeout_secs: u64,
+    agent_log_file: Cow<'a, str>,
+    session_id_file: Cow<'a, str>,
+    session_history_path_file: Cow<'a, str>,
+    user_env: &'a HashMap<String, String>,
+}
+
+impl<'a> CliRuntimeConfig<'a> {
+    fn from_config(config: &'a env::GuestConfig, paths: &'a paths::GuestPaths) -> Self {
+        Self {
+            framework: config.framework,
+            run_id: Cow::Borrowed(&config.run_id),
+            prompt: Cow::Borrowed(&config.prompt),
+            resume_session_id: Cow::Borrowed(&config.resume_session_id),
+            append_system_prompt: Cow::Borrowed(&config.append_system_prompt),
+            disallowed_tools: Cow::Borrowed(&config.disallowed_tools),
+            tools: Cow::Borrowed(&config.tools),
+            settings: Cow::Borrowed(&config.settings),
+            use_mock_claude: config.use_mock_claude,
+            mock_claude_path: Cow::Borrowed(&config.mock_claude_path),
+            use_mock_codex: config.use_mock_codex,
+            use_codex_app_server_backend: config.use_codex_app_server_backend,
+            mock_codex_path: Cow::Borrowed(&config.mock_codex_path),
+            home_dir: Cow::Borrowed(&config.home_dir),
+            api_url: Cow::Borrowed(&config.api_url),
+            openai_model: Cow::Borrowed(user_env_value(&config.user_env, "OPENAI_MODEL")),
+            codex_oauth_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty(),
+            stuck_tool_timeout_secs: config.stuck_tool_timeout_secs,
+            agent_log_file: Cow::Borrowed(paths.agent_log_file()),
+            session_id_file: Cow::Borrowed(paths.session_id_file()),
+            session_history_path_file: Cow::Borrowed(paths.session_history_path_file()),
+            user_env: &config.user_env,
+        }
+    }
+
+    fn from_legacy_env(framework: env::Framework) -> Self {
+        let is_claude = matches!(framework, env::Framework::ClaudeCode);
+        let is_codex = matches!(framework, env::Framework::Codex);
+        let use_mock_claude = is_claude && env::use_mock_claude();
+        let use_mock_codex = is_codex && env::use_mock_codex();
+        let use_codex_app_server_backend = is_codex && env::use_codex_app_server_backend();
+        Self {
+            framework,
+            run_id: Cow::Borrowed(env::run_id()),
+            prompt: Cow::Borrowed(env::prompt()),
+            resume_session_id: Cow::Borrowed(env::resume_session_id()),
+            append_system_prompt: Cow::Borrowed(env::append_system_prompt()),
+            disallowed_tools: if is_claude {
+                Cow::Borrowed(env::disallowed_tools())
+            } else {
+                Cow::Borrowed("")
+            },
+            tools: if is_claude {
+                Cow::Borrowed(env::tools())
+            } else {
+                Cow::Borrowed("")
+            },
+            settings: if is_claude {
+                Cow::Borrowed(env::settings())
+            } else {
+                Cow::Borrowed("")
+            },
+            use_mock_claude,
+            mock_claude_path: if use_mock_claude {
+                Cow::Owned(env::mock_claude_path())
+            } else {
+                Cow::Borrowed("")
+            },
+            use_mock_codex,
+            use_codex_app_server_backend,
+            mock_codex_path: if use_mock_codex {
+                Cow::Owned(env::mock_codex_path())
+            } else {
+                Cow::Borrowed("")
+            },
+            home_dir: Cow::Borrowed(env::home_dir()),
+            api_url: Cow::Owned(child_env::runner_visible_api_url_from_process_env()),
+            openai_model: if is_codex {
+                Cow::Borrowed(env::openai_model())
+            } else {
+                Cow::Borrowed("")
+            },
+            codex_oauth_mode: is_codex && env::is_codex_oauth_mode(),
+            stuck_tool_timeout_secs: if is_claude {
+                env::stuck_tool_timeout_secs()
+            } else {
+                constants::STUCK_TOOL_TIMEOUT_SECS
+            },
+            agent_log_file: Cow::Borrowed(paths::agent_log_file()),
+            session_id_file: Cow::Borrowed(paths::session_id_file()),
+            session_history_path_file: Cow::Borrowed(paths::session_history_path_file()),
+            user_env: env::user_env(),
+        }
+    }
+
+    fn codex_home(&self) -> String {
+        codex_home_for_home_dir(self.home_dir.as_ref())
+    }
+}
+
+fn codex_home_for_home_dir(home_dir: &str) -> String {
+    crate::codex_auth::codex_home_path(Path::new(home_dir))
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn user_env_value<'a>(user_env: &'a HashMap<String, String>, key: &str) -> &'a str {
+    user_env.get(key).map(String::as_str).unwrap_or("")
+}
+
 enum ParsedEventAction {
     Forward,
     Skip,
@@ -264,17 +393,24 @@ enum ParsedEventAction {
 
 struct CliEventIngestor {
     seq: u32,
+    run_id: String,
     last_read_event_at: Option<Instant>,
     session_metadata_capture: events::SessionMetadataCapture,
     failure_diagnostic: Option<CliFailureDiagnostic>,
 }
 
 impl CliEventIngestor {
-    fn new() -> Self {
+    fn new(runtime: &CliRuntimeConfig<'_>) -> Self {
         Self {
             seq: 0,
+            run_id: runtime.run_id.to_string(),
             last_read_event_at: None,
-            session_metadata_capture: events::SessionMetadataCapture::new(),
+            session_metadata_capture: events::SessionMetadataCapture::from_values(
+                runtime.framework,
+                runtime.home_dir.as_ref(),
+                runtime.session_id_file.as_ref(),
+                runtime.session_history_path_file.as_ref(),
+            ),
             failure_diagnostic: None,
         }
     }
@@ -295,7 +431,8 @@ impl CliEventIngestor {
         Self::write_raw_line(log_file, raw_line).await;
 
         if event.get("type").and_then(serde_json::Value::as_str) == Some("stream_event") {
-            events::register_event_session_identifier(event, masker);
+            self.session_metadata_capture
+                .register_event_session_identifier(event, masker);
             return Ok(ParsedEventAction::Skip);
         }
         self.last_read_event_at = Some(Instant::now());
@@ -345,7 +482,8 @@ impl CliEventIngestor {
         event_tx: &tokio::sync::mpsc::UnboundedSender<PreparedEvent>,
     ) {
         if should_send_events {
-            let payload = events::prepare_event_payload(event, self.seq, masker);
+            let payload =
+                events::prepare_event_payload_for_run_id(event, self.seq, masker, &self.run_id);
             if event_tx
                 .send(PreparedEvent::Webhook {
                     sequence: self.seq,
@@ -381,12 +519,13 @@ pub async fn execute_cli(
     let framework = env::Framework::from_env();
     let active_input =
         ActiveInputRuntime::new_with_initial_prompt(env::run_id(), false, env::prompt());
+    let runtime = CliRuntimeConfig::from_legacy_env(framework);
     execute_cli_inner(
         masker,
         heartbeat_monitor,
         http,
-        framework,
         active_input.into_writer(),
+        &runtime,
     )
     .await
 }
@@ -406,7 +545,7 @@ pub async fn execute_cli(
 /// enabled, internally replayed initial-prompt and follow-up user events are
 /// filtered from outbound API event delivery.
 ///
-/// For the disabled Codex app-server backend, active input is delivered through
+/// For the experimental Codex app-server backend, active input is delivered through
 /// `turn/steer` for the active turn. Ordinary Codex execution still uses
 /// `codex exec --json` and does not consume active input.
 ///
@@ -420,32 +559,54 @@ pub async fn execute_cli_with_active_input(
     active_input: ActiveInputWriter,
 ) -> Result<CliExecutionResult, AgentError> {
     let framework = env::Framework::from_env();
-    execute_cli_inner(masker, heartbeat_monitor, http, framework, active_input).await
+    let runtime = CliRuntimeConfig::from_legacy_env(framework);
+    execute_cli_inner(masker, heartbeat_monitor, http, active_input, &runtime).await
+}
+
+/// Execute the CLI process using values captured in a [`env::GuestConfig`] and
+/// [`paths::GuestPaths`].
+///
+/// Production guest-agent bootstrap should prefer this entry point so CLI
+/// setup observes the same immutable runtime snapshot as the rest of the run.
+/// The legacy [`execute_cli`] and [`execute_cli_with_active_input`] wrappers
+/// remain for transitional tests and callers that still use process env
+/// facades.
+pub async fn execute_cli_with_active_input_for_config(
+    masker: &SecretMasker,
+    heartbeat_monitor: HeartbeatMonitor,
+    http: HttpClient,
+    active_input: ActiveInputWriter,
+    config: &env::GuestConfig,
+    paths: &paths::GuestPaths,
+) -> Result<CliExecutionResult, AgentError> {
+    let runtime = CliRuntimeConfig::from_config(config, paths);
+    execute_cli_inner(masker, heartbeat_monitor, http, active_input, &runtime).await
 }
 
 async fn execute_cli_inner(
     masker: &SecretMasker,
     mut heartbeat_monitor: HeartbeatMonitor,
     http: HttpClient,
-    framework: env::Framework,
     active_input: ActiveInputWriter,
+    runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
-    if matches!(framework, env::Framework::Codex) && env::use_codex_app_server_backend() {
-        return codex_app_server_backend::execute_codex_app_server(
+    if matches!(runtime.framework, env::Framework::Codex) && runtime.use_codex_app_server_backend {
+        return codex_app_server_backend::execute_codex_app_server_for_runtime(
             masker,
             heartbeat_monitor,
             http,
             active_input,
+            runtime,
         )
         .await;
     }
 
-    let behavior = CliFrameworkBehavior::new(framework);
+    let behavior = CliFrameworkBehavior::new(runtime.framework);
     let replay_user_messages = active_input.is_enabled();
-    masker.add_sensitive_value(env::resume_session_id());
+    masker.add_sensitive_value(runtime.resume_session_id.as_ref());
     log_info!(LOG_TAG, "Starting {} execution...", behavior.agent_type());
 
-    let cmd = command::build_cli_command_for_framework(framework, replay_user_messages)?;
+    let cmd = command::build_cli_command_for_runtime(runtime, replay_user_messages)?;
     let (bin, args) = cmd
         .split_first()
         .ok_or_else(|| AgentError::Execution("empty command".into()))?;
@@ -463,12 +624,12 @@ async fn execute_cli_inner(
         // If a future setup step fails after spawn, dropping `Child` must not
         // leave a CLI process running in the VM.
         .kill_on_drop(true);
-    child_env::apply_to_tokio_command(&mut cmd);
+    child_env::apply_to_tokio_command_for_runtime(&mut cmd, runtime);
     // Set the child cwd explicitly at spawn time so the CLI observes the
     // current canonical workspace mount instead of relying on inherited cwd.
     set_cli_current_dir(&mut cmd, paths::CANONICAL_WORKING_DIR)?;
 
-    match framework {
+    match runtime.framework {
         env::Framework::ClaudeCode => {
             // Suppress Claude CLI features that are unnecessary or harmful in a
             // sandbox: startup network calls (statsig, Datadog, Segment, GCS
@@ -485,18 +646,17 @@ async fn execute_cli_inner(
             cmd.env("DISABLE_TELEMETRY", "1");
         }
         env::Framework::Codex => {
-            // `codex login` and `codex exec` both honor CODEX_HOME; pin
-            // it to $HOME/.codex so the login state from setup_codex
-            // is visible to exec.
-            cmd.env("CODEX_HOME", format!("{}/.codex", env::home_dir()));
+            // Auth reconciliation and `codex exec` both honor CODEX_HOME;
+            // pin it to $HOME/.codex so setup_codex state is visible to exec.
+            cmd.env("CODEX_HOME", runtime.codex_home());
             // Test-only mock fixture selector; keep it explicit instead of
             // reopening inherited env for Codex children.
-            if env::use_mock_codex()
+            if runtime.use_mock_codex
                 && let Ok(fixture) = std::env::var("MOCK_CODEX_FIXTURE")
             {
                 cmd.env("MOCK_CODEX_FIXTURE", fixture);
             }
-            if env::is_codex_oauth_mode() {
+            if runtime.codex_oauth_mode {
                 cmd.env(
                     "CODEX_REFRESH_TOKEN_URL_OVERRIDE",
                     crate::codex_auth::REFRESH_TOKEN_NOOP_URL,
@@ -507,7 +667,7 @@ async fn execute_cli_inner(
 
     // Open the run log before spawning the CLI. If the run-id-scoped path is
     // invalid or unavailable, fail without starting a child process.
-    let log_file = guest_contracts::runtime_paths::create_private(paths::agent_log_file())?;
+    let log_file = guest_contracts::runtime_paths::create_private(runtime.agent_log_file.as_ref())?;
     let mut log_file = tokio::fs::File::from_std(log_file);
 
     let mut child = cmd.spawn()?;
@@ -537,10 +697,10 @@ async fn execute_cli_inner(
 
     let active_input_controller = active_input.controller();
     let mut claude_stdin_write_handle = claude_stdin.map(|stdin| {
-        let run_id = env::run_id();
-        let prompt = env::prompt();
+        let run_id = runtime.run_id.to_string();
+        let prompt = runtime.prompt.to_string();
         tokio::spawn(async move {
-            write_claude_stream_json_to_stdin(stdin, run_id, prompt, active_input).await
+            write_claude_stream_json_to_stdin(stdin, &run_id, &prompt, active_input).await
         })
     });
 
@@ -627,7 +787,7 @@ async fn execute_cli_inner(
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut post_result_cleanup_result = None;
-    let mut event_ingestor = CliEventIngestor::new();
+    let mut event_ingestor = CliEventIngestor::new(runtime);
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             stdin_write_result = async {
@@ -873,7 +1033,7 @@ async fn execute_cli_inner(
                 break Ok(());
             }
             _ = tick_optional_interval(&mut stuck_tool_check), if cli_status.is_none() => {
-                let timeout_secs = env::stuck_tool_timeout_secs();
+                let timeout_secs = runtime.stuck_tool_timeout_secs;
                 // Find the oldest network tool that has exceeded the timeout.
                 let stuck = stuck_tool_tracker
                     .values()
@@ -1236,8 +1396,9 @@ fn with_carried_failure_reason(
 mod tests {
     use super::termination::CliTerminationRuntime;
     use super::{
-        CliExitObservation, CliFailureDiagnostic, claude_initial_prompt_frame, record_cli_exit,
-        select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
+        CliExitObservation, CliFailureDiagnostic, claude_initial_prompt_frame,
+        codex_home_for_home_dir, record_cli_exit, select_failure_diagnostic, set_cli_current_dir,
+        with_carried_failure_reason,
     };
     use crate::active_input::ActiveInputRuntime;
     use guest_contracts::diagnostics::{FailureDetailSource, FailureReason};
@@ -1276,6 +1437,12 @@ mod tests {
             .and_then(serde_json::Value::as_str)
             .expect("uuid");
         uuid::Uuid::parse_str(uuid).expect("valid uuid");
+    }
+
+    #[test]
+    fn codex_home_uses_shared_path_semantics_for_empty_home() {
+        assert_eq!(codex_home_for_home_dir(""), ".codex");
+        assert_eq!(codex_home_for_home_dir("/tmp/home"), "/tmp/home/.codex");
     }
 
     #[tokio::test]

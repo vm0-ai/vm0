@@ -1,5 +1,186 @@
 # Changelog
 
+## [1.196.1](https://github.com/vm0-ai/vm0/compare/api-v1.196.0...api-v1.196.1) (2026-07-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.380.1
+    * @vm0/db bumped to 1.79.6
+
+## [1.196.0](https://github.com/vm0-ai/vm0/compare/api-v1.195.3...api-v1.196.0) (2026-07-01)
+
+
+### Features
+
+* add Claude Sonnet 5 model support ([#19539](https://github.com/vm0-ai/vm0/issues/19539)) ([399f1ad](https://github.com/vm0-ai/vm0/commit/399f1ad74ef3ec9e91b7331cb5ed80c550ed5599))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.133.0
+    * @vm0/connectors bumped to 1.118.0
+    * @vm0/core bumped to 8.380.0
+    * @vm0/db bumped to 1.79.5
+
+## [1.195.3](https://github.com/vm0-ai/vm0/compare/api-v1.195.2...api-v1.195.3) (2026-06-30)
+
+
+### Refactoring
+
+* reduce fallback slop in axiom telemetry ([#19537](https://github.com/vm0-ai/vm0/issues/19537)) ([55a11c0](https://github.com/vm0-ai/vm0/commit/55a11c0c6246cd8f84a466baeeb8b138650cd70c))
+
+## [1.195.2](https://github.com/vm0-ai/vm0/compare/api-v1.195.1...api-v1.195.2) (2026-06-30)
+
+
+### Refactoring
+
+* remove legacy GitHub integration surface ([#19516](https://github.com/vm0-ai/vm0/issues/19516)) ([c7c6b30](https://github.com/vm0-ai/vm0/commit/c7c6b3003aecca18104de6e3e9f540ea2a3fe60d))
+
+
+### Performance Improvements
+
+* reduce queued chat auto-send delay ([#19397](https://github.com/vm0-ai/vm0/issues/19397)) ([461eda0](https://github.com/vm0-ai/vm0/commit/461eda085658dfb212d7dfeda13d4c355f22818c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.132.1
+    * @vm0/connectors bumped to 1.117.2
+    * @vm0/core bumped to 8.379.3
+    * @vm0/db bumped to 1.79.4
+
+## [1.195.1](https://github.com/vm0-ai/vm0/compare/api-v1.195.0...api-v1.195.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* restore default agent mark all read menu ([#19515](https://github.com/vm0-ai/vm0/issues/19515)) ([aaa0aee](https://github.com/vm0-ai/vm0/commit/aaa0aee02f026554cf7d341e850ef76b3106048c))
+
+## [1.195.0](https://github.com/vm0-ai/vm0/compare/api-v1.194.0...api-v1.195.0) (2026-06-30)
+
+
+### Features
+
+* add teams installation connect flow ([#19499](https://github.com/vm0-ai/vm0/issues/19499)) ([c6ba311](https://github.com/vm0-ai/vm0/commit/c6ba311bbc015fdcda49aadbc3c26536aaefc4b0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.132.0
+    * @vm0/core bumped to 8.379.2
+    * @vm0/db bumped to 1.79.3
+
+## [1.194.0](https://github.com/vm0-ai/vm0/compare/api-v1.193.2...api-v1.194.0) (2026-06-30)
+
+
+### Features
+
+* add Teams bot ingress verification ([#19483](https://github.com/vm0-ai/vm0/issues/19483)) ([457f8db](https://github.com/vm0-ai/vm0/commit/457f8dbe04ff4bff402deef852adfa9a7222ffc4))
+
+
+### Bug Fixes
+
+* suppress agent unread during active chat runs ([#19444](https://github.com/vm0-ai/vm0/issues/19444)) ([19035cb](https://github.com/vm0-ai/vm0/commit/19035cb011d144ae04cecced717f004a57e59534))
+
+
+### Refactoring
+
+* unify workflow automation feature switch ([#19476](https://github.com/vm0-ai/vm0/issues/19476)) ([7af9712](https://github.com/vm0-ai/vm0/commit/7af97127c1b742c1d7e4e3ba20b96bfccc5e08ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.131.0
+    * @vm0/connectors bumped to 1.117.1
+    * @vm0/core bumped to 8.379.1
+    * @vm0/db bumped to 1.79.2
+
+## [1.193.2](https://github.com/vm0-ai/vm0/compare/api-v1.193.1...api-v1.193.2) (2026-06-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.130.0
+    * @vm0/connectors bumped to 1.117.0
+    * @vm0/core bumped to 8.379.0
+    * @vm0/db bumped to 1.79.1
+
+## [1.193.1](https://github.com/vm0-ai/vm0/compare/api-v1.193.0...api-v1.193.1) (2026-06-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.79.0
+
+## [1.193.0](https://github.com/vm0-ai/vm0/compare/api-v1.192.0...api-v1.193.0) (2026-06-30)
+
+
+### Features
+
+* suggest workflow automation in chat followups ([#19456](https://github.com/vm0-ai/vm0/issues/19456)) ([42eba73](https://github.com/vm0-ai/vm0/commit/42eba737749a1e0e2439ca6cf6c0a6e301ca3742))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.129.1
+    * @vm0/connectors bumped to 1.116.0
+    * @vm0/core bumped to 8.378.0
+    * @vm0/db bumped to 1.78.6
+
+## [1.192.0](https://github.com/vm0-ai/vm0/compare/api-v1.191.0...api-v1.192.0) (2026-06-30)
+
+
+### Features
+
+* add zero chat get command ([#19405](https://github.com/vm0-ai/vm0/issues/19405)) ([3a90d8f](https://github.com/vm0-ai/vm0/commit/3a90d8f6fd3d575359569843da81b34d2c1a0604))
+
+
+### Refactoring
+
+* add connector catalog reader ([#19413](https://github.com/vm0-ai/vm0/issues/19413)) ([2d4da46](https://github.com/vm0-ai/vm0/commit/2d4da46517093ef9558ffc93419ffc1f072d2e6d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.129.0
+    * @vm0/core bumped to 8.377.2
+    * @vm0/db bumped to 1.78.5
+
+## [1.191.0](https://github.com/vm0-ai/vm0/compare/api-v1.190.0...api-v1.191.0) (2026-06-30)
+
+
+### Features
+
+* add zero chat rename command ([#19381](https://github.com/vm0-ai/vm0/issues/19381)) ([dd04ffb](https://github.com/vm0-ai/vm0/commit/dd04ffb0651ed7083bdb2831e9775315180d8ecd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.128.0
+    * @vm0/core bumped to 8.377.1
+    * @vm0/db bumped to 1.78.4
+
 ## [1.190.0](https://github.com/vm0-ai/vm0/compare/api-v1.189.2...api-v1.190.0) (2026-06-30)
 
 

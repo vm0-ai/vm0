@@ -1,12 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import { automations, automationTriggers } from "@vm0/db/schema/automation";
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
-import { writeDb$ } from "../../external/db";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
@@ -39,7 +35,6 @@ zero-team, zero-default-agent, and zero-onboarding-setup route tests:
 
 const context = testContext();
 const api = createAuthOrgAgentsBddApi(context);
-const store = createStore();
 
 function shortId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 10);
@@ -747,23 +742,15 @@ describe("ORG-02: membership admin matrix", () => {
 
 describe("ORG-02: member cleanup detaches Slack connections", () => {
   async function expectAutomationSuspended(
+    runs: ReturnType<typeof createRunsAutomationsApi>,
+    owner: ApiTestUser,
     automationId: string,
   ): Promise<void> {
-    const db = store.set(writeDb$);
-    const [storedAutomation] = await db
-      .select({ enabled: automations.enabled })
-      .from(automations)
-      .where(eq(automations.id, automationId));
-    expect(storedAutomation?.enabled).toBeFalsy();
-
-    const [storedTrigger] = await db
-      .select({
-        enabled: automationTriggers.enabled,
-        nextRunAt: automationTriggers.nextRunAt,
-      })
-      .from(automationTriggers)
-      .where(eq(automationTriggers.automationId, automationId));
-    expect(storedTrigger).toStrictEqual({
+    const automation = await runs.showAutomation(owner, {
+      id: automationId,
+      name: automationId,
+    });
+    expect(automation).toMatchObject({
       enabled: false,
       nextRunAt: null,
     });
@@ -811,7 +798,11 @@ describe("ORG-02: member cleanup detaches Slack connections", () => {
     await expect(api.leaveOrg(leavingMember)).resolves.toStrictEqual({
       message: "Left org",
     });
-    await expectAutomationSuspended(leavingAutomation.automation.id);
+    await expectAutomationSuspended(
+      runs,
+      leavingMember,
+      leavingAutomation.automation.id,
+    );
 
     await runs.enableAutomations(removedMember);
     const removedAgent = await api.createAgent(removedMember, {
@@ -838,7 +829,11 @@ describe("ORG-02: member cleanup detaches Slack connections", () => {
     ).resolves.toStrictEqual({
       message: `Removed ${removedMember.email} from org`,
     });
-    await expectAutomationSuspended(removedAutomation.automation.id);
+    await expectAutomationSuspended(
+      runs,
+      removedMember,
+      removedAutomation.automation.id,
+    );
   });
 
   it("disconnects slack-linked members on leave, removal, and org deletion [ORG-SLACK-D]", async () => {

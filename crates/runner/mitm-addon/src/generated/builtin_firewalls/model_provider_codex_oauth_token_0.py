@@ -15,6 +15,7 @@ JSON_PART = r"""{
       "base": "https://chatgpt.com/backend-api/codex",
       "permissions": [
         {
+          "description": "Access the ChatGPT Codex backend with GET and POST requests.",
           "name": "codex:api",
           "rules": [
             "GET /{path*}",
@@ -28,14 +29,7 @@ JSON_PART = r"""{
         "headers": {}
       },
       "base": "https://auth.openai.com",
-      "permissions": [
-        {
-          "name": "denied",
-          "rules": [
-            "ANY /*"
-          ]
-        }
-      ]
+      "permissions": []
     }
   ],
   "name": "model-provider:codex-oauth-token"

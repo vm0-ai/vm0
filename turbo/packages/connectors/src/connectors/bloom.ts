@@ -20,6 +20,7 @@ export const bloom = {
           fields: {
             BLOOM_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-bloom-api-key",
             },

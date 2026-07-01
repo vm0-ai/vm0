@@ -51,6 +51,7 @@ const MODEL_BRAND_ICON: Readonly<Record<SupportedRunModel, ModelProviderType>> =
     "claude-opus-4-8": "anthropic-api-key",
     "claude-opus-4-7": "anthropic-api-key",
     "claude-opus-4-6": "anthropic-api-key",
+    "claude-sonnet-5": "anthropic-api-key",
     "claude-sonnet-4-6": "anthropic-api-key",
     "deepseek-v4-pro": "deepseek-api-key",
     "kimi-k2.7-code": "moonshot-api-key",

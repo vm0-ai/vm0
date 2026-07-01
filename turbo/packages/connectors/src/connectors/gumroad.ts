@@ -64,6 +64,7 @@ export const gumroad = {
           fields: {
             GUMROAD_TOKEN: {
               label: "Access Token",
+              publicId: "accessToken",
               required: true,
               placeholder: "your-gumroad-access-token",
             },

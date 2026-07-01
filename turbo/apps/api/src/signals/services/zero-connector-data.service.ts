@@ -7,7 +7,7 @@ import {
   type ConnectorResponse,
   type ScopeDiffResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { ConnectorSearchAuthMethod } from "@vm0/api-contracts/contracts/zero-connectors";
+import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   connectorAuthMethodRefHasRevokeKind,
   getAvailableConnectorAuthMethodIds,
@@ -27,8 +27,6 @@ import {
 } from "@vm0/connectors/connector-utils";
 import { revokeConnectorAuthMethodAccessToken } from "@vm0/connectors/auth-providers";
 import {
-  CONNECTOR_TYPE_KEYS,
-  CONNECTOR_TYPES,
   connectorAuthMethodIdSchema,
   connectorTypeSchema,
   type ConnectorAuthMethodId,
@@ -64,6 +62,8 @@ import {
   connectorCredentialReconnectReason,
   connectorCredentialStatus,
 } from "./connector-credential-status.service";
+import { normalizeManualGrantSubmittedValues } from "./connector-catalog-form-fields.service";
+import { searchConnectorCatalog } from "./connector-catalog-reader.service";
 
 type StoredConnectorRow = {
   readonly id: string;
@@ -295,6 +295,18 @@ function prepareManualGrantConnect(
   authMethod: ConnectorAuthMethodId,
   values: Readonly<Record<string, string>>,
 ): PreparedManualGrantConnectResult {
+  const normalizedValuesResult = normalizeManualGrantSubmittedValues({
+    type,
+    authMethod,
+    values,
+  });
+  if (!normalizedValuesResult.ok) {
+    return {
+      ok: false,
+      message: normalizedValuesResult.message,
+    };
+  }
+
   const fields = manualGrantFieldsForAuthMethod(type, authMethod);
   if (!fields) {
     return {
@@ -303,21 +315,8 @@ function prepareManualGrantConnect(
     };
   }
 
-  const configuredFieldNames = new Set(Object.keys(fields));
-  const unknownFieldNames = Object.keys(values).filter((name) => {
-    return !configuredFieldNames.has(name);
-  });
-  if (unknownFieldNames.length > 0) {
-    return {
-      ok: false,
-      message: `Unknown manual grant field(s): ${formatManualGrantFieldList(
-        unknownFieldNames,
-      )}`,
-    };
-  }
-
   const sanitizedValues = new Map<string, string>();
-  for (const [name, value] of Object.entries(values)) {
+  for (const [name, value] of Object.entries(normalizedValuesResult.values)) {
     sanitizedValues.set(name, sanitizeManualGrantValue(value));
   }
 
@@ -342,7 +341,9 @@ function prepareManualGrantConnect(
         : sanitized;
     if (!value) {
       if (config.required) {
-        missingRequiredNames.push(name);
+        missingRequiredNames.push(
+          normalizedValuesResult.errorNamesByPrivateName[name] ?? name,
+        );
       }
       continue;
     }
@@ -1999,16 +2000,7 @@ export function zeroConnectorSearch(args: {
   readonly orgId: string | undefined;
   readonly userId: string;
   readonly keyword: string | undefined;
-}): Computed<
-  Promise<
-    {
-      readonly id: string;
-      readonly label: string;
-      readonly description: string;
-      readonly authMethods: ConnectorSearchAuthMethod[];
-    }[]
-  >
-> {
+}): Computed<Promise<ConnectorSearchItem[]>> {
   return computed(async (get) => {
     const overrides = args.orgId
       ? await get(userFeatureSwitchOverrides(args.orgId, args.userId))
@@ -2018,38 +2010,10 @@ export function zeroConnectorSearch(args: {
       orgId: args.orgId,
       overrides,
     });
-    const keyword = args.keyword?.toLowerCase();
-    return CONNECTOR_TYPE_KEYS.flatMap((type) => {
-      const config = CONNECTOR_TYPES[type];
-      const authMethods: ConnectorSearchAuthMethod[] =
-        getAvailableConnectorAuthMethodIds(type, featureStates, {
-          apiAuthMethodPolicy: "include",
-        });
-
-      if (authMethods.length === 0) {
-        return [];
-      }
-
-      const item = {
-        id: type,
-        label: config.label,
-        description: config.helpText,
-        authMethods,
-      };
-      const tags: readonly string[] = "tags" in config ? config.tags : [];
-
-      if (
-        keyword &&
-        !item.label.toLowerCase().includes(keyword) &&
-        !item.description.toLowerCase().includes(keyword) &&
-        !tags.some((tag) => {
-          return tag.toLowerCase().includes(keyword);
-        })
-      ) {
-        return [];
-      }
-
-      return [item];
+    return searchConnectorCatalog({
+      keyword: args.keyword,
+      featureStates,
+      apiAuthMethodPolicy: "include",
     });
   });
 }

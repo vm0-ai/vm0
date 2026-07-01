@@ -21,6 +21,7 @@ export const huggingFace = {
           fields: {
             HUGGING_FACE_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "hf_...",
             },

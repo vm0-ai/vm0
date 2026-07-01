@@ -1,0 +1,189 @@
+import { z } from "zod";
+
+import { authHeadersSchema, initContract } from "./base";
+import { apiErrorSchema } from "./errors";
+
+const c = initContract();
+
+const publicConnectorCatalogAuthMethodSummarySchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  description: z.string().nullable(),
+  grantKind: z.enum([
+    "manual",
+    "auth-code",
+    "external-code",
+    "device-auth",
+    "managed",
+  ]),
+});
+
+const publicConnectorCatalogPermissionSummarySchema = z.object({
+  hasPermissions: z.boolean(),
+  permissionCount: z.number().int().nonnegative(),
+  hasCategories: z.boolean(),
+  hasDefaultPolicyOverrides: z.boolean(),
+});
+
+const publicConnectorCatalogItemSchema = z.object({
+  connectorRef: z.string(),
+  label: z.string(),
+  description: z.string(),
+  category: z.string(),
+  generation: z.array(z.string()),
+  tags: z.array(z.string()),
+  authMethods: z.array(publicConnectorCatalogAuthMethodSummarySchema),
+  permissionSummary: publicConnectorCatalogPermissionSummarySchema,
+});
+
+const publicConnectorCatalogManualFieldSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  required: z.boolean(),
+  placeholder: z.string().nullable(),
+  inputType: z.enum(["password", "text"]),
+});
+
+const publicConnectorCatalogStartOptionChoiceSchema = z.object({
+  value: z.string(),
+  label: z.string(),
+});
+
+const publicConnectorCatalogStartOptionSchema = z.object({
+  id: z.string(),
+  kind: z.literal("select"),
+  label: z.string(),
+  required: z.boolean(),
+  defaultValue: z.string().nullable(),
+  options: z.array(publicConnectorCatalogStartOptionChoiceSchema),
+});
+
+const publicConnectorCatalogAuthMethodDetailSchema =
+  publicConnectorCatalogAuthMethodSummarySchema.extend({
+    manualFields: z.array(publicConnectorCatalogManualFieldSchema),
+    startOptions: z.array(publicConnectorCatalogStartOptionSchema),
+  });
+
+const publicConnectorCatalogDetailSchema =
+  publicConnectorCatalogItemSchema.extend({
+    authMethods: z.array(publicConnectorCatalogAuthMethodDetailSchema),
+  });
+
+const publicConnectorCatalogListResponseSchema = z.object({
+  connectors: z.array(publicConnectorCatalogItemSchema),
+});
+
+const publicConnectorCatalogDetailResponseSchema = z.object({
+  connector: publicConnectorCatalogDetailSchema,
+});
+
+const publicFirewallPolicyValueSchema = z.enum(["allow", "deny", "ask"]);
+
+const publicConnectorCatalogPermissionSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+});
+
+const publicConnectorCatalogPermissionCategoriesSchema = z.object({
+  categories: z.record(z.string(), z.string()),
+  displayOrder: z.array(z.string()),
+});
+
+const publicConnectorCatalogDefaultPolicySchema = z.object({
+  permissionDefault: publicFirewallPolicyValueSchema,
+  permissionOverrides: z.record(z.string(), z.array(z.string())).optional(),
+  unknownPolicy: publicFirewallPolicyValueSchema,
+});
+
+const publicConnectorCatalogPermissionDetailSchema = z.object({
+  connectorRef: z.string(),
+  label: z.string(),
+  permissionCount: z.number().int().nonnegative(),
+  permissions: z.array(publicConnectorCatalogPermissionSchema),
+  categories: publicConnectorCatalogPermissionCategoriesSchema.nullable(),
+  defaultPolicy: publicConnectorCatalogDefaultPolicySchema,
+});
+
+const publicConnectorCatalogPermissionDetailResponseSchema = z.object({
+  permissions: publicConnectorCatalogPermissionDetailSchema,
+});
+
+const connectorCatalogPathParamsSchema = z.object({
+  connectorRef: z.string().min(1),
+});
+
+export type PublicConnectorCatalogAuthMethodSummary = z.infer<
+  typeof publicConnectorCatalogAuthMethodSummarySchema
+>;
+export type PublicConnectorCatalogPermissionSummary = z.infer<
+  typeof publicConnectorCatalogPermissionSummarySchema
+>;
+export type PublicConnectorCatalogItem = z.infer<
+  typeof publicConnectorCatalogItemSchema
+>;
+export type PublicConnectorCatalogManualField = z.infer<
+  typeof publicConnectorCatalogManualFieldSchema
+>;
+export type PublicConnectorCatalogStartOption = z.infer<
+  typeof publicConnectorCatalogStartOptionSchema
+>;
+export type PublicConnectorCatalogAuthMethodDetail = z.infer<
+  typeof publicConnectorCatalogAuthMethodDetailSchema
+>;
+export type PublicConnectorCatalogDetail = z.infer<
+  typeof publicConnectorCatalogDetailSchema
+>;
+export type PublicConnectorCatalogListResponse = z.infer<
+  typeof publicConnectorCatalogListResponseSchema
+>;
+export type PublicConnectorCatalogDetailResponse = z.infer<
+  typeof publicConnectorCatalogDetailResponseSchema
+>;
+export type PublicConnectorCatalogPermissionDetail = z.infer<
+  typeof publicConnectorCatalogPermissionDetailSchema
+>;
+export type PublicConnectorCatalogPermissionDetailResponse = z.infer<
+  typeof publicConnectorCatalogPermissionDetailResponseSchema
+>;
+
+export const zeroConnectorCatalogContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/connector-catalog",
+    headers: authHeadersSchema,
+    responses: {
+      200: publicConnectorCatalogListResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "List public connector catalog metadata",
+  },
+  get: {
+    method: "GET",
+    path: "/api/zero/connector-catalog/:connectorRef",
+    headers: authHeadersSchema,
+    pathParams: connectorCatalogPathParamsSchema,
+    responses: {
+      200: publicConnectorCatalogDetailResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get public connector catalog metadata",
+  },
+  permissions: {
+    method: "GET",
+    path: "/api/zero/connector-catalog/:connectorRef/permissions",
+    headers: authHeadersSchema,
+    pathParams: connectorCatalogPathParamsSchema,
+    responses: {
+      200: publicConnectorCatalogPermissionDetailResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get public connector permission metadata",
+  },
+});
+
+export type ZeroConnectorCatalogContract = typeof zeroConnectorCatalogContract;

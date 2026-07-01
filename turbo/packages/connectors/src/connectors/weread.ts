@@ -30,6 +30,7 @@ export const weread = {
           fields: {
             WEREAD_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "wrk-xxxxxxxxxxxxxxxx",
             },

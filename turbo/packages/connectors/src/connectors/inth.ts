@@ -20,6 +20,7 @@ export const inth = {
           fields: {
             INTH_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-inth-api-key",
             },

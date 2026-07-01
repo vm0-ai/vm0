@@ -83,6 +83,26 @@ fn read_from_base_when_no_writes() {
 }
 
 #[test]
+fn multiblock_clean_base_read_uses_one_file_read() {
+    let mut base_data = Vec::new();
+    base_data.extend_from_slice(&vec![0x10; 4096]);
+    base_data.extend_from_slice(&vec![0x20; 4096]);
+    base_data.extend_from_slice(&vec![0x30; 4096]);
+    let base = create_base_image(&base_data);
+    let cow_file = NamedTempFile::new().unwrap();
+    let cow = make_cow(&base, &cow_file, 3 * 4096, 1024 * 1024);
+
+    let mut buf = vec![0u8; 3 * 4096];
+    cow.read(0, &mut buf).unwrap();
+
+    assert!(buf[..4096].iter().all(|&b| b == 0x10));
+    assert!(buf[4096..2 * 4096].iter().all(|&b| b == 0x20));
+    assert!(buf[2 * 4096..].iter().all(|&b| b == 0x30));
+    assert_eq!(cow.base_read_call_count(), 1);
+    assert_eq!(cow.cow_read_call_count(), 0);
+}
+
+#[test]
 fn write_then_read_returns_written_data() {
     let base = create_base_image(&vec![0x00; 8192]);
     let cow_file = NamedTempFile::new().unwrap();
@@ -131,6 +151,25 @@ fn flush_writes_to_cow_file() {
     let mut buf = vec![0u8; 4096];
     cow.read(0, &mut buf).unwrap();
     assert!(buf.iter().all(|&b| b == 0xCC));
+}
+
+#[test]
+fn multiblock_dirty_cow_read_uses_one_file_read() {
+    let base = create_base_image(&vec![0x00; 4 * 4096]);
+    let cow_file = NamedTempFile::new().unwrap();
+    let mut cow = make_cow(&base, &cow_file, 4 * 4096, 1024 * 1024);
+
+    cow.write(4096, &vec![0xA1; 4096]).unwrap();
+    cow.write(2 * 4096, &vec![0xA2; 4096]).unwrap();
+    cow.flush().unwrap();
+
+    let mut buf = vec![0u8; 2 * 4096];
+    cow.read(4096, &mut buf).unwrap();
+
+    assert!(buf[..4096].iter().all(|&b| b == 0xA1));
+    assert!(buf[4096..].iter().all(|&b| b == 0xA2));
+    assert_eq!(cow.base_read_call_count(), 0);
+    assert_eq!(cow.cow_read_call_count(), 1);
 }
 
 #[test]
@@ -255,6 +294,70 @@ fn cross_block_read_write() {
     cow.read(4090, &mut buf).unwrap();
     assert!(buf.iter().all(|&b| b == 0xEE));
     assert_eq!(cow.buffered_block_count(), 2);
+}
+
+#[test]
+fn mixed_overlay_read_preserves_source_priority_and_run_boundaries() {
+    let mut base_data = Vec::new();
+    for fill in [0x10, 0x20, 0x30, 0x40, 0x50, 0x60] {
+        base_data.extend_from_slice(&vec![fill; 4096]);
+    }
+    let base = create_base_image(&base_data);
+    let cow_file = NamedTempFile::new().unwrap();
+    let mut cow = make_cow(&base, &cow_file, 6 * 4096, 1024 * 1024);
+
+    cow.write(4096, &vec![0xA1; 4096]).unwrap();
+    cow.write(2 * 4096, &vec![0xA2; 4096]).unwrap();
+    cow.flush().unwrap();
+    cow.write(3 * 4096, &vec![0xB3; 4096]).unwrap();
+
+    let mut buf = vec![0u8; 6 * 4096];
+    cow.read(0, &mut buf).unwrap();
+
+    assert!(buf[..4096].iter().all(|&b| b == 0x10));
+    assert!(buf[4096..2 * 4096].iter().all(|&b| b == 0xA1));
+    assert!(buf[2 * 4096..3 * 4096].iter().all(|&b| b == 0xA2));
+    assert!(buf[3 * 4096..4 * 4096].iter().all(|&b| b == 0xB3));
+    assert!(buf[4 * 4096..5 * 4096].iter().all(|&b| b == 0x50));
+    assert!(buf[5 * 4096..].iter().all(|&b| b == 0x60));
+    assert_eq!(cow.base_read_call_count(), 2);
+    assert_eq!(cow.cow_read_call_count(), 1);
+}
+
+#[test]
+fn non_aligned_read_preserves_partial_edges_across_sources() {
+    let mut base_data = Vec::new();
+    for fill in [0x10, 0x20, 0x30, 0x40] {
+        base_data.extend_from_slice(&vec![fill; 4096]);
+    }
+    let base = create_base_image(&base_data);
+    let cow_file = NamedTempFile::new().unwrap();
+    let mut cow = make_cow(&base, &cow_file, 4 * 4096, 1024 * 1024);
+
+    cow.write(4096, &vec![0xA1; 4096]).unwrap();
+    cow.flush().unwrap();
+    cow.write(2 * 4096, &vec![0xB2; 4096]).unwrap();
+
+    let first_tail_len = 17;
+    let last_head_len = 23;
+    let offset = 4096 - first_tail_len;
+    let len = first_tail_len + 2 * 4096 + last_head_len;
+    let mut buf = vec![0u8; len];
+
+    cow.read(offset as u64, &mut buf).unwrap();
+
+    assert!(buf[..first_tail_len].iter().all(|&b| b == 0x10));
+    assert!(
+        buf[first_tail_len..first_tail_len + 4096]
+            .iter()
+            .all(|&b| b == 0xA1)
+    );
+    assert!(
+        buf[first_tail_len + 4096..first_tail_len + 2 * 4096]
+            .iter()
+            .all(|&b| b == 0xB2)
+    );
+    assert!(buf[first_tail_len + 2 * 4096..].iter().all(|&b| b == 0x40));
 }
 
 #[test]

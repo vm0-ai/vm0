@@ -57,6 +57,7 @@ class TestAuthBaseForwarderSecurity:
             pytest.param("https://[fe80::1]/", "fe80::1", id="ipv6-link-local"),
             pytest.param("https://[fc00::1]/", "fc00::1", id="ipv6-ula"),
             pytest.param("https://[2001:db8::1]/", "2001:db8::1", id="ipv6-documentation"),
+            pytest.param("https://[3fff::1]/", "3fff::1", id="ipv6-expanded-documentation"),
             pytest.param(
                 "https://[::ffff:100.64.0.1]/",
                 "::ffff:100.64.0.1",
@@ -124,7 +125,7 @@ class TestAuthBaseForwarderSecurity:
 
     async def test_allows_public_dns_destination_and_forwards_with_original_host(self):
         with fake_forwarder_upstream(
-            addresses=("93.184.216.34", "2001:4860:4860::8888")
+            addresses=("93.184.216.34", "2001:1::3", "2001:4860:4860::8888")
         ) as upstream:
             status, body, headers = await forwarder.forward_request(
                 "https://hooks.example.com/path",
@@ -204,14 +205,69 @@ class TestAuthBaseForwarderSecurity:
 
         getaddrinfo.assert_not_called()
 
-    async def test_rejects_invalid_port_before_dns(self):
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://example.com:bad/path",
+            "https://example.com:/path",
+        ],
+    )
+    async def test_rejects_invalid_port_before_dns(self, url: str):
         with (
             patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
             pytest.raises(ValueError, match="Invalid upstream URL: invalid port"),
         ):
-            await forwarder.forward_request("https://example.com:bad/path", "GET", [], None)
+            await forwarder.forward_request(url, "GET", [], None)
 
         getaddrinfo.assert_not_called()
+
+    async def test_rejects_bracketed_non_ipv6_authority_before_dns(self):
+        with (
+            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            pytest.raises(ValueError, match="Invalid upstream URL: invalid host"),
+        ):
+            await forwarder.forward_request("https://[v1.invalid]/path", "GET", [], None)
+
+        getaddrinfo.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://fa\u212a.example/path",
+            "https://\u212a.example/path",
+            "https://%E2%84%AA.example/path",
+            "https://example%2ecom/path",
+            "https://*.example.com/path",
+            "https://api*.example.com/path",
+            "https://{env}.example.com/path",
+            "https://api{env}.example.com/path",
+            "https://%2A.example.com/path",
+        ],
+    )
+    async def test_rejects_unsafe_raw_host_before_dns(self, url: str):
+        with (
+            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            pytest.raises(ValueError, match="Invalid upstream URL: invalid host"),
+        ):
+            await forwarder.forward_request(url, "GET", [], None)
+
+        getaddrinfo.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("url", "expected_host"),
+        [
+            ("https://b\u00fccher.example/path", "xn--bcher-kva.example"),
+            ("https://b%C3%BCcher.example/path", "xn--bcher-kva.example"),
+            ("https://fa\u00df.example/path", "xn--fa-hia.example"),
+        ],
+    )
+    async def test_normalizes_idna_host_before_forwarding(self, url: str, expected_host: str):
+        with fake_forwarder_upstream() as upstream:
+            await forwarder.forward_request(url, "GET", [], None)
+
+        assert upstream.getaddrinfo_calls == [(expected_host, 443)]
+        assert upstream.contexts[-1].server_hostnames == [expected_host]
+        assert upstream.socket.request_header_values("Host") == [expected_host]
 
     @pytest.mark.parametrize(
         "url",

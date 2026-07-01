@@ -20,6 +20,7 @@ export const qomplement = {
           fields: {
             QOMPLEMENT_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-qomplement-api-key",
             },

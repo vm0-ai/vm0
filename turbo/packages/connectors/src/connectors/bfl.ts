@@ -22,6 +22,7 @@ export const bfl = {
           fields: {
             BFL_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "bfl_...",
             },

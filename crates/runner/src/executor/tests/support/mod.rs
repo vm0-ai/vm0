@@ -13,7 +13,8 @@ pub(super) use self::config::{
 };
 pub(super) use self::context::{context_with_env, minimal_context};
 pub(super) use self::env::{
-    build_env_for_test, build_env_for_test_result, build_env_for_test_with_host_env,
+    build_env_for_test, build_env_for_test_result, build_env_for_test_with_active_input,
+    build_env_for_test_with_host_env,
 };
 pub(super) use self::execution::{
     RUN_IN_SANDBOX_TEST_TIMEOUT, run_new_sandbox_outcome, run_new_sandbox_status,

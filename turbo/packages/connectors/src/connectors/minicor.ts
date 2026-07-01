@@ -20,6 +20,7 @@ export const minicor = {
           fields: {
             MINICOR_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-minicor-api-key",
             },

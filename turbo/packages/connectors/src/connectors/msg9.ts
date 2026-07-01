@@ -20,6 +20,7 @@ export const msg9 = {
           fields: {
             MSG9_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "msg9_sk_...",
             },

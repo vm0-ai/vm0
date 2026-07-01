@@ -20,10 +20,12 @@ export const amadeus = {
           fields: {
             AMADEUS_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
             AMADEUS_API_SECRET: {
               label: "API Secret",
+              publicId: "apiSecret",
               required: true,
             },
           },

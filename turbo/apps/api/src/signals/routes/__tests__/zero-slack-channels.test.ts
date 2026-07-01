@@ -1,36 +1,17 @@
-import { randomUUID } from "node:crypto";
-
-import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-slack-channels";
-import { createStore } from "ccstate";
 import { http, HttpResponse } from "msw";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import {
-  type SlackInstallationFixture,
-  deleteSlackInstallation$,
-  seedSlackInstallation$,
-} from "./helpers/zero-slack-channels";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 
 const context = testContext();
-const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const integrations = createBddIntegrationApi(context);
 
 const SLACK_LIST_URL = "https://slack.com/api/conversations.list";
 
 describe("GET /api/zero/slack/channels", () => {
-  const track = createFixtureTracker<SlackInstallationFixture>((fixture) => {
-    return store.set(deleteSlackInstallation$, fixture, context.signal);
-  });
-
   it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroSlackChannelsContract);
-
-    const response = await accept(client.list({ headers: {} }), [401]);
+    const response = await integrations.requestListSlackChannels(null, [401]);
 
     expect(response.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
@@ -38,15 +19,8 @@ describe("GET /api/zero/slack/channels", () => {
   });
 
   it("returns 401 when the authenticated session has no organization", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
-
-    const client = setupApp({ context })(zeroSlackChannelsContract);
-
-    const response = await accept(
-      client.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
+    const response = await integrations.requestListSlackChannels(
+      integrations.user({ orgId: null }),
       [401],
     );
 
@@ -56,16 +30,8 @@ describe("GET /api/zero/slack/channels", () => {
   });
 
   it("returns 404 when no Slack installation exists for the org", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroSlackChannelsContract);
-
-    const response = await accept(
-      client.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
+    const response = await integrations.requestListSlackChannels(
+      integrations.user(),
       [404],
     );
 
@@ -78,10 +44,9 @@ describe("GET /api/zero/slack/channels", () => {
   });
 
   it("returns channels where the bot is a member", async () => {
-    const fixture = await track(
-      store.set(seedSlackInstallation$, {}, context.signal),
-    );
-    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId);
+    const actor = integrations.user();
+    integrations.configureSlackAppMocks();
+    await integrations.installSlackWorkspace(actor);
 
     server.use(
       http.get(SLACK_LIST_URL, () => {
@@ -98,14 +63,7 @@ describe("GET /api/zero/slack/channels", () => {
       }),
     );
 
-    const client = setupApp({ context })(zeroSlackChannelsContract);
-
-    const response = await accept(
-      client.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
+    const response = await integrations.requestListSlackChannels(actor, [200]);
 
     expect(response.body).toStrictEqual({
       channels: [
@@ -117,10 +75,9 @@ describe("GET /api/zero/slack/channels", () => {
   });
 
   it("handles pagination across multiple pages", async () => {
-    const fixture = await track(
-      store.set(seedSlackInstallation$, {}, context.signal),
-    );
-    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId);
+    const actor = integrations.user();
+    integrations.configureSlackAppMocks();
+    await integrations.installSlackWorkspace(actor);
 
     let callCount = 0;
     server.use(
@@ -142,14 +99,7 @@ describe("GET /api/zero/slack/channels", () => {
       }),
     );
 
-    const client = setupApp({ context })(zeroSlackChannelsContract);
-
-    const response = await accept(
-      client.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
+    const response = await integrations.requestListSlackChannels(actor, [200]);
 
     expect(response.body).toStrictEqual({
       channels: [
@@ -161,10 +111,9 @@ describe("GET /api/zero/slack/channels", () => {
   });
 
   it("returns an empty array when no channels have bot membership", async () => {
-    const fixture = await track(
-      store.set(seedSlackInstallation$, {}, context.signal),
-    );
-    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId);
+    const actor = integrations.user();
+    integrations.configureSlackAppMocks();
+    await integrations.installSlackWorkspace(actor);
 
     server.use(
       http.get(SLACK_LIST_URL, () => {
@@ -176,14 +125,7 @@ describe("GET /api/zero/slack/channels", () => {
       }),
     );
 
-    const client = setupApp({ context })(zeroSlackChannelsContract);
-
-    const response = await accept(
-      client.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
+    const response = await integrations.requestListSlackChannels(actor, [200]);
 
     expect(response.body).toStrictEqual({ channels: [] });
   });

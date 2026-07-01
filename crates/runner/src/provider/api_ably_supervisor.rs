@@ -1,3 +1,24 @@
+//! Ably control-plane supervisor for API-backed runner job discovery.
+//!
+//! `ApiProvider` uses this module as the low-latency side of discovery while
+//! keeping HTTP polling as the correctness fallback. Untargeted or
+//! matching-target job notifications become direct candidates when they include
+//! a supported profile; notifications targeted to another runner schedule
+//! deferred poll wakeups; and non-target-other incomplete notifications or
+//! direct-queue fallback request immediate poll wakeups so the server remains
+//! the source of truth for job selection. Ably cancel notifications bypass
+//! discovery and only signal local cancellation handles. Invalid job
+//! notifications are ignored. Profile support is checked only after target
+//! routing, so target-other notifications defer even when their profile is
+//! missing or unsupported; non-target-other unsupported profiles are ignored
+//! without mutating discovery wakeup state.
+//!
+//! The direct candidate queues are an optimization, not the only delivery path:
+//! target-other deferrals, non-target-other incomplete notifications, full or
+//! closed direct queues, backlog draining, and Ably connection state all route
+//! through `PollWakeups` so a runner can still discover work through HTTP
+//! polling.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant as StdInstant};
@@ -132,6 +153,22 @@ impl PollRecord {
     }
 }
 
+/// Coalesced HTTP poll scheduler shared by the Ably supervisor and `ApiProvider`.
+///
+/// This is the state-machine contract for API job discovery fallback:
+///
+/// - Ably connection state selects the ordinary polling cadence: slow while
+///   connected, fast while disconnected.
+/// - Immediate wakeups request a prompt HTTP poll for startup,
+///   non-target-other incomplete Ably job notifications, direct queue fallback,
+///   and backlog draining after a job is found.
+/// - Target-other-runner notifications schedule deferred polls. The defer window
+///   intentionally takes priority over immediate wakeups and wakeup retries so a
+///   runner does not immediately steal work that was just targeted elsewhere.
+/// - Wakeup retries are only for failed wakeup-driven polls. Ordinary slow and
+///   fast polling failures wait for the next ordinary cadence.
+/// - Generations prevent an HTTP poll result from clearing wakeups that arrived
+///   after that poll started.
 pub(super) struct PollWakeups {
     inner: Mutex<PollWakeupsInner>,
     notify: Notify,
@@ -139,10 +176,16 @@ pub(super) struct PollWakeups {
 
 #[derive(Debug)]
 struct PollWakeupsInner {
+    /// Selects slow versus fast ordinary polling cadence.
     ably_connected: bool,
+    /// Immediate poll request. Re-armed after `JobFound` to drain backlog.
     poll_now: bool,
+    /// Target-other-runner fairness deadline. Blocks immediate and retry polls
+    /// until this deadline is reached.
     deferred_poll_at: Option<tokio::time::Instant>,
+    /// Upper bound for repeated target-other deferral extension.
     deferred_poll_cap_at: Option<tokio::time::Instant>,
+    /// Retry deadline for failed wakeup-driven polls only.
     wakeup_retry_at: Option<tokio::time::Instant>,
     /// Bumped whenever a new wakeup is recorded. This keeps an older HTTP poll
     /// result from clearing a wakeup that arrived after the poll started.
@@ -234,10 +277,15 @@ impl PollWakeups {
         let mut should_notify = false;
         let mut inner = self.inner.lock().await;
         let has_new_wakeup = inner.generation != due.generation;
+        // A target-other wakeup that arrives while an HTTP poll is in flight
+        // must be honored before returning a newly found job to this runner.
         let defer_job_return =
             outcome == PollOutcome::JobFound && has_new_wakeup && inner.deferred_poll_at.is_some();
         match outcome {
             PollOutcome::JobFound => {
+                // A successful poll can mean more eligible work is already queued,
+                // so re-arm the immediate path to drain backlog without waiting
+                // for the ordinary slow/fast cadence.
                 inner.poll_now = true;
                 if !has_new_wakeup {
                     inner.deferred_poll_at = None;
@@ -292,6 +340,8 @@ impl PollWakeups {
                     });
                 }
                 if inner.deferred_poll_at.is_some() {
+                    // Target-other fairness deliberately holds immediate polls
+                    // and wakeup retries until the deferred deadline.
                     Self::next_scheduled(&inner, now, slow_interval, fast_interval)
                 } else if inner.poll_now {
                     inner.poll_now = false;
@@ -331,6 +381,8 @@ impl PollWakeups {
         fast_interval: Duration,
     ) -> ScheduledPoll {
         let mut scheduled = if let Some(at) = inner.deferred_poll_at {
+            // A pending target-other defer is the highest-priority scheduled
+            // deadline, even when an immediate poll or wakeup retry exists.
             ScheduledPoll {
                 at,
                 reason: PollReason::Deferred,
@@ -720,6 +772,8 @@ async fn enqueue_direct_candidate(
     } else {
         ("broadcast", &direct_candidate_senders.broadcast)
     };
+    // Direct candidates are a latency optimization. If the bounded queue cannot
+    // accept one, HTTP polling preserves discovery correctness.
     match direct_candidate_tx.try_send(candidate) {
         Ok(()) => {}
         Err(mpsc::error::TrySendError::Full(candidate)) => {
@@ -1108,6 +1162,72 @@ mod tests {
                 .await
         });
         tokio::time::sleep(Duration::from_secs(30)).await;
+
+        assert_eq!(poll_reason(wait.await.unwrap()), Some(PollReason::Slow));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn pending_connected_wait_switches_to_fast_after_disconnect() {
+        let wakeups = Arc::new(PollWakeups::new(true));
+        let due = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+        wakeups
+            .record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5))
+            .await;
+
+        let wakeups_for_wait = Arc::clone(&wakeups);
+        let cancel = CancellationToken::new();
+        let wait = tokio::spawn(async move {
+            wakeups_for_wait
+                .wait_for_poll_due(&cancel, Duration::from_secs(30), Duration::from_secs(5))
+                .await
+        });
+        tokio::time::sleep(Duration::from_secs(4)).await;
+        assert!(!wait.is_finished());
+
+        wakeups.mark_ably_disconnected().await;
+        tokio::time::sleep(Duration::from_secs(4)).await;
+        assert!(!wait.is_finished());
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        assert_eq!(poll_reason(wait.await.unwrap()), Some(PollReason::Fast));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn pending_disconnected_wait_switches_to_slow_after_connect() {
+        let wakeups = Arc::new(PollWakeups::new(false));
+        let due = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+        wakeups
+            .record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5))
+            .await;
+
+        let wakeups_for_wait = Arc::clone(&wakeups);
+        let cancel = CancellationToken::new();
+        let wait = tokio::spawn(async move {
+            wakeups_for_wait
+                .wait_for_poll_due(&cancel, Duration::from_secs(30), Duration::from_secs(5))
+                .await
+        });
+        tokio::time::sleep(Duration::from_secs(4)).await;
+        assert!(!wait.is_finished());
+
+        wakeups.mark_ably_connected().await;
+        tokio::time::sleep(Duration::from_secs(29)).await;
+        assert!(!wait.is_finished());
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         assert_eq!(poll_reason(wait.await.unwrap()), Some(PollReason::Slow));
     }
@@ -1638,6 +1758,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn matching_targeted_job_notification_uses_profile_routing() {
+        for (data, should_wake_poll) in [
+            (
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000001",
+                    "profile": "vm0/large",
+                    "targetRunnerId": "runner-1"
+                }),
+                false,
+            ),
+            (
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000001",
+                    "targetRunnerId": "runner-1"
+                }),
+                true,
+            ),
+        ] {
+            let tokens = Mutex::new(HashMap::new());
+            let wakeups = PollWakeups::new(true);
+            let (direct_senders, mut direct_rx) = direct_candidate_channels();
+            let profiles = default_profiles();
+            let _ = wakeups
+                .wait_for_poll_due(
+                    &CancellationToken::new(),
+                    Duration::from_secs(30),
+                    Duration::from_secs(5),
+                )
+                .await;
+            let msg = make_message(Some("job"), data);
+
+            handle_ably_message(
+                &msg,
+                "runner-1",
+                &profiles,
+                &wakeups,
+                &direct_senders,
+                &tokens,
+            )
+            .await;
+
+            let snapshot = wakeups.snapshot().await;
+            assert!(direct_rx.targeted.try_recv().is_err());
+            assert!(direct_rx.broadcast.try_recv().is_err());
+            assert_eq!(snapshot.poll_now, should_wake_poll);
+            assert!(snapshot.deferred_poll_at.is_none());
+        }
+    }
+
+    #[tokio::test]
     async fn missing_profile_job_notification_wakes_poll() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
@@ -1793,6 +1963,50 @@ mod tests {
         assert!(direct_rx.broadcast.try_recv().is_err());
         assert!(!snapshot.poll_now);
         assert!(snapshot.deferred_poll_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn target_other_runner_job_notification_defers_before_profile_routing() {
+        for data in [
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000001",
+                "profile": "vm0/large",
+                "targetRunnerId": "runner-2"
+            }),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000001",
+                "targetRunnerId": "runner-2"
+            }),
+        ] {
+            let tokens = Mutex::new(HashMap::new());
+            let wakeups = PollWakeups::new(true);
+            let (direct_senders, mut direct_rx) = direct_candidate_channels();
+            let profiles = default_profiles();
+            let _ = wakeups
+                .wait_for_poll_due(
+                    &CancellationToken::new(),
+                    Duration::from_secs(30),
+                    Duration::from_secs(5),
+                )
+                .await;
+            let msg = make_message(Some("job"), data);
+
+            handle_ably_message(
+                &msg,
+                "runner-1",
+                &profiles,
+                &wakeups,
+                &direct_senders,
+                &tokens,
+            )
+            .await;
+
+            let snapshot = wakeups.snapshot().await;
+            assert!(direct_rx.targeted.try_recv().is_err());
+            assert!(direct_rx.broadcast.try_recv().is_err());
+            assert!(!snapshot.poll_now);
+            assert!(snapshot.deferred_poll_at.is_some());
+        }
     }
 
     #[tokio::test]

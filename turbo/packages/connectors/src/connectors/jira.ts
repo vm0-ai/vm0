@@ -21,10 +21,12 @@ export const jira = {
           fields: {
             JIRA_API_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
             },
             JIRA_DOMAIN: {
               label: "Jira Domain",
+              publicId: "domain",
               required: true,
               storage: "variable",
               normalize: "host",
@@ -32,6 +34,7 @@ export const jira = {
             },
             JIRA_EMAIL: {
               label: "Jira Email",
+              publicId: "email",
               required: true,
               storage: "variable",
               placeholder: "your-email@example.com",

@@ -20,6 +20,7 @@ export const buffer = {
           fields: {
             BUFFER_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "Buffer personal API key",
             },

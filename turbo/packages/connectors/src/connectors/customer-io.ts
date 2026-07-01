@@ -20,6 +20,7 @@ export const customerIo = {
           fields: {
             CUSTOMERIO_APP_TOKEN: {
               label: "App API Key",
+              publicId: "apiKey",
               required: true,
             },
           },

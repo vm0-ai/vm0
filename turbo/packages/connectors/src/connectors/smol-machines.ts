@@ -20,6 +20,7 @@ export const smolMachines = {
           fields: {
             SMOL_MACHINES_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-smol-machines-api-key",
             },

@@ -21,6 +21,7 @@ export const tripo = {
           fields: {
             TRIPO_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "tsk_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc",
             },

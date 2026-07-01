@@ -479,6 +479,62 @@ fn app_server_turn_steer_can_complete_runtime_turn_after_success() -> std::io::R
 }
 
 #[test]
+fn app_server_can_start_runtime_turn_before_steer_completion() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--listen", "stdio://"],
+        Some("runtime-turn-started-before-steer"),
+    )?;
+
+    server.request(1, "initialize", initialize_params())?;
+    let started = server.request(2, "thread/start", json!({ "cwd": "/tmp" }))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let turn_started = server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let turn_id = turn_started["result"]["turn"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let turn_started_notification = server.read_required()?;
+    assert_eq!(turn_started_notification["method"], "turn/started");
+    assert_eq!(
+        turn_started_notification["params"]["turn"]["id"]
+            .as_str()
+            .unwrap(),
+        turn_id
+    );
+
+    let steered = server.request(
+        4,
+        "turn/steer",
+        json!({
+            "threadId": thread_id,
+            "expectedTurnId": turn_id,
+            "clientUserMessageId": "active-msg-1",
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+    assert_eq!(steered["result"]["turnId"], turn_id);
+
+    let item_completed_notification = server.read_required()?;
+    let turn_completed_notification = server.read_required()?;
+    assert_eq!(item_completed_notification["method"], "item/completed");
+    assert_eq!(turn_completed_notification["method"], "turn/completed");
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
 fn app_server_exit_on_turn_steer_closes_without_response() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     let mut server = spawn_app_server(
@@ -505,6 +561,8 @@ fn app_server_exit_on_turn_steer_closes_without_response() -> std::io::Result<()
         .as_str()
         .unwrap()
         .to_string();
+    let turn_started_notification = server.read_required()?;
+    assert_eq!(turn_started_notification["method"], "turn/started");
 
     let error = server
         .request(
@@ -1172,6 +1230,8 @@ fn app_server_stale_turn_scenario_returns_protocol_error() -> std::io::Result<()
         .as_str()
         .unwrap()
         .to_string();
+    let turn_started_notification = server.read_required()?;
+    assert_eq!(turn_started_notification["method"], "turn/started");
 
     let error = server.request(
         4,
@@ -1222,6 +1282,8 @@ fn app_server_no_active_turn_scenario_returns_protocol_error() -> std::io::Resul
         .as_str()
         .unwrap()
         .to_string();
+    let turn_started_notification = server.read_required()?;
+    assert_eq!(turn_started_notification["method"], "turn/started");
 
     let error = server.request(
         4,

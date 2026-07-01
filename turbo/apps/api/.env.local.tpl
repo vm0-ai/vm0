@@ -93,6 +93,9 @@ FAL_KEY=op://Development/fal/FAL_KEY
 # Optional: BytePlus ModelArk video generation
 BYTEPLUS_API_KEY=op://Development/byteplus/BYTEPLUS_API_KEY
 
+# Optional: Unsplash presentation image resolution
+UNSPLASH_ACCESS_KEY=op://Development/unsplash/UNSPLASH_ACCESS_KEY
+
 # Optional: Airtable OAuth Connector
 AIRTABLE_OAUTH_CLIENT_ID=op://Development/airtable/AIRTABLE_OAUTH_CLIENT_ID
 AIRTABLE_OAUTH_CLIENT_SECRET=op://Development/airtable/AIRTABLE_OAUTH_CLIENT_SECRET
@@ -128,6 +131,9 @@ FINICITY_PARTNER_ID=op://Development/finicity/FINICITY_PARTNER_ID
 # Optional: Microsoft OAuth Connector (Outlook Calendar, etc.)
 MICROSOFT_OAUTH_CLIENT_ID=op://Development/microsoft/MICROSOFT_OAUTH_CLIENT_ID
 MICROSOFT_OAUTH_CLIENT_SECRET=op://Development/microsoft/MICROSOFT_OAUTH_CLIENT_SECRET
+
+# Optional: Microsoft Teams Bot
+MICROSOFT_TEAMS_BOT_APP_ID=op://Development/microsoft/MICROSOFT_TEAMS_BOT_APP_ID
 
 # Optional: HubSpot OAuth Connector
 HUBSPOT_OAUTH_CLIENT_ID=op://Development/hubspot/HUBSPOT_OAUTH_CLIENT_ID

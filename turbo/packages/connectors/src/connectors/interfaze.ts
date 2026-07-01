@@ -20,6 +20,7 @@ export const interfaze = {
           fields: {
             INTERFAZE_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-interfaze-api-key",
             },

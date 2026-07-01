@@ -62,12 +62,30 @@ pub async fn report_success(
     sandbox_reuse_result: &str,
     last_event_sequence: Option<u32>,
 ) {
+    report_success_for_run(
+        http,
+        env::run_id(),
+        sandbox_id,
+        sandbox_reuse_result,
+        last_event_sequence,
+    )
+    .await;
+}
+
+/// Report a successful run using an explicitly supplied run id.
+pub async fn report_success_for_run(
+    http: &HttpClient,
+    run_id: &str,
+    sandbox_id: &str,
+    sandbox_reuse_result: &str,
+    last_event_sequence: Option<u32>,
+) {
     if !http.has_api() {
         return;
     }
 
     let payload = CompletePayload {
-        run_id: env::run_id(),
+        run_id,
         exit_code: 0,
         last_event_sequence,
         sandbox_id: as_optional(sandbox_id),

@@ -21,6 +21,7 @@ export const novita = {
           fields: {
             NOVITA_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "sk_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc",
             },

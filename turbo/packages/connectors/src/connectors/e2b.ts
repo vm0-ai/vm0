@@ -20,6 +20,7 @@ export const e2b = {
           fields: {
             E2B_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "e2b_...",
             },

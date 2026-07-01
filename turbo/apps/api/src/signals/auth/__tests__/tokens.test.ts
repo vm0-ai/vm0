@@ -120,6 +120,13 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("maps:read");
   });
 
+  it("includes chat thread read and write capabilities in zero-scoped tokens", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
+
+    expect(verifyZeroToken(token)?.capabilities).toContain("chat-thread:read");
+    expect(verifyZeroToken(token)?.capabilities).toContain("chat-thread:write");
+  });
+
   it("gates banking capability behind the banking feature switch", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
     const enabledToken = generateZeroToken(
@@ -137,7 +144,7 @@ describe("auth tokens", () => {
     );
   });
 
-  it("gates goal capabilities behind the goal workflows feature switch", () => {
+  it("gates goal capabilities behind the workflow automation feature switch", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
     const staffOrgToken = generateZeroToken(
       "user_zero",
@@ -148,7 +155,7 @@ describe("auth tokens", () => {
       "user_zero",
       "run_zero",
       "org_zero",
-      { [FeatureSwitchKey.GoalWorkflows]: true },
+      { [FeatureSwitchKey.WorkflowAutomation]: true },
     );
 
     expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
@@ -181,14 +188,14 @@ describe("auth tokens", () => {
       "user_zero",
       "run_zero",
       "org_zero",
-      { [FeatureSwitchKey.GoalWorkflows]: true },
+      { [FeatureSwitchKey.WorkflowAutomation]: true },
       { triggerSource: "web" },
     );
     const continuationToken = generateZeroToken(
       "user_zero",
       "run_zero",
       "org_zero",
-      { [FeatureSwitchKey.GoalWorkflows]: true },
+      { [FeatureSwitchKey.WorkflowAutomation]: true },
       { triggerSource: "workflow-event" },
     );
 

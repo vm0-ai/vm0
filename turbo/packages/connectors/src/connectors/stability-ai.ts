@@ -21,6 +21,7 @@ export const stabilityAi = {
           fields: {
             STABILITY_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "sk-...",
             },

@@ -20,6 +20,7 @@ export const etherscan = {
           fields: {
             ETHERSCAN_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
           },

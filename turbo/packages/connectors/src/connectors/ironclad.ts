@@ -21,10 +21,12 @@ export const ironclad = {
           fields: {
             IRONCLAD_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
             IRONCLAD_HOST: {
               label: "API Host",
+              publicId: "host",
               required: true,
               storage: "variable",
               placeholder: "ironcladapp.com",

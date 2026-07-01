@@ -23,6 +23,41 @@ fn ensure_parent_dir(path: &str) {
     let _ = std::fs::create_dir_all(parent);
 }
 
+#[tokio::test]
+async fn spawn_for_paths_uploads_explicit_runtime_files() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = guest_agent::paths::GuestPaths::from_runtime_dir(tmp.path().join("runtime"));
+
+    let upload_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/telemetry")
+            .body_includes(r#""runId":"explicit-run""#)
+            .body_includes("explicit system log");
+        then.status(200);
+    });
+
+    guest_agent::paths::write_private(paths.system_log_file(), "explicit system log\n")
+        .expect("explicit system log should be written");
+
+    let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "explicit-run".to_string(),
+        &paths,
+        masker,
+        http_client!(),
+    );
+    telemetry
+        .flush(guest_agent::telemetry::UploadMode::Final)
+        .await
+        .expect("explicit telemetry flush should succeed");
+    telemetry.shutdown().await;
+
+    upload_mock.assert_calls_async(1).await;
+    upload_mock.delete_async().await;
+}
+
 // =========================================================================
 // Telemetry flush delta semantics
 //

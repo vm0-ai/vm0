@@ -250,6 +250,7 @@ runs:
         add_secret OPENAI_API_KEY OPENAI_API_KEY
         add_secret FAL_KEY FAL_KEY
         add_secret BYTEPLUS_API_KEY BYTEPLUS_API_KEY
+        add_secret UNSPLASH_ACCESS_KEY UNSPLASH_ACCESS_KEY
         add_var VAPID_PUBLIC_KEY VAPID_PUBLIC_KEY
         add_secret VAPID_PRIVATE_KEY VAPID_PRIVATE_KEY
         add_env CONCURRENT_RUN_LIMIT_CAP "$concurrent_run_limit_cap"
@@ -261,6 +262,9 @@ runs:
         add_secret TELEGRAM_OFFICIAL_BOT_TOKEN TELEGRAM_OFFICIAL_BOT_TOKEN
         add_var TELEGRAM_OFFICIAL_BOT_USERNAME TELEGRAM_OFFICIAL_BOT_USERNAME
         add_secret TELEGRAM_OFFICIAL_WEBHOOK_SECRET TELEGRAM_OFFICIAL_WEBHOOK_SECRET
+        if [[ "$INPUT_APP" == "api" ]]; then
+          add_var MICROSOFT_TEAMS_BOT_APP_ID MICROSOFT_TEAMS_BOT_APP_ID
+        fi
         add_env SLACK_REDIRECT_BASE_URL "$slack_redirect_base_url"
         if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then
           add_env E2E_SLACK_MOCK_ENABLED "1"

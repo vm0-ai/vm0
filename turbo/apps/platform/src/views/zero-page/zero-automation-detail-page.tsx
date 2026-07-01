@@ -3,6 +3,7 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   IconCalendar,
   IconCircleDot,
@@ -101,6 +102,8 @@ import {
   automationTitle,
   automationTitleExcerpt,
 } from "../../signals/zero-page/automation-title.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { WorkflowTriggerAutomationDetailPage } from "./workflow-trigger-automations-page.tsx";
 
 const AUTOMATION_DETAIL_TAB_TRIGGER_CLASS =
   "gap-1.5 text-sm data-[state=active]:bg-background px-3";
@@ -1017,6 +1020,15 @@ function AutomationActionsContainer({
 }
 
 export function ZeroAutomationDetailPage() {
+  const features = useGet(featureSwitch$);
+  if (features[FeatureSwitchKey.WorkflowAutomation]) {
+    return <WorkflowTriggerAutomationDetailPage />;
+  }
+
+  return <LegacyZeroAutomationDetailPage />;
+}
+
+function LegacyZeroAutomationDetailPage() {
   const params = useGet(pathParams$);
   const automationId =
     params && typeof params === "object" && "automationId" in params

@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -18,7 +17,6 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
 
 const context = testContext();
 const store = createStore();
@@ -45,15 +43,23 @@ function zeroToken(args: {
   });
 }
 
-async function seedMemberRole(
+function mockMemberRole(
   fixture: BillingStatusFixture,
-  role: "admin" | "member" = "member",
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(orgMembersCache).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    role,
+  role: "org:admin" | "org:member" = "org:member",
+): void {
+  context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+    data: [
+      {
+        role,
+        organization: {
+          id: fixture.orgId,
+          slug: fixture.orgId.toLowerCase(),
+          name: "Billing Status Test Org",
+        },
+        publicUserData: { userId: fixture.userId },
+        createdAt: Date.parse("2026-01-01T00:00:00.000Z"),
+      },
+    ],
   });
 }
 
@@ -130,7 +136,7 @@ describe("GET /api/zero/billing/status", () => {
     const fixture = await track(
       store.set(seedBillingStatusOrg$, { credits: 100_000 }, context.signal),
     );
-    await seedMemberRole(fixture);
+    mockMemberRole(fixture);
     const token = zeroToken({
       userId: fixture.userId,
       orgId: fixture.orgId,

@@ -66,6 +66,7 @@ export const neon = {
           fields: {
             NEON_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "napi_xxxxxxxx",
             },

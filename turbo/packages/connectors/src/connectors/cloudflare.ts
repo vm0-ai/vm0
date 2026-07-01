@@ -420,6 +420,7 @@ export const cloudflare = {
           fields: {
             CLOUDFLARE_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
             },
           },

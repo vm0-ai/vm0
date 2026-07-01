@@ -20,6 +20,7 @@ export const defillama = {
           fields: {
             DEFILLAMA_TOKEN: {
               label: "Pro API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-defillama-pro-api-key",
             },

@@ -25,22 +25,26 @@ export const agora = {
           fields: {
             AGORA_CUSTOMER_ID: {
               label: "Customer ID",
+              publicId: "customerId",
               required: true,
               placeholder: "your-agora-customer-id",
             },
             AGORA_CUSTOMER_SECRET: {
               label: "Customer Secret",
+              publicId: "customerSecret",
               required: true,
               placeholder: "your-agora-customer-secret",
             },
             AGORA_APP_ID: {
               label: "App ID",
+              publicId: "appId",
               required: true,
               storage: "variable",
               placeholder: "your-agora-app-id",
             },
             AGORA_APP_CERTIFICATE: {
               label: "App Certificate",
+              publicId: "appCertificate",
               required: false,
               placeholder: "optional-agora-app-certificate",
             },

@@ -20,6 +20,7 @@ export const pipedream = {
           fields: {
             PIPEDREAM_TOKEN: {
               label: "User API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "pd_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal",
             },

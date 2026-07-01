@@ -6,6 +6,8 @@ use httpmock::prelude::*;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
+const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
+
 fn write_derived_claude_history(session_id: &str, history: &str) -> Result<(), String> {
     guest_agent::paths::write_private(guest_agent::paths::session_id_file(), session_id)
         .map_err(|e| format!("write session id: {e}"))?;
@@ -111,6 +113,76 @@ async fn success_checkpoint_uploads_non_utf8_session_history() {
     assert_eq!(
         identity.session_id_hash,
         hex::encode(Sha256::digest(b"success-non-utf8-session"))
+    );
+    assert_eq!(identity.history_hash, history_hash);
+    assert_eq!(identity.history_size_bytes, history_size as u64);
+    assert_eq!(
+        std::fs::read(&identity.history_marker_payload).unwrap(),
+        history
+    );
+}
+
+#[tokio::test]
+async fn success_checkpoint_writes_large_final_identity_metadata() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
+    let _history_dir = write_literal_session_history("success-large-session", &history).unwrap();
+
+    let history_hash = hex::encode(Sha256::digest(&history));
+    let history_size = history.len();
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history")
+            .json_body(json!({
+                "runId": "test-run-001",
+                "hash": history_hash,
+                "size": history_size,
+            }));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({
+                "presignedUrl": server.url("/test/success-large-history-upload"),
+                "existing": false
+            }));
+    });
+    let upload_len = history_size.to_string();
+    let upload_body = history.clone();
+    let upload_mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/test/success-large-history-upload")
+            .header("Content-Type", "application/octet-stream");
+        then.respond_with(move |req| upload_validation_response(req, &upload_body, &upload_len));
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(r#"{"cliAgentSessionId":"success-large-session"}"#)
+            .json_body_includes(format!(
+                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+            ));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"checkpointId": "checkpoint-success-large"}));
+    });
+
+    let result = guest_agent::checkpoint::create_checkpoint(&http_client!()).await;
+
+    assert!(result.is_ok());
+    prepare_mock.assert_calls_async(1).await;
+    upload_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
+
+    let identity_bytes =
+        std::fs::read(guest_agent::paths::final_session_history_identity_file()).unwrap();
+    let identity = FinalSessionHistoryIdentity::from_json_slice(&identity_bytes).unwrap();
+    assert_eq!(identity.framework, FinalSessionHistoryFramework::ClaudeCode);
+    assert_eq!(identity.history_ref_kind, FinalSessionHistoryRefKind::Blob);
+    assert_eq!(
+        identity.session_id_hash,
+        hex::encode(Sha256::digest(b"success-large-session"))
     );
     assert_eq!(identity.history_hash, history_hash);
     assert_eq!(identity.history_size_bytes, history_size as u64);

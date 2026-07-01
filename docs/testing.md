@@ -226,25 +226,33 @@ mocking only external services:
 
 ```typescript
 const context = testContext();
+const client = setupApp({ context })(zeroAgentsMainContract);
 
-it("should return the runner metadata", async () => {
-  mocks.clerk.session(userId, orgId);
-  const client = setupApp({ context })(zeroRunRunnerContract);
+it("should list an agent created through the API", async () => {
+  context.mocks.clerk.session(userId, orgId);
 
-  const response = await accept(
-    client.getRunner({
-      params: { id: runId },
+  const created = await accept(
+    client.create({
       headers: { authorization: "Bearer clerk-session" },
+      body: { displayName: "Support Agent" },
     }),
+    [201],
+  );
+
+  const listed = await accept(
+    client.list({ headers: { authorization: "Bearer clerk-session" } }),
     [200],
   );
 
-  expect(response.body).toStrictEqual({ sandboxReuseResult: "reused" });
+  expect(listed.body).toContainEqual(
+    expect.objectContaining({ agentId: created.body.agentId }),
+  );
 });
 ```
 
-Use route calls, focused fixture helpers, and real database state. Do not mock
-internal API services when a route can exercise the behavior.
+Use API calls for setup and verification. Do not create API test state by
+writing database rows, importing DB schemas, importing route handlers, or calling
+internal services.
 
 ### Web Route Compatibility
 
@@ -274,10 +282,11 @@ Don't render components directly—use `setupPage()` which mirrors `main.ts` sta
 
 ### Deep Dives
 
-| Topic         | Guide                                                                                                               |
-| ------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Anti-patterns | [anti-patterns.md](./testing/anti-patterns.md) — Detailed catalog of testing mistakes to avoid (AP-1 through AP-10) |
-| Patterns      | [patterns.md](./testing/patterns.md) — Standard patterns, file structure, migration workflow                        |
+| Topic             | Guide                                                                                                                                                     |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anti-patterns     | [anti-patterns.md](./testing/anti-patterns.md) — Detailed catalog of testing mistakes to avoid (AP-1 through AP-10)                                       |
+| Patterns          | [patterns.md](./testing/patterns.md) — Standard patterns, file structure, migration workflow                                                              |
+| External behavior | [testing-external-behavior.md](./testing/testing-external-behavior.md) — Why tests should use external user interfaces instead of internal implementation |
 
 ### App-Specific Guides
 

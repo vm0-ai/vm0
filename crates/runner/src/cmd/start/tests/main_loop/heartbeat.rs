@@ -173,6 +173,60 @@ async fn heartbeat_fires_while_budget_exhausted() {
     shutdown(&env, run_handle).await;
 }
 
+/// Regression guard: heartbeat branches must read the live watch value at send
+/// time. If a mode transition lands while the reactor is already parked in a
+/// different select arm, using the loop-start `current_mode` sends one stale
+/// heartbeat before the mode-change arm runs.
+#[tokio::test(start_paused = true)]
+async fn heartbeat_tick_uses_live_mode_after_silent_mode_flip() {
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
+        Arc::clone(&gate),
+    ));
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, overrides);
+    let budget = Arc::clone(&config.capacity.budget);
+    let run_handle = tokio::spawn(run(config));
+
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+    wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
+    wait_budget_exhausted_reactor(&env, Duration::from_secs(5)).await;
+
+    let before = env.handle.heartbeat_count();
+    env.mode_tx.send_if_modified(|mode| {
+        *mode = RunnerMode::Draining;
+        false
+    });
+
+    tokio::time::advance(HEARTBEAT_PERIOD + Duration::from_secs(5)).await;
+    assert!(
+        env.handle
+            .wait_heartbeat_past(before, Duration::from_secs(5))
+            .await,
+        "heartbeat tick should fire after silent mode flip"
+    );
+
+    {
+        let heartbeats = env
+            .handle
+            .heartbeats
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        assert_eq!(
+            heartbeats[before].mode, "draining",
+            "heartbeat tick must use live mode, not stale loop-start mode"
+        );
+    }
+
+    env.trigger_stopping().await;
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "hard shutdown should exit after live-mode heartbeat regression check",
+    )
+    .await;
+}
+
 /// Regression for #10146 / #10223: the main-loop `idle_cleanup` and
 /// `heartbeat_tick` intervals must defer their first tick past the
 /// configured period, so neither tick branch is Ready on the first `select!`

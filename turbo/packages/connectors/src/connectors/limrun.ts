@@ -20,6 +20,7 @@ export const limrun = {
           fields: {
             LIMRUN_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-limrun-api-key",
             },

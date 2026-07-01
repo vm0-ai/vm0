@@ -1,5 +1,6 @@
 use crate::support::{Harness, captured_output_bytes, exec_exit_code, run_exec, shell_quote};
 use std::fs;
+use vsock_host::WriteFileEntry;
 
 #[test]
 fn shell_quote_escapes_single_quotes() {
@@ -33,6 +34,42 @@ async fn test_write_file() {
 
     assert_eq!(exec_exit_code(&result), Some(0));
     assert_eq!(captured_output_bytes(&result.stdout), content);
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_write_files() {
+    let h = Harness::new().await;
+
+    let first_path = h.dir.join("batch-first.txt");
+    let second_path = h.dir.join("batch/nested/second.bin");
+    let first_path_str = first_path.to_string_lossy().to_string();
+    let second_path_str = second_path.to_string_lossy().to_string();
+    let first_content = b"first batch file";
+    let second_content = b"second\0batch\nfile";
+
+    h.host()
+        .write_files(&[
+            WriteFileEntry {
+                path: &first_path_str,
+                content: first_content,
+            },
+            WriteFileEntry {
+                path: &second_path_str,
+                content: second_content,
+            },
+        ])
+        .await
+        .expect("write_files failed");
+
+    assert_eq!(
+        std::fs::read(&first_path).expect("failed to read first batch file"),
+        first_content
+    );
+    assert_eq!(
+        std::fs::read(&second_path).expect("failed to read second batch file"),
+        second_content
+    );
     h.finish();
 }
 

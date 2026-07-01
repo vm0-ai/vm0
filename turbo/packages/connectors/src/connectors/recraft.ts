@@ -21,6 +21,7 @@ export const recraft = {
           fields: {
             RECRAFT_API_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
             },
           },

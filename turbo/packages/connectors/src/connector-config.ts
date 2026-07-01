@@ -6,6 +6,11 @@ import type { FeatureSwitchKey } from "./feature-switch-key";
  * User-entered field configuration for manual connector grant methods.
  */
 export interface ConnectorManualGrantFieldConfig {
+  /**
+   * Stable public form id used by catalog clients. This must not be a private
+   * credential, storage, env binding, or runtime binding name.
+   */
+  publicId: string;
   label: string;
   required: boolean;
   placeholder?: string;
@@ -120,6 +125,10 @@ type ConnectorDeviceAuthStartSelectOptionChoicesConfig = readonly [
 
 export interface ConnectorDeviceAuthStartSelectOptionConfig {
   readonly kind: "select";
+  /**
+   * Stable public start option id used by catalog clients.
+   */
+  readonly publicId: string;
   readonly label: string;
   readonly required: boolean;
   readonly defaultValue?: string;

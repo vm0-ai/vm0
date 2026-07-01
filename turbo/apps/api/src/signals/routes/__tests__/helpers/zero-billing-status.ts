@@ -1,18 +1,14 @@
-import { randomUUID } from "node:crypto";
-
 import { command } from "ccstate";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
-import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { eq, sql } from "drizzle-orm";
+import type {
+  TestBillingStatusStateActionBody,
+  TestBillingStatusStateActionResponse,
+  TestBillingStatusStateFixture,
+} from "@vm0/api-contracts/contracts/test-billing-status-state";
 
-import { writeDb$ } from "../../../external/db";
-import { nowDate } from "../../../external/time";
+import { createAppWithRoutes } from "../../../../app-factory-core";
+import { testBillingStatusStateRoutes } from "../../test-billing-status-state";
 
-type WriteDb = ReturnType<typeof writeDb$.write>;
-type OrgMetadataInsert = typeof orgMetadata.$inferInsert;
+const BILLING_STATUS_STATE_ROUTE = "/api/test/billing-status-state";
 
 export interface BillingStatusFixture {
   readonly orgId: string;
@@ -61,200 +57,145 @@ interface BillingStatusSeedValues {
   readonly extraGrantedCredits?: number;
 }
 
-function orgMetadataSeedValues(
-  orgId: string,
-  values: BillingStatusSeedValues,
-): OrgMetadataInsert {
-  const sub = values.subscription;
+function requestBillingStatusState(
+  signal: AbortSignal,
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal,
+    routes: testBillingStatusStateRoutes,
+  });
+  return Promise.resolve(app.request(path, init));
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+function expectOk(response: Response, operation: string): void {
+  if (response.ok) {
+    return;
+  }
+  throw new Error(`${operation} failed with ${response.status}`);
+}
+
+async function postAction(
+  signal: AbortSignal,
+  body: TestBillingStatusStateActionBody,
+): Promise<TestBillingStatusStateActionResponse> {
+  const response = await requestBillingStatusState(
+    signal,
+    `${BILLING_STATUS_STATE_ROUTE}/action`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  signal.throwIfAborted();
+  expectOk(response, `billing status state action ${body.action}`);
+  signal.throwIfAborted();
+  const result = await readJson<TestBillingStatusStateActionResponse>(response);
+  signal.throwIfAborted();
+  return result;
+}
+
+function fixtureFromWire(
+  fixture: TestBillingStatusStateFixture,
+): BillingStatusFixture {
   return {
-    orgId,
-    credits: values.credits ?? 0,
-    onboardingPaymentPending: Boolean(values.onboardingPaymentPending),
-    tier: sub?.tier ?? "free",
-    stripeCustomerId: sub?.stripeCustomerId ?? null,
-    stripeSubscriptionId: sub?.stripeSubscriptionId ?? null,
-    subscriptionStatus: sub?.status ?? null,
-    currentPeriodEnd: sub?.currentPeriodEnd ?? null,
-    cancelAtPeriodEnd: sub?.cancelAtPeriodEnd ?? false,
-    pendingSubscriptionScheduleId: sub?.pendingSubscriptionScheduleId ?? null,
-    pendingSubscriptionTargetTier: sub?.pendingSubscriptionTargetTier ?? null,
-    pendingSubscriptionChangeAt: sub?.pendingSubscriptionChangeAt ?? null,
+    orgId: fixture.org_id,
+    userId: fixture.user_id,
+    expiresRecordIds: fixture.expires_record_ids,
   };
 }
 
-async function grantExtraCredits(
-  db: WriteDb,
-  orgId: string,
-  credits: number | undefined,
-  signal: AbortSignal,
-): Promise<void> {
-  if (!credits) {
-    return;
-  }
-
-  await db
-    .update(orgMetadata)
-    .set({
-      credits: sql`${orgMetadata.credits} + ${credits}`,
-    })
-    .where(eq(orgMetadata.orgId, orgId));
-  signal.throwIfAborted();
+function fixtureToWire(
+  fixture: BillingStatusFixture,
+): TestBillingStatusStateFixture {
+  return {
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+    expires_record_ids: [...fixture.expiresRecordIds],
+  };
 }
 
-async function insertExpiresRecords(
-  db: WriteDb,
-  orgId: string,
-  records: readonly ExpiresRecordSeed[] | undefined,
-  signal: AbortSignal,
-): Promise<readonly string[]> {
-  const expiresRecordIds: string[] = [];
-  for (const record of records ?? []) {
-    const [row] = await db
-      .insert(creditExpiresRecord)
-      .values({
-        orgId,
+function seedValuesToWire(
+  values: BillingStatusSeedValues,
+): TestBillingStatusStateActionBody {
+  return {
+    action: "seed-org",
+    credits: values.credits,
+    onboarding_payment_pending: values.onboardingPaymentPending,
+    subscription: values.subscription
+      ? {
+          tier: values.subscription.tier,
+          status: values.subscription.status,
+          current_period_end:
+            values.subscription.currentPeriodEnd.toISOString(),
+          cancel_at_period_end: values.subscription.cancelAtPeriodEnd,
+          stripe_customer_id: values.subscription.stripeCustomerId,
+          stripe_subscription_id: values.subscription.stripeSubscriptionId,
+          pending_subscription_schedule_id:
+            values.subscription.pendingSubscriptionScheduleId,
+          pending_subscription_target_tier:
+            values.subscription.pendingSubscriptionTargetTier,
+          pending_subscription_change_at:
+            values.subscription.pendingSubscriptionChangeAt?.toISOString(),
+        }
+      : undefined,
+    expires_records: values.expiresRecords?.map((record) => {
+      return {
         source: record.source,
         amount: record.amount,
-        remaining: record.remaining ?? record.amount,
-        expiresAt: record.expiresAt,
-        stripeInvoiceId: record.stripeInvoiceId ?? `inv_${randomUUID()}`,
-      })
-      .returning({ id: creditExpiresRecord.id });
-    signal.throwIfAborted();
-    if (row) {
-      expiresRecordIds.push(row.id);
-    }
-  }
-  return expiresRecordIds;
-}
-
-async function insertConcurrencyEntitlements(
-  db: WriteDb,
-  orgId: string,
-  entitlements: readonly ConcurrencyEntitlementSeed[] | undefined,
-  signal: AbortSignal,
-): Promise<void> {
-  const subscriptions = new Map<
-    string,
-    {
-      readonly stripePriceId: string;
-      readonly subscriptionStatus: string;
-      readonly cancelAtPeriodEnd: boolean;
-      slots: number;
-      currentPeriodEnd: Date;
-    }
-  >();
-  const currentTime = nowDate();
-  for (const entitlement of entitlements ?? []) {
-    const stripeSubscriptionId =
-      entitlement.stripeSubscriptionId ?? `sub_${randomUUID()}`;
-    const stripePriceId = entitlement.stripePriceId ?? `price_${randomUUID()}`;
-    await db.insert(orgConcurrencyEntitlements).values({
-      orgId,
-      slots: entitlement.slots,
-      startsAt: entitlement.startsAt,
-      expiresAt: entitlement.expiresAt,
-      stripeSubscriptionId,
-      stripeInvoiceId: entitlement.stripeInvoiceId ?? `inv_${randomUUID()}`,
-      stripeInvoiceLineId:
-        entitlement.stripeInvoiceLineId ?? `il_${randomUUID()}`,
-      stripePriceId,
-    });
-    if (
-      entitlement.startsAt <= currentTime &&
-      entitlement.expiresAt > currentTime
-    ) {
-      const existing = subscriptions.get(stripeSubscriptionId);
-      if (existing) {
-        existing.slots += entitlement.slots;
-        if (entitlement.expiresAt > existing.currentPeriodEnd) {
-          existing.currentPeriodEnd = entitlement.expiresAt;
-        }
-      } else {
-        subscriptions.set(stripeSubscriptionId, {
-          stripePriceId,
-          subscriptionStatus: entitlement.subscriptionStatus ?? "active",
-          cancelAtPeriodEnd: entitlement.cancelAtPeriodEnd ?? false,
+        remaining: record.remaining,
+        expires_at: record.expiresAt.toISOString(),
+        stripe_invoice_id: record.stripeInvoiceId,
+      };
+    }),
+    concurrency_entitlements: values.concurrencyEntitlements?.map(
+      (entitlement) => {
+        return {
           slots: entitlement.slots,
-          currentPeriodEnd: entitlement.expiresAt,
-        });
-      }
-    }
-    signal.throwIfAborted();
-  }
-  for (const [stripeSubscriptionId, subscription] of subscriptions) {
-    await db.insert(orgConcurrencySubscriptions).values({
-      orgId,
-      stripeSubscriptionId,
-      stripePriceId: subscription.stripePriceId,
-      slots: subscription.slots,
-      subscriptionStatus: subscription.subscriptionStatus,
-      currentPeriodEnd: subscription.currentPeriodEnd,
-      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-    });
-    signal.throwIfAborted();
-  }
+          starts_at: entitlement.startsAt.toISOString(),
+          expires_at: entitlement.expiresAt.toISOString(),
+          subscription_status: entitlement.subscriptionStatus,
+          cancel_at_period_end: entitlement.cancelAtPeriodEnd,
+          stripe_subscription_id: entitlement.stripeSubscriptionId,
+          stripe_invoice_id: entitlement.stripeInvoiceId,
+          stripe_invoice_line_id: entitlement.stripeInvoiceLineId,
+          stripe_price_id: entitlement.stripePriceId,
+        };
+      },
+    ),
+    extra_granted_credits: values.extraGrantedCredits,
+  };
 }
 
 export const seedBillingStatusOrg$ = command(
   async (
-    { set },
+    _,
     values: BillingStatusSeedValues,
     signal: AbortSignal,
   ): Promise<BillingStatusFixture> => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    const writeDb = set(writeDb$);
-
-    await writeDb
-      .insert(orgMetadata)
-      .values(orgMetadataSeedValues(orgId, values));
-    signal.throwIfAborted();
-
-    await grantExtraCredits(writeDb, orgId, values.extraGrantedCredits, signal);
-    const expiresRecordIds = await insertExpiresRecords(
-      writeDb,
-      orgId,
-      values.expiresRecords,
-      signal,
-    );
-    await insertConcurrencyEntitlements(
-      writeDb,
-      orgId,
-      values.concurrencyEntitlements,
-      signal,
-    );
-
-    return { orgId, userId, expiresRecordIds };
+    const response = await postAction(signal, seedValuesToWire(values));
+    if (!response.fixture) {
+      throw new Error("seedBillingStatusOrg$: response missing fixture");
+    }
+    return fixtureFromWire(response.fixture);
   },
 );
 
 export const deleteBillingStatusOrg$ = command(
   async (
-    { set },
+    _,
     fixture: BillingStatusFixture,
     signal: AbortSignal,
   ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb
-      .delete(creditExpiresRecord)
-      .where(eq(creditExpiresRecord.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(orgConcurrencyEntitlements)
-      .where(eq(orgConcurrencyEntitlements.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(orgConcurrencySubscriptions)
-      .where(eq(orgConcurrencySubscriptions.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(orgMembersCache)
-      .where(eq(orgMembersCache.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId));
-    signal.throwIfAborted();
+    await postAction(signal, {
+      action: "delete-org",
+      fixture: fixtureToWire(fixture),
+    });
   },
 );

@@ -53,6 +53,13 @@ impl SecretMasker {
         masker
     }
 
+    /// Build a masker from an owned guest-agent config.
+    pub fn from_config(config: &env::GuestConfig) -> Self {
+        let masker = Self::from_raw(&config.secret_values);
+        masker.add_sensitive_value(&config.resume_session_id);
+        masker
+    }
+
     /// Build a masker from a raw comma-separated base64-encoded secret string.
     ///
     /// For each secret ≥ 5 chars, the normal matcher stores plain,

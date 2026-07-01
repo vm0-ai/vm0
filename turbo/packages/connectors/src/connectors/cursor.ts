@@ -20,6 +20,7 @@ export const cursor = {
           fields: {
             CURSOR_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder:
                 "key_c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ff",

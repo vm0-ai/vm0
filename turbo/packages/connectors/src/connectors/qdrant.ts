@@ -20,11 +20,13 @@ export const qdrant = {
           fields: {
             QDRANT_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-qdrant-api-key",
             },
             QDRANT_BASE_URL: {
               label: "Cluster URL",
+              publicId: "clusterUrl",
               required: true,
               placeholder: "https://your-cluster.region.cloud.qdrant.io:6333",
               storage: "variable",

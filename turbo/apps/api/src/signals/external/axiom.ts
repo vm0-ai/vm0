@@ -214,11 +214,11 @@ export async function queryAxiomDirect<T = Record<string, unknown>>(
   return mapAxiomMatches<T>(result);
 }
 
-export function queryAxiom(
+export function queryAxiom<T = Record<string, unknown>>(
   apl: string,
   options?: QueryAxiomOptions,
-): Computed<Promise<readonly Record<string, unknown>[]>> {
-  return computed((): Promise<readonly Record<string, unknown>[]> => {
-    return queryAxiomDirect(apl, options);
+): Computed<Promise<readonly T[]>> {
+  return computed((): Promise<readonly T[]> => {
+    return queryAxiomDirect<T>(apl, options);
   });
 }

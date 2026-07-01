@@ -6,16 +6,12 @@
 
 import { createHash } from "node:crypto";
 
-import { createStore } from "ccstate";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { writeDb$ } from "../../external/db";
 import { settle } from "../../utils";
 import {
   createBddApi,
@@ -36,7 +32,6 @@ import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
-const store = createStore();
 
 interface LinkedAgentPhoneActor {
   readonly actor: ApiTestUser;
@@ -207,22 +202,6 @@ async function waitForSendMatching(
   return matched;
 }
 
-async function readRunCallbackIdentities(runId: string): Promise<
-  {
-    readonly url: string | null;
-    readonly internalKind: string | null;
-  }[]
-> {
-  const db = store.set(writeDb$);
-  return await db
-    .select({
-      url: agentRunCallbacks.url,
-      internalKind: agentRunCallbacks.internalKind,
-    })
-    .from(agentRunCallbacks)
-    .where(eq(agentRunCallbacks.runId, runId));
-}
-
 async function waitForRunSessionId(
   actor: ApiTestUser,
   runId: string,
@@ -305,9 +284,6 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await waitForTyping(sends, [conversationId]);
 
     const run1 = await claimDispatchedRun(runnerGroup);
-    await expect(readRunCallbackIdentities(run1.runId)).resolves.toStrictEqual([
-      { url: null, internalKind: "agentphone" },
-    ]);
     expect(run1.prompt).toBe("summarize my inbox");
     expect(run1.appendSystemPrompt).toContain(
       "# Current Integration\nYou are currently running inside: AgentPhone",

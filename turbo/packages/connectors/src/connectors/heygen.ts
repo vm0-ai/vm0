@@ -21,6 +21,7 @@ export const heygen = {
           fields: {
             HEYGEN_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-heygen-api-key",
             },

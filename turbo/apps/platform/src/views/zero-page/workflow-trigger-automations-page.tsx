@@ -11,7 +11,6 @@ import type {
   ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  IconArrowLeft,
   IconArrowUpRight,
   IconBrandGithub,
   IconCalendarTime,
@@ -20,11 +19,14 @@ import {
   IconLoader2,
   IconMail,
   IconMessageCircle,
+  IconPlayerPause,
   IconPlayerPlay,
   IconPlus,
   IconRepeat,
+  IconTag,
+  IconTrash,
 } from "@tabler/icons-react";
-import { Button } from "@vm0/ui";
+import { Button, Switch, cn } from "@vm0/ui";
 import {
   Dialog,
   DialogContent,
@@ -38,24 +40,23 @@ import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { agents$ } from "../../signals/agent.ts";
 import {
   selectedWorkflowAutomationAgentId$,
-  setSelectedWorkflowAutomationAgentId$,
   setWorkflowAutomationAgentQuery$,
   setWorkflowAutomationDialogOpen$,
-  setWorkflowAutomationDialogStep$,
   startCreateWorkflowFromAutomationDialog$,
   workflowAutomationAgentSelectionLocked$,
   workflowAutomationAgentQuery$,
   workflowAutomationDialogIntent$,
   workflowAutomationDialogOpen$,
-  workflowAutomationDialogStep$,
 } from "../../signals/automation-page/workflow-trigger-automation-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { detachedNavigateTo$, pathParams$ } from "../../signals/route.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import {
   allWorkflowTriggerEntries$,
   allVisibleWorkflows$,
+  deleteWorkflowTrigger$,
   runWorkflowTriggerNow$,
+  setWorkflowTriggerEnabled$,
   WORKFLOW_DETAIL_TAB_PARAM,
   type WorkflowTriggerAutomationEntry,
 } from "../../signals/workflows-page/workflows-signals.ts";
@@ -68,12 +69,18 @@ import { pinnedAgentIds$ } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import {
+  DetailPageBreadcrumbBar,
+  DetailPageHeader,
+  DetailPageMain,
+  DetailPageShell,
+} from "../components/detail-page-layout.tsx";
+import {
   AgentDialogAgentButton,
   agentDialogMatchesQuery,
   AgentDialogSearch,
   AgentDialogSection,
 } from "./zero-sidebar-dialogs.tsx";
-import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
+import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import {
   agentLabel,
   formatWorkflowIntervalSeconds,
@@ -86,101 +93,11 @@ import {
   type WorkflowTriggerCardRow,
 } from "../workflows-page/workflow-trigger-card.tsx";
 
-type WorkflowAutomationKind =
-  | "manual"
-  | "interval"
-  | "scheduled"
-  | "once"
-  | "webhook"
-  | "google-calendar-event-created"
-  | "gmail-new-message"
-  | "gmail-label-applied"
-  | "github-label-applied";
+export const CREATE_WORKFLOW_WITH_CHAT_PROMPT =
+  "Help me create a workflow for this agent. Use the workflow-setup skill, then ask me for the desired outcome, automation, and action before creating the workflow and automation.";
 
-interface WorkflowAutomationOption {
-  readonly kind: WorkflowAutomationKind;
-  readonly title: string;
-  readonly description: string;
-  readonly Icon: typeof IconClock;
-  readonly prompt: string;
-}
-
-const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
-  {
-    kind: "manual",
-    title: "Manual run",
-    description:
-      "Create a workflow you can run from chat or the workflows page.",
-    Icon: IconPlayerPlay,
-    prompt:
-      "I'd like to create a workflow that I can run manually without an automatic trigger. Help me define the workflow.",
-  },
-  {
-    kind: "interval",
-    title: "Fixed interval",
-    description: "Run a workflow every few minutes or hours.",
-    Icon: IconRepeat,
-    prompt:
-      "I'd like to set up an interval workflow trigger that runs every few minutes or hours. Help me define the workflow.",
-  },
-  {
-    kind: "scheduled",
-    title: "Fixed schedule",
-    description:
-      "Run a workflow on a daily, weekly, monthly, or custom cron schedule.",
-    Icon: IconCalendarTime,
-    prompt:
-      "I'd like to set up a scheduled workflow trigger that runs on a daily, weekly, monthly, or custom cron schedule. Help me define the workflow.",
-  },
-  {
-    kind: "once",
-    title: "One-time run",
-    description: "Run a workflow once at a specific date and time.",
-    Icon: IconClock,
-    prompt:
-      "I'd like to set up a one-time workflow trigger that runs at a specific date and time. Help me define the workflow.",
-  },
-  {
-    kind: "webhook",
-    title: "Web trigger",
-    description: "Run a workflow when an inbound webhook is received.",
-    Icon: IconLink,
-    prompt:
-      "I'd like to set up a webhook workflow trigger that runs when an inbound webhook is received. Help me define the workflow.",
-  },
-  {
-    kind: "google-calendar-event-created",
-    title: "Calendar event",
-    description: "Run a workflow when a Google Calendar event is created.",
-    Icon: IconCalendarTime,
-    prompt:
-      "I'd like to set up a Google Calendar workflow trigger that runs when a new calendar event is created. Help me define the workflow.",
-  },
-  {
-    kind: "gmail-new-message",
-    title: "New email",
-    description: "Run a workflow when a matching Gmail message arrives.",
-    Icon: IconMail,
-    prompt:
-      "I'd like to set up an email workflow trigger that runs when a Gmail message matches my criteria. Help me define the workflow.",
-  },
-  {
-    kind: "gmail-label-applied",
-    title: "Email label",
-    description: "Run a workflow when a Gmail label is applied.",
-    Icon: IconMail,
-    prompt:
-      "I'd like to set up an email-label workflow trigger that runs when a Gmail label is applied. Help me define the workflow.",
-  },
-  {
-    kind: "github-label-applied",
-    title: "GitHub label",
-    description: "Run a workflow when a GitHub label is applied.",
-    Icon: IconBrandGithub,
-    prompt:
-      "I'd like to set up a GitHub workflow trigger that runs when a label is applied. Help me define the workflow.",
-  },
-] as const;
+const CREATE_AUTOMATION_CHAT_PROMPT =
+  "Help me create a workflow automation for this agent. Use the workflow-setup skill, then ask me for the desired outcome, automation, and action before creating the workflow and automation.";
 
 function formatClockTime(hour: number, minute: number): string {
   const ampm = hour >= 12 ? "PM" : "AM";
@@ -260,7 +177,7 @@ function cronRuleLabel(
   return `Every day at ${time}`;
 }
 
-function triggerRuleLabel(
+function legacyTriggerRuleLabel(
   trigger: ZeroWorkflowTriggerSummary,
   displayTimezone: string,
 ): string {
@@ -285,6 +202,76 @@ function triggerRuleLabel(
   );
 }
 
+function quote(value: string): string {
+  return `"${value}"`;
+}
+
+function humanReadableTriggerRuleLabel(
+  trigger: ZeroWorkflowTriggerSummary,
+  displayTimezone: string,
+): string {
+  if (trigger.kind === "schedule") {
+    const schedule = trigger.schedule;
+    if (schedule.type === "loop") {
+      return `Every ${formatWorkflowIntervalSeconds(schedule.intervalSeconds)}`;
+    }
+    if (schedule.type === "once") {
+      const { date, hour, minute } = atTimeInTimezone(
+        schedule.atTime,
+        displayTimezone,
+      );
+      return `Once on ${date} at ${formatClockTime(hour, minute)}`;
+    }
+    return cronRuleLabel(
+      schedule.cronExpression,
+      schedule.timezone,
+      displayTimezone,
+    );
+  }
+
+  if (trigger.eventType === "gmail-new-message") {
+    const summary = gmailTriggerSummary(trigger);
+    return summary && summary !== "all inbound messages"
+      ? `When Gmail message matches ${summary}`
+      : "When any Gmail message arrives";
+  }
+  if (trigger.eventType === "gmail-label-applied") {
+    return `When Gmail label ${quote(trigger.eventConfig.labelName)} is applied`;
+  }
+  if (trigger.eventType === "github-label-applied") {
+    return `When GitHub label ${quote(trigger.eventConfig.labelName)} is applied`;
+  }
+  if (trigger.eventType === "google-calendar-event-created") {
+    return `When calendar ${quote(trigger.eventConfig.calendarId)} gets a new event`;
+  }
+  if (trigger.eventType === "webhook-received") {
+    return "When an inbound webhook is received";
+  }
+  return gmailTriggerTitle(trigger);
+}
+
+function triggerTypeLabel(trigger: ZeroWorkflowTriggerSummary): string {
+  if (trigger.kind === "schedule") {
+    return "Schedule";
+  }
+  if (
+    trigger.eventType === "gmail-new-message" ||
+    trigger.eventType === "gmail-label-applied"
+  ) {
+    return "Gmail";
+  }
+  if (trigger.eventType === "github-label-applied") {
+    return "GitHub";
+  }
+  if (trigger.eventType === "google-calendar-event-created") {
+    return "Google Calendar";
+  }
+  if (trigger.eventType === "webhook-received") {
+    return "Webhook";
+  }
+  return "Trigger";
+}
+
 function triggerRows(
   trigger: ZeroWorkflowTriggerSummary,
   displayTimezone: string,
@@ -292,7 +279,7 @@ function triggerRows(
   const rows: WorkflowTriggerCardRow[] = [
     {
       label: trigger.kind === "schedule" ? "Schedule" : "Trigger",
-      value: triggerRuleLabel(trigger, displayTimezone),
+      value: legacyTriggerRuleLabel(trigger, displayTimezone),
     },
     {
       label: "Last run",
@@ -330,14 +317,13 @@ function TriggerCardHeader({
         </p>
       </div>
       <Link
-        pathname={ROUTES.agentWorkflowDetail}
+        pathname={ROUTES.workflowDetail}
         options={{
           pathParams: {
-            agentId: entry.workflow.agentId,
             workflowId: entry.workflow.id,
           },
           searchParams: new URLSearchParams({
-            [WORKFLOW_DETAIL_TAB_PARAM]: "triggers",
+            [WORKFLOW_DETAIL_TAB_PARAM]: "automations",
           }),
         }}
         className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
@@ -361,14 +347,13 @@ function WorkflowAutomationTriggerCard({
   const running = runLoadable.state === "loading";
   const editLink = (
     <Link
-      pathname={ROUTES.agentWorkflowDetail}
+      pathname={ROUTES.workflowDetail}
       options={{
         pathParams: {
-          agentId: entry.workflow.agentId,
           workflowId: entry.workflow.id,
         },
         searchParams: new URLSearchParams({
-          [WORKFLOW_DETAIL_TAB_PARAM]: "triggers",
+          [WORKFLOW_DETAIL_TAB_PARAM]: "automations",
         }),
       }}
       className="rounded-md px-1 py-1 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
@@ -448,6 +433,508 @@ function TriggerGridSkeleton() {
   );
 }
 
+function TriggerListSkeleton() {
+  return (
+    <div
+      className="flex flex-col gap-2.5"
+      data-testid="workflow-trigger-list-skeleton"
+    >
+      {["a", "b", "c"].map((key) => {
+        return (
+          <div
+            key={key}
+            className="zero-card grid min-h-[5.5rem] grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-4 px-5 py-4"
+          >
+            <Skeleton className="row-span-2 h-11 w-11 rounded-xl" />
+            <Skeleton className="h-4 w-48 max-w-full rounded-md" />
+            <Skeleton className="row-span-2 h-5 w-9 rounded-full" />
+            <div className="flex min-w-0 items-center gap-2">
+              <Skeleton className="h-5 w-5 rounded-full" />
+              <Skeleton className="h-3 w-64 max-w-full rounded-md" />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function agentInitials(label: string): string {
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
+  }
+  return (words[0]?.slice(0, 2) || "??").toUpperCase();
+}
+
+function WorkflowAgentAvatar({
+  agent,
+  label,
+}: {
+  readonly agent: TeamComposeItem | undefined;
+  readonly label: string;
+}) {
+  const className =
+    "h-5 w-5 shrink-0 overflow-hidden rounded-full border border-border/60 bg-gray-50 object-cover object-top text-[9px] font-semibold text-muted-foreground";
+  if (agent?.avatarUrl) {
+    return (
+      <AvatarFromUrl
+        avatarUrl={agent.avatarUrl}
+        alt={label}
+        className={className}
+        size={20}
+      />
+    );
+  }
+  return (
+    <span className={cn("inline-flex items-center justify-center", className)}>
+      {agentInitials(label)}
+    </span>
+  );
+}
+
+function TriggerListIcon({
+  trigger,
+}: {
+  readonly trigger: ZeroWorkflowTriggerSummary;
+}) {
+  const Icon = (() => {
+    if (trigger.kind === "schedule") {
+      if (trigger.schedule.type === "loop") {
+        return IconRepeat;
+      }
+      if (trigger.schedule.type === "once") {
+        return IconClock;
+      }
+      return IconCalendarTime;
+    }
+    if (trigger.eventType === "webhook-received") {
+      return IconLink;
+    }
+    if (trigger.eventType === "github-label-applied") {
+      return IconBrandGithub;
+    }
+    if (trigger.eventType === "gmail-label-applied") {
+      return IconTag;
+    }
+    return IconMail;
+  })();
+  const tone =
+    trigger.kind === "schedule"
+      ? "bg-blue-50 text-blue-600"
+      : trigger.eventType === "webhook-received"
+        ? "bg-amber-50 text-amber-700"
+        : "bg-emerald-50 text-emerald-700";
+
+  return (
+    <span
+      className={cn(
+        "row-span-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border/60",
+        tone,
+      )}
+      aria-hidden="true"
+    >
+      <Icon size={20} stroke={1.6} />
+    </span>
+  );
+}
+
+function WorkflowTriggerEnabledSwitch({
+  entry,
+}: {
+  readonly entry: WorkflowTriggerAutomationEntry;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [enabledLoadable, setEnabled] = useLoadableSet(
+    setWorkflowTriggerEnabled$,
+  );
+  const busy = enabledLoadable.state === "loading";
+  const title = workflowTitle(entry.workflow);
+
+  return (
+    <Switch
+      checked={entry.trigger.enabled}
+      disabled={busy || !entry.workflow.canManage}
+      aria-label={`${entry.trigger.enabled ? "Disable" : "Enable"} ${title}`}
+      className="row-span-2 h-5 w-9 data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted [&>span]:h-4 [&>span]:w-4 [&>span]:data-[state=checked]:translate-x-4"
+      onCheckedChange={(enabled) => {
+        detach(
+          setEnabled({ triggerId: entry.trigger.id, enabled }, pageSignal),
+          Reason.DomCallback,
+        );
+      }}
+    />
+  );
+}
+
+function WorkflowTriggerIndexCard({
+  entry,
+  displayTimezone,
+  agents,
+}: {
+  readonly entry: WorkflowTriggerAutomationEntry;
+  readonly displayTimezone: string;
+  readonly agents: readonly TeamComposeItem[];
+}) {
+  const title = workflowTitle(entry.workflow);
+  const label = agentLabel(entry.workflow);
+  const agent = agents.find((item) => {
+    return item.id === entry.workflow.agentId;
+  });
+
+  return (
+    <article
+      className={cn(
+        "zero-card grid min-w-0 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-5 py-4 transition-colors hover:bg-gray-50",
+        !entry.trigger.enabled && "opacity-75",
+      )}
+    >
+      <TriggerListIcon trigger={entry.trigger} />
+      <Link
+        pathname={ROUTES.automationDetail}
+        options={{ pathParams: { automationId: entry.trigger.id } }}
+        className="min-w-0 truncate text-sm font-medium text-foreground no-underline underline-offset-4 hover:underline"
+      >
+        {title}
+      </Link>
+      <WorkflowTriggerEnabledSwitch entry={entry} />
+      <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-sm leading-5 text-muted-foreground">
+        <WorkflowAgentAvatar agent={agent} label={label} />
+        <span className="max-w-[10rem] truncate">{label}</span>
+        <span className="select-none text-muted-foreground/50">·</span>
+        <span>{triggerTypeLabel(entry.trigger)}</span>
+        <span className="select-none text-muted-foreground/50">·</span>
+        <span className="min-w-0 font-medium text-foreground/85">
+          {humanReadableTriggerRuleLabel(entry.trigger, displayTimezone)}
+        </span>
+      </div>
+    </article>
+  );
+}
+
+function WorkflowTriggerDetailSkeleton() {
+  return (
+    <DetailPageShell>
+      <DetailPageBreadcrumbBar>
+        <Skeleton className="h-5 w-40 rounded-md" />
+        <span className="select-none text-muted-foreground/40">/</span>
+        <Skeleton className="h-5 w-32 rounded-md" />
+      </DetailPageBreadcrumbBar>
+      <DetailPageHeader>
+        <div className="flex min-w-0 items-center gap-4">
+          <Skeleton className="h-12 w-12 shrink-0 rounded-xl" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-5 w-56 max-w-full rounded-md" />
+            <Skeleton className="h-4 w-96 max-w-full rounded-md" />
+          </div>
+        </div>
+      </DetailPageHeader>
+      <DetailPageMain constrainContent>
+        <div className="grid gap-4">
+          <Skeleton className="h-40 w-full rounded-xl" />
+          <Skeleton className="h-28 w-full rounded-xl" />
+        </div>
+      </DetailPageMain>
+    </DetailPageShell>
+  );
+}
+
+function WorkflowTriggerAutomationNotFound() {
+  return (
+    <DetailPageShell>
+      <DetailPageBreadcrumbBar>
+        <Link
+          pathname={ROUTES.automations}
+          className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-inherit no-underline transition-colors hover:bg-muted hover:text-foreground"
+        >
+          Automations
+        </Link>
+        <span className="select-none text-muted-foreground/40">/</span>
+        <span className="rounded-md px-1.5 py-0.5 font-medium text-foreground">
+          Automation
+        </span>
+      </DetailPageBreadcrumbBar>
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 pb-20">
+        <p className="text-lg font-semibold text-foreground">
+          Automation not found
+        </p>
+        <p className="max-w-sm text-center text-sm text-muted-foreground">
+          This automation doesn&apos;t exist or was removed.
+        </p>
+        <Link
+          pathname={ROUTES.automations}
+          className="zero-btn-morandi mt-2 inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium text-inherit no-underline hover:bg-accent"
+        >
+          Back to automations
+        </Link>
+      </div>
+    </DetailPageShell>
+  );
+}
+
+function WorkflowTriggerStatusDot({ enabled }: { readonly enabled: boolean }) {
+  return (
+    <span
+      className={cn(
+        "h-1.5 w-1.5 shrink-0 rounded-full",
+        enabled ? "bg-emerald-500" : "bg-muted-foreground/50",
+      )}
+      aria-hidden="true"
+    />
+  );
+}
+
+function WorkflowTriggerDetailActions({
+  entry,
+}: {
+  readonly entry: WorkflowTriggerAutomationEntry;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const navigate = useSet(detachedNavigateTo$);
+  const [runLoadable, runNow] = useLoadableSet(runWorkflowTriggerNow$);
+  const [enabledLoadable, setEnabled] = useLoadableSet(
+    setWorkflowTriggerEnabled$,
+  );
+  const [deleteLoadable, deleteTrigger] = useLoadableSet(
+    deleteWorkflowTrigger$,
+  );
+  const running = runLoadable.state === "loading";
+  const toggling = enabledLoadable.state === "loading";
+  const deleting = deleteLoadable.state === "loading";
+  const busy = running || toggling || deleting;
+  const canManage = entry.workflow.canManage;
+
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <Link
+        pathname={ROUTES.workflowDetail}
+        options={{
+          pathParams: { workflowId: entry.workflow.id },
+          searchParams: new URLSearchParams({
+            [WORKFLOW_DETAIL_TAB_PARAM]: "automations",
+          }),
+        }}
+        className="zero-btn-morandi inline-flex h-9 shrink-0 items-center justify-center rounded-lg border px-3 text-sm font-medium text-inherit no-underline transition-colors hover:bg-accent"
+      >
+        View workflow
+      </Link>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-3"
+        disabled={busy}
+        onClick={() => {
+          detach(
+            runNow(entry.trigger.id, pageSignal),
+            Reason.DomCallback,
+            "run workflow trigger from automation detail",
+          );
+        }}
+      >
+        {running ? (
+          <IconLoader2 size={14} className="animate-spin" />
+        ) : (
+          <IconPlayerPlay size={14} stroke={1.5} />
+        )}
+        {running ? "Starting..." : "Run now"}
+      </Button>
+      {canManage ? (
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-3"
+            disabled={busy}
+            onClick={() => {
+              detach(
+                setEnabled(
+                  {
+                    triggerId: entry.trigger.id,
+                    enabled: !entry.trigger.enabled,
+                  },
+                  pageSignal,
+                ),
+                Reason.DomCallback,
+              );
+            }}
+          >
+            {toggling ? (
+              <IconLoader2 size={14} className="animate-spin" />
+            ) : entry.trigger.enabled ? (
+              <IconPlayerPause size={14} stroke={1.5} />
+            ) : (
+              <IconPlayerPlay size={14} stroke={1.5} />
+            )}
+            {entry.trigger.enabled ? "Pause" : "Resume"}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-9 shrink-0 gap-2 rounded-lg px-3 text-destructive/80 hover:bg-destructive/10 hover:text-destructive"
+            disabled={busy}
+            onClick={() => {
+              detach(
+                (async () => {
+                  await deleteTrigger(entry.trigger.id, pageSignal);
+                  navigate(ROUTES.automations);
+                })(),
+                Reason.DomCallback,
+              );
+            }}
+          >
+            {deleting ? (
+              <IconLoader2 size={14} className="animate-spin" />
+            ) : (
+              <IconTrash size={14} stroke={1.5} />
+            )}
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function WorkflowTriggerAutomationDetail({
+  entry,
+  displayTimezone,
+}: {
+  readonly entry: WorkflowTriggerAutomationEntry;
+  readonly displayTimezone: string;
+}) {
+  const title = workflowTitle(entry.workflow);
+  const agent = agentLabel(entry.workflow);
+  const triggerLabel = humanReadableTriggerRuleLabel(
+    entry.trigger,
+    displayTimezone,
+  );
+
+  return (
+    <DetailPageShell>
+      <DetailPageBreadcrumbBar>
+        <Link
+          pathname={ROUTES.automations}
+          className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-inherit no-underline transition-colors hover:bg-muted hover:text-foreground"
+        >
+          Automations
+        </Link>
+        <span className="select-none text-muted-foreground/40">/</span>
+        <span className="min-w-0 truncate rounded-md px-1.5 py-0.5 font-medium text-foreground">
+          {title}
+        </span>
+      </DetailPageBreadcrumbBar>
+
+      <DetailPageHeader>
+        <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <TriggerListIcon trigger={entry.trigger} />
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+                {title}
+              </h1>
+              <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <WorkflowTriggerStatusDot enabled={entry.trigger.enabled} />
+                  <span className="font-medium text-foreground">
+                    {entry.trigger.enabled ? "Active" : "Paused"}
+                  </span>
+                </span>
+                <span className="select-none text-muted-foreground/40">·</span>
+                <span className="truncate">{agent}</span>
+                <span className="select-none text-muted-foreground/40">·</span>
+                <span>{triggerTypeLabel(entry.trigger)}</span>
+              </div>
+              <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground">
+                {triggerLabel}
+              </p>
+            </div>
+          </div>
+          <WorkflowTriggerDetailActions entry={entry} />
+        </div>
+      </DetailPageHeader>
+
+      <DetailPageMain constrainContent>
+        <div className="grid gap-4">
+          <WorkflowTriggerCard
+            rows={triggerRows(entry.trigger, displayTimezone)}
+            dimmed={!entry.trigger.enabled}
+          />
+          <div className="zero-card overflow-hidden">
+            <dl className="px-5 py-1">
+              <div className="flex min-w-0 items-center justify-between gap-3 border-b border-border/50 py-3">
+                <dt className="shrink-0 text-sm text-muted-foreground">
+                  Workflow
+                </dt>
+                <dd className="min-w-0 truncate text-right text-sm font-medium text-foreground">
+                  {title}
+                </dd>
+              </div>
+              <div className="flex min-w-0 items-center justify-between gap-3 border-b border-border/50 py-3">
+                <dt className="shrink-0 text-sm text-muted-foreground">
+                  Agent
+                </dt>
+                <dd className="min-w-0 truncate text-right text-sm font-medium text-foreground">
+                  {agent}
+                </dd>
+              </div>
+              <div className="flex min-w-0 items-center justify-between gap-3 py-3">
+                <dt className="shrink-0 text-sm text-muted-foreground">
+                  Trigger ID
+                </dt>
+                <dd className="min-w-0 truncate text-right text-sm font-medium text-foreground">
+                  {entry.trigger.id}
+                </dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </DetailPageMain>
+    </DetailPageShell>
+  );
+}
+
+export function WorkflowTriggerAutomationDetailPage() {
+  const params = useGet(pathParams$);
+  const triggerId =
+    params && typeof params === "object" && "automationId" in params
+      ? String(params.automationId)
+      : null;
+  const entriesLoadable = useLastLoadable(allWorkflowTriggerEntries$);
+  const prefsLoadable = useLastLoadable(userPreferences$);
+  const entries =
+    entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
+  const displayTimezone =
+    prefsLoadable.state === "hasData" && prefsLoadable.data?.timezone
+      ? prefsLoadable.data.timezone
+      : new Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  if (!triggerId) {
+    return <WorkflowTriggerAutomationNotFound />;
+  }
+
+  if (entriesLoadable.state !== "hasData") {
+    return <WorkflowTriggerDetailSkeleton />;
+  }
+
+  const entry = entries.find((item) => {
+    return item.trigger.id === triggerId;
+  });
+
+  if (!entry) {
+    return <WorkflowTriggerAutomationNotFound />;
+  }
+
+  return (
+    <WorkflowTriggerAutomationDetail
+      entry={entry}
+      displayTimezone={displayTimezone}
+    />
+  );
+}
+
 function EmptyTriggers({ onAdd }: { readonly onAdd: () => void }) {
   return (
     <div className="zero-card flex min-h-56 flex-col items-center justify-center px-6 py-10 text-center">
@@ -471,11 +958,13 @@ function EmptyTriggers({ onAdd }: { readonly onAdd: () => void }) {
 
 function WorkflowSelectionStep({
   workflows,
+  agents,
   loading,
   onSelectWorkflow,
   onCreateWorkflow,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[];
+  readonly agents: readonly TeamComposeItem[];
   readonly loading: boolean;
   readonly onSelectWorkflow: (workflow: ZeroWorkflowSummary) => void;
   readonly onCreateWorkflow: () => void;
@@ -510,10 +999,10 @@ function WorkflowSelectionStep({
         </span>
         <span className="min-w-0">
           <span className="block text-sm font-medium text-foreground">
-            Create with Zero
+            Create in chat
           </span>
           <span className="mt-0.5 block text-sm text-muted-foreground">
-            Build a new workflow in chat before adding a trigger.
+            Start from a conversation when no workflow fits yet.
           </span>
         </span>
       </button>
@@ -521,11 +1010,15 @@ function WorkflowSelectionStep({
       {workflows.length > 0 ? (
         <div className="grid gap-2">
           {workflows.map((workflow) => {
+            const label = agentLabel(workflow);
+            const agent = agents.find((item) => {
+              return item.id === workflow.agentId;
+            });
             return (
               <button
                 key={workflow.id}
                 type="button"
-                className="flex min-w-0 items-start justify-between gap-3 rounded-lg border border-border/60 px-3 py-3 text-left transition-colors hover:bg-gray-50"
+                className="flex min-w-0 items-start gap-3 rounded-lg border border-border/60 px-3 py-3 text-left transition-colors hover:bg-gray-50"
                 onClick={() => {
                   onSelectWorkflow(workflow);
                 }}
@@ -534,13 +1027,22 @@ function WorkflowSelectionStep({
                   <span className="block truncate text-sm font-medium text-foreground">
                     {workflowTitle(workflow)}
                   </span>
-                  <span className="mt-0.5 block truncate text-sm text-muted-foreground">
-                    {agentLabel(workflow)}
-                    {workflow.description ? ` · ${workflow.description}` : ""}
+                  <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
+                    <WorkflowAgentAvatar agent={agent} label={label} />
+                    <span className="max-w-[10rem] shrink-0 truncate">
+                      {label}
+                    </span>
+                    {workflow.description ? (
+                      <>
+                        <span className="select-none text-muted-foreground/50">
+                          ·
+                        </span>
+                        <span className="min-w-0 truncate">
+                          {workflow.description}
+                        </span>
+                      </>
+                    ) : null}
                   </span>
-                </span>
-                <span className="shrink-0 text-xs font-medium text-muted-foreground">
-                  Choose
                 </span>
               </button>
             );
@@ -548,7 +1050,7 @@ function WorkflowSelectionStep({
         </div>
       ) : (
         <p className="px-1 py-2 text-sm text-muted-foreground">
-          No workflows yet. Create one with Zero to continue.
+          No workflows yet. Create one in chat to continue.
         </p>
       )}
     </div>
@@ -663,86 +1165,13 @@ function AgentSelectionStep({
   );
 }
 
-function TriggerSelectionStep({
-  selectedAgent,
-  onSelectOption,
-}: {
-  readonly selectedAgent: TeamComposeItem | null;
-  readonly onSelectOption: (option: WorkflowAutomationOption) => void;
-}) {
-  const selectedAgentName = selectedAgent?.displayName ?? "Selected agent";
-  return (
-    <div className="grid gap-2">
-      <div className="mb-2 flex min-w-0 items-center gap-2 px-1 py-1">
-        {selectedAgent ? (
-          <AgentAvatarImg
-            name={selectedAgent.id}
-            alt={selectedAgentName}
-            className="h-8 w-8 shrink-0 rounded-lg bg-gray-100 object-cover object-top"
-          />
-        ) : (
-          <span className="h-8 w-8 shrink-0 rounded-lg bg-gray-100" />
-        )}
-        <span className="min-w-0">
-          <span className="block truncate text-sm font-medium text-foreground">
-            {selectedAgentName}
-          </span>
-          <span className="block truncate text-xs text-muted-foreground">
-            What do you want me to do?
-          </span>
-        </span>
-      </div>
-      {WORKFLOW_AUTOMATION_OPTIONS.map((option) => {
-        const Icon = option.Icon;
-        return (
-          <button
-            key={option.kind}
-            type="button"
-            className="flex min-w-0 items-start gap-3 rounded-lg border border-border/60 px-3 py-3 text-left transition-colors hover:bg-gray-50"
-            onClick={() => {
-              onSelectOption(option);
-            }}
-          >
-            <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground">
-              <Icon size={16} stroke={1.6} />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-sm font-medium text-foreground">
-                {option.title}
-              </span>
-              <span className="mt-0.5 block text-sm text-muted-foreground">
-                {option.description}
-              </span>
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function WorkflowAutomationDialogFooter({
-  showBack,
-  onBack,
   onCancel,
 }: {
-  readonly showBack: boolean;
-  readonly onBack: () => void;
   readonly onCancel: () => void;
 }) {
   return (
     <DialogFooter className="shrink-0 border-t border-border/60 bg-card px-5 py-4">
-      {showBack ? (
-        <Button
-          type="button"
-          variant="outline"
-          className="gap-1.5"
-          onClick={onBack}
-        >
-          <IconArrowLeft size={14} stroke={1.5} />
-          Back
-        </Button>
-      ) : null}
       <Button type="button" variant="outline" onClick={onCancel}>
         Cancel
       </Button>
@@ -760,11 +1189,8 @@ export function CreateWorkflowAutomationDialog() {
   const open = useGet(workflowAutomationDialogOpen$);
   const setOpen = useSet(setWorkflowAutomationDialogOpen$);
   const intent = useGet(workflowAutomationDialogIntent$);
-  const step = useGet(workflowAutomationDialogStep$);
-  const setStep = useSet(setWorkflowAutomationDialogStep$);
   const agentSelectionLocked = useGet(workflowAutomationAgentSelectionLocked$);
   const selectedAgentIdState = useGet(selectedWorkflowAutomationAgentId$);
-  const setSelectedAgentId = useSet(setSelectedWorkflowAutomationAgentId$);
   const startCreateWorkflow = useSet(startCreateWorkflowFromAutomationDialog$);
   const navigate = useSet(detachedNavigateTo$);
   const selectedAgentId = selectedAgentIdState;
@@ -773,20 +1199,21 @@ export function CreateWorkflowAutomationDialog() {
       return agent.id === selectedAgentId;
     }) ?? null;
 
-  const selectAgent = (agentId: string) => {
-    setSelectedAgentId(agentId);
-    setStep(2);
-  };
-
-  const startWorkflowCreation = (option: WorkflowAutomationOption) => {
-    if (!selectedAgentId) {
-      return;
-    }
+  const startChatCreation = (agentId: string, prompt: string) => {
     setOpen(false);
     navigate(ROUTES.agentChat, {
-      pathParams: { agentId: selectedAgentId },
-      searchParams: new URLSearchParams({ prompt: option.prompt }),
+      pathParams: { agentId },
+      searchParams: new URLSearchParams({ prompt }),
     });
+  };
+
+  const selectAgent = (agentId: string) => {
+    startChatCreation(
+      agentId,
+      intent === "automation-chat"
+        ? CREATE_AUTOMATION_CHAT_PROMPT
+        : CREATE_WORKFLOW_WITH_CHAT_PROMPT,
+    );
   };
 
   const openWorkflowTriggers = (workflow: ZeroWorkflowSummary) => {
@@ -794,52 +1221,53 @@ export function CreateWorkflowAutomationDialog() {
     navigate(ROUTES.workflowDetail, {
       pathParams: { workflowId: workflow.id },
       searchParams: new URLSearchParams({
-        [WORKFLOW_DETAIL_TAB_PARAM]: "triggers",
+        [WORKFLOW_DETAIL_TAB_PARAM]: "automations",
       }),
     });
   };
 
+  const creatingAutomationInChat = intent === "automation-chat";
   const creatingWorkflow = intent === "workflow";
+  const selectingExistingWorkflow = intent === "automation";
+  const agentChoices =
+    agentSelectionLocked && selectedAgent ? [selectedAgent] : agents;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="zero-app !flex max-h-[min(720px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] !flex-col !overflow-hidden gap-0 p-0 sm:max-w-xl">
         <DialogHeader className="shrink-0 px-5 pb-3 pt-5">
           <DialogTitle className="text-base font-semibold">
-            {creatingWorkflow ? "Create workflow" : "Add automation"}
+            {creatingAutomationInChat
+              ? "Create Automation"
+              : creatingWorkflow
+                ? "Create workflow"
+                : "Add automation"}
           </DialogTitle>
           <DialogDescription className="mt-1 text-sm text-muted-foreground">
-            {creatingWorkflow
-              ? step === 1
-                ? "Choose the agent for this workflow."
-                : "Choose how this workflow should run."
-              : "Choose a workflow to automate, or create one with Zero."}
+            {selectingExistingWorkflow
+              ? "Choose a workflow to automate, or create one in chat."
+              : creatingAutomationInChat
+                ? "Choose the agent for this automation"
+                : "Choose the agent for this workflow."}
           </DialogDescription>
         </DialogHeader>
 
-        {!creatingWorkflow ? (
+        {selectingExistingWorkflow ? (
           <WorkflowSelectionStep
             workflows={workflows}
+            agents={agents}
             loading={workflowsLoading}
             onSelectWorkflow={openWorkflowTriggers}
             onCreateWorkflow={startCreateWorkflow}
           />
-        ) : step === 1 ? (
-          <AgentSelectionStep agents={agents} onSelectAgent={selectAgent} />
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
-            <TriggerSelectionStep
-              selectedAgent={selectedAgent}
-              onSelectOption={startWorkflowCreation}
-            />
-          </div>
+          <AgentSelectionStep
+            agents={agentChoices}
+            onSelectAgent={selectAgent}
+          />
         )}
 
         <WorkflowAutomationDialogFooter
-          showBack={step === 2 && !agentSelectionLocked}
-          onBack={() => {
-            setStep(1);
-          }}
           onCancel={() => {
             setOpen(false);
           }}
@@ -883,12 +1311,51 @@ export function WorkflowTriggerAutomationList({
   );
 }
 
+function WorkflowTriggerAutomationIndexList({
+  entries,
+  displayTimezone,
+  agents,
+  loading,
+  onAdd,
+}: {
+  readonly entries: readonly WorkflowTriggerAutomationEntry[];
+  readonly displayTimezone: string;
+  readonly agents: readonly TeamComposeItem[];
+  readonly loading: boolean;
+  readonly onAdd: () => void;
+}) {
+  if (loading) {
+    return <TriggerListSkeleton />;
+  }
+
+  if (entries.length === 0) {
+    return <EmptyTriggers onAdd={onAdd} />;
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      {entries.map((entry) => {
+        return (
+          <WorkflowTriggerIndexCard
+            key={entry.trigger.id}
+            entry={entry}
+            displayTimezone={displayTimezone}
+            agents={agents}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export function WorkflowTriggerAutomationsPage() {
   const entriesLoadable = useLastLoadable(allWorkflowTriggerEntries$);
   const prefsLoadable = useLastLoadable(userPreferences$);
+  const agentsLoadable = useLastLoadable(agents$);
   const setCreateOpen = useSet(setWorkflowAutomationDialogOpen$);
   const entries =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
+  const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
   const displayTimezone =
     prefsLoadable.state === "hasData" && prefsLoadable.data?.timezone
       ? prefsLoadable.data.timezone
@@ -898,7 +1365,7 @@ export function WorkflowTriggerAutomationsPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="shrink-0 bg-transparent px-4 pb-0 pt-3 sm:px-6 md:pb-3 md:pt-10">
-        <div className="mx-auto flex max-w-[1120px] flex-wrap items-end justify-between gap-4">
+        <div className="mx-auto flex max-w-[900px] flex-wrap items-end justify-between gap-4">
           <div className="hidden min-w-0 md:block">
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
               Automations
@@ -923,10 +1390,11 @@ export function WorkflowTriggerAutomationsPage() {
       </header>
 
       <main className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6">
-        <div className="mx-auto max-w-[1120px]">
-          <WorkflowTriggerAutomationList
+        <div className="mx-auto max-w-[900px]">
+          <WorkflowTriggerAutomationIndexList
             entries={entries}
             displayTimezone={displayTimezone}
+            agents={agents}
             loading={loading}
             onAdd={() => {
               setCreateOpen(true);

@@ -29,6 +29,7 @@ export const profound = {
           fields: {
             PROFOUND_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-profound-api-key",
             },

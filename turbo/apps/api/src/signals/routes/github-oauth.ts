@@ -449,9 +449,9 @@ const connectGithubUserAfterSetup$ = command(
 
 function githubSetupCompleteRedirect(connected: boolean): Response {
   if (connected) {
-    return redirectResponse(appUrl("/works?github=connected"));
+    return redirectResponse(appUrl("/workflows"));
   }
-  return redirectResponse(appUrl("/works?github=installed"));
+  return redirectResponse(appUrl("/workflows"));
 }
 
 async function createActiveGithubInstallationFromCallback(args: {
@@ -550,7 +550,7 @@ const installGithubOauth$ = command(
       signal.throwIfAborted();
 
       if (linkedFromLocal) {
-        return redirectResponse(appUrl("/works?github=connected"));
+        return redirectResponse(appUrl("/workflows"));
       }
 
       const linkedFromRemote = await tryLinkGithubFromRemoteInstallations({
@@ -565,7 +565,7 @@ const installGithubOauth$ = command(
       signal.throwIfAborted();
 
       if (linkedFromRemote) {
-        return redirectResponse(appUrl("/works?github=connected"));
+        return redirectResponse(appUrl("/workflows"));
       }
     }
 
@@ -680,7 +680,7 @@ const connectGithubUserOauth$ = command(
       await publishUserSignal([auth.userId], "github:changed");
       signal.throwIfAborted();
 
-      return redirectResponse(appUrl("/works?github=connected"));
+      return redirectResponse(appUrl("/workflows"));
     }
 
     const origin = getOAuthWebOrigin(request);
@@ -806,7 +806,7 @@ const callbackGithubUserOauth$ = command(
     await publishUserSignal([state.vm0UserId], "github:changed");
     signal.throwIfAborted();
 
-    return redirectResponse(appUrl("/works?github=connected"));
+    return redirectResponse(appUrl("/workflows"));
   },
 );
 
@@ -832,7 +832,7 @@ const callbackGithubOauth$ = command(
       );
     }
     if (query.setup_action === "update") {
-      return redirectResponse(appUrl("/works?github=installed"));
+      return redirectResponse(appUrl("/workflows"));
     }
 
     const stateResolution = await resolveGithubCallbackState({

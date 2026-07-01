@@ -20,6 +20,7 @@ export const mem0 = {
           fields: {
             MEM0_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "m0-...",
             },

@@ -20,6 +20,7 @@ export const railwayProject = {
           fields: {
             RAILWAY_PROJECT_TOKEN: {
               label: "Project Token",
+              publicId: "projectToken",
               required: true,
               placeholder: "00000000-0000-0000-0000-000000000000",
             },

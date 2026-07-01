@@ -7,6 +7,7 @@
   "include": [
     "src/signals/routes/zero-secrets*.ts",
     "src/signals/routes/zero-slack*.ts",
+    "src/signals/routes/zero-teams*.ts",
     "src/signals/routes/zero-team.ts",
     "src/signals/routes/zero-uploads*.ts",
     "src/signals/routes/zero-usage*.ts",

@@ -20,6 +20,7 @@ export const shortio = {
           fields: {
             SHORTIO_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-shortio-api-key",
             },

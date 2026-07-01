@@ -20,6 +20,7 @@ export const similarweb = {
           fields: {
             SIMILARWEB_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-similarweb-api-key",
             },

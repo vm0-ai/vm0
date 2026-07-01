@@ -1,4 +1,4 @@
-//! Resume-path integration coverage for the disabled Codex app-server backend.
+//! Resume-path integration coverage for the experimental Codex app-server backend.
 //!
 //! This is separate from `codex_app_server_backend.rs` because `guest_agent::env`
 //! caches `VM0_RESUME_SESSION_ID` in a process-wide `LazyLock`.

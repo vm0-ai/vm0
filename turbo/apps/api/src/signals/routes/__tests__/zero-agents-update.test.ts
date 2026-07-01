@@ -4,21 +4,17 @@ import {
   zeroAgentInstructionsContract,
   zeroAgentsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { cliTokens } from "@vm0/db/schema/cli-tokens";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { apiKeysContract } from "@vm0/api-contracts/contracts/api-keys";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
-import { generateCliToken, signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteWorkflowsForFixture$,
   seedAgentForInstructions$,
@@ -42,33 +38,26 @@ async function cliAuthHeaders(
   fixture: WorkflowsFixture,
   role: "admin" | "member" = "admin",
 ): Promise<{ readonly authorization: string }> {
-  const tokenId = randomUUID();
-  const token = generateCliToken(fixture.userId, fixture.orgId, tokenId);
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(cliTokens).values({
-    id: tokenId,
-    token,
-    userId: fixture.userId,
-    name: "Test Token",
-    expiresAt: new Date(now() + 60 * 60 * 1000),
-  });
-  await writeDb
-    .insert(orgMembersCache)
-    .values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      role,
-      cachedAt: new Date(now() + 60 * 1000),
-    })
-    .onConflictDoUpdate({
-      target: [orgMembersCache.orgId, orgMembersCache.userId],
-      set: {
-        role,
-        cachedAt: new Date(now() + 60 * 1000),
-      },
-    });
+  await store.set(
+    seedOrgMembership$,
+    { orgId: fixture.orgId, userId: fixture.userId, role },
+    context.signal,
+  );
+  mocks.clerk.session(
+    fixture.userId,
+    fixture.orgId,
+    role === "admin" ? "org:admin" : "org:member",
+  );
 
-  return { authorization: `Bearer ${token}` };
+  const response = await accept(
+    setupApp({ context })(apiKeysContract).create({
+      body: { name: "Test Token", expiresInDays: 1 },
+      headers: authHeaders(),
+    }),
+    [201],
+  );
+
+  return { authorization: `Bearer ${response.body.token}` };
 }
 
 function agentsClient() {
@@ -201,12 +190,14 @@ describe("PUT /api/zero/agents/:id", () => {
       visibility: "public",
     });
 
-    const [compose] = await store
-      .set(writeDb$)
-      .select({ headVersionId: agentComposes.headVersionId })
-      .from(agentComposes)
-      .where(eq(agentComposes.id, agent.agentId));
-    expect(compose?.headVersionId).toBeTruthy();
+    const fetched = await accept(
+      agentsClient().get({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(fetched.body.displayName).toBe("Updated Agent");
   });
 
   it("updates an agent that has workflow bindings", async () => {
@@ -445,12 +436,18 @@ describe("PATCH /api/zero/agents/:id", () => {
       preferPersonalProvider: false,
     });
 
-    const [compose] = await store
-      .set(writeDb$)
-      .select({ headVersionId: agentComposes.headVersionId })
-      .from(agentComposes)
-      .where(eq(agentComposes.id, agent.agentId));
-    expect(compose?.headVersionId).toBeNull();
+    const fetched = await accept(
+      agentsClient().get({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(fetched.body).toMatchObject({
+      displayName: "Updated Agent",
+      description: "Updated description",
+      avatarUrl: null,
+    });
   });
 
   it("returns 400 for invalid path params", async () => {
@@ -759,16 +756,14 @@ describe("PATCH /api/zero/agents/:id", () => {
       preferPersonalProvider: false,
     });
 
-    const [row] = await store
-      .set(writeDb$)
-      .select({
-        modelProviderId: zeroAgents.modelProviderId,
-        selectedModel: zeroAgents.selectedModel,
-        preferPersonalProvider: zeroAgents.preferPersonalProvider,
-      })
-      .from(zeroAgents)
-      .where(eq(zeroAgents.id, agent.agentId));
-    expect(row).toStrictEqual({
+    const fetched = await accept(
+      agentsClient().get({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(fetched.body).toMatchObject({
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,

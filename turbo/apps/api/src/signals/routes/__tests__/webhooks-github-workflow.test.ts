@@ -2,29 +2,19 @@ import { createHmac } from "node:crypto";
 
 import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { githubInstallations } from "@vm0/db/schema/github-installation";
-import { githubUserLinks } from "@vm0/db/schema/github-user-link";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import {
-  zeroWorkflowGithubProcessedEvents,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
 import { createStore } from "ccstate";
-import { and, asc, eq } from "drizzle-orm";
-import { onTestFinished } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
-import { writeDb$ } from "../../external/db";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
-  setGithubWorkflowRunStarterForTests,
-  type GithubWorkflowRunStartTestInput,
-} from "../../services/github-workflow-event.service";
-import {
   deleteWorkflowsForFixture$,
+  getWorkflowGithubProcessedEvents$,
+  getWorkflowTriggerRunState$,
   seedAgentForInstructions$,
+  seedWorkflowGithubInstallation$,
+  seedWorkflowGithubUserLink$,
   seedWorkflowsFixture$,
   type WorkflowsFixture,
 } from "./helpers/zero-workflows";
@@ -32,6 +22,10 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
@@ -52,48 +46,39 @@ function triggersClient() {
 async function enableGithubWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
-  await store
-    .set(writeDb$)
-    .insert(userFeatureSwitches)
-    .values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      switches: { [FeatureSwitchKey.WorkflowGithubLabelEventTriggers]: true },
-    });
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.WorkflowAutomation]: true,
+  });
 }
 
 async function seedGithubInstallation(args: {
   readonly fixture: WorkflowsFixture;
   readonly composeId: string;
 }): Promise<string> {
-  const [installation] = await store
-    .set(writeDb$)
-    .insert(githubInstallations)
-    .values({
+  return await store.set(
+    seedWorkflowGithubInstallation$,
+    {
+      fixture: args.fixture,
+      composeId: args.composeId,
       installationId: GITHUB_INSTALLATION_REMOTE_ID,
-      status: "active",
-      orgId: args.fixture.orgId,
-      targetType: "Organization",
-      targetId: "12345",
-      targetName: "vm0-ai",
-      defaultComposeId: args.composeId,
-    })
-    .returning({ id: githubInstallations.id });
-  if (!installation) {
-    throw new Error("Expected GitHub installation to be created");
-  }
-  return installation.id;
+    },
+    context.signal,
+  );
 }
 
 async function seedGithubUserLink(args: {
   readonly installationId: string;
   readonly userId: string;
 }): Promise<void> {
-  await store.set(writeDb$).insert(githubUserLinks).values({
-    installationId: args.installationId,
-    vm0UserId: args.userId,
-    githubUserId: "101",
-  });
+  await store.set(
+    seedWorkflowGithubUserLink$,
+    {
+      installationId: args.installationId,
+      userId: args.userId,
+      githubUserId: "101",
+    },
+    context.signal,
+  );
 }
 
 async function setupFixture(): Promise<{
@@ -101,38 +86,38 @@ async function setupFixture(): Promise<{
   readonly agentId: string;
   readonly workflowId: string;
 }> {
+  mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   const fixture = await store.set(
     seedWorkflowsFixture$,
     undefined,
     context.signal,
   );
   context.mocks.s3.send.mockResolvedValue({});
-  const { agentId } = await store.set(
+  const seededAgent = await store.set(
     seedAgentForInstructions$,
     {
       orgId: fixture.orgId,
       userId: fixture.userId,
       name: "github-webhook-agent",
       workflowNames: [WORKFLOW_NAME],
+      composeContent: {
+        version: "1",
+        agents: {
+          "github-webhook-agent": {
+            framework: "claude-code",
+            environment: { ANTHROPIC_API_KEY: "test-key" },
+          },
+        },
+      },
     },
     context.signal,
   );
-  const [workflow] = await store
-    .set(writeDb$)
-    .select({ id: zeroWorkflows.id })
-    .from(zeroWorkflows)
-    .where(
-      and(
-        eq(zeroWorkflows.orgId, fixture.orgId),
-        eq(zeroWorkflows.agentId, agentId),
-        eq(zeroWorkflows.name, WORKFLOW_NAME),
-      ),
-    );
-  if (!workflow) {
+  const workflowId = seededAgent.workflowIdsByName[WORKFLOW_NAME];
+  if (!workflowId) {
     throw new Error("Expected the agent to own the seeded workflow");
   }
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-  return { fixture, agentId, workflowId: workflow.id };
+  return { fixture, agentId: seededAgent.agentId, workflowId };
 }
 
 function githubPayload(action: "labeled" | "opened"): string {
@@ -181,10 +166,7 @@ async function postGithubWebhook(args: {
 
 describe("POST /api/webhooks/github for workflow triggers", () => {
   const track = createFixtureTracker<WorkflowsFixture>(async (fixture) => {
-    const db = store.set(writeDb$);
-    await db
-      .delete(githubInstallations)
-      .where(eq(githubInstallations.orgId, fixture.orgId));
+    await deleteFeatureSwitchesForUser(context, fixture);
     await store.set(deleteWorkflowsForFixture$, fixture, context.signal);
   });
 
@@ -198,15 +180,6 @@ describe("POST /api/webhooks/github for workflow triggers", () => {
       composeId: agentId,
     });
     await seedGithubUserLink({ installationId, userId: fixture.userId });
-
-    const runCalls: GithubWorkflowRunStartTestInput[] = [];
-    const restoreRunStarter = setGithubWorkflowRunStarterForTests((input) => {
-      runCalls.push(input);
-      return Promise.resolve("ok");
-    });
-    onTestFinished(() => {
-      restoreRunStarter();
-    });
 
     const created = await accept(
       triggersClient().create({
@@ -253,42 +226,23 @@ describe("POST /api/webhooks/github for workflow triggers", () => {
     expect(opened).toStrictEqual({ status: 200, text: "OK" });
     await flushWaitUntilForTest();
 
-    expect(runCalls).toStrictEqual([
-      {
-        triggerId: created.body.id,
-        workflowName: WORKFLOW_NAME,
-        deliveryId: "delivery-1",
-        repo: "vm0-ai/vm0",
-        subjectType: "issue",
-        subjectNumber: 42,
-        action: "labeled",
-        labelName: "triage",
-        actorLogin: "lancy",
-      },
-      {
-        triggerId: created.body.id,
-        workflowName: WORKFLOW_NAME,
-        deliveryId: "delivery-2",
-        repo: "vm0-ai/vm0",
-        subjectType: "issue",
-        subjectNumber: 42,
-        action: "opened",
-        labelName: "triage",
-        actorLogin: "lancy",
-      },
-    ]);
+    const runs = await store.set(
+      getWorkflowTriggerRunState$,
+      { triggerId: created.body.id },
+      context.signal,
+    );
+    expect(runs).toHaveLength(2);
+    expect(
+      runs.map((run) => {
+        return run.triggerSource;
+      }),
+    ).toStrictEqual(["workflow-event", "workflow-event"]);
 
-    const processed = await store
-      .set(writeDb$)
-      .select({
-        githubDeliveryId: zeroWorkflowGithubProcessedEvents.githubDeliveryId,
-        action: zeroWorkflowGithubProcessedEvents.action,
-        labelNameNormalized:
-          zeroWorkflowGithubProcessedEvents.labelNameNormalized,
-      })
-      .from(zeroWorkflowGithubProcessedEvents)
-      .where(eq(zeroWorkflowGithubProcessedEvents.triggerId, created.body.id))
-      .orderBy(asc(zeroWorkflowGithubProcessedEvents.githubDeliveryId));
+    const processed = await store.set(
+      getWorkflowGithubProcessedEvents$,
+      { triggerId: created.body.id },
+      context.signal,
+    );
     expect(processed).toStrictEqual([
       {
         githubDeliveryId: "delivery-1",

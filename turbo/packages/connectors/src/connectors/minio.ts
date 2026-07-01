@@ -20,16 +20,19 @@ export const minio = {
           fields: {
             MINIO_TOKEN: {
               label: "Access Key",
+              publicId: "accessKey",
               required: true,
               storage: "secret",
             },
             MINIO_SECRET_TOKEN: {
               label: "Secret Key",
+              publicId: "secretKey",
               required: true,
               storage: "secret",
             },
             MINIO_ENDPOINT: {
               label: "Endpoint URL",
+              publicId: "endpoint",
               required: true,
               placeholder: "https://minio.example.com",
               storage: "variable",

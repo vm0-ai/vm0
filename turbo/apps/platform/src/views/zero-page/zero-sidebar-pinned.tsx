@@ -1,6 +1,5 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import type { MouseEvent } from "react";
 import {
   useGet,
   useSet,
@@ -11,9 +10,8 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconPlus,
   IconChevronRight,
-  IconX,
-  IconDots,
   IconPinnedOff,
+  IconChecks,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -21,10 +19,6 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
 } from "@vm0/ui";
 import {
   isChatRoute,
@@ -32,15 +26,15 @@ import {
 } from "../../signals/zero-page/zero-nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
-import { pathParams$ } from "../../signals/route.ts";
+import { detachedNavigateTo$, pathParams$ } from "../../signals/route.ts";
 import {
   chatListOpen$,
   setChatListOpen$,
+  openAgentListDialog$,
   agentCardCollapsed$,
   setAgentCardCollapsed$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import {
-  reloadAgents$,
   subagents$,
   defaultAgentId$,
   defaultAgentName$,
@@ -50,126 +44,17 @@ import {
   updatePinnedAgentIds$,
   pinnedAgents$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
-import { unreadAgentIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
+import {
+  markAgentThreadsRead$,
+  unreadAgentIds$,
+} from "../../signals/chat-page/sidebar-unread-threads.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { createNewChatThreadOptimistically$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { AgentListDialog } from "./zero-sidebar-dialogs.tsx";
-
-function UnpinButton({
-  agentId,
-  isPrimarySelected,
-}: {
-  agentId: string;
-  isPrimarySelected: boolean;
-}) {
-  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
-  const savingPinned = pinLoadable.state === "loading";
-  const pageSignal = useGet(pageSignal$);
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              const next = pinnedIds.filter((id): id is string => {
-                return id !== null && id !== agentId;
-              });
-              detach(savePinnedIds(next, pageSignal), Reason.DomCallback);
-            }}
-            disabled={savingPinned}
-            className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
-              isPrimarySelected
-                ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
-            }`}
-            aria-label="Remove from list"
-          >
-            <IconX size={12} stroke={2} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right">
-          <p className="text-xs">Remove from list</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-function AgentUnreadIndicator() {
-  return (
-    <span aria-label="Unread" className="h-2 w-2 rounded-full bg-sky-600" />
-  );
-}
-
-function PinnedAgentMenu({
-  agentId,
-  isPrimarySelected,
-}: {
-  agentId: string;
-  isPrimarySelected: boolean;
-}) {
-  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
-  const savingPinned = pinLoadable.state === "loading";
-  const pageSignal = useGet(pageSignal$);
-
-  function removeFromList() {
-    const next = pinnedIds.filter((id): id is string => {
-      return id !== null && id !== agentId;
-    });
-    detach(savePinnedIds(next, pageSignal), Reason.DomCallback);
-  }
-
-  function handleMenuTriggerClick(e: MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-  }
-
-  return (
-    <TooltipProvider delayDuration={200}>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            onClick={handleMenuTriggerClick}
-            disabled={savingPinned}
-            className={`peer pointer-events-auto absolute left-1 top-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible data-[state=open]:visible transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
-              isPrimarySelected
-                ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
-            }`}
-            aria-label="Open agent menu"
-          >
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
-                  <IconDots size={16} stroke={2} />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">More</p>
-              </TooltipContent>
-            </Tooltip>
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
-          <DropdownMenuItem onSelect={removeFromList} disabled={savingPinned}>
-            <IconPinnedOff size={16} stroke={2} className="mr-2" />
-            Remove from list
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </TooltipProvider>
-  );
-}
+import { AgentRowSideActions } from "./zero-sidebar-agent-row-actions.tsx";
 
 function PinnedAgentSideDecorator({
   agentId,
@@ -182,24 +67,60 @@ function PinnedAgentSideDecorator({
   isPrimarySelected: boolean;
   hasUnread: boolean;
 }) {
-  if (isDefaultAgent && !hasUnread) {
-    return null;
+  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
+  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
+  const [markReadLoadable, markAgentThreadsRead] = useLoadableSet(
+    markAgentThreadsRead$,
+  );
+  const savingPinned = pinLoadable.state === "loading";
+  const markingRead = markReadLoadable.state === "loading";
+  const pageSignal = useGet(pageSignal$);
+
+  function unpinAgent() {
+    const next = pinnedIds.filter((id): id is string => {
+      return id !== null && id !== agentId;
+    });
+    detach(savePinnedIds(next, pageSignal), Reason.DomCallback);
   }
 
+  function markAllRead() {
+    detach(
+      markAgentThreadsRead(agentId, pageSignal),
+      Reason.DomCallback,
+      "markAgentThreadsRead",
+    );
+  }
+
+  const actions = [
+    ...(hasUnread
+      ? [
+          {
+            label: "Mark all read",
+            disabled: markingRead,
+            icon: <IconChecks size={16} stroke={2} />,
+            onSelect: markAllRead,
+          },
+        ]
+      : []),
+    ...(!isDefaultAgent
+      ? [
+          {
+            label: "Unpin",
+            disabled: savingPinned,
+            icon: <IconPinnedOff size={16} stroke={2} />,
+            onSelect: unpinAgent,
+          },
+        ]
+      : []),
+  ];
+
   return (
-    <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-      {!isDefaultAgent && (
-        <PinnedAgentMenu
-          agentId={agentId}
-          isPrimarySelected={isPrimarySelected}
-        />
-      )}
-      {hasUnread && (
-        <span className="flex items-center justify-center group-hover:hidden group-focus-within:hidden peer-data-[state=open]:hidden">
-          <AgentUnreadIndicator />
-        </span>
-      )}
-    </div>
+    <AgentRowSideActions
+      variant="sidebar"
+      isPrimarySelected={isPrimarySelected}
+      hasUnread={hasUnread}
+      actions={actions}
+    />
   );
 }
 
@@ -213,18 +134,16 @@ function AgentListDialogContainer() {
       : "Zero";
   const subagents = useLastResolved(subagents$) ?? [];
   const defaultAgentId = useLastResolved(defaultAgentId$);
-  const createNewChat = useSet(createNewChatThreadOptimistically$);
+  const navigate = useSet(detachedNavigateTo$);
   const setExpanded = useSet(setSidebarExpanded$);
-  const rootSignal = useGet(rootSignal$);
-  const onNewChat = (agentId: string | null) => {
+  const openAgentChat = (agentId: string | null) => {
     const resolvedAgentId = agentId ?? defaultAgentId;
     if (!resolvedAgentId) {
       return;
     }
-    detach(
-      createNewChat(resolvedAgentId, "main", rootSignal),
-      Reason.DomCallback,
-    );
+    navigate("/agents/:agentId/chat", {
+      pathParams: { agentId: resolvedAgentId },
+    });
     setExpanded(false);
   };
   return (
@@ -233,7 +152,7 @@ function AgentListDialogContainer() {
       onOpenChange={onOpenChange}
       displayName={displayName}
       subagents={subagents}
-      onNewChat={onNewChat}
+      onSelectChatAgent={openAgentChat}
     />
   );
 }
@@ -252,10 +171,9 @@ export function PinnedAgentListSection() {
     features[FeatureSwitchKey.AgentUnreadIndicators] ?? false;
   const unreadAgentIds = useLastResolved(unreadAgentIds$);
 
-  const setChatListOpenFn = useSet(setChatListOpen$);
+  const openAgentListDialog = useSet(openAgentListDialog$);
   const collapsed = useGet(agentCardCollapsed$);
   const setCollapsed = useSet(setAgentCardCollapsed$);
-  const reloadAgents = useSet(reloadAgents$);
   const defaultAgentId = useLastResolved(defaultAgentId$);
 
   return (
@@ -284,8 +202,7 @@ export function PinnedAgentListSection() {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setChatListOpenFn(true);
-                  reloadAgents();
+                  openAgentListDialog();
                 }}
                 className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
                 aria-label="Open a conversation"
@@ -322,6 +239,9 @@ export function PinnedAgentListSection() {
               const isFromChat = sidebarAgentId === agent.id;
               const hasUnread = unreadAgentIds?.has(agent.id) ?? false;
               const isDefaultAgent = agent.id === defaultAgentId;
+              const hasUnreadIndicator =
+                agentUnreadIndicatorsEnabled && hasUnread;
+              const hasSideActions = !isDefaultAgent || hasUnreadIndicator;
               return (
                 <div
                   key={agent.id}
@@ -332,7 +252,7 @@ export function PinnedAgentListSection() {
                     pathname="/agents/:agentId/chat"
                     options={{ pathParams: { agentId: agent.id } }}
                     className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg text-left text-sm leading-5 no-underline transition-colors duration-200 ${
-                      agentUnreadIndicatorsEnabled ? "pl-2 pr-8" : "px-2"
+                      hasSideActions ? "pl-2 pr-8" : "px-2"
                     } ${
                       isPrimarySelected
                         ? "bg-gray-200 text-foreground font-medium"
@@ -350,20 +270,13 @@ export function PinnedAgentListSection() {
                       {agent.displayName ?? agent.id}
                     </span>
                   </Link>
-                  {agentUnreadIndicatorsEnabled ? (
+                  {hasSideActions ? (
                     <PinnedAgentSideDecorator
                       agentId={agent.id}
                       isDefaultAgent={isDefaultAgent}
                       isPrimarySelected={isPrimarySelected}
-                      hasUnread={hasUnread}
+                      hasUnread={hasUnreadIndicator}
                     />
-                  ) : agent.id !== defaultAgentId ? (
-                    <div className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-                      <UnpinButton
-                        agentId={agent.id}
-                        isPrimarySelected={isPrimarySelected}
-                      />
-                    </div>
                   ) : null}
                 </div>
               );

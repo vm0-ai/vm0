@@ -20,6 +20,7 @@ export const coingecko = {
           fields: {
             COINGECKO_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-coingecko-api-key",
             },

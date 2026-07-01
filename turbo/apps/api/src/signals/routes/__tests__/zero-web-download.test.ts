@@ -9,20 +9,10 @@ import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { zeroWebDownloadRoutes } from "../zero-web-download";
-import { createFixtureTracker } from "./helpers/zero-route-test";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 
 const context = testContext();
 const store = createStore();
-const trackOrgMembership = createFixtureTracker<OrgMembershipFixture>(
-  (fixture) => {
-    return store.set(deleteOrgMembership$, fixture, context.signal);
-  },
-);
 const BUCKET = "test-user-artifacts";
 const ROUTE = "/api/zero/web/download-file";
 
@@ -60,13 +50,7 @@ async function mintFileReadToken(): Promise<{
 }> {
   const orgId = `org_${randomUUID()}`;
   const userId = `user_${randomUUID()}`;
-  await trackOrgMembership(
-    store.set(
-      seedOrgMembership$,
-      { orgId, userId, seedOrgCache: false },
-      context.signal,
-    ),
-  );
+  await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
   return {
     orgId,
     userId,

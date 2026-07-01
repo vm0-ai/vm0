@@ -14,13 +14,18 @@ import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import {
+  type ChatThread,
   chatThreads$,
   currentChatAgentId$,
   currentChatThreadId$,
   reloadChatThreads$,
 } from "../agent-chat.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
-import { loadRightThread$ } from "./chat-thread-panes.ts";
+import {
+  currentLeftThread$,
+  currentRightThread$,
+  loadRightThread$,
+} from "./chat-thread-panes.ts";
 import {
   clearArtifactSidebarParams,
   clearChatAutomationSidebarParams,
@@ -450,10 +455,68 @@ export const createNewChatThreadOptimistically$ = command(
   },
 );
 
+function threadToSidebarListItem(thread: ChatThread): ChatThreadListItem {
+  return {
+    id: thread.id,
+    title: thread.title,
+    agent: { id: thread.agentId, avatarUrl: null },
+    createdAt: thread.createdAt ?? thread.lastMessageAt,
+    updatedAt: thread.updatedAt ?? thread.lastMessageAt,
+    running: thread.activeRunIds.length > 0,
+    pinnedAt: thread.pinnedAt ?? null,
+  };
+}
+
+function mergeMissingSidebarThreads(
+  threads: readonly ChatThreadListItem[],
+  missingThreads: readonly ChatThreadListItem[],
+): ChatThreadListItem[] {
+  if (missingThreads.length === 0) {
+    return [...threads];
+  }
+
+  const existingIds = new Set(
+    threads.map((thread) => {
+      return thread.id;
+    }),
+  );
+  const seenMissingIds = new Set<string>();
+  const dedupedMissingThreads = missingThreads.filter((thread) => {
+    if (existingIds.has(thread.id) || seenMissingIds.has(thread.id)) {
+      return false;
+    }
+    seenMissingIds.add(thread.id);
+    return true;
+  });
+  if (dedupedMissingThreads.length === 0) {
+    return [...threads];
+  }
+
+  const missingPinned = dedupedMissingThreads.filter((thread) => {
+    return thread.pinnedAt !== null && thread.pinnedAt !== undefined;
+  });
+  const missingUnpinned = dedupedMissingThreads.filter((thread) => {
+    return thread.pinnedAt === null || thread.pinnedAt === undefined;
+  });
+  const firstUnpinnedIndex = threads.findIndex((thread) => {
+    return thread.pinnedAt === null || thread.pinnedAt === undefined;
+  });
+
+  if (firstUnpinnedIndex === -1) {
+    return [...missingPinned, ...threads, ...missingUnpinned];
+  }
+
+  return [
+    ...missingPinned,
+    ...threads.slice(0, firstUnpinnedIndex),
+    ...missingUnpinned,
+    ...threads.slice(firstUnpinnedIndex),
+  ];
+}
+
 /**
- * Unified sidebar list: persisted threads merged with the optimistic-only
- * pending threads for the current agent, deduped by id, sorted (pinned first
- * then most-recent activity desc).
+ * Unified sidebar list: server-ordered persisted threads merged with the
+ * optimistic-only pending threads for the current agent, deduped by id.
  *
  * Returning a single signal — instead of letting the sidebar read persisted
  * and optimistic separately — guarantees that the optimistic→persisted
@@ -461,26 +524,19 @@ export const createNewChatThreadOptimistically$ = command(
  * window where two `useLastResolved` subscribers update one after the other
  * and briefly emit two `<ChatThreadItem>` siblings sharing the same `key`.
  *
- * Sort key:
- * - When the persisted version exists, dedupe drops the optimistic entry and
- *   the server's `updatedAt` decides position.
- * - While only the optimistic exists, its browser-side `createdAt` (captured
- *   when `createNewChatThread$` minted the threadId) participates in the
- *   same sort, so a freshly-created thread lands at the top of the unpinned
- *   section without being pinned to a fixed slot.
+ * The server orders each pinned/non-pinned segment by lastMessageAt desc and
+ * id desc, but the list item contract does not expose lastMessageAt. Preserve
+ * the server order for existing rows and insert optimistic rows at the front
+ * of their pinned/non-pinned segment. The frontend must not sort this list.
  */
 export const sidebarChatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
     const persisted = await get(chatThreads$);
     const extraPersisted = await get(sidebarChatThreadsExtraThreads$);
     const pending = get(allPendingChatThreads$);
-    if (pending.length === 0 && extraPersisted.length === 0) {
-      return persisted;
-    }
-
     const currentAgentId = await get(currentChatAgentId$);
     if (!currentAgentId) {
-      return persisted;
+      return [...persisted, ...extraPersisted];
     }
 
     const persistedIds = new Set(
@@ -506,20 +562,42 @@ export const sidebarChatThreads$ = computed(
         };
       });
 
-    if (optimisticItems.length === 0) {
-      return [...persisted, ...extraPersisted];
+    const mergedThreads = mergeMissingSidebarThreads(
+      [...persisted, ...extraPersisted],
+      optimisticItems,
+    );
+
+    const mergedThreadIds = new Set(
+      mergedThreads.map((thread) => {
+        return thread.id;
+      }),
+    );
+    const activePaneThreads = [
+      get(currentLeftThread$),
+      get(currentRightThread$),
+    ].filter((thread): thread is ChatThreadSignals => {
+      return thread !== null && !mergedThreadIds.has(thread.threadId);
+    });
+
+    if (activePaneThreads.length === 0) {
+      return mergedThreads;
     }
 
-    return [...persisted, ...extraPersisted, ...optimisticItems].sort(
-      (a, b) => {
-        const aPinned = a.pinnedAt ? 0 : 1;
-        const bPinned = b.pinnedAt ? 0 : 1;
-        if (aPinned !== bPinned) {
-          return aPinned - bPinned;
-        }
-        return b.updatedAt.localeCompare(a.updatedAt);
-      },
-    );
+    const activeItems = (
+      await Promise.all(
+        activePaneThreads.map(async (thread) => {
+          const threadData = await get(thread.threadData$);
+          if (!threadData || threadData.agentId !== currentAgentId) {
+            return null;
+          }
+          return threadToSidebarListItem(threadData);
+        }),
+      )
+    ).filter((thread): thread is ChatThreadListItem => {
+      return thread !== null;
+    });
+
+    return mergeMissingSidebarThreads(mergedThreads, activeItems);
   },
 );
 

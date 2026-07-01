@@ -20,6 +20,7 @@ export const voquill = {
           fields: {
             VOQUILL_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-voquill-api-key",
             },

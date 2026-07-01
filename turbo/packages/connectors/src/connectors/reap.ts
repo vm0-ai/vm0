@@ -28,11 +28,13 @@ export const reap = {
           fields: {
             REAP_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "YOUR_REAP_API_KEY",
             },
             REAP_API_BASE_URL: {
               label: "API Base URL",
+              publicId: "apiBaseUrl",
               required: true,
               placeholder: "https://sandbox.api.reap.global/v1",
               storage: "variable",

@@ -20,6 +20,7 @@ export const jam = {
           fields: {
             JAM_TOKEN: {
               label: "Personal Access Token",
+              publicId: "accessToken",
               required: true,
               placeholder: "jam_pat_...",
             },

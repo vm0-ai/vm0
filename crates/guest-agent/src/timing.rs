@@ -12,8 +12,12 @@ static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
 
 /// Record an E2E duration from `VM0_API_START_TIME` to now under `op_name`.
 pub fn record_e2e_from_api(op_name: &str) {
+    record_e2e_from_api_start(op_name, env::api_start_time());
+}
+
+/// Record an E2E duration from an already captured API start timestamp.
+pub fn record_e2e_from_api_start(op_name: &str, api_start: &str) {
     let now_ms = current_epoch_ms();
-    let api_start = env::api_start_time();
     if let Some(duration) = e2e_duration_from_api_start(api_start, now_ms) {
         record_sandbox_op(op_name, duration, true, None);
         log_info!(LOG_TAG, "E2E {op_name}: {}ms", duration.as_millis());

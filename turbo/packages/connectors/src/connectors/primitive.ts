@@ -20,6 +20,7 @@ export const primitive = {
           fields: {
             PRIMITIVE_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-primitive-api-key",
             },

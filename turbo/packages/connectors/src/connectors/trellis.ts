@@ -20,6 +20,7 @@ export const trellis = {
           fields: {
             TRELLIS_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-trellis-api-key",
             },

@@ -21,6 +21,7 @@ export const render = {
           fields: {
             RENDER_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
           },

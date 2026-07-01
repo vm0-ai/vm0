@@ -65,6 +65,34 @@ fn device_rate_limits() -> sandbox::DeviceRateLimits {
     }
 }
 
+async fn wait_heartbeat_with_session_after(
+    handle: &crate::provider::mock::MockProviderHandle,
+    mut cursor: usize,
+    session_id: &str,
+    timeout: Duration,
+) -> bool {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        {
+            let heartbeats = handle.heartbeats.lock().unwrap_or_else(|e| e.into_inner());
+            if heartbeats[cursor..].iter().any(|state| {
+                state
+                    .held_session_states
+                    .iter()
+                    .any(|state| state.session_id == session_id)
+            }) {
+                return true;
+            }
+            cursor = heartbeats.len();
+        }
+
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() || !handle.wait_heartbeat_past(cursor, remaining).await {
+            return false;
+        }
+    }
+}
+
 #[tokio::test(start_paused = true)]
 async fn job_with_session_parks_vm() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
@@ -293,26 +321,57 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     );
 
     assert!(
-        env.handle
-            .wait_heartbeat_past(before, Duration::from_secs(5))
+        wait_heartbeat_with_session_after(&env.handle, before, session_id, Duration::from_secs(5))
             .await,
-        "workspace cache promotion should trigger an immediate heartbeat after baseline={before}",
-    );
-    let heartbeats = env
-        .handle
-        .heartbeats
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone();
-    assert!(
-        heartbeats[before..].iter().any(|state| {
-            state
-                .held_session_states
-                .iter()
-                .any(|state| state.session_id == session_id)
-        }),
         "immediate heartbeat should advertise the promoted workspace cache session",
     );
+
+    let second_gate = sandbox_mock::MockLifecycleGate::new();
+    overrides.set_wait_process_lifecycle_gate(second_gate.clone());
+    overrides.push_wait_process_exit(sandbox::ProcessExit::new(1, 1, Vec::new(), Vec::new()));
+    let second_before = env.handle.heartbeat_count();
+    let second_run_id = RunId::new_v4();
+    push_job(
+        &env,
+        second_run_id,
+        "vm0/default",
+        Some(context_with_session(second_run_id, session_id)),
+    );
+    second_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("second wait_process should enter before heartbeat assertion");
+    assert!(
+        env.handle
+            .wait_heartbeat_past(second_before, Duration::from_secs(5))
+            .await,
+        "claiming a workspace-cache-only session should trigger an immediate heartbeat",
+    );
+    let post_claim_heartbeats = {
+        let heartbeats = env
+            .handle
+            .heartbeats
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        heartbeats[second_before..].to_vec()
+    };
+    assert!(
+        post_claim_heartbeats.iter().any(|heartbeat| {
+            heartbeat
+                .held_session_states
+                .iter()
+                .all(|state| state.session_id != session_id)
+        }),
+        "post-claim heartbeat should stop advertising the active workspace cache session; heartbeats: {post_claim_heartbeats:?}",
+    );
+    overrides.clear_wait_process_lifecycle_gate();
+    second_gate.release_one();
+    let second_completion = env
+        .handle
+        .wait_completion(second_run_id, Duration::from_secs(5))
+        .await
+        .expect("second job should complete");
+    assert_eq!(second_completion.exit_code, 1);
 
     shutdown(&env, run_handle).await;
 }
@@ -466,6 +525,108 @@ async fn reuse_take_refreshes_provider_held_session_states() {
     assert!(
         updates.iter().any(Vec::is_empty),
         "provider should observe an empty held-session state after idle take; updates: {updates:?}"
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn reuse_take_preserves_cached_workspace_held_session_state() {
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    overrides.push_wait_process_exit(sandbox::ProcessExit::new(1, 1, Vec::new(), Vec::new()));
+
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
+    let (mut config, env) =
+        mock_run_config_with_overrides(profiles, 8, 32768, 4, Arc::clone(&overrides));
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let workspace_cache = SessionWorkspaceCache::shared(
+        runner_paths.clone(),
+        &config.paths.home,
+        &config.runner.group,
+    );
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache.clone());
+
+    seed_idle_pool(&idle_pool, &budget, "sess-refresh", "vm0/default", 2, 4096).await;
+
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    let heartbeat_count = env.handle.heartbeat_count();
+
+    let cache_run_id = RunId::new_v4();
+    push_job(
+        &env,
+        cache_run_id,
+        "vm0/default",
+        Some(context_with_session(cache_run_id, "sess-cached")),
+    );
+
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("wait_process should enter before test writes active workspace image");
+    let sandbox_id = overrides
+        .create_configs()
+        .into_iter()
+        .next()
+        .expect("sandbox create config should be recorded before wait_process entry")
+        .id;
+    let active_image = runner_paths.active_workspace_image(&sandbox_id);
+    tokio::fs::create_dir_all(active_image.parent().unwrap())
+        .await
+        .unwrap();
+    let file = tokio::fs::File::create(&active_image).await.unwrap();
+    file.set_len(16 * 1024 * 1024).await.unwrap();
+    drop(file);
+
+    overrides.clear_wait_process_lifecycle_gate();
+    wait_gate.release_one();
+    let cache_completion = env
+        .handle
+        .wait_completion(cache_run_id, Duration::from_secs(5))
+        .await
+        .expect("cache seed job should complete");
+    assert_eq!(cache_completion.exit_code, 1);
+    assert!(
+        env.handle
+            .wait_heartbeat_past(heartbeat_count, Duration::from_secs(5))
+            .await,
+        "workspace cache promotion should refresh the held-session snapshot before claim"
+    );
+    let updates_before_claim = env.handle.held_session_state_updates().len();
+
+    let run_id = RunId::new_v4();
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(run_id, "sess-refresh")),
+    );
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("job should complete");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    wait_idle_pool_session_states(&idle_pool, &["sess-refresh"], Duration::from_secs(5)).await;
+
+    let updates = env.handle.held_session_state_updates();
+    let claim_updates = &updates[updates_before_claim..];
+    assert!(
+        claim_updates.iter().any(|states| {
+            states.iter().any(|state| state.session_id == "sess-cached")
+                && states
+                    .iter()
+                    .all(|state| state.session_id != "sess-refresh")
+        }),
+        "provider should keep cached workspace state while filtering the claimed idle session after claim; updates: {updates:?}"
     );
 
     shutdown(&env, run_handle).await;
@@ -745,6 +906,7 @@ async fn reuse_take_clears_idle_status_while_job_is_active() {
     );
 
     let run_handle = tokio::spawn(run(config));
+    let heartbeat_count = env.handle.heartbeat_count();
     let run_id = RunId::new_v4();
     push_job(
         &env,
@@ -755,6 +917,29 @@ async fn reuse_take_clears_idle_status_while_job_is_active() {
 
     wait_idle_pool_len(&idle_pool, 0, Duration::from_secs(5)).await;
     wait_status_idle_empty_with_active_run(&status_path, run_id, Duration::from_secs(5)).await;
+    assert!(
+        env.handle
+            .wait_heartbeat_past(heartbeat_count, Duration::from_secs(5))
+            .await,
+        "idle take should trigger an immediate heartbeat while the reused job is active"
+    );
+    let post_take_heartbeats = {
+        let heartbeats = env
+            .handle
+            .heartbeats
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        heartbeats[heartbeat_count..].to_vec()
+    };
+    assert!(
+        post_take_heartbeats.iter().any(|heartbeat| {
+            heartbeat
+                .held_session_states
+                .iter()
+                .all(|state| state.session_id != "sess-reuse-status")
+        }),
+        "post-take heartbeat should stop advertising the active session; heartbeats: {post_take_heartbeats:?}"
+    );
 
     gate.notify_one();
     let completion = env

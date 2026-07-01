@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 
 import { OAuth2Client } from "google-auth-library";
-import { command, computed } from "ccstate";
+import { command } from "ccstate";
 import { and, eq, inArray, lte, or } from "drizzle-orm";
 import { z } from "zod";
 
@@ -13,8 +13,6 @@ import {
   type GmailWorkflowEventConfig,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { refreshGoogleToken } from "@vm0/connectors/auth-providers/oauth/google";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { connectors } from "@vm0/db/schema/connector";
 import {
   gmailProcessedEvents,
@@ -38,7 +36,7 @@ import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
-import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
 import {
   buildChatOnlyWorkflowTriggerCallbacks,
   runWorkflowTriggerNow$,
@@ -263,15 +261,6 @@ const pubSubOidcVerifierOverride = testOverride<PubSubOidcVerifier | undefined>(
     return undefined;
   },
 );
-
-export function setGmailPubSubOidcVerifierForTests(
-  verifier: PubSubOidcVerifier,
-): () => void {
-  pubSubOidcVerifierOverride.set(verifier);
-  return () => {
-    pubSubOidcVerifierOverride.clear();
-  };
-}
 
 function tokenNeedsRefresh(tokenExpiresAt: Date | null, currentTime: Date) {
   if (tokenExpiresAt === null) {
@@ -1052,20 +1041,6 @@ function decodePubSubPush(rawBody: string):
   };
 }
 
-export function gmailWorkflowEventTriggersEnabledForOwner(
-  orgId: string,
-  userId: string,
-) {
-  return computed(async (get) => {
-    const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
-    return isFeatureEnabled(FeatureSwitchKey.WorkflowGmailEventTriggers, {
-      orgId,
-      userId,
-      overrides,
-    });
-  });
-}
-
 type GmailPubSubPushResult =
   | {
       readonly kind: "ok";
@@ -1104,7 +1079,7 @@ type GmailRunStarter = (args: {
   readonly message: GmailMessageContext;
 }) => Promise<"ok" | "error">;
 
-export interface GmailWorkflowRunStartTestInput {
+interface GmailWorkflowRunStartTestInput {
   readonly triggerId: string;
   readonly workflowName: string;
   readonly emailAddress: string;
@@ -1123,15 +1098,6 @@ const gmailRunStarterOverride = testOverride<
 >(() => {
   return undefined;
 });
-
-export function setGmailWorkflowRunStarterForTests(
-  starter: GmailRunStarterTestOverride,
-): () => void {
-  gmailRunStarterOverride.set(starter);
-  return () => {
-    gmailRunStarterOverride.clear();
-  };
-}
 
 type GmailDispatchStateResult =
   | {
@@ -1819,9 +1785,7 @@ export const dispatchGmailPubSubPush$ = command(
       orgId,
       userId,
     ) => {
-      return await get(
-        gmailWorkflowEventTriggersEnabledForOwner(orgId, userId),
-      );
+      return await get(workflowAutomationEnabledForOwner(orgId, userId));
     };
     const runStarterOverride = gmailRunStarterOverride.get();
     const startRun: GmailRunStarter = runStarterOverride

@@ -1,79 +1,83 @@
 import { randomUUID } from "node:crypto";
 
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
-import { cliTokens } from "@vm0/db/schema/cli-tokens";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
-import { generateCliToken, signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
-import {
-  deleteCustomConnectorOrg$,
-  seedCustomConnectorOrg$,
-  type CustomConnectorFixture,
-} from "./helpers/zero-custom-connectors";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
-import {
-  deleteTeamCompose$,
-  seedTeamCompose$,
-  type TeamComposeFixture,
-} from "./helpers/zero-team";
+import { signSandboxJwtForTests } from "../../auth/tokens";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { mockClerkMembership } from "./helpers/api-bdd-clerk";
+import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 
 const context = testContext();
-const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const bdd = createBddApi(context);
+const api = createRunsAutomationsApi(context);
+const connectors = createConnectorBddApi(context);
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-async function cliAuthHeaders(fixture: {
-  readonly orgId: string;
-  readonly userId: string;
-}): Promise<{ readonly authorization: string }> {
-  const tokenId = randomUUID();
-  const token = generateCliToken(fixture.userId, fixture.orgId, tokenId);
-  const writeDb = store.set(writeDb$);
+function agentCustomConnectorsClient() {
+  return setupApp({ context })(zeroAgentCustomConnectorsContract);
+}
 
-  await writeDb.insert(cliTokens).values({
-    id: tokenId,
-    token,
-    userId: fixture.userId,
-    name: "test token",
-    expiresAt: new Date(now() + 60 * 60 * 1000),
-  });
-  await writeDb
-    .insert(orgMembersCache)
-    .values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      role: "admin",
-      cachedAt: new Date(now()),
-    })
-    .onConflictDoUpdate({
-      target: [orgMembersCache.orgId, orgMembersCache.userId],
-      set: { role: "admin", cachedAt: new Date(now()) },
-    });
-
+function bearerHeaders(token: string): { readonly authorization: string } {
   return { authorization: `Bearer ${token}` };
 }
 
-describe("GET /api/zero/agents/:id/custom-connectors", () => {
-  const track = createFixtureTracker<TeamComposeFixture>((fixture) => {
-    return store.set(deleteTeamCompose$, fixture, context.signal);
-  });
+async function createAgent(
+  actor: ApiTestUser,
+  body: Parameters<typeof bdd.createAgent>[1] = {},
+) {
+  bdd.acceptAgentStorageWrites();
+  return await bdd.createAgent(actor, body);
+}
 
+async function apiKeyHeaders(
+  actor: ApiTestUser,
+): Promise<{ readonly authorization: string }> {
+  const key = await api.createApiKey(actor);
+  mockClerkMembership(context, actor, actor.orgRole ?? "org:admin");
+  return bearerHeaders(key.token);
+}
+
+function zeroTokenFor(
+  actor: ApiTestUser,
+  capabilities: readonly ZeroCapability[],
+): string {
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped actor");
+  }
+  const seconds = currentSecond();
+  return signSandboxJwtForTests({
+    scope: "zero",
+    userId: actor.userId,
+    orgId: actor.orgId,
+    runId: randomUUID(),
+    capabilities,
+    iat: seconds,
+    exp: seconds + 60,
+  });
+}
+
+async function createCustomConnector(actor: ApiTestUser, slug: string) {
+  return await connectors.createCustomConnector(actor, {
+    displayName: `Connector ${slug}`,
+    slug,
+    prefixes: [`https://${slug}.example.test`],
+    headerName: "Authorization",
+    headerTemplate: "Bearer {{secret}}",
+  });
+}
+
+describe("GET /api/zero/agents/:id/custom-connectors", () => {
   it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
-    const response = await accept(
-      client.get({ params: { id: randomUUID() }, headers: {} }),
+    const response = await connectors.requestAgentCustomConnectors(
+      null,
+      randomUUID(),
       [401],
     );
     expect(response.body).toStrictEqual({
@@ -82,16 +86,10 @@ describe("GET /api/zero/agents/:id/custom-connectors", () => {
   });
 
   it("returns 401 when the authenticated session has no active organization", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, null);
-    const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
-    const response = await accept(
-      client.get({
-        params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
+    const actor = bdd.user({ orgId: null });
+    const response = await connectors.requestAgentCustomConnectors(
+      actor,
+      randomUUID(),
       [401],
     );
     expect(response.body).toStrictEqual({
@@ -100,43 +98,25 @@ describe("GET /api/zero/agents/:id/custom-connectors", () => {
   });
 
   it("returns empty enabledIds for an agent with no enabled custom connectors", async () => {
-    const fixture = await track(
-      store.set(
-        seedTeamCompose$,
-        { composes: [{ displayName: "Test Agent" }] },
-        context.signal,
-      ),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const agentId = fixture.composeIds[0]!;
+    const actor = bdd.user();
+    const agent = await createAgent(actor, { displayName: "Test Agent" });
 
-    const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
-    const response = await accept(
-      client.get({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
+    const response = await connectors.readAgentCustomConnectors(
+      actor,
+      agent.agentId,
     );
 
-    expect(response.body).toStrictEqual({ enabledIds: [] });
+    expect(response).toStrictEqual([]);
   });
 
-  it("accepts a CLI token for the agent owner", async () => {
-    const fixture = await track(
-      store.set(
-        seedTeamCompose$,
-        { composes: [{ displayName: "CLI Agent" }] },
-        context.signal,
-      ),
-    );
-    const agentId = fixture.composeIds[0]!;
+  it("accepts an API key for the agent owner", async () => {
+    const actor = bdd.user();
+    const agent = await createAgent(actor, { displayName: "API Key Agent" });
 
-    const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
     const response = await accept(
-      client.get({
-        params: { id: agentId },
-        headers: await cliAuthHeaders(fixture),
+      agentCustomConnectorsClient().get({
+        params: { id: agent.agentId },
+        headers: await apiKeyHeaders(actor),
       }),
       [200],
     );
@@ -145,18 +125,12 @@ describe("GET /api/zero/agents/:id/custom-connectors", () => {
   });
 
   it("returns 404 for a non-existent agent", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const actor = bdd.user();
     const unknownId = randomUUID();
 
-    const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
-    const response = await accept(
-      client.get({
-        params: { id: unknownId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
+    const response = await connectors.requestAgentCustomConnectors(
+      actor,
+      unknownId,
       [404],
     );
 
@@ -165,55 +139,33 @@ describe("GET /api/zero/agents/:id/custom-connectors", () => {
     });
   });
 
-  it("returns 404 when the agent belongs to a different org (no existence leak)", async () => {
-    const otherFixture = await track(
-      store.set(
-        seedTeamCompose$,
-        { composes: [{ displayName: "Other Agent" }] },
-        context.signal,
-      ),
-    );
-    const sharedId = otherFixture.composeIds[0]!;
+  it("returns 404 when the agent belongs to a different org without leaking existence", async () => {
+    const owner = bdd.user();
+    const requester = bdd.user();
+    const agent = await createAgent(owner, { displayName: "Other Agent" });
 
-    const myFixture = await track(
-      store.set(seedTeamCompose$, {}, context.signal),
-    );
-    mocks.clerk.session(myFixture.userId, myFixture.orgId);
-
-    const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
-    const response = await accept(
-      client.get({
-        params: { id: sharedId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
+    const response = await connectors.requestAgentCustomConnectors(
+      requester,
+      agent.agentId,
       [404],
     );
 
     expect(response.body).toStrictEqual({
-      error: { message: `Agent not found: ${sharedId}`, code: "NOT_FOUND" },
+      error: {
+        message: `Agent not found: ${agent.agentId}`,
+        code: "NOT_FOUND",
+      },
     });
   });
 
-  it("returns 403 for a sandbox token without agent:read capability", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    const runId = `run_${randomUUID()}`;
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId,
-      orgId,
-      runId,
-      capabilities: ["file:read"],
-      iat: seconds,
-      exp: seconds + 60,
-    });
+  it("returns 403 for a zero token without agent:read capability", async () => {
+    const actor = bdd.user();
+    const token = zeroTokenFor(actor, ["file:read"]);
 
-    const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
     const response = await accept(
-      client.get({
+      agentCustomConnectorsClient().get({
         params: { id: randomUUID() },
-        headers: { authorization: `Bearer ${token}` },
+        headers: bearerHeaders(token),
       }),
       [403],
     );
@@ -228,44 +180,11 @@ describe("GET /api/zero/agents/:id/custom-connectors", () => {
 });
 
 describe("PUT /api/zero/agents/:id/custom-connectors", () => {
-  const track = createFixtureTracker<TeamComposeFixture>((fixture) => {
-    return store.set(deleteTeamCompose$, fixture, context.signal);
-  });
-  const trackConnector = createFixtureTracker<CustomConnectorFixture>(
-    (fixture) => {
-      return store.set(deleteCustomConnectorOrg$, fixture, context.signal);
-    },
-  );
-
-  async function getEnabledIds(
-    orgId: string,
-    userId: string,
-    agentId: string,
-  ): Promise<readonly string[]> {
-    const writeDb = store.set(writeDb$);
-    const rows = await writeDb
-      .select({ customConnectorId: userCustomConnectors.customConnectorId })
-      .from(userCustomConnectors)
-      .where(
-        and(
-          eq(userCustomConnectors.orgId, orgId),
-          eq(userCustomConnectors.userId, userId),
-          eq(userCustomConnectors.agentId, agentId),
-        ),
-      );
-    return rows.map((r) => {
-      return r.customConnectorId;
-    });
-  }
-
   it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
-    const response = await accept(
-      client.update({
-        params: { id: randomUUID() },
-        headers: {},
-        body: { enabledIds: [] },
-      }),
+    const response = await connectors.requestUpdateAgentCustomConnectors(
+      null,
+      randomUUID(),
+      [],
       [401],
     );
     expect(response.body).toStrictEqual({
@@ -274,17 +193,11 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
   });
 
   it("returns 401 when the authenticated session has no active organization", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, null);
-    const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
-    const response = await accept(
-      client.update({
-        params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
-        body: { enabledIds: [] },
-      }),
+    const actor = bdd.user({ orgId: null });
+    const response = await connectors.requestUpdateAgentCustomConnectors(
+      actor,
+      randomUUID(),
+      [],
       [401],
     );
     expect(response.body).toStrictEqual({
@@ -293,19 +206,13 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
   });
 
   it("returns 404 for a non-existent agent", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const actor = bdd.user();
     const unknownId = randomUUID();
 
-    const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
-    const response = await accept(
-      client.update({
-        params: { id: unknownId },
-        headers: { authorization: "Bearer clerk-session" },
-        body: { enabledIds: [] },
-      }),
+    const response = await connectors.requestUpdateAgentCustomConnectors(
+      actor,
+      unknownId,
+      [],
       [404],
     );
 
@@ -314,197 +221,84 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     });
   });
 
-  it("sets enabled ids and round-trips via DB read-after-write", async () => {
-    const fixture = await track(
-      store.set(
-        seedTeamCompose$,
-        { composes: [{ displayName: "Test Agent" }] },
-        context.signal,
-      ),
-    );
-    const agentId = fixture.composeIds[0]!;
+  it("sets enabled ids and round-trips through the API", async () => {
+    const actor = bdd.user();
+    const agent = await createAgent(actor, { displayName: "Test Agent" });
+    const c1 = await createCustomConnector(actor, "round-a");
+    const c2 = await createCustomConnector(actor, "round-b");
 
-    const c1 = await trackConnector(
-      store.set(
-        seedCustomConnectorOrg$,
-        { orgId: fixture.orgId, userId: fixture.userId, slug: "round-a" },
-        context.signal,
-      ),
-    );
-    const c2 = await trackConnector(
-      store.set(
-        seedCustomConnectorOrg$,
-        { orgId: fixture.orgId, userId: fixture.userId, slug: "round-b" },
-        context.signal,
-      ),
+    const response = await connectors.updateAgentCustomConnectors(
+      actor,
+      agent.agentId,
+      [c1.id, c2.id],
     );
 
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
-
-    const response = await accept(
-      client.update({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-        body: { enabledIds: [c1.connectorId, c2.connectorId] },
-      }),
-      [200],
-    );
-
-    expect(new Set(response.body.enabledIds)).toStrictEqual(
-      new Set([c1.connectorId, c2.connectorId]),
-    );
-
-    const persisted = await getEnabledIds(
-      fixture.orgId,
-      fixture.userId,
-      agentId,
-    );
-    expect(new Set(persisted)).toStrictEqual(
-      new Set([c1.connectorId, c2.connectorId]),
-    );
+    expect(new Set(response)).toStrictEqual(new Set([c1.id, c2.id]));
+    await expect(
+      connectors.readAgentCustomConnectors(actor, agent.agentId),
+    ).resolves.toStrictEqual(response);
   });
 
   it("replaces the list atomically", async () => {
-    const fixture = await track(
-      store.set(
-        seedTeamCompose$,
-        { composes: [{ displayName: "Test Agent" }] },
-        context.signal,
-      ),
-    );
-    const agentId = fixture.composeIds[0]!;
+    const actor = bdd.user();
+    const agent = await createAgent(actor, { displayName: "Test Agent" });
+    const c1 = await createCustomConnector(actor, "rep-1");
+    const c2 = await createCustomConnector(actor, "rep-2");
 
-    const c1 = await trackConnector(
-      store.set(
-        seedCustomConnectorOrg$,
-        { orgId: fixture.orgId, userId: fixture.userId, slug: "rep-1" },
-        context.signal,
-      ),
-    );
-    const c2 = await trackConnector(
-      store.set(
-        seedCustomConnectorOrg$,
-        { orgId: fixture.orgId, userId: fixture.userId, slug: "rep-2" },
-        context.signal,
-      ),
+    await connectors.updateAgentCustomConnectors(actor, agent.agentId, [c1.id]);
+    const replaced = await connectors.updateAgentCustomConnectors(
+      actor,
+      agent.agentId,
+      [c2.id],
     );
 
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
-
-    await accept(
-      client.update({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-        body: { enabledIds: [c1.connectorId] },
-      }),
-      [200],
-    );
-
-    await accept(
-      client.update({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-        body: { enabledIds: [c2.connectorId] },
-      }),
-      [200],
-    );
-
-    const persisted = await getEnabledIds(
-      fixture.orgId,
-      fixture.userId,
-      agentId,
-    );
-    expect(persisted).toStrictEqual([c2.connectorId]);
+    expect(replaced).toStrictEqual([c2.id]);
+    await expect(
+      connectors.readAgentCustomConnectors(actor, agent.agentId),
+    ).resolves.toStrictEqual([c2.id]);
   });
 
   it("clears authorizations with empty array", async () => {
-    const fixture = await track(
-      store.set(
-        seedTeamCompose$,
-        { composes: [{ displayName: "Test Agent" }] },
-        context.signal,
-      ),
-    );
-    const agentId = fixture.composeIds[0]!;
+    const actor = bdd.user();
+    const agent = await createAgent(actor, { displayName: "Test Agent" });
+    const connector = await createCustomConnector(actor, "clr-1");
 
-    const c1 = await trackConnector(
-      store.set(
-        seedCustomConnectorOrg$,
-        { orgId: fixture.orgId, userId: fixture.userId, slug: "clr-1" },
-        context.signal,
-      ),
+    await connectors.updateAgentCustomConnectors(actor, agent.agentId, [
+      connector.id,
+    ]);
+    const cleared = await connectors.updateAgentCustomConnectors(
+      actor,
+      agent.agentId,
+      [],
     );
 
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
-
-    await accept(
-      client.update({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-        body: { enabledIds: [c1.connectorId] },
-      }),
-      [200],
-    );
-
-    await accept(
-      client.update({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-        body: { enabledIds: [] },
-      }),
-      [200],
-    );
-
-    const persisted = await getEnabledIds(
-      fixture.orgId,
-      fixture.userId,
-      agentId,
-    );
-    expect(persisted).toStrictEqual([]);
+    expect(cleared).toStrictEqual([]);
+    await expect(
+      connectors.readAgentCustomConnectors(actor, agent.agentId),
+    ).resolves.toStrictEqual([]);
   });
 
   it("returns 400 for a cross-org custom connector id", async () => {
-    const fixture = await track(
-      store.set(
-        seedTeamCompose$,
-        { composes: [{ displayName: "Test Agent" }] },
-        context.signal,
-      ),
-    );
-    const agentId = fixture.composeIds[0]!;
+    const actor = bdd.user();
+    const other = bdd.user();
+    const agent = await createAgent(actor, { displayName: "Test Agent" });
+    const otherConnector = await createCustomConnector(other, "other-org");
 
-    // Connector seeded in a different org (auto-random orgId).
-    const otherConnector = await trackConnector(
-      store.set(seedCustomConnectorOrg$, { slug: "other-org" }, context.signal),
-    );
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
-
-    const response = await accept(
-      client.update({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-        body: { enabledIds: [otherConnector.connectorId] },
-      }),
+    const response = await connectors.requestUpdateAgentCustomConnectors(
+      actor,
+      agent.agentId,
+      [otherConnector.id],
       [400],
     );
 
     expect(response.body).toStrictEqual({
       error: {
-        message: `Unknown custom connector ids: ${otherConnector.connectorId}`,
+        message: `Unknown custom connector ids: ${otherConnector.id}`,
         code: "VALIDATION_ERROR",
       },
     });
-
-    const persisted = await getEnabledIds(
-      fixture.orgId,
-      fixture.userId,
-      agentId,
-    );
-    expect(persisted).toStrictEqual([]);
+    await expect(
+      connectors.readAgentCustomConnectors(actor, agent.agentId),
+    ).resolves.toStrictEqual([]);
   });
 });

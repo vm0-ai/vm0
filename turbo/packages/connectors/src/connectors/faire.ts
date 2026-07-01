@@ -28,6 +28,7 @@ export const faire = {
           fields: {
             FAIRE_TOKEN: {
               label: "Access Token",
+              publicId: "accessToken",
               required: true,
               placeholder: "your-faire-access-token",
             },

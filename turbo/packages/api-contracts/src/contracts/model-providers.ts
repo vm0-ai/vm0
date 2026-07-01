@@ -76,6 +76,7 @@ export const VM0_ORG_SLUG = "vm0";
 
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "claude-opus-4-8",
+  "claude-sonnet-5",
   "claude-sonnet-4-6",
   "deepseek-v4-pro",
   "kimi-k2.7-code",
@@ -106,6 +107,7 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "claude-opus-4-8": "Claude Opus 4.8",
   "claude-opus-4-7": "Claude Opus 4.7",
   "claude-opus-4-6": "Claude Opus 4.6",
+  "claude-sonnet-5": "Claude Sonnet 5",
   "claude-sonnet-4-6": "Claude Sonnet 4.6",
   "deepseek-v4-pro": "DeepSeek V4 Pro",
   "kimi-k2.7-code": "Kimi K2.7 Code",
@@ -188,6 +190,10 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
   },
+  "claude-sonnet-5": {
+    concreteType: "anthropic-api-key",
+    vendor: "anthropic",
+  },
   "claude-sonnet-4-6": {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
@@ -242,6 +248,7 @@ export const VM0_MODEL_ALIAS_TO_MODEL = {
   "anthropic/claude-opus-4.8": "claude-opus-4-8",
   "anthropic/claude-opus-4.7": "claude-opus-4-7",
   "anthropic/claude-opus-4.6": "claude-opus-4-6",
+  "anthropic/claude-sonnet-5": "claude-sonnet-5",
   "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
   "z-ai/glm-5.2": "glm-5.2",
   "z-ai/glm-5.1": "glm-5.1",
@@ -278,10 +285,12 @@ const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
   "claude-opus-4-8",
   "claude-opus-4-7",
   "claude-opus-4-6",
+  "claude-sonnet-5",
   "claude-sonnet-4-6",
   "anthropic/claude-opus-4.8",
   "anthropic/claude-opus-4.7",
   "anthropic/claude-opus-4.6",
+  "anthropic/claude-sonnet-5",
   "anthropic/claude-opus-4.5",
   "anthropic/claude-sonnet-4.6",
   "anthropic/claude-sonnet-4.5",
@@ -370,6 +379,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "claude-sonnet-5",
       "claude-sonnet-4-6",
       "claude-opus-4-8",
       "claude-opus-4-7",
@@ -389,6 +399,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "claude-sonnet-5",
       "claude-sonnet-4-6",
       "claude-opus-4-8",
       "claude-opus-4-7",
@@ -415,6 +426,7 @@ export const MODEL_PROVIDER_TYPES = {
     models: [
       "anthropic/claude-opus-4.8",
       "anthropic/claude-opus-4.7",
+      "anthropic/claude-sonnet-5",
       "anthropic/claude-sonnet-4.6",
       "anthropic/claude-opus-4.6",
       "anthropic/claude-opus-4.5",
@@ -536,6 +548,7 @@ export const MODEL_PROVIDER_TYPES = {
       "anthropic/claude-opus-4.8",
       "anthropic/claude-opus-4.7",
       "anthropic/claude-opus-4.6",
+      "anthropic/claude-sonnet-5",
       "anthropic/claude-opus-4.5",
       "anthropic/claude-sonnet-4.6",
       "anthropic/claude-sonnet-4.5",
@@ -805,6 +818,13 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
+  "claude-sonnet-5": [
+    "vm0",
+    "claude-code-oauth-token",
+    "anthropic-api-key",
+    "openrouter-api-key",
+    "vercel-ai-gateway",
+  ],
   "claude-sonnet-4-6": [
     "vm0",
     "claude-code-oauth-token",
@@ -849,6 +869,7 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
     "claude-opus-4-7": "anthropic/claude-opus-4.7",
     "claude-opus-4-6": "anthropic/claude-opus-4.6",
+    "claude-sonnet-5": "anthropic/claude-sonnet-5",
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
     "deepseek-v4-pro": "deepseek/deepseek-v4-pro",
     "glm-5.2": "z-ai/glm-5.2",
@@ -860,6 +881,7 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
     "claude-opus-4-7": "anthropic/claude-opus-4.7",
     "claude-opus-4-6": "anthropic/claude-opus-4.6",
+    "claude-sonnet-5": "anthropic/claude-sonnet-5",
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
   },
   "openrouter-codex": {
@@ -879,6 +901,7 @@ const CANONICAL_RUN_MODEL_ALIASES: Readonly<Record<string, SupportedRunModel>> =
     "anthropic/claude-opus-4.8": "claude-opus-4-8",
     "anthropic/claude-opus-4.7": "claude-opus-4-7",
     "anthropic/claude-opus-4.6": "claude-opus-4-6",
+    "anthropic/claude-sonnet-5": "claude-sonnet-5",
     "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
     "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
     "z-ai/glm-5.2": "glm-5.2",

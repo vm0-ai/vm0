@@ -226,12 +226,12 @@ export function agentRunEvents(
 
     const rawEvents = (
       await get(
-        queryAxiom(
+        queryAxiom<AxiomAgentEvent>(
           apl,
           watermarkTarget !== null ? { noCache: true } : undefined,
         ),
       )
-    ).slice() as unknown as AxiomAgentEvent[];
+    ).slice();
     const events = filterConsecutiveEvents(rawEvents, params.since);
     const hasMore =
       events.length < rawEvents.length || rawEvents.length === params.limit;
@@ -313,12 +313,12 @@ ${paginationFilter}
 
     const events = (
       await get(
-        queryAxiom(
+        queryAxiom<AxiomAgentEvent>(
           apl,
           watermarkTarget !== null ? { noCache: true } : undefined,
         ),
       )
-    ).slice() as unknown as AxiomAgentEvent[];
+    ).slice();
     const pageHasMore = events.length > params.limit;
     const resultEvents = pageHasMore ? events.slice(0, params.limit) : events;
     const nextCursor = nextSequenceCursor(
@@ -361,14 +361,14 @@ ${buildTimeCursorProjection()}
 
     const events = (
       await get(
-        queryAxiom(
+        queryAxiom<AxiomSystemLogEvent>(
           apl,
           previousCursorBoundary
             ? { cursor: previousCursorBoundary.tieBreaker }
             : undefined,
         ),
       )
-    ).slice() as unknown as AxiomSystemLogEvent[];
+    ).slice();
     const pageHasMore = events.length > params.limit;
     const records = pageHasMore ? events.slice(0, params.limit) : events;
     const nextCursor = nextTimeCursor(
@@ -414,14 +414,14 @@ ${buildTimeCursorProjection()}
 
     const events = (
       await get(
-        queryAxiom(
+        queryAxiom<AxiomMetricEvent>(
           apl,
           previousCursorBoundary
             ? { cursor: previousCursorBoundary.tieBreaker }
             : undefined,
         ),
       )
-    ).slice() as unknown as AxiomMetricEvent[];
+    ).slice();
     const pageHasMore = events.length > params.limit;
     const records = pageHasMore ? events.slice(0, params.limit) : events;
     const nextCursor = nextTimeCursor(

@@ -305,6 +305,12 @@ const chatThreadDetailSchema = z.object({
   activeRunIds: z.array(z.string()),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /**
+   * ISO timestamp at which the user pinned this thread. Exposed on detail so
+   * the current thread can be placed in the correct sidebar segment even when
+   * it is omitted from the paged list response.
+   */
+  pinnedAt: z.string().nullable().optional(),
   draftContent: z.string().nullable().optional(),
   draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
   computerUseHostId: z.string().uuid().nullable().optional(),
@@ -325,6 +331,11 @@ const chatThreadDetailSchema = z.object({
    * Optional for back-compat with fixtures that predate the field.
    */
   renamedAt: z.string().nullable().optional(),
+});
+
+const chatThreadMetadataSchema = z.object({
+  id: z.string(),
+  title: z.string().nullable(),
 });
 
 /**
@@ -386,6 +397,11 @@ export const chatThreadsContract = c.router({
        * page) and `threads` continues from the position after the cursor.
        */
       cursor: z.string().optional(),
+      /**
+       * Optional server-side list filter. `unread` returns only threads whose
+       * latest visible message is newer than the caller's read cursor.
+       */
+      filter: z.enum(["unread"]).optional(),
     }),
     responses: {
       200: z.object({
@@ -558,6 +574,28 @@ export const chatThreadMarkReadContract = c.router({
 });
 
 /**
+ * Mark every unread chat thread under an agent as read.
+ * Separate sibling route so it cannot collide with the `:id` thread routes.
+ */
+export const chatThreadMarkAgentReadContract = c.router({
+  markAgentRead: {
+    method: "POST",
+    path: "/api/zero/chat-thread-unreads/mark-read",
+    headers: authHeadersSchema,
+    body: z.object({
+      agentId: z.string().min(1),
+    }),
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "Mark all unread chat threads under an agent as read",
+  },
+});
+
+/**
  * Pin / unpin a chat thread. Two separate POST endpoints (no body) instead
  * of widening `chatThreadByIdContract.patch`, which is intentionally narrow
  * (draft fields only). Mirrors the `mark-read` precedent.
@@ -620,9 +658,31 @@ export const chatThreadRenameContract = c.router({
       204: c.noBody(),
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Rename a chat thread (suppresses automated title generation)",
+  },
+});
+
+/**
+ * Narrow metadata endpoint for the current chat thread. This intentionally
+ * does not expose messages or detail fields needed by the web UI.
+ */
+export const chatThreadMetadataContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:id/metadata",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    responses: {
+      200: chatThreadMetadataSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get chat thread metadata",
   },
 });
 
@@ -937,9 +997,12 @@ export const chatThreadGithubPrsContract = c.router({
 export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
+export type ChatThreadMarkAgentReadContract =
+  typeof chatThreadMarkAgentReadContract;
 export type ChatThreadPinContract = typeof chatThreadPinContract;
 export type ChatThreadUnpinContract = typeof chatThreadUnpinContract;
 export type ChatThreadRenameContract = typeof chatThreadRenameContract;
+export type ChatThreadMetadataContract = typeof chatThreadMetadataContract;
 export type ChatThreadModelSelectionContract =
   typeof chatThreadModelSelectionContract;
 export type ChatThreadComputerUseHostContract =
@@ -956,6 +1019,7 @@ export type ChatSearchMessage = z.infer<typeof chatSearchMessageSchema>;
 export {
   chatThreadListItemSchema,
   chatThreadDetailSchema,
+  chatThreadMetadataSchema,
   modelSelectionRequestSchema,
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
@@ -1001,6 +1065,7 @@ export type IllustrationGenerationTemplateRequest = z.infer<
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
 export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
 export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
+export type ChatThreadMetadata = z.infer<typeof chatThreadMetadataSchema>;
 export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
 export type ChatMessageUsagePayload = z.infer<
   typeof chatMessageUsagePayloadSchema

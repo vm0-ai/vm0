@@ -13,6 +13,10 @@ import { zeroClient$ } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { logger } from "../log.ts";
 import { reloadSidebarDraftThreads$ } from "./sidebar-draft-threads.ts";
+import {
+  applyUnreadSnapshot$,
+  recordOptimisticReadMark$,
+} from "./sidebar-unread-threads.ts";
 import type { ChatThread } from "../agent-chat.ts";
 import type {
   CancelRunsArgs,
@@ -260,10 +264,11 @@ const cancelRuns$ = command(
 
 const markRead$ = command(
   async (
-    { get },
+    { get, set },
     { threadId, latestMessageId }: MarkReadArgs,
     signal: AbortSignal,
   ): Promise<string | null> => {
+    set(recordOptimisticReadMark$, threadId);
     const client = get(zeroClient$)(chatThreadMarkReadContract);
     const result = await accept(
       client.markRead({
@@ -273,6 +278,7 @@ const markRead$ = command(
       [200],
     );
     signal.throwIfAborted();
+    set(applyUnreadSnapshot$, result.body.unreads);
     return result.body.lastReadMessageId ?? latestMessageId;
   },
 );
@@ -333,9 +339,12 @@ export function createRemoteChatThreadDataSource(
       id: threadId,
       title: body.title ?? null,
       agentId: body.agentId,
+      createdAt: body.createdAt,
+      updatedAt: body.updatedAt,
       lastReadMessageId: body.lastReadMessageId ?? null,
       lastReadAt: body.lastReadAt ?? null,
       lastMessageAt: body.lastMessageAt ?? body.updatedAt,
+      pinnedAt: body.pinnedAt ?? null,
       activeRunIds: body.activeRunIds,
       isLegacySession: false,
       draftContent: body.draftContent ?? null,

@@ -896,6 +896,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       body: { prompt, agentId: agent.id },
       apiStartTime: now.getTime(),
       triggerSource: "web",
+      zeroPreCreateSource: "workflow_slash_command",
       chatThreadId,
       callbacks: [
         {

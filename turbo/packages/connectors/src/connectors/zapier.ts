@@ -20,6 +20,7 @@ export const zapier = {
           fields: {
             ZAPIER_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-zapier-api-key",
             },

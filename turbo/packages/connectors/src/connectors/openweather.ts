@@ -20,6 +20,7 @@ export const openweather = {
           fields: {
             OPENWEATHER_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
           },

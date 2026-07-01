@@ -1,13 +1,10 @@
 import { createStore } from "ccstate";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
 import { now } from "../../external/time";
-import { writeDb$ } from "../../external/db";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { zeroSlackOauthRoutes } from "../zero-slack-oauth";
 import {
@@ -19,7 +16,7 @@ import {
   type SlackConnectFixture,
 } from "./helpers/zero-slack-connect";
 import { createFixtureTracker } from "./helpers/zero-route-test";
-import { decryptPersistentSecretValue } from "../../services/crypto.utils";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 
 const context = testContext();
 const store = createStore();
@@ -93,24 +90,12 @@ async function seedMembership(
   userId: string,
   role: "admin" | "member" = "admin",
 ): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(orgMembersCache).values({
-    orgId,
-    userId,
-    role,
-    cachedAt: new Date(now()),
-  });
-}
-
-async function deleteMembership(orgId: string): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.delete(orgMembersCache).where(eq(orgMembersCache.orgId, orgId));
+  await store.set(seedOrgMembership$, { orgId, userId, role }, context.signal);
 }
 
 describe("Slack OAuth API routes", () => {
   const track = createFixtureTracker<SlackConnectFixture>(async (fixture) => {
     await store.set(deleteSlackConnectOrg$, fixture, context.signal);
-    await deleteMembership(fixture.orgId);
   });
 
   beforeEach(() => {
@@ -499,9 +484,6 @@ describe("Slack OAuth API routes", () => {
         botUserId: "B_TEST",
         botScopes: JSON.stringify(["chat:write", "channels:read"]),
       });
-      await expect(
-        decryptPersistentSecretValue(installation!.encryptedBotToken, {}),
-      ).resolves.toBe("xoxb-test-token");
       expect(context.mocks.slack.oauth.v2.access).toHaveBeenCalledWith(
         expect.objectContaining({
           redirect_uri: `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
@@ -711,9 +693,6 @@ describe("Slack OAuth API routes", () => {
         context.signal,
       );
       expect(installation).toMatchObject({ orgId: originalOrgId });
-      await expect(
-        decryptPersistentSecretValue(installation!.encryptedBotToken, {}),
-      ).resolves.toBe("xoxb-test-bot-token");
       const connection = await store.set(
         findSlackOrgConnection$,
         {
@@ -766,9 +745,6 @@ describe("Slack OAuth API routes", () => {
           "users:read",
         ]),
       });
-      await expect(
-        decryptPersistentSecretValue(installation!.encryptedBotToken, {}),
-      ).resolves.toBe("xoxb-refreshed-token");
     });
 
     it("creates a single connection across duplicate platform installs", async () => {

@@ -4,12 +4,11 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
-import { githubLabelListeners } from "@vm0/db/schema/github-label-listener";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command } from "ccstate";
-import { and, asc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
@@ -39,7 +38,6 @@ import {
   type GitHubIssuesCallbackPayload,
 } from "./github-issues-callback-payload";
 import { dispatchGithubLabelWorkflowTriggers$ } from "./github-workflow-event.service";
-import { tapError } from "../utils";
 
 const L = logger("WebhookGithub");
 const RUN_START_FALLBACK_MESSAGE =
@@ -134,7 +132,6 @@ type GitHubIssueCommentEvent = z.infer<typeof gitHubIssueCommentEventSchema>;
 type GitHubPullRequestEvent = z.infer<typeof gitHubPullRequestEventSchema>;
 type GitHubInstallationEvent = z.infer<typeof gitHubInstallationEventSchema>;
 type GitHubInstallationRecord = typeof githubInstallations.$inferSelect;
-type GitHubLabelListenerRecord = typeof githubLabelListeners.$inferSelect;
 type GitHubTriggerKind = "issue" | "pull_request";
 
 interface GitHubFileReference {
@@ -155,7 +152,6 @@ interface DispatchParams {
   readonly vm0UserId: string;
   readonly composeId: string;
   readonly prompt: string;
-  readonly matchedLabelName?: string;
   readonly triggerDescription?: string;
   readonly sessionContinuityEnabled: boolean;
   readonly commentId?: string;
@@ -249,7 +245,7 @@ function buildIntegrationPrompt(): string {
   const headerParts = [
     "# Current Integration",
     "You are currently running inside: GitHub",
-    "GitHub label listeners run agents when issues or pull requests receive matching labels. Manage them with `zero github label-listener -h`.",
+    "GitHub comments run agents when issues or pull requests mention Zero.",
   ];
   const botUsername = githubAppBotUsername();
   if (botUsername) {
@@ -269,10 +265,6 @@ function buildGitHubPrompt(args: {
       return Boolean(part);
     })
     .join("\n\n");
-}
-
-function normalizeLabelName(labelName: string): string {
-  return labelName.trim().toLowerCase();
 }
 
 function buildPromptParts(
@@ -320,20 +312,6 @@ function formatGithubConnectPrompt(args: {
   readonly connectUrl: string;
 }): string {
   return `To use ${args.agentName}, connect your GitHub account first.\n\n[Connect GitHub](${args.connectUrl})`;
-}
-
-function buildGithubRunAuditUrl(runId: string): string {
-  return `${env("APP_URL").replace(/\/$/u, "")}/activities/${encodeURIComponent(runId)}`;
-}
-
-function formatGithubLabelTriggerStartedComment(args: {
-  readonly labelName: string;
-  readonly auditUrl: string;
-}): string {
-  return [
-    `Zero received the "${args.labelName}" label and started working.`,
-    `Audit: ${args.auditUrl}`,
-  ].join("\n\n");
 }
 
 function formatGithubContextSender(args: {
@@ -593,7 +571,6 @@ function formatIssueContext(args: {
   readonly issue: GitHubIssue;
   readonly subjectKind: GitHubTriggerKind;
   readonly repo: string;
-  readonly matchedLabelName: string | undefined;
   readonly triggerDescription: string | undefined;
   readonly comments: readonly GithubIssueComment[];
   readonly currentCommentId: string | undefined;
@@ -629,9 +606,7 @@ function formatIssueContext(args: {
       issueNumber: args.issue.number,
       subjectKind: args.subjectKind,
     })}`,
-    args.matchedLabelName
-      ? `Matched label: ${args.matchedLabelName}`
-      : `Matched trigger: ${args.triggerDescription ?? "GitHub event"}`,
+    `Matched trigger: ${args.triggerDescription ?? "GitHub event"}`,
     "",
     "The messages below are from the GitHub issue conversation. Messages closer to RELATIVE_INDEX 0 are more recent.",
     "",
@@ -913,30 +888,6 @@ async function maybeAddCommentReaction(args: {
   });
 }
 
-async function postGithubLabelTriggerStartedComment(args: {
-  readonly token: string | undefined;
-  readonly repo: string;
-  readonly issueNumber: number;
-  readonly labelName: string | undefined;
-  readonly runId: string | undefined;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  if (!args.token || !args.labelName || !args.runId) {
-    return;
-  }
-
-  await postGithubIssueCommentBestEffort({
-    token: args.token,
-    repo: args.repo,
-    issueNumber: args.issueNumber,
-    body: formatGithubLabelTriggerStartedComment({
-      labelName: args.labelName,
-      auditUrl: buildGithubRunAuditUrl(args.runId),
-    }),
-    signal: args.signal,
-  });
-}
-
 async function loadGitHubRunTarget(args: {
   readonly db: Db;
   readonly composeId: string;
@@ -1019,7 +970,6 @@ async function buildIssueContextForRun(args: {
     issue: args.params.issue,
     subjectKind: args.params.subjectKind,
     repo: args.params.repo,
-    matchedLabelName: args.params.matchedLabelName,
     triggerDescription: args.params.triggerDescription,
     comments,
     currentCommentId: args.params.commentId,
@@ -1081,14 +1031,8 @@ async function finalizeSuccessfulGithubDispatch(args: {
   readonly issueNumber: number;
   readonly existingSessionId: string | undefined;
   readonly commentId: string | undefined;
-  readonly token: string | undefined;
-  readonly labelName: string | undefined;
-  readonly runId: string | undefined;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  await postGithubLabelTriggerStartedComment(args);
-  args.signal.throwIfAborted();
-
   await updateExistingSessionComment(args);
   args.signal.throwIfAborted();
 }
@@ -1179,83 +1123,6 @@ const runAgentForGitHub$ = command(
   },
 );
 
-function labelsForAction(args: {
-  readonly action: string;
-  readonly labels: readonly z.infer<typeof gitHubLabelSchema>[];
-  readonly label: z.infer<typeof gitHubLabelSchema> | undefined;
-}): readonly string[] {
-  if (args.action === "labeled") {
-    return args.label ? [args.label.name] : [];
-  }
-
-  if (args.action === "opened") {
-    return args.labels.map((label) => {
-      return label.name;
-    });
-  }
-
-  return [];
-}
-
-async function loadMatchingLabelListener(args: {
-  readonly db: Db;
-  readonly installationId: string;
-  readonly labelNames: readonly string[];
-  readonly signal: AbortSignal;
-}): Promise<GitHubLabelListenerRecord | null> {
-  const normalizedLabels = new Set(
-    args.labelNames.map((labelName) => {
-      return normalizeLabelName(labelName);
-    }),
-  );
-  if (normalizedLabels.size === 0) {
-    return null;
-  }
-
-  const listeners = await args.db
-    .select()
-    .from(githubLabelListeners)
-    .where(
-      and(
-        eq(githubLabelListeners.installationId, args.installationId),
-        eq(githubLabelListeners.enabled, true),
-      ),
-    )
-    .orderBy(asc(githubLabelListeners.createdAt));
-  args.signal.throwIfAborted();
-
-  return (
-    listeners.find((listener) => {
-      return normalizedLabels.has(listener.labelNameNormalized);
-    }) ?? null
-  );
-}
-
-async function issueAuthorMatchesListenerCreator(args: {
-  readonly db: Db;
-  readonly listener: GitHubLabelListenerRecord;
-  readonly authorGithubUserId: string;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
-  if (args.listener.triggerMode !== "created_by_me") {
-    return true;
-  }
-
-  const [link] = await args.db
-    .select({ githubUserId: githubUserLinks.githubUserId })
-    .from(githubUserLinks)
-    .where(
-      and(
-        eq(githubUserLinks.installationId, args.listener.installationId),
-        eq(githubUserLinks.vm0UserId, args.listener.createdByUserId),
-      ),
-    )
-    .limit(1);
-  args.signal.throwIfAborted();
-
-  return link?.githubUserId === args.authorGithubUserId;
-}
-
 async function loadGithubUserLink(args: {
   readonly db: Db;
   readonly installationId: string;
@@ -1277,97 +1144,6 @@ async function loadGithubUserLink(args: {
   return link ?? null;
 }
 
-interface LabelTriggerEventParams {
-  readonly payload: {
-    readonly action: string;
-    readonly issue: GitHubIssue;
-    readonly label: z.infer<typeof gitHubLabelSchema> | undefined;
-    readonly repository: z.infer<typeof gitHubRepositorySchema>;
-    readonly installation: z.infer<typeof gitHubInstallationRefSchema>;
-    readonly sender: z.infer<typeof gitHubUserSchema>;
-  };
-  readonly subjectKind: GitHubTriggerKind;
-  readonly apiStartTime: number;
-}
-
-const dispatchMatchingLabelListener$ = command(
-  async (
-    { set },
-    args: LabelTriggerEventParams,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const { action, issue, label, repository, installation } = args.payload;
-    if (action !== "opened" && action !== "labeled") {
-      L.debug("Ignoring GitHub label trigger event", { action });
-      return;
-    }
-
-    const labelNames = labelsForAction({ action, labels: issue.labels, label });
-    const db = set(writeDb$);
-    const installationRecord = await findActiveInstallation({
-      db,
-      ghInstallationId: String(installation.id),
-      signal,
-    });
-    if (!installationRecord) {
-      L.debug("Ignoring GitHub label trigger for unbound installation", {
-        action,
-        installationId: String(installation.id),
-        repo: repository.full_name,
-      });
-      return;
-    }
-    const listener = await loadMatchingLabelListener({
-      db,
-      installationId: installationRecord.id,
-      labelNames,
-      signal,
-    });
-    signal.throwIfAborted();
-
-    if (!listener) {
-      L.debug("Ignoring GitHub event without a matching label listener", {
-        action,
-        labels: labelNames,
-      });
-      return;
-    }
-
-    if (
-      !(await issueAuthorMatchesListenerCreator({
-        db,
-        listener,
-        authorGithubUserId: String(issue.user.id),
-        signal,
-      }))
-    ) {
-      L.debug("Ignoring GitHub event because trigger mode requires creator", {
-        listenerId: listener.id,
-        triggerMode: listener.triggerMode,
-        issueAuthorGithubUserId: issue.user.id,
-      });
-      return;
-    }
-
-    await set(
-      dispatchGithubAgentRun$,
-      {
-        ghInstallationId: String(installation.id),
-        repo: repository.full_name,
-        issue,
-        subjectKind: args.subjectKind,
-        vm0UserId: listener.createdByUserId,
-        composeId: listener.composeId,
-        prompt: listener.prompt,
-        matchedLabelName: listener.labelName,
-        sessionContinuityEnabled: false,
-        apiStartTime: args.apiStartTime,
-      },
-      signal,
-    );
-  },
-);
-
 export const handleGithubIssuesEvent$ = command(
   async (
     { set },
@@ -1378,28 +1154,6 @@ export const handleGithubIssuesEvent$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    await tapError(
-      set(
-        dispatchMatchingLabelListener$,
-        {
-          payload: {
-            action: args.payload.action,
-            issue: args.payload.issue,
-            label: args.payload.label,
-            repository: args.payload.repository,
-            installation: args.payload.installation,
-            sender: args.payload.sender,
-          },
-          subjectKind: "issue",
-          apiStartTime: args.apiStartTime,
-        },
-        signal,
-      ),
-      (error) => {
-        L.error("Error dispatching GitHub label listener", { error });
-      },
-    );
-    signal.throwIfAborted();
     await set(
       dispatchGithubLabelWorkflowTriggers$,
       {
@@ -1430,28 +1184,6 @@ export const handleGithubPullRequestEvent$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    await tapError(
-      set(
-        dispatchMatchingLabelListener$,
-        {
-          payload: {
-            action: args.payload.action,
-            issue: args.payload.pull_request,
-            label: args.payload.label,
-            repository: args.payload.repository,
-            installation: args.payload.installation,
-            sender: args.payload.sender,
-          },
-          subjectKind: "pull_request",
-          apiStartTime: args.apiStartTime,
-        },
-        signal,
-      ),
-      (error) => {
-        L.error("Error dispatching GitHub label listener", { error });
-      },
-    );
-    signal.throwIfAborted();
     await set(
       dispatchGithubLabelWorkflowTriggers$,
       {
@@ -1714,9 +1446,6 @@ const dispatchGithubAgentRun$ = command(
       issueNumber,
       existingSessionId,
       commentId: params.commentId,
-      token,
-      labelName: params.matchedLabelName,
-      runId: dispatchResult.runId,
       signal,
     });
   },

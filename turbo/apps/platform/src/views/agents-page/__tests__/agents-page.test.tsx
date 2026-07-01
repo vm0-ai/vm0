@@ -1,6 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -109,5 +111,65 @@ describe("agents page", () => {
 
     await user.hover(researchCreator);
     await expectVisibleTooltip("Created by Alice Admin");
+  });
+
+  it("shows agent unread indicators behind the feature switch", async () => {
+    context.mocks.data.team(agents);
+    context.mocks.data.orgMembers({ members: [] });
+
+    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
+      return respond(200, {
+        agentIds: [agents[0].id, agents[1].id],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
+    });
+
+    await waitFor(() => {
+      expect(agentCard("Research Agent")).toBeInTheDocument();
+      expect(agentCard("Private Ops")).toBeInTheDocument();
+    });
+
+    const researchUnread = within(agentCard("Research Agent")).getByLabelText(
+      "Unread",
+    );
+    const privateUnread = within(agentCard("Private Ops")).getByLabelText(
+      "Unread",
+    );
+    expect(researchUnread).toHaveClass("border-card");
+    expect(privateUnread).toHaveClass("border-card");
+  });
+
+  it("hides agent unread indicators when the feature switch is off", async () => {
+    context.mocks.data.team(agents);
+    context.mocks.data.orgMembers({ members: [] });
+
+    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
+      return respond(200, {
+        agentIds: [agents[0].id, agents[1].id],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: false },
+    });
+
+    await waitFor(() => {
+      expect(agentCard("Research Agent")).toBeInTheDocument();
+      expect(agentCard("Private Ops")).toBeInTheDocument();
+    });
+
+    expect(
+      within(agentCard("Research Agent")).queryByLabelText("Unread"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(agentCard("Private Ops")).queryByLabelText("Unread"),
+    ).not.toBeInTheDocument();
   });
 });

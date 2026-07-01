@@ -20,6 +20,7 @@ export const browserUse = {
           fields: {
             BROWSER_USE_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "bu_CoffeeSafeLocalCoffeeSafeLocalCoffee",
             },

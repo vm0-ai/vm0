@@ -164,6 +164,7 @@ export const FIREWALL_CONNECTOR_TYPES = [
   "pdforge",
   "people-data-labs",
   "perplexity",
+  "pexels",
   "pipedream",
   "pipedrive",
   "plain",

@@ -50,6 +50,7 @@ export const mailchimp = {
           fields: {
             MAILCHIMP_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-us00",
             },
