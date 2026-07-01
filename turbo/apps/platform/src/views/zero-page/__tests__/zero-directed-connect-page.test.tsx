@@ -210,17 +210,19 @@ describe("directed connector connect page", () => {
     );
     click(getButtonByText("Save"));
 
-    await waitFor(() => {
-      expect(submittedValues).toStrictEqual({
-        apiToken: "xaat-directed-connect",
+    try {
+      await waitFor(() => {
+        expect(submittedValues).toStrictEqual({
+          apiToken: "xaat-directed-connect",
+        });
+        expect(authorizedAgentId).toBe(AGENT_ID);
       });
-      expect(authorizedAgentId).toBe(AGENT_ID);
-    });
-    expect(
-      screen.getByRole("dialog", { name: "Public Axiom" }),
-    ).toBeInTheDocument();
-
-    authorizationResponse.resolve();
+      expect(
+        screen.getByRole("dialog", { name: "Public Axiom" }),
+      ).toBeInTheDocument();
+    } finally {
+      authorizationResponse.resolve();
+    }
 
     await waitFor(() => {
       expect(
