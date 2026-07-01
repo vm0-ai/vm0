@@ -668,9 +668,10 @@ mod tests {
 
     async fn serve_once(
         status: &'static str,
-        body: &'static [u8],
+        body: impl Into<Vec<u8>> + Send + 'static,
         content_length: Option<u64>,
     ) -> String {
+        let body = body.into();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         tokio::spawn(async move {
@@ -682,7 +683,7 @@ mod tests {
                 "HTTP/1.1 {status}\r\nContent-Length: {content_length}\r\nConnection: close\r\n\r\n"
             );
             stream.write_all(response.as_bytes()).await.unwrap();
-            stream.write_all(body).await.unwrap();
+            stream.write_all(&body).await.unwrap();
         });
         format!("http://{address}/history.blob?token=secret")
     }
@@ -719,10 +720,9 @@ mod tests {
     async fn materializer_downloads_decompresses_and_verifies_gzip_hash() {
         let body = b"{\"type\":\"init\"}\n{\"type\":\"user\",\"message\":\"hello\"}\n";
         let compressed = gzip_bytes(body);
-        let compressed_body: &'static [u8] = Box::leak(compressed.into_boxed_slice());
         let hash = hex::encode(Sha256::digest(body));
         let session = gzip_ref_session(
-            serve_once("200 OK", compressed_body, None).await,
+            serve_once("200 OK", compressed, None).await,
             hash,
             body.len() as u64,
         );
@@ -749,9 +749,8 @@ mod tests {
     async fn materializer_rejects_gzip_body_over_declared_raw_size() {
         let body = b"{\"type\":\"init\"}\n{\"type\":\"user\",\"message\":\"hello\"}\n";
         let compressed = gzip_bytes(body);
-        let compressed_body: &'static [u8] = Box::leak(compressed.into_boxed_slice());
         let hash = hex::encode(Sha256::digest(body));
-        let session = gzip_ref_session(serve_once("200 OK", compressed_body, None).await, hash, 1);
+        let session = gzip_ref_session(serve_once("200 OK", compressed, None).await, hash, 1);
 
         let materializer = start_materializer(&session);
         let result = materializer.finish(&CancellationToken::new()).await;
