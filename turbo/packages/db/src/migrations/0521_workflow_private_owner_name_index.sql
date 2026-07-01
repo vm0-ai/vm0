@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "idx_zero_workflows_private_owner_agent_name_unique" ON "zero_workflows" USING btree ("org_id","agent_id","owner_user_id","name") WHERE visibility = 'private';

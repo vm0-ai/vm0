@@ -25,6 +25,7 @@ _buffered_usage_events = 0
 _pending_reports = 0
 _pending_path = ""
 _usage_state_id = str(uuid.uuid4())
+_counter_underflow_logged: set[str] = set()
 # One-shot guard: sustained pending snapshot write failure makes the runner
 # hit the bounded usage-drain timeout without any local signal pointing at
 # filesystem trouble.  Emit one error signal per addon process on first failure —
@@ -36,6 +37,8 @@ _usage_state_id = str(uuid.uuid4())
 # leading key=value fields and re-emits them as structured tracing fields.
 _pending_write_error_logged = False
 _FLUSH_REQUEST_FILE = "usage-flush-request"
+_COUNTER_FLOWS = "flows"
+_COUNTER_REPORTS = "reports"
 
 
 def reset_for_tests() -> None:
@@ -49,6 +52,7 @@ def reset_for_tests() -> None:
         _pending_path = ""
         _usage_state_id = str(uuid.uuid4())
         _pending_write_error_logged = False
+        _counter_underflow_logged.clear()
 
 
 def set_pending_path(path: str, usage_state_id: str | None = None) -> None:
@@ -157,8 +161,14 @@ def increment_in_flight_flows() -> None:
 def decrement_in_flight_flows() -> None:
     """Mark a tracked in-flight flow as complete (call from response/error)."""
     global _in_flight_flows
+    should_log = False
     with _counter_lock:
-        _in_flight_flows = max(0, _in_flight_flows - 1)
+        if _in_flight_flows > 0:
+            _in_flight_flows -= 1
+        else:
+            should_log = _mark_counter_underflow_locked(_COUNTER_FLOWS)
+    if should_log:
+        _log_counter_underflow(_COUNTER_FLOWS)
 
 
 def increment_pending_reports() -> None:
@@ -167,13 +177,68 @@ def increment_pending_reports() -> None:
         _pending_reports += 1
 
 
+class PendingReportLease:
+    """One-shot ownership token for an admitted pending usage report."""
+
+    def __init__(self) -> None:
+        self._released = False
+        self._lock = threading.Lock()
+
+    def release(self) -> None:
+        should_release = False
+        should_log = False
+        with self._lock:
+            if self._released:
+                should_log = True
+            else:
+                self._released = True
+                should_release = True
+
+        if should_release:
+            decrement_pending_reports()
+        if should_log and _mark_counter_underflow(_COUNTER_REPORTS):
+            _log_counter_underflow(_COUNTER_REPORTS)
+
+
+def admit_pending_report() -> PendingReportLease:
+    increment_pending_reports()
+    return PendingReportLease()
+
+
 def decrement_pending_reports() -> None:
     global _pending_reports
+    should_log = False
     with _counter_lock:
-        _pending_reports = max(0, _pending_reports - 1)
+        if _pending_reports > 0:
+            _pending_reports -= 1
+        else:
+            should_log = _mark_counter_underflow_locked(_COUNTER_REPORTS)
+    if should_log:
+        _log_counter_underflow(_COUNTER_REPORTS)
 
 
 def set_buffered_usage_events(count: int) -> None:
     global _buffered_usage_events
     with _counter_lock:
         _buffered_usage_events = max(0, count)
+
+
+def _mark_counter_underflow(counter: str) -> bool:
+    with _counter_lock:
+        return _mark_counter_underflow_locked(counter)
+
+
+def _mark_counter_underflow_locked(counter: str) -> bool:
+    if counter in _counter_underflow_logged:
+        return False
+    _counter_underflow_logged.add(counter)
+    return True
+
+
+def _log_counter_underflow(counter: str) -> None:
+    ctx.log.error(
+        "type=usage_underbilling reason=usage_pending_counter_underflow "
+        "underbilling_class=risk component=mitm_addon "
+        f"counter={counter} Usage pending counter release had no matching admission; "
+        "keeping counter non-negative."
+    )
