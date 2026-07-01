@@ -1,9 +1,7 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use crate::error::Result;
-use crate::{cow, error, netlink};
-use tokio::sync::RwLock;
+use crate::{cow, cow_io, error, netlink};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
@@ -32,8 +30,8 @@ pub struct NbdCowDevice {
     device_path: PathBuf,
     /// Path to the sparse COW file.
     cow_file: PathBuf,
-    /// Shared COW layer (also held by dispatch tasks).
-    cow: Arc<RwLock<cow::CowLayer>>,
+    /// Shared COW I/O boundary (also held by dispatch tasks).
+    cow: cow_io::CowIo,
     /// Background server task handles (one per connection).
     server_handles: Vec<JoinHandle<()>>,
     /// Shutdown signal for all server tasks.
@@ -65,15 +63,25 @@ impl NbdCowDevice {
 
     /// Log COW device status for debugging.
     pub async fn log_status(&self) {
-        let cow = self.cow.read().await;
-        tracing::info!(
-            device_index = self.device_index,
-            device_path = %self.device_path.display(),
-            dirty_blocks = cow.dirty_block_count(),
-            buffered_blocks = cow.buffered_block_count(),
-            buffer_bytes = cow.buffer_bytes(),
-            "NBD COW device status"
-        );
+        match self.cow.status().await {
+            Ok(status) => {
+                tracing::info!(
+                    device_index = self.device_index,
+                    device_path = %self.device_path.display(),
+                    dirty_blocks = status.dirty_blocks,
+                    buffered_blocks = status.buffered_blocks,
+                    buffer_bytes = status.buffer_bytes,
+                    "NBD COW device status"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    device_index = self.device_index,
+                    device_path = %self.device_path.display(),
+                    "failed to read NBD COW device status: {e}"
+                );
+            }
+        }
     }
 
     /// Mark the device as abandoned without performing cleanup.
@@ -127,8 +135,7 @@ impl NbdCowDevice {
         // Tasks are stopped — we have exclusive logical access to the COW layer.
         // Save bitmap before disconnecting if keeping the COW file.
         if save_bitmap {
-            let cow = self.cow.read().await;
-            cow.save_bitmap(&self.bitmap_path())?;
+            self.cow.save_bitmap(self.bitmap_path()).await?;
         }
 
         Ok(())

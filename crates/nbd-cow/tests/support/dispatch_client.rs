@@ -2,10 +2,10 @@ use std::error::Error;
 use std::io::Write as _;
 use std::os::unix::io::{FromRawFd, IntoRawFd, OwnedFd};
 use std::path::Path;
-use std::sync::Arc;
 use std::time::Duration;
 
 use nbd_cow::cow::CowLayer;
+use nbd_cow::cow_io::CowIo;
 use nbd_cow::error::Result as NbdResult;
 use nbd_cow::server::dispatch;
 use nbd_cow::{BLOCK_SIZE, DEFAULT_FLUSH_THRESHOLD};
@@ -13,7 +13,6 @@ use tempfile::NamedTempFile;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::UnixStream;
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
-use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
@@ -245,7 +244,7 @@ pub fn create_cow_with_full_device(
 }
 
 pub async fn spawn_dispatch(
-    cow: Arc<RwLock<CowLayer>>,
+    cow: CowIo,
 ) -> TestResult<(DispatchClient, JoinHandle<NbdResult<()>>, CancellationToken)> {
     let shutdown = CancellationToken::new();
     let (client, task) = spawn_dispatch_with_shutdown(cow, shutdown.clone()).await?;
@@ -253,7 +252,7 @@ pub async fn spawn_dispatch(
 }
 
 pub async fn spawn_dispatch_with_shutdown(
-    cow: Arc<RwLock<CowLayer>>,
+    cow: CowIo,
     shutdown: CancellationToken,
 ) -> TestResult<(DispatchClient, JoinHandle<NbdResult<()>>)> {
     let (client_fd, server_fd) = socketpair()?;
@@ -264,9 +263,8 @@ pub async fn spawn_dispatch_with_shutdown(
     let client_stream = UnixStream::from_std(client_std)?;
     let (reader, writer) = client_stream.into_split();
 
-    let cow_clone = cow.clone();
     let shutdown_clone = shutdown.clone();
-    let task = tokio::spawn(async move { dispatch(server_fd, cow_clone, shutdown_clone).await });
+    let task = tokio::spawn(async move { dispatch(server_fd, cow, shutdown_clone).await });
 
     Ok((DispatchClient { reader, writer }, task))
 }
