@@ -1,4 +1,3 @@
-import { isUtf8 } from "node:buffer";
 import { createHash, createHmac } from "node:crypto";
 import archiver from "archiver";
 import { command, computed, type Computed } from "ccstate";
@@ -709,9 +708,6 @@ function verifySessionHistoryBuffer(
   const actualHash = createHash("sha256").update(buffer).digest("hex");
   if (actualHash !== hash) {
     throw new Error(`session history hash mismatch: expected ${hash}`);
-  }
-  if (!isUtf8(buffer)) {
-    throw new Error("session history is not utf-8");
   }
   return buffer;
 }

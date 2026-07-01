@@ -171,6 +171,14 @@ function zipText(zip: AdmZip, name: string): string {
   return entry.getData().toString("utf8");
 }
 
+function zipBytes(zip: AdmZip, name: string): Buffer {
+  const entry = zip.getEntry(name);
+  if (!entry) {
+    throw new Error(`Expected ZIP entry ${name}`);
+  }
+  return entry.getData();
+}
+
 function singleZipEntry(
   names: readonly string[],
   predicate: (name: string) => boolean,
@@ -1125,7 +1133,7 @@ describe("OPS-01: user data export", () => {
     ).toBeFalsy();
   });
 
-  it("exports gzip-backed session history as a jsonl conversation file", async () => {
+  it("exports gzip-backed session history bytes as a jsonl conversation file", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
@@ -1152,16 +1160,22 @@ describe("OPS-01: user data export", () => {
     });
     const claim = await runs.claimRunnerJob(run.runId);
     const headers = { authorization: `Bearer ${claim.sandboxToken}` };
-    const history = `{"type":"init"}\n{"type":"human","text":"exported-${randomUUID()}"}\n`;
+    const history = Buffer.concat([
+      Buffer.from(
+        `{"type":"init"}\n{"type":"human","text":"exported-${randomUUID()}"}\n`,
+        "utf8",
+      ),
+      Buffer.from([0xc3, 0x28, 0x0a]),
+    ]);
     const historyHash = createHash("sha256").update(history).digest("hex");
-    const compressedHistory = gzipSync(Buffer.from(history, "utf8"));
+    const compressedHistory = gzipSync(history);
     const compressedKey = `blobs/${historyHash}.blob.gz`;
 
     const prepared = await webhooks.requestAgentCheckpointPrepareHistory(
       {
         runId: run.runId,
         hash: historyHash,
-        size: Buffer.byteLength(history, "utf8"),
+        size: history.length,
         encoding: "gzip",
       },
       headers,
@@ -1207,7 +1221,7 @@ describe("OPS-01: user data export", () => {
         name.startsWith("conversations/") && name.endsWith("-history.jsonl")
       );
     });
-    expect(zipText(zip, historyEntry)).toBe(history);
+    expect(zipBytes(zip, historyEntry)).toStrictEqual(history);
 
     const manifest = JSON.parse(zipText(zip, "export-manifest.json")) as {
       readonly counts: {
