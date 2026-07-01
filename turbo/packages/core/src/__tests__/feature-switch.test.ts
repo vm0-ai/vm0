@@ -118,9 +118,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ConnectorAccessManagement]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
@@ -135,9 +132,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.WorkflowAutomation]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
-      false,
-    );
-    expect(otherOrgStates[FeatureSwitchKey.ConnectorAccessManagement]).toBe(
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);

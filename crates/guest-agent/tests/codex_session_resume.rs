@@ -26,11 +26,14 @@ mod common;
 use common::SystemLogOverrideGuard;
 use httpmock::prelude::*;
 use serde_json::json;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex, Once};
 use std::time::Duration;
 
 use guest_agent::masker::SecretMasker;
+
+static CODEX_RESUME_HOME: LazyLock<PathBuf> =
+    LazyLock::new(|| common::unique_temp_path("codex-resume-home"));
 
 /// Configure the process env BEFORE any `guest_agent::env` LazyLock
 /// initialiser runs. Idempotent — only the first call wins.
@@ -54,7 +57,7 @@ fn setup_env_once() {
             std::env::set_var("VM0_PROMPT", "test prompt");
             // `home_dir` is loaded eagerly via `expect`. Keep it stable within
             // this process while avoiding cross-runner and stale /tmp collisions.
-            std::env::set_var("HOME", common::unique_temp_path("codex-resume-home"));
+            std::env::set_var("HOME", CODEX_RESUME_HOME.as_os_str());
         }
     });
 }
@@ -81,12 +84,32 @@ fn send_event_for_test(
     runtime.block_on(guest_agent::events::send_event(&http, event, seq, masker))
 }
 
+fn codex_resume_paths() -> guest_agent::paths::GuestPaths {
+    setup_env_once();
+    guest_agent::paths::GuestPaths::from_runtime_dir(
+        CODEX_RESUME_HOME
+            .join(".vm0")
+            .join("guest-agent")
+            .join("runs")
+            .join(guest_agent::env::run_id()),
+    )
+}
+
+fn session_file_paths() -> (String, String) {
+    let paths = codex_resume_paths();
+    (
+        paths.session_id_file().to_string(),
+        paths.session_history_path_file().to_string(),
+    )
+}
+
 /// Wipe the per-run session-id / history-path files so each test starts
 /// from a clean slate. Session metadata capture is idempotent (first id wins),
 /// so leaving stale files would mask real failures.
 fn reset_session_files() {
-    let _ = std::fs::remove_file(guest_agent::paths::session_id_file());
-    let _ = std::fs::remove_file(guest_agent::paths::session_history_path_file());
+    let (session_id_file, session_history_path_file) = session_file_paths();
+    let _ = std::fs::remove_file(session_id_file);
+    let _ = std::fs::remove_file(session_history_path_file);
 }
 
 struct CodexResumeFilesGuard;
@@ -171,12 +194,12 @@ fn send_event_extracts_codex_thread_id_and_writes_marker() {
         "send_event should succeed when no API token"
     );
 
-    let stored_id =
-        std::fs::read_to_string(guest_agent::paths::session_id_file()).expect("session id written");
+    let (session_id_file, session_history_path_file) = session_file_paths();
+    let stored_id = std::fs::read_to_string(&session_id_file).expect("session id written");
     assert_eq!(stored_id, thread_id);
 
-    let marker = std::fs::read_to_string(guest_agent::paths::session_history_path_file())
-        .expect("history-path file written");
+    let marker =
+        std::fs::read_to_string(&session_history_path_file).expect("history-path file written");
     assert!(
         marker.starts_with("CODEX_SEARCH:"),
         "codex framework should write a marker, got: {marker}"
@@ -229,12 +252,12 @@ fn send_event_canonicalizes_codex_thread_id_before_writing_marker() {
         "send_event should succeed when no API token"
     );
 
-    let stored_id =
-        std::fs::read_to_string(guest_agent::paths::session_id_file()).expect("session id written");
+    let (session_id_file, session_history_path_file) = session_file_paths();
+    let stored_id = std::fs::read_to_string(&session_id_file).expect("session id written");
     assert_eq!(stored_id, expected);
 
-    let marker = std::fs::read_to_string(guest_agent::paths::session_history_path_file())
-        .expect("history-path file written");
+    let marker =
+        std::fs::read_to_string(&session_history_path_file).expect("history-path file written");
     assert!(
         marker.ends_with(&format!(":{expected}")),
         "marker should use canonical thread id, got: {marker}"
@@ -250,14 +273,15 @@ fn send_event_seeds_existing_codex_thread_id_without_repairing_history_marker() 
     let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
     for seed_empty_marker in [false, true] {
         reset_session_files();
-        guest_agent::paths::write_private(guest_agent::paths::session_id_file(), thread_id)
+        let (session_id_file, session_history_path_file) = session_file_paths();
+        guest_agent::paths::write_private(&session_id_file, thread_id)
             .expect("seed existing session id");
         if seed_empty_marker {
-            guest_agent::paths::write_private(guest_agent::paths::session_history_path_file(), "")
+            guest_agent::paths::write_private(&session_history_path_file, "")
                 .expect("seed empty history marker");
         } else {
             assert!(
-                !Path::new(guest_agent::paths::session_history_path_file()).exists(),
+                !Path::new(&session_history_path_file).exists(),
                 "history marker should start missing"
             );
         }
@@ -268,18 +292,17 @@ fn send_event_seeds_existing_codex_thread_id_without_repairing_history_marker() 
         let result = send_event_for_test(event, 1, &masker);
         assert!(result.is_ok());
 
-        let stored_id = std::fs::read_to_string(guest_agent::paths::session_id_file())
-            .expect("session id kept");
+        let stored_id = std::fs::read_to_string(&session_id_file).expect("session id kept");
         assert_eq!(stored_id, thread_id);
         if seed_empty_marker {
             assert_eq!(
-                std::fs::read_to_string(guest_agent::paths::session_history_path_file()).unwrap(),
+                std::fs::read_to_string(&session_history_path_file).unwrap(),
                 "",
                 "ordinary events must not repair empty history markers"
             );
         } else {
             assert!(
-                !Path::new(guest_agent::paths::session_history_path_file()).exists(),
+                !Path::new(&session_history_path_file).exists(),
                 "ordinary events must not create missing history markers"
             );
         }
@@ -295,7 +318,8 @@ fn legacy_recovery_checkpoint_derives_missing_codex_history_marker() {
 
     let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
     let history = r#"{"type":"thread.started"}"#.to_string() + "\n";
-    guest_agent::paths::write_private(guest_agent::paths::session_id_file(), thread_id)
+    let (session_id_file, _) = session_file_paths();
+    guest_agent::paths::write_private(&session_id_file, thread_id)
         .expect("seed existing session id");
     write_codex_session_file(thread_id, &history).unwrap();
 
@@ -349,8 +373,9 @@ fn send_event_codex_ignores_non_thread_started_event() {
     let result = send_event_for_test(event, 1, &masker);
     assert!(result.is_ok());
 
+    let (session_id_file, _) = session_file_paths();
     assert!(
-        !Path::new(guest_agent::paths::session_id_file()).exists(),
+        !Path::new(&session_id_file).exists(),
         "session id file must not be written for non-thread.started events"
     );
 }
@@ -366,8 +391,9 @@ fn send_event_codex_ignores_empty_thread_id() {
     let result = send_event_for_test(event, 1, &masker);
     assert!(result.is_ok());
 
+    let (session_id_file, _) = session_file_paths();
     assert!(
-        !Path::new(guest_agent::paths::session_id_file()).exists(),
+        !Path::new(&session_id_file).exists(),
         "empty thread_id must not be persisted"
     );
 }
@@ -391,8 +417,9 @@ fn send_event_codex_ignores_malformed_thread_id() {
         let result = send_event_for_test(event, 1, &masker);
         assert!(result.is_ok());
 
+        let (session_id_file, _) = session_file_paths();
         assert!(
-            !Path::new(guest_agent::paths::session_id_file()).exists(),
+            !Path::new(&session_id_file).exists(),
             "malformed thread_id must not be persisted: {thread_id}"
         );
         if thread_id.len() >= 5 {
