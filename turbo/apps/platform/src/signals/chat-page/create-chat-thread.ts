@@ -1161,11 +1161,21 @@ function createGroupedChatMessagesCache(
 type ServerMessages$ = State<PagedChatMessage[]>;
 type KnownServerMessageIds$ = State<ReadonlySet<string>>;
 
+function compareCursorString(left: string, right: string): number {
+  if (left < right) {
+    return -1;
+  }
+  if (left > right) {
+    return 1;
+  }
+  return 0;
+}
+
 function compareServerMessageOrder(
   left: PagedChatMessage,
   right: PagedChatMessage,
 ): number {
-  const createdAtOrder = left.createdAt.localeCompare(right.createdAt);
+  const createdAtOrder = compareCursorString(left.createdAt, right.createdAt);
   if (createdAtOrder !== 0) {
     return createdAtOrder;
   }
@@ -1176,7 +1186,7 @@ function compareServerMessageOrder(
     return leftSequence - rightSequence;
   }
 
-  return left.id.localeCompare(right.id);
+  return compareCursorString(left.id, right.id);
 }
 
 function mergeServerMessages(
