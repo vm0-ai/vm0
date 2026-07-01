@@ -1523,6 +1523,7 @@ describe("zero sidebar", () => {
 
     expect(within(nav).getByText("Agents")).toBeInTheDocument();
     expect(within(nav).getByText("Workflows")).toBeInTheDocument();
+    expect(within(nav).queryByText("Automations")).not.toBeInTheDocument();
   });
 
   it("hides workflows in the sidebar manage navigation when disabled", async () => {
@@ -1541,6 +1542,7 @@ describe("zero sidebar", () => {
     });
 
     expect(within(nav).getByText("Agents")).toBeInTheDocument();
+    expect(within(nav).getByText("Automations")).toBeInTheDocument();
     expect(within(nav).queryByText("Workflows")).not.toBeInTheDocument();
   });
 });

@@ -1,10 +1,8 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { ZeroAutomationDetailPage } from "../../views/zero-page/zero-automation-detail-page.tsx";
 import { updatePage$ } from "../react-router.ts";
-import { detachedNavigateTo$, pathParams$ } from "../route.ts";
-import { ROUTES } from "../route-paths.ts";
+import { pathParams$ } from "../route.ts";
 import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import { fetchAllOrgAutomations$ } from "../zero-page/zero-automations.ts";
 import { fetchSlackChannels$ } from "../zero-page/slack-channels.ts";
@@ -15,17 +13,10 @@ import {
 import { initAutomationDetailTab$ } from "./automation-detail-tab.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 
 export const setupAutomationDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (await set(onboardGuard$, signal)) {
-      return;
-    }
-
-    const features = get(featureSwitch$);
-    if (features[FeatureSwitchKey.WorkflowAutomation]) {
-      set(detachedNavigateTo$, ROUTES.automations, { replace: true });
       return;
     }
 
