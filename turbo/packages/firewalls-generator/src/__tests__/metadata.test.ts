@@ -516,6 +516,30 @@ describe("firewall metadata generator", () => {
     }
   });
 
+  it(
+    "keeps Deel permission descriptions complete at the source boundary",
+    async () => {
+      const source = await loadGeneratedConnectorFirewallSource("deel", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const missingDescriptions = source.firewall.apis.flatMap((api) => {
+        return (api.permissions ?? [])
+          .filter((permission) => {
+            return (
+              permission.rules.length > 0 &&
+              (permission.description?.trim() ?? "") === ""
+            );
+          })
+          .map((permission) => {
+            return permission.name;
+          });
+      });
+
+      expect(missingDescriptions).toStrictEqual([]);
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
   it("keeps generated server metadata host-owner only", () => {
     const source = fs.readFileSync(
       path.resolve(

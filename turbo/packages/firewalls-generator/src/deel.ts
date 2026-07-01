@@ -13,6 +13,7 @@
 
 import {
   ALL_METHODS,
+  applyPermissionDescriptions,
   listCachedSpecs,
   logStats,
   renderPermissions,
@@ -88,6 +89,69 @@ const DEEL_TAG_OWNER_PREFERENCES = new Map<string, readonly string[]>([
   ["subpackage_screenings", ["screenings", "worker"]],
   ["subpackage_timeOff", ["time-off", "worker"]],
 ]);
+
+const DEEL_SCOPE_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  "accounting:read": "Read Deel invoices, payments, and accounting data.",
+  "adjustments:read": "Read contract and payroll adjustment records.",
+  "adjustments:write": "Create, update, and delete adjustment records.",
+  "admin:worker": "Create and revoke worker access sessions.",
+  "ats:read": "Read ATS jobs, candidates, applications, and recruiting data.",
+  "ats:write": "Create and update ATS recruiting records and workflow state.",
+  "auth:write": "Generate Deel magic links for login flows.",
+  "benefits:read": "Read benefit plans, enrollment settings, and paystub data.",
+  "benefits:write": "Manage benefit enrollment and benefit integrations.",
+  "candidates:write": "Create candidate records.",
+  "contracts:read": "Read contracts, amendments, documents, and invite data.",
+  "contracts:write": "Create and manage contracts, amendments, and documents.",
+  "equities:write": "Create equity and token tax event records.",
+  "forms:read": "Read Deel form definitions and required worker fields.",
+  "global-payroll:read": "Read global payroll reports and payroll worker data.",
+  "global-payroll:write": "Request global payroll worker termination actions.",
+  "groups:read": "Read organization groups.",
+  "groups:write": "Create, update, clone, and delete organization groups.",
+  "immigration:read": "Read immigration cases, requirements, and documents.",
+  "immigration:write": "Create immigration cases and worker documents.",
+  "invoice-adjustments:read": "Read invoice adjustment records.",
+  "invoice-adjustments:write":
+    "Create, update, and delete invoice adjustment records.",
+  "it-assets:read": "Read IT asset records.",
+  "it-orders:read": "Read IT order records.",
+  "it-policies:read": "Read IT hardware policy records.",
+  "knowledge-hub:read": "Read Knowledge Hub country guides.",
+  "legal-entity:read": "Read legal entities, cost centers, and payroll events.",
+  "legal-entity:write": "Create and manage legal entities and cost centers.",
+  "lookups:read": "Read Deel lookup and reference data.",
+  "milestones:read": "Read contract milestones.",
+  "milestones:write": "Create and delete contract milestones.",
+  "off-cycle-payments:read": "Read off-cycle payment records.",
+  "off-cycle-payments:write": "Create off-cycle payment records.",
+  "organizations:read":
+    "Read departments, organization structures, and worker relation metadata.",
+  "organizations:write":
+    "Create and manage organization structures and worker relation metadata.",
+  "payslips:read": "Read and download employee payslip records.",
+  "people:read": "Read people profiles, custom fields, and worker bank data.",
+  "people:write":
+    "Create and update people profile, custom field, and bank data.",
+  "profile:read": "Read HRIS profile positions and worker relations.",
+  "profile:write": "Manage HRIS profile positions and worker relations.",
+  "screenings:read": "Read screening, KYC, and verification data.",
+  "screenings:write": "Create screening and verification sessions.",
+  "tasks:read": "Read organization tasks.",
+  "tasks:write": "Update organization tasks.",
+  "time-off:read": "Read time-off requests, entitlements, and events.",
+  "time-off:write": "Create, review, cancel, and synchronize time-off records.",
+  "time-tracking:read": "Read time tracking, shift rate, and timesheet data.",
+  "time-tracking:write":
+    "Create and manage time tracking, shift rate, and timesheet data.",
+  "timesheets:read": "Read timesheets and hourly report presets.",
+  "timesheets:write": "Create, update, and delete timesheets and presets.",
+  "treasury-vendorbill:write": "Create vendor bills and upload attachments.",
+  "webhooks:read": "Read webhooks and webhook event types.",
+  "webhooks:write": "Create, update, and delete webhooks.",
+  "worker:read": "Read worker data, documents, banks, and EOR records.",
+  "worker:write": "Manage worker data, documents, banks, and EOR workflows.",
+};
 
 // ── Scope extraction ─────────────────────────────────────────────────────
 
@@ -524,7 +588,12 @@ export async function generate(): Promise<void> {
   const pathCount = Object.keys(spec.paths ?? {}).length;
   console.error(`  ${pathCount} endpoints (merged from ${specs.length} specs)`);
 
-  const { permissions, scopeless } = buildGroups(spec);
+  const { permissions: rawPermissions, scopeless } = buildGroups(spec);
+  const permissions = applyPermissionDescriptions(
+    "Deel",
+    rawPermissions,
+    DEEL_SCOPE_DESCRIPTIONS,
+  );
 
   if (scopeless.length > 0) {
     // First run: print scopeless endpoints so they can be added to the set

@@ -1,18 +1,16 @@
 //! In-process NBD request dispatch.
 //!
 //! [`dispatch`] owns one Unix socket connection passed to the kernel NBD device,
-//! decodes NBD requests, applies them to [`crate::cow::CowLayer`], and writes
+//! decodes NBD requests, applies them through [`crate::cow_io::CowIo`], and writes
 //! NBD replies back to the kernel.
 
 use std::os::unix::io::{FromRawFd, IntoRawFd, OwnedFd};
-use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
-use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
-use crate::cow::CowLayer;
+use crate::cow_io::CowIo;
 use crate::error::{NbdCowError, Result};
 use crate::protocol_impl::{self as protocol, Command, NbdReply, NbdRequest, REQUEST_HEADER_SIZE};
 
@@ -120,22 +118,13 @@ impl DispatchReadObserver {
 ///
 /// Reads NBD requests from the socket, dispatches to the COW layer,
 /// and sends replies back. Handles graceful shutdown via the cancellation token.
-///
-/// NOTE: CowLayer uses synchronous file I/O (pread/pwrite) while holding the
-/// RwLock. This briefly blocks the tokio worker thread. For our workload
-/// (4KB blocks, fast NVMe/EBS storage) this is acceptable. If latency becomes
-/// an issue, consider `spawn_blocking` or async file I/O.
-pub async fn dispatch(
-    socket_fd: OwnedFd,
-    cow: Arc<RwLock<CowLayer>>,
-    shutdown: CancellationToken,
-) -> Result<()> {
+pub async fn dispatch(socket_fd: OwnedFd, cow: CowIo, shutdown: CancellationToken) -> Result<()> {
     dispatch_with_read_observer(socket_fd, cow, shutdown, DispatchReadObserver::none()).await
 }
 
 async fn dispatch_with_read_observer(
     socket_fd: OwnedFd,
-    cow: Arc<RwLock<CowLayer>>,
+    cow: CowIo,
     shutdown: CancellationToken,
     read_observer: DispatchReadObserver,
 ) -> Result<()> {
@@ -203,9 +192,8 @@ async fn dispatch_with_read_observer(
     }
 }
 
-async fn sync_cow_on_shutdown(cow: &Arc<RwLock<CowLayer>>) -> Result<()> {
-    let mut cow = cow.write().await;
-    cow.sync()
+async fn sync_cow_on_shutdown(cow: &CowIo) -> Result<()> {
+    cow.sync().await
 }
 
 fn handler_outcome(outcome: IoOutcome) -> HandlerOutcome {
@@ -280,7 +268,7 @@ async fn write_all_or_shutdown(
 
 async fn handle_read(
     request: &NbdRequest,
-    cow: &Arc<RwLock<CowLayer>>,
+    cow: &CowIo,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
     payload_buf: &mut Vec<u8>,
     shutdown: &CancellationToken,
@@ -293,13 +281,12 @@ async fn handle_read(
     let len = request.length as usize;
     if len <= MAX_REUSABLE_PAYLOAD_LENGTH {
         resize_reusable_payload(payload_buf, len);
-        let result =
-            read_and_reply(request, cow, writer, payload_buf.as_mut_slice(), shutdown).await;
+        let result = read_and_reply(request, cow, writer, payload_buf, shutdown).await;
         reset_reusable_payload_if_oversized(payload_buf);
         result
     } else {
         let mut data = vec![0u8; len];
-        read_and_reply(request, cow, writer, data.as_mut_slice(), shutdown).await
+        read_and_reply(request, cow, writer, &mut data, shutdown).await
     }
 }
 
@@ -320,32 +307,34 @@ fn reset_reusable_payload_if_oversized(payload_buf: &mut Vec<u8>) {
 
 async fn read_and_reply(
     request: &NbdRequest,
-    cow: &Arc<RwLock<CowLayer>>,
+    cow: &CowIo,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
-    data: &mut [u8],
+    data: &mut Vec<u8>,
     shutdown: &CancellationToken,
 ) -> Result<HandlerOutcome> {
-    let result = {
-        let cow = cow.read().await;
-        cow.read(request.offset, data)
+    let read_buffer = std::mem::take(data);
+    match cow.read(request.offset, read_buffer).await {
+        Ok(read_buffer) => {
+            *data = read_buffer;
+        }
+        Err(e) => {
+            tracing::warn!(
+                offset = request.offset,
+                len = request.length,
+                "read error: {e}"
+            );
+            return send_error_reply(writer, request.handle, libc::EIO as u32, shutdown)
+                .await
+                .map(handler_outcome);
+        }
     };
-    if let Err(e) = result {
-        tracing::warn!(
-            offset = request.offset,
-            len = request.length,
-            "read error: {e}"
-        );
-        return send_error_reply(writer, request.handle, libc::EIO as u32, shutdown)
-            .await
-            .map(handler_outcome);
-    }
 
     let reply = success_reply(request.handle);
     let reply_buf = protocol::serialize_reply(&reply);
     if let IoOutcome::Shutdown = write_all_or_shutdown(writer, &reply_buf, shutdown).await? {
         return Ok(HandlerOutcome::Shutdown);
     }
-    write_all_or_shutdown(writer, data, shutdown)
+    write_all_or_shutdown(writer, data.as_slice(), shutdown)
         .await
         .map(handler_outcome)
 }
@@ -353,7 +342,7 @@ async fn read_and_reply(
 async fn handle_write(
     request: &NbdRequest,
     reader: &mut tokio::net::unix::OwnedReadHalf,
-    cow: &Arc<RwLock<CowLayer>>,
+    cow: &CowIo,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
     payload_buf: &mut Vec<u8>,
     shutdown: &CancellationToken,
@@ -384,7 +373,7 @@ async fn handle_write(
             reader,
             cow,
             writer,
-            payload_buf.as_mut_slice(),
+            payload_buf,
             shutdown,
             read_observer,
         )
@@ -398,7 +387,7 @@ async fn handle_write(
             reader,
             cow,
             writer,
-            data.as_mut_slice(),
+            &mut data,
             shutdown,
             read_observer,
         )
@@ -409,15 +398,15 @@ async fn handle_write(
 async fn read_and_apply_write(
     request: &NbdRequest,
     reader: &mut tokio::net::unix::OwnedReadHalf,
-    cow: &Arc<RwLock<CowLayer>>,
+    cow: &CowIo,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
-    data: &mut [u8],
+    data: &mut Vec<u8>,
     shutdown: &CancellationToken,
     read_observer: &DispatchReadObserver,
 ) -> Result<HandlerOutcome> {
     if let IoOutcome::Shutdown = read_exact_or_shutdown(
         reader,
-        data,
+        data.as_mut_slice(),
         shutdown,
         ReadContext::WritePayload {
             handle: request.handle,
@@ -429,31 +418,21 @@ async fn read_and_apply_write(
         return Ok(HandlerOutcome::Shutdown);
     }
 
-    let failed = {
-        let mut cow = cow.write().await;
-        match cow.write(request.offset, data) {
-            Ok(needs_flush) => {
-                if needs_flush && let Err(e) = cow.flush() {
-                    tracing::warn!("flush error after write: {e}");
-                    true
-                } else {
-                    false
-                }
-            }
-            Err(e) => {
-                tracing::warn!(
-                    offset = request.offset,
-                    len = request.length,
-                    "write error: {e}"
-                );
-                true
-            }
+    let write_buffer = std::mem::take(data);
+    match cow.write(request.offset, write_buffer).await {
+        Ok(write_buffer) => {
+            *data = write_buffer;
         }
-    };
-    if failed {
-        return send_error_reply(writer, request.handle, libc::EIO as u32, shutdown)
-            .await
-            .map(handler_outcome);
+        Err(e) => {
+            tracing::warn!(
+                offset = request.offset,
+                len = request.length,
+                "write or flush error: {e}"
+            );
+            return send_error_reply(writer, request.handle, libc::EIO as u32, shutdown)
+                .await
+                .map(handler_outcome);
+        }
     }
 
     send_success_reply(writer, request.handle, shutdown)
@@ -463,15 +442,11 @@ async fn read_and_apply_write(
 
 async fn handle_flush(
     request: &NbdRequest,
-    cow: &Arc<RwLock<CowLayer>>,
+    cow: &CowIo,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
     shutdown: &CancellationToken,
 ) -> Result<HandlerOutcome> {
-    let result = {
-        let mut cow = cow.write().await;
-        cow.sync()
-    };
-    if let Err(e) = result {
+    if let Err(e) = cow.sync().await {
         tracing::warn!("sync error: {e}");
         return send_error_reply(writer, request.handle, libc::EIO as u32, shutdown)
             .await

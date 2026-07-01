@@ -1,11 +1,11 @@
 use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::Duration;
 
 use crate::error::{self, Result};
-use crate::{BLOCK_SIZE, DEFAULT_FLUSH_THRESHOLD, NUM_CONNECTIONS, cow, netlink, pool, server};
-use tokio::sync::RwLock;
+use crate::{
+    BLOCK_SIZE, DEFAULT_FLUSH_THRESHOLD, NUM_CONNECTIONS, cow, cow_io, netlink, pool, server,
+};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
@@ -67,7 +67,7 @@ impl CreateDisconnectStatus {
 struct CreateContext<'a> {
     device_pool: &'a pool::DevicePoolHandle,
     cow_file: &'a Path,
-    cow_layer: Arc<RwLock<cow::CowLayer>>,
+    cow: cow_io::CowIo,
     size: u64,
 }
 
@@ -75,13 +75,13 @@ impl<'a> CreateContext<'a> {
     fn new(
         device_pool: &'a pool::DevicePoolHandle,
         cow_file: &'a Path,
-        cow_layer: Arc<RwLock<cow::CowLayer>>,
+        cow: cow_io::CowIo,
         size: u64,
     ) -> Self {
         Self {
             device_pool,
             cow_file,
-            cow_layer,
+            cow,
             size,
         }
     }
@@ -94,7 +94,7 @@ impl<'a> CreateContext<'a> {
             let device_index = attempt.device_index();
 
             if netlink::verify_device_size(device_index, self.size).await {
-                return attempt.into_device(self.cow_file, self.cow_layer.clone());
+                return attempt.into_device(self.cow_file, self.cow.clone());
             }
 
             tracing::info!(
@@ -189,7 +189,7 @@ impl<'a> CreateContext<'a> {
             let (client_fd, server_fd) = netlink::create_socketpair()?;
             client_fds.push(client_fd);
 
-            let cow = self.cow_layer.clone();
+            let cow = self.cow.clone();
             let token = attempt.shutdown_token();
             let handle = tokio::spawn(async move {
                 if let Err(e) = server::dispatch(server_fd, cow, token).await {
@@ -474,7 +474,7 @@ impl CreateAttemptGuard {
     fn into_device(
         mut self,
         cow_file: &Path,
-        cow_layer: Arc<RwLock<cow::CowLayer>>,
+        cow: cow_io::CowIo,
     ) -> Result<(NbdCowDevice, pool::DeviceLease)> {
         let Some(connected) = self.connected else {
             return Err(error::NbdCowError::Io(std::io::Error::other(
@@ -495,7 +495,7 @@ impl CreateAttemptGuard {
                 device_index: connected.index,
                 device_path: PathBuf::from(format!("/dev/nbd{}", connected.index)),
                 cow_file: cow_file.to_path_buf(),
-                cow: cow_layer,
+                cow,
                 server_handles,
                 shutdown,
                 disconnected: false,
@@ -648,8 +648,8 @@ impl NbdCowDevice {
             BLOCK_SIZE,
             DEFAULT_FLUSH_THRESHOLD,
         )?;
-        let cow_layer = Arc::new(RwLock::new(cow_layer));
-        let context = CreateContext::new(device_pool, cow_file, cow_layer, size);
+        let cow = cow_io::CowIo::new(cow_layer);
+        let context = CreateContext::new(device_pool, cow_file, cow, size);
 
         context.create_with_size_retries().await
     }
