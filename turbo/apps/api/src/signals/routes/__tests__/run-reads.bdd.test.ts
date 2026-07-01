@@ -1615,6 +1615,24 @@ function axiomCallAt(index: number): readonly unknown[] {
   return call;
 }
 
+function axiomCallSince(start: number, pattern: string): readonly unknown[] {
+  const call = context.mocks.axiom.query.mock.calls
+    .slice(start)
+    .find(([apl]) => {
+      return typeof apl === "string" && apl.includes(pattern);
+    });
+  if (!call) {
+    throw new Error(`Expected an Axiom query containing ${pattern}`);
+  }
+  return call;
+}
+
+function expectRunContextFrameworkQuery(start: number, runId: string): void {
+  const call = axiomCallSince(start, "['run-context']");
+  expect(call[0]).toContain(`runId == "${runId}"`);
+  expect(call[0]).toContain("| limit 1");
+}
+
 function expectTimeCursorAxiomResume(
   call: readonly unknown[],
   expected: { readonly cursor: string; readonly order: "asc" | "desc" },
@@ -1860,6 +1878,7 @@ describe("RUN-04: agent run telemetry families", () => {
             firewall_error: "connector_not_configured",
           },
         ],
+        runContext: [{ runId, cliAgentType: "claude-code" }],
       },
     });
 
@@ -1895,13 +1914,20 @@ describe("RUN-04: agent run telemetry families", () => {
       status: "completed",
       lastEventSequence: 2,
     });
-    expect(axiomCallCount()).toBe(eventsStart + 2);
-    const visibilityCall = axiomCallAt(eventsStart);
+    expect(axiomCallCount()).toBe(eventsStart + 3);
+    const visibilityCall = axiomCallSince(
+      eventsStart,
+      "| project sequenceNumber",
+    );
     expect(visibilityCall[0]).toContain("| project sequenceNumber");
     expect(visibilityCall[1]).toStrictEqual({ noCache: true });
-    const eventsCall = axiomCallAt(eventsStart + 1);
+    const eventsCall = axiomCallSince(
+      eventsStart,
+      "| where sequenceNumber > -1",
+    );
     expect(eventsCall[0]).toContain(`runId == "${runId}"`);
     expect(eventsCall[1]).toStrictEqual({ noCache: true });
+    expectRunContextFrameworkQuery(eventsStart, runId);
 
     // A cursor at or past the watermark skips the visibility wait.
     const pastWatermarkStart = axiomCallCount();
@@ -1919,13 +1945,17 @@ describe("RUN-04: agent run telemetry families", () => {
         return event.sequenceNumber;
       }),
     ).toStrictEqual([3]);
-    expect(axiomCallCount()).toBe(pastWatermarkStart + 1);
-    expect(axiomCallAt(pastWatermarkStart)[1]).toBeUndefined();
+    expect(axiomCallCount()).toBe(pastWatermarkStart + 2);
+    expect(
+      axiomCallSince(pastWatermarkStart, "| where sequenceNumber > 2")[1],
+    ).toBeUndefined();
+    expectRunContextFrameworkQuery(pastWatermarkStart, runId);
 
     // The page limit caps the watermark target below lastEventSequence.
     const cappedStart = axiomCallCount();
     await reads.requestRunEvents(actor, runId, { since: -1, limit: 2 }, [200]);
-    expect(axiomCallCount()).toBe(cappedStart + 2);
+    expect(axiomCallCount()).toBe(cappedStart + 3);
+    expectRunContextFrameworkQuery(cappedStart, runId);
 
     // Pending runs without a watermark never poll visibility.
     const pendingStart = axiomCallCount();
@@ -1941,8 +1971,11 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(pendingEvents.body.events).toStrictEqual([]);
     expect(pendingEvents.body.nextSequence).toBe(-1);
     expect(pendingEvents.body.run.status).toBe("pending");
-    expect(axiomCallCount()).toBe(pendingStart + 1);
-    expect(axiomCallAt(pendingStart)[1]).toBeUndefined();
+    expect(axiomCallCount()).toBe(pendingStart + 2);
+    expect(
+      axiomCallSince(pendingStart, "['agent-run-events']")[1],
+    ).toBeUndefined();
+    expectRunContextFrameworkQuery(pendingStart, pendingRun.runId);
 
     // Sandbox tokens read the telemetry families without a Zero capability.
     const sandboxEvents = await reads.requestRunEventsAs(
@@ -1968,33 +2001,44 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(ascEvents.body.hasMore).toBeTruthy();
     expect(ascEvents.body.nextCursor).toBe("sequence:asc:1");
     expect(ascEvents.body.framework).toBe("claude-code");
-    expect(axiomCallCount()).toBe(ascStart + 2);
-    const ascApl = axiomCallAt(ascStart + 1)[0];
+    expect(axiomCallCount()).toBe(ascStart + 3);
+    const ascApl = axiomCallSince(ascStart, "| where sequenceNumber > 0")[0];
     expect(ascApl).toContain("| where sequenceNumber > 0");
     expect(ascApl).toContain("| order by sequenceNumber asc");
+    expectRunContextFrameworkQuery(ascStart, runId);
 
+    const cursorAgentStart = axiomCallCount();
     await reads.requestRunAgentEvents(
       actor,
       runId,
       { cursor: "sequence:desc:2", limit: 1, order: "desc" },
       [200],
     );
-    const cursorAgentApl = axiomCallAt(axiomCallCount() - 1)[0];
+    const cursorAgentApl = axiomCallSince(
+      cursorAgentStart,
+      "| where sequenceNumber < 2",
+    )[0];
     expect(cursorAgentApl).toContain("| where sequenceNumber < 2");
     expect(cursorAgentApl).toContain("| order by sequenceNumber desc");
+    expectRunContextFrameworkQuery(cursorAgentStart, runId);
 
     const agentSinceTime = Date.parse("2026-06-10T10:29:30Z");
+    const agentSinceTimeStart = axiomCallCount();
     await reads.requestRunAgentEvents(
       actor,
       runId,
       { sinceTime: agentSinceTime, limit: 1, order: "asc" },
       [200],
     );
-    const agentSinceTimeApl = axiomCallAt(axiomCallCount() - 1)[0];
+    const agentSinceTimeApl = axiomCallSince(
+      agentSinceTimeStart,
+      "| where _time >",
+    )[0];
     expect(agentSinceTimeApl).toContain(
       `| where _time > datetime("${new Date(agentSinceTime).toISOString()}")`,
     );
     expect(agentSinceTimeApl).toContain("| order by sequenceNumber asc");
+    expectRunContextFrameworkQuery(agentSinceTimeStart, runId);
 
     const malformedAgentCursor = await reads.requestRunAgentEvents(
       actor,
@@ -2047,8 +2091,11 @@ describe("RUN-04: agent run telemetry families", () => {
       throw new Error("Expected the desc agent events read to succeed");
     }
     expect(descEvents.body.hasMore).toBeFalsy();
-    expect(axiomCallCount()).toBe(descStart + 1);
-    expect(axiomCallAt(descStart)[1]).toBeUndefined();
+    expect(axiomCallCount()).toBe(descStart + 2);
+    expect(
+      axiomCallSince(descStart, "| order by sequenceNumber desc")[1],
+    ).toBeUndefined();
+    expectRunContextFrameworkQuery(descStart, runId);
 
     // System log pages.
     const sinceMs = Date.parse("2026-06-10T10:29:00Z");
@@ -2942,6 +2989,7 @@ describe("RUN-04: agent run telemetry families", () => {
         runContext: [
           {
             runId,
+            cliAgentType: "claude-code",
             sessionId: "bdd-session-1",
             environment: { LEGACY_IGNORED: "legacy-map" },
             environmentEntries: [
@@ -3021,6 +3069,7 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(contextRead.body).toMatchObject({
       runId,
       prompt: "zero run detail",
+      cliAgentType: "claude-code",
       sessionId: "bdd-session-1",
       environment: { NODE_ENV: "production" },
       networkPolicies: {
@@ -3091,6 +3140,7 @@ describe("RUN-04: agent run telemetry families", () => {
           agentEvent(runId, 0, "zero one"),
           agentEvent(runId, 1, "zero two"),
         ],
+        runContext: [{ runId, cliAgentType: "claude-code" }],
         network: [
           {
             _time: "2026-06-10T11:00:00Z",
@@ -3268,10 +3318,16 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(descEvents.body.events).toHaveLength(2);
     expect(descEvents.body.hasMore).toBeFalsy();
     expect(descEvents.body.framework).toBe("claude-code");
-    expect(axiomCallCount()).toBe(descStart + 2);
-    expect(axiomCallAt(descStart)[0]).toContain("| project sequenceNumber");
-    expect(axiomCallAt(descStart)[1]).toStrictEqual({ noCache: true });
-    expect(axiomCallAt(descStart + 1)[1]).toStrictEqual({ noCache: true });
+    expect(axiomCallCount()).toBe(descStart + 3);
+    expectRunContextFrameworkQuery(descStart, runId);
+    const descVisibilityCall = axiomCallSince(
+      descStart,
+      "| project sequenceNumber",
+    );
+    expect(descVisibilityCall[1]).toStrictEqual({ noCache: true });
+    expect(
+      axiomCallSince(descStart, "| order by sequenceNumber desc")[1],
+    ).toStrictEqual({ noCache: true });
 
     const skipStart = axiomCallCount();
     await reads.requestZeroRunAgentEvents(
@@ -3280,8 +3336,11 @@ describe("RUN-04: agent run telemetry families", () => {
       { limit: 10, order: "desc", since: 5 },
       [200],
     );
-    expect(axiomCallCount()).toBe(skipStart + 1);
-    expect(axiomCallAt(skipStart)[1]).toBeUndefined();
+    expect(axiomCallCount()).toBe(skipStart + 2);
+    expect(
+      axiomCallSince(skipStart, "| order by sequenceNumber desc")[1],
+    ).toBeUndefined();
+    expectRunContextFrameworkQuery(skipStart, runId);
 
     const ascPage = await reads.requestZeroRunAgentEvents(
       actor,
@@ -3373,8 +3432,11 @@ describe("RUN-04: agent run telemetry families", () => {
       throw new Error("Expected the watermark-less events read to succeed");
     }
     expect(noWatermark.body.events).toStrictEqual([]);
-    expect(axiomCallCount()).toBe(noWatermarkStart + 1);
-    expect(axiomCallAt(noWatermarkStart)[1]).toBeUndefined();
+    expect(axiomCallCount()).toBe(noWatermarkStart + 2);
+    expect(
+      axiomCallSince(noWatermarkStart, "['agent-run-events']")[1],
+    ).toBeUndefined();
+    expectRunContextFrameworkQuery(noWatermarkStart, bareRun.runId);
 
     // Runner metadata mirrors the sandbox reuse outcome from completion.
     const runner = await api.requestRunRunner(actor, runId, [200]);

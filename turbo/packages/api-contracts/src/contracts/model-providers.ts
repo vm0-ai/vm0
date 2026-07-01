@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import {
   SUPPORTED_RUN_MODELS,
@@ -16,6 +17,7 @@ export {
   getModelProviderFirewall,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
+  shouldInlineModelProviderFirewall,
 } from "./model-provider-firewalls";
 export type {
   ModelProviderFramework,
@@ -68,6 +70,75 @@ export interface AuthMethodConfig {
 }
 
 export type ModelProviderEnvBindings = Record<string, string>;
+
+export type ModelProviderFeatureStates = Partial<
+  Record<FeatureSwitchKey, boolean>
+>;
+
+const MINIMAX_CODEX_ENV_BINDINGS = {
+  OPENAI_API_KEY: "$secret",
+  OPENAI_BASE_URL: "https://api.minimax.io/v1",
+  OPENAI_MODEL: "$model",
+} as const satisfies ModelProviderEnvBindings;
+
+const GATED_MODEL_PROVIDER_FEATURE_SWITCHES: Partial<
+  Record<ModelProviderType, FeatureSwitchKey>
+> = {};
+
+const FRAMEWORK_SWITCHED_MODEL_PROVIDER_FEATURE_SWITCHES: Partial<
+  Record<ModelProviderType, FeatureSwitchKey>
+> = {
+  "minimax-api-key": FeatureSwitchKey.CodexFrameworkForMinimax,
+};
+
+function isFeatureEnabledForModelProvider(
+  type: ModelProviderType,
+  featureStates: ModelProviderFeatureStates | undefined,
+  featureSwitches: Partial<Record<ModelProviderType, FeatureSwitchKey>>,
+): boolean {
+  const switchKey = featureSwitches[type];
+  return switchKey ? featureStates?.[switchKey] === true : false;
+}
+
+export function isModelProviderTypeFeatureGated(
+  type: ModelProviderType,
+): boolean {
+  return GATED_MODEL_PROVIDER_FEATURE_SWITCHES[type] !== undefined;
+}
+
+export function isModelProviderTypeEnabled(
+  type: ModelProviderType,
+  featureStates?: ModelProviderFeatureStates,
+): boolean {
+  const switchKey = GATED_MODEL_PROVIDER_FEATURE_SWITCHES[type];
+  return switchKey ? featureStates?.[switchKey] === true : true;
+}
+
+export function isModelProviderFrameworkFeatureSwitched(
+  type: ModelProviderType,
+): boolean {
+  return FRAMEWORK_SWITCHED_MODEL_PROVIDER_FEATURE_SWITCHES[type] !== undefined;
+}
+
+export function isModelProviderFrameworkSwitchEnabled(
+  type: ModelProviderType,
+  featureStates?: ModelProviderFeatureStates,
+): boolean {
+  return isFeatureEnabledForModelProvider(
+    type,
+    featureStates,
+    FRAMEWORK_SWITCHED_MODEL_PROVIDER_FEATURE_SWITCHES,
+  );
+}
+
+function filterModelProviderTypesForFeatures(
+  types: readonly ModelProviderType[],
+  featureStates?: ModelProviderFeatureStates,
+): ModelProviderType[] {
+  return types.filter((type) => {
+    return isModelProviderTypeEnabled(type, featureStates);
+  });
+}
 
 /**
  * The org slug authorized to use the VM0 managed provider.
@@ -917,19 +988,26 @@ export function normalizeRunModelId(model: string): string {
   return CANONICAL_RUN_MODEL_ALIASES[model] ?? model;
 }
 
-export function getProvidersForModel(model: string): ModelProviderType[] {
+export function getProvidersForModel(
+  model: string,
+  featureStates?: ModelProviderFeatureStates,
+): ModelProviderType[] {
   const canonical = normalizeRunModelId(model);
   if (!isSupportedRunModel(canonical)) {
     return [];
   }
-  return [...MODEL_FIRST_PROVIDER_COMPATIBILITY[canonical]];
+  return filterModelProviderTypesForFeatures(
+    MODEL_FIRST_PROVIDER_COMPATIBILITY[canonical],
+    featureStates,
+  );
 }
 
 export function isModelSupportedByProvider(
   model: string,
   type: ModelProviderType,
+  featureStates?: ModelProviderFeatureStates,
 ): boolean {
-  return getProvidersForModel(model).includes(type);
+  return getProvidersForModel(model, featureStates).includes(type);
 }
 
 export function getProviderRuntimeModel(
@@ -962,10 +1040,15 @@ const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set(
  * Get provider types available for user selection.
  * Excludes providers that are hidden from the UI (e.g., those without token replacement support).
  */
-export function getSelectableProviderTypes(): ModelProviderType[] {
+export function getSelectableProviderTypes(
+  featureStates?: ModelProviderFeatureStates,
+): ModelProviderType[] {
   return (Object.keys(MODEL_PROVIDER_TYPES) as ModelProviderType[]).filter(
     (type) => {
-      return !HIDDEN_PROVIDER_TYPES.has(type);
+      return (
+        !HIDDEN_PROVIDER_TYPES.has(type) &&
+        isModelProviderTypeEnabled(type, featureStates)
+      );
     },
   );
 }
@@ -1021,7 +1104,11 @@ export function getVm0ApiModel(model: string): string {
  */
 export function getFrameworkForType(
   type: ModelProviderType,
+  featureStates?: ModelProviderFeatureStates,
 ): ModelProviderFramework {
+  if (isModelProviderFrameworkSwitchEnabled(type, featureStates)) {
+    return "codex";
+  }
   return MODEL_PROVIDER_TYPES[type]?.framework ?? "claude-code";
 }
 
@@ -1106,7 +1193,13 @@ export function getSecretNamesForAuthMethod(
  */
 export function getModelProviderEnvBindings(
   type: ModelProviderType,
+  featureStates?: ModelProviderFeatureStates,
 ): ModelProviderEnvBindings | undefined {
+  if (isModelProviderFrameworkSwitchEnabled(type, featureStates)) {
+    if (type === "minimax-api-key") {
+      return MINIMAX_CODEX_ENV_BINDINGS;
+    }
+  }
   const config = MODEL_PROVIDER_TYPES[type];
   return "envBindings" in config ? config.envBindings : undefined;
 }
@@ -1124,8 +1217,11 @@ export function getModelProviderEnvBindings(
  * compatible; different URLs imply different upstreams and so a
  * potentially different request/response contract.
  */
-export function getProviderBaseUrl(type: ModelProviderType): string | null {
-  const envBindings = getModelProviderEnvBindings(type);
+export function getProviderBaseUrl(
+  type: ModelProviderType,
+  featureStates?: ModelProviderFeatureStates,
+): string | null {
+  const envBindings = getModelProviderEnvBindings(type, featureStates);
   if (!envBindings) {
     return null;
   }

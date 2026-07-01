@@ -216,6 +216,7 @@ export const runContextResponseSchema = z.object({
   appendSystemPrompt: z.string().nullable(),
   runId: z.string(),
   sessionId: z.string().nullable(),
+  cliAgentType: z.string().optional(),
   secretNames: z.array(z.string()),
   vars: z.record(z.string(), z.string()).nullable(),
   environment: z.record(z.string(), z.string()),

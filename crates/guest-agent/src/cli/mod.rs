@@ -275,6 +275,7 @@ pub(super) struct CliRuntimeConfig<'a> {
     home_dir: Cow<'a, str>,
     api_url: Cow<'a, str>,
     openai_model: Cow<'a, str>,
+    openai_base_url: Cow<'a, str>,
     codex_oauth_mode: bool,
     stuck_tool_timeout_secs: u64,
     agent_log_file: Cow<'a, str>,
@@ -303,6 +304,7 @@ impl<'a> CliRuntimeConfig<'a> {
             home_dir: Cow::Borrowed(&config.home_dir),
             api_url: Cow::Borrowed(&config.api_url),
             openai_model: Cow::Borrowed(user_env_value(&config.user_env, "OPENAI_MODEL")),
+            openai_base_url: Cow::Borrowed(user_env_value(&config.user_env, "OPENAI_BASE_URL")),
             codex_oauth_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty(),
             stuck_tool_timeout_secs: config.stuck_tool_timeout_secs,
             agent_log_file: Cow::Borrowed(paths.agent_log_file()),
@@ -357,6 +359,11 @@ impl<'a> CliRuntimeConfig<'a> {
             api_url: Cow::Owned(child_env::runner_visible_api_url_from_process_env()),
             openai_model: if is_codex {
                 Cow::Borrowed(env::openai_model())
+            } else {
+                Cow::Borrowed("")
+            },
+            openai_base_url: if is_codex {
+                Cow::Borrowed(env::openai_base_url())
             } else {
                 Cow::Borrowed("")
             },
