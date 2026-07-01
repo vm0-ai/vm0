@@ -1166,8 +1166,7 @@ describe("chat composer models", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await screen.findByText("Use GLM");
-    await expectComposerModel("GLM-5.1");
-    await user.click(screen.getByRole("combobox", { name: "GLM-5.1" }));
+    await user.click(await findComposerModel("GLM-5.1"));
     await user.click(
       await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
     );
@@ -1211,8 +1210,7 @@ describe("chat composer models", () => {
         expect(preferenceRequestStarted).toBeTruthy();
       });
       await screen.findByText("Use GLM");
-      await expectComposerModel("GLM-5.1");
-      await user.click(screen.getByRole("combobox", { name: "GLM-5.1" }));
+      await user.click(await findComposerModel("GLM-5.1"));
       await user.click(
         await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
       );
