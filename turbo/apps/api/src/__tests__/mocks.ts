@@ -6,6 +6,10 @@ import { mockStripeClient } from "../signals/external/stripe-client";
 
 type AsyncMock = Mock<(...args: unknown[]) => Promise<unknown>>;
 type BooleanMock = Mock<(...args: unknown[]) => boolean>;
+type SignalTimerDelayOptions = { readonly signal?: AbortSignal };
+type SignalTimerDelayMock = Mock<
+  (ms: number, options?: SignalTimerDelayOptions) => Promise<void>
+>;
 type SyncMock = Mock<(...args: unknown[]) => void>;
 type UnknownMock = Mock<(...args: unknown[]) => unknown>;
 
@@ -70,6 +74,9 @@ export interface ApiTestMocks {
     readonly get: AsyncMock;
     readonly receivingGet: AsyncMock;
     readonly attachmentsList: AsyncMock;
+  };
+  readonly signalTimers: {
+    readonly delay: SignalTimerDelayMock;
   };
   readonly slack: {
     readonly assistant: {
@@ -354,6 +361,12 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       receivingGet: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       attachmentsList: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
+    signalTimers: {
+      delay:
+        vi.fn<
+          (ms: number, options?: SignalTimerDelayOptions) => Promise<void>
+        >(),
+    },
     slack,
     stripe,
     vercelOidc: {
@@ -533,6 +546,19 @@ vi.mock("resend", () => {
         },
       };
     }),
+  };
+});
+
+vi.mock("signal-timers", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("signal-timers")>();
+  return {
+    ...actual,
+    delay: (ms: number, options?: SignalTimerDelayOptions): Promise<void> => {
+      if (apiTestMocks.signalTimers.delay.getMockImplementation()) {
+        return apiTestMocks.signalTimers.delay(ms, options);
+      }
+      return actual.delay(ms, options);
+    },
   };
 });
 
@@ -803,6 +829,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.resend.get.mockReset();
   apiTestMocks.resend.receivingGet.mockReset();
   apiTestMocks.resend.attachmentsList.mockReset();
+  apiTestMocks.signalTimers.delay.mockReset();
   apiTestMocks.slack.assistant.threads.setStatus.mockReset();
   apiTestMocks.slack.chat.postMessage.mockReset();
   apiTestMocks.slack.chat.postEphemeral.mockReset();
