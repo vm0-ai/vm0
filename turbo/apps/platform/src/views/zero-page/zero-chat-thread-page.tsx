@@ -59,6 +59,7 @@ import {
   cn,
   isEditableTarget,
   matchShortcut,
+  getShortcutParts,
   Button,
   Skeleton,
   DropdownMenu as UiDropdownMenu,
@@ -366,6 +367,7 @@ const CHAT_SHORTCUT_SECTIONS = [
       { key: "mod+shift+a", label: "Open agent list" },
       { key: "f2", label: "Rename chat" },
       { key: "shift+f2", label: "Change emoji" },
+      { key: "shift+1", label: "Set emoji (shift+1-7)" },
     ],
   },
   {
@@ -1274,8 +1276,10 @@ function ChatThreadEmojiMenuButton({
                   {option.emoji}
                 </span>
                 <span>{option.label}</span>
-                <span className="ml-auto text-xs text-muted-foreground">
-                  {index + 1}
+                <span className="ml-auto flex items-center gap-0.5 text-xs text-muted-foreground">
+                  {getShortcutParts(`shift+${index + 1}`).map((part) => {
+                    return <span key={part}>{part}</span>;
+                  })}
                 </span>
               </UiDropdownMenuItem>
             );
@@ -3002,12 +3006,24 @@ function ChatThread({
 }) {
   const openRenameDialog = useOpenCurrentChatThreadRenameDialog(thread);
   const openEmojiMenu = useOpenCurrentChatThreadEmojiMenu(thread);
+  const setThreadEmoji = useSetCurrentChatThreadEmoji(thread);
   const features = useLastResolved(featureSwitch$);
   const chatThreadEmojiEnabled =
     features?.[FeatureSwitchKey.ChatThreadEmoji] ?? false;
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.defaultPrevented) {
       return;
+    }
+    if (chatThreadEmojiEnabled) {
+      const emojiOptionIndex = chatThreadEmojiShortcutIndex(event);
+      if (emojiOptionIndex !== null) {
+        const option = CHAT_THREAD_EMOJI_OPTIONS[emojiOptionIndex];
+        if (option) {
+          event.preventDefault();
+          setThreadEmoji(option.emoji);
+          return;
+        }
+      }
     }
     if (chatThreadEmojiEnabled && matchShortcut("shift+f2", event)) {
       event.preventDefault();
@@ -3057,6 +3073,28 @@ function useOpenCurrentChatThreadEmojiMenu(thread: ChatThreadSignals) {
       threadId: thread.threadId,
       title,
     });
+  };
+}
+
+function useSetCurrentChatThreadEmoji(thread: ChatThreadSignals) {
+  const renameChatThread = useSet(renameChatThread$);
+  const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
+  const title = useCurrentChatThreadDialogTitle(thread);
+  const pageSignal = useGet(pageSignal$);
+  return (emoji: string) => {
+    detach(
+      (async () => {
+        await renameChatThread(
+          {
+            threadId: thread.threadId,
+            title: applyChatThreadEmoji(title, emoji),
+          },
+          pageSignal,
+        );
+        reloadChatThreadDataForId(thread.threadId);
+      })(),
+      Reason.DomCallback,
+    );
   };
 }
 
@@ -3258,7 +3296,7 @@ export function ZeroChatThreadPage() {
         return {
           ...section,
           shortcuts: section.shortcuts.filter((shortcut) => {
-            return shortcut.key !== "shift+f2";
+            return shortcut.key !== "shift+f2" && shortcut.key !== "shift+1";
           }),
         };
       });

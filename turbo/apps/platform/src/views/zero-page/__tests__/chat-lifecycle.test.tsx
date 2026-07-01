@@ -3090,6 +3090,47 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("adds an emoji to the current chat directly with Shift+1", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({ currentDetailTitle: null });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, {
+      key: "1",
+      code: "Digit1",
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        "keyboard-current-thread",
+        "✅",
+      );
+    });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
   it("does not refocus the chat emoji button or show its tooltip after closing the picker from outside", async () => {
     const user = userEvent.setup({ delay: null });
     mockResizeObserver();
@@ -3182,7 +3223,7 @@ describe("chat lifecycle", () => {
         return item.getAttribute("aria-label") === "Important 📌";
       }),
     ).toBeFalsy();
-    fireEvent.keyDown(menu, { key: "1", code: "Digit1" });
+    fireEvent.keyDown(menu, { key: "1", code: "Digit1", shiftKey: true });
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(

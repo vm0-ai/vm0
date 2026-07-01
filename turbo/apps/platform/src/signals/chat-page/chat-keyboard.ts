@@ -8,7 +8,14 @@ import {
   loadRightThread$,
 } from "./chat-thread-panes.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
-import { openRenameChatThreadDialogFromThreadData$ } from "./chat-thread-rename.ts";
+import {
+  openRenameChatThreadDialogFromThreadData$,
+  setChatThreadEmojiFromThreadData$,
+} from "./chat-thread-rename.ts";
+import {
+  CHAT_THREAD_EMOJI_OPTIONS,
+  chatThreadEmojiShortcutIndex,
+} from "./chat-thread-title.ts";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onDomEventFn, onRef } from "../utils.ts";
 import { openChatThreadEmojiMenu$ } from "../zero-page/zero-sidebar-state.ts";
@@ -132,16 +139,20 @@ export const setChatKeyboardScrollRoot$ = onRef(
     const onGlobalChatKeyDown = onDomEventFn(async (event: KeyboardEvent) => {
       const renameShortcut = matchShortcut("f2", event);
       const emojiShortcut = matchShortcut("shift+f2", event);
+      const emojiOptionIndex = chatThreadEmojiShortcutIndex(event);
       if (
         event.defaultPrevented ||
-        (!renameShortcut && !emojiShortcut) ||
+        (!renameShortcut && !emojiShortcut && emojiOptionIndex === null) ||
         hasOpenDialog(el.ownerDocument) ||
         !isChatShortcutTarget(el, event.target)
       ) {
         return;
       }
       const features = get(featureSwitch$);
-      if (emojiShortcut && !features[FeatureSwitchKey.ChatThreadEmoji]) {
+      if (
+        (emojiShortcut || emojiOptionIndex !== null) &&
+        !features[FeatureSwitchKey.ChatThreadEmoji]
+      ) {
         return;
       }
       const mainThread = get(currentLeftThread$);
@@ -150,7 +161,16 @@ export const setChatKeyboardScrollRoot$ = onRef(
       }
 
       event.preventDefault();
-      if (emojiShortcut) {
+      if (emojiOptionIndex !== null) {
+        const option = CHAT_THREAD_EMOJI_OPTIONS[emojiOptionIndex];
+        if (option) {
+          await set(
+            setChatThreadEmojiFromThreadData$,
+            { threadId: mainThread.threadId, emoji: option.emoji },
+            signal,
+          );
+        }
+      } else if (emojiShortcut) {
         const threadData = await get(mainThread.threadData$);
         signal.throwIfAborted();
         set(openChatThreadEmojiMenu$, {

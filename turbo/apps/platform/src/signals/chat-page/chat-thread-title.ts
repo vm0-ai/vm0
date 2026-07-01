@@ -48,7 +48,11 @@ export function applyChatThreadEmoji(
 export function chatThreadEmojiShortcutIndex(event: {
   key: string;
   code?: string;
+  shiftKey: boolean;
 }): number | null {
+  if (!event.shiftKey) {
+    return null;
+  }
   const codeMatch = event.code?.match(/^(?:Digit|Numpad)([1-7])$/);
   const key = codeMatch?.[1] ?? event.key;
   const fallbackShiftedKeys: Record<string, string> = {
