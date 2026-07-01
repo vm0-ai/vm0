@@ -4913,7 +4913,6 @@ function ChatThreadComposer({
   const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const hasMessages = groups.length > 0;
-  const messagesResolved = groupsLoadable.state === "hasData";
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   // useLastResolved (not useLastLoadable) so refetches keep the previously
   // resolved value instead of flipping `sending` and the placeholder. Before
@@ -5024,7 +5023,7 @@ function ChatThreadComposer({
             modelPicker={modelPicker}
             templatePicker={templatePicker}
             computerUse={computerUse}
-            modelPickerLoading={modelPickerLoading || !messagesResolved}
+            modelPickerLoading={modelPickerLoading}
             submitBlocker={submitBlockerProps}
             queuedItems={queuedItems}
             onRemoveQueuedItem={onRemoveQueuedItem}
