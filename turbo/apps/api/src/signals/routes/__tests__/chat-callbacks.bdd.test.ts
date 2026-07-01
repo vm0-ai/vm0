@@ -374,6 +374,26 @@ function publishedChatThreadRunFinished(threadId: string): boolean {
   });
 }
 
+async function waitForChatThreadMessageUpdatedPublish(
+  threadId: string,
+  messageId: string,
+): Promise<void> {
+  await expect
+    .poll(() => {
+      return context.mocks.ably.publish.mock.calls.some((call) => {
+        const payload = call[1];
+        return (
+          call[0] === `chatThreadMessageUpdated:${threadId}` &&
+          payload !== null &&
+          typeof payload === "object" &&
+          "messageId" in payload &&
+          payload.messageId === messageId
+        );
+      });
+    })
+    .toBe(true);
+}
+
 function assistantEvent(
   sequenceNumber: number,
   text: string,
@@ -937,9 +957,9 @@ describe("CHAT-02: completed chat callback", () => {
     expect(markerAfterRelease?.recommendedFollowups).toStrictEqual([
       { prompt: "Review the queued result", kind: "talk" },
     ]);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `chatThreadMessageUpdated:${first.threadId}`,
-      { messageId: markerBeforeRelease.id },
+    await waitForChatThreadMessageUpdatedPublish(
+      first.threadId,
+      markerBeforeRelease.id,
     );
     expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
       `chatThreadMessageCreated:${first.threadId}`,
