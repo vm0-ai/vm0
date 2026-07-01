@@ -610,6 +610,11 @@ fn classify_cli_failure_reason(
     {
         return Some(FailureReason::ProviderOverloaded);
     }
+    if matches!(framework, AgentFramework::Codex)
+        && guest_agent::events::is_codex_context_window_exceeded_message(failure_message)
+    {
+        return Some(FailureReason::ContextWindowExceeded);
+    }
     // Subscription/usage limits are an expected quota state for both Codex
     // (ChatGPT plan "usage limit") and Claude Code (Max plan "session limit" /
     // "weekly limit" / org monthly spend limit), so classify them regardless of
@@ -2051,6 +2056,26 @@ mod tests {
         let reason = classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
             "Selected model is at capacity. Please try a different model.",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_codex_context_window_exceeded() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying.",
+        );
+
+        assert_eq!(reason, Some(FailureReason::ContextWindowExceeded));
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_non_codex_context_window_exceeded() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying.",
         );
 
         assert_eq!(reason, None);
