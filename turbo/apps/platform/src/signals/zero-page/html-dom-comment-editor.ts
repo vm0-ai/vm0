@@ -1,5 +1,5 @@
 import { createElement } from "react";
-import { IconPointer } from "@tabler/icons-react";
+import { IconPointer2 } from "@tabler/icons-react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { command, computed, state } from "ccstate";
 import {
@@ -11,14 +11,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../lib/accept.ts";
 import { now } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
-import {
-  createDeferredPromise,
-  onRef,
-  resetSignal,
-  settle,
-  tapError,
-  withCleanup,
-} from "../utils.ts";
+import { onRef, resetSignal, settle, tapError, withCleanup } from "../utils.ts";
 import {
   createHtmlDomEditPayload,
   HTML_DOM_EDIT_HOVER_ATTR,
@@ -59,6 +52,7 @@ interface FrameCleanup {
 
 export type HtmlDomStyleProperty = "backgroundColor" | "color";
 export type HtmlDomImageLayout = "contain" | "cover" | "fill";
+export type HtmlDomImagePendingAction = "link" | "upload";
 
 type HtmlDomInlineStyleProperty = HtmlDomStyleProperty | "objectFit";
 
@@ -105,6 +99,9 @@ export interface HtmlDomCommentEditorModel {
   readonly editableStyleProperties: readonly HtmlDomStyleProperty[];
   readonly editingCommentId: string | null;
   readonly imageBusy: boolean;
+  readonly imageLinkOpen: boolean;
+  readonly imageLinkValue: string;
+  readonly imagePendingAction: HtmlDomImagePendingAction | null;
   readonly loadState: EditorLoadState;
   readonly popoverTextAreaKey: string;
   readonly prepared: boolean;
@@ -154,6 +151,7 @@ interface CommentMarkerPosition {
 }
 
 const HTML_DOM_COMMENT_LAYER_ID = "vm0-html-edit-comment-layer";
+const HTML_DOM_EDIT_BOX_LAYER_ID = "vm0-html-edit-box-layer";
 const MAX_DIRECT_HTML_EDIT_DRAFT_BYTES = 500_000;
 const HTML_DOM_COMMENT_MARKER_TARGET_ATTR =
   "data-vm0-html-comment-target-node-id";
@@ -174,7 +172,7 @@ const FRAME_COMMENT_COLLISION_GAP = 6;
 const FRAME_COMMENT_NUDGE_STEP = 12;
 const FRAME_COMMENT_NUDGE_STEPS = [0, 1, -1, 2, -2] as const;
 const FRAME_NAVIGATION_CURSOR_SVG = renderToStaticMarkup(
-  createElement(IconPointer, {
+  createElement(IconPointer2, {
     "aria-hidden": "true",
     color: "#2563eb",
     size: 20,
@@ -184,7 +182,6 @@ const FRAME_NAVIGATION_CURSOR_SVG = renderToStaticMarkup(
 const FRAME_NAVIGATION_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
   FRAME_NAVIGATION_CURSOR_SVG,
 )}") 3 3, pointer`;
-const IMAGE_LINK_LOAD_TIMEOUT_MS = 8_000;
 const IMAGE_UPLOAD_CONTENT_TYPE_BY_EXTENSION: Readonly<Record<string, string>> =
   {
     avif: "image/avif",
@@ -233,6 +230,11 @@ const internalImageEditsByNodeId$ = state<
   Readonly<Record<string, HtmlDomImageEdits>>
 >({});
 const internalImageBusy$ = state(false);
+const internalImageLinkOpen$ = state(false);
+const internalImageLinkValue$ = state("");
+const internalImagePendingAction$ = state<HtmlDomImagePendingAction | null>(
+  null,
+);
 const resetHtmlDomEditRequestSignal$ = resetSignal();
 const resetHtmlDomImageEditSignal$ = resetSignal();
 
@@ -309,7 +311,19 @@ async function uploadHtmlDomImage(params: {
     );
   }
 
-  return prepared.body.url;
+  const completed = await accept(
+    client.complete({
+      body: {
+        id: prepared.body.id,
+        contentType: prepared.body.contentType,
+      },
+      fetchOptions: { signal: params.signal },
+    }),
+    [200],
+  );
+  params.signal.throwIfAborted();
+
+  return completed.body.url;
 }
 
 function normalizeImageLinkUrl(value: string): string | null {
@@ -326,43 +340,6 @@ function normalizeImageLinkUrl(value: string): string | null {
   return parsed.protocol === "http:" || parsed.protocol === "https:"
     ? parsed.toString()
     : null;
-}
-
-async function ensureImageUrlLoads(
-  url: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const ImageConstructor = globalThis.Image;
-  if (!ImageConstructor) {
-    throw new Error("Image loading is not available in this browser");
-  }
-
-  const deferred = createDeferredPromise<void>(signal);
-  const image = new ImageConstructor();
-  const timeout = setTimeout(() => {
-    if (!deferred.settled()) {
-      deferred.reject(new Error("Image did not load in time"));
-    }
-  }, IMAGE_LINK_LOAD_TIMEOUT_MS);
-  const cleanup = () => {
-    image.onload = null;
-    image.onerror = null;
-    clearTimeout(timeout);
-  };
-
-  image.onload = () => {
-    if (!deferred.settled()) {
-      deferred.resolve();
-    }
-  };
-  image.onerror = () => {
-    if (!deferred.settled()) {
-      deferred.reject(new Error("Image could not be loaded"));
-    }
-  };
-  image.src = url;
-
-  await withCleanup(deferred.promise, cleanup);
 }
 
 async function requestHtmlEditDraft(params: {
@@ -518,6 +495,29 @@ function isFrameImageElement(
     : element instanceof HTMLImageElement;
 }
 
+const IMAGE_WRAPPER_SELECTOR = ["a[href]", "figure", "picture"].join(",");
+
+function descendantImageForImageWrapper(
+  element: Element | null | undefined,
+): HTMLImageElement | null {
+  if (!element?.matches(IMAGE_WRAPPER_SELECTOR)) {
+    return null;
+  }
+
+  const images = Array.from(element.querySelectorAll("img")).filter(
+    isFrameImageElement,
+  );
+  return images.length === 1 ? images[0] : null;
+}
+
+function imageElementForCommentCandidate(
+  element: Element | null | undefined,
+): HTMLImageElement | null {
+  return isFrameImageElement(element)
+    ? element
+    : descendantImageForImageWrapper(element);
+}
+
 function selectedImageElementForNodes(params: {
   readonly doc: Document | null;
   readonly selectedNodeIds: readonly string[];
@@ -527,7 +527,15 @@ function selectedImageElementForNodes(params: {
     return null;
   }
   const element = params.doc?.querySelector(nodeSelector(nodeId));
-  return isFrameImageElement(element) ? { element, nodeId } : null;
+  if (isFrameImageElement(element)) {
+    return { element, nodeId };
+  }
+
+  const descendantImage = imageElementForCommentCandidate(element);
+  const descendantNodeId = descendantImage?.getAttribute(HTML_DOM_NODE_ID_ATTR);
+  return descendantImage && descendantNodeId
+    ? { element: descendantImage, nodeId: descendantNodeId }
+    : null;
 }
 
 function imageLayoutForElement(element: HTMLImageElement): HtmlDomImageLayout {
@@ -586,6 +594,11 @@ function smallestCommentNodeAtPoint(event: MouseEvent): Element | null {
       return element !== null;
     });
   const uniqueCandidates = Array.from(new Set(candidates));
+  const imageCandidate = uniqueCandidates.find(isFrameImageElement);
+  if (imageCandidate) {
+    return imageCandidate;
+  }
+
   return (
     uniqueCandidates.sort((first, second) => {
       const firstRect = first.getBoundingClientRect();
@@ -616,6 +629,118 @@ function closestCommentDeleteButton(
   return (target as Element).closest<HTMLElement>(
     `[${HTML_DOM_COMMENT_DELETE_ATTR}]`,
   );
+}
+
+function removeFrameEditBoxLayer(doc: Document): void {
+  doc.getElementById(HTML_DOM_EDIT_BOX_LAYER_ID)?.remove();
+}
+
+function ensureFrameEditBoxLayer(doc: Document): HTMLElement {
+  let layer: HTMLElement | null = null;
+  for (const candidate of Array.from(
+    doc.querySelectorAll(`#${HTML_DOM_EDIT_BOX_LAYER_ID}`),
+  )) {
+    if (isFrameHtmlElement(candidate) && layer === null) {
+      layer = candidate;
+      continue;
+    }
+    candidate.remove();
+  }
+
+  if (layer) {
+    return layer;
+  }
+
+  layer = doc.createElement("div");
+  layer.id = HTML_DOM_EDIT_BOX_LAYER_ID;
+  layer.setAttribute(HTML_DOM_EDIT_OVERLAY_ATTR, "");
+  layer.setAttribute("aria-hidden", "true");
+  layer.style.position = "fixed";
+  layer.style.setProperty("inset", "0");
+  layer.style.zIndex = "2147483646";
+  layer.style.pointerEvents = "none";
+  doc.body.append(layer);
+  return layer;
+}
+
+function createFrameEditBox(params: {
+  readonly element: HTMLElement;
+  readonly kind: "hover" | "selected";
+}): HTMLElement | null {
+  const rect = params.element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    return null;
+  }
+
+  const doc = params.element.ownerDocument;
+  const view = doc.defaultView;
+  const computedStyle = view?.getComputedStyle(params.element);
+  const box = doc.createElement("div");
+  box.setAttribute(HTML_DOM_EDIT_OVERLAY_ATTR, "");
+  box.dataset.testid =
+    params.kind === "hover" ? "html-dom-hover-box" : "html-dom-selected-box";
+  box.style.position = "absolute";
+  box.style.left = `${rect.left}px`;
+  box.style.top = `${rect.top}px`;
+  box.style.width = `${rect.width}px`;
+  box.style.height = `${rect.height}px`;
+  box.style.boxSizing = "border-box";
+  box.style.border =
+    params.kind === "hover"
+      ? "2px dashed rgba(37, 99, 235, 0.85)"
+      : "2px solid rgb(37, 99, 235)";
+  box.style.borderRadius = computedStyle?.borderRadius || "0";
+  box.style.boxShadow =
+    params.kind === "selected" ? "0 0 0 4px rgba(37, 99, 235, 0.16)" : "none";
+  box.style.pointerEvents = "none";
+  return box;
+}
+
+function syncFrameEditBoxes(
+  doc: Document,
+  params: {
+    readonly hoveredNodeId: string | null;
+    readonly selectedNodeIds: readonly string[];
+  },
+): void {
+  const boxes: HTMLElement[] = [];
+  const selectedNodeIds = new Set(params.selectedNodeIds);
+
+  if (params.hoveredNodeId && !selectedNodeIds.has(params.hoveredNodeId)) {
+    const hoveredElement = doc.querySelector(
+      nodeSelector(params.hoveredNodeId),
+    );
+    if (isFrameImageElement(hoveredElement)) {
+      const box = createFrameEditBox({
+        element: hoveredElement,
+        kind: "hover",
+      });
+      if (box) {
+        boxes.push(box);
+      }
+    }
+  }
+
+  for (const nodeId of params.selectedNodeIds) {
+    const selectedElement = doc.querySelector(nodeSelector(nodeId));
+    if (!isFrameImageElement(selectedElement)) {
+      continue;
+    }
+    const box = createFrameEditBox({
+      element: selectedElement,
+      kind: "selected",
+    });
+    if (box) {
+      boxes.push(box);
+    }
+  }
+
+  if (boxes.length === 0) {
+    removeFrameEditBoxLayer(doc);
+    return;
+  }
+
+  ensureFrameEditBoxLayer(doc).replaceChildren(...boxes);
 }
 
 function syncFrameEditState(
@@ -649,6 +774,68 @@ function syncFrameEditState(
       .querySelector(nodeSelector(nodeId))
       ?.setAttribute(HTML_DOM_EDIT_SELECTED_ATTR, "true");
   }
+
+  syncFrameEditBoxes(doc, params);
+}
+
+function isTrackableRunningFrameEditAnimation(animation: Animation): boolean {
+  if (animation.playState !== "running") {
+    return false;
+  }
+
+  const iterations = animation.effect?.getTiming().iterations;
+  return iterations === undefined || Number.isFinite(iterations);
+}
+
+function hasTrackableRunningFrameEditAnimation(
+  doc: Document,
+  params: {
+    readonly hoveredNodeId: string | null;
+    readonly selectedNodeIds: readonly string[];
+  },
+): boolean {
+  const nodeIds = [
+    ...(params.hoveredNodeId ? [params.hoveredNodeId] : []),
+    ...params.selectedNodeIds,
+  ];
+  return nodeIds.some((nodeId) => {
+    const element = doc.querySelector(nodeSelector(nodeId));
+    if (!isFrameImageElement(element)) {
+      return false;
+    }
+    return (element.getAnimations?.() ?? []).some((animation) => {
+      return isTrackableRunningFrameEditAnimation(animation);
+    });
+  });
+}
+
+function trackFrameEditState(params: {
+  readonly doc: Document;
+  readonly state: () => {
+    readonly hoveredNodeId: string | null;
+    readonly selectedNodeIds: readonly string[];
+  };
+}): void {
+  const view = params.doc.defaultView;
+  if (!view) {
+    return;
+  }
+
+  let frameCount = 0;
+  const tick = () => {
+    const state = params.state();
+    frameCount += 1;
+    syncFrameEditState(params.doc, state);
+    // Run two frames before relying on getAnimations() so newly-started CSS
+    // transitions are visible after style/layout has settled.
+    if (
+      frameCount < 2 ||
+      hasTrackableRunningFrameEditAnimation(params.doc, state)
+    ) {
+      view.requestAnimationFrame(tick);
+    }
+  };
+  view.requestAnimationFrame(tick);
 }
 
 function installFrameStyles(doc: Document): void {
@@ -666,10 +853,18 @@ function installFrameStyles(doc: Document): void {
       outline: 2px dashed rgba(37, 99, 235, 0.75) !important;
       outline-offset: 2px !important;
     }
+    img[${HTML_DOM_EDIT_HOVER_ATTR}="true"] {
+      outline: none !important;
+      box-shadow: none !important;
+    }
     [${HTML_DOM_EDIT_SELECTED_ATTR}="true"] {
       outline: 2px solid rgb(37, 99, 235) !important;
       outline-offset: 2px !important;
       box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.16) !important;
+    }
+    img[${HTML_DOM_EDIT_SELECTED_ATTR}="true"] {
+      outline: none !important;
+      box-shadow: none !important;
     }
     [${HTML_DOM_COMMENT_MARKER_TARGET_ATTR}]:hover [${HTML_DOM_COMMENT_DELETE_ATTR}],
     [${HTML_DOM_COMMENT_DELETE_ATTR}]:focus-visible {
@@ -713,6 +908,25 @@ function commentPopoverAnchorForElement(params: {
     left: Math.max(180, Math.min(stageRect.width - 180, preferredLeft)),
     top: Math.max(12, Math.min(stageRect.height - 260, preferredTop)),
   };
+}
+
+function isElementInsideFrameViewport(element: Element): boolean {
+  const view = element.ownerDocument.defaultView;
+  if (!view) {
+    return false;
+  }
+
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+
+  return (
+    rect.bottom > 0 &&
+    rect.right > 0 &&
+    rect.top < view.innerHeight &&
+    rect.left < view.innerWidth
+  );
 }
 
 function htmlWithEditOverlaysRemoved(params: {
@@ -1931,6 +2145,9 @@ const resetHtmlDomCommentEditor$ = command(({ set }) => {
   set(internalOriginalStylesByNodeId$, {});
   set(internalImageEditsByNodeId$, {});
   set(internalImageBusy$, false);
+  set(internalImageLinkOpen$, false);
+  set(internalImageLinkValue$, "");
+  set(internalImagePendingAction$, null);
 });
 
 export const setHtmlDomCommentStageRef$ = onRef(
@@ -1995,6 +2212,57 @@ interface FrameCommentBindingParams {
   readonly stage: HTMLElement;
 }
 
+interface CommentPopoverTarget {
+  readonly element: Element;
+  readonly existingComment: HtmlDomEditComment | null;
+  readonly nodeId: string;
+  readonly selectedNodeIds: readonly string[];
+}
+
+function commentPopoverTargetForNode(params: {
+  readonly doc: Document;
+  readonly getComments: () => readonly HtmlDomEditComment[];
+  readonly nodeId: string;
+  readonly preferImage: boolean;
+}): CommentPopoverTarget | null {
+  const element = params.doc.querySelector(nodeSelector(params.nodeId));
+  if (!element) {
+    return null;
+  }
+
+  const existingCommentForNode = commentForNodeId(
+    params.getComments(),
+    params.nodeId,
+  );
+  const selectedImage = params.preferImage
+    ? imageElementForCommentCandidate(element)
+    : null;
+  const selectedImageNodeId = selectedImage?.getAttribute(
+    HTML_DOM_NODE_ID_ATTR,
+  );
+  if (!existingCommentForNode && selectedImage && selectedImageNodeId) {
+    return {
+      element: selectedImage,
+      existingComment: commentForNodeId(
+        params.getComments(),
+        selectedImageNodeId,
+      ),
+      nodeId: selectedImageNodeId,
+      selectedNodeIds: [selectedImageNodeId],
+    };
+  }
+
+  return {
+    element,
+    existingComment: existingCommentForNode,
+    nodeId: params.nodeId,
+    selectedNodeIds:
+      selectedImageNodeId && selectedImageNodeId !== params.nodeId
+        ? [params.nodeId, selectedImageNodeId]
+        : [params.nodeId],
+  };
+}
+
 function frameCommentNodeIdForTarget(
   params: Pick<FrameCommentBindingParams, "getComments">,
   target: EventTarget | null,
@@ -2039,33 +2307,51 @@ function closeFrameHoverPopoverForNode(
   params.setCommentText("");
 }
 
+function openFrameCommentPopoverForNode(
+  params: FrameCommentBindingParams,
+  args: {
+    nodeId: string;
+    mode: "edit" | "view";
+    preferImage?: boolean;
+  },
+): void {
+  const target = commentPopoverTargetForNode({
+    doc: params.doc,
+    getComments: params.getComments,
+    nodeId: args.nodeId,
+    preferImage: args.preferImage ?? false,
+  });
+  if (!target) {
+    return;
+  }
+  const {
+    element,
+    existingComment,
+    nodeId: selectedNodeId,
+    selectedNodeIds,
+  } = target;
+  if (args.mode === "edit" && existingComment) {
+    params.setEditingCommentId(existingComment.id);
+    params.setCommentText(existingComment.comment);
+  } else {
+    params.setEditingCommentId(null);
+    if (!existingComment) {
+      params.setCommentText("");
+    }
+  }
+  params.setHoveredNodeId(selectedNodeId);
+  params.setSelectedNodeIds(selectedNodeIds);
+  params.setCommentPopoverAnchor(
+    commentPopoverAnchorForElement({
+      element,
+      iframe: params.iframe,
+      stage: params.stage,
+    }),
+  );
+}
+
 function bindFrameCommentEvents(params: FrameCommentBindingParams): () => void {
   installFrameStyles(params.doc);
-
-  const openPopoverForNode = (nodeId: string, mode: "edit" | "view"): void => {
-    const element = params.doc.querySelector(nodeSelector(nodeId));
-    if (!element) {
-      return;
-    }
-    const existingComment = commentForNodeId(params.getComments(), nodeId);
-    if (mode === "edit" && existingComment) {
-      params.setEditingCommentId(existingComment.id);
-      params.setCommentText(existingComment.comment);
-    } else {
-      params.setEditingCommentId(null);
-      if (!existingComment) {
-        params.setCommentText("");
-      }
-    }
-    params.setSelectedNodeIds([nodeId]);
-    params.setCommentPopoverAnchor(
-      commentPopoverAnchorForElement({
-        element,
-        iframe: params.iframe,
-        stage: params.stage,
-      }),
-    );
-  };
 
   const handleMouseOver = (event: Event) => {
     if (params.getDisabled()) {
@@ -2090,7 +2376,7 @@ function bindFrameCommentEvents(params: FrameCommentBindingParams): () => void {
     )?.getAttribute(HTML_DOM_NODE_ID_ATTR);
     params.setHoveredNodeId(nodeId ?? null);
     if (nodeId && commentForNodeId(params.getComments(), nodeId)) {
-      openPopoverForNode(nodeId, "view");
+      openFrameCommentPopoverForNode(params, { nodeId, mode: "view" });
     }
   };
   const handleMouseOut = (event: MouseEvent) => {
@@ -2134,7 +2420,10 @@ function bindFrameCommentEvents(params: FrameCommentBindingParams): () => void {
     if (markerNodeId) {
       event.preventDefault();
       event.stopPropagation();
-      openPopoverForNode(markerNodeId, "edit");
+      openFrameCommentPopoverForNode(params, {
+        nodeId: markerNodeId,
+        mode: "edit",
+      });
       return;
     }
 
@@ -2147,7 +2436,11 @@ function bindFrameCommentEvents(params: FrameCommentBindingParams): () => void {
     }
     event.preventDefault();
     event.stopPropagation();
-    openPopoverForNode(nodeId, "edit");
+    openFrameCommentPopoverForNode(params, {
+      nodeId,
+      mode: "edit",
+      preferImage: true,
+    });
   };
 
   params.doc.addEventListener("mouseover", handleMouseOver, true);
@@ -2167,6 +2460,119 @@ function bindFrameCommentEvents(params: FrameCommentBindingParams): () => void {
   };
 }
 
+function syncFrameBindingPresentation(params: {
+  readonly commentPopoverAnchor: CommentPopoverAnchor | null;
+  readonly comments: readonly HtmlDomEditComment[];
+  readonly doc: Document;
+  readonly editingCommentId: string | null;
+  readonly hoveredNodeId: string | null;
+  readonly iframe: HTMLIFrameElement;
+  readonly onTargetUnavailable: () => void;
+  readonly selectedNodeIds: readonly string[];
+  readonly setCommentPopoverAnchor: (
+    value: CommentPopoverAnchor | null,
+  ) => void;
+  readonly stage: HTMLElement;
+}): void {
+  const selectedElement = params.selectedNodeIds[0]
+    ? params.doc.querySelector(nodeSelector(params.selectedNodeIds[0]))
+    : null;
+  if (params.commentPopoverAnchor && params.selectedNodeIds.length > 0) {
+    if (!selectedElement || !isElementInsideFrameViewport(selectedElement)) {
+      params.onTargetUnavailable();
+      return;
+    }
+
+    params.setCommentPopoverAnchor(
+      commentPopoverAnchorForElement({
+        element: selectedElement,
+        iframe: params.iframe,
+        stage: params.stage,
+      }),
+    );
+  }
+
+  syncFrameEditState(params.doc, {
+    hoveredNodeId: params.hoveredNodeId,
+    selectedNodeIds: params.selectedNodeIds,
+  });
+  syncFrameCommentMarkers(
+    params.doc,
+    params.comments,
+    params.editingCommentId,
+    shouldHideCommittedCommentMarkers({
+      comments: params.comments,
+      editingCommentId: params.editingCommentId,
+      selectedNodeIds: params.selectedNodeIds,
+    }),
+  );
+}
+
+function updateFrameEditingComment(params: {
+  readonly comments: readonly HtmlDomEditComment[];
+  readonly currentEditingCommentId: string | null;
+  readonly doc: Document;
+  readonly nextEditingCommentId: string | null;
+  readonly selectedNodeIds: readonly string[];
+  readonly setEditingCommentId: (value: string | null) => void;
+}): void {
+  if (params.currentEditingCommentId === params.nextEditingCommentId) {
+    return;
+  }
+  params.setEditingCommentId(params.nextEditingCommentId);
+  syncFrameCommentMarkers(
+    params.doc,
+    params.comments,
+    params.nextEditingCommentId,
+    shouldHideCommittedCommentMarkers({
+      comments: params.comments,
+      editingCommentId: params.nextEditingCommentId,
+      selectedNodeIds: params.selectedNodeIds,
+    }),
+  );
+}
+
+function updateFrameSelectedNodeIds(params: {
+  readonly comments: readonly HtmlDomEditComment[];
+  readonly doc: Document;
+  readonly editingCommentId: string | null;
+  readonly hoveredNodeId: string | null;
+  readonly nextSelectedNodeIds: readonly string[];
+  readonly previousSelectedNodeIds: readonly string[];
+  readonly resetFloatingStyleControls: () => void;
+  readonly setSelectedNodeIds: (value: readonly string[]) => void;
+}): void {
+  const wasHidingMarkers = shouldHideCommittedCommentMarkers({
+    comments: params.comments,
+    editingCommentId: params.editingCommentId,
+    selectedNodeIds: params.previousSelectedNodeIds,
+  });
+  const shouldHideMarkers = shouldHideCommittedCommentMarkers({
+    comments: params.comments,
+    editingCommentId: params.editingCommentId,
+    selectedNodeIds: params.nextSelectedNodeIds,
+  });
+  if (
+    params.previousSelectedNodeIds.join(":") !==
+    params.nextSelectedNodeIds.join(":")
+  ) {
+    params.resetFloatingStyleControls();
+  }
+  params.setSelectedNodeIds(params.nextSelectedNodeIds);
+  syncFrameEditState(params.doc, {
+    hoveredNodeId: params.hoveredNodeId,
+    selectedNodeIds: params.nextSelectedNodeIds,
+  });
+  if (wasHidingMarkers !== shouldHideMarkers) {
+    syncFrameCommentMarkers(
+      params.doc,
+      params.comments,
+      params.editingCommentId,
+      shouldHideMarkers,
+    );
+  }
+}
+
 export const bindHtmlDomCommentFrame$ = command(
   ({ get, set }, iframe: HTMLIFrameElement) => {
     set(cleanupCurrentFrameBinding$);
@@ -2178,23 +2584,32 @@ export const bindHtmlDomCommentFrame$ = command(
     }
 
     const syncMarkers = () => {
-      const comments = get(internalComments$);
-      const editingCommentId = get(internalEditingCommentId$);
-      const selectedNodeIds = get(internalSelectedNodeIds$);
-      syncFrameCommentMarkers(
+      syncFrameBindingPresentation({
+        commentPopoverAnchor: get(internalCommentPopoverAnchor$),
+        comments: get(internalComments$),
         doc,
-        comments,
-        editingCommentId,
-        shouldHideCommittedCommentMarkers({
-          comments,
-          editingCommentId,
-          selectedNodeIds,
-        }),
-      );
+        editingCommentId: get(internalEditingCommentId$),
+        hoveredNodeId: get(internalHoveredNodeId$),
+        iframe,
+        onTargetUnavailable: () => {
+          set(resetHtmlDomCommentDraft$);
+        },
+        selectedNodeIds: get(internalSelectedNodeIds$),
+        setCommentPopoverAnchor: (value) => {
+          set(internalCommentPopoverAnchor$, value);
+        },
+        stage,
+      });
     };
     const view = doc.defaultView;
     view?.addEventListener("scroll", syncMarkers, true);
     view?.addEventListener("resize", syncMarkers);
+    const currentFrameEditState = () => {
+      return {
+        hoveredNodeId: get(internalHoveredNodeId$),
+        selectedNodeIds: get(internalSelectedNodeIds$),
+      };
+    };
 
     const eventCleanup = bindFrameCommentEvents({
       deleteComment: (commentId) => {
@@ -2220,22 +2635,16 @@ export const bindHtmlDomCommentFrame$ = command(
         set(internalCommentPopoverAnchor$, value);
       },
       setEditingCommentId: (value) => {
-        if (get(internalEditingCommentId$) === value) {
-          return;
-        }
-        const comments = get(internalComments$);
-        const selectedNodeIds = get(internalSelectedNodeIds$);
-        set(internalEditingCommentId$, value);
-        syncFrameCommentMarkers(
+        updateFrameEditingComment({
+          comments: get(internalComments$),
           doc,
-          comments,
-          value,
-          shouldHideCommittedCommentMarkers({
-            comments,
-            editingCommentId: value,
-            selectedNodeIds,
-          }),
-        );
+          currentEditingCommentId: get(internalEditingCommentId$),
+          nextEditingCommentId: value,
+          selectedNodeIds: get(internalSelectedNodeIds$),
+          setEditingCommentId: (nextValue) => {
+            set(internalEditingCommentId$, nextValue);
+          },
+        });
       },
       setHoveredNodeId: (value) => {
         set(internalHoveredNodeId$, value);
@@ -2243,41 +2652,37 @@ export const bindHtmlDomCommentFrame$ = command(
           hoveredNodeId: value,
           selectedNodeIds: get(internalSelectedNodeIds$),
         });
+        trackFrameEditState({
+          doc,
+          state: currentFrameEditState,
+        });
       },
       setCommentText: (value) => {
         set(internalCommentText$, value);
       },
       setSelectedNodeIds: (value) => {
-        const comments = get(internalComments$);
-        const editingCommentId = get(internalEditingCommentId$);
-        const previousSelectedNodeIds = get(internalSelectedNodeIds$);
-        const wasHidingMarkers = shouldHideCommittedCommentMarkers({
-          comments,
-          editingCommentId,
-          selectedNodeIds: previousSelectedNodeIds,
-        });
-        const shouldHideMarkers = shouldHideCommittedCommentMarkers({
-          comments,
-          editingCommentId,
-          selectedNodeIds: value,
-        });
-        if (previousSelectedNodeIds.join(":") !== value.join(":")) {
-          set(internalActiveColorPanelProperty$, null);
-          set(internalColorPopoverOffset$, { left: 0, top: 0 });
-        }
-        set(internalSelectedNodeIds$, value);
-        syncFrameEditState(doc, {
+        updateFrameSelectedNodeIds({
+          comments: get(internalComments$),
+          doc,
+          editingCommentId: get(internalEditingCommentId$),
           hoveredNodeId: get(internalHoveredNodeId$),
-          selectedNodeIds: value,
+          nextSelectedNodeIds: value,
+          previousSelectedNodeIds: get(internalSelectedNodeIds$),
+          resetFloatingStyleControls: () => {
+            set(internalActiveColorPanelProperty$, null);
+            set(internalColorPopoverOffset$, { left: 0, top: 0 });
+            set(internalImageLinkOpen$, false);
+            set(internalImageLinkValue$, "");
+            set(internalImagePendingAction$, null);
+          },
+          setSelectedNodeIds: (nextValue) => {
+            set(internalSelectedNodeIds$, nextValue);
+          },
         });
-        if (wasHidingMarkers !== shouldHideMarkers) {
-          syncFrameCommentMarkers(
-            doc,
-            comments,
-            editingCommentId,
-            shouldHideMarkers,
-          );
-        }
+        trackFrameEditState({
+          doc,
+          state: currentFrameEditState,
+        });
       },
       stage,
     });
@@ -2359,6 +2764,20 @@ function setImageElementSource(element: HTMLImageElement, url: string): void {
   element.removeAttribute("sizes");
 }
 
+function applyImageSourceEdit(params: {
+  readonly element: HTMLImageElement;
+  readonly imageEditsByNodeId: Readonly<Record<string, HtmlDomImageEdits>>;
+  readonly nodeId: string;
+  readonly url: string;
+}): Readonly<Record<string, HtmlDomImageEdits>> {
+  setImageElementSource(params.element, params.url);
+  return imageSourceEditState({
+    imageEditsByNodeId: params.imageEditsByNodeId,
+    nodeId: params.nodeId,
+    url: params.url,
+  });
+}
+
 export const uploadSelectedHtmlDomImage$ = command(
   async ({ get, set }, file: File, parentSignal: AbortSignal) => {
     const doc = currentFrameDocument(get(internalIframeElement$));
@@ -2396,12 +2815,12 @@ export const uploadSelectedHtmlDomImage$ = command(
             throw new Error("Selected image is no longer available");
           }
 
-          const nextState = imageSourceEditState({
+          const nextState = applyImageSourceEdit({
+            element: nextElement,
             imageEditsByNodeId: get(internalImageEditsByNodeId$),
             nodeId: selected.nodeId,
             url,
           });
-          setImageElementSource(nextElement, url);
           set(internalImageEditsByNodeId$, nextState);
           set(internalPreparedPayload$, null);
           toast.success("Image replaced");
@@ -2425,7 +2844,7 @@ export const uploadSelectedHtmlDomImage$ = command(
 );
 
 export const replaceSelectedHtmlDomImageUrl$ = command(
-  async ({ get, set }, value: string, parentSignal: AbortSignal) => {
+  ({ get, set }, value: string, parentSignal: AbortSignal) => {
     const url = normalizeImageLinkUrl(value);
     if (!url) {
       toast.error("Enter a valid image URL");
@@ -2446,44 +2865,29 @@ export const replaceSelectedHtmlDomImageUrl$ = command(
     set(internalImageBusy$, true);
     set(internalPreparedPayload$, null);
 
-    const replaced = await withCleanup(
-      tapError(
-        (async () => {
-          await ensureImageUrlLoads(url, signal);
-          signal.throwIfAborted();
-          const nextDoc = currentFrameDocument(get(internalIframeElement$));
-          const nextElement = nextDoc?.querySelector(
-            nodeSelector(selected.nodeId),
-          );
-          if (!isFrameImageElement(nextElement)) {
-            throw new Error("Selected image is no longer available");
-          }
+    const nextDoc = currentFrameDocument(get(internalIframeElement$));
+    const nextElement = nextDoc?.querySelector(nodeSelector(selected.nodeId));
+    if (!isFrameImageElement(nextElement)) {
+      toast.error("Selected image is no longer available");
+      if (!signal.aborted) {
+        set(internalImageBusy$, false);
+      }
+      return false;
+    }
 
-          const nextState = imageSourceEditState({
-            imageEditsByNodeId: get(internalImageEditsByNodeId$),
-            nodeId: selected.nodeId,
-            url,
-          });
-          setImageElementSource(nextElement, url);
-          set(internalImageEditsByNodeId$, nextState);
-          set(internalPreparedPayload$, null);
-          toast.success("Image replaced");
-          return true;
-        })(),
-        (error) => {
-          toast.error(
-            htmlDomEditErrorMessage(error, "Image could not be loaded"),
-          );
-        },
-      ),
-      () => {
-        if (!signal.aborted) {
-          set(internalImageBusy$, false);
-        }
-      },
-    );
-
-    return replaced ?? false;
+    const nextState = applyImageSourceEdit({
+      element: nextElement,
+      imageEditsByNodeId: get(internalImageEditsByNodeId$),
+      nodeId: selected.nodeId,
+      url,
+    });
+    set(internalImageEditsByNodeId$, nextState);
+    set(internalPreparedPayload$, null);
+    toast.success("Image replaced");
+    if (!signal.aborted) {
+      set(internalImageBusy$, false);
+    }
+    return true;
   },
 );
 
@@ -2623,6 +3027,9 @@ const resetHtmlDomCommentDraft$ = command(({ get, set }) => {
   set(internalEditingCommentId$, null);
   set(internalActiveColorPanelProperty$, null);
   set(internalColorPopoverOffset$, { left: 0, top: 0 });
+  set(internalImageLinkOpen$, false);
+  set(internalImageLinkValue$, "");
+  set(internalImagePendingAction$, null);
   set(internalPreparedPayload$, null);
   syncFrameEditState(currentFrameDocument(get(internalIframeElement$)), {
     hoveredNodeId: get(internalHoveredNodeId$),
@@ -2681,6 +3088,20 @@ export const toggleHtmlDomCommentsOpen$ = command(({ get, set }) => {
   set(internalCommentsOpen$, !get(internalCommentsOpen$));
 });
 
+export const toggleHtmlDomImageLinkOpen$ = command(({ get, set }) => {
+  set(internalImageLinkOpen$, !get(internalImageLinkOpen$));
+});
+
+export const setHtmlDomImageLinkValue$ = command(({ set }, value: string) => {
+  set(internalImageLinkValue$, value);
+});
+
+export const setHtmlDomImagePendingAction$ = command(
+  ({ set }, value: HtmlDomImagePendingAction | null) => {
+    set(internalImagePendingAction$, value);
+  },
+);
+
 export const discardHtmlDomComments$ = command(({ get, set }) => {
   const readyLoadState = get(internalLoadState$);
   const doc = currentFrameDocument(get(internalIframeElement$));
@@ -2694,6 +3115,9 @@ export const discardHtmlDomComments$ = command(({ get, set }) => {
   set(internalOriginalStylesByNodeId$, {});
   set(internalImageEditsByNodeId$, {});
   set(internalImageBusy$, false);
+  set(internalImageLinkOpen$, false);
+  set(internalImageLinkValue$, "");
+  set(internalImagePendingAction$, null);
   if (readyLoadState.status === "ready" && doc) {
     restoreFrameDocumentHtml({
       doc,
@@ -2907,6 +3331,9 @@ export const htmlDomCommentEditorModel$ = computed(
       editableStyleProperties,
       editingCommentId,
       imageBusy,
+      imageLinkOpen: get(internalImageLinkOpen$),
+      imageLinkValue: get(internalImageLinkValue$),
+      imagePendingAction: get(internalImagePendingAction$),
       loadState,
       popoverTextAreaKey: [
         selectedNodeIds.join(":"),

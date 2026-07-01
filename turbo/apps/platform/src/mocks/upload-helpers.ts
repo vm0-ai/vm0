@@ -4,6 +4,7 @@
  * Production uploads run in two steps:
  *   1. POST /api/zero/uploads/prepare  → JSON { id, uploadUrl, url, ... }
  *   2. PUT  <uploadUrl>                → 200 (direct to R2)
+ *   3. POST /api/zero/uploads/complete → JSON { id, url, ... }
  *
  * These helpers register MSW handlers for both steps so individual tests only
  * have to describe the resulting file metadata, not the wire protocol.
@@ -43,6 +44,9 @@ export function mockUploadSuccess(result: MockUploadResult): HttpHandler[] {
     }),
     http.put(uploadUrl, () => {
       return new HttpResponse(null, { status: 200 });
+    }),
+    http.post("*/api/zero/uploads/complete", () => {
+      return HttpResponse.json(result);
     }),
   ];
 }
