@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.202.0](https://github.com/vm0-ai/vm0/compare/api-v1.201.0...api-v1.202.0) (2026-07-01)
+
+
+### Features
+
+* add workflow templates to composer ([#19660](https://github.com/vm0-ai/vm0/issues/19660)) ([1f110fd](https://github.com/vm0-ai/vm0/commit/1f110fd9d3ae503e731e957767a76d0094ce88a9))
+
+
+### Bug Fixes
+
+* commit create-run launch rows atomically ([#19641](https://github.com/vm0-ai/vm0/issues/19641)) ([24c9414](https://github.com/vm0-ai/vm0/commit/24c941437c27b918c7cad1e36bc5a14ce8021869))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.138.0
+    * @vm0/connectors bumped to 1.122.0
+    * @vm0/core bumped to 8.383.0
+    * @vm0/db bumped to 1.83.0
+
 ## [1.201.0](https://github.com/vm0-ai/vm0/compare/api-v1.200.0...api-v1.201.0) (2026-07-01)
 
 
