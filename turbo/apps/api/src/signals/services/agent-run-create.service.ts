@@ -378,7 +378,14 @@ type AtomicLaunchCommitResult =
       readonly queueDepth: number;
       readonly telemetryTimestamp: string;
       readonly runContextSnapshot: RunContextAxiomSnapshot;
+    }
+  | {
+      readonly kind: "queue-payload-required";
     };
+type CommittedAtomicLaunchResult = Exclude<
+  AtomicLaunchCommitResult,
+  { readonly kind: "queue-payload-required" }
+>;
 
 interface CommitPreparedLaunchArgs {
   readonly db: Db;
@@ -5403,6 +5410,9 @@ async function commitPreparedLaunch(
       if (!args.createArgs.queueOnConcurrencyLimit) {
         return concurrency;
       }
+      if (!args.encryptedQueuedParams) {
+        return { kind: "queue-payload-required" };
+      }
       return await commitQueuedPreparedLaunch(tx, args, payload);
     }
 
@@ -6589,7 +6599,7 @@ function createLegacyBeforeDispatchRun(input: {
 async function committedAtomicLaunchResponse(args: {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
-  readonly committed: AtomicLaunchCommitResult;
+  readonly committed: CommittedAtomicLaunchResult;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
   if (args.committed.kind === "queued") {
@@ -6686,8 +6696,32 @@ function createAtomicLaunchRun(input: {
       });
     }
 
-    let encryptedQueuedParams: string | undefined;
-    if (input.args.queueOnConcurrencyLimit) {
+    const commitLaunch = async (encryptedQueuedParams: string | undefined) => {
+      return await input.timing.measure(
+        "api_dispatch_insert_run_with_concurrency",
+        "top_level",
+        async () => {
+          return await commitPreparedLaunch({
+            db: input.db,
+            createArgs: input.args,
+            context: input.context,
+            identity,
+            callbackRows,
+            launch: launchResult.value,
+            encryptedQueuedParams,
+            timing: input.timing,
+          });
+        },
+      );
+    };
+
+    let committed = await commitLaunch(undefined);
+    input.signal.throwIfAborted();
+    if (isRouteError(committed)) {
+      return committed;
+    }
+
+    if (committed.kind === "queue-payload-required") {
       const encryptedQueuedParamsResult = await settle(
         encryptQueuedRunnerJobPayload(
           launchResult.value.runnerJobPayload,
@@ -6696,6 +6730,19 @@ function createAtomicLaunchRun(input: {
       );
       input.signal.throwIfAborted();
       if (!encryptedQueuedParamsResult.ok) {
+        const retryWithoutQueuedPayload = await commitLaunch(undefined);
+        input.signal.throwIfAborted();
+        if (isRouteError(retryWithoutQueuedPayload)) {
+          return retryWithoutQueuedPayload;
+        }
+        if (retryWithoutQueuedPayload.kind !== "queue-payload-required") {
+          return await committedAtomicLaunchResponse({
+            db: input.db,
+            createArgs: input.args,
+            committed: retryWithoutQueuedPayload,
+            timing: input.timing,
+          });
+        }
         return await commitFailedLaunch({
           db: input.db,
           createArgs: input.args,
@@ -6705,30 +6752,17 @@ function createAtomicLaunchRun(input: {
           error: encryptedQueuedParamsResult.error,
         });
       }
-      encryptedQueuedParams = encryptedQueuedParamsResult.value;
+
+      committed = await commitLaunch(encryptedQueuedParamsResult.value);
+      input.signal.throwIfAborted();
+      if (isRouteError(committed)) {
+        return committed;
+      }
+      if (committed.kind === "queue-payload-required") {
+        throw new Error("Queued launch still required encrypted payload");
+      }
     }
 
-    const committed = await input.timing.measure(
-      "api_dispatch_insert_run_with_concurrency",
-      "top_level",
-      async () => {
-        return await commitPreparedLaunch({
-          db: input.db,
-          createArgs: input.args,
-          context: input.context,
-          identity,
-          callbackRows,
-          launch: launchResult.value,
-          encryptedQueuedParams,
-          timing: input.timing,
-        });
-      },
-    );
-    input.signal.throwIfAborted();
-
-    if (isRouteError(committed)) {
-      return committed;
-    }
     return await committedAtomicLaunchResponse({
       db: input.db,
       createArgs: input.args,

@@ -1,6 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import {
+  DecryptCommand,
+  type DecryptCommandOutput,
+  GenerateDataKeyCommand,
+  type GenerateDataKeyCommandOutput,
+} from "@aws-sdk/client-kms";
+import {
   getModelProviderFirewall,
   getVm0ConcreteProviderType,
   type ModelProviderType,
@@ -44,6 +50,10 @@ import {
   resetAutomationsFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
 } from "./helpers/automations";
+import {
+  setSecretKmsClientForTests,
+  type SecretKmsClient,
+} from "../../../lib/secret-kms-client";
 
 /**
  * RUN-01..04 and CHAIN-RUN: successful run dispatch and lifecycle.
@@ -55,6 +65,7 @@ import {
 
 const context = testContext();
 const ASSISTANT_MESSAGE_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
+const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
 // Sentinel provider id for model-first thread selections (the wire-protocol
 // value the chat composer sends when picking a model instead of a provider).
@@ -325,6 +336,40 @@ async function seedVm0ManagedDefaultModelKey(): Promise<string> {
     await deleteVm0ManagedDefaultModelKey(context);
   });
   return await seedVm0ManagedDefaultModelKeyState(context);
+}
+
+function failKmsAfterGenerateDataKeys(limit: number): void {
+  let generateDataKeyCalls = 0;
+  function send(
+    command: GenerateDataKeyCommand,
+  ): Promise<GenerateDataKeyCommandOutput>;
+  function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
+  function send(
+    command: GenerateDataKeyCommand | DecryptCommand,
+  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
+    if (command instanceof GenerateDataKeyCommand) {
+      generateDataKeyCalls += 1;
+      if (generateDataKeyCalls > limit) {
+        return Promise.reject(
+          new Error("unexpected queued payload encryption"),
+        );
+      }
+      return Promise.resolve({
+        $metadata: {},
+        KeyId: command.input.KeyId,
+        CiphertextBlob: Buffer.from(
+          `encrypted-data-key:${command.input.KeyId}`,
+          "utf8",
+        ),
+        Plaintext: TEST_DATA_KEY,
+      });
+    }
+
+    return Promise.resolve({ $metadata: {}, Plaintext: TEST_DATA_KEY });
+  }
+
+  const client: SecretKmsClient = { send };
+  setSecretKmsClientForTests(client);
 }
 
 function inlineFirewallApis(
@@ -1227,6 +1272,22 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     );
     expectApiError(vm0Rejected.body);
     expect(vm0Rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
+  it("does not require queued payload encryption while capacity is available", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    failKmsAfterGenerateDataKeys(1);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "capacity available run should not encrypt queued payload",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(run.status).toBe("pending");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
