@@ -1813,24 +1813,36 @@ const openConnectorOAuthAuthCodeWindow$ = command(
       throw new Error("Failed to open authorization window");
     }
 
-    const startClient = get(zeroClient$)(zeroConnectorOauthStartContract, {
-      apiBase: OAUTH_WEB_API_BASE,
-    });
-    const startResult = await accept(
-      startClient.start({
-        params: { type },
-        body: { authMethod },
-        fetchOptions: { signal },
-      }),
-      [200],
+    let navigated = false;
+    await withCleanup(
+      (async () => {
+        const startClient = get(zeroClient$)(zeroConnectorOauthStartContract, {
+          apiBase: OAUTH_WEB_API_BASE,
+        });
+        const startResult = await accept(
+          startClient.start({
+            params: { type },
+            body: { authMethod },
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        signal.throwIfAborted();
+
+        if (authWindow) {
+          authWindow.location.href = startResult.body.authorizationUrl;
+          navigated = true;
+        } else if (standalone) {
+          window.location.href = startResult.body.authorizationUrl;
+        }
+      })(),
+      () => {
+        if (authWindow && !navigated) {
+          authWindow.close();
+        }
+      },
     );
     signal.throwIfAborted();
-
-    if (authWindow) {
-      authWindow.location.href = startResult.body.authorizationUrl;
-    } else if (standalone) {
-      window.location.href = startResult.body.authorizationUrl;
-    }
 
     return authWindow;
   },

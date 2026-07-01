@@ -1035,6 +1035,48 @@ describe("connectors page", () => {
     });
   });
 
+  it("closes an unopened direct OAuth popup when the start request is aborted", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "stripe",
+        label: "Public Stripe",
+        description: "Public Stripe description",
+        authMethods: [
+          {
+            id: "oauth",
+            label: "Public OAuth",
+            description: null,
+            grantKind: "auth-code",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+        singleAuthCodeAuthMethodId: "oauth",
+      }),
+    ]);
+    const authWindow = createMockAuthWindow();
+    const openMock = context.mocks.browser.open(authWindow);
+    context.mocks.api(zeroConnectorOauthStartContract.start, ({ never }) => {
+      return never();
+    });
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await fill(await screen.findByPlaceholderText("Find connectors"), "stripe");
+    click(await screen.findByLabelText("Connect Public Stripe"));
+
+    await waitFor(() => {
+      expect(openMock.calls).toHaveLength(1);
+    });
+
+    context.store.set(detachedNavigateTo$, ROUTES.settings);
+
+    await waitFor(() => {
+      expect(authWindow.closed).toBeTruthy();
+    });
+  });
+
   it("starts Stripe OAuth from the connect dialog", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
