@@ -10,7 +10,7 @@ import { warmLatestChatThreadMessages$ } from "./idb-cached-chat-thread-data-sou
 const L = logger("BackgroundChatThreadCache");
 const CHAT_THREAD_RUN_FINISHED_TOPIC = "chatThreadRunFinished";
 const uuidPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function threadIdFromRunFinishedPayload(payload: unknown): string | null {
   if (

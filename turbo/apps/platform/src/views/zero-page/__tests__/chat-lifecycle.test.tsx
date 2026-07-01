@@ -5045,7 +5045,7 @@ describe("chat lifecycle", () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";
     const completedMarker: Extract<PagedChatMessage, { role: "assistant" }> = {
-      id: "msg-followup-subscribe-gap-completed",
+      id: "00000000-0000-4000-8000-000000004003",
       role: "assistant",
       content: null,
       runId: "run-followup-subscribe-gap",
