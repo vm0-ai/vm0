@@ -47,8 +47,8 @@ import {
   userConnectorAvailability,
 } from "../services/connector-availability.service";
 import {
-  replaceUserConnectors,
-  replaceUserCustomConnectors,
+  updateUserConnectors,
+  updateUserCustomConnectors,
 } from "../services/user-connectors.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -744,7 +744,7 @@ const updateAgentCustomConnectorsInner$ = command(
     const enabledIds = Array.from(new Set(body.data.enabledIds));
     const operation = body.data.operation ?? "replace";
 
-    const replaced = await replaceUserCustomConnectors(writeDb, {
+    const updated = await updateUserCustomConnectors(writeDb, {
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
@@ -752,15 +752,15 @@ const updateAgentCustomConnectorsInner$ = command(
       operation,
     });
     signal.throwIfAborted();
-    if (replaced.status === "agentNotFound") {
+    if (updated.status === "agentNotFound") {
       return agentNotFound(params.id);
     }
-    if (replaced.status === "customConnectorsNotFound") {
+    if (updated.status === "customConnectorsNotFound") {
       return {
         status: 400 as const,
         body: {
           error: {
-            message: `Unknown custom connector ids: ${replaced.missingIds.join(", ")}`,
+            message: `Unknown custom connector ids: ${updated.missingIds.join(", ")}`,
             code: "VALIDATION_ERROR",
           },
         },
@@ -769,7 +769,7 @@ const updateAgentCustomConnectorsInner$ = command(
 
     return {
       status: 200 as const,
-      body: { enabledIds: [...replaced.enabledIds] },
+      body: { enabledIds: [...updated.enabledIds] },
     };
   },
 );
@@ -846,7 +846,7 @@ const updateAgentUserConnectorsInner$ = command(
       }
     }
 
-    const replaced = await replaceUserConnectors(writeDb, {
+    const updated = await updateUserConnectors(writeDb, {
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
@@ -858,7 +858,7 @@ const updateAgentUserConnectorsInner$ = command(
         parsedTypes.length === 0,
     });
     signal.throwIfAborted();
-    if (replaced.status === "agentNotFound") {
+    if (updated.status === "agentNotFound") {
       return agentNotFound(params.id);
     }
 
@@ -878,7 +878,7 @@ const updateAgentUserConnectorsInner$ = command(
 
     return {
       status: 200 as const,
-      body: { enabledTypes: [...replaced.enabledTypes] },
+      body: { enabledTypes: [...updated.enabledTypes] },
     };
   },
 );

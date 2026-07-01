@@ -53,7 +53,7 @@ export const zeroUserConnectorsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Replace enabled connector types for user on agent",
+    summary: "Update enabled connector types for user on agent",
   },
 });
 export type ZeroUserConnectorsContract = typeof zeroUserConnectorsContract;

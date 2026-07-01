@@ -8,7 +8,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import type { Db } from "../external/db";
 
-type ReplaceUserConnectorsResult =
+type UpdateUserConnectorsResult =
   | {
       readonly status: "replaced";
       readonly enabledTypes: readonly ConnectorType[];
@@ -17,7 +17,7 @@ type ReplaceUserConnectorsResult =
 
 export type UserConnectorUpdateOperation = "replace" | "add" | "remove";
 
-type ReplaceUserCustomConnectorsResult =
+type UpdateUserCustomConnectorsResult =
   | {
       readonly status: "replaced";
       readonly enabledIds: readonly string[];
@@ -120,7 +120,7 @@ async function lockCustomConnectorsForReplace(
   });
 }
 
-export async function replaceUserConnectors(
+export async function updateUserConnectors(
   db: Db,
   args: {
     readonly orgId: string;
@@ -130,7 +130,7 @@ export async function replaceUserConnectors(
     readonly operation?: UserConnectorUpdateOperation;
     readonly allowMissingZeroAgentForEmptyReplace: boolean;
   },
-): Promise<ReplaceUserConnectorsResult> {
+): Promise<UpdateUserConnectorsResult> {
   const enabledTypes = Array.from(new Set(args.enabledTypes));
   const operation = args.operation ?? "replace";
 
@@ -200,7 +200,7 @@ export async function replaceUserConnectors(
   });
 }
 
-export async function replaceUserCustomConnectors(
+export async function updateUserCustomConnectors(
   db: Db,
   args: {
     readonly orgId: string;
@@ -209,7 +209,7 @@ export async function replaceUserCustomConnectors(
     readonly enabledIds: readonly string[];
     readonly operation?: UserCustomConnectorUpdateOperation;
   },
-): Promise<ReplaceUserCustomConnectorsResult> {
+): Promise<UpdateUserCustomConnectorsResult> {
   const enabledIds = Array.from(new Set(args.enabledIds));
   const operation = args.operation ?? "replace";
 
@@ -295,7 +295,7 @@ export async function addUserCustomConnector(
     readonly customConnectorId: string;
   },
 ): Promise<AddUserCustomConnectorResult> {
-  const result = await replaceUserCustomConnectors(db, {
+  const result = await updateUserCustomConnectors(db, {
     orgId: args.orgId,
     userId: args.userId,
     agentId: args.agentId,

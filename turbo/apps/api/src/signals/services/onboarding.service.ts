@@ -24,7 +24,7 @@ import {
   unavailableUserConnectorTypes,
   userConnectorAvailability,
 } from "./connector-availability.service";
-import { replaceUserConnectors } from "./user-connectors.service";
+import { updateUserConnectors } from "./user-connectors.service";
 import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
 
 const L = logger("onboarding.service");
@@ -431,14 +431,14 @@ async function replaceSelectedConnectors(
     return;
   }
 
-  const replaced = await replaceUserConnectors(db, {
+  const updated = await updateUserConnectors(db, {
     orgId: args.orgId,
     userId: args.userId,
     agentId: args.agentId,
     enabledTypes: args.selectedConnectors,
     allowMissingZeroAgentForEmptyReplace: false,
   });
-  if (replaced.status === "agentNotFound") {
+  if (updated.status === "agentNotFound") {
     throw new Error(`Default agent not found: ${args.agentId}`);
   }
 }
