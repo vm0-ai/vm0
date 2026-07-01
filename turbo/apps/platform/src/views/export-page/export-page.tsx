@@ -1,4 +1,4 @@
-import { useGet, useLoadable } from "ccstate-react";
+import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconAlertCircle,
@@ -17,6 +17,7 @@ import {
   startUserExport$,
   userExportStartError$,
   userExportStatus$,
+  userExportStatusPollingRef$,
 } from "../../signals/export-page/export-page-signals.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
@@ -319,6 +320,7 @@ export function ExportPage() {
       : null;
   const startError = useGet(userExportStartError$);
   const [startLoadable, startExport] = useLoadableSet(startUserExport$);
+  const statusPollingRef = useSet(userExportStatusPollingRef$);
   const pageSignal = useGet(pageSignal$);
   const triggering = startLoadable.state === "loading";
   const startActionError =
@@ -366,6 +368,10 @@ export function ExportPage() {
             </div>
 
             <ExportScopeList />
+
+            {viewState === "in-progress" ? (
+              <span ref={statusPollingRef} hidden />
+            ) : null}
 
             <div className="rounded-xl border border-border/70 bg-card p-4">
               <div
