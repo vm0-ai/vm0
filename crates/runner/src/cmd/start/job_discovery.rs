@@ -669,7 +669,6 @@ mod tests {
                     size,
                     encoding: None,
                     raw_size: None,
-                    encoded_size: None,
                 },
             },
         });
@@ -874,7 +873,6 @@ mod tests {
                     size: Some(12),
                     encoding: None,
                     raw_size: None,
-                    encoded_size: None,
                 },
             },
         });

@@ -93,7 +93,6 @@ fn restored_session_identity_requires_valid_hash_ref() {
                 size: Some(12),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -116,7 +115,6 @@ fn restored_session_identity_requires_valid_hash_ref() {
                 size: Some(12),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -137,7 +135,6 @@ fn restored_session_identity_changes_with_framework_session_and_history_hash() {
                 size: Some(12),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -153,7 +150,6 @@ fn restored_session_identity_changes_with_framework_session_and_history_hash() {
                 size: Some(12),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -171,7 +167,6 @@ fn restored_session_identity_changes_with_framework_session_and_history_hash() {
                 size: Some(12),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -190,7 +185,6 @@ fn restored_session_identity_changes_with_framework_session_and_history_hash() {
                 size: Some(12),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -207,7 +201,6 @@ fn restored_session_identity_changes_with_framework_session_and_history_hash() {
                 size: Some(12),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -232,7 +225,6 @@ fn restore_session_writes_history() {
                 size: Some(history.len() as u64),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -353,7 +345,6 @@ fn restore_session_writes_codex_session() {
                 size: Some(history.len() as u64),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });

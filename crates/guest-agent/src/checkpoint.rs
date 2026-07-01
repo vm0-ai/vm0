@@ -50,13 +50,6 @@ impl SessionHistoryUpload {
         }
     }
 
-    fn requested_encoded_size(&self) -> u64 {
-        match &self.body {
-            SessionHistoryUploadBody::Identity(raw) => raw.len() as u64,
-            SessionHistoryUploadBody::Gzip { gzip, .. } => gzip.len() as u64,
-        }
-    }
-
     fn into_server_accepted_bytes(self, accepted_encoding: Option<&str>) -> (&'static str, Bytes) {
         match self.body {
             SessionHistoryUploadBody::Identity(raw) => {
@@ -216,11 +209,10 @@ async fn upload_session_history(
     run_id: &str,
     history_hash: &str,
     history_upload: SessionHistoryUpload,
-) -> Result<(), AgentError> {
+) -> Result<Option<&'static str>, AgentError> {
     let prep_start = std::time::Instant::now();
     let url = http.checkpoint_prepare_history_url()?;
     let requested_encoding = history_upload.requested_encoding();
-    let requested_encoded_size = history_upload.requested_encoded_size();
     let prep_resp = match http
         .post_json(
             url,
@@ -229,7 +221,6 @@ async fn upload_session_history(
                 "hash": history_hash,
                 "size": history_upload.raw_size,
                 "encoding": requested_encoding,
-                "encodedSize": requested_encoded_size,
             }),
             constants::HTTP_MAX_RETRIES,
         )
@@ -255,12 +246,18 @@ async fn upload_session_history(
         .get("existing")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let response_encoding = prep_resp.get("encoding").and_then(|v| v.as_str());
+    let checkpoint_response_encoding = match response_encoding {
+        Some(SESSION_HISTORY_ENCODING_GZIP) => Some(SESSION_HISTORY_ENCODING_GZIP),
+        Some(SESSION_HISTORY_ENCODING_IDENTITY) => Some(SESSION_HISTORY_ENCODING_IDENTITY),
+        _ => None,
+    };
     if existing {
         log_info!(
             LOG_TAG,
             "Session history already exists in S3 (deduplicated, encoding={requested_encoding})"
         );
-        return Ok(());
+        return Ok(checkpoint_response_encoding);
     }
 
     let presigned_url = prep_resp
@@ -270,7 +267,6 @@ async fn upload_session_history(
             AgentError::Checkpoint("No presignedUrl in prepare-history response".into())
         })?;
 
-    let response_encoding = prep_resp.get("encoding").and_then(|v| v.as_str());
     let (upload_encoding, upload_bytes) =
         history_upload.into_server_accepted_bytes(response_encoding);
     if requested_encoding == SESSION_HISTORY_ENCODING_GZIP
@@ -306,7 +302,7 @@ async fn upload_session_history(
         None,
     );
     log_info!(LOG_TAG, "Session history uploaded to S3");
-    Ok(())
+    Ok(checkpoint_response_encoding.map(|_| upload_encoding))
 }
 
 /// Snapshot artifact entries. Memory rides in `VM0_ARTIFACTS` post-#10602, so
@@ -624,7 +620,7 @@ async fn create_checkpoint_impl(
     // path is web-API bound (prepare + S3 PUT); the artifact path is VAS-bound
     // (prepare + HEAD update). Serial, wall time was dominated by whichever
     // was longer plus the other; concurrent, it's just the longer one.
-    let (_, artifact_snapshots) = tokio::try_join!(
+    let (session_history_encoding, artifact_snapshots) = tokio::try_join!(
         upload_session_history(
             http,
             inputs.run_id,
@@ -642,6 +638,15 @@ async fn create_checkpoint_impl(
         "cliAgentSessionId": cli_agent_session_id,
         "cliAgentSessionHistoryHash": history_hash,
     });
+
+    if let Some(encoding) = session_history_encoding
+        && let Some(obj) = payload.as_object_mut()
+    {
+        obj.insert(
+            "cliAgentSessionHistoryEncoding".to_string(),
+            json!(encoding),
+        );
+    }
 
     if let Some(snaps) = artifact_snapshots
         && let Some(obj) = payload.as_object_mut()

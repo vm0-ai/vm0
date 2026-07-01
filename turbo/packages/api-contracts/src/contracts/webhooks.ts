@@ -433,6 +433,7 @@ export const webhookCheckpointsContract = c.router({
         cliAgentType: z.string().min(1, "cliAgentType is required"),
         cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
         cliAgentSessionHistoryHash: sha256HexSchema,
+        cliAgentSessionHistoryEncoding: sessionHistoryEncodingSchema.optional(),
         // Multi-artifact snapshot payload. Canonical
         // `Array<{name, version, mountPath}>` form persisted verbatim to
         // checkpoints.artifact_snapshots.
@@ -467,41 +468,16 @@ export const webhookCheckpointsPrepareHistoryContract = c.router({
     method: "POST",
     path: "/api/webhooks/agent/checkpoints/prepare-history",
     headers: authHeadersSchema,
-    body: z
-      .object({
-        runId: z.string().min(1, "runId is required"),
-        hash: sha256HexSchema,
-        size: z
-          .number()
-          .int()
-          .positive("size must be a positive integer")
-          .max(RESUME_SESSION_HISTORY_MAX_BYTES),
-        encoding: sessionHistoryEncodingSchema.optional(),
-        encodedSize: z
-          .number()
-          .int()
-          .positive("encodedSize must be a positive integer")
-          .max(RESUME_SESSION_HISTORY_MAX_BYTES)
-          .optional(),
-      })
-      .superRefine((body, ctx) => {
-        const encoding = body.encoding ?? "identity";
-        const encodedSize = body.encodedSize ?? body.size;
-        if (encoding === "identity" && encodedSize !== body.size) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["encodedSize"],
-            message: "identity encodedSize must equal size",
-          });
-        }
-        if (encoding === "gzip" && body.encodedSize === undefined) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["encodedSize"],
-            message: "gzip encodedSize is required",
-          });
-        }
-      }),
+    body: z.object({
+      runId: z.string().min(1, "runId is required"),
+      hash: sha256HexSchema,
+      size: z
+        .number()
+        .int()
+        .positive("size must be a positive integer")
+        .max(RESUME_SESSION_HISTORY_MAX_BYTES),
+      encoding: sessionHistoryEncodingSchema.optional(),
+    }),
     responses: {
       200: z.object({
         presignedUrl: z.string().optional(),

@@ -4,6 +4,7 @@ import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
+  sessionHistoryEncodingSchema,
   type SecretConnectorMetadata,
   type StorageManifest,
   type StoredExecutionContext,
@@ -3983,6 +3984,8 @@ function loadResumeSession(
           cliAgentSessionId: conversations.cliAgentSessionId,
           cliAgentSessionHistory: conversations.cliAgentSessionHistory,
           cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
+          cliAgentSessionHistoryEncoding:
+            conversations.cliAgentSessionHistoryEncoding,
         })
         .from(conversations)
         .where(eq(conversations.id, conversationId))
@@ -3999,12 +4002,25 @@ function loadResumeSession(
         (): Promise<StoredExecutionContext["resumeSession"] | null> => {
           const cliAgentSessionId = conversation.cliAgentSessionId;
           const hash = conversation.cliAgentSessionHistoryHash;
+          let encoding: "identity" | "gzip" | undefined;
+          if (conversation.cliAgentSessionHistoryEncoding !== null) {
+            const parsedEncoding = sessionHistoryEncodingSchema.safeParse(
+              conversation.cliAgentSessionHistoryEncoding,
+            );
+            if (!parsedEncoding.success) {
+              throw new Error(
+                `invalid cli agent session history encoding: ${conversation.cliAgentSessionHistoryEncoding}`,
+              );
+            }
+            encoding = parsedEncoding.data;
+          }
           if (hash) {
             return Promise.resolve({
               sessionId: cliAgentSessionId,
               historyRef: {
                 kind: "blob",
                 hash,
+                ...(encoding ? { encoding } : {}),
               },
             });
           }

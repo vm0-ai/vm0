@@ -1025,7 +1025,6 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         hash: historyHash,
         size: Buffer.byteLength(history, "utf8"),
         encoding: "gzip",
-        encodedSize: compressedHistory.length,
       },
       headers,
       [200],
@@ -1040,6 +1039,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         cliAgentType: "claude-code",
         cliAgentSessionId: `bdd-cli-${run.runId}`,
         cliAgentSessionHistoryHash: historyHash,
+        cliAgentSessionHistoryEncoding: "gzip",
       },
       headers,
       [200],
@@ -1069,7 +1069,6 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         url: expect.any(String),
         encoding: "gzip",
         rawSize: Buffer.byteLength(history, "utf8"),
-        encodedSize: compressedHistory.length,
       },
     });
     await api.requestCancelRun(actor, compressedResume.runId, [200]);

@@ -188,7 +188,6 @@ async fn assert_checkpointed_final_identity_helper_failure_falls_back(
                 size: Some(history.len() as u64),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -577,7 +576,6 @@ async fn run_in_sandbox_materializes_resume_session_history_ref_before_restore()
                 size: Some(history.len() as u64),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -632,7 +630,6 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
                 size: Some(history.len() as u64),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -713,7 +710,6 @@ async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
                 size: Some(history.len() as u64),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -798,7 +794,6 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
                 size: Some(history.len() as u64),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -921,7 +916,6 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_reports
                 size: Some(history.len() as u64),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -1015,7 +1009,6 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_exec_er
                 size: Some(history.len() as u64),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -1122,7 +1115,6 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
                 size: Some(history.len() as u64),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -1137,7 +1129,6 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
                 size: Some(history.len() as u64),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -1210,7 +1201,6 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
                 size: Some(history.len() as u64),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -1296,7 +1286,6 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
                 size: Some(history.len() as u64),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -1381,7 +1370,6 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
                 size: Some(history.len() as u64),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });
@@ -1643,7 +1631,6 @@ async fn run_in_sandbox_redacts_session_history_download_details_from_telemetry(
                 size: Some(history.len() as u64),
                 encoding: None,
                 raw_size: None,
-                encoded_size: None,
             },
         },
     });

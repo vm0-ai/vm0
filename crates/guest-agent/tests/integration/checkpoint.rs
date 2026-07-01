@@ -284,6 +284,7 @@ async fn success_checkpoint_uploads_gzip_session_history_when_acknowledged() {
         when.method(POST)
             .path("/api/webhooks/agent/checkpoints")
             .json_body_includes(r#"{"cliAgentSessionId":"success-gzip-session"}"#)
+            .json_body_includes(r#"{"cliAgentSessionHistoryEncoding":"gzip"}"#)
             .json_body_includes(format!(
                 r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
             ));

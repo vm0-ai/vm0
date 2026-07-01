@@ -193,7 +193,9 @@ const compressedResumeSessionHistorySizeSchema = z
 
 const storedResumeSessionRefSchema = z.object({
   sessionId: z.string(),
-  historyRef: resumeSessionHistoryBlobRefSchema,
+  historyRef: resumeSessionHistoryBlobRefSchema.extend({
+    encoding: sessionHistoryEncodingSchema.optional(),
+  }),
 });
 
 const resumeSessionIdentityHistoryRefSchema = resumeSessionHistoryBlobRefSchema
@@ -209,7 +211,6 @@ const resumeSessionGzipHistoryRefSchema = resumeSessionHistoryBlobRefSchema
     url: z.string().url(),
     encoding: z.literal("gzip"),
     rawSize: compressedResumeSessionHistorySizeSchema,
-    encodedSize: compressedResumeSessionHistorySizeSchema,
   })
   .strict();
 

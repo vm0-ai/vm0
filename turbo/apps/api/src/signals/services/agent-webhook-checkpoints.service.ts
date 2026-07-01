@@ -8,7 +8,6 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { conversations } from "@vm0/db/schema/conversation";
-import { sessionHistoryBlobRepresentations } from "@vm0/db/schema/session-history-blob-representation";
 import type { ContextArtifact } from "@vm0/db/types";
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
@@ -194,7 +193,6 @@ export const prepareCheckpointHistoryUpload$ = command(
 
     const bucketName = env("R2_USER_STORAGES_BUCKET_NAME");
     const encoding = input.body.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
-    const encodedSize = input.body.encodedSize ?? input.body.size;
     const s3Key =
       encoding === SESSION_HISTORY_ENCODING_GZIP
         ? resumeSessionHistoryGzipBlobKey(input.body.hash)
@@ -207,38 +205,13 @@ export const prepareCheckpointHistoryUpload$ = command(
     signal.throwIfAborted();
 
     if (existingBlob) {
-      if (encoding === SESSION_HISTORY_ENCODING_IDENTITY) {
-        const exists = await get(s3ObjectExists(bucketName, s3Key));
-        signal.throwIfAborted();
-        if (exists) {
-          return {
-            status: 200 as const,
-            body: { existing: true, encoding },
-          };
-        }
-      } else {
-        const [existingRepresentation] = await db
-          .select({ rawHash: sessionHistoryBlobRepresentations.rawHash })
-          .from(sessionHistoryBlobRepresentations)
-          .where(
-            and(
-              eq(sessionHistoryBlobRepresentations.rawHash, input.body.hash),
-              eq(sessionHistoryBlobRepresentations.encoding, encoding),
-            ),
-          )
-          .limit(1);
-        signal.throwIfAborted();
-
-        if (existingRepresentation) {
-          const exists = await get(s3ObjectExists(bucketName, s3Key));
-          signal.throwIfAborted();
-          if (exists) {
-            return {
-              status: 200 as const,
-              body: { existing: true, encoding },
-            };
-          }
-        }
+      const exists = await get(s3ObjectExists(bucketName, s3Key));
+      signal.throwIfAborted();
+      if (exists) {
+        return {
+          status: 200 as const,
+          body: { existing: true, encoding },
+        };
       }
     }
 
@@ -261,31 +234,6 @@ export const prepareCheckpointHistoryUpload$ = command(
         set: { size: input.body.size },
       });
     signal.throwIfAborted();
-
-    if (encoding !== SESSION_HISTORY_ENCODING_IDENTITY) {
-      await db
-        .insert(sessionHistoryBlobRepresentations)
-        .values({
-          rawHash: input.body.hash,
-          encoding,
-          rawSize: input.body.size,
-          encodedSize,
-          objectKey: s3Key,
-        })
-        .onConflictDoUpdate({
-          target: [
-            sessionHistoryBlobRepresentations.rawHash,
-            sessionHistoryBlobRepresentations.encoding,
-          ],
-          set: {
-            rawSize: input.body.size,
-            encodedSize,
-            objectKey: s3Key,
-            updatedAt: nowDate(),
-          },
-        });
-      signal.throwIfAborted();
-    }
 
     return {
       status: 200 as const,
@@ -338,6 +286,8 @@ export const createAgentCheckpoint$ = command(
         cliAgentType: input.body.cliAgentType,
         cliAgentSessionId: input.body.cliAgentSessionId,
         cliAgentSessionHistoryHash: input.body.cliAgentSessionHistoryHash,
+        cliAgentSessionHistoryEncoding:
+          input.body.cliAgentSessionHistoryEncoding ?? null,
       })
       .onConflictDoUpdate({
         target: conversations.runId,
@@ -345,6 +295,8 @@ export const createAgentCheckpoint$ = command(
           cliAgentType: input.body.cliAgentType,
           cliAgentSessionId: input.body.cliAgentSessionId,
           cliAgentSessionHistoryHash: input.body.cliAgentSessionHistoryHash,
+          cliAgentSessionHistoryEncoding:
+            input.body.cliAgentSessionHistoryEncoding ?? null,
         },
       })
       .returning({ id: conversations.id });

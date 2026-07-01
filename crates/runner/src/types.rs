@@ -315,8 +315,6 @@ pub struct ResumeSessionHistoryRef {
     pub encoding: Option<ResumeSessionHistoryEncoding>,
     #[serde(default, rename = "rawSize")]
     pub raw_size: Option<u64>,
-    #[serde(default, rename = "encodedSize")]
-    pub encoded_size: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]

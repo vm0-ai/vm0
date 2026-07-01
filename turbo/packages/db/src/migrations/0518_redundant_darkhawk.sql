@@ -1,0 +1,1 @@
+ALTER TABLE "conversations" ADD COLUMN "cli_agent_session_history_encoding" varchar(16);
