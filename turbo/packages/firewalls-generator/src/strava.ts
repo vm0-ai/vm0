@@ -46,7 +46,7 @@ const SCOPE_MAP: Record<string, string[]> = {
   // Activities — write
   "POST /api/v3/activities": ["activity:write"],
   "PUT /api/v3/activities/{id}": ["activity:write"],
-  // Activities — read (activity:read for public, activity:read_all for Only Me)
+  // Activities — read (activity:read for Everyone/Followers, activity:read_all for privacy zone data and Only You)
   "GET /api/v3/activities/{id}": ["activity:read", "activity:read_all"],
   "GET /api/v3/activities/{id}/comments": [
     "activity:read",
