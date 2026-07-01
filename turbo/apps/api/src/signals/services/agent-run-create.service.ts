@@ -5067,7 +5067,7 @@ async function writeNormalChatLaunchAssociation(
         : null,
       generationTemplate: association.generationTemplate,
     })
-    .onConflictDoNothing({ target: chatMessages.id })
+    .onConflictDoNothing()
     .returning({ createdAt: chatMessages.createdAt });
   if (!inserted) {
     return false;
