@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.516.0](https://github.com/vm0-ai/vm0/compare/app-v0.515.2...app-v0.516.0) (2026-07-01)
+
+
+### Features
+
+* add agent list shortcut ([#19523](https://github.com/vm0-ai/vm0/issues/19523)) ([1a217ee](https://github.com/vm0-ai/vm0/commit/1a217eee92e1ca09ae801998a9ebffe089ecf373))
+* add chat thread emoji menu ([#19520](https://github.com/vm0-ai/vm0/issues/19520)) ([8c68d34](https://github.com/vm0-ai/vm0/commit/8c68d34649c8974a3edc0cd6f6c4d096716aff41))
+* add Claude Sonnet 5 model support ([#19539](https://github.com/vm0-ai/vm0/issues/19539)) ([399f1ad](https://github.com/vm0-ai/vm0/commit/399f1ad74ef3ec9e91b7331cb5ed80c550ed5599))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.133.0
+    * @vm0/connectors bumped to 1.118.0
+    * @vm0/core bumped to 8.380.0
+
 ## [0.515.2](https://github.com/vm0-ai/vm0/compare/app-v0.515.1...app-v0.515.2) (2026-06-30)
 
 

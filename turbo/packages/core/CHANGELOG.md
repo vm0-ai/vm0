@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.380.0](https://github.com/vm0-ai/vm0/compare/core-v8.379.3...core-v8.380.0) (2026-07-01)
+
+
+### Features
+
+* add chat thread emoji menu ([#19520](https://github.com/vm0-ai/vm0/issues/19520)) ([8c68d34](https://github.com/vm0-ai/vm0/commit/8c68d34649c8974a3edc0cd6f6c4d096716aff41))
+* add Claude Sonnet 5 model support ([#19539](https://github.com/vm0-ai/vm0/issues/19539)) ([399f1ad](https://github.com/vm0-ai/vm0/commit/399f1ad74ef3ec9e91b7331cb5ed80c550ed5599))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.133.0
+    * @vm0/connectors bumped to 1.118.0
+
 ## [8.379.3](https://github.com/vm0-ai/vm0/compare/core-v8.379.2...core-v8.379.3) (2026-06-30)
 
 
