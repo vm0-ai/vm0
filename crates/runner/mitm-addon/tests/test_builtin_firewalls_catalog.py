@@ -267,7 +267,6 @@ def test_model_provider_builtin_firewalls_are_available():
     assert codex_api.get("permissions") == [
         {
             "name": "codex:api",
-            "description": "Access the ChatGPT Codex backend with GET and POST requests.",
             "rules": ["GET /{path*}", "POST /{path*}"],
         }
     ]
@@ -275,6 +274,13 @@ def test_model_provider_builtin_firewalls_are_available():
         api for api in codex_firewall["apis"] if api["base"] == "https://auth.openai.com"
     )
     assert auth_api.get("permissions") == []
+
+
+def test_builtin_runtime_permissions_exclude_descriptions():
+    for firewall in builtin_firewalls.BUILTIN_FIREWALLS.values():
+        for api in firewall.get("apis", []):
+            for permission in api.get("permissions", []):
+                assert "description" not in permission
 
 
 def test_unknown_builtin_firewall_does_not_import(monkeypatch):

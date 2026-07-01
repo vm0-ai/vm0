@@ -18,14 +18,12 @@ JSON_PART = r"""{
       },
       "permissions": [
         {
-          "description": "Read Reap resources",
           "name": "read",
           "rules": [
             "GET /{path+}"
           ]
         },
         {
-          "description": "Create, update, and delete Reap resources",
           "name": "write",
           "rules": [
             "POST /{path+}",

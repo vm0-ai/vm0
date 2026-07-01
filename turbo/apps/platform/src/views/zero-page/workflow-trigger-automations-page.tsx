@@ -11,15 +11,12 @@ import type {
   ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  IconArrowUpRight,
   IconBrandGithub,
   IconCalendarTime,
   IconClock,
   IconLink,
-  IconLoader2,
   IconMail,
   IconMessageCircle,
-  IconPlayerPlay,
   IconPlus,
   IconRepeat,
   IconTag,
@@ -52,7 +49,6 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import {
   allWorkflowTriggerEntries$,
   allVisibleWorkflows$,
-  runWorkflowTriggerNow$,
   setWorkflowTriggerEnabled$,
   type WorkflowTriggerAutomationEntry,
 } from "../../signals/workflows-page/workflows-signals.ts";
@@ -78,10 +74,6 @@ import {
   gmailTriggerTitle,
   workflowTitle,
 } from "../workflows-page/workflow-shared.tsx";
-import {
-  WorkflowTriggerCard,
-  type WorkflowTriggerCardRow,
-} from "../workflows-page/workflow-trigger-card.tsx";
 
 export const CREATE_WORKFLOW_WITH_CHAT_PROMPT =
   "Help me create a workflow for this agent. Use the workflow-setup skill, then ask me for the desired outcome, automation, and action before creating the workflow and automation.";
@@ -93,31 +85,6 @@ function formatClockTime(hour: number, minute: number): string {
   const ampm = hour >= 12 ? "PM" : "AM";
   const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
   return `${h12}:${String(minute).padStart(2, "0")} ${ampm}`;
-}
-
-function formatTriggerDate(
-  value: string | null,
-  displayTimezone: string,
-): string {
-  if (!value) {
-    return "No runs yet";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "No runs yet";
-  }
-  return date.toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: displayTimezone,
-  });
-}
-
-function formatNextRun(value: string | null, displayTimezone: string): string {
-  if (!value) {
-    return "No upcoming run";
-  }
-  return formatTriggerDate(value, displayTimezone);
 }
 
 function cronRuleLabel(
@@ -167,36 +134,11 @@ function cronRuleLabel(
   return `Every day at ${time}`;
 }
 
-function legacyTriggerRuleLabel(
-  trigger: ZeroWorkflowTriggerSummary,
-  displayTimezone: string,
-): string {
-  if (trigger.kind !== "schedule") {
-    return gmailTriggerTitle(trigger);
-  }
-  const schedule = trigger.schedule;
-  if (schedule.type === "loop") {
-    return `Every ${formatWorkflowIntervalSeconds(schedule.intervalSeconds)}`;
-  }
-  if (schedule.type === "once") {
-    const { date, hour, minute } = atTimeInTimezone(
-      schedule.atTime,
-      displayTimezone,
-    );
-    return `Once on ${date} at ${formatClockTime(hour, minute)}`;
-  }
-  return cronRuleLabel(
-    schedule.cronExpression,
-    schedule.timezone,
-    displayTimezone,
-  );
-}
-
 function quote(value: string): string {
   return `"${value}"`;
 }
 
-function humanReadableTriggerRuleLabel(
+export function humanReadableTriggerRuleLabel(
   trigger: ZeroWorkflowTriggerSummary,
   displayTimezone: string,
 ): string {
@@ -243,7 +185,7 @@ function humanReadableTriggerRuleLabel(
   return gmailTriggerTitle(trigger);
 }
 
-function triggerTypeLabel(trigger: ZeroWorkflowTriggerSummary): string {
+export function triggerTypeLabel(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.kind === "schedule") {
     return "Schedule";
   }
@@ -266,161 +208,6 @@ function triggerTypeLabel(trigger: ZeroWorkflowTriggerSummary): string {
     return "Webhook";
   }
   return "Trigger";
-}
-
-function triggerRows(
-  trigger: ZeroWorkflowTriggerSummary,
-  displayTimezone: string,
-): readonly WorkflowTriggerCardRow[] {
-  const rows: WorkflowTriggerCardRow[] = [
-    {
-      label: trigger.kind === "schedule" ? "Schedule" : "Trigger",
-      value: legacyTriggerRuleLabel(trigger, displayTimezone),
-    },
-    {
-      label: "Last run",
-      value: formatTriggerDate(trigger.lastRunAt, displayTimezone),
-    },
-    {
-      label: "Next run",
-      value: formatNextRun(trigger.nextRunAt, displayTimezone),
-    },
-  ];
-
-  const matchSummary = gmailTriggerSummary(trigger);
-  if (matchSummary) {
-    rows.splice(1, 0, { label: "Match", value: matchSummary });
-  }
-  if (trigger.kind === "event" && trigger.eventType === "webhook-received") {
-    rows.splice(1, 0, { label: "Webhook", value: trigger.webhookUrl });
-  }
-  return rows;
-}
-
-function TriggerCardHeader({
-  entry,
-}: {
-  readonly entry: WorkflowTriggerAutomationEntry;
-}) {
-  return (
-    <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
-      <div className="min-w-0">
-        <p className="min-w-0 truncate text-sm font-normal leading-snug text-muted-foreground">
-          {workflowTitle(entry.workflow)}
-        </p>
-        <p className="mt-0.5 min-w-0 truncate text-xs text-muted-foreground/80">
-          {agentLabel(entry.workflow)}
-        </p>
-      </div>
-      <Link
-        pathname={ROUTES.workflowDetailAutomations}
-        options={{
-          pathParams: {
-            workflowId: entry.workflow.id,
-          },
-        }}
-        className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
-      >
-        View
-        <IconArrowUpRight size={12} stroke={1.5} />
-      </Link>
-    </div>
-  );
-}
-
-function WorkflowAutomationTriggerCard({
-  entry,
-  displayTimezone,
-}: {
-  readonly entry: WorkflowTriggerAutomationEntry;
-  readonly displayTimezone: string;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const [runLoadable, runNow] = useLoadableSet(runWorkflowTriggerNow$);
-  const running = runLoadable.state === "loading";
-  const editLink = (
-    <Link
-      pathname={ROUTES.workflowDetailAutomations}
-      options={{
-        pathParams: {
-          workflowId: entry.workflow.id,
-        },
-      }}
-      className="rounded-md px-1 py-1 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
-    >
-      Edit
-    </Link>
-  );
-
-  return (
-    <div className="min-w-0">
-      <TriggerCardHeader entry={entry} />
-      <WorkflowTriggerCard
-        rows={triggerRows(entry.trigger, displayTimezone)}
-        dimmed={!entry.trigger.enabled}
-        actions={
-          <>
-            {entry.workflow.canManage ? editLink : <span />}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="zero-btn-morandi h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-medium"
-              disabled={running}
-              onClick={() => {
-                detach(
-                  runNow(entry.trigger.id, pageSignal),
-                  Reason.DomCallback,
-                  "run workflow trigger from automations",
-                );
-              }}
-            >
-              {running ? (
-                <IconLoader2 size={13} className="animate-spin" />
-              ) : (
-                <IconPlayerPlay size={13} stroke={1.5} />
-              )}
-              {running ? "Starting..." : "Run now"}
-            </Button>
-          </>
-        }
-      />
-    </div>
-  );
-}
-
-function TriggerGridSkeleton() {
-  return (
-    <div
-      className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
-      data-testid="workflow-trigger-grid-skeleton"
-    >
-      {["a", "b", "c"].map((key) => {
-        return (
-          <div key={key} className="min-w-0">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div className="grid min-w-0 flex-1 gap-1">
-                <Skeleton className="h-4 w-32 rounded-md" />
-                <Skeleton className="h-3 w-20 rounded-md" />
-              </div>
-              <Skeleton className="h-7 w-14 rounded-md" />
-            </div>
-            <div className="zero-card overflow-hidden">
-              <div className="grid gap-0 px-5 py-1">
-                <Skeleton className="my-3 h-4 w-full rounded-md" />
-                <Skeleton className="my-3 h-4 w-4/5 rounded-md" />
-                <Skeleton className="my-3 h-4 w-3/4 rounded-md" />
-              </div>
-              <div className="flex items-center justify-between px-5 pb-4 pt-2">
-                <Skeleton className="h-6 w-10 rounded-md" />
-                <Skeleton className="h-8 w-24 rounded-lg" />
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
 }
 
 function TriggerListSkeleton() {
@@ -483,7 +270,7 @@ function WorkflowAgentAvatar({
   );
 }
 
-function TriggerListIcon({
+export function TriggerListIcon({
   trigger,
 }: {
   readonly trigger: ZeroWorkflowTriggerSummary;
@@ -529,7 +316,7 @@ function TriggerListIcon({
   );
 }
 
-function WorkflowTriggerEnabledSwitch({
+export function WorkflowTriggerEnabledSwitch({
   entry,
 }: {
   readonly entry: WorkflowTriggerAutomationEntry;
@@ -948,40 +735,6 @@ export function CreateWorkflowAutomationDialog() {
         />
       </DialogContent>
     </Dialog>
-  );
-}
-
-export function WorkflowTriggerAutomationList({
-  entries,
-  displayTimezone,
-  loading,
-  onAdd,
-}: {
-  readonly entries: readonly WorkflowTriggerAutomationEntry[];
-  readonly displayTimezone: string;
-  readonly loading: boolean;
-  readonly onAdd: () => void;
-}) {
-  if (loading) {
-    return <TriggerGridSkeleton />;
-  }
-
-  if (entries.length === 0) {
-    return <EmptyTriggers onAdd={onAdd} />;
-  }
-
-  return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {entries.map((entry) => {
-        return (
-          <WorkflowAutomationTriggerCard
-            key={entry.trigger.id}
-            entry={entry}
-            displayTimezone={displayTimezone}
-          />
-        );
-      })}
-    </div>
   );
 }
 

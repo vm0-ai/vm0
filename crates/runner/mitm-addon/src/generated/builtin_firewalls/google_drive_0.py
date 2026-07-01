@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://www.googleapis.com/drive",
       "permissions": [
         {
-          "description": "Read Drive account and storage metadata.",
           "name": "about.read",
           "rules": [
             "GET /v2/about",
@@ -22,7 +21,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Drive apps authorized for the user.",
           "name": "apps.read",
           "rules": [
             "GET /v2/apps",
@@ -32,7 +30,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Drive change logs and page tokens.",
           "name": "changes.read",
           "rules": [
             "GET /v2/changes",
@@ -43,7 +40,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create and stop Drive notification channels.",
           "name": "channels.write",
           "rules": [
             "POST /v2/changes/watch",
@@ -55,7 +51,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Drive file comments.",
           "name": "comments.read",
           "rules": [
             "GET /v2/files/{fileId}/comments",
@@ -65,7 +60,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create, update, and delete Drive file comments.",
           "name": "comments.write",
           "rules": [
             "POST /v2/files/{fileId}/comments",
@@ -78,7 +72,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Delete shared drives and team drives.",
           "name": "drives.delete",
           "rules": [
             "DELETE /v2/drives/{driveId}",
@@ -88,7 +81,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read shared drive and team drive metadata.",
           "name": "drives.read",
           "rules": [
             "GET /v2/drives",
@@ -102,7 +94,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create, update, hide, and unhide shared drives.",
           "name": "drives.write",
           "rules": [
             "POST /v2/drives",
@@ -120,7 +111,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Delete, trash, untrash, and empty trashed Drive files.",
           "name": "files.delete",
           "rules": [
             "DELETE /v2/files/trash",
@@ -132,7 +122,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Drive files, file metadata, labels, and content.",
           "name": "files.read",
           "rules": [
             "GET /v2/files",
@@ -159,7 +148,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read and manage Drive file permissions and access requests.",
           "name": "files.share",
           "rules": [
             "GET /v2/files/{fileId}/permissions",
@@ -180,7 +168,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create, update, upload, copy, organize, and label files.",
           "name": "files.write",
           "rules": [
             "POST /v2/files",
@@ -204,14 +191,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read long-running Drive operations.",
           "name": "operations.read",
           "rules": [
             "GET /v3/operations/{name}"
           ]
         },
         {
-          "description": "Read Drive comment replies.",
           "name": "replies.read",
           "rules": [
             "GET /v2/files/{fileId}/comments/{commentId}/replies",
@@ -221,7 +206,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create, update, and delete Drive comment replies.",
           "name": "replies.write",
           "rules": [
             "POST /v2/files/{fileId}/comments/{commentId}/replies",
@@ -234,7 +218,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Delete Drive file revisions.",
           "name": "revisions.delete",
           "rules": [
             "DELETE /v2/files/{fileId}/revisions/{revisionId}",
@@ -242,7 +225,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Drive file revisions.",
           "name": "revisions.read",
           "rules": [
             "GET /v2/files/{fileId}/revisions",
@@ -252,7 +234,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Update Drive file revisions.",
           "name": "revisions.write",
           "rules": [
             "PUT /v2/files/{fileId}/revisions/{revisionId}",
@@ -271,7 +252,6 @@ JSON_PART = r"""{
       "base": "https://www.googleapis.com/upload/drive",
       "permissions": [
         {
-          "description": "Create, update, upload, copy, organize, and label files.",
           "name": "files.write",
           "rules": [
             "POST /v2/files",
@@ -294,7 +274,6 @@ JSON_PART = r"""{
       "base": "https://www.googleapis.com/resumable/upload/drive",
       "permissions": [
         {
-          "description": "Create, update, upload, copy, organize, and label files.",
           "name": "files.write",
           "rules": [
             "POST /v2/files",

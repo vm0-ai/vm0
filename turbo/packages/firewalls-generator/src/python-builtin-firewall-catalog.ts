@@ -15,7 +15,6 @@ type DataPropertyDescriptor = PropertyDescriptor & {
 export interface BuiltinFirewallRuntimePermission {
   readonly name: string;
   readonly rules: readonly string[];
-  readonly [key: string]: unknown;
 }
 
 export interface BuiltinFirewallRuntimeApi {

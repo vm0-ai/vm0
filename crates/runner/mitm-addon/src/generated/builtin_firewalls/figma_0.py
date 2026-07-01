@@ -14,14 +14,12 @@ JSON_PART = r"""{
       "base": "https://api.figma.com",
       "permissions": [
         {
-          "description": "Read your name, email, and profile image.",
           "name": "current_user:read",
           "rules": [
             "GET /v1/me"
           ]
         },
         {
-          "description": "Read the comments for files.",
           "name": "file_comments:read",
           "rules": [
             "GET /v1/files/{file_key}/comments",
@@ -29,7 +27,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Post and delete comments and comment reactions in files.",
           "name": "file_comments:write",
           "rules": [
             "POST /v1/files/{file_key}/comments",
@@ -39,7 +36,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read the contents of files, such as nodes and the editor type.",
           "name": "file_content:read",
           "rules": [
             "GET /v1/files/{file_key}",
@@ -49,14 +45,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read dev resources in files.",
           "name": "file_dev_resources:read",
           "rules": [
             "GET /v1/files/{file_key}/dev_resources"
           ]
         },
         {
-          "description": "Write to dev resources in files.",
           "name": "file_dev_resources:write",
           "rules": [
             "POST /v1/dev_resources",
@@ -65,7 +59,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read metadata of files.",
           "name": "file_metadata:read",
           "rules": [
             "GET /v1/files/{file_key}/meta",
@@ -73,7 +66,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read variables in Figma file. Note: this is only available to members in Enterprise organizations.",
           "name": "file_variables:read",
           "rules": [
             "GET /v1/files/{file_key}/variables/local",
@@ -81,21 +73,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Write to variables in Figma file. Note: this is only available to members in Enterprise organizations.",
           "name": "file_variables:write",
           "rules": [
             "POST /v1/files/{file_key}/variables"
           ]
         },
         {
-          "description": "Read the version history for files you can access.",
           "name": "file_versions:read",
           "rules": [
             "GET /v1/files/{file_key}/versions"
           ]
         },
         {
-          "description": "Read library analytics data.",
           "name": "library_analytics:read",
           "rules": [
             "GET /v1/analytics/libraries/{file_key}/component/actions",
@@ -107,7 +96,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read data of individual published components and styles.",
           "name": "library_assets:read",
           "rules": [
             "GET /v1/component_sets/{key}",
@@ -116,7 +104,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read published components and styles of files.",
           "name": "library_content:read",
           "rules": [
             "GET /v1/files/{file_key}/component_sets",
@@ -125,21 +112,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read activity logs in the organization.",
           "name": "org:activity_log_read",
           "rules": [
             "GET /v1/activity_logs"
           ]
         },
         {
-          "description": "Read metadata of projects.",
           "name": "project_metadata:read",
           "rules": [
             "GET /v1/projects/{project_id}/meta"
           ]
         },
         {
-          "description": "List projects and files in projects.",
           "name": "projects:read",
           "rules": [
             "GET /v1/projects/{project_id}/files",
@@ -147,7 +131,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read published components and styles of teams.",
           "name": "team_library_content:read",
           "rules": [
             "GET /v1/teams/{team_id}/component_sets",
@@ -156,7 +139,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read metadata of webhooks.",
           "name": "webhooks:read",
           "rules": [
             "GET /v2/teams/{team_id}/webhooks",
@@ -166,7 +148,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create and manage webhooks.",
           "name": "webhooks:write",
           "rules": [
             "POST /v2/webhooks",

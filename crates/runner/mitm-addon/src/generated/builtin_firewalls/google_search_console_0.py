@@ -14,28 +14,24 @@ JSON_PART = r"""{
       "base": "https://searchconsole.googleapis.com",
       "permissions": [
         {
-          "description": "Run mobile-friendly tests for URLs.",
           "name": "mobile-friendly-tests.run",
           "rules": [
             "POST /v1/urlTestingTools/mobileFriendlyTest:run"
           ]
         },
         {
-          "description": "Query Search Console search analytics data.",
           "name": "search-analytics.query",
           "rules": [
             "POST /webmasters/v3/sites/{siteUrl}/searchAnalytics/query"
           ]
         },
         {
-          "description": "Delete submitted sitemaps.",
           "name": "sitemaps.delete",
           "rules": [
             "DELETE /webmasters/v3/sites/{siteUrl}/sitemaps/{feedpath}"
           ]
         },
         {
-          "description": "List and read submitted sitemaps.",
           "name": "sitemaps.read",
           "rules": [
             "GET /webmasters/v3/sites/{siteUrl}/sitemaps",
@@ -43,21 +39,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Submit sitemaps.",
           "name": "sitemaps.write",
           "rules": [
             "PUT /webmasters/v3/sites/{siteUrl}/sitemaps/{feedpath}"
           ]
         },
         {
-          "description": "Remove sites from Search Console.",
           "name": "sites.delete",
           "rules": [
             "DELETE /webmasters/v3/sites/{siteUrl}"
           ]
         },
         {
-          "description": "List and read Search Console sites.",
           "name": "sites.read",
           "rules": [
             "GET /webmasters/v3/sites",
@@ -65,14 +58,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Add sites to Search Console.",
           "name": "sites.write",
           "rules": [
             "PUT /webmasters/v3/sites/{siteUrl}"
           ]
         },
         {
-          "description": "Inspect URL indexing status.",
           "name": "url-inspection.inspect",
           "rules": [
             "POST /v1/urlInspection/index:inspect"

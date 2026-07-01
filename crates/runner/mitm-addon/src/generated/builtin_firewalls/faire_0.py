@@ -14,14 +14,12 @@ JSON_PART = r"""{
       "base": "https://www.faire.com/external-api/v2",
       "permissions": [
         {
-          "description": "Read Faire resources",
           "name": "read",
           "rules": [
             "GET /{path+}"
           ]
         },
         {
-          "description": "Create, update, and delete Faire resources",
           "name": "write",
           "rules": [
             "POST /{path+}",

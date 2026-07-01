@@ -431,31 +431,6 @@ function mockAgentPageApis(): void {
   });
 }
 
-function mockWorkflowAuditMembers(): void {
-  context.mocks.data.orgMembers({
-    members: [
-      {
-        userId: CURRENT_USER_ID,
-        email: "ethan@example.com",
-        firstName: "Ethan",
-        lastName: "Zhang",
-        imageUrl: "",
-        role: "admin",
-        joinedAt: "2024-01-01T00:00:00Z",
-      },
-      {
-        userId: UPDATED_USER_ID,
-        email: "lancy@example.com",
-        firstName: "Lancy",
-        lastName: "Lan",
-        imageUrl: "",
-        role: "member",
-        joinedAt: "2024-01-01T00:00:00Z",
-      },
-    ],
-  });
-}
-
 function applyWorkflowUpdate(
   workflow: ZeroWorkflowDetailResponse,
   body: ZeroWorkflowUpdateRequest,
@@ -489,6 +464,28 @@ function mockWorkflowApis(
   workflows: ZeroWorkflowDetailResponse[],
   onUpdate?: (body: ZeroWorkflowUpdateRequest) => void,
 ): void {
+  const setTriggerEnabled = (
+    triggerId: string,
+    enabled: boolean,
+  ): ZeroWorkflowTriggerSummary | null => {
+    for (const workflow of workflows) {
+      const triggerIndex = workflow.triggers.findIndex((trigger) => {
+        return trigger.id === triggerId;
+      });
+      if (triggerIndex === -1) {
+        continue;
+      }
+      const currentTrigger = workflow.triggers[triggerIndex];
+      if (!currentTrigger) {
+        continue;
+      }
+      const updatedTrigger = { ...currentTrigger, enabled };
+      workflow.triggers[triggerIndex] = updatedTrigger;
+      return updatedTrigger;
+    }
+    return null;
+  };
+
   context.mocks.api(
     zeroWorkflowsCollectionContract.list,
     ({ query, respond }) => {
@@ -511,6 +508,43 @@ function mockWorkflowApis(
     }
     return respond(200, detail);
   });
+  context.mocks.api(
+    zeroWorkflowTriggersContract.listWorkspace,
+    ({ respond }) => {
+      return respond(
+        200,
+        workflows.flatMap((workflow) => {
+          return workflow.triggers.map((trigger) => {
+            return { workflow: summary(workflow), trigger };
+          });
+        }),
+      );
+    },
+  );
+  context.mocks.api(
+    zeroWorkflowTriggersContract.enable,
+    ({ params, respond }) => {
+      const trigger = setTriggerEnabled(params.id, true);
+      if (!trigger) {
+        return respond(404, {
+          error: { code: "NOT_FOUND", message: "missing" },
+        });
+      }
+      return respond(200, trigger);
+    },
+  );
+  context.mocks.api(
+    zeroWorkflowTriggersContract.disable,
+    ({ params, respond }) => {
+      const trigger = setTriggerEnabled(params.id, false);
+      if (!trigger) {
+        return respond(404, {
+          error: { code: "NOT_FOUND", message: "missing" },
+        });
+      }
+      return respond(200, trigger);
+    },
+  );
   context.mocks.api(
     zeroWorkflowsDetailContract.update,
     ({ params, body, respond }) => {
@@ -753,6 +787,46 @@ function menuItemByText(text: RoleTextMatch): HTMLElement {
   return item;
 }
 
+function articleByText(text: string): HTMLElement {
+  const article = screen
+    .getAllByText(text)
+    .map((element) => {
+      return element.closest("article");
+    })
+    .find((candidate): candidate is HTMLElement => {
+      return candidate instanceof HTMLElement;
+    });
+  if (!article) {
+    throw new Error(`${text} card not found`);
+  }
+  return article;
+}
+
+function linkByAriaLabel(label: string): HTMLAnchorElement {
+  const link = queryAllByRoleFast("link").find(
+    (candidate): candidate is HTMLAnchorElement => {
+      return (
+        candidate instanceof HTMLAnchorElement &&
+        candidate.getAttribute("aria-label") === label
+      );
+    },
+  );
+  if (!link) {
+    throw new Error(`${label} link not found`);
+  }
+  return link;
+}
+
+function tabByText(text: string): HTMLElement {
+  const tab = queryAllByRoleFast("tab").find((candidate) => {
+    return textFor(candidate) === text;
+  });
+  if (!tab) {
+    throw new Error(`${text} tab not found`);
+  }
+  return tab;
+}
+
 function selectOptionByLabel(
   label: string,
   option: string | RegExp,
@@ -799,7 +873,8 @@ describe("workflows routes", () => {
     expect(screen.queryByText("Workflow not found.")).not.toBeInTheDocument();
   });
 
-  it("shows all visible workflows on the workspace workflows page", async () => {
+  it("shows triggered workflows first on the workspace workflows page", async () => {
+    context.mocks.data.userPreferences({ timezone: "UTC" });
     mockAgentPageApis();
     mockChatLifecycle(context);
     mockWorkflowApis([
@@ -816,17 +891,56 @@ describe("workflows routes", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+      expect(linkByAriaLabel("Open Sales Research")).toBeInTheDocument();
     });
-    expect(screen.getByText("Ops Playbook")).toBeInTheDocument();
-    expect(screen.getByText("Launch Checklist")).toBeInTheDocument();
-    expect(screen.getByText("Support Intake")).toBeInTheDocument();
+    expect(search()).toBe("");
+    expect(tabByText("Automations")).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText("Ops Playbook")).not.toBeInTheDocument();
+    expect(screen.queryByText("Launch Checklist")).not.toBeInTheDocument();
+    expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
 
-    const supportLink = screen.getByText("Support Intake").closest("a");
+    const salesCard = articleByText("Sales Research");
+    expect(within(salesCard).getByText("Schedule")).toBeInTheDocument();
+    expect(
+      within(salesCard).getByText("Every weekday at 9:00 AM"),
+    ).toBeInTheDocument();
+    const switchControl = within(salesCard).getByRole("switch", {
+      name: "Disable Sales Research",
+    });
+    expect(switchControl).toHaveAttribute("aria-checked", "true");
+
+    click(switchControl);
+    await waitFor(() => {
+      expect(
+        within(articleByText("Sales Research")).getByRole("switch", {
+          name: "Enable Sales Research",
+        }),
+      ).toHaveAttribute("aria-checked", "false");
+    });
+
+    click(tabByText("All"));
+    await waitFor(() => {
+      expect(search()).toBe("?tab=all");
+    });
+    expect(tabByText("All")).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => {
+      expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
+    });
+    expect(linkByAriaLabel("Open Launch Checklist")).toBeInTheDocument();
+    expect(linkByAriaLabel("Open Support Intake")).toBeInTheDocument();
+
+    const supportLink = linkByAriaLabel("Open Support Intake");
     expect(supportLink).toHaveAttribute(
       "href",
       `/workflows/${OTHER_WORKFLOW_ID}/automations`,
     );
+
+    click(tabByText("Automations"));
+    await waitFor(() => {
+      expect(search()).toBe("");
+    });
+    expect(tabByText("Automations")).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText("Ops Playbook")).not.toBeInTheDocument();
 
     expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).toContain(
       "Help me create a workflow for this agent.",
@@ -994,8 +1108,7 @@ describe("workflow detail page", () => {
     await expectComposerText("/sales-research");
   });
 
-  it("orders workflow info sections with audit metadata last", async () => {
-    mockWorkflowAuditMembers();
+  it("orders workflow info sections without audit metadata", async () => {
     mockWorkflowApis([salesResearch()]);
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
@@ -1004,14 +1117,11 @@ describe("workflow detail page", () => {
       expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
     });
 
-    await waitFor(() => {
-      expect(textFor(document.body)).toContain("Created by Ethan Zhang");
-    });
     const pageText = textFor(document.body);
-    expect(pageText).toContain("Created by Ethan Zhang");
-    expect(pageText).toContain("Last updated by Lancy Lan");
-    expect(pageText).toContain("Jun 17, 2026");
-    expect(pageText).toContain("Jun 20, 2026");
+    expect(pageText).not.toContain("Created by");
+    expect(pageText).not.toContain("Last updated by");
+    expect(pageText).not.toContain("Jun 17, 2026");
+    expect(pageText).not.toContain("Jun 20, 2026");
     expect(pageText.indexOf("Slug")).toBeLessThan(
       pageText.indexOf("Visibility"),
     );
@@ -1020,9 +1130,6 @@ describe("workflow detail page", () => {
     );
     expect(pageText.indexOf("Copy workflow")).toBeLessThan(
       pageText.indexOf("Delete workflow"),
-    );
-    expect(pageText.indexOf("Delete workflow")).toBeLessThan(
-      pageText.indexOf("Created by"),
     );
   });
 

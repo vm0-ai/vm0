@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://graph.microsoft.com",
       "permissions": [
         {
-          "description": "Read the signed-in Microsoft Graph user profile.",
           "name": "User.Read",
           "rules": [
             "GET /v1.0/me",
@@ -22,7 +21,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read and write OneDrive and document library files.",
           "name": "Files.ReadWrite.All",
           "rules": [
             "ANY /v1.0/me/drive/{path*}",
@@ -33,7 +31,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read and write SharePoint sites, lists, and site drives.",
           "name": "Sites.ReadWrite.All",
           "rules": [
             "ANY /v1.0/sites/{path*}",
@@ -43,7 +40,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read basic team information.",
           "name": "Team.ReadBasic.All",
           "rules": [
             "GET /v1.0/me/joinedTeams",
@@ -55,7 +51,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Microsoft Teams channel metadata.",
           "name": "Channel.ReadBasic.All",
           "rules": [
             "GET /v1.0/teams/{team-id}/channels",
@@ -65,7 +60,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Microsoft Teams channel messages.",
           "name": "ChannelMessage.Read.All",
           "rules": [
             "GET /v1.0/teams/{team-id}/channels/{channel-id}/messages",
@@ -77,7 +71,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Send Microsoft Teams channel messages and replies.",
           "name": "ChannelMessage.Send",
           "rules": [
             "POST /v1.0/teams/{team-id}/channels/{channel-id}/messages",
@@ -87,7 +80,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read and write Microsoft Teams chats.",
           "name": "Chat.ReadWrite",
           "rules": [
             "ANY /v1.0/chats",
@@ -99,7 +91,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Send chat messages.",
           "name": "ChatMessage.Send",
           "rules": [
             "POST /v1.0/chats/{chat-id}/messages",

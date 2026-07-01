@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://slack.com/api",
       "permissions": [
         {
-          "description": "Administer a workspace (access audit logs, SCIM API, and billing info)",
           "name": "admin",
           "rules": [
             "POST /admin.audit.anomaly.allow.getItem",
@@ -25,7 +24,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Access workspace analytics data",
           "name": "admin.analytics:read",
           "rules": [
             "GET /admin.analytics.getFile",
@@ -34,14 +32,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View app activities within an Enterprise organization",
           "name": "admin.app_activities:read",
           "rules": [
             "POST /admin.apps.activities.list"
           ]
         },
         {
-          "description": "View apps and app requests in an Enterprise organization",
           "name": "admin.apps:read",
           "rules": [
             "GET /admin.apps.approved.list",
@@ -51,7 +47,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Manage apps and app requests in an Enterprise organization",
           "name": "admin.apps:write",
           "rules": [
             "POST /admin.apps.approve",
@@ -63,14 +58,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read information barriers in an Enterprise organization",
           "name": "admin.barriers:read",
           "rules": [
             "GET /admin.barriers.list"
           ]
         },
         {
-          "description": "Manage information barriers in an Enterprise organization",
           "name": "admin.barriers:write",
           "rules": [
             "POST /admin.barriers.create",
@@ -79,7 +72,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Manage channel objects in an Enterprise organization",
           "name": "admin.conversations:manage_objects",
           "rules": [
             "POST /admin.conversations.createForObjects",
@@ -88,7 +80,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View channels and their settings in an Enterprise organization",
           "name": "admin.conversations:read",
           "rules": [
             "POST /admin.conversations.ekm.listOriginalConnectedChannelInfo",
@@ -101,7 +92,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Set channel settings in an Enterprise organization",
           "name": "admin.conversations:write",
           "rules": [
             "POST /admin.conversations.archive",
@@ -126,7 +116,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View workspace invite requests in an Enterprise organization",
           "name": "admin.invites:read",
           "rules": [
             "POST /admin.inviteRequests.approved.list",
@@ -135,7 +124,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Manage workspace invite requests in an Enterprise organization",
           "name": "admin.invites:write",
           "rules": [
             "POST /admin.inviteRequests.approve",
@@ -143,14 +131,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View role assignments in an Enterprise organization",
           "name": "admin.roles:read",
           "rules": [
             "GET /admin.roles.listAssignments"
           ]
         },
         {
-          "description": "Manage role assignments in an Enterprise organization",
           "name": "admin.roles:write",
           "rules": [
             "POST /admin.roles.addAssignments",
@@ -158,7 +144,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View workspace settings in an Enterprise organization",
           "name": "admin.teams:read",
           "rules": [
             "GET /admin.emoji.list",
@@ -169,7 +154,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Manage workspace settings in an Enterprise organization",
           "name": "admin.teams:write",
           "rules": [
             "GET /admin.emoji.add",
@@ -186,14 +170,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View user groups in an Enterprise organization",
           "name": "admin.usergroups:read",
           "rules": [
             "POST /admin.usergroups.listChannels"
           ]
         },
         {
-          "description": "Manage user groups in an Enterprise organization",
           "name": "admin.usergroups:write",
           "rules": [
             "POST /admin.usergroups.addChannels",
@@ -201,7 +183,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View users in an Enterprise organization",
           "name": "admin.users:read",
           "rules": [
             "POST /admin.auth.policy.getEntities",
@@ -213,7 +194,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Manage users in an Enterprise organization",
           "name": "admin.users:write",
           "rules": [
             "POST /admin.auth.policy.assignEntities",
@@ -233,7 +213,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View workflow builder workflows in an Enterprise organization",
           "name": "admin.workflows:read",
           "rules": [
             "POST /admin.functions.list",
@@ -244,7 +223,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Manage workflow builder workflows in an Enterprise organization",
           "name": "admin.workflows:write",
           "rules": [
             "POST /admin.workflows.collaborators.add",
@@ -253,7 +231,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read app configuration info via App Manifest APIs",
           "name": "app_configurations:read",
           "rules": [
             "POST /apps.manifest.export",
@@ -261,7 +238,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Write app configuration info and create apps via App Manifest APIs",
           "name": "app_configurations:write",
           "rules": [
             "POST /apps.icon.set",
@@ -275,7 +251,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Manage Slack app collaborators",
           "name": "apps",
           "rules": [
             "POST /developer.apps.owners.add",
@@ -284,14 +259,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Search assistant context across Slack content",
           "name": "assistant.search:read",
           "rules": [
             "POST /assistant.search.context"
           ]
         },
         {
-          "description": "Act as an AI Assistant app",
           "name": "assistant:write",
           "rules": [
             "POST /assistant.threads.setSuggestedPrompts",
@@ -299,7 +272,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "List bookmarks in channels",
           "name": "bookmarks:read",
           "rules": [
             "POST /bookmarks.list",
@@ -307,7 +279,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create, edit, and remove bookmarks",
           "name": "bookmarks:write",
           "rules": [
             "POST /bookmarks.add",
@@ -319,14 +290,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View information about ongoing and past calls",
           "name": "calls:read",
           "rules": [
             "POST /calls.info"
           ]
         },
         {
-          "description": "Start and manage calls in a workspace",
           "name": "calls:write",
           "rules": [
             "POST /calls.add",
@@ -337,14 +306,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Access contents of canvases created inside Slack",
           "name": "canvases:read",
           "rules": [
             "POST /canvases.sections.lookup"
           ]
         },
         {
-          "description": "Create and edit canvases",
           "name": "canvases:write",
           "rules": [
             "POST /canvases.access.delete",
@@ -356,14 +323,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Join public channels in a workspace",
           "name": "channels:join",
           "rules": [
             "POST /conversations.join"
           ]
         },
         {
-          "description": "Send messages as the app",
           "name": "chat:write",
           "rules": [
             "POST /assistant.threads.setStatus",
@@ -380,7 +345,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Full access to all client features (legacy, deprecated)",
           "name": "client",
           "rules": [
             "POST /admin.workflows.triggers.types.permissions.lookup",
@@ -388,7 +352,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Manage Slack Connect channels (approve or decline invitations)",
           "name": "conversations.connect:manage",
           "rules": [
             "POST /conversations.approveSharedInvite",
@@ -402,7 +365,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View Slack Connect external teams and discoverable contacts",
           "name": "conversations.connect:read",
           "rules": [
             "GET /team.externalTeams.list",
@@ -410,7 +372,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create Slack Connect invitations and accept invitations",
           "name": "conversations.connect:write",
           "rules": [
             "POST /conversations.acceptSharedInvite",
@@ -418,7 +379,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View messages and replies across Slack conversation types",
           "name": "conversations:history",
           "rules": [
             "GET /conversations.history",
@@ -426,7 +386,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View basic information across Slack conversation types",
           "name": "conversations:read",
           "rules": [
             "GET /conversations.info",
@@ -436,7 +395,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Manage Slack conversations across conversation types",
           "name": "conversations:write",
           "rules": [
             "POST /conversations.archive",
@@ -451,14 +409,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Invite members across Slack conversation types",
           "name": "conversations:write.invites",
           "rules": [
             "POST /conversations.invite"
           ]
         },
         {
-          "description": "Set topics and purposes across Slack conversation types",
           "name": "conversations:write.topic",
           "rules": [
             "POST /conversations.setPurpose",
@@ -466,7 +422,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read data from Slack's hosted datastore",
           "name": "datastore:read",
           "rules": [
             "POST /apps.datastore.bulkGet",
@@ -476,7 +431,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Write data to Slack's hosted datastore",
           "name": "datastore:write",
           "rules": [
             "POST /apps.datastore.bulkDelete",
@@ -487,7 +441,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View Do Not Disturb settings for people in a workspace",
           "name": "dnd:read",
           "rules": [
             "GET /dnd.info",
@@ -495,7 +448,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Edit a user's Do Not Disturb settings",
           "name": "dnd:write",
           "rules": [
             "POST /dnd.endDnd",
@@ -504,14 +456,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View custom emoji in a workspace",
           "name": "emoji:read",
           "rules": [
             "GET /emoji.list"
           ]
         },
         {
-          "description": "View files shared in channels and conversations that the app has been added to",
           "name": "files:read",
           "rules": [
             "GET /files.info",
@@ -519,7 +469,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Upload, edit, and delete files as the app",
           "name": "files:write",
           "rules": [
             "POST /files.comments.delete",
@@ -532,28 +481,24 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read hosting environment information",
           "name": "hosting:read",
           "rules": [
             "POST /apps.activities.list"
           ]
         },
         {
-          "description": "View a user's Slack identity (Sign in with Slack)",
           "name": "identity:read",
           "rules": [
             "GET /users.identity"
           ]
         },
         {
-          "description": "Show previews of URLs in messages",
           "name": "links:write",
           "rules": [
             "POST /chat.unfurl"
           ]
         },
         {
-          "description": "View lists in a workspace",
           "name": "lists:read",
           "rules": [
             "POST /slackLists.download.get",
@@ -563,7 +508,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create and manage lists in a workspace",
           "name": "lists:write",
           "rules": [
             "POST /slackLists.access.delete",
@@ -577,21 +521,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View information about a user's identity (Sign in with Slack)",
           "name": "openid",
           "rules": [
             "POST /openid.connect.userInfo"
           ]
         },
         {
-          "description": "View pinned content in channels and conversations that the app has been added to",
           "name": "pins:read",
           "rules": [
             "GET /pins.list"
           ]
         },
         {
-          "description": "Add and remove pinned messages and files",
           "name": "pins:write",
           "rules": [
             "POST /pins.add",
@@ -599,7 +540,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View emoji reactions and their associated content in channels and conversations",
           "name": "reactions:read",
           "rules": [
             "GET /reactions.get",
@@ -607,7 +547,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Add and edit emoji reactions",
           "name": "reactions:write",
           "rules": [
             "POST /reactions.add",
@@ -615,7 +554,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View reminders created by the app",
           "name": "reminders:read",
           "rules": [
             "GET /reminders.info",
@@ -623,7 +561,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Add, remove, or complete reminders",
           "name": "reminders:write",
           "rules": [
             "POST /reminders.add",
@@ -632,7 +569,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View remote files added by the app in a workspace",
           "name": "remote_files:read",
           "rules": [
             "GET /files.remote.info",
@@ -640,14 +576,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Share remote files on a user's behalf",
           "name": "remote_files:share",
           "rules": [
             "GET /files.remote.share"
           ]
         },
         {
-          "description": "Add, edit, and delete remote files on a user's behalf",
           "name": "remote_files:write",
           "rules": [
             "POST /files.remote.add",
@@ -656,7 +590,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Search a workspace's content",
           "name": "search:read",
           "rules": [
             "GET /search.all",
@@ -665,21 +598,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Search public channels",
           "name": "search:read.public",
           "rules": [
             "POST /assistant.search.info"
           ]
         },
         {
-          "description": "View starred messages and files",
           "name": "stars:read",
           "rules": [
             "GET /stars.list"
           ]
         },
         {
-          "description": "Add or remove stars (saved items)",
           "name": "stars:write",
           "rules": [
             "POST /stars.add",
@@ -687,42 +617,36 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View billing information for a workspace",
           "name": "team.billing:read",
           "rules": [
             "POST /team.billing.info"
           ]
         },
         {
-          "description": "View team preferences",
           "name": "team.preferences:read",
           "rules": [
             "POST /team.preferences.list"
           ]
         },
         {
-          "description": "View the name, email domain, and icon for workspaces the app is connected to",
           "name": "team:read",
           "rules": [
             "GET /team.info"
           ]
         },
         {
-          "description": "Execute methods with no required scope",
           "name": "tokens.basic",
           "rules": [
             "GET /migration.exchange"
           ]
         },
         {
-          "description": "View triggers in a workspace",
           "name": "triggers:read",
           "rules": [
             "POST /workflows.triggers.permissions.list"
           ]
         },
         {
-          "description": "Create and manage triggers in a workspace",
           "name": "triggers:write",
           "rules": [
             "POST /workflows.triggers.permissions.add",
@@ -731,7 +655,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View user groups in a workspace",
           "name": "usergroups:read",
           "rules": [
             "GET /usergroups.list",
@@ -739,7 +662,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create and manage user groups",
           "name": "usergroups:write",
           "rules": [
             "POST /usergroups.create",
@@ -750,7 +672,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View profile details of people in a workspace",
           "name": "users.profile:read",
           "rules": [
             "GET /team.profile.get",
@@ -758,7 +679,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Edit a user's profile information and status",
           "name": "users.profile:write",
           "rules": [
             "GET /users.deletePhoto",
@@ -767,7 +687,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View people in a workspace",
           "name": "users:read",
           "rules": [
             "GET /bots.info",
@@ -777,14 +696,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View email addresses of people in a workspace",
           "name": "users:read.email",
           "rules": [
             "GET /users.lookupByEmail"
           ]
         },
         {
-          "description": "Set a user's presence status",
           "name": "users:write",
           "rules": [
             "POST /apps.user.connection.update",
@@ -793,7 +710,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Methods that require a valid token but no specific scope",
           "name": "no_scopes_required",
           "rules": [
             "POST /api.test",
@@ -839,7 +755,6 @@ JSON_PART = r"""{
       "base": "https://files.slack.com",
       "permissions": [
         {
-          "description": "Download files from Slack",
           "name": "files:read",
           "rules": [
             "GET /{path+}"

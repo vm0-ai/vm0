@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://api.pexels.com/v1",
       "permissions": [
         {
-          "description": "Search and read Pexels photo metadata.",
           "name": "photos.read",
           "rules": [
             "GET /search",
@@ -23,7 +22,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "List and read Pexels collections.",
           "name": "collections.read",
           "rules": [
             "GET /collections",
@@ -42,7 +40,6 @@ JSON_PART = r"""{
       "base": "https://api.pexels.com/videos",
       "permissions": [
         {
-          "description": "Search and read Pexels video metadata.",
           "name": "videos.read",
           "rules": [
             "GET /search",
@@ -57,7 +54,6 @@ JSON_PART = r"""{
       "base": "https://images.pexels.com",
       "permissions": [
         {
-          "description": "Download or embed Pexels image assets returned by the API.",
           "name": "media.download",
           "rules": [
             "GET /{path+}"
@@ -70,7 +66,6 @@ JSON_PART = r"""{
       "base": "https://videos.pexels.com",
       "permissions": [
         {
-          "description": "Download or embed Pexels video assets returned by the API.",
           "name": "media.download",
           "rules": [
             "GET /{path+}"

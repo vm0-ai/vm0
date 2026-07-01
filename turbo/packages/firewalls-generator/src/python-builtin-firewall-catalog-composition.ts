@@ -47,9 +47,6 @@ function runtimePermission(
   return {
     name: permission.name,
     rules: permission.rules,
-    ...(permission.description !== undefined
-      ? { description: permission.description }
-      : {}),
   };
 }
 
