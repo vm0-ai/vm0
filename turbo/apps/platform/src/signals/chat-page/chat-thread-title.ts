@@ -11,7 +11,7 @@ export const CHAT_THREAD_EMOJI_OPTIONS = [
 const CHAT_THREAD_EMOJI_PATTERN =
   /(?:[\u{1f1e6}-\u{1f1ff}]{2}|[#*0-9]\ufe0f?\u20e3|\p{Extended_Pictographic}(?:\ufe0f|\ufe0e)?(?:[\u{1f3fb}-\u{1f3ff}])?(?:\u200d\p{Extended_Pictographic}(?:\ufe0f|\ufe0e)?(?:[\u{1f3fb}-\u{1f3ff}])?)*)/u;
 
-export interface ChatThreadTitleParts {
+interface ChatThreadTitleParts {
   readonly emoji: string | null;
   readonly text: string;
 }
