@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.523.0](https://github.com/vm0-ai/vm0/compare/app-v0.522.0...app-v0.523.0) (2026-07-01)
+
+
+### Features
+
+* add image artifact keyboard navigation ([#19694](https://github.com/vm0-ai/vm0/issues/19694)) ([2d6e968](https://github.com/vm0-ai/vm0/commit/2d6e968d6940a997a4c34e722304d7b230663697)), closes [#19133](https://github.com/vm0-ai/vm0/issues/19133)
+* add teams settings ui ([#19570](https://github.com/vm0-ai/vm0/issues/19570)) ([242e261](https://github.com/vm0-ai/vm0/commit/242e26146208b187de904e92116590bb767bc5e9))
+* bind shift+1-9/0 to chat thread emoji shortcuts ([#19684](https://github.com/vm0-ai/vm0/issues/19684)) ([4ef4a60](https://github.com/vm0-ai/vm0/commit/4ef4a604ec322018ae00239657ec5141f7c985f8))
+* export user-owned data files ([#19664](https://github.com/vm0-ai/vm0/issues/19664)) ([af2f0f3](https://github.com/vm0-ai/vm0/commit/af2f0f3c41cb147690d179937197762604479e11))
+
+
+### Bug Fixes
+
+* show tooltip on create workflow chat action ([#19689](https://github.com/vm0-ai/vm0/issues/19689)) ([4691ac0](https://github.com/vm0-ai/vm0/commit/4691ac08e9e54a1309c6575882b9d35e553297ea))
+* skip automations check when deleting a thread with workflow automation on ([#19679](https://github.com/vm0-ai/vm0/issues/19679)) ([f5af82c](https://github.com/vm0-ai/vm0/commit/f5af82c23d23c91b9c0b24e219a84abaeb4befce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.139.0
+    * @vm0/connectors bumped to 1.123.0
+    * @vm0/core bumped to 8.384.0
+
 ## [0.522.0](https://github.com/vm0-ai/vm0/compare/app-v0.521.0...app-v0.522.0) (2026-07-01)
 
 
