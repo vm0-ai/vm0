@@ -62,16 +62,12 @@ EOF
 
     # 4. Seed the zero_agents row (PK = composeId). vm0 compose's
     # POST /api/agent/composes only inserts agent_composes +
-    # agent_compose_versions; the zero_agents row is created lazily by
-    # the web composer's metadata upsert. POST /api/zero/chat/messages
-    # requires that row (route.ts calls fetchZeroAgentForRun WHERE id =
-    # body.agentId and 404s when undefined). PATCHing metadata is the
-    # smallest write that triggers the upsert in
-    # zero-compose-service.ts updateComposeMetadata.
-    _codex_zero_curl "/api/zero/composes/$AGENT_ID/metadata" \
-        -X PATCH -d '{"displayName":"BYOK codex e2e"}' >/dev/null
+    # agent_compose_versions. POST /api/zero/chat/messages requires the
+    # zero_agents row, so update through the canonical Zero agent endpoint:
+    # PUT /api/zero/agents/:id upserts zero agent metadata for an existing
+    # compose.
     _codex_zero_curl "/api/zero/agents/$AGENT_ID" \
-        -X PATCH -d '{"visibility":"private"}' >/dev/null
+        -X PUT -d '{"displayName":"BYOK codex e2e","visibility":"private"}' >/dev/null
 }
 
 teardown_file() {
