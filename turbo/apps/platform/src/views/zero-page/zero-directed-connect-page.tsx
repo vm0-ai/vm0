@@ -57,6 +57,7 @@ import {
   GoogleSecurityWarningNotice,
 } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
+import type { FormEvent } from "react";
 
 type ManualGrantMethod = {
   readonly authMethod: ConnectorAuthMethodId;
@@ -218,31 +219,37 @@ function ManualGrantForm({
     return !cfg.required || hasTokenInputValue(fieldValues[name]);
   });
 
-  const handleSubmit = onDomEventFn(async () => {
-    if (!allFilled || submitting) {
-      return;
-    }
-    setSubmitting(type);
-    await bestEffort(
-      (async () => {
-        await submit(
-          {
-            type,
-            authMethod: manualGrantMethod.authMethod,
-            inputValues: fieldValues,
-            options: {},
-          },
-          pageSignal,
-        );
-        clearForm(type);
-        onSuccess();
-      })(),
-    );
-    setSubmitting(null);
-  });
+  const handleSubmit = onDomEventFn(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!allFilled || submitting) {
+        return;
+      }
+      setSubmitting(type);
+      await bestEffort(
+        (async () => {
+          await submit(
+            {
+              type,
+              authMethod: manualGrantMethod.authMethod,
+              inputValues: fieldValues,
+              options: {},
+            },
+            pageSignal,
+          );
+          clearForm(type);
+          onSuccess();
+        })(),
+      );
+      setSubmitting(null);
+    },
+  );
 
   return (
-    <div className="flex w-full flex-col gap-3 text-left">
+    <form
+      className="flex w-full flex-col gap-3 text-left"
+      onSubmit={handleSubmit}
+    >
       {manualGrantMethod.method.helpText && (
         <div
           className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
@@ -269,15 +276,14 @@ function ManualGrantForm({
         );
       })}
       <button
-        type="button"
-        onClick={handleSubmit}
+        type="submit"
         disabled={!allFilled || submitting}
         className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
       >
         {submitting && <IconLoader2 size={14} className="animate-spin" />}
         {submitting ? "Saving..." : "Save"}
       </button>
-    </div>
+    </form>
   );
 }
 

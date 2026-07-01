@@ -30,6 +30,7 @@ import {
 import { CopyButton } from "@vm0/ui/components/ui/copy-button";
 import { detach, Reason } from "../../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../../signals/page-signal.ts";
+import type { FormEvent } from "react";
 import {
   apiKeys$,
   apiKeysCreateDialogOpen$,
@@ -142,6 +143,15 @@ function CreateApiKeyDialog() {
   const pageSignal = useGet(pageSignal$);
   const [submitLoadable, submit] = useLoadableSet(submitCreateApiKey$);
   const submitting = submitLoadable.state === "loading";
+  const canSubmit = !submitting && name.trim().length > 0;
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canSubmit) {
+      return;
+    }
+    detach(submit(pageSignal), Reason.DomCallback);
+  };
 
   return (
     <Dialog
@@ -161,65 +171,70 @@ function CreateApiKeyDialog() {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4 py-2">
-          <div className="flex flex-col gap-2">
-            <label htmlFor="api-key-name-new" className="text-sm font-medium">
-              Name
-            </label>
-            <Input
-              id="api-key-name-new"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-              }}
-              placeholder="e.g. CI bot"
-              maxLength={100}
-              autoFocus
-            />
+        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <label htmlFor="api-key-name-new" className="text-sm font-medium">
+                Name
+              </label>
+              <Input
+                id="api-key-name-new"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                }}
+                placeholder="e.g. CI bot"
+                maxLength={100}
+                autoFocus
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="api-key-expiry-new"
+                className="text-sm font-medium"
+              >
+                Expiration
+              </label>
+              <Select
+                value={String(expiresInDays)}
+                onValueChange={(v) => {
+                  setExpiresInDays(Number(v));
+                }}
+              >
+                <SelectTrigger id="api-key-expiry-new">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {EXPIRY_OPTIONS.map((opt) => {
+                    return (
+                      <SelectItem key={opt.value} value={String(opt.value)}>
+                        {opt.label}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <label htmlFor="api-key-expiry-new" className="text-sm font-medium">
-              Expiration
-            </label>
-            <Select
-              value={String(expiresInDays)}
-              onValueChange={(v) => {
-                setExpiresInDays(Number(v));
-              }}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeDialog}
+              disabled={submitting}
             >
-              <SelectTrigger id="api-key-expiry-new">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {EXPIRY_OPTIONS.map((opt) => {
-                  return (
-                    <SelectItem key={opt.value} value={String(opt.value)}>
-                      {opt.label}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={closeDialog} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button
-            onClick={() => {
-              detach(submit(pageSignal), Reason.DomCallback);
-            }}
-            disabled={submitting || name.trim().length === 0}
-          >
-            {submitting ? (
-              <IconLoader2 size={16} className="animate-spin" />
-            ) : null}
-            Create
-          </Button>
-        </DialogFooter>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!canSubmit}>
+              {submitting ? (
+                <IconLoader2 size={16} className="animate-spin" />
+              ) : null}
+              Create
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

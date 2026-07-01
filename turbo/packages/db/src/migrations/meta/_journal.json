@@ -3634,6 +3634,13 @@
       "when": 1782888041773,
       "tag": "0518_google_calendar_event_cancelled_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 519,
+      "version": "7",
+      "when": 1782891261434,
+      "tag": "0519_smart_starjammers",
+      "breakpoints": true
     }
   ]
 }
