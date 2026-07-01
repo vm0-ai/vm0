@@ -1296,6 +1296,107 @@ describe("connectors page", () => {
     });
   });
 
+  it("submits only current public manual grant fields", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "axiom",
+        label: "Public Axiom",
+        authMethods: [
+          {
+            id: "api-token",
+            label: "Public API Token",
+            description: null,
+            grantKind: "manual",
+            manualFields: [
+              {
+                id: "apiToken",
+                label: "Public API token",
+                required: true,
+                placeholder: "public-xaat",
+                inputType: "password",
+              },
+            ],
+            startOptions: [],
+          },
+          {
+            id: "api",
+            label: "Public API Key",
+            description: null,
+            grantKind: "manual",
+            manualFields: [
+              {
+                id: "apiKey",
+                label: "Public API key",
+                required: true,
+                placeholder: "public-api-key",
+                inputType: "password",
+              },
+            ],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+    let submittedAuthMethod: string | null = null;
+    let submittedValues: Record<string, string> | null = null;
+    context.mocks.api(
+      zeroConnectorManualGrantContract.connect,
+      ({ body, respond }) => {
+        submittedAuthMethod = body.authMethod;
+        submittedValues = body.values;
+        return respond(200, {
+          id: crypto.randomUUID(),
+          type: "axiom",
+          authMethod: body.authMethod,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect Public Axiom")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Connect Public Axiom"));
+
+    const axiomDialog = await screen.findByRole("dialog", {
+      name: "Public Axiom",
+    });
+    await fill(
+      within(axiomDialog).getByPlaceholderText("public-xaat"),
+      "xaat-test",
+    );
+    await fill(
+      within(axiomDialog).getByPlaceholderText("public-api-key"),
+      "api-key-test",
+    );
+    const secondSaveButton = queryAllByRoleFast("button", axiomDialog).filter(
+      (button) => {
+        return button.textContent?.trim() === "Save";
+      },
+    )[1];
+    if (!secondSaveButton) {
+      throw new Error("Second manual grant save button not found");
+    }
+    click(secondSaveButton);
+
+    await waitFor(() => {
+      expect(submittedAuthMethod).toBe("api");
+      expect(submittedValues).toStrictEqual({ apiKey: "api-key-test" });
+    });
+  });
+
   it("connects AWS with an authorization code and authorizes an agent", async () => {
     mockConnectors([]);
     context.mocks.data.team([

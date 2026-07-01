@@ -30,6 +30,7 @@ import {
   setManualGrantFormSubmitting$,
   getOnlyManualConnectorStatusAuthMethod,
   hasConnectorStatusProviderDrivenConnectMethod,
+  manualGrantInputValuesForMethod,
   type ConnectorTypeWithStatus,
   type ConnectorStatusAuthMethodDetail,
 } from "../../signals/zero-page/settings/connectors.ts";
@@ -155,7 +156,10 @@ function ManualGrantForm({
             {
               type,
               authMethod: manualGrantMethod.id,
-              inputValues: fieldValues,
+              inputValues: manualGrantInputValuesForMethod(
+                manualGrantMethod,
+                fieldValues,
+              ),
               options: { connectorLabel },
             },
             pageSignal,

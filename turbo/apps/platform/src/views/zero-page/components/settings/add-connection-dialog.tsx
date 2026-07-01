@@ -51,6 +51,7 @@ import {
   connectorExpiryCountdownText,
   getConnectorStatusAuthMethod,
   hasConnectorStatusAuthCodeGrant,
+  manualGrantInputValuesForMethod,
   type ConnectorStatusAuthMethodDetail,
   type ConnectorExternalCodeState,
   type ConnectorOAuthDeviceAuthState,
@@ -258,7 +259,7 @@ function ManualGrantForm({
       await submit(
         type,
         authMethod,
-        fieldValues,
+        manualGrantInputValuesForMethod(method, fieldValues),
         {
           showPermissionDialog: showPermissionDialogOnConnect,
           connectorLabel,
@@ -364,6 +365,7 @@ function OAuthAuthCodeConnectButton({
             onSuccess,
             {
               showPermissionDialog: showPermissionDialogOnConnect,
+              connectorLabel: item.label,
             },
             signal,
           ),

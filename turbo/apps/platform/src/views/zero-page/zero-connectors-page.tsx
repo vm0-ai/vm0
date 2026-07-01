@@ -1141,19 +1141,28 @@ export function ZeroConnectorsPage() {
               return connector.type === type;
             });
             const connection = connector?.connector ?? null;
-            const authMethod =
-              connector && connection
-                ? getAvailableStatusAuthCodeAuthMethod(
-                    connector,
-                    connection.authMethod,
-                  )
-                : null;
+            if (!connector || !connection) {
+              setSelected(type);
+              return;
+            }
+            const authMethod = getAvailableStatusAuthCodeAuthMethod(
+              connector,
+              connection.authMethod,
+            );
             if (!authMethod) {
               setSelected(type);
               return;
             }
             detach(
-              connect(type, authMethod, { showPermissionDialog: true }, signal),
+              connect(
+                type,
+                authMethod,
+                {
+                  showPermissionDialog: true,
+                  connectorLabel: connector.label,
+                },
+                signal,
+              ),
               Reason.DomCallback,
             );
           }}

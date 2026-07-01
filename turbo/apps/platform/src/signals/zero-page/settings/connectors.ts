@@ -120,6 +120,18 @@ export type ConnectorStatusAuthMethodDetail = Omit<
   readonly id: ConnectorAuthMethodId;
 };
 
+export function manualGrantInputValuesForMethod(
+  method: Pick<ConnectorStatusAuthMethodDetail, "manualFields">,
+  values: Readonly<Record<string, string>>,
+): Record<string, string> {
+  return Object.fromEntries(
+    method.manualFields.flatMap((field) => {
+      const value = values[field.id];
+      return value === undefined ? [] : ([[field.id, value]] as const);
+    }),
+  );
+}
+
 type ConnectorStatusGrantKind =
   PublicConnectorCatalogAuthMethodDetail["grantKind"];
 
