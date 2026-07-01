@@ -1455,6 +1455,7 @@ export const connectConnectorOAuthDeviceAuthAndSettle$ = command(
       signal,
     );
     if (connected) {
+      signal.throwIfAborted();
       await args.onSuccess();
     }
   },
@@ -1784,6 +1785,7 @@ export const completeConnectorExternalCodeAndSettle$ = command(
       signal,
     );
     if (connected) {
+      signal.throwIfAborted();
       await args.onSuccess();
     }
   },
@@ -2123,6 +2125,7 @@ export const connectConnectorOAuthAuthCodeAndSettle$ = command(
       signal,
     );
     if (connected) {
+      signal.throwIfAborted();
       await args.onSuccess();
     }
   },
