@@ -227,12 +227,33 @@ export const prepareCheckpointHistoryUpload$ = command(
     }
 
     if (blob.size === 0) {
-      await db
+      const [updatedBlob] = await db
         .update(blobs)
         .set({ size: input.body.size })
-        .where(eq(blobs.hash, input.body.hash));
+        .where(and(eq(blobs.hash, input.body.hash), eq(blobs.size, 0)))
+        .returning({
+          size: blobs.size,
+          encoding: blobs.encoding,
+        });
       signal.throwIfAborted();
-      blob = { ...blob, size: input.body.size };
+
+      blob =
+        updatedBlob ??
+        (
+          await db
+            .select({
+              size: blobs.size,
+              encoding: blobs.encoding,
+            })
+            .from(blobs)
+            .where(eq(blobs.hash, input.body.hash))
+            .limit(1)
+        )[0];
+      signal.throwIfAborted();
+
+      if (!blob) {
+        throw new Error("failed to load session history blob metadata");
+      }
     }
 
     if (blob.size !== input.body.size) {
