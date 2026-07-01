@@ -82,13 +82,21 @@ function menuItemByText(text: string): HTMLElement {
   return menuItem;
 }
 
-function connectorCardByLabel(label: string): HTMLElement {
+function queryConnectorCardByLabel(label: string): HTMLElement | null {
   const labelElement = screen
-    .getAllByTestId("connector-card-label")
+    .queryAllByTestId("connector-card-label")
     .find((element) => {
       return element.textContent === label;
     });
   const card = labelElement?.closest(".zero-card");
+  if (labelElement && !(card instanceof HTMLElement)) {
+    throw new Error(`${label} connector card label has no card container`);
+  }
+  return card instanceof HTMLElement ? card : null;
+}
+
+function connectorCardByLabel(label: string): HTMLElement {
+  const card = queryConnectorCardByLabel(label);
   if (!(card instanceof HTMLElement)) {
     throw new Error(`${label} connector card not found`);
   }
@@ -289,15 +297,15 @@ async function expectConnectorCardsVisible(expected: {
 }): Promise<void> {
   await waitFor(() => {
     if (expected.github) {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(queryConnectorCardByLabel("GitHub")).toBeInTheDocument();
     } else {
-      expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
+      expect(queryConnectorCardByLabel("GitHub")).not.toBeInTheDocument();
     }
 
     if (expected.asana) {
-      expect(screen.getByText("Asana")).toBeInTheDocument();
+      expect(queryConnectorCardByLabel("Asana")).toBeInTheDocument();
     } else {
-      expect(screen.queryByText("Asana")).not.toBeInTheDocument();
+      expect(queryConnectorCardByLabel("Asana")).not.toBeInTheDocument();
     }
   });
 }
