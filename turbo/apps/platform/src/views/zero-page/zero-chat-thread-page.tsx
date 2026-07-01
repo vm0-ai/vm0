@@ -23,6 +23,10 @@ import {
   setRunUsagePopoverOpenRunId$,
 } from "../../signals/chat-page/run-usage-popover.ts";
 import {
+  replaceWorkflowPromptDraftTarget$,
+  setReplaceWorkflowPromptDraftTarget$,
+} from "../../signals/chat-page/workflow-prompt-action.ts";
+import {
   IconAlertCircle,
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
@@ -256,6 +260,7 @@ import {
   WorkflowTriggerCard,
   type WorkflowTriggerCardRow,
 } from "../workflows-page/workflow-trigger-card.tsx";
+import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "./workflow-chat-prompts.ts";
 
 import {
   renameChatThread$,
@@ -4914,7 +4919,6 @@ function ChatThreadComposer({
   const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const hasMessages = groups.length > 0;
-  const messagesResolved = groupsLoadable.state === "hasData";
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   // useLastResolved (not useLastLoadable) so refetches keep the previously
   // resolved value instead of flipping `sending` and the placeholder. Before
@@ -5025,7 +5029,7 @@ function ChatThreadComposer({
             modelPicker={modelPicker}
             templatePicker={templatePicker}
             computerUse={computerUse}
-            modelPickerLoading={modelPickerLoading || !messagesResolved}
+            modelPickerLoading={modelPickerLoading}
             submitBlocker={submitBlockerProps}
             queuedItems={queuedItems}
             onRemoveQueuedItem={onRemoveQueuedItem}
@@ -7537,12 +7541,16 @@ function PagedGroupPrimaryActions({
   usage,
   copied,
   onCopy,
+  workflowAutomationEnabled,
+  onCreateWorkflow,
 }: {
   firstRunId: string | undefined;
   hasContent: boolean;
   usage: ChatMessageUsagePayload | undefined;
   copied: boolean;
   onCopy: () => void;
+  workflowAutomationEnabled: boolean;
+  onCreateWorkflow: () => void;
 }) {
   return (
     <div className="flex items-center gap-1" data-testid="chat-message-actions">
@@ -7588,8 +7596,59 @@ function PagedGroupPrimaryActions({
           </Tooltip>
         </TooltipProvider>
       )}
+      {workflowAutomationEnabled && (
+        <button
+          type="button"
+          onClick={onCreateWorkflow}
+          className="inline-flex h-[26px] items-center overflow-hidden rounded-md p-1 text-muted-foreground/60 transition-colors duration-150 hover:bg-accent hover:text-foreground [&:focus-visible>span]:ml-1.5 [&:focus-visible>span]:max-w-24 [&:focus-visible>span]:opacity-100 [&:hover>span]:ml-1.5 [&:hover>span]:max-w-24 [&:hover>span]:opacity-100"
+          aria-label="Create workflow"
+        >
+          <IconRoute size={18} stroke={1.5} className="shrink-0" />
+          <span className="ml-0 max-w-0 overflow-hidden whitespace-nowrap text-xs font-medium opacity-0 transition-all duration-150">
+            Create workflow
+          </span>
+        </button>
+      )}
       {usage && firstRunId && <RunUsageChip runId={firstRunId} usage={usage} />}
     </div>
+  );
+}
+
+function ReplaceComposerDraftDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="zero-app sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Replace composer draft?</DialogTitle>
+          <DialogDescription>
+            Continuing will clear your current composer draft and start a
+            workflow prompt.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              onOpenChange(false);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button type="button" onClick={onConfirm}>
+            Continue
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -7606,12 +7665,26 @@ function PagedGroupActions({
   const copiedId = useGet(thread.copiedMessageId$);
   const copied = copiedId === group.beginMessageId;
   const copyMessage = useSet(thread.copyMessage$);
+  const composerInput = useGet(thread.draft.input$);
+  const composerAttachments = useGet(thread.draft.attachments$);
+  const setComposerInput = useSet(thread.draft.setInput$);
+  const clearComposerDraft = useSet(thread.draft.clear$);
+  const queueDraftSync = useSet(thread.queueDraftSync$);
+  const focusComposer = useSet(thread.focusInput$);
+  const features = useGet(featureSwitch$);
+  const replaceDraftTarget = useGet(replaceWorkflowPromptDraftTarget$);
+  const setReplaceDraftTarget = useSet(setReplaceWorkflowPromptDraftTarget$);
 
   const firstRunId = group.messages.find((m) => {
     return m.runId;
   })?.runId;
   const usage = group.usage;
   const hasContent = content.length > 0;
+  const workflowAutomationEnabled =
+    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
+  const hasComposerDraft =
+    composerInput.trim().length > 0 || composerAttachments.length > 0;
+  const replaceDraftDialogOpen = replaceDraftTarget === group.beginMessageId;
 
   if (group.role === "user") {
     return null;
@@ -7631,18 +7704,51 @@ function PagedGroupActions({
     );
   };
 
+  const applyWorkflowPrompt = () => {
+    clearComposerDraft();
+    setComposerInput(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
+    detach(queueDraftSync(pageSignal), Reason.DomCallback);
+    focusComposer();
+  };
+
+  const handleCreateWorkflow = () => {
+    if (hasComposerDraft) {
+      setReplaceDraftTarget(group.beginMessageId);
+      return;
+    }
+    applyWorkflowPrompt();
+  };
+
+  const handleConfirmReplaceDraft = () => {
+    setReplaceDraftTarget(null);
+    applyWorkflowPrompt();
+  };
+
+  const handleReplaceDialogOpenChange = (open: boolean) => {
+    setReplaceDraftTarget(open ? group.beginMessageId : null);
+  };
+
   return (
-    <div className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
-      <div className="hidden @[900px]:block" />
-      <div className="flex items-center justify-between pt-2 pb-1 gap-2 -ml-1">
-        <PagedGroupPrimaryActions
-          firstRunId={firstRunId}
-          hasContent={hasContent}
-          usage={usage}
-          copied={copied}
-          onCopy={handleCopy}
-        />
+    <>
+      <div className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
+        <div className="hidden @[900px]:block" />
+        <div className="flex items-center justify-between pt-2 pb-1 gap-2 -ml-1">
+          <PagedGroupPrimaryActions
+            firstRunId={firstRunId}
+            hasContent={hasContent}
+            usage={usage}
+            copied={copied}
+            onCopy={handleCopy}
+            workflowAutomationEnabled={workflowAutomationEnabled}
+            onCreateWorkflow={handleCreateWorkflow}
+          />
+        </div>
       </div>
-    </div>
+      <ReplaceComposerDraftDialog
+        open={replaceDraftDialogOpen}
+        onOpenChange={handleReplaceDialogOpenChange}
+        onConfirm={handleConfirmReplaceDraft}
+      />
+    </>
   );
 }

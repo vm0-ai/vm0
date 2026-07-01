@@ -1,5 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
+import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import type { OnboardingStatusResponse } from "@vm0/api-contracts/contracts/onboarding";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { SEED_INSTRUCTIONS } from "@vm0/core/zero-seed-instructions";
@@ -672,7 +673,7 @@ export const setupOnboarding$ = command(
       {
         orgId: args.orgId,
         type: "vm0",
-        selectedModel: "claude-sonnet-4-6",
+        selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
       },
       signal,
     );

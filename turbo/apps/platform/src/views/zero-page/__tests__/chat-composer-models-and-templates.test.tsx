@@ -1,4 +1,10 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -37,9 +43,11 @@ import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { reloadUserModelPreference$ } from "../../../signals/external/user-model-preference.ts";
 import { templateCardThemeIdBySlug$ } from "../../../signals/zero-page/zero-chat-composer.ts";
 import {
   click,
@@ -1069,6 +1077,64 @@ describe("chat composer models", () => {
       expect(document.title).toContain("Scout");
     });
     await expectComposerModel("Claude Opus 4.7");
+  });
+
+  it("keeps the agent chat model picker open while user model preference refreshes", async () => {
+    const user = userEvent.setup({ delay: null });
+    const pendingPreferenceReload = context.mocks.deferred<void>();
+    let holdPreferenceReload = false;
+    let preferenceReloadStarted = false;
+
+    mockOrgModelRoutes("kimi-k2.7-code");
+    context.mocks.api(
+      zeroUserModelPreferenceContract.get,
+      async ({ respond, withSignal }) => {
+        if (holdPreferenceReload) {
+          preferenceReloadStarted = true;
+          await withSignal(pendingPreferenceReload.promise);
+        }
+        return respond(200, { selectedModel: null, updatedAt: null });
+      },
+    );
+    mockAgent();
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      expect(document.title).toContain("Scout");
+    });
+    await user.click(
+      await screen.findByRole("combobox", { name: "Kimi K2.7 Code" }),
+    );
+    await expect(
+      screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    ).resolves.toBeInTheDocument();
+
+    holdPreferenceReload = true;
+    act(() => {
+      context.store.set(reloadUserModelPreference$);
+    });
+    await waitFor(() => {
+      expect(preferenceReloadStarted).toBeTruthy();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    try {
+      expect(
+        screen.getByRole("combobox", {
+          hidden: true,
+          name: "Kimi K2.7 Code",
+        }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: /Claude Sonnet 4\.6/ }),
+      ).toBeInTheDocument();
+    } finally {
+      pendingPreferenceReload.resolve();
+    }
   });
 
   it("shows thread override over user and workspace defaults, then remains editable", async () => {

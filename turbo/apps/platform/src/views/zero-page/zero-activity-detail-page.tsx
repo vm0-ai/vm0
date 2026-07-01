@@ -895,6 +895,7 @@ function downloadJson(
   detail: LogDetail,
   extra?: { context?: unknown; networkLogs?: unknown },
 ) {
+  const runtimeFramework = runtimeFrameworkFromContext(extra?.context);
   const data: Record<string, unknown> = {
     meta: {
       id: detail.id,
@@ -904,7 +905,7 @@ function downloadJson(
       triggerAgentName: detail.triggerAgentName,
       modelProvider: detail.modelProvider,
       selectedModel: detail.selectedModel,
-      framework: detail.framework,
+      framework: runtimeFramework ?? detail.framework,
       prompt: detail.prompt,
       appendSystemPrompt: detail.appendSystemPrompt,
       error: detail.error,
@@ -931,6 +932,18 @@ function downloadJson(
   a.download = `${logId}-logs.json`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function runtimeFrameworkFromContext(context: unknown): string | null {
+  if (!context || typeof context !== "object" || Array.isArray(context)) {
+    return null;
+  }
+
+  const cliAgentType = (context as { readonly cliAgentType?: unknown })
+    .cliAgentType;
+  return typeof cliAgentType === "string" && cliAgentType.length > 0
+    ? cliAgentType
+    : null;
 }
 
 function summarizePrompt(prompt: string): string {

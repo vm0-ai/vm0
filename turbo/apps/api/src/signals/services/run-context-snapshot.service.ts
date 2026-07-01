@@ -40,6 +40,7 @@ export type RunContextAxiomSnapshot = Omit<
 > & {
   readonly _time: string;
   readonly userId: string;
+  readonly cliAgentType?: string;
   readonly environmentEntries: readonly RunContextEnvironmentEntry[];
   readonly networkPolicyEntries: readonly RunContextNetworkPolicyEntry[];
   readonly featureFlagEntries: readonly RunContextFeatureFlagEntry[];
@@ -51,6 +52,7 @@ interface NormalizedRunContextSnapshot {
   readonly prompt?: string;
   readonly appendSystemPrompt?: string | null;
   readonly sessionId: string | null;
+  readonly cliAgentType: string | null;
   readonly secretNames: readonly string[];
   readonly environment: Record<string, string>;
   readonly firewalls: RunContextResponse["firewalls"];
@@ -349,6 +351,7 @@ export function normalizeRunContextSnapshot(
         ? snapshot.appendSystemPrompt
         : undefined,
     sessionId: stringValue(snapshot.sessionId) ?? null,
+    cliAgentType: stringValue(snapshot.cliAgentType) ?? null,
     secretNames: stringArrayFromUnknown(snapshot.secretNames),
     environment: environmentFromEntries(snapshot.environmentEntries),
     firewalls: firewallsFromUnknown(snapshot.firewalls),

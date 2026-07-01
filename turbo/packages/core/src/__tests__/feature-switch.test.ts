@@ -115,6 +115,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowAutomation]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.ConnectorAccessManagement]).toBe(
       true,
     );
@@ -131,6 +134,9 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowAutomation]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.ConnectorAccessManagement]).toBe(
       false,
     );

@@ -33,6 +33,7 @@ import {
   timeCursorBoundary,
 } from "./log-pagination";
 import { sanitizeAxiomNetworkEvents } from "./network-log-sanitizer";
+import { runContextCliAgentType } from "./run-context-framework.service";
 
 interface AgentComposeContent {
   readonly agent?: { readonly framework?: string };
@@ -245,7 +246,9 @@ export function agentRunEvents(
       hasMore,
       nextSequence,
       run: buildRunState(runWithCompose),
-      framework: extractFramework(runWithCompose.composeContent),
+      framework:
+        (await get(runContextCliAgentType(params.runId))) ??
+        extractFramework(runWithCompose.composeContent),
     };
   });
 }
@@ -333,7 +336,9 @@ ${paginationFilter}
       events: resultEvents.map(toRunEvent),
       hasMore,
       ...(nextCursor ? { nextCursor } : {}),
-      framework: extractFramework(runWithCompose.composeContent),
+      framework:
+        (await get(runContextCliAgentType(params.runId))) ??
+        extractFramework(runWithCompose.composeContent),
     };
   });
 }

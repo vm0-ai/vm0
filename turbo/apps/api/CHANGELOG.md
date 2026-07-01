@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.200.0](https://github.com/vm0-ai/vm0/compare/api-v1.199.2...api-v1.200.0) (2026-07-01)
+
+
+### Features
+
+* expose connector catalog status view models ([#19580](https://github.com/vm0-ai/vm0/issues/19580)) ([697e259](https://github.com/vm0-ai/vm0/commit/697e25903a89443aa024dc38dfaca850133d99db))
+* show subscription account details ([#19500](https://github.com/vm0-ai/vm0/issues/19500)) ([b33f4ca](https://github.com/vm0-ai/vm0/commit/b33f4ca766b19a91ed782766ca29f8f9b50640aa))
+
+
+### Bug Fixes
+
+* publish workflow trigger automation refreshes ([#19629](https://github.com/vm0-ai/vm0/issues/19629)) ([c719a69](https://github.com/vm0-ai/vm0/commit/c719a6909e762072901600b00b487c8c47618fa9))
+* remove workflow follow-up suggestions ([#19646](https://github.com/vm0-ai/vm0/issues/19646)) ([c21341b](https://github.com/vm0-ai/vm0/commit/c21341bb4e5d09d0879727a8efe5424081dfdb3f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.136.0
+    * @vm0/connectors bumped to 1.120.1
+    * @vm0/core bumped to 8.381.3
+    * @vm0/db bumped to 1.81.0
+
 ## [1.199.2](https://github.com/vm0-ai/vm0/compare/api-v1.199.1...api-v1.199.2) (2026-07-01)
 
 

@@ -6,6 +6,7 @@ import {
   getModels,
   getDefaultModel,
   getModelProviderEnvBindings,
+  getModelProviderFirewall,
   getFrameworkForType,
   getVm0VisibleModels,
   normalizeVm0ModelId,
@@ -36,8 +37,10 @@ import {
   MODEL_PROVIDER_TYPES,
   modelProviderTypeSchema,
   modelProviderFrameworkSchema,
+  shouldInlineModelProviderFirewall,
   type ModelProviderType,
 } from "../model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { findMatchingPermissions } from "@vm0/connectors/firewall-rule-matcher";
 
 describe("model-first canonical catalog", () => {
@@ -240,6 +243,11 @@ describe("model-first canonical catalog", () => {
       "vm0",
       "minimax-api-key",
     ]);
+    expect(
+      getProvidersForModel("MiniMax-M3", {
+        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+      }),
+    ).toEqual(["vm0", "minimax-api-key"]);
     expect(getProvidersForModel("custom/model")).toEqual([]);
   });
 
@@ -334,13 +342,11 @@ describe("model-first canonical catalog", () => {
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).toEqual([
       "claude-opus-4-8",
       "claude-sonnet-5",
-      "claude-sonnet-4-6",
-      "deepseek-v4-pro",
-      "kimi-k2.7-code",
-      "glm-5.2",
+      "MiniMax-M3",
       "gpt-5.5",
     ]);
-    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("claude-sonnet-4-6");
+    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("MiniMax-M3");
+    expect(getDefaultModel("vm0")).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
     expect(getDefaultOrgModelPolicySeed()).toEqual(
       DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {
         return {
@@ -414,6 +420,14 @@ describe("getProviderBaseUrl", () => {
       expect(getProviderBaseUrl(type)).toBe(expectedUrl);
     },
   );
+
+  it("returns MiniMax OpenAI base URL when Codex framework switch is enabled", () => {
+    expect(
+      getProviderBaseUrl("minimax-api-key", {
+        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+      }),
+    ).toBe("https://api.minimax.io/v1");
+  });
 });
 
 describe("areProvidersCompatible", () => {
@@ -664,6 +678,63 @@ describe("minimax-api-key provider", () => {
       "MiniMax-M2.1",
     ]);
     expect(getDefaultModel("minimax-api-key")).toBe("MiniMax-M3");
+  });
+
+  it("keeps the original provider type and switches framework with the feature flag", () => {
+    expect(modelProviderTypeSchema.safeParse("minimax-api-key").success).toBe(
+      true,
+    );
+    expect(modelProviderTypeSchema.safeParse("minimax-codex").success).toBe(
+      false,
+    );
+    expect(getFrameworkForType("minimax-api-key")).toBe("claude-code");
+    expect(
+      getFrameworkForType("minimax-api-key", {
+        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+      }),
+    ).toBe("codex");
+    expect(getSecretNameForType("minimax-api-key")).toBe("MINIMAX_API_KEY");
+  });
+
+  it("maps OpenAI-style Codex env bindings when the feature flag is enabled", () => {
+    const envBindings = getModelProviderEnvBindings("minimax-api-key", {
+      [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+    });
+    expect(envBindings).toBeDefined();
+    expect(envBindings!["OPENAI_API_KEY"]).toBe("$secret");
+    expect(envBindings!["OPENAI_BASE_URL"]).toBe("https://api.minimax.io/v1");
+    expect(envBindings!["OPENAI_MODEL"]).toBe("$model");
+  });
+
+  it("does not add a second selectable provider when the feature switch is enabled", () => {
+    expect(getSelectableProviderTypes()).toContain("minimax-api-key");
+    expect(
+      getSelectableProviderTypes({
+        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+      }),
+    ).toContain("minimax-api-key");
+    expect(
+      getSelectableProviderTypes({
+        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+      }),
+    ).not.toContain("minimax-codex" as ModelProviderType);
+  });
+
+  it("uses OpenAI-style firewall runtime config when the feature flag is enabled", () => {
+    const config = getModelProviderFirewall("minimax-api-key", {
+      [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+    });
+    expect(config).toBeDefined();
+    expect(config!.apis).toHaveLength(1);
+    expect(config!.apis[0]!.base).toBe("https://api.minimax.io/v1");
+    expect(config!.apis[0]!.auth.headers).toEqual({
+      Authorization: "Bearer ${{ secrets.MINIMAX_API_KEY }}",
+    });
+    expect(
+      shouldInlineModelProviderFirewall("minimax-api-key", {
+        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+      }),
+    ).toBe(true);
   });
 });
 

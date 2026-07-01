@@ -2615,6 +2615,7 @@ const BALLOON_SETTLE_TOLERANCE_CAP_MIB: u32 = 256;
 /// targets are not fully swallowed by the 4 GiB cap.
 const BALLOON_SETTLE_TOLERANCE_TARGET_DIVISOR: u32 = 8;
 const BALLOON_SEVERE_DEFICIT_MIN_MIB: u32 = 256;
+const BALLOON_PRESSURE_LIMITED_REASON: &str = "pressure_limited_partial_reclaim";
 const BYTES_PER_MIB: i64 = 1024 * 1024;
 
 fn balloon_settle_tolerance_mib(target_mib: u32) -> u32 {
@@ -2729,6 +2730,18 @@ impl BalloonSettleSummary {
         "actual_stalled"
     }
 
+    fn is_pressure_limited_partial_reclaim(&self, deficit_mib: u32, tolerance_mib: u32) -> bool {
+        deficit_mib > tolerance_mib
+            && deficit_mib < self.severe_deficit_threshold_mib()
+            && self.target_observed
+            && self.is_guest_memory_pressure_limited()
+    }
+
+    fn is_guest_memory_pressure_limited(&self) -> bool {
+        self.reported_available_mib()
+            .is_some_and(|available_mib| available_mib < balloon::PRESSURE_AVAILABLE_MIB)
+    }
+
     fn severe_deficit_threshold_mib(&self) -> u32 {
         BALLOON_SEVERE_DEFICIT_MIN_MIB.max(self.requested_target_mib / 5)
     }
@@ -2769,8 +2782,9 @@ fn log_balloon_settle_timeout(
 /// The guest needs running vCPUs to inflate, so this must be called
 /// **before** pausing. Returns when `actual_mib >= target_mib`, when
 /// the remaining deficit is within [`balloon_settle_tolerance_mib`],
-/// or after [`BALLOON_SETTLE_TIMEOUT`] (partial inflation is better
-/// than none). Errors from stats fetching are non-fatal — we log and
+/// when guest pressure indicates further reclaim is unsafe, or after
+/// [`BALLOON_SETTLE_TIMEOUT`] (partial inflation is better than none).
+/// Errors from stats fetching are non-fatal — we log and
 /// proceed to pause.
 async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str) {
     let deadline = tokio::time::Instant::now() + BALLOON_SETTLE_TIMEOUT;
@@ -2829,6 +2843,31 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
                         reported_available_mib = ?summary.reported_available_mib(),
                         reported_total_mib = ?summary.reported_total_mib(),
                         "balloon inflated within tolerance, proceeding to pause"
+                    );
+                    return;
+                }
+
+                if summary.is_pressure_limited_partial_reclaim(deficit_mib, tolerance_mib) {
+                    info!(
+                        id = %log_id,
+                        actual = stats.actual_mib,
+                        target = target_mib,
+                        deficit_mib,
+                        tolerance_mib,
+                        elapsed_ms = summary.elapsed_ms(),
+                        sample_count = summary.sample_count,
+                        requested_target_mib = summary.requested_target_mib,
+                        first_observed_target_mib = ?summary.first_observed_target_mib,
+                        observed_target_mib = ?summary.last_observed_target_mib,
+                        target_observed = summary.target_observed,
+                        first_actual_mib = ?summary.first_actual_mib,
+                        max_actual_mib = ?summary.max_actual_mib,
+                        actual_delta_mib = ?summary.actual_delta_mib(),
+                        reported_free_mib = ?summary.reported_free_mib(),
+                        reported_available_mib = ?summary.reported_available_mib(),
+                        reported_total_mib = ?summary.reported_total_mib(),
+                        reason = BALLOON_PRESSURE_LIMITED_REASON,
+                        "balloon pressure-limited partial reclaim, proceeding to pause"
                     );
                     return;
                 }
@@ -2927,9 +2966,10 @@ async fn park_inner(
                 message: format!("balloon inflate: {e}"),
             })?;
 
-        // Wait for the guest to fully inflate the balloon before pausing
-        // vCPUs. The guest balloon driver needs running vCPUs to process
-        // the inflate — pausing immediately would negate the memory savings.
+        // Wait for the guest to inflate the balloon close enough before
+        // pausing vCPUs. The guest balloon driver needs running vCPUs to
+        // process the inflate — pausing immediately would negate the memory
+        // savings.
         wait_for_balloon(&client, target, log_id).await;
     }
 
@@ -2956,7 +2996,7 @@ async fn park_inner(
 
     *is_parked = true;
     if target > 0 {
-        info!(id = %log_id, target_mib = target, "sandbox parked (balloon inflated, vCPUs paused)");
+        info!(id = %log_id, target_mib = target, "sandbox parked (balloon settled, vCPUs paused)");
     } else {
         info!(id = %log_id, "sandbox parked (vCPUs paused, balloon skipped)");
     }
@@ -6675,6 +6715,42 @@ mod tests {
         assert_event_field(event, "reason", "actual_stalled");
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn wait_for_balloon_accepts_pressure_limited_partial_reclaim() {
+        let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+        let stats =
+            MockBalloonStats::new(target_mib, 1250).with_memory(mib(64), mib(128), mib(2048));
+        let (sock, _reqs, _dir) = spawn_mock_fc_api_with_stats(
+            std::collections::VecDeque::new(),
+            std::collections::VecDeque::from([MockBalloonStatsReply::Ok(stats)]),
+        )
+        .await;
+        let client = ApiClient::new(&sock);
+
+        let (_, events) =
+            capture_async_log_events(wait_for_balloon(&client, target_mib, "pressure-limited"))
+                .await;
+
+        assert!(!has_captured_event(
+            &events,
+            "balloon inflate incomplete after 5s, pausing anyway"
+        ));
+        let event = captured_event(
+            &events,
+            "balloon pressure-limited partial reclaim, proceeding to pause",
+        );
+        assert_eq!(event.level, Level::INFO);
+        assert_event_field(event, "actual", "1250");
+        assert_event_field(event, "target", "1536");
+        assert_event_field(event, "deficit_mib", "286");
+        assert_event_field(event, "tolerance_mib", "192");
+        assert_event_field(event, "sample_count", "1");
+        assert_event_field(event, "target_observed", "true");
+        assert_event_field(event, "reported_free_mib", "Some(64)");
+        assert_event_field(event, "reported_available_mib", "Some(128)");
+        assert_event_field(event, "reason", "pressure_limited_partial_reclaim");
+    }
+
     #[test]
     fn balloon_settle_tolerance_is_capped_and_scales_for_small_targets() {
         assert_eq!(
@@ -6706,6 +6782,35 @@ mod tests {
         assert_eq!(summary.first_actual_mib, Some(1200));
         assert_eq!(summary.max_actual_mib, Some(1300));
         assert_eq!(summary.actual_delta_mib(), Some(100));
+    }
+
+    #[test]
+    fn pressure_limited_reclaim_ignores_free_memory_when_available_memory_is_missing() {
+        let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+        let tolerance_mib = balloon_settle_tolerance_mib(target_mib);
+        let mut available_summary = BalloonSettleSummary::new(target_mib);
+        let mut available_stats = balloon_statistics(target_mib, 1250);
+        available_stats.free_memory = Some(mib(2048));
+        available_stats.available_memory = Some(mib(128));
+        available_stats.total_memory = Some(mib(2048));
+        let available_deficit_mib = available_summary.observe(&available_stats);
+
+        assert!(
+            available_summary
+                .is_pressure_limited_partial_reclaim(available_deficit_mib, tolerance_mib)
+        );
+
+        let mut missing_available_summary = BalloonSettleSummary::new(target_mib);
+        let mut missing_available_stats = balloon_statistics(target_mib, 1250);
+        missing_available_stats.free_memory = Some(mib(32));
+        missing_available_stats.total_memory = Some(mib(2048));
+        let missing_available_deficit_mib =
+            missing_available_summary.observe(&missing_available_stats);
+
+        assert!(
+            !missing_available_summary
+                .is_pressure_limited_partial_reclaim(missing_available_deficit_mib, tolerance_mib)
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -6763,8 +6868,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
         let target_mib = 2048 - balloon::MIN_GUEST_MIB;
-        let stats =
-            MockBalloonStats::new(target_mib, 900).with_memory(mib(128), mib(256), mib(2048));
+        let stats = MockBalloonStats::new(target_mib, 900).with_memory(mib(32), mib(0), mib(2048));
         let (sock, _reqs, _dir) = spawn_mock_fc_api_with_stats(
             std::collections::VecDeque::new(),
             std::collections::VecDeque::from([MockBalloonStatsReply::Ok(stats)]),
@@ -6782,8 +6886,8 @@ mod tests {
         assert_eq!(event.level, Level::WARN);
         assert_event_field(event, "actual", "Some(900)");
         assert_event_field(event, "deficit_mib", "Some(636)");
-        assert_event_field(event, "reported_free_mib", "Some(128)");
-        assert_event_field(event, "reported_available_mib", "Some(256)");
+        assert_event_field(event, "reported_free_mib", "Some(32)");
+        assert_event_field(event, "reported_available_mib", "Some(0)");
         assert_event_field(event, "reported_total_mib", "Some(2048)");
         assert_event_field(event, "reason", "severe_deficit");
     }
@@ -7713,6 +7817,56 @@ mod tests {
         assert_eq!(
             stats_gets, 1,
             "exact tolerance boundary should settle on the first stats poll"
+        );
+
+        let ps = patches(&reqs);
+        assert_eq!(ps.len(), 2, "expected balloon inflate + vm pause");
+        assert_eq!(ps[0].path, "/balloon");
+        assert_eq!(ps[1].path, "/vm");
+        assert!(ps[1].body.contains("Paused"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn park_pauses_when_balloon_reclaim_is_pressure_limited() {
+        let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+        let stats =
+            MockBalloonStats::new(target_mib, 1250).with_memory(mib(64), mib(128), mib(2048));
+        let (sock, reqs, _dir) = spawn_mock_fc_api_with_stats(
+            std::collections::VecDeque::new(),
+            std::collections::VecDeque::from([MockBalloonStatsReply::Ok(stats)]),
+        )
+        .await;
+
+        let mut controller = Some(test_balloon_controller());
+        let mut is_parked = false;
+
+        let (result, events) = capture_async_log_events(park_inner(
+            &mut is_parked,
+            2048,
+            &mut controller,
+            &sock,
+            "pressure-limited-park",
+        ))
+        .await;
+        result.unwrap();
+
+        assert!(is_parked);
+        assert!(controller.is_none());
+        let event = captured_event(
+            &events,
+            "balloon pressure-limited partial reclaim, proceeding to pause",
+        );
+        assert_eq!(event.level, Level::INFO);
+        assert_event_field(event, "reason", "pressure_limited_partial_reclaim");
+
+        let reqs = reqs.lock().await;
+        let stats_gets = reqs
+            .iter()
+            .filter(|r| r.method == "GET" && r.path == "/balloon/statistics")
+            .count();
+        assert_eq!(
+            stats_gets, 1,
+            "pressure-limited balloon should settle on the first stats poll"
         );
 
         let ps = patches(&reqs);

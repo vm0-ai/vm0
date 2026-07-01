@@ -1431,6 +1431,7 @@ function codexRunContext(runId: string): RunContextResponse {
     appendSystemPrompt: "Use Codex event logs when available",
     runId,
     sessionId: "codex-thread-1",
+    cliAgentType: "codex",
     secretNames: ["OPENAI_API_KEY"],
     vars: { CODEX_RETRY: "enabled" },
     environment: { NODE_ENV: "test" },
@@ -2131,9 +2132,14 @@ describe("activity detail polling", () => {
       throw new Error("Downloaded activity blob was not captured");
     }
     const downloaded = JSON.parse(await download.blob.text()) as {
-      meta?: { id?: unknown; displayName?: unknown; status?: unknown };
+      meta?: {
+        id?: unknown;
+        displayName?: unknown;
+        status?: unknown;
+        framework?: unknown;
+      };
       events?: unknown[];
-      context?: { prompt?: unknown; runId?: unknown };
+      context?: { prompt?: unknown; runId?: unknown; cliAgentType?: unknown };
       networkLogs?: { url?: unknown }[];
     };
 
@@ -2142,11 +2148,13 @@ describe("activity detail polling", () => {
       id: runId,
       displayName: "Checkout Export",
       status: "completed",
+      framework: "codex",
     });
     expect(downloaded.events?.length).toBeGreaterThan(0);
     expect(downloaded.context).toMatchObject({
       prompt: "Repair the billing worker retry path",
       runId,
+      cliAgentType: "codex",
     });
     expect(downloaded.networkLogs?.[0]?.url).toBe(
       "https://payments.example.test/v1/checkout",
