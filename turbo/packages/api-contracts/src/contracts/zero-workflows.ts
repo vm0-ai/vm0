@@ -104,6 +104,7 @@ export const zeroWorkflowEventTypeSchema = z.enum([
   "github-label-applied",
   "google-calendar-event-created",
   "google-calendar-event-updated",
+  "google-calendar-event-cancelled",
   "webhook-received",
 ]);
 export type ZeroWorkflowEventType = z.infer<typeof zeroWorkflowEventTypeSchema>;
@@ -243,9 +244,21 @@ export type GoogleCalendarEventUpdatedEventConfig = z.infer<
   typeof googleCalendarEventUpdatedEventConfigSchema
 >;
 
+export const googleCalendarEventCancelledEventConfigSchema = z
+  .object({
+    provider: z.literal("google-calendar"),
+    event: z.literal("event_cancelled"),
+    calendarId: z.string().trim().min(1).max(1024).default("primary"),
+  })
+  .strict();
+export type GoogleCalendarEventCancelledEventConfig = z.infer<
+  typeof googleCalendarEventCancelledEventConfigSchema
+>;
+
 export type GoogleCalendarWorkflowEventConfig =
   | GoogleCalendarEventCreatedEventConfig
-  | GoogleCalendarEventUpdatedEventConfig;
+  | GoogleCalendarEventUpdatedEventConfig
+  | GoogleCalendarEventCancelledEventConfig;
 
 /**
  * Schedule configuration, discriminated by `type`. Aligned with Automation's
@@ -338,6 +351,15 @@ export const zeroWorkflowGoogleCalendarEventUpdatedTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
+export const zeroWorkflowGoogleCalendarEventCancelledTriggerSummarySchema =
+  zeroWorkflowTriggerSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("google-calendar-event-cancelled"),
+    eventConfig: googleCalendarEventCancelledEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const zeroWorkflowWebhookReceivedTriggerSummarySchema =
   zeroWorkflowTriggerSummaryBaseSchema.extend({
     kind: z.literal("event"),
@@ -359,6 +381,7 @@ export const zeroWorkflowEventTriggerSummarySchema = z.discriminatedUnion(
     zeroWorkflowGithubLabelAppliedTriggerSummarySchema,
     zeroWorkflowGoogleCalendarEventCreatedTriggerSummarySchema,
     zeroWorkflowGoogleCalendarEventUpdatedTriggerSummarySchema,
+    zeroWorkflowGoogleCalendarEventCancelledTriggerSummarySchema,
     zeroWorkflowWebhookReceivedTriggerSummarySchema,
   ],
 );
@@ -438,6 +461,15 @@ export const chatThreadWorkflowGoogleCalendarEventUpdatedTriggerSchema =
     scheduleSummary: z.null(),
   });
 
+export const chatThreadWorkflowGoogleCalendarEventCancelledTriggerSchema =
+  chatThreadWorkflowTriggerBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("google-calendar-event-cancelled"),
+    eventConfig: googleCalendarEventCancelledEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const chatThreadWorkflowTriggerSchema = z.union([
   chatThreadWorkflowScheduleTriggerSchema,
   chatThreadWorkflowGmailNewMessageTriggerSchema,
@@ -445,6 +477,7 @@ export const chatThreadWorkflowTriggerSchema = z.union([
   chatThreadWorkflowGithubLabelAppliedTriggerSchema,
   chatThreadWorkflowGoogleCalendarEventCreatedTriggerSchema,
   chatThreadWorkflowGoogleCalendarEventUpdatedTriggerSchema,
+  chatThreadWorkflowGoogleCalendarEventCancelledTriggerSchema,
 ]);
 export type ChatThreadWorkflowTrigger = z.infer<
   typeof chatThreadWorkflowTriggerSchema
@@ -508,6 +541,20 @@ export const zeroWorkflowGoogleCalendarEventUpdatedTriggerCreateRequestSchema =
     enabled: z.boolean().optional(),
   });
 
+export const zeroWorkflowGoogleCalendarEventCancelledTriggerCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("google-calendar-event-cancelled"),
+    eventConfig: googleCalendarEventCancelledEventConfigSchema
+      .optional()
+      .default({
+        provider: "google-calendar",
+        event: "event_cancelled",
+        calendarId: "primary",
+      }),
+    enabled: z.boolean().optional(),
+  });
+
 export const zeroWorkflowWebhookReceivedTriggerCreateRequestSchema = z.object({
   kind: z.literal("event"),
   eventType: z.literal("webhook-received"),
@@ -522,6 +569,7 @@ export const zeroWorkflowTriggerCreateRequestSchema = z.union([
   zeroWorkflowGithubLabelAppliedTriggerCreateRequestSchema,
   zeroWorkflowGoogleCalendarEventCreatedTriggerCreateRequestSchema,
   zeroWorkflowGoogleCalendarEventUpdatedTriggerCreateRequestSchema,
+  zeroWorkflowGoogleCalendarEventCancelledTriggerCreateRequestSchema,
   zeroWorkflowWebhookReceivedTriggerCreateRequestSchema,
 ]);
 export type ZeroWorkflowTriggerCreateRequest = z.infer<

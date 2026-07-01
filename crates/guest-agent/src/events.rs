@@ -21,6 +21,8 @@ const FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX: &str = "...[truncated]";
 const CODEX_OAUTH_TOKEN_CONNECTOR: &str = "codex-oauth-token";
 const CODEX_MODEL_CAPACITY_MESSAGE: &str =
     "selected model is at capacity. please try a different model.";
+const CODEX_CONTEXT_WINDOW_EXHAUSTED_PREFIX: &str =
+    "codex ran out of room in the model's context window.";
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct CodexFailureDiagnostic {
@@ -133,6 +135,14 @@ pub fn is_codex_model_capacity_message(message: &str) -> bool {
     message
         .to_ascii_lowercase()
         .contains(CODEX_MODEL_CAPACITY_MESSAGE)
+}
+
+pub fn is_codex_context_window_exceeded_message(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    message.contains(CODEX_CONTEXT_WINDOW_EXHAUSTED_PREFIX)
+        && (message.contains("start a new thread") || message.contains("start a new conversation"))
+        && message.contains("clear earlier history")
+        && message.contains("before retrying")
 }
 
 fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnostic> {
@@ -291,6 +301,12 @@ fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
         .is_some_and(is_codex_model_capacity_message)
     {
         return Some(FailureReason::ProviderOverloaded);
+    }
+    if codex_error_message(Some(error))
+        .as_deref()
+        .is_some_and(is_codex_context_window_exceeded_message)
+    {
+        return Some(FailureReason::ContextWindowExceeded);
     }
     None
 }
@@ -886,6 +902,23 @@ mod tests {
     }
 
     #[test]
+    fn codex_error_event_context_window_exceeded_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "error",
+            "message": "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying."
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying.".to_string(),
+                failure_reason: Some(FailureReason::ContextWindowExceeded),
+            })
+        );
+    }
+
+    #[test]
     fn codex_error_event_error_string_invalid_api_key_remains_unclassified() {
         let event = serde_json::json!({
             "type": "error",
@@ -1244,6 +1277,25 @@ mod tests {
     }
 
     #[test]
+    fn codex_turn_failed_context_window_exceeded_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "message": "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying."
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying.".to_string(),
+                failure_reason: Some(FailureReason::ContextWindowExceeded),
+            })
+        );
+    }
+
+    #[test]
     fn codex_error_info_server_overloaded_yields_failure_reason() {
         let event = serde_json::json!({
             "type": "turn.failed",
@@ -1338,6 +1390,26 @@ mod tests {
     fn codex_model_capacity_matcher_ignores_generic_overload_text() {
         assert!(!is_codex_model_capacity_message(
             "API Error: 529 Overloaded. This is a server-side issue, usually temporary - try again in a moment."
+        ));
+    }
+
+    #[test]
+    fn codex_context_window_matcher_accepts_thread_and_conversation_variants() {
+        for message in [
+            "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying.",
+            "Codex ran out of room in the model's context window. Start a new conversation or clear earlier history before retrying.",
+        ] {
+            assert!(
+                is_codex_context_window_exceeded_message(message),
+                "message: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_context_window_matcher_ignores_generic_context_window_text() {
+        assert!(!is_codex_context_window_exceeded_message(
+            "The prompt mentions the model context window but did not fail."
         ));
     }
 

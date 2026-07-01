@@ -2,13 +2,11 @@ import { computed, type Computed } from "ccstate";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+import { userCache } from "@vm0/db/schema/user-cache";
 import { and, asc, eq, or, sql, type SQL } from "drizzle-orm";
-import type { User } from "@clerk/backend";
 
 import { db$, type ReadonlyDb } from "../external/db";
-import { clerk$ } from "../external/clerk";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
-import { settle } from "../utils";
 
 export interface WorkflowMember {
   readonly userId: string;
@@ -31,6 +29,19 @@ export interface WorkflowRow {
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
+
+type WorkflowSummaryRow = Pick<
+  WorkflowRow,
+  | "id"
+  | "agentId"
+  | "name"
+  | "visibility"
+  | "requestToPublish"
+  | "ownerUserId"
+  | "displayName"
+  | "description"
+  | "createdAt"
+>;
 
 /**
  * The host agent's identity fields needed to evaluate workflow management.
@@ -60,7 +71,7 @@ interface WorkflowOwnerProfile {
  * - public: whoever has write-permission on the host agent.
  */
 function canManageWorkflow(
-  workflow: WorkflowRow,
+  workflow: WorkflowSummaryRow,
   agent: WorkflowAgentInfo,
   member: WorkflowMember,
 ): boolean {
@@ -177,7 +188,7 @@ export async function loadVisibleWorkflowById(
 }
 
 export function workflowSummary(args: {
-  readonly workflow: WorkflowRow;
+  readonly workflow: WorkflowSummaryRow;
   readonly agent: WorkflowAgentInfo;
   readonly member: WorkflowMember;
   readonly ownerProfile?: WorkflowOwnerProfile | null;
@@ -201,54 +212,6 @@ export function workflowSummary(args: {
   };
 }
 
-function clerkUserPrimaryEmail(user: User): string | null {
-  const primary = user.emailAddresses.find((email) => {
-    return email.id === user.primaryEmailAddressId;
-  });
-  return primary?.emailAddress ?? null;
-}
-
-function clerkUserDisplayName(user: User): string | null {
-  const name = [user.firstName, user.lastName].filter(Boolean).join(" ");
-  return name || user.username || clerkUserPrimaryEmail(user);
-}
-
-function isClerkUserListResponse(
-  value: unknown,
-): value is { readonly data: readonly User[] } {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const data = (value as { readonly data?: unknown }).data;
-  return Array.isArray(data);
-}
-
-async function fetchWorkflowOwnerProfiles(
-  client: ReturnType<typeof clerk$.read>,
-  userIds: readonly string[],
-): Promise<Map<string, WorkflowOwnerProfile>> {
-  const profiles = new Map<string, WorkflowOwnerProfile>();
-  if (userIds.length === 0) {
-    return profiles;
-  }
-
-  const users = await settle<unknown>(
-    client.users.getUserList({ userId: [...userIds] }),
-  );
-  if (!users.ok || !isClerkUserListResponse(users.value)) {
-    return profiles;
-  }
-
-  for (const user of users.value.data) {
-    profiles.set(user.id, {
-      displayName: clerkUserDisplayName(user),
-      imageUrl: user.imageUrl || null,
-    });
-  }
-
-  return profiles;
-}
-
 function workflowRunPrioritySort(userId: string): SQL[] {
   return [
     sql`(${zeroWorkflows.visibility} = 'private' AND ${zeroWorkflows.ownerUserId} = ${userId}) DESC`,
@@ -264,10 +227,10 @@ function injectableWorkflowCondition(userId: string): SQL {
 }
 
 function shadowWinnerFromRows(
-  rows: readonly { readonly workflow: WorkflowRow }[],
+  rows: readonly { readonly workflow: WorkflowSummaryRow }[],
   member: WorkflowMember,
 ): Map<string, WorkflowShadow> {
-  const groups = new Map<string, WorkflowRow[]>();
+  const groups = new Map<string, WorkflowSummaryRow[]>();
   for (const row of rows) {
     const key = `${row.workflow.agentId}:${row.workflow.name}`;
     groups.set(key, [...(groups.get(key) ?? []), row.workflow]);
@@ -343,10 +306,19 @@ export function zeroWorkflowList(args: {
 }): Computed<Promise<readonly ZeroWorkflowSummary[]>> {
   return computed(async (get): Promise<readonly ZeroWorkflowSummary[]> => {
     const db = get(db$);
-    const clerk = get(clerk$);
     const rows = await db
       .select({
-        workflow: zeroWorkflows,
+        workflow: {
+          id: zeroWorkflows.id,
+          agentId: zeroWorkflows.agentId,
+          name: zeroWorkflows.name,
+          visibility: zeroWorkflows.visibility,
+          requestToPublish: zeroWorkflows.requestToPublish,
+          ownerUserId: zeroWorkflows.ownerUserId,
+          displayName: zeroWorkflows.displayName,
+          description: zeroWorkflows.description,
+          createdAt: zeroWorkflows.createdAt,
+        },
         agent: {
           id: zeroAgents.id,
           owner: zeroAgents.owner,
@@ -354,9 +326,14 @@ export function zeroWorkflowList(args: {
           name: zeroAgents.name,
           displayName: zeroAgents.displayName,
         },
+        ownerProfile: {
+          name: userCache.name,
+          email: userCache.email,
+        },
       })
       .from(zeroWorkflows)
       .innerJoin(zeroAgents, eq(zeroWorkflows.agentId, zeroAgents.id))
+      .leftJoin(userCache, eq(userCache.userId, zeroWorkflows.ownerUserId))
       .where(
         and(
           eq(zeroWorkflows.orgId, args.orgId),
@@ -367,16 +344,6 @@ export function zeroWorkflowList(args: {
       .orderBy(asc(zeroWorkflows.name));
 
     const winners = shadowWinnerFromRows(rows, args.member);
-    const ownerProfiles = await fetchWorkflowOwnerProfiles(
-      clerk,
-      Array.from(
-        new Set(
-          rows.map((row) => {
-            return row.workflow.ownerUserId;
-          }),
-        ),
-      ),
-    );
 
     return rows.map((row) => {
       const key = `${row.workflow.agentId}:${row.workflow.name}`;
@@ -385,7 +352,11 @@ export function zeroWorkflowList(args: {
         workflow: row.workflow,
         agent: row.agent,
         member: args.member,
-        ownerProfile: ownerProfiles.get(row.workflow.ownerUserId) ?? null,
+        ownerProfile: {
+          displayName:
+            row.ownerProfile?.name ?? row.ownerProfile?.email ?? null,
+          imageUrl: null,
+        },
         shadowedBy:
           winner && winner.id !== row.workflow.id ? winner : undefined,
       });

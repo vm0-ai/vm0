@@ -10,6 +10,22 @@ from tests.firewall_helpers import (
     network_policy,
 )
 
+ITEMS_BASE = "https://api.example.com"
+ITEMS_RULE = "GET /items/{id}"
+ITEMS_URL = "https://api.example.com/items/123"
+ITEMS_READ_PERMISSION = "items-read"
+
+
+def _specific_items_firewall():
+    return firewall_entry(
+        "specific",
+        firewall_api(
+            ITEMS_BASE,
+            [firewall_permission(ITEMS_READ_PERMISSION, ITEMS_RULE)],
+            auth_label="specific",
+        ),
+    )
+
 
 def test_denied_match_takes_priority_over_malformed_config_reason():
     fws = [
@@ -210,36 +226,19 @@ def test_valid_later_permission_can_still_allow_after_malformed_auth():
 
 def test_later_malformed_policy_wins_after_earlier_unknown_allow():
     fws = [
-        {
-            "name": "broad",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer broad"}},
-                    "permissions": [],
-                }
-            ],
-        },
-        {
-            "name": "specific",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer specific"}},
-                    "permissions": [
-                        {"name": "items-read", "rules": ["GET /items/{id}"]},
-                    ],
-                }
-            ],
-        },
+        firewall_entry(
+            "broad",
+            firewall_api(ITEMS_BASE, [], auth_label="broad"),
+        ),
+        _specific_items_firewall(),
     ]
     policies = {
-        "broad": {"allow": [], "deny": [], "unknownPolicy": "allow"},
+        "broad": network_policy(unknown_policy="allow"),
         "specific": {"deny": "items-read", "unknownPolicy": "deny"},
     }
 
     result = matching.match_compiled_firewall_request(
-        "https://api.example.com/items/123",
+        ITEMS_URL,
         "GET",
         compile_firewalls_or_fail(fws),
         matching.compile_network_policies(policies),
@@ -253,38 +252,22 @@ def test_later_malformed_policy_wins_after_earlier_unknown_allow():
 
 def test_later_allowed_firewall_wins_after_earlier_malformed_policy_match():
     fws = [
-        {
-            "name": "broad",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer broad"}},
-                    "permissions": [
-                        {"name": "broad-read", "rules": ["GET /items/{id}"]},
-                    ],
-                }
-            ],
-        },
-        {
-            "name": "specific",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer specific"}},
-                    "permissions": [
-                        {"name": "items-read", "rules": ["GET /items/{id}"]},
-                    ],
-                }
-            ],
-        },
+        firewall_entry(
+            "broad",
+            firewall_api(
+                ITEMS_BASE,
+                [firewall_permission("broad-read", ITEMS_RULE)],
+                auth_label="broad",
+            ),
+        ),
+        _specific_items_firewall(),
     ]
     policies = {
         "broad": "denied",
-        "specific": {"allow": ["items-read"], "deny": [], "unknownPolicy": "deny"},
+        "specific": network_policy(allow=[ITEMS_READ_PERMISSION]),
     }
-    url = "https://api.example.com/items/123"
     compiled = matching.match_compiled_firewall_request(
-        url,
+        ITEMS_URL,
         "GET",
         compile_firewalls_or_fail(fws),
         policies,

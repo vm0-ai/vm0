@@ -10,6 +10,21 @@ use super::lease::DeviceLease;
 use super::state::DevicePoolSnapshot;
 use super::state::{DevicePool, DevicePoolConfig};
 
+/// Cloneable handle to the host-global NBD device pool.
+///
+/// All clones share one background actor and command channel. That actor owns
+/// the pool state machine and serializes transitions for `/dev/nbdN` claims,
+/// pending scans, cooldown slots, and checked-out [`DeviceLease`] returns.
+///
+/// The handle coordinates this process-local pool state, while host-global
+/// safety still comes from per-index lock files and sysfs checks. Dropping a
+/// handle is not normal device cleanup. Checked-out leases also carry return
+/// senders, so dropping every handle only stops the actor after outstanding
+/// leases release those senders. Successful pooled devices must finish through
+/// an explicit [`crate::PooledNbdCowDevice`] finalizer such as
+/// [`crate::PooledNbdCowDevice::destroy_with_retries`],
+/// [`crate::PooledNbdCowDevice::destroy_keep_cow_with_retries`], or
+/// [`crate::PooledNbdCowDevice::abandon`].
 #[derive(Clone)]
 pub struct DevicePoolHandle {
     commands: mpsc::UnboundedSender<DevicePoolCommand>,
@@ -91,8 +106,8 @@ struct DevicePoolActor {
 impl DevicePoolHandle {
     /// Create a new shared device pool handle.
     ///
-    /// Must be called from a Tokio runtime: the handle owns a background actor
-    /// task that serializes all pool state transitions.
+    /// Must be called from a Tokio runtime: this spawns the background actor
+    /// that backs the returned handle and all of its clones.
     pub fn new(config: DevicePoolConfig) -> Self {
         Self::from_pool(DevicePool::new(config))
     }
@@ -134,7 +149,27 @@ impl DevicePoolHandle {
         Self { commands }
     }
 
-    /// Clean up the underlying pool.
+    /// Clean up the underlying pool state.
+    ///
+    /// If the actor is still accepting commands, this waits for cleanup to be
+    /// acknowledged. When the cleanup command is processed, cleanup deactivates
+    /// the pool, fails acquire waiters still queued in the pool and later
+    /// acquire attempts, prevents pending scan results from satisfying waiters,
+    /// drains the pending scan set, and clears the pool's cooldown queue and
+    /// in-flight bookkeeping.
+    ///
+    /// Scans run on Tokio's blocking task pool, so cleanup may still wait for a
+    /// scan that has already started to return before the acknowledgement is
+    /// sent. Deactivation happens first, so late scan results are discarded
+    /// rather than handed to acquire waiters.
+    ///
+    /// Cleanup does not replace per-device finalization. Outstanding
+    /// [`DeviceLease`] values still own their NBD claim until they are returned
+    /// or dropped, and [`crate::PooledNbdCowDevice`] values still own device
+    /// finalization. Finish successful pooled devices with
+    /// [`crate::PooledNbdCowDevice::destroy_with_retries`],
+    /// [`crate::PooledNbdCowDevice::destroy_keep_cow_with_retries`], or
+    /// [`crate::PooledNbdCowDevice::abandon`].
     pub async fn cleanup(&self) {
         let (done, done_rx) = oneshot::channel();
         if self
