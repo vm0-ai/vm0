@@ -861,6 +861,30 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, created.runId, [200]);
   });
 
+  it("keeps a direct launch claimable when sandbox telemetry ingest fails", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const prompt = "sandbox telemetry should not block launch";
+    context.mocks.axiom.sdkIngest.mockImplementation((dataset) => {
+      if (dataset === "vm0-sandbox-op-log-dev") {
+        throw new Error("sandbox telemetry ingest failed");
+      }
+      return true;
+    });
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(created.status).toBe("pending");
+    const claim = await api.claimRunnerJob(created.runId);
+    expect(claim.prompt).toBe(prompt);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
   it("emits compose resolution timing for direct compose version runs", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor } = await entitledRunActor();
