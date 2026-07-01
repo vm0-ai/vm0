@@ -264,6 +264,20 @@ async function waitForRunStatus(
     .toBe(status);
 }
 
+async function waitForRunContext(actor: ApiTestUser, runId: string) {
+  let response: Awaited<ReturnType<typeof api.requestRunContext>> | undefined;
+  await expect
+    .poll(async () => {
+      response = await api.requestRunContext(actor, runId, [200, 404]);
+      return response.status;
+    })
+    .toBe(200);
+  if (!response || response.status !== 200) {
+    throw new Error("Expected the auto-send run context to be readable");
+  }
+  return response;
+}
+
 /**
  * Checkpoint + exitCode-0 complete. Completing without a checkpoint routes to
  * the missing-checkpoint handler and FAILS the run, so every successful chat
@@ -765,14 +779,7 @@ describe("CHAT-02: completed chat callback", () => {
       null,
     );
 
-    const autoContext = await api.requestRunContext(
-      actor,
-      claimed.runId,
-      [200],
-    );
-    if (autoContext.status !== 200) {
-      throw new Error("Expected the auto-send run context to be readable");
-    }
+    const autoContext = await waitForRunContext(actor, claimed.runId);
     expect(autoContext.body.prompt).toBe("queued next turn");
     const appended = autoContext.body.appendSystemPrompt ?? "";
     expect(appended).toContain(
@@ -1752,14 +1759,7 @@ describe("CHAT-02: auto-send after failures", () => {
       })
       .toBe(true);
 
-    const autoContext = await api.requestRunContext(
-      actor,
-      claimed.runId,
-      [200],
-    );
-    if (autoContext.status !== 200) {
-      throw new Error("Expected the auto-send run context to be readable");
-    }
+    const autoContext = await waitForRunContext(actor, claimed.runId);
     expect(autoContext.body.prompt).toContain("queued with files");
     expect(autoContext.body.prompt).toContain(
       "[Web file] queued-notes.txt (text/plain)",
@@ -1920,14 +1920,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
       );
     }
 
-    const autoContext = await api.requestRunContext(
-      actor,
-      claimed.runId,
-      [200],
-    );
-    if (autoContext.status !== 200) {
-      throw new Error("Expected the auto-send run context to be readable");
-    }
+    const autoContext = await waitForRunContext(actor, claimed.runId);
     const appended = autoContext.body.appendSystemPrompt ?? "";
     expect(appended).toContain("# Web Chat Run Context");
     expect(appended).toContain(`- RUN_ID: ${second.runId}`);
