@@ -425,12 +425,13 @@ describe("DELETE /api/zero/agents/:id", () => {
 
     await bdd.deleteAgent(actor, agent.agentId);
 
-    expect(listedPrefix).toBe(
-      `${actor.orgId}/volume/${instructionsVolume.name}`,
-    );
+    const expectedListPrefix = `${actor.orgId}/volume/${
+      instructionsVolume.name
+    }/`;
+    expect(listedPrefix).toBe(expectedListPrefix);
     expect(s3DeletedObjectKeys()).toStrictEqual([
-      `${listedPrefix}/v1/archive.tar.gz`,
-      `${listedPrefix}/v1/manifest.json`,
+      `${expectedListPrefix}v1/archive.tar.gz`,
+      `${expectedListPrefix}v1/manifest.json`,
     ]);
     const afterVolumes = await storages.listStorages(actor, "volume");
     expect(
