@@ -1,6 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import {
+  DecryptCommand,
+  type DecryptCommandOutput,
+  GenerateDataKeyCommand,
+  type GenerateDataKeyCommandOutput,
+} from "@aws-sdk/client-kms";
+import {
   getModelProviderFirewall,
   getVm0ConcreteProviderType,
   type ModelProviderType,
@@ -16,7 +22,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { v5 as uuidv5 } from "uuid";
 
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
@@ -44,6 +50,10 @@ import {
   resetAutomationsFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
 } from "./helpers/automations";
+import {
+  setSecretKmsClientForTests,
+  type SecretKmsClient,
+} from "../../../lib/secret-kms-client";
 
 /**
  * RUN-01..04 and CHAIN-RUN: successful run dispatch and lifecycle.
@@ -55,15 +65,14 @@ import {
 
 const context = testContext();
 const ASSISTANT_MESSAGE_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
+const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
 // Sentinel provider id for model-first thread selections (the wire-protocol
 // value the chat composer sends when picking a model instead of a provider).
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
-  "api_dispatch_lock_run_for_queue_persistence",
   "api_dispatch_insert_runner_job_queue",
-  "api_dispatch_update_run_runner_group",
 ] as const;
 const CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES = [
   "claim_route_request_prepare",
@@ -120,7 +129,6 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_user_timezone",
   "api_dispatch_prepare_context_prepare_output_metadata",
   "api_dispatch_insert_run_with_concurrency",
-  "api_dispatch_mark_pending_heartbeat",
   "api_dispatch_build_runner_job_payload",
   "api_dispatch_persist_runner_job_queue",
   ...API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES,
@@ -328,6 +336,61 @@ async function seedVm0ManagedDefaultModelKey(): Promise<string> {
     await deleteVm0ManagedDefaultModelKey(context);
   });
   return await seedVm0ManagedDefaultModelKeyState(context);
+}
+
+function useSecretKmsClientForTests(args: {
+  readonly failAfterGenerateDataKeys?: number;
+  readonly onGenerateDataKey?: (callNumber: number) => void;
+}): void {
+  let generateDataKeyCalls = 0;
+  function send(
+    command: GenerateDataKeyCommand,
+  ): Promise<GenerateDataKeyCommandOutput>;
+  function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
+  function send(
+    command: GenerateDataKeyCommand | DecryptCommand,
+  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
+    if (command instanceof GenerateDataKeyCommand) {
+      generateDataKeyCalls += 1;
+      args.onGenerateDataKey?.(generateDataKeyCalls);
+      if (
+        args.failAfterGenerateDataKeys !== undefined &&
+        generateDataKeyCalls > args.failAfterGenerateDataKeys
+      ) {
+        return Promise.reject(
+          new Error("unexpected queued payload encryption"),
+        );
+      }
+      return Promise.resolve({
+        $metadata: {},
+        KeyId: command.input.KeyId,
+        CiphertextBlob: Buffer.from(
+          `encrypted-data-key:${command.input.KeyId}`,
+          "utf8",
+        ),
+        Plaintext: TEST_DATA_KEY,
+      });
+    }
+
+    return Promise.resolve({ $metadata: {}, Plaintext: TEST_DATA_KEY });
+  }
+
+  const client: SecretKmsClient = { send };
+  setSecretKmsClientForTests(client);
+}
+
+function failKmsAfterGenerateDataKeys(limit: number): void {
+  useSecretKmsClientForTests({ failAfterGenerateDataKeys: limit });
+}
+
+function advanceNowOnFirstGenerateDataKey(timestamp: number): void {
+  useSecretKmsClientForTests({
+    onGenerateDataKey: (callNumber) => {
+      if (callNumber === 1) {
+        mockNow(timestamp);
+      }
+    },
+  });
 }
 
 function inlineFirewallApis(
@@ -1232,9 +1295,54 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(vm0Rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
-  it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
+  it("does not require queued payload encryption while capacity is available", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
+    failKmsAfterGenerateDataKeys(1);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "capacity available run should not encrypt queued payload",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(run.status).toBe("pending");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("timestamps pending launches when the durable row is inserted", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const requestStartedAt = Date.UTC(2026, 0, 1, 12, 0, 0);
+    const payloadPreparedAt = requestStartedAt + 6 * 60_000;
+    mockNow(requestStartedAt);
+    advanceNowOnFirstGenerateDataKey(payloadPreparedAt);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "pending launch timestamp should reflect durable insert",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(run.status).toBe("pending");
+    if (!run.createdAt) {
+      throw new Error("Expected created run createdAt");
+    }
+    expect(new Date(run.createdAt).getTime()).toBe(payloadPreparedAt);
+
+    const stored = await api.readRun(actor, run.runId);
+    if (!stored.createdAt) {
+      throw new Error("Expected stored run createdAt");
+    }
+    expect(new Date(stored.createdAt).getTime()).toBe(payloadPreparedAt);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     const first = await api.createRun(actor, {
       agentId,
@@ -1267,11 +1375,256 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(promoted.status).toBe("pending");
     const drained = await waitForRunQueueLength(api, actor, 0);
     expect(drained.body.queue).toHaveLength(0);
+    await api.heartbeatRunner(runnerGroup);
+    const thirdClaim = await api.claimRunnerJob(third.runId);
+    expect(thirdClaim.prompt).toBe("queued run three");
 
     await api.requestCancelRun(actor, second.runId, [200]);
     await api.requestCancelRun(actor, third.runId, [200]);
     const emptied = await api.readRunQueue(actor);
     expect(emptied.body.concurrency.active).toBe(0);
+  });
+
+  it("counts promoted queued runs by promotion heartbeat for admission", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before old queue promotion one",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(first.status).toBe("pending");
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before old queue promotion two",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(second.status).toBe("pending");
+
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run promoted after pending ttl",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    mockNow(now() + 16 * 60_000);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
+    expect(promoted.status).toBe("pending");
+
+    const fresh = await api.createRun(actor, {
+      agentId,
+      prompt: "fresh run beside promoted queue item",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(fresh.status).toBe("pending");
+
+    const overLimit = await api.createRun(actor, {
+      agentId,
+      prompt: "run should queue behind promoted active item",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(overLimit.status).toBe("queued");
+
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.concurrency.active).toBe(2);
+    expect(queue.body.queue).toContainEqual(
+      expect.objectContaining({ runId: overLimit.runId }),
+    );
+
+    await api.requestCancelRun(actor, overLimit.runId, [200]);
+    await api.requestCancelRun(actor, fresh.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
+  it("finishes promoted queued run notifications after request abort", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const controller = new AbortController();
+    let queueChangedPublishes = 0;
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before abort promotion one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before abort promotion two",
+      modelProvider: "anthropic-api-key",
+    });
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should still notify after abort",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        queueChangedPublishes++;
+        if (queueChangedPublishes === 2) {
+          const error = new Error("abort after queued promotion commit");
+          error.name = "AbortError";
+          controller.abort(error);
+        }
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const cancelled = await api.requestCancelRunWithSignal(
+      actor,
+      first.runId,
+      controller.signal,
+    );
+    expect(cancelled.status).toBe(200);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
+    expect(promoted.status).toBe("pending");
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(
+          ([topic, payload]) => {
+            return (
+              topic === "job" &&
+              isRecord(payload) &&
+              payload.runId === queued.runId
+            );
+          },
+        );
+      })
+      .toBe(true);
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
+  });
+
+  it("drains queued runs after a cancel request aborts post-commit", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const controller = new AbortController();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before post-commit abort one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before post-commit abort two",
+      modelProvider: "anthropic-api-key",
+    });
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should drain after cancel abort",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        const error = new Error("abort after cancel commit");
+        error.name = "AbortError";
+        controller.abort(error);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const cancelled = await api.requestCancelRunWithSignal(
+      actor,
+      first.runId,
+      controller.signal,
+    );
+    expect(cancelled.status).toBe(200);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
+    expect(promoted.status).toBe("pending");
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(
+          ([topic, payload]) => {
+            return (
+              topic === "job" &&
+              isRecord(payload) &&
+              payload.runId === queued.runId
+            );
+          },
+        );
+      })
+      .toBe(true);
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
+  });
+
+  it("drains queued runs when queue changed publish fails after cancellation", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before publish failure one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before publish failure two",
+      modelProvider: "anthropic-api-key",
+    });
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should drain despite queue publish failure",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        return Promise.reject(new Error("queue changed publish failed"));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
+    expect(promoted.status).toBe("pending");
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(
+          ([topic, payload]) => {
+            return (
+              topic === "job" &&
+              isRecord(payload) &&
+              payload.runId === queued.runId
+            );
+          },
+        );
+      })
+      .toBe(true);
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
   });
 
   it("keeps a queued launch visible when enqueue telemetry fails", async () => {
@@ -1357,6 +1710,43 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     );
 
     await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
+  it("records a failed queued launch when queue payload encryption fails", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before queued encryption failure one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before queued encryption failure two",
+      modelProvider: "anthropic-api-key",
+    });
+
+    mockEnv("SECRETS_KMS_KEY_ID", undefined);
+    const failed = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should fail when payload encryption fails",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe(
+      "SECRETS_KMS_KEY_ID is required for KMS secret encryption",
+    );
+    const stored = await api.readRun(actor, failed.runId);
+    expect(stored.status).toBe("failed");
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).not.toContainEqual(
+      expect.objectContaining({ runId: failed.runId }),
+    );
+
     await api.requestCancelRun(actor, first.runId, [200]);
     await api.requestCancelRun(actor, second.runId, [200]);
   });
@@ -3520,6 +3910,19 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(
+          ([topic, payload]) => {
+            return (
+              topic === `run:changed:${run.runId}` &&
+              isRecord(payload) &&
+              payload.status === "cancelled"
+            );
+          },
+        );
+      })
+      .toBe(true);
 
     const repeated = await api.requestCancelRun(actor, run.runId, [200]);
     expect(repeated.status).toBe(200);
@@ -3949,6 +4352,37 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     });
     expect(failedRun.status).toBe("failed");
     expect(failedRun.error).toBe("Only vm0/* runner groups are supported");
+    const storedFailedRun = await api.readRun(actor, failedRun.runId);
+    expect(storedFailedRun.status).toBe("failed");
+    const failedClaim = await api.requestClaimRunnerJob(
+      true,
+      failedRun.runId,
+      [404],
+    );
+    expectApiError(failedClaim.body);
+    expect(failedClaim.body.error.message).toBe("Job not found in queue");
+
+    const firstActive = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "active direct run one",
+    });
+    const secondActive = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "active direct run two",
+    });
+    const rejected = await api.requestDirectRun(
+      actor,
+      {
+        agentComposeId: foreignCompose.composeId,
+        prompt: "concurrency should win before runner payload validation",
+      },
+      [429],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("CONCURRENT_RUN_LIMIT");
+
+    await api.requestCancelRun(actor, firstActive.runId, [200]);
+    await api.requestCancelRun(actor, secondActive.runId, [200]);
   });
 });
 

@@ -14,6 +14,7 @@ import type { TestContext } from "./test-context";
 interface SetupAppWithRoutesOptions {
   readonly context: TestContext;
   readonly routes: readonly RouteEntry[];
+  readonly signal?: AbortSignal;
 }
 
 function parseResponseBody(response: Response): Promise<unknown> | undefined {
@@ -54,8 +55,9 @@ async function requestApp(
 function createAppFetcher(
   context: TestContext,
   routes: readonly RouteEntry[],
+  signal?: AbortSignal,
 ): ApiFetcher {
-  const app = createAppWithRoutes({ signal: context.signal, routes });
+  const app = createAppWithRoutes({ signal: signal ?? context.signal, routes });
 
   return (args) => {
     return requestApp(app, args);
@@ -65,8 +67,9 @@ function createAppFetcher(
 export function setupAppWithRoutes({
   context,
   routes,
+  signal,
 }: SetupAppWithRoutesOptions) {
-  const app = createAppFetcher(context, routes);
+  const app = createAppFetcher(context, routes, signal);
 
   return <TContract extends AppRouter>(
     contract: TContract,
