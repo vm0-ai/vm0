@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.523.3](https://github.com/vm0-ai/vm0/compare/app-v0.523.2...app-v0.523.3) (2026-07-01)
+
+
+### Bug Fixes
+
+* ignore thinking-only messages in work folds ([#19705](https://github.com/vm0-ai/vm0/issues/19705)) ([4255318](https://github.com/vm0-ai/vm0/commit/42553185b36ff769003225a88c147699e463a0dc))
+
 ## [0.523.2](https://github.com/vm0-ai/vm0/compare/app-v0.523.1...app-v0.523.2) (2026-07-01)
 
 
