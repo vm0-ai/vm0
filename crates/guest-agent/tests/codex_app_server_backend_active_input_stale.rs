@@ -21,9 +21,12 @@ async fn codex_app_server_backend_fails_visible_on_stale_active_turn()
         common::setup_codex_app_server_env(
             &mock,
             tmp.path(),
-            "codex-app-server-backend-active-input-stale-test",
-            "drive the app-server backend stale path",
-            "stale-turn",
+            common::CodexAppServerEnvConfig {
+                run_id: "codex-app-server-backend-active-input-stale-test",
+                prompt: "drive the app-server backend stale path",
+                scenario: Some("stale-turn"),
+                resume_session_id: None,
+            },
         )?;
     }
     let _run_files = common::RunFilesGuard::new();

@@ -1323,7 +1323,7 @@ function WorkflowCopySuccessState({
           description={`Open ${workflowTitle(copyState.workflow)} on ${workflowCopyAgentName(copyState.agent)}`}
           onClick={() => {
             onOpenChange(false);
-            navigate(ROUTES.workflowDetail, {
+            navigate(ROUTES.workflowDetailAutomations, {
               pathParams: {
                 workflowId: copyState.workflow.id,
               },

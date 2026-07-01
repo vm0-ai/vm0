@@ -20,9 +20,12 @@ async fn codex_app_server_backend_fails_visible_when_child_exits_during_steer()
         common::setup_codex_app_server_env(
             &mock,
             tmp.path(),
-            "codex-app-server-backend-active-input-child-exit-test",
-            "drive the app-server backend child exit during steer path",
-            "exit-on-turn-steer",
+            common::CodexAppServerEnvConfig {
+                run_id: "codex-app-server-backend-active-input-child-exit-test",
+                prompt: "drive the app-server backend child exit during steer path",
+                scenario: Some("exit-on-turn-steer"),
+                resume_session_id: None,
+            },
         )?;
     }
     let _run_files = common::RunFilesGuard::new();

@@ -396,6 +396,14 @@ fn truncate_diagnostic_message(message: &str) -> String {
 
 /// POST a prepared event payload to the webhook endpoint.
 pub async fn post_event(http: &HttpClient, payload: &Value) -> Result<(), AgentError> {
+    post_event_with_error_flag(http, payload, paths::event_error_flag()).await
+}
+
+pub async fn post_event_with_error_flag(
+    http: &HttpClient,
+    payload: &Value,
+    event_error_flag: &str,
+) -> Result<(), AgentError> {
     let url = http.events_url()?;
     match http
         .post_json(url, payload, constants::HTTP_MAX_RETRIES)
@@ -404,7 +412,7 @@ pub async fn post_event(http: &HttpClient, payload: &Value) -> Result<(), AgentE
         Ok(_) => Ok(()),
         Err(e) => {
             log_error!(LOG_TAG, "Failed to send event after retries");
-            let _ = paths::write_private(paths::event_error_flag(), "1");
+            let _ = paths::write_private(event_error_flag, "1");
             Err(e)
         }
     }

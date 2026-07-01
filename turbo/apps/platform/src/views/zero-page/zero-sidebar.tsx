@@ -88,7 +88,13 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
   },
   {
     id: "workflows",
-    activeKeys: ["workflows", "workflowDetail"],
+    activeKeys: [
+      "workflows",
+      "workflowDetail",
+      "workflowDetailAutomations",
+      "workflowDetailInstructions",
+      "workflowDetailInfo",
+    ],
     pathname: "/workflows",
     label: "Workflows",
     icon: IconRoute as NavIcon,

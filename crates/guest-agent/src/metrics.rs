@@ -167,8 +167,21 @@ fn collect_metrics(cpu_tracker: &mut CpuTracker) -> MetricsEntry {
     }
 }
 
+fn write_metrics_entry(metrics_log_file: &str, entry: &MetricsEntry) {
+    if let Ok(json) = serde_json::to_string(entry)
+        && let Ok(mut f) = guest_contracts::runtime_paths::open_private_append(metrics_log_file)
+    {
+        let _ = writeln!(f, "{json}");
+    }
+}
+
 /// Background loop writing metrics JSONL every `METRICS_INTERVAL_SECS`.
 pub async fn metrics_loop(shutdown: CancellationToken) {
+    metrics_loop_for_path(shutdown, paths::metrics_log_file().to_string()).await;
+}
+
+/// Background loop writing metrics JSONL to an explicit runtime metrics file.
+pub async fn metrics_loop_for_path(shutdown: CancellationToken, metrics_log_file: String) {
     let mut interval = tokio::time::interval(Duration::from_secs(constants::METRICS_INTERVAL_SECS));
     let mut cpu_tracker = CpuTracker::new();
     loop {
@@ -176,12 +189,7 @@ pub async fn metrics_loop(shutdown: CancellationToken) {
             _ = shutdown.cancelled() => break,
             _ = interval.tick() => {
                 let entry = collect_metrics(&mut cpu_tracker);
-                if let Ok(json) = serde_json::to_string(&entry) {
-                    let path = paths::metrics_log_file();
-                    if let Ok(mut f) = guest_contracts::runtime_paths::open_private_append(path) {
-                        let _ = writeln!(f, "{json}");
-                    }
-                }
+                write_metrics_entry(&metrics_log_file, &entry);
             }
         }
     }
@@ -392,5 +400,26 @@ mod tests {
         assert!(parsed["cpu"].is_f64());
         assert!(parsed["mem_total"].is_u64());
         assert!(parsed["disk_total"].is_u64());
+    }
+
+    #[test]
+    fn write_metrics_entry_writes_to_explicit_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let metrics_log_file = temp
+            .path()
+            .join("runtime")
+            .join("metrics.jsonl")
+            .to_string_lossy()
+            .into_owned();
+
+        let mut tracker = CpuTracker::new();
+        let entry = collect_metrics(&mut tracker);
+        write_metrics_entry(&metrics_log_file, &entry);
+
+        let content = std::fs::read_to_string(metrics_log_file).unwrap();
+        let first_line = content.lines().next().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(first_line).unwrap();
+        assert!(parsed["ts"].is_string());
+        assert!(parsed["cpu"].is_f64());
     }
 }

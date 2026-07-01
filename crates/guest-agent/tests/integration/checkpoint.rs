@@ -5,8 +5,34 @@ use guest_contracts::session_history_identity::{
 use httpmock::prelude::*;
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use std::ffi::OsString;
 
 const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
+
+struct EnvVarRestore {
+    key: &'static str,
+    value: Option<OsString>,
+}
+
+impl EnvVarRestore {
+    fn capture(key: &'static str) -> Self {
+        Self {
+            key,
+            value: std::env::var_os(key),
+        }
+    }
+}
+
+impl Drop for EnvVarRestore {
+    fn drop(&mut self) {
+        unsafe {
+            match &self.value {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+}
 
 fn write_derived_claude_history(session_id: &str, history: &str) -> Result<(), String> {
     guest_agent::paths::write_private(guest_agent::paths::session_id_file(), session_id)
@@ -189,6 +215,105 @@ async fn success_checkpoint_writes_large_final_identity_metadata() {
     assert_eq!(
         std::fs::read(&identity.history_marker_payload).unwrap(),
         history
+    );
+}
+
+#[tokio::test]
+async fn success_checkpoint_uses_explicit_runtime_after_process_env_changes() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+    let _run_id_guard = EnvVarRestore::capture("VM0_RUN_ID");
+    let _runtime_dir_guard =
+        EnvVarRestore::capture(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
+
+    let tmp = tempfile::tempdir().unwrap();
+    let runtime_dir = tmp.path().join("captured-runtime");
+    let stale_runtime_dir = tmp.path().join("stale-runtime");
+    let home_dir = tmp.path().join("home");
+    let paths = guest_agent::paths::GuestPaths::from_runtime_dir(&runtime_dir);
+    let config = guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
+        run_id: "captured-run".to_string(),
+        api_url: server.base_url(),
+        api_token: "test-token-abc123".to_string(),
+        cli_agent_type: "claude-code".to_string(),
+        home: Some(home_dir.to_string_lossy().into_owned()),
+        guest_runtime_dir: Some(runtime_dir.clone()),
+        ..guest_agent::env::GuestConfigRaw::default()
+    })
+    .unwrap();
+    let final_identity_file = paths.final_session_history_identity_file().to_string();
+    let stale_paths = guest_agent::paths::GuestPaths::from_runtime_dir(&stale_runtime_dir);
+
+    let history = r#"{"type":"system"}"#.to_string() + "\n";
+    let history_path = tmp.path().join("history.jsonl");
+    std::fs::write(&history_path, &history).unwrap();
+    guest_agent::paths::write_private(paths.session_id_file(), "captured-session").unwrap();
+    guest_agent::paths::write_private(
+        paths.session_history_path_file(),
+        history_path.to_string_lossy().as_ref(),
+    )
+    .unwrap();
+
+    let runtime = guest_agent::run_context::GuestRuntime {
+        config,
+        paths,
+        http: http_client!(),
+    };
+
+    unsafe {
+        std::env::set_var("VM0_RUN_ID", "stale-run-after-runtime");
+        std::env::set_var(
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            &stale_runtime_dir,
+        );
+    }
+
+    let history_hash = hex::encode(Sha256::digest(history.as_bytes()));
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history")
+            .json_body(json!({
+                "runId": "captured-run",
+                "hash": history_hash,
+                "size": history.len(),
+            }));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({
+                "presignedUrl": server.url("/test/explicit-runtime-history-upload"),
+                "existing": false
+            }));
+    });
+    let upload_mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/test/explicit-runtime-history-upload")
+            .body(history.as_str());
+        then.status(200);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(r#"{"runId":"captured-run"}"#)
+            .json_body_includes(r#"{"cliAgentType":"claude-code"}"#)
+            .json_body_includes(r#"{"cliAgentSessionId":"captured-session"}"#);
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"checkpointId": "checkpoint-explicit-runtime"}));
+    });
+
+    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime).await;
+
+    assert!(result.is_ok());
+    prepare_mock.assert_calls_async(1).await;
+    upload_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    assert!(
+        std::path::Path::new(&final_identity_file).exists(),
+        "final identity should be written under explicit runtime paths"
+    );
+    assert!(
+        !std::path::Path::new(stale_paths.final_session_history_identity_file()).exists(),
+        "stale process env runtime path must not receive final identity"
     );
 }
 

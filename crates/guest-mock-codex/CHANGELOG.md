@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.0...guest-mock-codex-v0.6.1) (2026-07-01)
+
+
+### Refactoring
+
+* migrate guest-agent CLI runtime inputs ([#19514](https://github.com/vm0-ai/vm0/issues/19514)) ([bee67d0](https://github.com/vm0-ai/vm0/commit/bee67d0bc1b5d2d90b7fe0e664dc0a6579c7e16f))
+
 ## [0.6.0](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.5.0...guest-mock-codex-v0.6.0) (2026-06-30)
 
 

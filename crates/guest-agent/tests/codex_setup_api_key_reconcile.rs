@@ -5,6 +5,8 @@
 
 use guest_agent::masker::SecretMasker;
 use serde_json::Value;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 use std::time::Duration;
 
@@ -53,7 +55,23 @@ async fn api_key_setup_writes_auth_without_invoking_codex() -> TestResult {
     .await
     .expect("codex auth setup should return promptly")?;
 
-    let auth_path = tmp.path().join(".codex").join("auth.json");
+    let codex_home = tmp.path().join(".codex");
+    let auth_path = codex_home.join("auth.json");
+    assert!(codex_home.is_dir(), ".codex must be created");
+    #[cfg(unix)]
+    {
+        let codex_home_mode = std::fs::metadata(&codex_home)?.permissions().mode() & 0o7777;
+        assert_eq!(
+            codex_home_mode, 0o700,
+            ".codex must be mode 0o700 (got {codex_home_mode:o})"
+        );
+        let auth_mode = std::fs::metadata(&auth_path)?.permissions().mode() & 0o7777;
+        assert_eq!(
+            auth_mode, 0o600,
+            "auth.json must be mode 0o600 (got {auth_mode:o})"
+        );
+    }
+
     let auth: Value = serde_json::from_str(&std::fs::read_to_string(auth_path)?)?;
     assert_eq!(auth["auth_mode"], "apikey");
     assert_eq!(auth["OPENAI_API_KEY"], "sk-test-api-key-reconcile");

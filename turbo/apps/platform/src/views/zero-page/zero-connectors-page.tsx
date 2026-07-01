@@ -16,7 +16,9 @@ import {
   IconLoader2,
   IconDotsVertical,
   IconInfoCircle,
-  IconUsers,
+  IconFilter,
+  IconChevronDown,
+  IconCheck,
 } from "@tabler/icons-react";
 import {
   CONNECTOR_TYPES,
@@ -30,6 +32,7 @@ import {
   openCustomConnectorCreateDialog$,
 } from "../../signals/zero-page/settings/custom-connectors.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
+import { agents$ } from "../../signals/agent.ts";
 import { shouldShowGoogleSecurityWarningNotice } from "../../lib/google-security-warning.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -92,14 +95,15 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  cn,
 } from "@vm0/ui";
 
-const CONNECTOR_CARD_AGENT_AVATAR_LIMIT = 3;
+const CONNECTOR_CARD_AGENT_NAME_LIMIT = 2;
+const CONNECTOR_CARD_AGENT_NAME_MAX_CHARS = 12;
 
 // Callback ref that attaches scroll tracking while enabled. Each call returns
 // a fresh ref callback; React only invokes it when the underlying element
@@ -261,48 +265,217 @@ function ConnectorCategoryMenuItem({
   );
 }
 
-function ConnectorConnectionFilter({
+function ConnectorFilterSectionLabel({
+  children,
+}: {
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="px-2 pb-1 pt-1.5 text-xs font-medium text-muted-foreground/80">
+      {children}
+    </div>
+  );
+}
+
+function ConnectorFilterOption({
+  active,
+  onSelect,
+  children,
+}: {
+  readonly active: boolean;
+  readonly onSelect: () => void;
+  readonly children: ReactNode;
+}) {
+  return (
+    <DropdownMenuItem className="justify-between gap-2" onClick={onSelect}>
+      <span className="flex min-w-0 items-center gap-2">{children}</span>
+      {active && (
+        <IconCheck size={15} stroke={2} className="shrink-0 text-primary" />
+      )}
+    </DropdownMenuItem>
+  );
+}
+
+function connectorFilterTriggerLabel(
+  value: ConnectorsConnectionFilter,
+  activeAgent: TeamComposeItem | undefined,
+): string {
+  if (value.kind === "connected") {
+    return "Connected";
+  }
+  if (value.kind === "not-connected") {
+    return "Not connected";
+  }
+  if (value.kind === "agent" && activeAgent) {
+    return connectorAgentName(activeAgent);
+  }
+  return "All";
+}
+
+function ConnectorFilterDropdown({
   value,
+  agents,
   onChange,
 }: {
   readonly value: ConnectorsConnectionFilter;
+  readonly agents: readonly TeamComposeItem[];
   readonly onChange: (value: ConnectorsConnectionFilter) => void;
 }) {
-  const options: readonly {
-    readonly value: ConnectorsConnectionFilter;
-    readonly label: string;
-  }[] = [
-    { value: "all", label: "All" },
-    { value: "connected", label: "Connected" },
-  ];
+  const activeAgent =
+    value.kind === "agent"
+      ? agents.find((agent) => {
+          return agent.id === value.agentId;
+        })
+      : undefined;
 
   return (
-    <div
-      role="group"
-      aria-label="Connector connection filter"
-      className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground"
-    >
-      {options.map((option) => {
-        const active = value === option.value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={active}
-            className={cn(
-              "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-              active
-                ? "bg-background text-foreground shadow"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-            onClick={() => {
-              onChange(option.value);
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label="Filter connectors"
+          className="zero-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
+        >
+          <IconFilter
+            size={14}
+            stroke={1.5}
+            className="text-muted-foreground"
+          />
+          {activeAgent && (
+            <AvatarFromUrl
+              avatarUrl={activeAgent.avatarUrl}
+              alt={connectorAgentName(activeAgent)}
+              size={16}
+              className="h-4 w-4 rounded-full object-cover"
+            />
+          )}
+          <span className="max-w-[140px] truncate">
+            {connectorFilterTriggerLabel(value, activeAgent)}
+          </span>
+          <IconChevronDown
+            size={14}
+            stroke={1.5}
+            className="text-muted-foreground"
+          />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <ConnectorFilterOption
+          active={value.kind === "all"}
+          onSelect={() => {
+            onChange({ kind: "all" });
+          }}
+        >
+          All
+        </ConnectorFilterOption>
+        <DropdownMenuSeparator />
+        <ConnectorFilterSectionLabel>Status</ConnectorFilterSectionLabel>
+        <ConnectorFilterOption
+          active={value.kind === "connected"}
+          onSelect={() => {
+            onChange({ kind: "connected" });
+          }}
+        >
+          Connected
+        </ConnectorFilterOption>
+        <ConnectorFilterOption
+          active={value.kind === "not-connected"}
+          onSelect={() => {
+            onChange({ kind: "not-connected" });
+          }}
+        >
+          Not connected
+        </ConnectorFilterOption>
+        {agents.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <ConnectorFilterSectionLabel>Agents</ConnectorFilterSectionLabel>
+            {agents.map((agent) => {
+              return (
+                <ConnectorFilterOption
+                  key={agent.id}
+                  active={value.kind === "agent" && value.agentId === agent.id}
+                  onSelect={() => {
+                    onChange({ kind: "agent", agentId: agent.id });
+                  }}
+                >
+                  <AvatarFromUrl
+                    avatarUrl={agent.avatarUrl}
+                    alt={connectorAgentName(agent)}
+                    size={16}
+                    className="h-4 w-4 rounded-full object-cover"
+                  />
+                  <span className="truncate">{connectorAgentName(agent)}</span>
+                </ConnectorFilterOption>
+              );
+            })}
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ConnectorsToolbarActions({
+  activeTab,
+  search,
+  setSearch,
+  showAccessManagement,
+  connectionFilter,
+  agents,
+  setConnectionFilter,
+  isAdmin,
+  onCreateCustom,
+}: {
+  readonly activeTab: "builtin" | "custom";
+  readonly search: string;
+  readonly setSearch: (value: string) => void;
+  readonly showAccessManagement: boolean;
+  readonly connectionFilter: ConnectorsConnectionFilter;
+  readonly agents: readonly TeamComposeItem[];
+  readonly setConnectionFilter: (value: ConnectorsConnectionFilter) => void;
+  readonly isAdmin: boolean;
+  readonly onCreateCustom: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      {activeTab === "builtin" && (
+        <div className="relative w-40 sm:w-52">
+          <IconSearch
+            size={15}
+            stroke={1.5}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
+          />
+          <input
+            type="text"
+            placeholder="Find connectors"
+            value={search}
+            onChange={(e) => {
+              return setSearch(e.target.value);
             }}
-          >
-            {option.label}
-          </button>
-        );
-      })}
+            className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+          />
+        </div>
+      )}
+      {activeTab === "builtin" && showAccessManagement && (
+        <ConnectorFilterDropdown
+          value={connectionFilter}
+          agents={agents}
+          onChange={setConnectionFilter}
+        />
+      )}
+      {activeTab === "custom" && isAdmin && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+          onClick={onCreateCustom}
+        >
+          <IconPlus size={14} stroke={2} />
+          New connector
+        </Button>
+      )}
     </div>
   );
 }
@@ -370,21 +543,14 @@ function connectorAgentName(agent: TeamComposeItem): string {
   return agent.displayName ?? "Unnamed";
 }
 
-function ConnectorAccessAvatar({ agent }: { readonly agent: TeamComposeItem }) {
-  const name = connectorAgentName(agent);
-  return (
-    <span key={agent.id} className="relative shrink-0" title={name}>
-      <AvatarFromUrl
-        avatarUrl={agent.avatarUrl}
-        alt={name}
-        className="block h-7 w-7 rounded-full bg-muted/80 object-cover zero-border"
-        data-testid="connector-card-agent-avatar"
-      />
-    </span>
-  );
+function truncateAgentName(name: string): string {
+  if (name.length <= CONNECTOR_CARD_AGENT_NAME_MAX_CHARS) {
+    return name;
+  }
+  return `${name.slice(0, CONNECTOR_CARD_AGENT_NAME_MAX_CHARS - 1)}…`;
 }
 
-function ConnectorAccessAvatarButton({
+function ConnectorAccessButton({
   connectorType,
   connectorLabel,
   onClick,
@@ -397,42 +563,47 @@ function ConnectorAccessAvatarButton({
     connectorAuthorizedAgents({ connectorType }),
   );
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
-  const visibleAgents = agents.slice(0, CONNECTOR_CARD_AGENT_AVATAR_LIMIT);
   const loading = agentsLoadable.state === "loading";
+  const visibleNames = agents
+    .slice(0, CONNECTOR_CARD_AGENT_NAME_LIMIT)
+    .map((agent) => {
+      return truncateAgentName(connectorAgentName(agent));
+    });
+  const overflowCount = agents.length - visibleNames.length;
 
   return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            className="inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            aria-label={`Manage ${connectorLabel} access`}
-            onClick={onClick}
+    <button
+      type="button"
+      className="inline-flex h-7 min-w-0 shrink items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-50))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      aria-label={`Manage ${connectorLabel} access`}
+      onClick={onClick}
+    >
+      {loading ? (
+        <span className="block h-3 w-20 animate-pulse rounded bg-muted" />
+      ) : agents.length === 0 ? (
+        <span
+          className="underline decoration-dotted decoration-muted-foreground/40 underline-offset-2"
+          data-testid="connector-card-access-empty"
+        >
+          Add access
+        </span>
+      ) : (
+        <>
+          <span className="shrink-0">Used by</span>
+          <span
+            className="truncate underline decoration-dotted decoration-muted-foreground/40 underline-offset-2"
+            data-testid="connector-card-access-names"
           >
-            {loading ? (
-              <span className="block h-7 w-7 animate-pulse rounded-full bg-muted zero-border" />
-            ) : visibleAgents.length > 0 ? (
-              <span className="flex items-center -space-x-1.5">
-                {visibleAgents.map((agent) => {
-                  return <ConnectorAccessAvatar key={agent.id} agent={agent} />;
-                })}
-              </span>
-            ) : (
-              <span
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-muted/80 text-muted-foreground zero-border"
-                data-testid="connector-card-agent-avatar-placeholder"
-              >
-                <IconUsers size={15} stroke={1.7} aria-hidden="true" />
-              </span>
-            )}
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="text-xs">
-          Manage access
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+            {visibleNames.join(", ")}
+          </span>
+          {overflowCount > 0 && (
+            <span className="shrink-0 text-muted-foreground/70">
+              +{overflowCount}
+            </span>
+          )}
+        </>
+      )}
+    </button>
   );
 }
 
@@ -561,7 +732,7 @@ function GlobalConnectorCard({
         {connector.connected && (
           <div className="flex shrink-0 items-center gap-1">
             {showManageAccess && (
-              <ConnectorAccessAvatarButton
+              <ConnectorAccessButton
                 connectorType={connector.type}
                 connectorLabel={connector.label}
                 onClick={onManageAccess}
@@ -738,14 +909,21 @@ function renderBuiltinList({
 
   if (filteredCount === 0) {
     const trimmedSearch = search.trim();
-    const message =
-      connectionFilter === "connected"
-        ? trimmedSearch
-          ? `No connected connectors matching "${trimmedSearch}"`
-          : "No connected connectors"
-        : trimmedSearch
-          ? `No connectors matching "${trimmedSearch}"`
-          : null;
+    const base =
+      connectionFilter.kind === "connected"
+        ? "No connected connectors"
+        : connectionFilter.kind === "not-connected"
+          ? "No connectors left to connect"
+          : connectionFilter.kind === "agent"
+            ? "No connectors for this agent"
+            : null;
+    const message = base
+      ? trimmedSearch
+        ? `${base} matching "${trimmedSearch}"`
+        : base
+      : trimmedSearch
+        ? `No connectors matching "${trimmedSearch}"`
+        : null;
     if (!message) {
       return null;
     }
@@ -809,6 +987,8 @@ export function ZeroConnectorsPage() {
   const setSearch = useSet(setConnectorsSearch$);
   const connectionFilter = useGet(connectorsConnectionFilter$);
   const setConnectionFilter = useSet(setConnectorsConnectionFilter$);
+  const agentsLoadable = useLastLoadable(agents$);
+  const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
 
   const filteredConnectors =
     filteredTypesLoadable.state === "hasData" ? filteredTypesLoadable.data : [];
@@ -911,7 +1091,9 @@ export function ZeroConnectorsPage() {
     filteredCount: filteredConnectors.length,
     renderCard,
     search,
-    connectionFilter,
+    connectionFilter: showConnectorAccessManagement
+      ? connectionFilter
+      : { kind: "all" },
   });
   return (
     <div
@@ -920,31 +1102,13 @@ export function ZeroConnectorsPage() {
     >
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
         <div className="mx-auto w-full max-w-[900px]">
-          <div className="flex w-full max-w-[900px] flex-wrap items-end justify-between gap-4">
-            <div className="min-w-0 hidden md:block">
-              <h1 className="text-lg font-semibold tracking-tight text-foreground">
-                Connectors
-              </h1>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                Connect third-party services for your agents to use.
-              </p>
-            </div>
-            <div className="relative w-full md:w-56">
-              <IconSearch
-                size={15}
-                stroke={1.5}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
-              />
-              <input
-                type="text"
-                placeholder="Find connectors"
-                value={search}
-                onChange={(e) => {
-                  return setSearch(e.target.value);
-                }}
-                className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
-              />
-            </div>
+          <div className="min-w-0 hidden md:block">
+            <h1 className="text-lg font-semibold tracking-tight text-foreground">
+              Connectors
+            </h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Connect third-party services for your agents to use.
+            </p>
           </div>
         </div>
       </header>
@@ -972,25 +1136,17 @@ export function ZeroConnectorsPage() {
                   <TabsTrigger value="custom">Custom</TabsTrigger>
                 </TabsList>
               </Tabs>
-              <div className="flex items-center gap-2">
-                {activeTab === "builtin" && (
-                  <ConnectorConnectionFilter
-                    value={connectionFilter}
-                    onChange={setConnectionFilter}
-                  />
-                )}
-                {activeTab === "custom" && isAdmin && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-                    onClick={openCreateCustom}
-                  >
-                    <IconPlus size={14} stroke={2} />
-                    New connector
-                  </Button>
-                )}
-              </div>
+              <ConnectorsToolbarActions
+                activeTab={activeTab}
+                search={search}
+                setSearch={setSearch}
+                showAccessManagement={showConnectorAccessManagement}
+                connectionFilter={connectionFilter}
+                agents={agents}
+                setConnectionFilter={setConnectionFilter}
+                isAdmin={isAdmin}
+                onCreateCustom={openCreateCustom}
+              />
             </div>
 
             {activeTab === "builtin" && builtinList}

@@ -20,9 +20,12 @@ async fn codex_app_server_backend_fails_visible_when_no_active_turn()
         common::setup_codex_app_server_env(
             &mock,
             tmp.path(),
-            "codex-app-server-backend-active-input-no-turn-test",
-            "drive the app-server backend no active turn path",
-            "no-active-turn",
+            common::CodexAppServerEnvConfig {
+                run_id: "codex-app-server-backend-active-input-no-turn-test",
+                prompt: "drive the app-server backend no active turn path",
+                scenario: Some("no-active-turn"),
+                resume_session_id: None,
+            },
         )?;
     }
     let _run_files = common::RunFilesGuard::new();

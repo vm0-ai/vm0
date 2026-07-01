@@ -264,6 +264,7 @@ runs:
         add_secret TELEGRAM_OFFICIAL_WEBHOOK_SECRET TELEGRAM_OFFICIAL_WEBHOOK_SECRET
         if [[ "$INPUT_APP" == "api" ]]; then
           add_var MICROSOFT_TEAMS_BOT_APP_ID MICROSOFT_TEAMS_BOT_APP_ID
+          add_secret MICROSOFT_TEAMS_BOT_APP_PASSWORD MICROSOFT_TEAMS_BOT_APP_PASSWORD
         fi
         add_env SLACK_REDIRECT_BASE_URL "$slack_redirect_base_url"
         if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then

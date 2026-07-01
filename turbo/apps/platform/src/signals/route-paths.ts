@@ -8,6 +8,9 @@ export const ROUTES = {
   agentPermissions: "/agents/:agentId/permissions",
   workflows: "/workflows",
   workflowDetail: "/workflows/:workflowId",
+  workflowDetailAutomations: "/workflows/:workflowId/automations",
+  workflowDetailInstructions: "/workflows/:workflowId/instructions",
+  workflowDetailInfo: "/workflows/:workflowId/info",
   activities: "/activities",
   activityInspect: "/activities/inspect",
   activityDetail: "/activities/:activityRunId",
@@ -47,3 +50,20 @@ export const ROUTES = {
 
 export type RouteKey = keyof typeof ROUTES;
 export type RoutePath = (typeof ROUTES)[RouteKey] | `/projects/${string}`;
+
+export type WorkflowDetailRouteKey =
+  | "workflowDetail"
+  | "workflowDetailAutomations"
+  | "workflowDetailInstructions"
+  | "workflowDetailInfo";
+
+export function isWorkflowDetailRouteKey(
+  route: RouteKey | null,
+): route is WorkflowDetailRouteKey {
+  return (
+    route === "workflowDetail" ||
+    route === "workflowDetailAutomations" ||
+    route === "workflowDetailInstructions" ||
+    route === "workflowDetailInfo"
+  );
+}

@@ -437,6 +437,14 @@ fn build_and_locate_mock_package(package: &str, binary: &str) -> Result<PathBuf,
     Ok(mock)
 }
 
+/// Test-specific values for the experimental Codex app-server backend env.
+pub struct CodexAppServerEnvConfig<'a> {
+    pub run_id: &'a str,
+    pub prompt: &'a str,
+    pub scenario: Option<&'a str>,
+    pub resume_session_id: Option<&'a str>,
+}
+
 /// Configure one test binary for the experimental Codex app-server backend.
 ///
 /// Must be called before any `guest_agent::env::*` accessor because those
@@ -448,9 +456,7 @@ fn build_and_locate_mock_package(package: &str, binary: &str) -> Result<PathBuf,
 pub unsafe fn setup_codex_app_server_env(
     mock_path: &Path,
     home: &Path,
-    run_id: &str,
-    prompt: &str,
-    scenario: &str,
+    config: CodexAppServerEnvConfig<'_>,
 ) -> Result<(), String> {
     unsafe {
         std::env::set_var("CLI_AGENT_TYPE", "codex");
@@ -458,15 +464,23 @@ pub unsafe fn setup_codex_app_server_env(
         std::env::set_var("VM0_MOCK_CODEX_PATH", mock_path);
         std::env::set_var("USE_MOCK_CODEX", "true");
         std::env::remove_var("MOCK_CODEX_FIXTURE");
-        std::env::set_var("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
-        std::env::set_var("VM0_RUN_ID", run_id);
-        std::env::set_var("VM0_PROMPT", prompt);
+        if let Some(scenario) = config.scenario {
+            std::env::set_var("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
+        } else {
+            std::env::remove_var("MOCK_CODEX_APP_SERVER_SCENARIO");
+        }
+        std::env::set_var("VM0_RUN_ID", config.run_id);
+        std::env::set_var("VM0_PROMPT", config.prompt);
         std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
         std::env::set_var("VM0_API_TOKEN", "");
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
         std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
         std::env::set_var("HOME", home);
-        std::env::remove_var("VM0_RESUME_SESSION_ID");
+        if let Some(resume_session_id) = config.resume_session_id {
+            std::env::set_var("VM0_RESUME_SESSION_ID", resume_session_id);
+        } else {
+            std::env::remove_var("VM0_RESUME_SESSION_ID");
+        }
     }
     std::fs::create_dir_all(home).map_err(|error| format!("create home: {error}"))?;
     ensure_canonical_workspace_for_test()?;

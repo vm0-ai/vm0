@@ -91,7 +91,7 @@ export const setConnectorAccessManagementPermissionAgentId$ = command(
   },
 );
 
-const connectorAgentAuthorizations$ = computed(
+export const connectorAgentAuthorizations$ = computed(
   async (get): Promise<readonly ConnectorAgentAuthorizationRow[]> => {
     get(internalConnectorAccessManagementReload$);
     const allAgents = await get(agents$);
