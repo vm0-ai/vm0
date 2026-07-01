@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.131.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.8...runner-rs-v0.131.9) (2026-07-01)
+
+
+### Bug Fixes
+
+* apply sandbox io limiters from host capacity ([#19668](https://github.com/vm0-ai/vm0/issues/19668)) ([8baa893](https://github.com/vm0-ai/vm0/commit/8baa893dbbae076adbde5e31f467103a0c06179e))
+* surface usage pending counter underflows ([#19654](https://github.com/vm0-ai/vm0/issues/19654)) ([9ca1bc4](https://github.com/vm0-ai/vm0/commit/9ca1bc435a820df109ccc85441dada51a5eb42e8))
+
+
+### Performance Improvements
+
+* reduce artifact storage manifest presigning ([#19650](https://github.com/vm0-ai/vm0/issues/19650)) ([0672271](https://github.com/vm0-ai/vm0/commit/0672271c090e1a5431ac762c566328125958a218))
+
 ## [0.131.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.7...runner-rs-v0.131.8) (2026-07-01)
 
 ## [0.131.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.6...runner-rs-v0.131.7) (2026-07-01)

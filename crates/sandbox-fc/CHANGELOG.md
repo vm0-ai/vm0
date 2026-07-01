@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.87](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.86...sandbox-fc-v0.37.87) (2026-07-01)
+
+
+### Bug Fixes
+
+* accept pressure-limited balloon settle ([#19662](https://github.com/vm0-ai/vm0/issues/19662)) ([6e57ce0](https://github.com/vm0-ai/vm0/commit/6e57ce0a39799d18e71c4e194fda398b4fc5aed7))
+
 ## [0.37.86](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.85...sandbox-fc-v0.37.86) (2026-07-01)
 
 ## [0.37.85](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.84...sandbox-fc-v0.37.85) (2026-07-01)

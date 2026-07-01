@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.382.0](https://github.com/vm0-ai/vm0/compare/core-v8.381.3...core-v8.382.0) (2026-07-01)
+
+
+### Features
+
+* gate MiniMax Codex framework routing ([#19616](https://github.com/vm0-ai/vm0/issues/19616)) ([ed9b1de](https://github.com/vm0-ai/vm0/commit/ed9b1dea4c8b95ed78074f6fa2f9197dded9cdbc))
+
+
+### Bug Fixes
+
+* apply sandbox io limiters from host capacity ([#19668](https://github.com/vm0-ai/vm0/issues/19668)) ([8baa893](https://github.com/vm0-ai/vm0/commit/8baa893dbbae076adbde5e31f467103a0c06179e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.137.0
+    * @vm0/connectors bumped to 1.121.0
+
 ## [8.381.3](https://github.com/vm0-ai/vm0/compare/core-v8.381.2...core-v8.381.3) (2026-07-01)
 
 

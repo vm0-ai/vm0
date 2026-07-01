@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.220.0](https://github.com/vm0-ai/vm0/compare/cli-v9.219.1...cli-v9.220.0) (2026-07-01)
+
+
+### Features
+
+* support scoped workflow name refs ([#19655](https://github.com/vm0-ai/vm0/issues/19655)) ([7018ee0](https://github.com/vm0-ai/vm0/commit/7018ee0446da472fb5b10370951513f189f52535))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.137.0
+    * @vm0/connectors bumped to 1.121.0
+    * @vm0/core bumped to 8.382.0
+
 ## [9.219.1](https://github.com/vm0-ai/vm0/compare/cli-v9.219.0...cli-v9.219.1) (2026-07-01)
 
 
