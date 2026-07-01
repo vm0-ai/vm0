@@ -22,12 +22,16 @@ fn read_source(manifest_dir: &Path, relative_path: &str) -> Result<String, std::
 fn assert_no_fallback_surface(source: &str, label: &str) {
     let source = non_comment_lines(source).collect::<Vec<_>>().join("\n");
     assert!(
-        !source.contains("LazyLock"),
-        "{label} must not derive runtime log paths from process-global lazy state"
-    );
-    assert!(
         !source.contains("static RUN_ID"),
         "{label} must not cache VM0_RUN_ID in process-global state"
+    );
+    assert!(
+        !source.contains("RUN_ID_ENV"),
+        "{label} must not read VM0_RUN_ID to derive runtime log paths"
+    );
+    assert!(
+        !source.contains("run_dir_from_env"),
+        "{label} must not derive runtime log paths from process env"
     );
     assert!(
         !source.contains("enable_system_log_file"),
