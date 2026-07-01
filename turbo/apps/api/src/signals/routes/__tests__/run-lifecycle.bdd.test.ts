@@ -828,19 +828,35 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
   it("keeps a direct launch claimable when run-context ingest fails", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
-    context.mocks.axiom.ingest.mockImplementationOnce(() => {
-      throw new Error("run-context ingest failed");
+    const prompt = "run-context ingest should not block launch";
+    context.mocks.axiom.ingest.mockImplementation((dataset, events) => {
+      if (
+        dataset === "run-context" &&
+        Array.isArray(events) &&
+        events.some((event) => {
+          return isRecord(event) && event.prompt === prompt;
+        })
+      ) {
+        throw new Error("run-context ingest failed");
+      }
+      return true;
     });
 
     const created = await api.createRun(actor, {
       agentId,
-      prompt: "run-context ingest should not block launch",
+      prompt,
       modelProvider: "anthropic-api-key",
     });
 
     expect(created.status).toBe("pending");
     const claim = await api.claimRunnerJob(created.runId);
-    expect(claim.prompt).toBe("run-context ingest should not block launch");
+    expect(claim.prompt).toBe(prompt);
+    expect(context.mocks.axiom.ingest).toHaveBeenCalledWith("run-context", [
+      expect.objectContaining({
+        runId: created.runId,
+        prompt,
+      }),
+    ]);
 
     await api.requestCancelRun(actor, created.runId, [200]);
   });
