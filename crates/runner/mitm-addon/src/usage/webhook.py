@@ -19,7 +19,7 @@ from typing import Literal
 from logging_utils import log_proxy_entry
 from platform_api import make_api_request
 
-from .counters import decrement_pending_reports, increment_pending_reports
+from .counters import PendingReportLease, admit_pending_report
 
 WebhookDeliveryOutcome = Literal["success", "retryable_failure", "permanent_failure"]
 _DeliveryOutcomeCallback = Callable[[WebhookDeliveryOutcome], None]
@@ -104,6 +104,7 @@ def _post_webhook_with_retry(
     payload: dict,
     proxy_log_path: str,
     log_type: str,
+    pending_report: PendingReportLease,
     max_retries: int = 1,
     delivery_outcome_callback: _DeliveryOutcomeCallback | None = None,
 ) -> None:
@@ -127,7 +128,7 @@ def _post_webhook_with_retry(
         if delivery_outcome_callback is not None:
             delivery_outcome_callback(outcome)
     finally:
-        decrement_pending_reports()
+        pending_report.release()
 
 
 def _handle_retryable_webhook_failure(
@@ -326,6 +327,7 @@ def _post_admitted_webhook_with_retry(
     payload: dict,
     proxy_log_path: str,
     log_type: str,
+    pending_report: PendingReportLease,
     delivery_outcome_callback: _DeliveryOutcomeCallback | None,
 ) -> None:
     try:
@@ -335,6 +337,7 @@ def _post_admitted_webhook_with_retry(
             payload,
             proxy_log_path,
             log_type,
+            pending_report,
             delivery_outcome_callback=delivery_outcome_callback,
         )
     finally:
@@ -394,7 +397,7 @@ def _enqueue_webhook(
         _release_delivery_capacity()
         raise
 
-    increment_pending_reports()
+    pending_report = admit_pending_report()
     try:
         usage_executor.submit(
             _post_admitted_webhook_with_retry,
@@ -403,6 +406,7 @@ def _enqueue_webhook(
             payload,
             proxy_log_path,
             log_type,
+            pending_report,
             delivery_outcome_callback,
         )
     except RuntimeError:
@@ -423,16 +427,17 @@ def _enqueue_webhook(
                 payload,
                 proxy_log_path,
                 log_type,
+                pending_report,
                 delivery_outcome_callback=delivery_outcome_callback,
             )
         except Exception:
             if not fallback_started:
-                decrement_pending_reports()
+                pending_report.release()
             raise
         finally:
             _release_delivery_capacity()
     except Exception:
-        decrement_pending_reports()
+        pending_report.release()
         _release_delivery_capacity()
         raise
     return True

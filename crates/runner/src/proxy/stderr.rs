@@ -7,6 +7,7 @@ struct MitmdumpUsageUnderbillingStderr<'a> {
     reason: &'a str,
     underbilling_class: &'a str,
     component: &'a str,
+    counter: Option<&'a str>,
 }
 
 fn mitmdump_underbilling_fields(line: &str) -> Option<&str> {
@@ -46,6 +47,7 @@ fn parse_mitmdump_usage_underbilling_stderr(
     let mut reason = None;
     let mut underbilling_class = None;
     let mut component = None;
+    let mut counter = None;
 
     for token in tokens {
         let Some((key, value)) = token.split_once('=') else {
@@ -58,6 +60,7 @@ fn parse_mitmdump_usage_underbilling_stderr(
                 underbilling_class = Some(value);
             }
             "component" if !value.is_empty() => component = Some(value),
+            "counter" if !value.is_empty() => counter = Some(value),
             _ => {}
         }
     }
@@ -66,20 +69,34 @@ fn parse_mitmdump_usage_underbilling_stderr(
         reason: reason?,
         underbilling_class: underbilling_class?,
         component: component?,
+        counter,
     })
 }
 
 pub(super) fn log_mitmdump_stderr_line(line: &str) {
     if let Some(signal) = parse_mitmdump_usage_underbilling_stderr(line) {
-        error!(
-            target: "mitmdump",
-            r#type = "usage_underbilling",
-            reason = signal.reason,
-            underbilling_class = signal.underbilling_class,
-            component = signal.component,
-            mitmdump_stderr = %line,
-            "mitmdump usage underbilling signal"
-        );
+        if let Some(counter) = signal.counter {
+            error!(
+                target: "mitmdump",
+                r#type = "usage_underbilling",
+                reason = signal.reason,
+                underbilling_class = signal.underbilling_class,
+                component = signal.component,
+                counter = counter,
+                mitmdump_stderr = %line,
+                "mitmdump usage underbilling signal"
+            );
+        } else {
+            error!(
+                target: "mitmdump",
+                r#type = "usage_underbilling",
+                reason = signal.reason,
+                underbilling_class = signal.underbilling_class,
+                component = signal.component,
+                mitmdump_stderr = %line,
+                "mitmdump usage underbilling signal"
+            );
+        }
         return;
     }
 
@@ -127,6 +144,26 @@ mod tests {
                 reason: "pending_snapshot_write_failed",
                 underbilling_class: "risk",
                 component: "mitm_addon",
+                counter: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_mitmdump_usage_underbilling_stderr_extracts_counter() {
+        let signal = parse_mitmdump_usage_underbilling_stderr(
+            "[error] type=usage_underbilling reason=usage_pending_counter_underflow \
+             underbilling_class=risk component=mitm_addon counter=reports unmatched release",
+        )
+        .unwrap();
+
+        assert_eq!(
+            signal,
+            MitmdumpUsageUnderbillingStderr {
+                reason: "usage_pending_counter_underflow",
+                underbilling_class: "risk",
+                component: "mitm_addon",
+                counter: Some("reports"),
             }
         );
     }
@@ -146,6 +183,7 @@ mod tests {
                 reason: "pending_snapshot_write_failed",
                 underbilling_class: "risk",
                 component: "mitm_addon",
+                counter: None,
             }
         );
     }
@@ -165,6 +203,7 @@ mod tests {
                 reason: "pending_snapshot_write_failed",
                 underbilling_class: "risk",
                 component: "mitm_addon",
+                counter: None,
             }
         );
     }
@@ -207,6 +246,28 @@ mod tests {
         assert_event_field(&event, "reason", "pending_snapshot_write_failed");
         assert_event_field(&event, "underbilling_class", "risk");
         assert_event_field(&event, "component", "mitm_addon");
+        assert_event_field(&event, "mitmdump_stderr", line);
+        assert!(
+            !event.fields.contains_key("counter"),
+            "unexpected counter field; event={event:#?}"
+        );
+    }
+
+    #[test]
+    fn mitmdump_underbilling_stderr_reemits_counter_when_present() {
+        let line = "[error] type=usage_underbilling \
+                    reason=usage_pending_counter_underflow underbilling_class=risk \
+                    component=mitm_addon counter=reports unmatched release";
+
+        let event = capture_mitmdump_stderr_log(line);
+
+        assert_eq!(event.level, Level::ERROR);
+        assert_event_field(&event, "message", "mitmdump usage underbilling signal");
+        assert_event_field(&event, "type", "usage_underbilling");
+        assert_event_field(&event, "reason", "usage_pending_counter_underflow");
+        assert_event_field(&event, "underbilling_class", "risk");
+        assert_event_field(&event, "component", "mitm_addon");
+        assert_event_field(&event, "counter", "reports");
         assert_event_field(&event, "mitmdump_stderr", line);
     }
 }
