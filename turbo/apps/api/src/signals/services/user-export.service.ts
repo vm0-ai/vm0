@@ -1,37 +1,41 @@
 import { createHmac } from "node:crypto";
 import archiver from "archiver";
 import { command, computed, type Computed } from "ccstate";
-import { and, desc, eq, gt, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
 import type {
   UserExportJob,
   UserExportStartResponse,
   UserExportStatusResponse,
 } from "@vm0/api-contracts/contracts/user-export";
 import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentSessions } from "@vm0/db/schema/agent-session";
+  getInstructionsStorageName,
+  MEMORY_ARTIFACT_NAME,
+  VOLUME_ORG_USER_ID,
+} from "@vm0/core/storage-names";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { conversations } from "@vm0/db/schema/conversation";
-import { exportJobs, type ExportArtifactUrl } from "@vm0/db/schema/export-job";
+import { exportJobs } from "@vm0/db/schema/export-job";
 import { emailOutbox } from "@vm0/db/schema/email-outbox";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { users } from "@vm0/db/schema/user";
+import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { extractFilesFromTarGz } from "../../lib/tar";
 import { db$, writeDb$, type Db } from "../external/db";
 import { clerk$ } from "../external/clerk";
 import {
+  downloadManifest,
   downloadS3Buffer,
   generatePresignedGetUrl,
   putS3Object,
 } from "../external/s3";
 import { nowDate } from "../external/time";
 import { settle } from "../utils";
+import { loadWorkflowVolumeFiles } from "./zero-workflow-volume.service";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
 const DOWNLOAD_URL_EXPIRY_SECONDS = 3600;
@@ -72,7 +76,6 @@ interface ZipEntry {
 
 interface CollectedData {
   readonly zipEntries: readonly ZipEntry[];
-  readonly artifactUrls: readonly ExportArtifactUrl[];
 }
 
 interface ExportRuntime {
@@ -93,6 +96,18 @@ interface ClerkEmailProfile {
   readonly primaryEmailAddressId: string | null;
   readonly firstName?: string | null;
   readonly lastName?: string | null;
+}
+
+interface VolumeFile {
+  readonly path: string;
+  readonly content: string;
+  readonly size: number;
+}
+
+interface ExportTextMessage {
+  readonly role: "user" | "assistant";
+  readonly content: string;
+  readonly createdAt: string;
 }
 
 const EXPORT_JOB_STATUSES = [
@@ -340,204 +355,232 @@ export const startUserExport$ = command(
   },
 );
 
-async function collectInstructions(
+function sanitizePathSegment(value: string): string {
+  return value.replace(/[\\/]+/g, "-").trim() || "unnamed";
+}
+
+function normalizeExportFilePath(path: string): string {
+  const parts = path
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .split("/")
+    .filter((part) => {
+      return part.length > 0 && part !== ".";
+    });
+
+  if (
+    parts.some((part) => {
+      return part === "..";
+    })
+  ) {
+    throw new Error(`Invalid export file path: ${path}`);
+  }
+
+  return parts.join("/") || "file";
+}
+
+function scopedExportPath(args: {
+  readonly scope: string;
+  readonly name: string;
+  readonly id: string;
+  readonly filePath: string;
+}): string {
+  const folder = `${sanitizePathSegment(args.name)}-${args.id}`;
+  return `${args.scope}/${folder}/${normalizeExportFilePath(args.filePath)}`;
+}
+
+async function loadStorageVolumeFiles(
+  runtime: ExportRuntime,
+  args: {
+    readonly orgId: string;
+    readonly storageName: string;
+  },
+): Promise<readonly VolumeFile[]> {
+  const [storage] = await runtime.db
+    .select({ id: storages.id, headVersionId: storages.headVersionId })
+    .from(storages)
+    .where(
+      and(
+        eq(storages.orgId, args.orgId),
+        eq(storages.userId, VOLUME_ORG_USER_ID),
+        eq(storages.name, args.storageName),
+        eq(storages.type, "volume"),
+      ),
+    )
+    .limit(1);
+  runtime.signal.throwIfAborted();
+
+  if (!storage?.headVersionId) {
+    return [];
+  }
+
+  return await loadStorageVersionFiles(runtime, {
+    storageId: storage.id,
+    headVersionId: storage.headVersionId,
+  });
+}
+
+async function loadStorageVersionFiles(
+  runtime: ExportRuntime,
+  args: {
+    readonly storageId: string;
+    readonly headVersionId: string | null;
+  },
+): Promise<readonly VolumeFile[]> {
+  if (!args.headVersionId) {
+    return [];
+  }
+
+  const [version] = await runtime.db
+    .select({ s3Key: storageVersions.s3Key })
+    .from(storageVersions)
+    .where(
+      and(
+        eq(storageVersions.storageId, args.storageId),
+        eq(storageVersions.id, args.headVersionId),
+      ),
+    )
+    .limit(1);
+  runtime.signal.throwIfAborted();
+
+  if (!version) {
+    return [];
+  }
+
+  const manifest = await runtime.get(
+    downloadManifest(runtime.bucket, version.s3Key),
+  );
+  runtime.signal.throwIfAborted();
+
+  const filesList = manifest.files.map((file) => {
+    return {
+      path: normalizeExportFilePath(file.path),
+      size: file.size,
+    };
+  });
+  const archiveBuffer = await runtime.get(
+    downloadS3Buffer(runtime.bucket, `${version.s3Key}/archive.tar.gz`),
+  );
+  runtime.signal.throwIfAborted();
+
+  const contents = extractFilesFromTarGz(
+    archiveBuffer,
+    filesList.map((file) => {
+      return file.path;
+    }),
+  );
+  const sizeByPath = new Map(
+    filesList.map((file) => {
+      return [file.path, file.size];
+    }),
+  );
+
+  return contents.map((file) => {
+    const path = normalizeExportFilePath(file.path);
+    return {
+      path,
+      content: file.content,
+      size: sizeByPath.get(path) ?? Buffer.byteLength(file.content, "utf8"),
+    };
+  });
+}
+
+async function collectAgentInstructionFiles(
   runtime: ExportRuntime,
   userId: string,
-  orgId: string,
 ): Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }> {
   const entries: ZipEntry[] = [];
-  let count = 0;
 
   const composes = await runtime.db
     .select({
       id: agentComposes.id,
+      orgId: agentComposes.orgId,
       name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
     })
     .from(agentComposes)
-    .where(
-      and(eq(agentComposes.userId, userId), eq(agentComposes.orgId, orgId)),
-    );
+    .where(eq(agentComposes.userId, userId))
+    .orderBy(asc(agentComposes.orgId), asc(agentComposes.name));
   runtime.signal.throwIfAborted();
 
   for (const compose of composes) {
-    if (!compose.headVersionId) {
-      continue;
-    }
-
-    const [version] = await runtime.db
-      .select({ content: agentComposeVersions.content })
-      .from(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, compose.headVersionId))
-      .limit(1);
+    const files = await loadStorageVolumeFiles(runtime, {
+      orgId: compose.orgId,
+      storageName: getInstructionsStorageName(compose.name),
+    });
     runtime.signal.throwIfAborted();
 
-    if (version) {
+    for (const file of files) {
       entries.push({
-        path: `instructions/${compose.name}/vm0.yaml`,
-        content: JSON.stringify(version.content, null, 2),
+        path: scopedExportPath({
+          scope: "agents",
+          name: compose.name,
+          id: compose.id,
+          filePath: file.path,
+        }),
+        content: file.content,
       });
-      count += 1;
-    }
-
-    const instructionsStorageName = `agent-instructions@${compose.name}`;
-    const [instructionsStorage] = await runtime.db
-      .select({ headVersionId: storages.headVersionId })
-      .from(storages)
-      .where(
-        and(
-          eq(storages.orgId, orgId),
-          eq(storages.name, instructionsStorageName),
-          eq(storages.type, "volume"),
-        ),
-      )
-      .limit(1);
-    runtime.signal.throwIfAborted();
-
-    if (instructionsStorage?.headVersionId) {
-      const [storageVersion] = await runtime.db
-        .select({ s3Key: storageVersions.s3Key })
-        .from(storageVersions)
-        .where(eq(storageVersions.id, instructionsStorage.headVersionId))
-        .limit(1);
-      runtime.signal.throwIfAborted();
-
-      if (storageVersion) {
-        const archiveBuffer = await runtime.get(
-          downloadS3Buffer(
-            runtime.bucket,
-            `${storageVersion.s3Key}/archive.tar.gz`,
-          ),
-        );
-        runtime.signal.throwIfAborted();
-        entries.push({
-          path: `instructions/${compose.name}/instructions.tar.gz`,
-          content: archiveBuffer,
-        });
-      }
     }
   }
 
-  return { entries, count };
+  return { entries, count: entries.length };
 }
 
-async function resolveSessionHistory(
-  runtime: ExportRuntime,
-  hash: string | null,
-  legacyText: string | null,
-): Promise<string | null> {
-  if (hash) {
-    const result = await settle(
-      runtime.get(downloadS3Buffer(runtime.bucket, `blobs/${hash}.blob`)),
-    );
-    runtime.signal.throwIfAborted();
-
-    if (result.ok) {
-      return result.value.toString("utf8");
-    }
-
-    if (legacyText) {
-      log.warn("session history blob fetch failed, using legacy text", {
-        hash,
-        error: result.error,
-      });
-      return legacyText;
-    }
-
-    throw result.error;
-  }
-
-  return legacyText;
-}
-
-async function collectConversations(
+async function collectWorkflowFiles(
   runtime: ExportRuntime,
   userId: string,
 ): Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }> {
   const entries: ZipEntry[] = [];
-  let count = 0;
 
-  const threads = await runtime.db
-    .select({ id: chatThreads.id })
-    .from(chatThreads)
-    .where(eq(chatThreads.userId, userId));
-  runtime.signal.throwIfAborted();
-
-  for (const thread of threads) {
-    const messages = await runtime.db
-      .select({
-        role: chatMessages.role,
-        content: chatMessages.content,
-        runId: chatMessages.runId,
-        error: chatMessages.error,
-        createdAt: chatMessages.createdAt,
-      })
-      .from(chatMessages)
-      .where(eq(chatMessages.chatThreadId, thread.id))
-      .orderBy(chatMessages.createdAt);
-    runtime.signal.throwIfAborted();
-
-    if (messages.length > 0) {
-      entries.push({
-        path: `conversations/chat-thread-${thread.id}.json`,
-        content: JSON.stringify(messages, null, 2),
-      });
-      count += 1;
-    }
-  }
-
-  const sessionsWithConversations = await runtime.db
+  const workflows = await runtime.db
     .select({
-      id: agentSessions.id,
-      conversationId: agentSessions.conversationId,
+      id: zeroWorkflows.id,
+      orgId: zeroWorkflows.orgId,
+      name: zeroWorkflows.name,
+      createdAt: zeroWorkflows.createdAt,
     })
-    .from(agentSessions)
-    .where(eq(agentSessions.userId, userId));
+    .from(zeroWorkflows)
+    .where(eq(zeroWorkflows.ownerUserId, userId))
+    .orderBy(
+      asc(zeroWorkflows.orgId),
+      asc(zeroWorkflows.name),
+      asc(zeroWorkflows.createdAt),
+    );
   runtime.signal.throwIfAborted();
 
-  for (const session of sessionsWithConversations) {
-    if (!session.conversationId) {
-      continue;
-    }
-
-    const [conversation] = await runtime.db
-      .select({
-        cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
-        cliAgentSessionHistory: conversations.cliAgentSessionHistory,
-      })
-      .from(conversations)
-      .where(eq(conversations.id, session.conversationId))
-      .limit(1);
+  for (const workflow of workflows) {
+    const files =
+      (await loadWorkflowVolumeFiles(runtime.get, {
+        orgId: workflow.orgId,
+        workflowId: workflow.id,
+      })) ?? [];
     runtime.signal.throwIfAborted();
 
-    if (conversation) {
-      const history = await resolveSessionHistory(
-        runtime,
-        conversation.cliAgentSessionHistoryHash,
-        conversation.cliAgentSessionHistory,
-      );
-
-      if (history) {
-        entries.push({
-          path: `conversations/${session.id}-history.jsonl`,
-          content: history,
-        });
-      }
+    for (const file of files) {
+      entries.push({
+        path: scopedExportPath({
+          scope: "workflows",
+          name: workflow.name,
+          id: workflow.id,
+          filePath: file.path,
+        }),
+        content: file.content,
+      });
     }
   }
 
-  return { entries, count };
+  return { entries, count: entries.length };
 }
 
-async function collectArtifacts(
+async function collectMemoryFiles(
   runtime: ExportRuntime,
   userId: string,
-  orgId: string,
-  expiresAt: Date,
-): Promise<readonly ExportArtifactUrl[]> {
-  const artifactStorages = await runtime.db
+): Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }> {
+  const entries: ZipEntry[] = [];
+
+  const memoryStorages = await runtime.db
     .select({
-      name: storages.name,
+      id: storages.id,
+      orgId: storages.orgId,
       headVersionId: storages.headVersionId,
       fileCount: storages.fileCount,
     })
@@ -545,75 +588,117 @@ async function collectArtifacts(
     .where(
       and(
         eq(storages.userId, userId),
-        eq(storages.orgId, orgId),
+        eq(storages.name, MEMORY_ARTIFACT_NAME),
         eq(storages.type, "artifact"),
       ),
-    );
+    )
+    .orderBy(asc(storages.orgId));
   runtime.signal.throwIfAborted();
 
-  const artifactUrls: ExportArtifactUrl[] = [];
-
-  for (const artifact of artifactStorages) {
-    if (!artifact.headVersionId || artifact.fileCount === 0) {
+  for (const memoryStorage of memoryStorages) {
+    if (memoryStorage.fileCount === 0) {
       continue;
     }
 
-    const [storageVersion] = await runtime.db
-      .select({ s3Key: storageVersions.s3Key })
-      .from(storageVersions)
-      .where(eq(storageVersions.id, artifact.headVersionId))
-      .limit(1);
+    const files = await loadStorageVersionFiles(runtime, {
+      storageId: memoryStorage.id,
+      headVersionId: memoryStorage.headVersionId,
+    });
     runtime.signal.throwIfAborted();
 
-    if (storageVersion) {
-      const archiveKey = `${storageVersion.s3Key}/archive.tar.gz`;
-      const presignedUrl = await runtime.get(
-        generatePresignedGetUrl(
-          runtime.bucket,
-          archiveKey,
-          EXPORT_DOWNLOAD_EXPIRY_SECONDS,
-          `${artifact.name}.tar.gz`,
-          true,
-        ),
-      );
-      runtime.signal.throwIfAborted();
-
-      artifactUrls.push({
-        name: artifact.name,
-        downloadUrl: presignedUrl,
-        expiresAt: expiresAt.toISOString(),
+    for (const file of files) {
+      entries.push({
+        path: `memory/${sanitizePathSegment(
+          memoryStorage.orgId,
+        )}/${normalizeExportFilePath(file.path)}`,
+        content: file.content,
       });
     }
   }
 
-  return artifactUrls;
+  return { entries, count: entries.length };
+}
+
+function exportMessageRole(role: string): "user" | "assistant" | null {
+  if (role === "user" || role === "assistant") {
+    return role;
+  }
+  return null;
+}
+
+async function collectConversationMessages(
+  runtime: ExportRuntime,
+  userId: string,
+): Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }> {
+  const entries: ZipEntry[] = [];
+
+  const threads = await runtime.db
+    .select({ id: chatThreads.id, createdAt: chatThreads.createdAt })
+    .from(chatThreads)
+    .where(eq(chatThreads.userId, userId))
+    .orderBy(asc(chatThreads.createdAt));
+  runtime.signal.throwIfAborted();
+
+  for (const thread of threads) {
+    const rows = await runtime.db
+      .select({
+        role: chatMessages.role,
+        content: chatMessages.content,
+        createdAt: chatMessages.createdAt,
+      })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, thread.id),
+          inArray(chatMessages.role, ["user", "assistant"]),
+        ),
+      )
+      .orderBy(asc(chatMessages.createdAt));
+    runtime.signal.throwIfAborted();
+
+    const messages: ExportTextMessage[] = rows.flatMap((message) => {
+      const role = exportMessageRole(message.role);
+      if (!role || !message.content) {
+        return [];
+      }
+      return [
+        {
+          role,
+          content: message.content,
+          createdAt: message.createdAt.toISOString(),
+        },
+      ];
+    });
+
+    if (messages.length > 0) {
+      entries.push({
+        path: `conversations/chat-thread-${thread.id}.json`,
+        content: JSON.stringify(messages, null, 2),
+      });
+    }
+  }
+
+  return { entries, count: entries.length };
 }
 
 async function collectUserData(
   runtime: ExportRuntime,
   userId: string,
   orgId: string,
-  expiresAt: Date,
 ): Promise<CollectedData> {
-  const instructions = await collectInstructions(runtime, userId, orgId);
-  const conversationsResult = await collectConversations(runtime, userId);
-  const artifactUrls = await collectArtifacts(
+  const agentInstructions = await collectAgentInstructionFiles(runtime, userId);
+  const workflows = await collectWorkflowFiles(runtime, userId);
+  const memory = await collectMemoryFiles(runtime, userId);
+  const conversationsResult = await collectConversationMessages(
     runtime,
     userId,
-    orgId,
-    expiresAt,
   );
   const zipEntries: ZipEntry[] = [
-    ...instructions.entries,
+    ...agentInstructions.entries,
+    ...workflows.entries,
+    ...memory.entries,
     ...conversationsResult.entries,
   ];
-
-  if (artifactUrls.length > 0) {
-    zipEntries.push({
-      path: "artifacts-manifest.json",
-      content: JSON.stringify(artifactUrls, null, 2),
-    });
-  }
 
   zipEntries.push({
     path: "export-manifest.json",
@@ -621,11 +706,12 @@ async function collectUserData(
       {
         exportedAt: nowDate().toISOString(),
         userId,
-        orgId,
+        requestOrgId: orgId,
         counts: {
-          instructions: instructions.count,
-          conversations: conversationsResult.count,
-          artifacts: artifactUrls.length,
+          agentInstructionFiles: agentInstructions.count,
+          workflowFiles: workflows.count,
+          memoryFiles: memory.count,
+          conversationThreads: conversationsResult.count,
         },
       },
       null,
@@ -633,7 +719,7 @@ async function collectUserData(
     ),
   });
 
-  return { zipEntries, artifactUrls };
+  return { zipEntries };
 }
 
 async function assembleZip(entries: readonly ZipEntry[]): Promise<Buffer> {
@@ -794,11 +880,10 @@ async function runExportJob(
   runtime.signal.throwIfAborted();
 
   const expiresAt = new Date(nowDate().getTime() + EXPORT_DOWNLOAD_EXPIRY_MS);
-  const { zipEntries, artifactUrls } = await collectUserData(
+  const { zipEntries } = await collectUserData(
     runtime,
     args.userId,
     args.orgId,
-    expiresAt,
   );
   runtime.signal.throwIfAborted();
 
@@ -827,7 +912,7 @@ async function runExportJob(
     .set({
       status: "completed",
       s3Key,
-      artifactUrls: artifactUrls.length > 0 ? [...artifactUrls] : null,
+      artifactUrls: null,
       completedAt: nowDate(),
       expiresAt,
     })
@@ -838,7 +923,7 @@ async function runExportJob(
     userId: args.userId,
     downloadUrl,
     expiresAt,
-    artifactCount: artifactUrls.length,
+    artifactCount: 0,
   });
   runtime.signal.throwIfAborted();
 

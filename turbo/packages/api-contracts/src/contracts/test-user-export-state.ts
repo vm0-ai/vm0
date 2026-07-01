@@ -6,7 +6,7 @@ const c = initContract();
 
 export const testUserExportStateActionBodySchema = z
   .object({
-    action: z.enum(["delete-user-export-state"]),
+    action: z.enum(["delete-user-export-state", "seed-chat-messages"]),
   })
   .passthrough();
 

@@ -451,7 +451,7 @@ async function setupFixture(): Promise<GmailTestFixture> {
     actor,
     agent.agentId,
     WORKFLOW_NAME,
-    "Handle Gmail webhook events.",
+    { content: "Handle Gmail webhook events." },
     [201],
   );
   if (!("id" in workflow.body)) {

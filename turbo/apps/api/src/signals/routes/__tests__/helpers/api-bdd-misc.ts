@@ -174,6 +174,10 @@ export function createMiscRoutesApi(context: TestContext) {
   });
 
   return {
+    putS3Object(key: string, body: Buffer | string | Uint8Array): void {
+      s3Objects.set(key, bodyBuffer(body));
+    },
+
     setOrgLogoRead(org: ClerkOrg): void {
       context.mocks.clerk.organizations.getOrganization.mockResolvedValue(org);
     },
@@ -332,7 +336,10 @@ export function createMiscRoutesApi(context: TestContext) {
       actor: ApiTestUser,
       agentId: string,
       name: string,
-      content: string,
+      input: {
+        readonly content: string;
+        readonly files?: readonly WorkflowFileEntry[];
+      },
       statuses: readonly (201 | 400 | 401 | 403 | 409)[],
     ) {
       return await accept(
@@ -343,7 +350,8 @@ export function createMiscRoutesApi(context: TestContext) {
             name,
             displayName: "BDD Workflow",
             description: "Created through public workflow API",
-            instruction: content,
+            instruction: input.content,
+            ...(input.files === undefined ? {} : { files: [...input.files] }),
           },
         }),
         statuses,

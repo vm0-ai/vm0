@@ -9,6 +9,8 @@ import { users } from "@vm0/db/schema/user";
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
 
+import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
@@ -83,8 +85,65 @@ async function deleteUserExportStateForAction(
   return actionOk();
 }
 
+async function seedChatMessagesForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const userId = readString(body, "user_id");
+  const agentId = readString(body, "agent_id");
+  const threadId = readString(body, "thread_id");
+  if (!userId || !agentId || !threadId) {
+    return actionBadRequest("user_id, agent_id, and thread_id are required");
+  }
+
+  const createdAt = new Date("2026-05-12T05:01:00.000Z");
+  await db.insert(chatThreads).values({
+    id: threadId,
+    userId,
+    agentComposeId: agentId,
+    title: "BDD export thread",
+    lastMessageAt: createdAt,
+    createdAt,
+    updatedAt: createdAt,
+  });
+  signal.throwIfAborted();
+
+  await db.insert(chatMessages).values([
+    {
+      chatThreadId: threadId,
+      role: "user",
+      content: "exported user text",
+      createdAt: new Date("2026-05-12T05:02:00.000Z"),
+    },
+    {
+      chatThreadId: threadId,
+      role: "assistant",
+      content: "exported assistant text",
+      createdAt: new Date("2026-05-12T05:03:00.000Z"),
+    },
+    {
+      chatThreadId: threadId,
+      role: "assistant",
+      content: null,
+      error: "hidden assistant error",
+      createdAt: new Date("2026-05-12T05:04:00.000Z"),
+    },
+    {
+      chatThreadId: threadId,
+      role: "system",
+      content: "hidden system text",
+      createdAt: new Date("2026-05-12T05:05:00.000Z"),
+    },
+  ]);
+  signal.throwIfAborted();
+
+  return actionOk({ thread_id: threadId });
+}
+
 const userExportStateActionHandlers = {
   "delete-user-export-state": deleteUserExportStateForAction,
+  "seed-chat-messages": seedChatMessagesForAction,
 } satisfies Record<UserExportStateAction, UserExportStateActionHandler>;
 
 const mutateTestUserExportState$ = command(
