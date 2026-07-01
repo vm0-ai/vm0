@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.44.0...guest-agent-v0.44.1) (2026-07-01)
+
+
+### Refactoring
+
+* remove guest-agent path facades ([#19687](https://github.com/vm0-ai/vm0/issues/19687)) ([e054c10](https://github.com/vm0-ai/vm0/commit/e054c10f91e6b91838770c1de324782a75182d9d))
+
 ## [0.44.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.6...guest-agent-v0.44.0) (2026-07-01)
 
 

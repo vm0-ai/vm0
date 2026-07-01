@@ -8,6 +8,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import { createBddApi } from "./helpers/api-bdd";
 import {
@@ -3256,14 +3257,14 @@ describe("INT-02: Telegram integration", () => {
       firstSequence: 1,
       lastSequence: 1,
     });
-    await waitForExpectation(() => {
-      expect(chatActions.slice(actionsBeforeTyping)).toStrictEqual([
-        { chat_id: String(dmChatId), action: "typing" },
-      ]);
-    });
+    await flushWaitUntilForTest();
+    expect(chatActions.slice(actionsBeforeTyping)).toStrictEqual([
+      { chat_id: String(dmChatId), action: "typing" },
+    ]);
 
-    // Once the run is cancelled no Telegram callback stays pending, so a
-    // second typing refresh sends nothing.
+    // Run cancellation dispatches completion callbacks via waitUntil. Wait for
+    // those side effects to settle before checking that later typing refreshes
+    // no longer see pending Telegram callbacks.
     await runs.requestCancelRun(actor, runId, [200]);
     await expect
       .poll(async () => {
@@ -3271,6 +3272,7 @@ describe("INT-02: Telegram integration", () => {
         return run.status;
       })
       .toBe("cancelled");
+    await flushWaitUntilForTest();
     const actionsAfterCancel = chatActions.length;
     const idleTyping = await webhooks.requestAgentEvents(
       typingBody,
@@ -3282,6 +3284,7 @@ describe("INT-02: Telegram integration", () => {
       firstSequence: 1,
       lastSequence: 1,
     });
+    await flushWaitUntilForTest();
     expect(chatActions).toHaveLength(actionsAfterCancel);
   });
 });

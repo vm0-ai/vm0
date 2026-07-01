@@ -1,5 +1,22 @@
 # Changelog
 
+## [8.384.0](https://github.com/vm0-ai/vm0/compare/core-v8.383.0...core-v8.384.0) (2026-07-01)
+
+
+### Features
+
+* add image artifact keyboard navigation ([#19694](https://github.com/vm0-ai/vm0/issues/19694)) ([2d6e968](https://github.com/vm0-ai/vm0/commit/2d6e968d6940a997a4c34e722304d7b230663697)), closes [#19133](https://github.com/vm0-ai/vm0/issues/19133)
+* add teams settings ui ([#19570](https://github.com/vm0-ai/vm0/issues/19570)) ([242e261](https://github.com/vm0-ai/vm0/commit/242e26146208b187de904e92116590bb767bc5e9))
+* open connectorAccessManagement to all users ([#19686](https://github.com/vm0-ai/vm0/issues/19686)) ([3131bf0](https://github.com/vm0-ai/vm0/commit/3131bf00def4a0b94754b0b941fced4a43aa2814))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.139.0
+    * @vm0/connectors bumped to 1.123.0
+
 ## [8.383.0](https://github.com/vm0-ai/vm0/compare/core-v8.382.0...core-v8.383.0) (2026-07-01)
 
 

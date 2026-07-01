@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.203.0](https://github.com/vm0-ai/vm0/compare/api-v1.202.0...api-v1.203.0) (2026-07-01)
+
+
+### Features
+
+* add teams settings ui ([#19570](https://github.com/vm0-ai/vm0/issues/19570)) ([242e261](https://github.com/vm0-ai/vm0/commit/242e26146208b187de904e92116590bb767bc5e9))
+* export user-owned data files ([#19664](https://github.com/vm0-ai/vm0/issues/19664)) ([af2f0f3](https://github.com/vm0-ai/vm0/commit/af2f0f3c41cb147690d179937197762604479e11))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.139.0
+    * @vm0/connectors bumped to 1.123.0
+    * @vm0/core bumped to 8.384.0
+    * @vm0/db bumped to 1.83.1
+
 ## [1.202.0](https://github.com/vm0-ai/vm0/compare/api-v1.201.0...api-v1.202.0) (2026-07-01)
 
 
