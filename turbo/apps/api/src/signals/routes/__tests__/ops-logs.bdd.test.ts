@@ -45,6 +45,10 @@ const trackUserExportActor = createFixtureTracker<ApiTestUser>(
   cleanupUserExportState,
 );
 
+interface DeferredS3Put {
+  readonly resolve: () => void;
+}
+
 async function createUserExportActor(
   bdd: ReturnType<typeof createBddApi>,
 ): Promise<ApiTestUser> {
@@ -52,6 +56,10 @@ async function createUserExportActor(
 }
 
 const context = testContext();
+const trackDeferredS3Put = createFixtureTracker<DeferredS3Put>((pendingPut) => {
+  pendingPut.resolve();
+  return Promise.resolve();
+});
 
 type UserExportStatusBody = Extract<
   Awaited<
@@ -723,7 +731,9 @@ describe("OPS-01: user data export", () => {
     });
 
     context.mocks.s3.getSignedUrl.mockResolvedValue(downloadUrl);
-    const pendingPut = api.deferS3PutOnce();
+    const pendingPut = await trackDeferredS3Put(
+      Promise.resolve(api.deferS3PutOnce()),
+    );
 
     const started = await api.requestPostUserExport(actor, [202]);
     expect(started.body.status).toBe("pending");
