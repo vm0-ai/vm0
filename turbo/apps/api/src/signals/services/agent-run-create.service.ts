@@ -108,7 +108,7 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, count, eq, gt, inArray, or, sql } from "drizzle-orm";
+import { and, count, eq, inArray, or, sql } from "drizzle-orm";
 import type { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
@@ -145,6 +145,7 @@ import {
   renderCustomConnectorRuntimePrefix,
   renderTemplateForRuntime,
 } from "./zero-custom-connector.service";
+import { activePendingRunPredicate } from "./agent-run-activity.service";
 import { prepareAgentRunStorageManifest } from "./agent-run-storage.service";
 import {
   encryptQueuedRunnerJobPayload,
@@ -3647,7 +3648,7 @@ async function checkRunConcurrencyLimit(
           eq(agentRuns.status, "running"),
           and(
             eq(agentRuns.status, "pending"),
-            gt(agentRuns.createdAt, staleThreshold),
+            activePendingRunPredicate(staleThreshold),
           ),
         ),
       ),

@@ -4,18 +4,7 @@ import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import {
-  and,
-  count,
-  eq,
-  gt,
-  inArray,
-  isNull,
-  lt,
-  ne,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, count, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
@@ -25,6 +14,7 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { logger } from "../../lib/log";
+import { activePendingRunPredicate } from "./agent-run-activity.service";
 import { decryptQueuedRunnerJobPayload } from "./agent-run-queue-payload.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
@@ -156,7 +146,7 @@ async function activeConcurrencyCount(
           eq(agentRuns.status, "running"),
           and(
             eq(agentRuns.status, "pending"),
-            gt(agentRuns.createdAt, staleThreshold),
+            activePendingRunPredicate(staleThreshold),
           ),
         ),
       ),
@@ -700,7 +690,7 @@ export const drainStaleQueues$ = command(
               eq(agentRuns.status, "running"),
               and(
                 eq(agentRuns.status, "pending"),
-                gt(agentRuns.createdAt, staleThreshold),
+                activePendingRunPredicate(staleThreshold),
               ),
             ),
           ),

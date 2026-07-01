@@ -1385,6 +1385,66 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(emptied.body.concurrency.active).toBe(0);
   });
 
+  it("counts promoted queued runs by promotion heartbeat for admission", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before old queue promotion one",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(first.status).toBe("pending");
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before old queue promotion two",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(second.status).toBe("pending");
+
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run promoted after pending ttl",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    mockNow(now() + 16 * 60_000);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
+    expect(promoted.status).toBe("pending");
+
+    const fresh = await api.createRun(actor, {
+      agentId,
+      prompt: "fresh run beside promoted queue item",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(fresh.status).toBe("pending");
+
+    const overLimit = await api.createRun(actor, {
+      agentId,
+      prompt: "run should queue behind promoted active item",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(overLimit.status).toBe("queued");
+
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.concurrency.active).toBe(2);
+    expect(queue.body.queue).toContainEqual(
+      expect.objectContaining({ runId: overLimit.runId }),
+    );
+
+    await api.requestCancelRun(actor, overLimit.runId, [200]);
+    await api.requestCancelRun(actor, fresh.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
   it("keeps a queued launch visible when enqueue telemetry fails", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
