@@ -2,6 +2,11 @@ import {
   zeroIntegrationsSlackContract,
   type SlackOrgStatus,
 } from "@vm0/api-contracts/contracts/zero-integrations-slack";
+import {
+  zeroTeamsConnectContract,
+  type TeamsConnectStatus,
+} from "@vm0/api-contracts/contracts/zero-teams-connect";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -33,10 +38,26 @@ function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}): void {
   });
 }
 
-function setupWorksPage(): void {
+function mockTeamsAPI(overrides: Partial<TeamsConnectStatus> = {}): void {
+  const defaults: TeamsConnectStatus = {
+    isConnected: false,
+    isInstalled: false,
+    isAdmin: true,
+    installUrl:
+      "https://teams.microsoft.com/l/app/00000000-0000-0000-0000-000000000001",
+  };
+  context.mocks.api(zeroTeamsConnectContract.getStatus, ({ respond }) => {
+    return respond(200, { ...defaults, ...overrides });
+  });
+}
+
+function setupWorksPage(options: { teamsEnabled?: boolean } = {}): void {
   detachedSetupPage({
     context,
     path: "/works",
+    featureSwitches: {
+      [FeatureSwitchKey.TeamsIntegration]: options.teamsEnabled ?? false,
+    },
   });
 }
 
@@ -61,6 +82,7 @@ describe("works page", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Slack")).toBeInTheDocument();
+      expect(screen.queryByText("Microsoft Teams")).not.toBeInTheDocument();
       expect(screen.getByText("Telegram")).toBeInTheDocument();
       expect(screen.getByText("Phone")).toBeInTheDocument();
       expect(screen.getByText(/update permissions/i)).toBeInTheDocument();
@@ -80,6 +102,60 @@ describe("works page", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Back to integrations")).toBeInTheDocument();
+    });
+  });
+
+  it("shows Microsoft Teams status when the Teams integration is enabled", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    mockTeamsAPI({
+      isConnected: true,
+      isInstalled: true,
+      isAdmin: true,
+      tenantName: "VM0 Tenant",
+      teamName: "Core Team",
+    });
+
+    setupWorksPage({ teamsEnabled: true });
+
+    await waitFor(() => {
+      expect(screen.getByText("Microsoft Teams")).toBeInTheDocument();
+      expect(screen.getByText("Connected (Core Team)")).toBeInTheDocument();
+    });
+  });
+
+  it("shows Microsoft Teams admin install controls", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    mockTeamsAPI({ isConnected: false, isInstalled: false, isAdmin: true });
+
+    setupWorksPage({ teamsEnabled: true });
+
+    const installButton = await screen.findByTestId("teams-install-button");
+    expect(installButton).toHaveTextContent("Install in Teams");
+  });
+
+  it("keeps Microsoft Teams install controls available after installation", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    mockTeamsAPI({ isConnected: false, isInstalled: true, isAdmin: true });
+
+    setupWorksPage({ teamsEnabled: true });
+
+    const installButton = await screen.findByTestId("teams-install-button");
+    expect(installButton).toHaveTextContent("Install in Teams");
+  });
+
+  it("shows Microsoft Teams admin uninstall confirmation", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    mockTeamsAPI({ isConnected: false, isInstalled: true, isAdmin: true });
+
+    setupWorksPage({ teamsEnabled: true });
+
+    click(await screen.findByLabelText("More Microsoft Teams options"));
+    click(await screen.findByLabelText("Uninstall Microsoft Teams"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Uninstall Microsoft Teams integration?"),
+      ).toBeInTheDocument();
     });
   });
 });

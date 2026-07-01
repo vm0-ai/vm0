@@ -321,6 +321,7 @@ impl<'a> CliRuntimeConfig<'a> {
         let use_mock_claude = is_claude && env::use_mock_claude();
         let use_mock_codex = is_codex && env::use_mock_codex();
         let use_codex_app_server_backend = is_codex && env::use_codex_app_server_backend();
+        let paths = paths::legacy_paths_from_process_env();
         Self {
             framework,
             run_id: Cow::Borrowed(env::run_id()),
@@ -373,10 +374,10 @@ impl<'a> CliRuntimeConfig<'a> {
             } else {
                 constants::STUCK_TOOL_TIMEOUT_SECS
             },
-            agent_log_file: Cow::Borrowed(paths::agent_log_file()),
-            session_id_file: Cow::Borrowed(paths::session_id_file()),
-            session_history_path_file: Cow::Borrowed(paths::session_history_path_file()),
-            event_error_flag: Cow::Borrowed(paths::event_error_flag()),
+            agent_log_file: Cow::Owned(paths.agent_log_file().to_string()),
+            session_id_file: Cow::Owned(paths.session_id_file().to_string()),
+            session_history_path_file: Cow::Owned(paths.session_history_path_file().to_string()),
+            event_error_flag: Cow::Owned(paths.event_error_flag().to_string()),
             user_env: env::user_env(),
         }
     }

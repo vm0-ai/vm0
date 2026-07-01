@@ -55,4 +55,5 @@ export enum FeatureSwitchKey {
   AgentsPageRedesign = "agentsPageRedesign",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   ChatInitialThinkingIndicator = "chatInitialThinkingIndicator",
+  TeamsIntegration = "teamsIntegration",
 }

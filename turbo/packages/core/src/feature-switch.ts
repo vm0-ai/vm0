@@ -281,8 +281,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show connected connector filtering and per-agent connector access management on connected connector cards.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.PresentationTemplateRunbook]: {
     maintainer: "bingjie@vm0.ai",
@@ -314,6 +313,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show fast generated status text in the web chat thinking indicator.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.TeamsIntegration]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show standalone Microsoft Teams integration settings, connect flows, and Works page entry points.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

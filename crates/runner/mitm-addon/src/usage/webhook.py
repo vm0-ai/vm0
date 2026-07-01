@@ -11,11 +11,13 @@ import json
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Literal
 
+import network_log_sanitization
 from logging_utils import log_proxy_entry
 from platform_api import make_api_request
 
@@ -63,7 +65,7 @@ def _payload_log_summary(payload: dict) -> dict:
 def _log_webhook_entry(
     proxy_log_path: str,
     level: str,
-    message: str,
+    message_detail: str,
     url: str,
     log_type: str,
     payload: dict,
@@ -72,6 +74,9 @@ def _log_webhook_entry(
     error: str | None = None,
     extra_fields: dict[str, object] | None = None,
 ) -> None:
+    display_url = network_log_sanitization.sanitize_url_for_network_log(url)
+    safe_message_detail = _sanitize_webhook_log_text(message_detail, url, display_url)
+    message = f"Webhook POST to {display_url} {safe_message_detail}"
     extra: dict = {"type": log_type, "url": url}
     extra.update(_payload_log_summary(payload))
     if payload_bytes is not None:
@@ -79,10 +84,36 @@ def _log_webhook_entry(
     if attempt is not None:
         extra["attempt"] = attempt
     if error is not None:
-        extra["error"] = error
+        extra["error"] = _sanitize_webhook_log_text(error, url, display_url)
     if extra_fields is not None:
         extra.update(extra_fields)
     log_proxy_entry(proxy_log_path, level, message, **extra)
+
+
+def _sanitize_webhook_log_text(value: str, raw_url: str, display_url: str) -> str:
+    if not raw_url:
+        return value
+    for url_variant in _raw_webhook_url_log_text_variants(raw_url):
+        value = value.replace(url_variant, display_url)
+    return value
+
+
+def _raw_webhook_url_log_text_variants(raw_url: str) -> tuple[str, ...]:
+    variants = {raw_url}
+    try:
+        parts = urllib.parse.urlsplit(raw_url)
+    except ValueError:
+        variants.add(raw_url.split("#", 1)[0])
+        variants.add(raw_url.split("?", 1)[0])
+    else:
+        if parts.fragment:
+            variants.add(
+                urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ""))
+            )
+        if parts.query or parts.fragment:
+            variants.add(urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, "", "")))
+    variants.discard("")
+    return tuple(sorted(variants, key=len, reverse=True))
 
 
 def _post_webhook(url: str, sandbox_token: str, data: bytes) -> None:
@@ -147,7 +178,7 @@ def _handle_retryable_webhook_failure(
         _log_webhook_entry(
             proxy_log_path,
             "info",
-            f"Webhook POST to {url} attempt {attempt_number} failed, retrying: {exc}",
+            f"attempt {attempt_number} failed, retrying: {exc}",
             url,
             log_type,
             payload,
@@ -161,7 +192,7 @@ def _handle_retryable_webhook_failure(
     _log_webhook_entry(
         proxy_log_path,
         "info",
-        f"Webhook POST to {url} failed after {attempt_number} attempts: {exc}",
+        f"failed after {attempt_number} attempts: {exc}",
         url,
         log_type,
         payload,
@@ -187,7 +218,7 @@ def _do_post_webhook_attempts(
         _log_webhook_entry(
             proxy_log_path,
             "error",
-            f"Webhook POST to {url} failed with non-retryable error: {exc}",
+            f"failed with non-retryable error: {exc}",
             url,
             log_type,
             payload,
@@ -203,7 +234,7 @@ def _do_post_webhook_attempts(
             _log_webhook_entry(
                 proxy_log_path,
                 "info",
-                f"Webhook POST to {url} succeeded",
+                "succeeded",
                 url,
                 log_type,
                 payload,
@@ -216,7 +247,7 @@ def _do_post_webhook_attempts(
                 _log_webhook_entry(
                     proxy_log_path,
                     "error",
-                    f"Webhook POST to {url} failed with permanent HTTP error: {exc}",
+                    f"failed with permanent HTTP error: {exc}",
                     url,
                     log_type,
                     payload,
@@ -260,7 +291,7 @@ def _do_post_webhook_attempts(
             _log_webhook_entry(
                 proxy_log_path,
                 "error",
-                f"Webhook POST to {url} failed with non-retryable error: {exc}",
+                f"failed with non-retryable error: {exc}",
                 url,
                 log_type,
                 payload,
@@ -368,7 +399,7 @@ def _enqueue_webhook(
         _log_webhook_entry(
             proxy_log_path,
             "info",
-            f"Webhook POST to {url} was not admitted because usage delivery is saturated",
+            "was not admitted because usage delivery is saturated",
             url,
             log_type,
             payload,
@@ -384,7 +415,7 @@ def _enqueue_webhook(
         _log_webhook_entry(
             proxy_log_path,
             "info",
-            f"Webhook POST to {url} enqueued",
+            "enqueued",
             url,
             log_type,
             payload,
