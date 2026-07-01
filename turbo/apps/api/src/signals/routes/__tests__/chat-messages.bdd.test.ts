@@ -1055,6 +1055,62 @@ describe("CHAT-02: queueing and recalling messages", () => {
 });
 
 describe("CHAT-02: org queue markers", () => {
+  it("drains queued chat runs when an interrupt request aborts post-cancel", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    const controller = new AbortController();
+
+    const blocker = await chat.requestSendMessage(
+      actor,
+      { agentId, prompt: "occupy org concurrency before interrupt abort" },
+      [201],
+    );
+    if (blocker.status !== 201 || blocker.body.runId === null) {
+      throw new Error("Expected the blocking send to create a run");
+    }
+    expect(blocker.body.status).toBe("pending");
+
+    const queued = await chat.requestSendMessage(
+      actor,
+      { agentId, prompt: "drain after interrupt abort" },
+      [201],
+    );
+    if (queued.status !== 201 || queued.body.runId === null) {
+      throw new Error("Expected the second send to create a queued run");
+    }
+    expect(queued.body.status).toBe("queued");
+
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        const error = new Error("abort after interrupt cancel commit");
+        error.name = "AbortError";
+        controller.abort(error);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: blocker.body.threadId,
+        interruptsRunId: blocker.body.runId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+      controller.signal,
+    );
+
+    await waitForRunStatus(actor, blocker.body.runId, "cancelled");
+    await waitForRunStatus(actor, queued.body.runId, "pending");
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(queued.body.runId);
+    expect(claim.prompt).toBe("drain after interrupt abort");
+
+    await api.requestCancelRun(actor, queued.body.runId, [200]);
+  });
+
   it("marks queued chat runs and revokes the marker on dequeue", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();

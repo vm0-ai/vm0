@@ -160,8 +160,8 @@ export const cancelRun$ = command(
  *    run-creation migration.
  *  - `triggerAutoRecharge` (Stripe top-up) — sibling follow-up.
  *
- * Fire-and-forget caller: invoke from the route handler via
- * `waitUntil(tapError(set(dispatchCancelSideEffects$, result, signal), log))`.
+ * Fire-and-forget caller: invoke from the route handler via `waitUntil(...)`
+ * with a detached background signal after `cancelRun$` commits.
  */
 export const dispatchCancelSideEffects$ = command(
   async (
