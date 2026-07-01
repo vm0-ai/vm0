@@ -283,11 +283,11 @@ export const prepareCheckpointHistoryUpload$ = command(
     }
 
     if (
-      input.body.encoding === undefined &&
+      requestedEncoding === SESSION_HISTORY_ENCODING_IDENTITY &&
       encoding !== SESSION_HISTORY_ENCODING_IDENTITY
     ) {
       return badRequestMessage(
-        "Legacy session history upload cannot repair a compressed blob",
+        "Identity session history upload cannot repair a compressed blob",
       );
     }
 

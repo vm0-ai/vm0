@@ -1085,6 +1085,57 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     });
   });
 
+  it("rejects identity repair for a missing compressed session history blob", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-gzip-repair");
+    const history = `{"type":"init"}\n{"type":"human","text":"repair-${randomUUID()}"}\n`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const compressedKey = `blobs/${historyHash}.blob.gz`;
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (s3CommandKey(command) === compressedKey) {
+        return Promise.reject(s3ObjectNotFoundError());
+      }
+      return Promise.resolve({});
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "create missing compressed blob metadata",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const headers = sandboxHeaders(claim.sandboxToken);
+    const compressedPrepare =
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash: historyHash,
+          size: Buffer.byteLength(history, "utf8"),
+          encoding: "gzip",
+        },
+        headers,
+        [200],
+      );
+    expect(compressedPrepare.body).toMatchObject({
+      existing: false,
+      encoding: "gzip",
+    });
+
+    const identityRepair = await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: historyHash,
+        size: Buffer.byteLength(history, "utf8"),
+        encoding: "identity",
+      },
+      headers,
+      [400],
+    );
+    expectApiError(identityRepair.body);
+    expect(identityRepair.body.error.message).toBe(
+      "Identity session history upload cannot repair a compressed blob",
+    );
+  });
+
   it("restores volumes, memory, and conversation state when resuming checkpoints", async () => {
     const storages = createStoragesBddApi(context);
     const actor = await entitledActor();
