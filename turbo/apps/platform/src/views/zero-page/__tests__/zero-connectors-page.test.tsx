@@ -986,6 +986,55 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("ignores duplicate direct OAuth starts while a connector is polling", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "stripe",
+        label: "Public Stripe",
+        description: "Public Stripe description",
+        authMethods: [
+          {
+            id: "oauth",
+            label: "Public OAuth",
+            description: null,
+            grantKind: "auth-code",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+        singleAuthCodeAuthMethodId: "oauth",
+      }),
+    ]);
+    const authWindow = createMockAuthWindow();
+    const openMock = context.mocks.browser.open(authWindow);
+    let startCount = 0;
+    context.mocks.api(
+      zeroConnectorOauthStartContract.start,
+      ({ params, respond }) => {
+        startCount += 1;
+        return respond(200, {
+          authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await fill(await screen.findByPlaceholderText("Find connectors"), "stripe");
+    const connectButton = await screen.findByLabelText("Connect Public Stripe");
+    click(connectButton);
+    click(connectButton);
+
+    await waitFor(() => {
+      expect(startCount).toBe(1);
+      expect(openMock.calls).toHaveLength(1);
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/stripe/authorize",
+      );
+    });
+  });
+
   it("starts Stripe OAuth from the connect dialog", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([

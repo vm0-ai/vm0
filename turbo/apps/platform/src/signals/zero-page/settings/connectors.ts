@@ -1844,6 +1844,11 @@ export const connectConnectorOAuthAuthCode$ = command(
     options: PostConnectOptions,
     signal: AbortSignal,
   ) => {
+    signal.throwIfAborted();
+    if (get(internalPollingOAuthAuthCodeConnectorType$) !== null) {
+      return false;
+    }
+
     const flow = createConnectorConnectFlowState(type);
     set(internalConnectFlowState$, flow);
     set(internalPollingOAuthAuthCodeConnectorType$, type);

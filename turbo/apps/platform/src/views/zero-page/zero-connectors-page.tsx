@@ -751,17 +751,25 @@ function AvailableConnectorCard({
   isPolling: boolean;
   onConnect: () => void;
 }) {
+  const handleConnect = () => {
+    if (isPolling) {
+      return;
+    }
+    onConnect();
+  };
+
   return (
     <div
       role="button"
-      tabIndex={0}
+      tabIndex={isPolling ? -1 : 0}
       aria-label={`Connect ${connector.label}`}
-      className="zero-card cursor-pointer overflow-hidden"
-      onClick={onConnect}
+      aria-disabled={isPolling}
+      className={`zero-card overflow-hidden ${isPolling ? "cursor-default" : "cursor-pointer"}`}
+      onClick={handleConnect}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onConnect();
+          handleConnect();
         }
       }}
     >
