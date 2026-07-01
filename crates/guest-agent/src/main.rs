@@ -187,7 +187,8 @@ async fn run(runtime: GuestRuntime) -> i32 {
     let t = Instant::now();
     let metrics_handle = tokio::spawn({
         let shutdown = shutdown.clone();
-        async move { metrics::metrics_loop(shutdown).await }
+        let metrics_log_file = runtime.paths.metrics_log_file().to_string();
+        async move { metrics::metrics_loop_for_path(shutdown, metrics_log_file).await }
     });
     log_info!(LOG_TAG, "Metrics collector started");
     record_sandbox_op("metrics_collector_start", t.elapsed(), true, None);

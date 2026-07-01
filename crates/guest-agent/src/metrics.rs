@@ -169,6 +169,11 @@ fn collect_metrics(cpu_tracker: &mut CpuTracker) -> MetricsEntry {
 
 /// Background loop writing metrics JSONL every `METRICS_INTERVAL_SECS`.
 pub async fn metrics_loop(shutdown: CancellationToken) {
+    metrics_loop_for_path(shutdown, paths::metrics_log_file().to_string()).await;
+}
+
+/// Background loop writing metrics JSONL to an explicit runtime metrics file.
+pub async fn metrics_loop_for_path(shutdown: CancellationToken, metrics_log_file: String) {
     let mut interval = tokio::time::interval(Duration::from_secs(constants::METRICS_INTERVAL_SECS));
     let mut cpu_tracker = CpuTracker::new();
     loop {
@@ -176,11 +181,11 @@ pub async fn metrics_loop(shutdown: CancellationToken) {
             _ = shutdown.cancelled() => break,
             _ = interval.tick() => {
                 let entry = collect_metrics(&mut cpu_tracker);
-                if let Ok(json) = serde_json::to_string(&entry) {
-                    let path = paths::metrics_log_file();
-                    if let Ok(mut f) = guest_contracts::runtime_paths::open_private_append(path) {
-                        let _ = writeln!(f, "{json}");
-                    }
+                if let Ok(json) = serde_json::to_string(&entry)
+                    && let Ok(mut f) =
+                        guest_contracts::runtime_paths::open_private_append(&metrics_log_file)
+                {
+                    let _ = writeln!(f, "{json}");
                 }
             }
         }
@@ -392,5 +397,44 @@ mod tests {
         assert!(parsed["cpu"].is_f64());
         assert!(parsed["mem_total"].is_u64());
         assert!(parsed["disk_total"].is_u64());
+    }
+
+    #[tokio::test]
+    async fn metrics_loop_for_path_writes_to_explicit_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let metrics_log_file = temp
+            .path()
+            .join("runtime")
+            .join("metrics.jsonl")
+            .to_string_lossy()
+            .into_owned();
+
+        let shutdown = CancellationToken::new();
+        let handle = tokio::spawn(metrics_loop_for_path(
+            shutdown.clone(),
+            metrics_log_file.clone(),
+        ));
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if let Ok(content) = std::fs::read_to_string(&metrics_log_file)
+                    && !content.trim().is_empty()
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+
+        shutdown.cancel();
+        handle.await.unwrap();
+
+        let content = std::fs::read_to_string(metrics_log_file).unwrap();
+        let first_line = content.lines().next().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(first_line).unwrap();
+        assert!(parsed["ts"].is_string());
+        assert!(parsed["cpu"].is_f64());
     }
 }
