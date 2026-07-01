@@ -236,15 +236,12 @@ describe("personal model providers settings", () => {
       expect(screen.getByText("Claude Code connected")).toBeInTheDocument();
       expect(within(claudeCodeRow).getByText("Connected")).toBeInTheDocument();
       expect(
-        within(claudeCodeRow).getByText("Account: Unavailable"),
-      ).toBeInTheDocument();
-      expect(
-        within(claudeCodeRow).getByText("Reset: Unknown"),
-      ).toBeInTheDocument();
+        within(claudeCodeRow).queryByText(/Unavailable|Unknown/),
+      ).not.toBeInTheDocument();
     });
   });
 
-  it("shows subscription account and reset details for connected credentials", async () => {
+  it("shows available subscription details in the connected status", async () => {
     context.mocks.data.org({
       id: "org_1",
       slug: "test-org",
@@ -261,19 +258,20 @@ describe("personal model providers settings", () => {
     const claudeCodeRow = await screen.findByTestId(
       "oauth-card-claude-code-oauth-token",
     );
+    expect(within(claudeCodeRow).getByText("Connected")).toBeInTheDocument();
     expect(
-      within(claudeCodeRow).getByText("Account: Unavailable"),
-    ).toBeInTheDocument();
-    expect(
-      within(claudeCodeRow).getByText("Reset: Unknown"),
-    ).toBeInTheDocument();
+      within(claudeCodeRow).queryByText(/Unavailable|Unknown|Account:|Reset:/),
+    ).not.toBeInTheDocument();
 
     const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
     expect(
-      within(codexRow).getByText("Account: Personal ChatGPT"),
+      within(codexRow).getByText(
+        "Connected (Personal ChatGPT, Pro, resets weekly)",
+      ),
     ).toBeInTheDocument();
-    expect(within(codexRow).getByText("Plan: Pro")).toBeInTheDocument();
-    expect(within(codexRow).getByText("Reset: Weekly")).toBeInTheDocument();
+    expect(
+      within(codexRow).queryByText(/Account:|Plan:|Reset:/),
+    ).not.toBeInTheDocument();
   });
 
   it("opens reconnect login from a stale personal Codex credential", async () => {
@@ -311,13 +309,15 @@ describe("personal model providers settings", () => {
 
     const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
     expect(within(codexRow).getByText("ChatGPT (Codex)")).toBeInTheDocument();
-    expect(within(codexRow).getByText("Connected")).toBeInTheDocument();
+    expect(within(codexRow).getByText(/^Connected/)).toBeInTheDocument();
 
     click(within(codexRow).getByLabelText("More options"));
     click(await screen.findByText("Disconnect"));
 
     await waitFor(() => {
-      expect(within(codexRow).queryByText("Connected")).not.toBeInTheDocument();
+      expect(
+        within(codexRow).queryByText(/^Connected/),
+      ).not.toBeInTheDocument();
       expect(
         queryAllByRoleFast("button", codexRow).find((button) => {
           return button.textContent?.trim() === "Connect";

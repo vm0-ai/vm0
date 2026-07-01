@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import { HttpResponse, http } from "msw";
 
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -256,6 +258,26 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
   it("paste valid auth.json persists derived secrets + metadata", async () => {
     const fixture = uniqueOrgUser("zmmp-codex-happy");
     mocks.clerk.session(fixture.userId, fixture.orgId);
+    server.use(
+      http.get("https://chatgpt.com/backend-api/wham/usage", ({ request }) => {
+        expect(request.headers.get("chatgpt-account-id")).toBe(
+          "ws_acct_from_id_token_personal",
+        );
+        return HttpResponse.json({
+          plan_type: "pro",
+          rate_limit: {
+            primary_window: {
+              limit_window_seconds: 18_000,
+              reset_at: 1_893_441_600,
+            },
+            secondary_window: {
+              limit_window_seconds: 604_800,
+              reset_at: 1_893_456_000,
+            },
+          },
+        });
+      }),
+    );
 
     const client = setupApp({ context })(
       zeroPersonalModelProvidersMainContract,
@@ -276,7 +298,9 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
         type: "codex-oauth-token",
         authMethod: "auth_json",
         workspaceName: "Personal Acme",
-        planType: "plus",
+        planType: "pro",
+        subscriptionResetPeriod: "weekly",
+        subscriptionNextResetAt: "2030-01-01T00:00:00.000Z",
         needsReconnect: false,
       },
     });

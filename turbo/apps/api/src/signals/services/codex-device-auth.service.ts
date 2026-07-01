@@ -754,6 +754,7 @@ const importCodexAuthJson$ = command(
     const common = {
       rawAuthJson: args.rawAuthJson,
       selectedModel: undefined,
+      signal,
       upsert: async (pasteArgs: {
         readonly authMethod: "auth_json";
         readonly secretValues: {
@@ -767,6 +768,8 @@ const importCodexAuthJson$ = command(
           readonly tokenExpiresAt: Date | null;
           readonly workspaceName: string | null;
           readonly planType: string | null;
+          readonly subscriptionResetPeriod?: string | null;
+          readonly subscriptionNextResetAt?: Date | null;
         };
       }) => {
         if (args.scope === "org") {

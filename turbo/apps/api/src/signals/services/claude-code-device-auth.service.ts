@@ -682,6 +682,9 @@ function toModelProviderResponse(
     selectedModel: provider.selectedModel,
     workspaceName: provider.workspaceName,
     planType: provider.planType,
+    subscriptionResetPeriod: provider.subscriptionResetPeriod,
+    subscriptionNextResetAt:
+      provider.subscriptionNextResetAt?.toISOString() ?? null,
     needsReconnect: provider.needsReconnect,
     lastRefreshErrorCode: provider.lastRefreshErrorCode,
     createdAt: provider.createdAt.toISOString(),

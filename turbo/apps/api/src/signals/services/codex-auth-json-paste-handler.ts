@@ -9,8 +9,9 @@ import {
   isCodexAuthJsonShapeError,
   isCodexAuthJsonFreePlanError,
 } from "./codex-auth-json-parser";
+import { fetchCodexUsageMetadata } from "./codex-usage.service";
 import { logger } from "../../lib/log";
-import { throwIfAbort } from "../utils";
+import { settle, throwIfAbort } from "../utils";
 
 /**
  * Shape of an upserted provider row that the paste handler serializes into the
@@ -28,6 +29,8 @@ interface UpsertedProvider {
   selectedModel: string | null;
   workspaceName: string | null;
   planType: string | null;
+  subscriptionResetPeriod: string | null;
+  subscriptionNextResetAt: Date | null;
   needsReconnect: boolean;
   lastRefreshErrorCode: string | null;
   createdAt: Date;
@@ -51,6 +54,9 @@ function serializeUpsertedProvider(provider: UpsertedProvider) {
     selectedModel: provider.selectedModel,
     workspaceName: provider.workspaceName,
     planType: provider.planType,
+    subscriptionResetPeriod: provider.subscriptionResetPeriod,
+    subscriptionNextResetAt:
+      provider.subscriptionNextResetAt?.toISOString() ?? null,
     needsReconnect: provider.needsReconnect,
     lastRefreshErrorCode: provider.lastRefreshErrorCode,
     createdAt: provider.createdAt.toISOString(),
@@ -77,8 +83,14 @@ type UpsertCodexProvider = (args: {
     tokenExpiresAt: Date | null;
     workspaceName: string | null;
     planType: string | null;
+    subscriptionResetPeriod?: string | null;
+    subscriptionNextResetAt?: Date | null;
   };
 }) => Promise<{ provider: UpsertedProvider; created: boolean }>;
+
+function unknownErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error";
+}
 
 /**
  * Common args shared by both scopes. Split out so the discriminated union
@@ -88,6 +100,7 @@ type UpsertCodexProvider = (args: {
 interface CodexAuthJsonPasteCommonArgs {
   rawAuthJson: string;
   selectedModel: string | undefined;
+  signal: AbortSignal;
   upsert: UpsertCodexProvider;
 }
 
@@ -128,6 +141,27 @@ export async function handleCodexAuthJsonPaste(args: CodexAuthJsonPasteArgs) {
   // eslint-disable-next-line no-restricted-syntax -- centralized try/catch for typed CodexAuthJsonShapeError / CodexAuthJsonFreePlanError narrowing; abort propagates via isAbortError check
   try {
     const parsed = parseCodexAuthJson(args.rawAuthJson);
+    const usageMetadataResult = await settle(
+      fetchCodexUsageMetadata({
+        accessToken: parsed.accessToken,
+        accountId: parsed.accountId,
+        signal: args.signal,
+      }),
+    );
+    const usageMetadata = usageMetadataResult.ok
+      ? usageMetadataResult.value
+      : null;
+    if (!usageMetadataResult.ok) {
+      log.debug(
+        args.scope === "personal"
+          ? "personal codex usage metadata unavailable"
+          : "codex usage metadata unavailable",
+        {
+          ...logContext,
+          errorMessage: unknownErrorMessage(usageMetadataResult.error),
+        },
+      );
+    }
 
     const { provider, created } = await args.upsert({
       authMethod: "auth_json",
@@ -141,20 +175,15 @@ export async function handleCodexAuthJsonPaste(args: CodexAuthJsonPasteArgs) {
       metadata: {
         tokenExpiresAt: parsed.tokenExpiresAt,
         workspaceName: parsed.workspaceName,
-        planType: parsed.planType,
+        planType: usageMetadata?.planType ?? parsed.planType,
+        ...(usageMetadata
+          ? {
+              subscriptionResetPeriod: usageMetadata.subscriptionResetPeriod,
+              subscriptionNextResetAt: usageMetadata.subscriptionNextResetAt,
+            }
+          : {}),
       },
     });
-
-    log.debug(
-      args.scope === "personal"
-        ? "personal codex provider connected via auth_json paste"
-        : "codex provider connected via auth_json paste",
-      {
-        ...logContext,
-        workspaceName: parsed.workspaceName,
-        planType: parsed.planType,
-      },
-    );
 
     return {
       status: (created ? 201 : 200) as 200 | 201,

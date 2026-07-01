@@ -741,6 +741,26 @@ describe("POST /api/zero/model-providers", () => {
   it("handles codex auth_json paste", async () => {
     const fixture = uniqueOrgUser("zmp-codex-paste");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    server.use(
+      http.get("https://chatgpt.com/backend-api/wham/usage", ({ request }) => {
+        expect(request.headers.get("chatgpt-account-id")).toBe(
+          "ws_acct_from_id_token_org",
+        );
+        return HttpResponse.json({
+          plan_type: "pro",
+          rate_limit: {
+            primary_window: {
+              limit_window_seconds: 18_000,
+              reset_at: 1_893_441_600,
+            },
+            secondary_window: {
+              limit_window_seconds: 604_800,
+              reset_at: 1_893_456_000,
+            },
+          },
+        });
+      }),
+    );
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
     const response = await accept(
@@ -758,10 +778,12 @@ describe("POST /api/zero/model-providers", () => {
     expect(response.body.provider.type).toBe("codex-oauth-token");
     expect(response.body.provider.authMethod).toBe("auth_json");
     expect(response.body.provider.workspaceName).toBe("Org Acme");
-    expect(response.body.provider.planType).toBe("plus");
+    expect(response.body.provider.planType).toBe("pro");
     expect(response.body.provider).toMatchObject({
       workspaceName: "Org Acme",
-      planType: "plus",
+      planType: "pro",
+      subscriptionResetPeriod: "weekly",
+      subscriptionNextResetAt: "2030-01-01T00:00:00.000Z",
       needsReconnect: false,
       lastRefreshErrorCode: null,
     });

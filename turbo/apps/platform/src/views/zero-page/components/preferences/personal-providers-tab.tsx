@@ -187,33 +187,56 @@ function formatSubscriptionPlan(
   return plan.charAt(0).toUpperCase() + plan.slice(1);
 }
 
-function formatSubscriptionAccount(provider: ModelProviderResponse): string {
+function formatSubscriptionAccount(
+  provider: ModelProviderResponse,
+): string | null {
   const workspaceName = provider.workspaceName?.trim();
   if (workspaceName) {
     return workspaceName;
   }
-  return "Unavailable";
+  return null;
 }
 
-function formatSubscriptionReset(provider: ModelProviderResponse): string {
+function formatSubscriptionReset(
+  provider: ModelProviderResponse,
+): string | null {
   const nextResetAt = provider.subscriptionNextResetAt?.trim();
   if (nextResetAt) {
     const date = new Date(nextResetAt);
     if (!Number.isNaN(date.getTime())) {
-      return date.toLocaleDateString("en-US", {
+      return `resets ${date.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
         year: "numeric",
-      });
+      })}`;
     }
-    return nextResetAt;
+    return `resets ${nextResetAt}`;
   }
 
   const resetPeriod = provider.subscriptionResetPeriod?.trim();
   if (resetPeriod) {
-    return resetPeriod;
+    return `resets ${resetPeriod.charAt(0).toLowerCase()}${resetPeriod.slice(
+      1,
+    )}`;
   }
-  return "Unknown";
+  return null;
+}
+
+function formatConnectedStatusDetail(
+  provider: ModelProviderResponse,
+): string | null {
+  const details = [
+    formatSubscriptionAccount(provider),
+    formatSubscriptionPlan(provider),
+    formatSubscriptionReset(provider),
+  ].filter((detail): detail is string => {
+    return detail !== null;
+  });
+
+  if (details.length === 0) {
+    return null;
+  }
+  return details.join(", ");
 }
 
 interface OAuthMenuItem {
@@ -243,7 +266,9 @@ function OAuthCredentialRow({
   onAction: () => void;
   testId: string;
 }) {
-  const plan = provider ? formatSubscriptionPlan(provider) : null;
+  const connectedDetail = provider
+    ? formatConnectedStatusDetail(provider)
+    : null;
   return (
     <div
       data-testid={testId}
@@ -265,17 +290,6 @@ function OAuthCredentialRow({
         >
           {description}
         </p>
-        {provider && (
-          <div className="mt-1 flex min-w-0 flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-            <span className="min-w-0 truncate">
-              Account: {formatSubscriptionAccount(provider)}
-            </span>
-            {plan && <span className="shrink-0">Plan: {plan}</span>}
-            <span className="shrink-0">
-              Reset: {formatSubscriptionReset(provider)}
-            </span>
-          </div>
-        )}
       </div>
       {status === "missing" ? (
         <Button
@@ -291,7 +305,10 @@ function OAuthCredentialRow({
         </Button>
       ) : (
         <div className="flex items-center gap-1.5">
-          <OAuthFooterStatus status={status} />
+          <OAuthFooterStatus
+            status={status}
+            detail={status === "connected" ? connectedDetail : null}
+          />
           {menuItems.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -325,12 +342,20 @@ function OAuthCredentialRow({
   );
 }
 
-function OAuthFooterStatus({ status }: { status: OAuthStatus }) {
+function OAuthFooterStatus({
+  status,
+  detail,
+}: {
+  status: OAuthStatus;
+  detail: string | null;
+}) {
   if (status === "connected") {
     return (
       <span className="flex min-w-0 items-center gap-2 truncate text-xs text-muted-foreground">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-        Connected
+        <span className="min-w-0 truncate">
+          Connected{detail ? ` (${detail})` : ""}
+        </span>
       </span>
     );
   }

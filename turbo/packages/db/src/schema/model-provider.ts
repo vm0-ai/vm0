@@ -53,6 +53,10 @@ export const modelProviders = pgTable(
     // handles unknown values gracefully.
     workspaceName: varchar("workspace_name", { length: 255 }),
     planType: varchar("plan_type", { length: 32 }),
+    subscriptionResetPeriod: varchar("subscription_reset_period", {
+      length: 64,
+    }),
+    subscriptionNextResetAt: timestamp("subscription_next_reset_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
