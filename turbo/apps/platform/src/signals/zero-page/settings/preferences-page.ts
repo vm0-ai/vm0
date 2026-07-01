@@ -3,6 +3,7 @@ import type { SendMode } from "@vm0/api-contracts/contracts/zero-user-preference
 import { updateUserPreference$, userPreferences$ } from "./user-preferences.ts";
 import { sendMode$ } from "../../send-mode.ts";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
+import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
 
 // ---------------------------------------------------------------------------
 // Preferences tab state
@@ -36,6 +37,9 @@ export const preferencesTab$ = computed((get) => {
 
 export const setPreferencesTab$ = command(({ get, set }, value: string) => {
   const tab = normalizePreferencesTab(value);
+  if (tab === "model-configuration") {
+    set(reloadPersonalModelProviders$);
+  }
   const next = new URLSearchParams(get(searchParams$));
   if (tab === DEFAULT_PREFERENCES_TAB) {
     next.delete("tab");

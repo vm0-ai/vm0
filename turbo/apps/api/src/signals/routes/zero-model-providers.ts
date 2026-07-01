@@ -53,6 +53,9 @@ function toModelProviderResponse(
     selectedModel: provider.selectedModel,
     workspaceName: provider.workspaceName,
     planType: provider.planType,
+    subscriptionResetPeriod: provider.subscriptionResetPeriod,
+    subscriptionNextResetAt:
+      provider.subscriptionNextResetAt?.toISOString() ?? null,
     needsReconnect: provider.needsReconnect,
     lastRefreshErrorCode: provider.lastRefreshErrorCode,
     createdAt: provider.createdAt.toISOString(),
@@ -94,6 +97,7 @@ const upsertModelProviderInner$ = command(
         orgId: auth.orgId,
         rawAuthJson: raw,
         selectedModel: undefined,
+        signal,
         upsert: async (pasteArgs) => {
           const result = await set(
             upsertOrgMultiAuthModelProvider$,

@@ -14,6 +14,7 @@
 
 import {
   ALL_METHODS,
+  applyPermissionDescriptions,
   fetchSpec,
   logStats,
   renderPermissions,
@@ -45,7 +46,7 @@ const SCOPE_MAP: Record<string, string[]> = {
   // Activities — write
   "POST /api/v3/activities": ["activity:write"],
   "PUT /api/v3/activities/{id}": ["activity:write"],
-  // Activities — read (activity:read for public, activity:read_all for Only Me)
+  // Activities — read (activity:read for Everyone/Followers, activity:read_all for privacy zone data and Only You)
   "GET /api/v3/activities/{id}": ["activity:read", "activity:read_all"],
   "GET /api/v3/activities/{id}/comments": [
     "activity:read",
@@ -89,6 +90,28 @@ const SCOPE_MAP: Record<string, string[]> = {
   "POST /api/v3/uploads": ["activity:write"],
   "GET /api/v3/uploads/{uploadId}": ["activity:write"],
 };
+
+const STRAVA_PERMISSION_DESCRIPTIONS = {
+  "activities:read":
+    "Read athlete activities, including activity details, streams, comments, kudos, laps, zones, and activity history. Privacy zone data and Only You activities require Strava activity:read_all.",
+  "activities:write": "Create and update athlete activities.",
+  "athlete_stats:read": "Read athlete activity statistics.",
+  "clubs:read":
+    "Read athlete club memberships and club activity, admin, and member information.",
+  "gear:read": "Read athlete gear details.",
+  "profile:read":
+    "Read athlete profile and zone information. Restricted profile fields require Strava profile:read_all.",
+  "profile:write": "Update athlete profile fields.",
+  "routes:read":
+    "Read athlete routes, route details, route exports, and route streams. Private routes require Strava read_all.",
+  "segment_effort_streams:read":
+    "Read segment effort streams that require Strava read_all.",
+  "segment_efforts:read": "Read segment efforts and segment effort details.",
+  "segments:read":
+    "Read segment exploration, starred segments, segment details, and segment streams. Private segments require Strava read_all.",
+  "segments:write": "Star and unstar segments for the athlete.",
+  "uploads:write": "Upload activities and read upload processing status.",
+} satisfies Readonly<Record<string, string>>;
 
 // ── Route owners ────────────────────────────────────────────────────────
 
@@ -517,8 +540,13 @@ export async function generate(): Promise<void> {
     );
   }
 
-  const ts = generateTypeScript(permissions);
+  const describedPermissions = applyPermissionDescriptions(
+    "Strava",
+    permissions,
+    STRAVA_PERMISSION_DESCRIPTIONS,
+  );
+  const ts = generateTypeScript(describedPermissions);
 
-  logStats(permissions);
+  logStats(describedPermissions);
   writeOutput("strava", ts);
 }

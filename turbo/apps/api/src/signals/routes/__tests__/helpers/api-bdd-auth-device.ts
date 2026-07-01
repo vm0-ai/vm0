@@ -343,10 +343,16 @@ export function mockCodexDeviceAuthProvider(
 
 interface ClaudeCodeTokenEndpointRecorder {
   readonly token: unknown[];
+  readonly profile: Headers[];
+  readonly usage: Headers[];
 }
 
 export function mockClaudeCodeTokenEndpoint(): ClaudeCodeTokenEndpointRecorder {
-  const recorded: ClaudeCodeTokenEndpointRecorder = { token: [] };
+  const recorded: ClaudeCodeTokenEndpointRecorder = {
+    token: [],
+    profile: [],
+    usage: [],
+  };
 
   server.use(
     http.post(
@@ -356,10 +362,41 @@ export function mockClaudeCodeTokenEndpoint(): ClaudeCodeTokenEndpointRecorder {
         return HttpResponse.json({
           access_token: "claude-code-access-token",
           expires_in: 31_536_000,
-          scope: "user:inference",
+          scope: "user:profile user:inference",
         });
       },
     ),
+    http.get("https://api.anthropic.com/api/oauth/profile", ({ request }) => {
+      recorded.profile.push(request.headers);
+      return HttpResponse.json({
+        account: {
+          email: "claude.user@example.com",
+          has_claude_max: false,
+          has_claude_pro: true,
+        },
+        organization: {
+          name: "Claude User's Organization",
+          organization_type: "claude_pro",
+          rate_limit_tier: "default_claude_ai",
+        },
+        application: { name: "Claude Code", slug: "claude-code" },
+      });
+    }),
+    http.get("https://api.anthropic.com/api/oauth/usage", ({ request }) => {
+      recorded.usage.push(request.headers);
+      return HttpResponse.json({
+        rate_limits: {
+          five_hour: {
+            utilization: 12,
+            resets_at: "2030-01-01T05:00:00.000Z",
+          },
+          seven_day: {
+            utilization: 24,
+            resets_at: "2030-01-07T00:00:00.000Z",
+          },
+        },
+      });
+    }),
   );
 
   return recorded;

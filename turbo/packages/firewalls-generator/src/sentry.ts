@@ -13,6 +13,7 @@
 import {
   ALL_METHODS,
   OPENAPI_PATH_KEYS,
+  applyPermissionDescriptions,
   fetchSpec,
   logStats,
   renderPermissions,
@@ -95,6 +96,49 @@ const RUNTIME_METHODS = [
   "HEAD",
   "OPTIONS",
 ] as const;
+
+const SENTRY_SCOPE_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  "alerts:read":
+    "Read alert rules, detectors, monitors, workflows, and check-in status.",
+  "alerts:write":
+    "Create, update, or delete alert rules, detectors, monitors, and workflows.",
+  "event:admin":
+    "Administer Sentry issues, including deleting issues and external issue links.",
+  "event:read":
+    "Read Sentry issues, events, tags, hashes, short IDs, and replay viewer data.",
+  "event:write":
+    "Update Sentry issues, run issue autofix actions, and create external issue links.",
+  "member:admin":
+    "Administer organization members and SCIM users, including removals.",
+  "member:invite":
+    "Invite organization members and update pending member invitations.",
+  "member:read": "Read organization member and SCIM user records.",
+  "member:write": "Create and update organization members and SCIM users.",
+  "org:admin":
+    "Delete and administer organization-level resources such as dashboards, saved queries, notifications, external users, and Sentry apps.",
+  "org:ci":
+    "Use CI and deployment workflows, including releases, deploys, and build artifacts.",
+  "org:integrations":
+    "Read and manage organization integrations and Sentry app installations.",
+  "org:read":
+    "Read organization metadata, dashboards, discoveries, projects, teams, replays, events, stats, and related resources.",
+  "org:write":
+    "Create and update organization-level resources such as dashboards, saved queries, forwarding, teams, workflows, and Sentry apps.",
+  "project:admin":
+    "Delete and administer project-level resources such as projects, keys, hooks, filters, monitors, releases, rules, and symbol sources.",
+  "project:distribution": "Read project build distribution artifacts.",
+  "project:read":
+    "Read project settings, events, environments, releases, monitors, replays, rules, keys, teams, and user feedback.",
+  "project:releases":
+    "Read and manage Sentry releases, deploys, release files, commits, and debug symbol files.",
+  "project:write":
+    "Create and update project settings, events, environments, debug files, hooks, keys, monitors, ownership, rules, symbol sources, teams, and user feedback.",
+  "team:admin":
+    "Administer teams, SCIM groups, external teams, and team memberships.",
+  "team:read": "Read teams, SCIM groups, and team memberships.",
+  "team:write":
+    "Create and update teams, SCIM groups, external teams, and team memberships.",
+};
 
 function preferScope(scope: string): SentryOwnerScopePreference {
   return { kind: "scope", scope };
@@ -577,7 +621,11 @@ export async function generate(): Promise<void> {
   );
   const permissionsDoc = await permissionsDocRes.text();
   const policies = parsePermissionsDoc(permissionsDoc);
-  const permissions = buildGroups(spec, policies);
+  const permissions = applyPermissionDescriptions(
+    "Sentry",
+    buildGroups(spec, policies),
+    SENTRY_SCOPE_DESCRIPTIONS,
+  );
   const ts = generateTypeScript(permissions);
 
   logStats(permissions);

@@ -19,8 +19,8 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnectorOAuthAuthCode$,
-  getOnlyAvailableAuthCodeAuthMethod,
-  getConnectorConnectLaunchMode,
+  getOnlyAvailableStatusAuthCodeAuthMethod,
+  getConnectorStatusConnectLaunchMode,
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
   pollingOAuthDeviceAuthConnectorType$,
@@ -32,6 +32,7 @@ import {
   clearManualGrantForm$,
   manualGrantFormValuesFor$,
   setManualGrantFormSubmitting$,
+  type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { hasTokenInputValue } from "../../signals/zero-page/settings/token-input.ts";
 import {
@@ -56,6 +57,7 @@ import {
   GoogleSecurityWarningNotice,
 } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
+import type { FormEvent } from "react";
 
 type ManualGrantMethod = {
   readonly authMethod: ConnectorAuthMethodId;
@@ -115,7 +117,7 @@ function hasProviderDrivenConnectMethod(
 }
 
 function runDirectedConnect(params: {
-  authMethods: readonly ConnectorAuthMethodId[];
+  item: ConnectorTypeWithStatus;
   connectorType: ConnectorType;
   signal: AbortSignal;
   connect: (
@@ -128,13 +130,13 @@ function runDirectedConnect(params: {
   openConnectModal: () => void;
   openManualGrantDialog: () => void;
 }): void {
-  const launchMode = getConnectorConnectLaunchMode({
-    type: params.connectorType,
-    availableAuthMethods: params.authMethods,
-  });
+  const launchMode = getConnectorStatusConnectLaunchMode(params.item);
   if (
     launchMode === "modal" &&
-    hasProviderDrivenConnectMethod(params.connectorType, params.authMethods)
+    hasProviderDrivenConnectMethod(
+      params.connectorType,
+      params.item.availableAuthMethods,
+    )
   ) {
     params.openConnectModal();
     return;
@@ -142,7 +144,7 @@ function runDirectedConnect(params: {
 
   const manualGrantMethod = getOnlyManualGrantMethod(
     params.connectorType,
-    params.authMethods,
+    params.item.availableAuthMethods,
   );
 
   if (launchMode === "modal" && manualGrantMethod) {
@@ -154,10 +156,7 @@ function runDirectedConnect(params: {
     return;
   }
 
-  const authMethod = getOnlyAvailableAuthCodeAuthMethod(
-    params.connectorType,
-    params.authMethods,
-  );
+  const authMethod = getOnlyAvailableStatusAuthCodeAuthMethod(params.item);
   if (!authMethod) {
     params.openConnectModal();
     return;
@@ -220,31 +219,37 @@ function ManualGrantForm({
     return !cfg.required || hasTokenInputValue(fieldValues[name]);
   });
 
-  const handleSubmit = onDomEventFn(async () => {
-    if (!allFilled || submitting) {
-      return;
-    }
-    setSubmitting(type);
-    await bestEffort(
-      (async () => {
-        await submit(
-          {
-            type,
-            authMethod: manualGrantMethod.authMethod,
-            inputValues: fieldValues,
-            options: {},
-          },
-          pageSignal,
-        );
-        clearForm(type);
-        onSuccess();
-      })(),
-    );
-    setSubmitting(null);
-  });
+  const handleSubmit = onDomEventFn(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!allFilled || submitting) {
+        return;
+      }
+      setSubmitting(type);
+      await bestEffort(
+        (async () => {
+          await submit(
+            {
+              type,
+              authMethod: manualGrantMethod.authMethod,
+              inputValues: fieldValues,
+              options: {},
+            },
+            pageSignal,
+          );
+          clearForm(type);
+          onSuccess();
+        })(),
+      );
+      setSubmitting(null);
+    },
+  );
 
   return (
-    <div className="flex w-full flex-col gap-3 text-left">
+    <form
+      className="flex w-full flex-col gap-3 text-left"
+      onSubmit={handleSubmit}
+    >
       {manualGrantMethod.method.helpText && (
         <div
           className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
@@ -271,15 +276,14 @@ function ManualGrantForm({
         );
       })}
       <button
-        type="button"
-        onClick={handleSubmit}
+        type="submit"
         disabled={!allFilled || submitting}
         className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
       >
         {submitting && <IconLoader2 size={14} className="animate-spin" />}
         {submitting ? "Saving..." : "Save"}
       </button>
-    </div>
+    </form>
   );
 }
 
@@ -506,11 +510,11 @@ function DirectedConnectCard() {
   };
 
   const handleConnect = () => {
-    if (!canConnect) {
+    if (!canConnect || !item) {
       return;
     }
     runDirectedConnect({
-      authMethods,
+      item,
       connectorType,
       signal,
       connect,

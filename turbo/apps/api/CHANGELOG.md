@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.199.2](https://github.com/vm0-ai/vm0/compare/api-v1.199.1...api-v1.199.2) (2026-07-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.135.0
+    * @vm0/core bumped to 8.381.2
+    * @vm0/db bumped to 1.80.2
+
+## [1.199.1](https://github.com/vm0-ai/vm0/compare/api-v1.199.0...api-v1.199.1) (2026-07-01)
+
+
+### Bug Fixes
+
+* defer run launch side effects until persistence ([#19579](https://github.com/vm0-ai/vm0/issues/19579)) ([b7f6de5](https://github.com/vm0-ai/vm0/commit/b7f6de51d4305d881d486de694889a9550c1f92a))
+
+
+### Performance Improvements
+
+* skip Axiom chat output wait when DB complete ([#19563](https://github.com/vm0-ai/vm0/issues/19563)) ([f1283e3](https://github.com/vm0-ai/vm0/commit/f1283e36c2b2779dffbf8fbc33a18cb6a76a45d1))
+* speed up workflow list api ([#19604](https://github.com/vm0-ai/vm0/issues/19604)) ([bc371dd](https://github.com/vm0-ai/vm0/commit/bc371dd085ce6d882a7a73b9a2a87b396dea9bc3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.80.1
+
 ## [1.199.0](https://github.com/vm0-ai/vm0/compare/api-v1.198.0...api-v1.199.0) (2026-07-01)
 
 

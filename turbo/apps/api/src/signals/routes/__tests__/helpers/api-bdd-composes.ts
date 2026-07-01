@@ -7,7 +7,6 @@ import {
   composesVersionsContract,
 } from "@vm0/api-contracts/contracts/composes";
 import {
-  zeroComposesByIdContract,
   zeroComposesListContract,
   zeroComposesMetadataContract,
 } from "@vm0/api-contracts/contracts/zero-composes";
@@ -55,16 +54,9 @@ interface RawComposeRequest {
   readonly jsonBody?: unknown;
 }
 
-interface SweepObject {
-  readonly bucket: string;
-  readonly key: string;
-  readonly size: number;
-}
-
 type CreateStatus = 200 | 201 | 400 | 401 | 403;
 type ReadStatus = 200 | 400 | 401 | 403 | 404;
 type ListStatus = 200 | 400 | 401 | 403;
-type DeleteStatus = 204 | 401 | 403 | 404 | 409;
 type ZeroMetadataStatus = 200 | 401 | 404;
 
 const composeRoutes = [
@@ -133,43 +125,6 @@ export function sandboxComposeToken(args: {
   });
 }
 
-function commandInput(command: unknown): Record<string, unknown> {
-  if (
-    typeof command === "object" &&
-    command !== null &&
-    "input" in command &&
-    typeof command.input === "object" &&
-    command.input !== null
-  ) {
-    return command.input as Record<string, unknown>;
-  }
-  return {};
-}
-
-function deleteObjectKeys(input: Record<string, unknown>): string[] {
-  const request = input.Delete;
-  if (
-    typeof request !== "object" ||
-    request === null ||
-    !("Objects" in request) ||
-    !Array.isArray(request.Objects)
-  ) {
-    return [];
-  }
-  const keys: string[] = [];
-  for (const object of request.Objects) {
-    if (
-      typeof object === "object" &&
-      object !== null &&
-      "Key" in object &&
-      typeof object.Key === "string"
-    ) {
-      keys.push(object.Key);
-    }
-  }
-  return keys;
-}
-
 export function createComposesBddApi(context: TestContext) {
   const routeMocks = createZeroRouteMocks(context);
 
@@ -205,12 +160,6 @@ export function createComposesBddApi(context: TestContext) {
     );
   }
 
-  function zeroByIdClient() {
-    return setupAppWithRoutes({ context, routes: composeRoutes })(
-      zeroComposesByIdContract,
-    );
-  }
-
   function zeroListClient() {
     return setupAppWithRoutes({ context, routes: composeRoutes })(
       zeroComposesListContract,
@@ -224,22 +173,6 @@ export function createComposesBddApi(context: TestContext) {
   }
 
   return {
-    /**
-     * Arms the S3 list-objects boundary so the compose-delete volume sweep
-     * sees existing instruction objects (legacy pattern:
-     * agent-composes-delete.test.ts).
-     */
-    mockStorageSweepObjects(objects: readonly SweepObject[]): void {
-      routeMocks.s3.listObjects(objects);
-    },
-
-    /** Keys passed to S3 DeleteObjects across all calls — sweep evidence. */
-    s3DeletedObjectKeys(): readonly string[] {
-      return context.mocks.s3.send.mock.calls.flatMap(([command]) => {
-        return deleteObjectKeys(commandInput(command));
-      });
-    },
-
     /**
      * Raw HTTP request for contract-invalid payloads the typed contract
      * client cannot express (array agents, unsupported framework, numeric
@@ -364,20 +297,6 @@ export function createComposesBddApi(context: TestContext) {
           headers: authenticate(auth),
           params: { id: composeId },
           body,
-        }),
-        statuses,
-      );
-    },
-
-    async requestDeleteZeroCompose<TStatus extends DeleteStatus>(
-      auth: ComposeAuth,
-      composeId: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        zeroByIdClient().delete({
-          headers: authenticate(auth),
-          params: { id: composeId },
         }),
         statuses,
       );

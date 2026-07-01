@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import {
   gmailLabelAppliedEventConfigSchema,
   gmailNewMessageEventConfigSchema,
+  googleCalendarEventCancelledEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
   googleCalendarEventUpdatedEventConfigSchema,
   githubLabelAppliedEventConfigSchema,
@@ -77,7 +78,9 @@ type GithubWorkflowEventType = Extract<
 >;
 type GoogleCalendarWorkflowEventType = Extract<
   ZeroWorkflowEventType,
-  "google-calendar-event-created" | "google-calendar-event-updated"
+  | "google-calendar-event-created"
+  | "google-calendar-event-updated"
+  | "google-calendar-event-cancelled"
 >;
 
 /**
@@ -270,6 +273,7 @@ function supportedWorkflowEventType(
     eventType === "github-label-applied" ||
     eventType === "google-calendar-event-created" ||
     eventType === "google-calendar-event-updated" ||
+    eventType === "google-calendar-event-cancelled" ||
     eventType === "webhook-received"
   );
 }
@@ -293,7 +297,8 @@ function supportedGoogleCalendarEventType(
 ): eventType is GoogleCalendarWorkflowEventType {
   return (
     eventType === "google-calendar-event-created" ||
-    eventType === "google-calendar-event-updated"
+    eventType === "google-calendar-event-updated" ||
+    eventType === "google-calendar-event-cancelled"
   );
 }
 
@@ -378,6 +383,21 @@ async function rowToSummary(
       kind: "event",
       eventType: "google-calendar-event-updated",
       eventConfig: googleCalendarEventUpdatedEventConfigSchema.parse(
+        row.eventConfig,
+      ),
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
+  if (
+    row.kind === "event" &&
+    row.eventType === "google-calendar-event-cancelled"
+  ) {
+    return {
+      ...rowSummaryBase(row, chatThreadId),
+      kind: "event",
+      eventType: "google-calendar-event-cancelled",
+      eventConfig: googleCalendarEventCancelledEventConfigSchema.parse(
         row.eventConfig,
       ),
       schedule: null,
@@ -728,6 +748,18 @@ function chatThreadTriggerFromSummary(args: {
         ...base,
         kind: "event",
         eventType: "google-calendar-event-updated",
+        eventConfig: summary.eventConfig,
+        schedule: null,
+        scheduleSummary: null,
+      },
+    ];
+  }
+  if (summary.eventType === "google-calendar-event-cancelled") {
+    return [
+      {
+        ...base,
+        kind: "event",
+        eventType: "google-calendar-event-cancelled",
         eventConfig: summary.eventConfig,
         schedule: null,
         scheduleSummary: null,
@@ -1165,7 +1197,10 @@ function parseGoogleCalendarEventConfig(
   if (eventType === "google-calendar-event-created") {
     return googleCalendarEventCreatedEventConfigSchema.parse(eventConfig);
   }
-  return googleCalendarEventUpdatedEventConfigSchema.parse(eventConfig);
+  if (eventType === "google-calendar-event-updated") {
+    return googleCalendarEventUpdatedEventConfigSchema.parse(eventConfig);
+  }
+  return googleCalendarEventCancelledEventConfigSchema.parse(eventConfig);
 }
 
 async function createGoogleCalendarEventTriggerForWorkflow(args: {
@@ -1363,7 +1398,7 @@ export const createWorkflowTrigger$ = command(
     const workflowTitle = workflow.displayName ?? workflow.name;
 
     if (!triggerCreateInputIsSchedule(args)) {
-      return await set(
+      const result = await set(
         createEventTriggerForWorkflow$,
         {
           db: writeDb,
@@ -1374,6 +1409,15 @@ export const createWorkflowTrigger$ = command(
         },
         signal,
       );
+      signal.throwIfAborted();
+      if (result.kind === "ok") {
+        await publishThreadBoundWorkflowTriggerChanged(
+          result.summary.ownerUserId,
+          result.summary.chatThreadId,
+        );
+        signal.throwIfAborted();
+      }
+      return result;
     }
 
     const now = nowDate();
@@ -1394,6 +1438,11 @@ export const createWorkflowTrigger$ = command(
       nextRunAt,
       currentTime: now,
     });
+    signal.throwIfAborted();
+    await publishThreadBoundWorkflowTriggerChanged(
+      summary.ownerUserId,
+      summary.chatThreadId,
+    );
     signal.throwIfAborted();
     return { kind: "ok", summary };
   },

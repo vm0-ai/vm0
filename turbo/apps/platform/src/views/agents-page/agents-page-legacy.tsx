@@ -428,53 +428,57 @@ function CreateTeammateDialogContent({
         />
       </div>
 
-      {/* Content */}
-      <div className="flex flex-col items-center gap-4 px-6 py-6">
-        <div className="text-center">
-          <p className="text-base font-semibold">
-            Create a new {visibility} agent
-          </p>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Name your agent to get started.
-          </p>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (newName.trim() && !creating) {
+            onConfirm(avatarUrl);
+          }
+        }}
+      >
+        {/* Content */}
+        <div className="flex flex-col items-center gap-4 px-6 py-6">
+          <div className="text-center">
+            <p className="text-base font-semibold">
+              Create a new {visibility} agent
+            </p>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Name your agent to get started.
+            </p>
+          </div>
+          <Input
+            value={newName}
+            onChange={(e) => {
+              return onNameChange(e.target.value);
+            }}
+            placeholder="e.g. Research Assistant"
+            autoFocus
+            disabled={creating}
+          />
         </div>
-        <Input
-          value={newName}
-          onChange={(e) => {
-            return onNameChange(e.target.value);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && newName.trim() && !creating) {
-              onConfirm(avatarUrl);
-            }
-          }}
-          placeholder="e.g. Research Assistant"
-          autoFocus
-          disabled={creating}
-        />
-      </div>
 
-      {/* Footer */}
-      <div className="flex justify-center gap-3 px-6 pt-4 pb-8">
-        <Button variant="outline" onClick={onCancel} disabled={creating}>
-          Cancel
-        </Button>
-        <Button
-          onClick={() => {
-            return onConfirm(avatarUrl);
-          }}
-          disabled={!newName.trim() || creating}
-        >
-          {creating ? (
-            <span className="inline-flex items-center gap-1.5">
-              <IconLoader2 size={14} className="animate-spin" />
-              Creating...
-            </span>
-          ) : (
-            "Create"
-          )}
-        </Button>
-      </div>
+        {/* Footer */}
+        <div className="flex justify-center gap-3 px-6 pt-4 pb-8">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={creating}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={!newName.trim() || creating}>
+            {creating ? (
+              <span className="inline-flex items-center gap-1.5">
+                <IconLoader2 size={14} className="animate-spin" />
+                Creating...
+              </span>
+            ) : (
+              "Create"
+            )}
+          </Button>
+        </div>
+      </form>
     </DialogContent>
   );
 }

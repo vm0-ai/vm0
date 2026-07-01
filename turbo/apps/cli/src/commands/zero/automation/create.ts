@@ -1,8 +1,9 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import type { CreateTriggerRequest } from "@vm0/api-contracts/contracts/automations";
-import { createAutomation, resolveCompose } from "../../../lib/api";
+import { createAutomation, getComposeById } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+import { isUUID } from "../../run/shared";
 import { requireTimezoneForLocalAtTime } from "./at-time-input";
 import { parseDurationSeconds } from "./duration";
 import { formatTriggerConfig } from "./trigger-display";
@@ -61,7 +62,7 @@ export const createCommand = new Command()
   .name("create")
   .description("Create an automation with a schedule trigger")
   .requiredOption("-n, --name <name>", "Automation name")
-  .requiredOption("--agent <id>", "Agent ID or name to run")
+  .requiredOption("--agent <agent-id>", "Agent ID to run")
   .requiredOption(
     "-p, --prompt <instruction>",
     "Instruction the agent runs when the automation fires",
@@ -78,21 +79,26 @@ export const createCommand = new Command()
     "after",
     `
 Examples:
-  Daily at 9am:   zero automation create -n alerts --agent my-agent -p "..." --cron "0 9 * * *"
-  One-time:       zero automation create -n alerts --agent my-agent -p "..." --once "2026-06-10T09:00" -z UTC
-  Every 15 min:   zero automation create -n alerts --agent my-agent -p "..." --loop 15m
+  Daily at 9am:   zero automation create -n alerts --agent 550e8400-e29b-41d4-a716-446655440000 -p "..." --cron "0 9 * * *"
+  One-time:       zero automation create -n alerts --agent 550e8400-e29b-41d4-a716-446655440000 -p "..." --once "2026-06-10T09:00" -z UTC
+  Every 15 min:   zero automation create -n alerts --agent 550e8400-e29b-41d4-a716-446655440000 -p "..." --loop 15m
 
 Notes:
   - Exactly one of --cron, --once, --loop is required`,
   )
   .action(
     withErrorHandler(async (options: CreateOptions) => {
+      if (!isUUID(options.agent)) {
+        console.error(
+          chalk.red(`✗ Invalid agent ID "${options.agent}" — expected a UUID`),
+        );
+        console.error(chalk.dim("  Run: zero agent list    to find agent IDs"));
+        process.exit(1);
+      }
+
       const trigger = buildInlineTrigger(options);
 
-      const compose = await resolveCompose(options.agent);
-      if (!compose) {
-        throw new Error(`Agent not found: ${options.agent}`);
-      }
+      const compose = await getComposeById(options.agent);
 
       const { automation } = await createAutomation({
         name: options.name,

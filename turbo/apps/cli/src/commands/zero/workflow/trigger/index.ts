@@ -64,6 +64,7 @@ const EVENT_KINDS = [
   "github-label-applied",
   "google-calendar-event-created",
   "google-calendar-event-updated",
+  "google-calendar-event-cancelled",
   "webhook",
 ] as const;
 const TRIGGER_KINDS = [...SCHEDULE_KINDS, ...EVENT_KINDS] as const;
@@ -464,7 +465,10 @@ function buildGithubLabelAppliedCreateRequest(
 }
 
 function buildGoogleCalendarEventCreateRequest(
-  eventType: "google-calendar-event-created" | "google-calendar-event-updated",
+  eventType:
+    | "google-calendar-event-created"
+    | "google-calendar-event-updated"
+    | "google-calendar-event-cancelled",
   options: AddOptions,
 ): ZeroWorkflowTriggerCreateRequest {
   assertNoScheduleAddOptions(options);
@@ -489,12 +493,23 @@ function buildGoogleCalendarEventCreateRequest(
       },
     };
   }
+  if (eventType === "google-calendar-event-updated") {
+    return {
+      kind: "event",
+      eventType: "google-calendar-event-updated",
+      eventConfig: {
+        provider: "google-calendar",
+        event: "event_updated",
+        calendarId,
+      },
+    };
+  }
   return {
     kind: "event",
-    eventType: "google-calendar-event-updated",
+    eventType: "google-calendar-event-cancelled",
     eventConfig: {
       provider: "google-calendar",
-      event: "event_updated",
+      event: "event_cancelled",
       calendarId,
     },
   };
@@ -543,6 +558,8 @@ function buildCreateRequest(
       return buildGoogleCalendarEventCreateRequest(kind, options);
     case "google-calendar-event-updated":
       return buildGoogleCalendarEventCreateRequest(kind, options);
+    case "google-calendar-event-cancelled":
+      return buildGoogleCalendarEventCreateRequest(kind, options);
     case "webhook":
       return buildWebhookCreateRequest(options);
     default:
@@ -560,7 +577,8 @@ function buildEventUpdate(
 
   if (
     existing.eventType === "google-calendar-event-created" ||
-    existing.eventType === "google-calendar-event-updated"
+    existing.eventType === "google-calendar-event-updated" ||
+    existing.eventType === "google-calendar-event-cancelled"
   ) {
     throw new Error("Google Calendar event triggers cannot be updated");
   }
@@ -712,6 +730,7 @@ Examples:
   zero workflow trigger add triage github-label-applied --label "triage" --subject both --actor me
   zero workflow trigger add triage google-calendar-event-created
   zero workflow trigger add triage google-calendar-event-updated
+  zero workflow trigger add triage google-calendar-event-cancelled
   zero workflow trigger add triage webhook
 
 Notes:
