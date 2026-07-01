@@ -868,6 +868,38 @@ describe("firewall metadata", () => {
     expect(failures).toStrictEqual([]);
   });
 
+  it("describes Dropbox permissions", async () => {
+    const detail = await loadFirewallPermissionMetadata("dropbox");
+    expect(detail).not.toBeNull();
+    expect(detail!.permissionCount).toBe(29);
+    expect(
+      detail!.permissions.filter((permission) => {
+        return (
+          permission.description === undefined ||
+          permission.description.trim().length === 0
+        );
+      }),
+    ).toStrictEqual([]);
+
+    const permissions = new Map(
+      detail!.permissions.map((permission) => {
+        return [permission.name, permission] as const;
+      }),
+    );
+    expect(permissions.get("files.content.read")?.description).toBe(
+      "Download, export, preview, and read Dropbox file content.",
+    );
+    expect(permissions.get("files.metadata.write")?.description).toBe(
+      "Create, update, and remove Dropbox file tags, templates, and custom properties.",
+    );
+    expect(permissions.get("members.write")?.description).toBe(
+      "Add, update, suspend, unsuspend, and manage Dropbox team members and member quotas.",
+    );
+    expect(permissions.get("team_data.governance.write")?.description).toBe(
+      "Create, update, release, and inspect Dropbox team legal hold policies and held revisions.",
+    );
+  });
+
   it("keeps execution metadata synchronized with runtime construction data", async () => {
     expect(getFirewallExecutionMetadata("x")?.billable).toBe(true);
 

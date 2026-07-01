@@ -15,6 +15,7 @@
  */
 
 import {
+  applyPermissionDescriptions,
   listCachedSpecs,
   logStats,
   renderPermissions,
@@ -49,6 +50,59 @@ const ROUTE_PERMISSION_OVERRIDES: Readonly<Record<string, string>> = {
   // Dropbox labels this mutating admin route as members.read in Stone.
   "team/member_space_limits/set_custom_quota": "members.write",
 };
+
+const DROPBOX_PERMISSION_DESCRIPTIONS = {
+  "account_info.read":
+    "Read Dropbox account profile, account IDs, and linked account metadata.",
+  "account_info.write": "Update the current Dropbox account profile photo.",
+  "contacts.write": "Delete manually added Dropbox contacts.",
+  "events.read": "Read Dropbox team event log entries.",
+  "file_requests.read": "List, retrieve, and count Dropbox file requests.",
+  "file_requests.write": "Create, update, and delete Dropbox file requests.",
+  "files.content.read":
+    "Download, export, preview, and read Dropbox file content.",
+  "files.content.write":
+    "Create, upload, move, copy, lock, and delete Dropbox files and folders.",
+  "files.metadata.read":
+    "Read Dropbox file, folder, tag, and property metadata.",
+  "files.metadata.write":
+    "Create, update, and remove Dropbox file tags, templates, and custom properties.",
+  "files.permanent_delete":
+    "Permanently delete Dropbox files, folders, and Paper docs.",
+  "files.team_metadata.write":
+    "Create, update, and remove team file property templates and metadata.",
+  "groups.read": "Read Dropbox team groups and group memberships.",
+  "groups.write":
+    "Create, update, delete, and manage Dropbox team groups and group members.",
+  "members.delete":
+    "Remove, recover, and complete deletion workflows for Dropbox team members.",
+  "members.read":
+    "Read Dropbox team member profiles, roles, quotas, and membership state.",
+  "members.write":
+    "Add, update, suspend, unsuspend, and manage Dropbox team members and member quotas.",
+  openid: "Read OpenID Connect identity information from Dropbox.",
+  "private:sharing.write":
+    "Relinquish the current user's removable access to files and folders.",
+  "sessions.list":
+    "List Dropbox team member devices, web sessions, and linked apps.",
+  "sessions.modify":
+    "Revoke Dropbox team member devices, web sessions, and linked apps.",
+  "sharing.read":
+    "Read Dropbox shared links, shared files, shared folders, and membership details.",
+  "sharing.write":
+    "Create, update, revoke, mount, unmount, and manage Dropbox sharing.",
+  "team_data.content.read":
+    "Read Dropbox team folders, namespaces, and team-owned content metadata.",
+  "team_data.content.write":
+    "Create, rename, activate, archive, restore, and delete Dropbox team folders.",
+  "team_data.governance.write":
+    "Create, update, release, and inspect Dropbox team legal hold policies and held revisions.",
+  "team_data.member":
+    "List Dropbox team namespaces and member folder structure.",
+  "team_info.read":
+    "Read Dropbox team profile, features, reports, and team settings.",
+  "team_info.write": "Update Dropbox team-level sharing allowlist settings.",
+} satisfies Readonly<Record<string, string>>;
 
 function parseStoneRoutes(content: string): StoneRoute[] {
   const routes: StoneRoute[] = [];
@@ -190,6 +244,67 @@ function buildGroups(routes: StoneRoute[]): Map<DropboxHost, HostPermissions> {
   return result;
 }
 
+function allPermissionGroups(
+  hostGroups: Map<DropboxHost, HostPermissions>,
+): PermissionGroup[] {
+  const permissionsByName = new Map<string, PermissionGroup>();
+
+  for (const { permissions } of hostGroups.values()) {
+    for (const permission of permissions) {
+      const existing = permissionsByName.get(permission.name);
+      if (existing) {
+        existing.rules.push(...permission.rules);
+        continue;
+      }
+      permissionsByName.set(permission.name, {
+        name: permission.name,
+        rules: [...permission.rules],
+      });
+    }
+  }
+
+  return [...permissionsByName.values()].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+}
+
+function applyDropboxPermissionDescriptions(
+  hostGroups: Map<DropboxHost, HostPermissions>,
+): Map<DropboxHost, HostPermissions> {
+  const describedPermissions = applyPermissionDescriptions(
+    "Dropbox",
+    allPermissionGroups(hostGroups),
+    DROPBOX_PERMISSION_DESCRIPTIONS,
+  );
+  const descriptions = new Map(
+    describedPermissions.map((permission) => {
+      return [permission.name, permission.description] as const;
+    }),
+  );
+
+  return new Map(
+    [...hostGroups.entries()].map(([host, { permissions }]) => {
+      return [
+        host,
+        {
+          permissions: permissions.map((permission) => {
+            const description = descriptions.get(permission.name);
+            if (!description) {
+              throw new Error(
+                `Missing Dropbox permission description after validation: ${permission.name}`,
+              );
+            }
+            return {
+              ...permission,
+              description,
+            };
+          }),
+        },
+      ];
+    }),
+  );
+}
+
 // ── TypeScript generation ────────────────────────────────────────────────
 
 function generateTypeScript(
@@ -248,7 +363,7 @@ export async function generate(): Promise<void> {
   );
   console.error(`  Parsed ${allRoutes.length} routes`);
 
-  const hostGroups = buildGroups(allRoutes);
+  const hostGroups = applyDropboxPermissionDescriptions(buildGroups(allRoutes));
   const ts = generateTypeScript(hostGroups);
 
   // Log stats for the main API host
