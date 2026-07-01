@@ -5,20 +5,27 @@ import {
   useLastResolved,
   useSet,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
+import { IconLoader2, IconPlayerPlay } from "@tabler/icons-react";
 import { Button, Tabs, TabsList, TabsTrigger, cn } from "@vm0/ui";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 import { openCreateWorkflowDialog$ } from "../../signals/automation-page/workflow-trigger-automation-dialog.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import {
   allVisibleWorkflows$,
   allWorkflowTriggerEntries$,
+  runWorkflowTriggerNow$,
   setWorkflowIndexFilterTab$,
   workflowIndexFilterTab$,
   type WorkflowIndexFilterTab,
   type WorkflowTriggerAutomationEntry,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import {
   CreateWorkflowAutomationDialog,
@@ -305,6 +312,67 @@ function WorkflowIndexCard({
   );
 }
 
+function isFixedIntervalWorkflowTrigger(
+  entry: WorkflowTriggerAutomationEntry,
+): boolean {
+  return (
+    entry.trigger.kind === "schedule" && entry.trigger.schedule.type === "loop"
+  );
+}
+
+function WorkflowIndexRunNowButton({
+  entry,
+}: {
+  readonly entry: WorkflowTriggerAutomationEntry;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const navigate = useSet(detachedNavigateTo$);
+  const [runNowLoadable, runNow] = useLoadableSet(runWorkflowTriggerNow$);
+  const running = runNowLoadable.state === "loading";
+  const title = workflowTitle(entry.workflow);
+
+  if (!entry.workflow.canManage || !isFixedIntervalWorkflowTrigger(entry)) {
+    return null;
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      aria-label={`Run ${title} now`}
+      className="zero-btn-morandi h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-medium"
+      disabled={running}
+      onClick={() => {
+        detach(
+          (async () => {
+            const result = await runNow(entry.trigger.id, pageSignal);
+            toast.success("Workflow started", {
+              action: {
+                label: "View in chat",
+                onClick: () => {
+                  navigate(ROUTES.chat, {
+                    pathParams: { threadId: result.chatThreadId },
+                  });
+                },
+              },
+            });
+          })(),
+          Reason.DomCallback,
+          "run workflow trigger from workflows page",
+        );
+      }}
+    >
+      {running ? (
+        <IconLoader2 size={13} className="animate-spin" />
+      ) : (
+        <IconPlayerPlay size={13} stroke={1.5} />
+      )}
+      <span>{running ? "Starting..." : "Run now"}</span>
+    </Button>
+  );
+}
+
 function WorkflowCardTriggerFooter({
   entries,
   displayTimezone,
@@ -342,7 +410,8 @@ function WorkflowCardTriggerFooter({
             </span>
           ) : null}
         </div>
-        <div className="pointer-events-auto relative z-20 shrink-0">
+        <div className="pointer-events-auto relative z-20 flex shrink-0 items-center gap-2">
+          <WorkflowIndexRunNowButton entry={primaryEntry} />
           <WorkflowTriggerEnabledSwitch entry={primaryEntry} />
         </div>
       </div>

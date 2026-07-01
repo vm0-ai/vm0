@@ -1022,7 +1022,11 @@ export const pauseWorkflowTriggers$ = command(
 );
 
 export const runWorkflowTriggerNow$ = command(
-  async ({ get, set }, triggerId: string, signal: AbortSignal) => {
+  async (
+    { get },
+    triggerId: string,
+    signal: AbortSignal,
+  ): Promise<{ chatThreadId: string; runId: string }> => {
     const client = get(zeroClient$)(zeroWorkflowTriggersContract);
     const result = await accept(
       client.run({
@@ -1032,9 +1036,7 @@ export const runWorkflowTriggerNow$ = command(
       [201],
     );
     signal.throwIfAborted();
-    set(detachedNavigateTo$, ROUTES.chat, {
-      pathParams: { threadId: result.body.chatThreadId },
-    });
+    return result.body;
   },
 );
 
