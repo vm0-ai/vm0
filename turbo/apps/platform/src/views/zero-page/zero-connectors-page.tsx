@@ -575,7 +575,7 @@ function ConnectorAccessButton({
   return (
     <button
       type="button"
-      className="inline-flex h-7 min-w-0 shrink items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-50))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="inline-flex h-7 min-w-0 shrink items-center gap-0 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-50))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       aria-label={`Manage ${connectorLabel} access`}
       onClick={onClick}
     >
@@ -590,15 +590,15 @@ function ConnectorAccessButton({
         </span>
       ) : (
         <>
-          <span className="shrink-0">Used by</span>
+          <span className="shrink-0">Used by&nbsp;</span>
           <span
-            className="truncate underline decoration-dotted decoration-muted-foreground/40 underline-offset-2"
+            className="min-w-0 truncate underline decoration-dotted decoration-muted-foreground/40 underline-offset-2"
             data-testid="connector-card-access-names"
           >
             {visibleNames.join(", ")}
           </span>
           {overflowCount > 0 && (
-            <span className="shrink-0 text-muted-foreground/70">
+            <span className="ml-0.5 shrink-0 text-muted-foreground/70">
               +{overflowCount}
             </span>
           )}
