@@ -503,24 +503,46 @@ export const cleanupExpiredQueueEntries$ = command(
         .from(agentRunQueue)
         .where(lt(agentRunQueue.expiresAt, currentTime));
 
-      const timedOut = await tx
-        .update(agentRuns)
-        .set({
-          status: "timeout",
-          completedAt: currentTime,
-          error: QUEUED_RUN_EXPIRED_REASON,
+      const candidates = await tx
+        .select({
+          runId: agentRuns.id,
         })
+        .from(agentRuns)
         .where(
           and(
             inArray(agentRuns.id, expiredRunIds),
             eq(agentRuns.status, "queued"),
           ),
         )
-        .returning({
-          runId: agentRuns.id,
-          orgId: agentRuns.orgId,
-          userId: agentRuns.userId,
-        });
+        .orderBy(agentRuns.createdAt, agentRuns.id)
+        .for("update");
+      signal.throwIfAborted();
+
+      const candidateRunIds = candidates.map((candidate) => {
+        return candidate.runId;
+      });
+
+      const timedOut =
+        candidateRunIds.length === 0
+          ? []
+          : await tx
+              .update(agentRuns)
+              .set({
+                status: "timeout",
+                completedAt: currentTime,
+                error: QUEUED_RUN_EXPIRED_REASON,
+              })
+              .where(
+                and(
+                  inArray(agentRuns.id, candidateRunIds),
+                  eq(agentRuns.status, "queued"),
+                ),
+              )
+              .returning({
+                runId: agentRuns.id,
+                orgId: agentRuns.orgId,
+                userId: agentRuns.userId,
+              });
       const timedOutRuns = await timedOutQueuedRunsWithMarkerNotifications(
         tx,
         timedOut,
@@ -599,6 +621,7 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
             )`,
           ),
         )
+        .orderBy(agentRuns.createdAt, agentRuns.id)
         .for("update");
       signal.throwIfAborted();
 
