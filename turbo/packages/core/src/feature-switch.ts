@@ -303,6 +303,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "New Agents page with Public/Private tabs, a public-slot indicator, a Created by footer on every card, a name-first create dialog with a visibility select, and a private empty state.",
     enabled: false,
   },
+  [FeatureSwitchKey.SidebarSubscriptionUsage]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show Codex and Claude Code personal subscription usage in the Zero sidebar footer.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {
