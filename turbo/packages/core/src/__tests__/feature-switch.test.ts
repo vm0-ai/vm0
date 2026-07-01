@@ -119,7 +119,7 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
@@ -161,11 +161,9 @@ describe("getAllFeatureStates", () => {
     expect(states[FeatureSwitchKey.ChatGithubPrTracking]).toBe(true);
   });
 
-  it("should let individuals opt in to chat thread emoji", () => {
+  it("should enable chat thread emoji for staff orgs", () => {
     const states = getAllFeatureStates({
-      overrides: {
-        [FeatureSwitchKey.ChatThreadEmoji]: true,
-      },
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(states[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
   });

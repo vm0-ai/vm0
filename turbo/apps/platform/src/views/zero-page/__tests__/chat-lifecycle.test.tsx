@@ -2893,6 +2893,10 @@ describe("chat lifecycle", () => {
         screen.getAllByText("Current keyboard thread").length,
       ).toBeGreaterThan(0);
     });
+    const emojiButton = screen.getByLabelText("Change emoji");
+    expect(emojiButton).toHaveTextContent("");
+    expect(emojiButton.querySelector("svg")).not.toBeInTheDocument();
+    expect(emojiButton).toHaveClass("h-7", "w-7");
 
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
