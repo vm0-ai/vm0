@@ -688,6 +688,80 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
 }
 
 #[tokio::test]
+async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let history = br#"{"type":"init"}"#;
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-prestarted-failed-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(b"different")),
+                url: serve_history_once(history).await,
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+
+    let materializer = SessionHistoryMaterializer::start_cancellable(
+        &config.http,
+        ctx.resume_session.as_ref(),
+        tokio_util::sync::CancellationToken::new(),
+    );
+    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, async {
+        while !materializer.is_download_finished() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+
+    let mut telemetry = test_telemetry(&config, &ctx);
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+            .with_session_history_restore_plan(SessionHistoryRestorePlan::Prestarted {
+                materializer,
+                fallback: None,
+            }),
+    )
+    .await;
+
+    let error = match result {
+        Ok(_) => panic!("expected completed prestarted materializer failure"),
+        Err(error) => error,
+    };
+    assert!(error.to_string().contains("hash mismatch"));
+    let ops = telemetry.pending_ops_snapshot();
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_materializer_completed_before_restore",
+        "session history materialization failed",
+    );
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_download",
+        "session history download failed",
+    );
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_download_hash_verification",
+        "session history download phase failed",
+    );
+}
+
+#[tokio::test]
 async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;

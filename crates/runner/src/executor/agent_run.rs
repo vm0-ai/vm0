@@ -260,8 +260,8 @@ fn record_session_history_materializer_state(
         telemetry.record(
             "session_history_materializer_completed_before_restore",
             Duration::ZERO,
-            true,
-            None,
+            success,
+            (!success).then_some(SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR),
         );
     } else {
         telemetry.record(

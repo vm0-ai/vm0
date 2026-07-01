@@ -333,7 +333,6 @@ async fn download_resume_session_history(
             "session history is too large: {expected_size} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
         )));
     }
-    timings.add_validation(validation_started.elapsed(), true);
 
     let bytes = download_body(&http, &history_ref.url, history_ref.size, timings).await?;
 
@@ -624,7 +623,7 @@ mod tests {
                 assert!(!message.contains("token=secret"));
                 assert_phase_failure(timings.request_status());
                 assert_no_phase(timings.body_read());
-                assert_phase_success(timings.validation());
+                assert_no_phase(timings.validation());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed download"),
