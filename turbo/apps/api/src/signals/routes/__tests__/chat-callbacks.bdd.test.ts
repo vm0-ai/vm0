@@ -47,6 +47,39 @@ const misc = createMiscRoutesApi(context);
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
+const CHAT_CALLBACK_PRE_CREATE_TIMING_PREFIX =
+  "api_dispatch_pre_create_zero_chat_callback_";
+const FORBIDDEN_CHAT_CALLBACK_PRE_CREATE_TIMING_KEYS = [
+  "org_id",
+  "orgId",
+  "user_id",
+  "userId",
+  "agent_id",
+  "agentId",
+  "thread_id",
+  "threadId",
+  "chat_thread_id",
+  "chatThreadId",
+  "message_id",
+  "messageId",
+  "user_message_id",
+  "userMessageId",
+  "file_id",
+  "fileId",
+  "model_id",
+  "modelId",
+  "prompt",
+  "vars",
+  "secrets",
+  "secret_names",
+  "environment",
+  "execution_context",
+  "url",
+  "presigned_url",
+  "presignedUrl",
+  "archive_url",
+  "archiveUrl",
+] as const;
 
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
 type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
@@ -399,6 +432,62 @@ function sandboxOperationEventsForRun(
       return isRecord(event) && event.run_id === runId;
     });
   });
+}
+
+function chatCallbackPreCreateTimingEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return (
+      typeof event.op_type === "string" &&
+      event.op_type.startsWith(CHAT_CALLBACK_PRE_CREATE_TIMING_PREFIX)
+    );
+  });
+}
+
+function expectNoForbiddenChatCallbackPreCreateTimingKeys(
+  events: readonly Record<string, unknown>[],
+): void {
+  for (const event of events) {
+    for (const key of FORBIDDEN_CHAT_CALLBACK_PRE_CREATE_TIMING_KEYS) {
+      expect(event).not.toHaveProperty(key);
+    }
+  }
+}
+
+async function expectChatCallbackPreCreateTimingActions(
+  runId: string,
+  expectedActionTypes: readonly string[],
+): Promise<readonly Record<string, unknown>[]> {
+  await expect
+    .poll(() => {
+      const observed = new Set(
+        chatCallbackPreCreateTimingEventsForRun(runId).map((event) => {
+          return event.op_type;
+        }),
+      );
+      return expectedActionTypes.filter((actionType) => {
+        return !observed.has(actionType);
+      });
+    })
+    .toStrictEqual([]);
+  const events = chatCallbackPreCreateTimingEventsForRun(runId);
+  expectNoForbiddenChatCallbackPreCreateTimingKeys(events);
+  return events;
+}
+
+function expectNoChatCallbackPreCreateTimingActions(
+  events: readonly Record<string, unknown>[],
+  unexpectedActionTypes: readonly string[],
+): void {
+  const observed = new Set(
+    events.map((event) => {
+      return event.op_type;
+    }),
+  );
+  for (const actionType of unexpectedActionTypes) {
+    expect(observed).not.toContain(actionType);
+  }
 }
 
 async function expectZeroPreCreateSource(
@@ -883,6 +972,20 @@ describe("CHAT-02: completed chat callback", () => {
     }
     expect(claimed.runId).not.toBe(first.runId);
     await expectZeroPreCreateSource(claimed.runId, "chat_callback_auto_send");
+    await expectChatCallbackPreCreateTimingActions(claimed.runId, [
+      "api_dispatch_pre_create_zero_chat_callback_load_terminal",
+      "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
+      "api_dispatch_pre_create_zero_chat_callback_query_output_events",
+      "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items",
+      "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
+      "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
+      "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
+      "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
+      "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
+      "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
+      "api_dispatch_pre_create_zero_chat_callback_auto_send_claim_message",
+      "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
+    ]);
 
     openRouterGate.release();
     const afterFollowups = await waitForThreadMessages(
@@ -1615,6 +1718,27 @@ describe("CHAT-02: auto-send after failures", () => {
     }
     expect(claimed.runId).not.toBe(second.runId);
     await expectZeroPreCreateSource(claimed.runId, "chat_callback_auto_send");
+    const timingEvents = await expectChatCallbackPreCreateTimingActions(
+      claimed.runId,
+      [
+        "api_dispatch_pre_create_zero_chat_callback_load_terminal",
+        "api_dispatch_pre_create_zero_chat_callback_prepare_failed",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_load_agent",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_attachments",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_claim_message",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
+      ],
+    );
+    expectNoChatCallbackPreCreateTimingActions(timingEvents, [
+      "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
+      "api_dispatch_pre_create_zero_chat_callback_query_output_events",
+      "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
+      "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
+    ]);
     expect(claimed.attachFiles).toHaveLength(1);
     expect(claimed.attachFiles?.[0]).toMatchObject({
       filename: "queued-notes.txt",
