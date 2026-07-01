@@ -5046,7 +5046,7 @@ async function lockChatLaunchThread(
     FROM ${chatThreads}
     WHERE ${chatThreads.id} = ${association.threadId}
       AND ${chatThreads.userId} = ${association.userId}
-    FOR UPDATE
+    FOR NO KEY UPDATE
   `);
   return rows.rows[0] ? null : notFound("Chat thread not found");
 }
