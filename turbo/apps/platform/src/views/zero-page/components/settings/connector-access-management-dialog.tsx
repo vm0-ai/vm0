@@ -12,6 +12,10 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   cn,
 } from "@vm0/ui";
 import {
@@ -146,20 +150,24 @@ function AgentAccessRow({
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">{name}</p>
       </div>
-      <p className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
-        {row.authorized ? "Authorized" : "Not authorized"}
-      </p>
       {canManage && (
-        <button
-          type="button"
-          onClick={() => {
-            onManage(row);
-          }}
-          aria-label={`Manage ${connectorLabel} permissions for ${name}`}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <IconAdjustmentsHorizontal size={16} stroke={1.5} />
-        </button>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => {
+                  onManage(row);
+                }}
+                aria-label={`Manage ${connectorLabel} permissions for ${name}`}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <IconAdjustmentsHorizontal size={16} stroke={1.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Manage permissions</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
       <LoadingSwitch
         checked={row.authorized}
