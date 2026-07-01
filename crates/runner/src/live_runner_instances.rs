@@ -532,13 +532,102 @@ fn current_euid() -> u32 {
 mod tests {
     use super::*;
 
-    fn test_metadata(root: &Path) -> LiveRunnerInstanceMetadata {
-        LiveRunnerInstanceMetadata {
-            config_path: root.join("runner.yaml"),
-            base_dir: root.join("base"),
-            runner_name: "test-runner".into(),
-            runner_group: "vm0/test".into(),
-            subcommand: "start".into(),
+    const STALE_RECORD_PID: u32 = u32::MAX;
+    const STALE_RECORD_STARTTIME: u64 = 1;
+    const TEST_STARTED_AT: &str = "2026-01-01T00:00:00.000Z";
+
+    struct TestRegistry {
+        dir: tempfile::TempDir,
+        home: HomePaths,
+    }
+
+    impl TestRegistry {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+            Self { dir, home }
+        }
+
+        fn root(&self) -> &Path {
+            self.dir.path()
+        }
+
+        fn metadata(&self) -> LiveRunnerInstanceMetadata {
+            LiveRunnerInstanceMetadata {
+                config_path: self.root().join("runner.yaml"),
+                base_dir: self.root().join("base"),
+                runner_name: "test-runner".into(),
+                runner_group: "vm0/test".into(),
+                subcommand: "start".into(),
+            }
+        }
+
+        fn ensure_dir(&self) {
+            crate::host_file::ensure_dir(
+                &self.home.live_runner_instances_dir(),
+                crate::host_file::DirMode::Private,
+                "live runner instances",
+            )
+            .unwrap();
+        }
+
+        async fn stale_record(&self) -> LiveRunnerInstanceRecord {
+            LiveRunnerInstanceRecord {
+                boot_id: current_boot_id().await.unwrap(),
+                pid: STALE_RECORD_PID,
+                starttime: STALE_RECORD_STARTTIME,
+                euid: current_euid(),
+                config_path: self.root().join("stale-runner.yaml"),
+                base_dir: self.root().join("stale-base"),
+                runner_name: "stale-runner".into(),
+                runner_group: "vm0/test".into(),
+                subcommand: "start".into(),
+                started_at: TEST_STARTED_AT.into(),
+            }
+        }
+
+        async fn other_live_process_record(
+            &self,
+            pid: u32,
+            starttime: u64,
+        ) -> LiveRunnerInstanceRecord {
+            LiveRunnerInstanceRecord {
+                boot_id: current_boot_id().await.unwrap(),
+                pid,
+                starttime,
+                euid: current_euid(),
+                config_path: self.root().join("other-runner.yaml"),
+                base_dir: self.root().join("other-base"),
+                runner_name: "other-runner".into(),
+                runner_group: "vm0/test".into(),
+                subcommand: "start".into(),
+                started_at: TEST_STARTED_AT.into(),
+            }
+        }
+
+        fn record_path(&self, record: &LiveRunnerInstanceRecord) -> PathBuf {
+            self.home
+                .live_runner_instance_record_path(record.pid, record.starttime)
+        }
+
+        fn tmp_path_for_record(&self, record: &LiveRunnerInstanceRecord) -> PathBuf {
+            self.home.live_runner_instances_dir().join(format!(
+                ".{}-{}.json.test.tmp",
+                record.pid, record.starttime
+            ))
+        }
+
+        fn stale_tmp_path(&self) -> PathBuf {
+            self.home.live_runner_instances_dir().join(format!(
+                ".{}-{}.json.test.tmp",
+                STALE_RECORD_PID, STALE_RECORD_STARTTIME
+            ))
+        }
+
+        async fn write_record_at_identity(&self, record: &LiveRunnerInstanceRecord) -> PathBuf {
+            let path = self.record_path(record);
+            write_record(&path, record).await;
+            path
         }
     }
 
@@ -551,10 +640,9 @@ mod tests {
 
     #[tokio::test]
     async fn publish_writes_private_record_without_secret_fields() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let registry = TestRegistry::new();
 
-        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
 
         let content = tokio::fs::read_to_string(&handle.path).await.unwrap();
         assert!(!content.contains("server"));
@@ -563,7 +651,7 @@ mod tests {
         let record: LiveRunnerInstanceRecord = serde_json::from_str(&content).unwrap();
         assert_eq!(record.pid, std::process::id());
         assert_eq!(record.euid, current_euid());
-        assert_eq!(record.base_dir, dir.path().join("base"));
+        assert_eq!(record.base_dir, registry.root().join("base"));
 
         #[cfg(unix)]
         {
@@ -574,7 +662,7 @@ mod tests {
             assert!(!metadata.file_type().is_symlink());
             assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
             assert_eq!(
-                std::fs::metadata(home.live_runner_instances_dir())
+                std::fs::metadata(registry.home.live_runner_instances_dir())
                     .unwrap()
                     .permissions()
                     .mode()
@@ -586,9 +674,8 @@ mod tests {
 
     #[tokio::test]
     async fn read_valid_record_accepts_matching_live_identity() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let registry = TestRegistry::new();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
 
         let record = read_valid_record(&handle.path).await.unwrap();
 
@@ -599,10 +686,9 @@ mod tests {
 
     #[tokio::test]
     async fn try_list_returns_empty_when_registry_dir_is_missing() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let registry = TestRegistry::new();
 
-        let instances = try_list(&home).await.unwrap();
+        let instances = try_list(&registry.home).await.unwrap();
 
         assert!(instances.is_empty());
     }
@@ -612,13 +698,16 @@ mod tests {
     async fn try_list_rejects_symlinked_registry_dir() {
         use std::os::unix::fs::symlink;
 
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        std::fs::create_dir_all(dir.path().join("target")).unwrap();
-        std::fs::create_dir_all(dir.path().join("vm0-runner")).unwrap();
-        symlink(dir.path().join("target"), home.live_runner_instances_dir()).unwrap();
+        let registry = TestRegistry::new();
+        std::fs::create_dir_all(registry.root().join("target")).unwrap();
+        std::fs::create_dir_all(registry.root().join("vm0-runner")).unwrap();
+        symlink(
+            registry.root().join("target"),
+            registry.home.live_runner_instances_dir(),
+        )
+        .unwrap();
 
-        let error = match try_list(&home).await {
+        let error = match try_list(&registry.home).await {
             Ok(_) => panic!("expected symlinked registry dir to fail"),
             Err(error) => error,
         };
@@ -631,18 +720,17 @@ mod tests {
 
     #[tokio::test]
     async fn try_list_returns_valid_live_instance_metadata() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let registry = TestRegistry::new();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
 
-        let instances = try_list(&home).await.unwrap();
+        let instances = try_list(&registry.home).await.unwrap();
 
         assert_eq!(instances.len(), 1);
         let instance = &instances[0];
         assert_eq!(instance.pid, handle.identity.pid);
         assert_eq!(instance.starttime, handle.identity.starttime);
-        assert_eq!(instance.config_path, dir.path().join("runner.yaml"));
-        assert_eq!(instance.base_dir, dir.path().join("base"));
+        assert_eq!(instance.config_path, registry.root().join("runner.yaml"));
+        assert_eq!(instance.base_dir, registry.root().join("base"));
         assert_eq!(instance.runner_name, "test-runner");
         assert_eq!(instance.runner_group, "vm0/test");
         assert_eq!(instance.subcommand, "start");
@@ -651,9 +739,8 @@ mod tests {
 
     #[tokio::test]
     async fn try_list_defaults_legacy_records_to_start_subcommand() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let registry = TestRegistry::new();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
         let content = tokio::fs::read_to_string(&handle.path).await.unwrap();
         let mut value: serde_json::Value = serde_json::from_str(&content).unwrap();
         value.as_object_mut().unwrap().remove("subcommand").unwrap();
@@ -664,7 +751,7 @@ mod tests {
         .await
         .unwrap();
 
-        let instances = try_list(&home).await.unwrap();
+        let instances = try_list(&registry.home).await.unwrap();
 
         assert_eq!(instances.len(), 1);
         assert_eq!(instances[0].subcommand, "start");
@@ -672,62 +759,46 @@ mod tests {
 
     #[tokio::test]
     async fn try_list_ignores_invalid_records_for_stale_file_identities() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        crate::host_file::ensure_dir(
-            &home.live_runner_instances_dir(),
-            crate::host_file::DirMode::Private,
-            "live runner instances",
-        )
-        .unwrap();
-        let stale_record = LiveRunnerInstanceRecord {
-            boot_id: current_boot_id().await.unwrap(),
-            pid: u32::MAX,
-            starttime: 1,
-            euid: current_euid(),
-            config_path: dir.path().join("stale-runner.yaml"),
-            base_dir: dir.path().join("stale-base"),
-            runner_name: "stale-runner".into(),
-            runner_group: "vm0/test".into(),
-            subcommand: "start".into(),
-            started_at: "2026-01-01T00:00:00.000Z".into(),
-        };
-        write_record(
-            &home.live_runner_instance_record_path(stale_record.pid, stale_record.starttime),
-            &stale_record,
-        )
-        .await;
-        crate::state_file::write_private_atomic(&home.live_runner_instance_record_path(1, 1), b"{")
-            .await
-            .unwrap();
+        let registry = TestRegistry::new();
+        registry.ensure_dir();
+        let stale_record = registry.stale_record().await;
+        registry.write_record_at_identity(&stale_record).await;
         crate::state_file::write_private_atomic(
-            &home.live_runner_instance_record_path(2, 2),
+            &registry.home.live_runner_instance_record_path(1, 1),
+            b"{",
+        )
+        .await
+        .unwrap();
+        crate::state_file::write_private_atomic(
+            &registry.home.live_runner_instance_record_path(2, 2),
             &vec![b'a'; (LIVE_RUNNER_INSTANCE_RECORD_MAX_BYTES + 1) as usize],
         )
         .await
         .unwrap();
         crate::state_file::write_private_atomic(
-            &home.live_runner_instances_dir().join("not-a-record.json"),
+            &registry
+                .home
+                .live_runner_instances_dir()
+                .join("not-a-record.json"),
             b"{}",
         )
         .await
         .unwrap();
 
-        let instances = try_list(&home).await.unwrap();
+        let instances = try_list(&registry.home).await.unwrap();
 
         assert!(instances.is_empty());
     }
 
     #[tokio::test]
     async fn try_list_fails_closed_for_invalid_record_with_live_file_identity() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let registry = TestRegistry::new();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
         crate::state_file::write_private_atomic(&handle.path, b"{")
             .await
             .unwrap();
 
-        let error = match try_list(&home).await {
+        let error = match try_list(&registry.home).await {
             Ok(_) => panic!("expected invalid live record to fail"),
             Err(error) => error,
         };
@@ -741,60 +812,44 @@ mod tests {
 
     #[tokio::test]
     async fn try_list_ignores_records_with_mismatched_stale_file_identity() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let registry = TestRegistry::new();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
         let record = read_valid_record(&handle.path).await.unwrap();
         tokio::fs::remove_file(&handle.path).await.unwrap();
-        write_record(
-            &home.live_runner_instance_record_path(record.pid, record.starttime + 1),
-            &record,
-        )
-        .await;
+        let mismatched_path = registry
+            .home
+            .live_runner_instance_record_path(record.pid, record.starttime + 1);
+        write_record(&mismatched_path, &record).await;
 
-        let instances = try_list(&home).await.unwrap();
+        let instances = try_list(&registry.home).await.unwrap();
 
         assert!(instances.is_empty());
     }
 
     #[tokio::test]
     async fn is_current_tracks_the_exact_registry_entry() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
-        let instance = try_list(&home).await.unwrap().into_iter().next().unwrap();
+        let registry = TestRegistry::new();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
+        let instance = try_list(&registry.home)
+            .await
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
 
-        assert!(is_current(&home, &instance).await.unwrap());
+        assert!(is_current(&registry.home, &instance).await.unwrap());
 
         tokio::fs::remove_file(&handle.path).await.unwrap();
 
-        assert!(!is_current(&home, &instance).await.unwrap());
+        assert!(!is_current(&registry.home, &instance).await.unwrap());
     }
 
     #[tokio::test]
     async fn read_valid_record_ignores_stale_pid() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        crate::host_file::ensure_dir(
-            &home.live_runner_instances_dir(),
-            crate::host_file::DirMode::Private,
-            "live runner instances",
-        )
-        .unwrap();
-        let record = LiveRunnerInstanceRecord {
-            boot_id: current_boot_id().await.unwrap(),
-            pid: u32::MAX,
-            starttime: 1,
-            euid: current_euid(),
-            config_path: dir.path().join("runner.yaml"),
-            base_dir: dir.path().join("base"),
-            runner_name: "test-runner".into(),
-            runner_group: "vm0/test".into(),
-            subcommand: "start".into(),
-            started_at: "2026-01-01T00:00:00.000Z".into(),
-        };
-        let path = home.live_runner_instance_record_path(record.pid, record.starttime);
-        write_record(&path, &record).await;
+        let registry = TestRegistry::new();
+        registry.ensure_dir();
+        let record = registry.stale_record().await;
+        let path = registry.write_record_at_identity(&record).await;
 
         let result = read_valid_record(&path).await;
 
@@ -803,9 +858,8 @@ mod tests {
 
     #[tokio::test]
     async fn read_valid_record_ignores_starttime_mismatch() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let registry = TestRegistry::new();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
         let mut record = read_valid_record(&handle.path).await.unwrap();
         record.starttime += 1;
         write_record(&handle.path, &record).await;
@@ -817,9 +871,8 @@ mod tests {
 
     #[tokio::test]
     async fn read_valid_record_ignores_boot_id_mismatch() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let registry = TestRegistry::new();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
         let mut record = read_valid_record(&handle.path).await.unwrap();
         record.boot_id = "00000000-0000-0000-0000-000000000000".into();
         write_record(&handle.path, &record).await;
@@ -831,15 +884,12 @@ mod tests {
 
     #[tokio::test]
     async fn read_valid_record_ignores_malformed_json() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        crate::host_file::ensure_dir(
-            &home.live_runner_instances_dir(),
-            crate::host_file::DirMode::Private,
-            "live runner instances",
-        )
-        .unwrap();
-        let path = home.live_runner_instances_dir().join("malformed.json");
+        let registry = TestRegistry::new();
+        registry.ensure_dir();
+        let path = registry
+            .home
+            .live_runner_instances_dir()
+            .join("malformed.json");
         crate::state_file::write_private_atomic(&path, b"{")
             .await
             .unwrap();
@@ -851,15 +901,12 @@ mod tests {
 
     #[tokio::test]
     async fn read_valid_record_ignores_oversized_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        crate::host_file::ensure_dir(
-            &home.live_runner_instances_dir(),
-            crate::host_file::DirMode::Private,
-            "live runner instances",
-        )
-        .unwrap();
-        let path = home.live_runner_instances_dir().join("oversized.json");
+        let registry = TestRegistry::new();
+        registry.ensure_dir();
+        let path = registry
+            .home
+            .live_runner_instances_dir()
+            .join("oversized.json");
         crate::state_file::write_private_atomic(
             &path,
             &vec![b'a'; (LIVE_RUNNER_INSTANCE_RECORD_MAX_BYTES + 1) as usize],
@@ -874,35 +921,14 @@ mod tests {
 
     #[tokio::test]
     async fn publish_removes_stale_records() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        crate::host_file::ensure_dir(
-            &home.live_runner_instances_dir(),
-            crate::host_file::DirMode::Private,
-            "live runner instances",
-        )
-        .unwrap();
-        let stale_record = LiveRunnerInstanceRecord {
-            boot_id: current_boot_id().await.unwrap(),
-            pid: u32::MAX,
-            starttime: 1,
-            euid: current_euid(),
-            config_path: dir.path().join("stale-runner.yaml"),
-            base_dir: dir.path().join("stale-base"),
-            runner_name: "stale-runner".into(),
-            runner_group: "vm0/test".into(),
-            subcommand: "start".into(),
-            started_at: "2026-01-01T00:00:00.000Z".into(),
-        };
-        let stale_path =
-            home.live_runner_instance_record_path(stale_record.pid, stale_record.starttime);
-        write_record(&stale_path, &stale_record).await;
-        let stale_tmp_path = home
-            .live_runner_instances_dir()
-            .join(".4294967295-1.json.test.tmp");
+        let registry = TestRegistry::new();
+        registry.ensure_dir();
+        let stale_record = registry.stale_record().await;
+        let stale_path = registry.write_record_at_identity(&stale_record).await;
+        let stale_tmp_path = registry.stale_tmp_path();
         tokio::fs::write(&stale_tmp_path, b"partial").await.unwrap();
 
-        let _handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let _handle = publish(&registry.home, registry.metadata()).await.unwrap();
 
         assert!(!stale_path.exists());
         assert!(!stale_tmp_path.exists());
@@ -910,35 +936,14 @@ mod tests {
 
     #[tokio::test]
     async fn try_list_removes_stale_records() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        crate::host_file::ensure_dir(
-            &home.live_runner_instances_dir(),
-            crate::host_file::DirMode::Private,
-            "live runner instances",
-        )
-        .unwrap();
-        let stale_record = LiveRunnerInstanceRecord {
-            boot_id: current_boot_id().await.unwrap(),
-            pid: u32::MAX,
-            starttime: 1,
-            euid: current_euid(),
-            config_path: dir.path().join("stale-runner.yaml"),
-            base_dir: dir.path().join("stale-base"),
-            runner_name: "stale-runner".into(),
-            runner_group: "vm0/test".into(),
-            subcommand: "start".into(),
-            started_at: "2026-01-01T00:00:00.000Z".into(),
-        };
-        let stale_path =
-            home.live_runner_instance_record_path(stale_record.pid, stale_record.starttime);
-        write_record(&stale_path, &stale_record).await;
-        let stale_tmp_path = home
-            .live_runner_instances_dir()
-            .join(".4294967295-1.json.test.tmp");
+        let registry = TestRegistry::new();
+        registry.ensure_dir();
+        let stale_record = registry.stale_record().await;
+        let stale_path = registry.write_record_at_identity(&stale_record).await;
+        let stale_tmp_path = registry.stale_tmp_path();
         tokio::fs::write(&stale_tmp_path, b"partial").await.unwrap();
 
-        let instances = try_list(&home).await.unwrap();
+        let instances = try_list(&registry.home).await.unwrap();
 
         assert!(instances.is_empty());
         assert!(!stale_path.exists());
@@ -947,16 +952,16 @@ mod tests {
 
     #[tokio::test]
     async fn publish_removes_records_with_mismatched_file_identity() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let registry = TestRegistry::new();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
         let record = read_valid_record(&handle.path).await.unwrap();
         tokio::fs::remove_file(&handle.path).await.unwrap();
-        let mismatched_path =
-            home.live_runner_instance_record_path(record.pid, record.starttime + 1);
+        let mismatched_path = registry
+            .home
+            .live_runner_instance_record_path(record.pid, record.starttime + 1);
         write_record(&mismatched_path, &record).await;
 
-        let _handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let _handle = publish(&registry.home, registry.metadata()).await.unwrap();
 
         assert!(!mismatched_path.exists());
     }
@@ -980,37 +985,17 @@ mod tests {
                 .unwrap(),
         );
         let child_pid = child.0.id();
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        crate::host_file::ensure_dir(
-            &home.live_runner_instances_dir(),
-            crate::host_file::DirMode::Private,
-            "live runner instances",
-        )
-        .unwrap();
+        let registry = TestRegistry::new();
+        registry.ensure_dir();
         let child_stat = process::read_process_stat(child_pid).await.unwrap();
-        let live_record = LiveRunnerInstanceRecord {
-            boot_id: current_boot_id().await.unwrap(),
-            pid: child_pid,
-            starttime: child_stat.starttime,
-            euid: current_euid(),
-            config_path: dir.path().join("other-runner.yaml"),
-            base_dir: dir.path().join("other-base"),
-            runner_name: "other-runner".into(),
-            runner_group: "vm0/test".into(),
-            subcommand: "start".into(),
-            started_at: "2026-01-01T00:00:00.000Z".into(),
-        };
-        let live_path =
-            home.live_runner_instance_record_path(live_record.pid, live_record.starttime);
-        let live_tmp_path = home.live_runner_instances_dir().join(format!(
-            ".{}-{}.json.test.tmp",
-            child_pid, child_stat.starttime
-        ));
-        write_record(&live_path, &live_record).await;
+        let live_record = registry
+            .other_live_process_record(child_pid, child_stat.starttime)
+            .await;
+        let live_path = registry.write_record_at_identity(&live_record).await;
+        let live_tmp_path = registry.tmp_path_for_record(&live_record);
         tokio::fs::write(&live_tmp_path, b"partial").await.unwrap();
 
-        let _handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let _handle = publish(&registry.home, registry.metadata()).await.unwrap();
 
         assert!(live_path.exists());
         assert!(live_tmp_path.exists());
@@ -1018,9 +1003,8 @@ mod tests {
 
     #[tokio::test]
     async fn remove_if_current_removes_matching_record() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let registry = TestRegistry::new();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
 
         let removed = handle.remove_if_current().await.unwrap();
 
@@ -1030,9 +1014,8 @@ mod tests {
 
     #[tokio::test]
     async fn remove_if_current_preserves_mismatched_record() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let registry = TestRegistry::new();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
         let mut record = read_valid_record(&handle.path).await.unwrap();
         record.starttime += 1;
         write_record(&handle.path, &record).await;
@@ -1045,9 +1028,8 @@ mod tests {
 
     #[tokio::test]
     async fn remove_if_current_removes_invalid_current_record() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let registry = TestRegistry::new();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
         crate::state_file::write_private_atomic(&handle.path, b"{")
             .await
             .unwrap();
