@@ -4,8 +4,9 @@ import { agentRuns } from "./agent-run";
 /**
  * Agent Run Queue table
  * Temporary storage for runs waiting on concurrency slots.
- * Stores encrypted CreateRunParams (including secrets).
- * Records are deleted after dequeue — secrets never persist long-term.
+ * API-created rows store an encrypted prepared runner job payload.
+ * Legacy/test rows may omit the payload and use SQL-only promotion.
+ * Records are deleted after dequeue.
  * Follows the same pattern as runner_job_queue.
  */
 export const agentRunQueue = pgTable(
@@ -27,7 +28,7 @@ export const agentRunQueue = pgTable(
     // Denormalized for efficient per-org queue queries (partition key for dequeue)
     orgId: text("org_id").notNull(),
 
-    // Persistent-secret encrypted CreateRunParams JSON
+    // Persistent-secret encrypted prepared runner job payload.
     encryptedParams: text("encrypted_params"),
 
     // Lifecycle management

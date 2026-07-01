@@ -31,7 +31,6 @@ import {
   count,
   desc,
   eq,
-  gt,
   gte,
   inArray,
   isNotNull,
@@ -42,6 +41,7 @@ import {
 
 import { now } from "../../lib/time";
 import { db$, type Db } from "../external/db";
+import { activePendingRunPredicate } from "./agent-run-activity.service";
 import {
   activePaidConcurrencySlots,
   cappedBaseConcurrencyLimit,
@@ -112,7 +112,7 @@ async function activeRunCount(db: ReadDb, orgId: string): Promise<number> {
           eq(agentRuns.status, "running"),
           and(
             eq(agentRuns.status, "pending"),
-            gt(agentRuns.createdAt, staleThreshold),
+            activePendingRunPredicate(staleThreshold),
           ),
         ),
       ),
