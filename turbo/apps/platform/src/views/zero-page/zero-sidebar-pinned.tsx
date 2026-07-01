@@ -30,11 +30,11 @@ import { detachedNavigateTo$, pathParams$ } from "../../signals/route.ts";
 import {
   chatListOpen$,
   setChatListOpen$,
+  openAgentListDialog$,
   agentCardCollapsed$,
   setAgentCardCollapsed$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import {
-  reloadAgents$,
   subagents$,
   defaultAgentId$,
   defaultAgentName$,
@@ -171,10 +171,9 @@ export function PinnedAgentListSection() {
     features[FeatureSwitchKey.AgentUnreadIndicators] ?? false;
   const unreadAgentIds = useLastResolved(unreadAgentIds$);
 
-  const setChatListOpenFn = useSet(setChatListOpen$);
+  const openAgentListDialog = useSet(openAgentListDialog$);
   const collapsed = useGet(agentCardCollapsed$);
   const setCollapsed = useSet(setAgentCardCollapsed$);
-  const reloadAgents = useSet(reloadAgents$);
   const defaultAgentId = useLastResolved(defaultAgentId$);
 
   return (
@@ -203,8 +202,7 @@ export function PinnedAgentListSection() {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setChatListOpenFn(true);
-                  reloadAgents();
+                  openAgentListDialog();
                 }}
                 className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
                 aria-label="Open a conversation"

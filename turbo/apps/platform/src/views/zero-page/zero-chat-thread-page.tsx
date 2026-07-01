@@ -359,6 +359,7 @@ const CHAT_SHORTCUT_SECTIONS = [
       { key: "shift+/", label: "Show shortcuts" },
       { key: "mod+b", label: "Toggle sidebar" },
       { key: "mod+shift+o", label: "New chat" },
+      { key: "mod+shift+a", label: "Open agent list" },
       { key: "f2", label: "Rename chat" },
       { key: "shift+f2", label: "Change emoji" },
     ],

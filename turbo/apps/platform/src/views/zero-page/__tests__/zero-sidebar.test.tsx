@@ -1199,6 +1199,29 @@ describe("zero sidebar", () => {
     expect(createRequests).toBe(0);
   });
 
+  it("opens the agent picker from the global shortcut", async () => {
+    prepareAgentTeam();
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      expect(sidebar()).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, {
+      key: "a",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
+    expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
+  });
+
   it("shows agent unread indicators and dropdown actions behind the feature switch", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({
