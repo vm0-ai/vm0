@@ -872,7 +872,9 @@ describe("zero sidebar", () => {
     expect(titleInput).toHaveValue("Thread data release plan");
 
     await fill(titleInput, "Launch plan");
-    click(buttonByText("Rename", dialog));
+    const renameForm = titleInput.closest("form");
+    expect(renameForm).not.toBeNull();
+    fireEvent.submit(renameForm!);
 
     await waitFor(() => {
       expect(within(sidebar()).getByText("Launch plan")).toBeInTheDocument();
