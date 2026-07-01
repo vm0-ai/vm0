@@ -99,6 +99,7 @@ async function readRunModelMetadataForAction(
   const [run] = await db
     .select({
       modelProvider: zeroRuns.modelProvider,
+      modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
       selectedModel: zeroRuns.selectedModel,
     })
     .from(zeroRuns)
@@ -113,6 +114,7 @@ async function readRunModelMetadataForAction(
   }
   return actionOk({
     run_model_provider: run.modelProvider,
+    run_model_provider_credential_scope: run.modelProviderCredentialScope,
     run_selected_model: run.selectedModel,
   });
 }

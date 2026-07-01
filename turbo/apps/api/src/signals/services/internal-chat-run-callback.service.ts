@@ -48,6 +48,7 @@ import {
 import {
   BEFORE_DISPATCH_CANCELLED_ERROR,
   type DispatchFailedRunCallbacks,
+  type ZeroRunModelMetadataOverride,
 } from "./agent-run-create.service";
 import type { InternalRunCallbackEnvelope } from "./internal-run-callback";
 import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
@@ -458,11 +459,32 @@ function parseModelProviderCredentialScope(
   throw new Error(`Unknown model provider credential scope "${value}"`);
 }
 
+function queuedZeroRunModelMetadataOverride(
+  message: QueuedUserMessage,
+): ZeroRunModelMetadataOverride | undefined {
+  if (
+    message.modelProviderType === null &&
+    message.modelProviderId === null &&
+    message.modelProviderCredentialScope === null
+  ) {
+    return undefined;
+  }
+  return {
+    modelProvider: message.modelProviderType ?? undefined,
+    modelProviderId: message.modelProviderId,
+    modelProviderCredentialScope: message.modelProviderCredentialScope,
+    selectedModel: message.selectedModel,
+  };
+}
+
 function buildQueuedCreateZeroRunArgs(
   input: CreateQueuedChatRunInput,
   apiStartTime: number,
   dispatchFailedCallbacks?: DispatchFailedRunCallbacks,
 ) {
+  const zeroRunModelMetadataOverride = queuedZeroRunModelMetadataOverride(
+    input.queuedMessage,
+  );
   return {
     auth: {
       tokenType: "session" as const,
@@ -486,6 +508,7 @@ function buildQueuedCreateZeroRunArgs(
     modelProviderCredentialScope:
       input.queuedMessage.modelProviderCredentialScope ?? undefined,
     selectedModelOverride: input.queuedMessage.selectedModel ?? undefined,
+    ...(zeroRunModelMetadataOverride ? { zeroRunModelMetadataOverride } : {}),
     callbacks: [
       {
         internalKind: "chat" as const,

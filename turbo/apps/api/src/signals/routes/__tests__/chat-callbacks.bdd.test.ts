@@ -754,6 +754,14 @@ describe("CHAT-02: completed chat callback", () => {
     expect(claimed.runId).not.toBe(first.runId);
     expect(claimed.revokesMessageId).toBe(queued.id);
     expect(claimed.generationTemplate).toStrictEqual(generationTemplate);
+    const claimedMetadata = await postChatMessagesStateAction({
+      action: "read-run-model-metadata",
+      run_id: claimed.runId,
+    });
+    expect(claimedMetadata.run_selected_model).toBe("claude-sonnet-4-6");
+    expect(claimedMetadata.run_model_provider_credential_scope).toStrictEqual(
+      expect.any(String),
+    );
     // The paged-messages API returns the revoked original next to the
     // claiming copy; clients collapse the pair through revokesMessageId.
     expect(
