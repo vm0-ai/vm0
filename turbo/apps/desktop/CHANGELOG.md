@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.4](https://github.com/vm0-ai/vm0/compare/desktop-v0.20.3...desktop-v0.20.4) (2026-07-01)
+
+
+### Bug Fixes
+
+* show dates for stale desktop tray commands ([#19636](https://github.com/vm0-ai/vm0/issues/19636)) ([c6075a3](https://github.com/vm0-ai/vm0/commit/c6075a3ab7e787c628ccbf8cd8a84b4a49429fef))
+
 ## [0.20.3](https://github.com/vm0-ai/vm0/compare/desktop-v0.20.2...desktop-v0.20.3) (2026-06-26)
 
 
