@@ -696,6 +696,32 @@ describe("firewall metadata", () => {
     );
   });
 
+  it("loads source-backed Xero permission descriptions", async () => {
+    const detail = await loadFirewallPermissionMetadata("xero");
+    const index = await loadFirewallPermissionIndex("xero");
+
+    expect(detail).not.toBeNull();
+    expect(index).not.toBeNull();
+    for (const permission of detail!.permissions) {
+      expect(permission.description, permission.name).toEqual(
+        expect.any(String),
+      );
+      expect(permission.description?.trim(), permission.name).not.toBe("");
+    }
+    expect(index!.permissionDescription("connections")).toBe(
+      "List and disconnect Xero tenant connections for the authorized user.",
+    );
+    expect(index!.permissionDescription("marketplace.billing")).toBe(
+      "Read Xero App Store subscriptions and manage metered usage records.",
+    );
+    expect(index!.permissionDescription("accounting.transactions.read")).toBe(
+      "Grant read-only access to accounting transactions, including bank transactions, credit notes, invoices, payments, purchase orders, quotes, receipts, and related history.",
+    );
+    expect(index!.permissionDescription("projects.read")).toBe(
+      "Grant read-only access to projects",
+    );
+  });
+
   it("keeps server permission indexes aligned with generated summaries", async () => {
     const loadedIndexes = await Promise.all(
       Object.keys(FIREWALL_PERMISSION_METADATA_SUMMARIES).map(async (type) => {

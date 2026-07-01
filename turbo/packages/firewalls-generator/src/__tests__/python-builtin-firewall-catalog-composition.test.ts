@@ -140,20 +140,27 @@ describe("Python builtin firewall catalog composition", () => {
       const catalog = await buildPythonBuiltinFirewallCatalog({
         modelProviderFirewalls: [],
       });
-      const permission = catalog.firewalls.clerk?.apis
-        .flatMap((api) => {
-          return api.permissions ?? [];
-        })
-        .find((candidate) => {
-          return candidate.name === "users:read";
-        });
+      const examples = [
+        ["clerk", "users:read"],
+        ["xero", "connections"],
+      ] as const;
 
-      expect(permission).toBeDefined();
-      expect(permission).toMatchObject({
-        name: "users:read",
-        rules: expect.any(Array),
-      });
-      expect(permission).not.toHaveProperty("description");
+      for (const [connectorType, permissionName] of examples) {
+        const permission = catalog.firewalls[connectorType]?.apis
+          .flatMap((api) => {
+            return api.permissions ?? [];
+          })
+          .find((candidate) => {
+            return candidate.name === permissionName;
+          });
+
+        expect(permission).toBeDefined();
+        expect(permission).toMatchObject({
+          name: permissionName,
+          rules: expect.any(Array),
+        });
+        expect(permission).not.toHaveProperty("description");
+      }
     },
     FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
   );
