@@ -58,6 +58,34 @@ describe("runner storage manifest contract", () => {
     });
   });
 
+  it("accepts artifact entries without manifest urls", () => {
+    expect(
+      storageManifestSchema.parse({
+        storages: [],
+        artifacts: [
+          {
+            mountPath: "/home/user/.claude/projects/project",
+            vasStorageName: "memory",
+            vasStorageId: "storage-id-1",
+            vasVersionId: "version-2",
+            archiveUrl: "https://storage.example/artifact.tar.gz",
+          },
+        ],
+      }),
+    ).toEqual({
+      storages: [],
+      artifacts: [
+        {
+          mountPath: "/home/user/.claude/projects/project",
+          vasStorageName: "memory",
+          vasStorageId: "storage-id-1",
+          vasVersionId: "version-2",
+          archiveUrl: "https://storage.example/artifact.tar.gz",
+        },
+      ],
+    });
+  });
+
   it("rejects guest-download-only nullable archive urls", () => {
     const result = storageManifestSchema.safeParse({
       storages: [

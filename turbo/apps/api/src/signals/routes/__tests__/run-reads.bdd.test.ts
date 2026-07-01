@@ -779,6 +779,10 @@ describe("RUN-04: session and checkpoint reads", () => {
     if (!outArtifact) {
       throw new Error("Expected the claim manifest to mount bdd-out");
     }
+    expect(outArtifact.archiveUrl).toStrictEqual(expect.any(String));
+    expect(outArtifact.vasStorageId).toStrictEqual(expect.any(String));
+    expect(outArtifact.vasVersionId).toStrictEqual(expect.any(String));
+    expect("manifestUrl" in outArtifact).toBeFalsy();
 
     const headers1 = sandboxHeaders(claim1.sandboxToken);
     const withArtifacts = await webhooks.requestAgentCheckpoint(
@@ -1026,11 +1030,15 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     });
     expect(memory1).toMatchObject({
       mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+      archiveUrl: expect.any(String),
+      vasStorageId: expect.any(String),
+      vasVersionId: expect.any(String),
       missingRootPolicy: "preserveParentVersion",
     });
     if (!memory1) {
       throw new Error("Expected the claim manifest to mount memory");
     }
+    expect("manifestUrl" in memory1).toBeFalsy();
 
     const headers1 = sandboxHeaders(claim1.sandboxToken);
     const checkpointed = await webhooks.requestAgentCheckpoint(
