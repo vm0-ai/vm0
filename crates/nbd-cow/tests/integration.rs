@@ -487,7 +487,7 @@ async fn connect_device_specific_index() {
         nbd_cow::DEFAULT_FLUSH_THRESHOLD,
     )
     .expect("cow layer");
-    let cow_layer = std::sync::Arc::new(tokio::sync::RwLock::new(cow_layer));
+    let cow = nbd_cow::cow_io::CowIo::new(cow_layer);
 
     let mut setup_result = Ok::<(), nbd_cow::error::NbdCowError>(());
     for _ in 0..nbd_cow::NUM_CONNECTIONS {
@@ -499,7 +499,7 @@ async fn connect_device_specific_index() {
             }
         };
         client_fds.push(client_fd);
-        let cow = cow_layer.clone();
+        let cow = cow.clone();
         let token = shutdown.clone();
         server_handles.push(tokio::spawn(async move {
             let _ = nbd_cow::server::dispatch(server_fd, cow, token).await;

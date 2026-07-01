@@ -1,15 +1,14 @@
 mod support;
 
 use std::os::unix::fs::MetadataExt as _;
-use std::sync::Arc;
 
 use nbd_cow::BLOCK_SIZE;
+use nbd_cow::cow_io::CowIo;
 use support::dispatch_client::{
     Command, TestResult, assert_error, assert_error_code, assert_success, create_base_file,
     create_cow_with_full_device, create_test_cow, request, request_with_type_flags, spawn_dispatch,
     spawn_dispatch_with_shutdown, wait_for_dispatch,
 };
-use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
 const OVERSIZED_LENGTH: u32 = 33 * 1024 * 1024;
@@ -18,7 +17,7 @@ const OVERSIZED_LENGTH: u32 = 33 * 1024 * 1024;
 async fn dispatch_read_write_disconnect() -> TestResult<()> {
     let base_data = vec![0xAA; 2 * BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data)?;
-    let cow = Arc::new(RwLock::new(cow));
+    let cow = CowIo::new(cow);
 
     let (mut client, task, _shutdown) = spawn_dispatch(cow).await?;
 
@@ -41,7 +40,7 @@ async fn dispatch_read_write_disconnect() -> TestResult<()> {
 async fn dispatch_flush_persists_to_cow_file() -> TestResult<()> {
     let base_data = vec![0x00; 2 * BLOCK_SIZE];
     let (_base, cow_file, cow) = create_test_cow(&base_data)?;
-    let cow = Arc::new(RwLock::new(cow));
+    let cow = CowIo::new(cow);
 
     let (mut client, task, _shutdown) = spawn_dispatch(cow.clone()).await?;
 
@@ -52,18 +51,15 @@ async fn dispatch_flush_persists_to_cow_file() -> TestResult<()> {
     let reply = client.flush(2).await?;
     assert_success(&reply, 2);
 
-    {
-        let cow = cow.read().await;
-        assert_eq!(
-            cow.buffered_block_count(),
-            0,
-            "buffer should be empty after flush"
-        );
-        assert!(
-            cow.dirty_block_count() > 0,
-            "should have dirty blocks in COW file"
-        );
-    }
+    let status = cow.status().await?;
+    assert_eq!(
+        status.buffered_blocks, 0,
+        "buffer should be empty after flush"
+    );
+    assert!(
+        status.dirty_blocks > 0,
+        "should have dirty blocks in COW file"
+    );
 
     let cow_meta = std::fs::metadata(cow_file.path())?;
     assert!(
@@ -80,7 +76,7 @@ async fn dispatch_flush_persists_to_cow_file() -> TestResult<()> {
 async fn dispatch_trim_succeeds() -> TestResult<()> {
     let base_data = vec![0xAA; 2 * BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data)?;
-    let cow = Arc::new(RwLock::new(cow));
+    let cow = CowIo::new(cow);
 
     let (mut client, task, _shutdown) = spawn_dispatch(cow).await?;
 
@@ -98,7 +94,7 @@ async fn dispatch_masks_request_type_flags_from_command() -> TestResult<()> {
 
     let base_data = vec![0xAA; 2 * BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data)?;
-    let cow = Arc::new(RwLock::new(cow));
+    let cow = CowIo::new(cow);
 
     let (mut client, task, _shutdown) = spawn_dispatch(cow).await?;
 
@@ -127,7 +123,7 @@ async fn dispatch_masks_request_type_flags_from_command() -> TestResult<()> {
 async fn dispatch_oversized_read_returns_error() -> TestResult<()> {
     let base_data = vec![0xAA; 2 * BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data)?;
-    let cow = Arc::new(RwLock::new(cow));
+    let cow = CowIo::new(cow);
 
     let (mut client, task, _shutdown) = spawn_dispatch(cow).await?;
 
@@ -148,7 +144,7 @@ async fn dispatch_oversized_read_returns_error() -> TestResult<()> {
 async fn dispatch_oversized_write_discards_and_returns_error() -> TestResult<()> {
     let base_data = vec![0xAA; 2 * BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data)?;
-    let cow = Arc::new(RwLock::new(cow));
+    let cow = CowIo::new(cow);
 
     let (mut client, task, _shutdown) = spawn_dispatch(cow).await?;
 
@@ -173,7 +169,7 @@ async fn dispatch_oversized_write_discards_and_returns_error() -> TestResult<()>
 async fn dispatch_out_of_bounds_read_returns_error() -> TestResult<()> {
     let base_data = vec![0xAA; 2 * BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data)?;
-    let cow = Arc::new(RwLock::new(cow));
+    let cow = CowIo::new(cow);
 
     let (mut client, task, _shutdown) = spawn_dispatch(cow).await?;
 
@@ -194,7 +190,7 @@ async fn dispatch_out_of_bounds_read_returns_error() -> TestResult<()> {
 async fn dispatch_out_of_bounds_write_returns_error() -> TestResult<()> {
     let base_data = vec![0xAA; 2 * BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data)?;
-    let cow = Arc::new(RwLock::new(cow));
+    let cow = CowIo::new(cow);
 
     let (mut client, task, _shutdown) = spawn_dispatch(cow).await?;
 
@@ -214,7 +210,7 @@ async fn dispatch_out_of_bounds_write_returns_error() -> TestResult<()> {
 async fn dispatch_write_flush_failure_returns_error() -> TestResult<()> {
     let base_data = vec![0xAA; 2 * BLOCK_SIZE];
     let base = create_base_file(&base_data)?;
-    let cow = Arc::new(RwLock::new(create_cow_with_full_device(&base, BLOCK_SIZE)?));
+    let cow = CowIo::new(create_cow_with_full_device(&base, BLOCK_SIZE)?);
 
     let (mut client, task, _shutdown) = spawn_dispatch(cow).await?;
 
@@ -231,10 +227,7 @@ async fn dispatch_write_flush_failure_returns_error() -> TestResult<()> {
 async fn dispatch_sync_failure_returns_error() -> TestResult<()> {
     let base_data = vec![0xAA; 2 * BLOCK_SIZE];
     let base = create_base_file(&base_data)?;
-    let cow = Arc::new(RwLock::new(create_cow_with_full_device(
-        &base,
-        4 * 1024 * 1024,
-    )?));
+    let cow = CowIo::new(create_cow_with_full_device(&base, 4 * 1024 * 1024)?);
 
     let (mut client, task, _shutdown) = spawn_dispatch(cow).await?;
 
@@ -254,7 +247,7 @@ async fn dispatch_sync_failure_returns_error() -> TestResult<()> {
 async fn dispatch_concurrent_read_write() -> TestResult<()> {
     let base_data = vec![0xAA; 2 * BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data)?;
-    let cow = Arc::new(RwLock::new(cow));
+    let cow = CowIo::new(cow);
     let shutdown = CancellationToken::new();
 
     let (mut client0, task0) = spawn_dispatch_with_shutdown(cow.clone(), shutdown.clone()).await?;
