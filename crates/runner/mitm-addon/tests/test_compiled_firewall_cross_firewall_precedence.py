@@ -109,7 +109,7 @@ def test_later_allowed_firewall_wins_after_earlier_unknown_match(
     compiled = match_compiled_firewalls(ITEMS_URL, fws, policies)
     assert isinstance(compiled, matching.FirewallAllow)
     assert compiled.name == "specific"
-    assert compiled.permission == ITEMS_READ_PERMISSION
+    assert compiled.permission == "items-read"
 
 
 def test_specific_permission_api_wins_after_earlier_unknown_same_firewall():
@@ -218,7 +218,7 @@ def test_later_denied_firewall_wins_after_earlier_unknown_allow():
 
     assert isinstance(result, matching.FirewallBlock)
     assert result.name == "specific"
-    assert result.permissions == (ITEMS_READ_PERMISSION,)
+    assert result.permissions == ("items-read",)
     assert result.reason == "permission_denied"
 
 
@@ -237,8 +237,8 @@ def test_later_allowed_firewall_wins_after_earlier_denied_permission_match():
     assert isinstance(result, matching.FirewallAllow)
     assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer primary"
     assert result.name == "primary"
-    assert result.permission == ITEMS_READ_PERMISSION
-    assert result.rule == ITEMS_RULE
+    assert result.permission == "items-read"
+    assert result.rule == "GET /items/{id}"
 
 
 def test_earlier_allowed_firewall_still_wins_after_later_denied_permission_match():
@@ -256,8 +256,8 @@ def test_earlier_allowed_firewall_still_wins_after_later_denied_permission_match
     assert isinstance(result, matching.FirewallAllow)
     assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer primary"
     assert result.name == "primary"
-    assert result.permission == ITEMS_READ_PERMISSION
-    assert result.rule == ITEMS_RULE
+    assert result.permission == "items-read"
+    assert result.rule == "GET /items/{id}"
 
 
 def test_denied_permission_names_collect_across_firewalls():
@@ -274,5 +274,5 @@ def test_denied_permission_names_collect_across_firewalls():
 
     assert isinstance(result, matching.FirewallBlock)
     assert result.name == "auditor"
-    assert result.permissions == (AUDIT_READ_PERMISSION, ITEMS_READ_PERMISSION)
+    assert result.permissions == ("audit-read", "items-read")
     assert result.reason == "permission_denied"
