@@ -32,6 +32,10 @@ const failReadyCatchup$ = command((_ctx, _signal: AbortSignal) => {
   throw new Error("ready catchup should not run");
 });
 
+const failReadyCatchupAfterReady$ = command((_ctx, _signal: AbortSignal) => {
+  throw new Error("ready catchup failed");
+});
+
 function mockSignedInUser(): void {
   mockUser(
     {
@@ -47,6 +51,22 @@ function abortError(message: string): Error {
   const error = new Error(message);
   error.name = "AbortError";
   return error;
+}
+
+function chatThreadRealtimeTopics(threadId: string): readonly string[] {
+  return [
+    `chatThreadMessageCreated:${threadId}`,
+    `chatThreadMessageUpdated:${threadId}`,
+    `chatThreadRunCreated:${threadId}`,
+    `chatThreadRunUpdated:${threadId}`,
+    `chatThreadAutomationsChanged:${threadId}`,
+  ];
+}
+
+function expectNoChatThreadSubscriptions(threadId: string): void {
+  for (const topic of chatThreadRealtimeTopics(threadId)) {
+    expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+  }
 }
 
 describe("realtime signals", () => {
@@ -230,26 +250,33 @@ describe("realtime signals", () => {
       `Realtime subscription ended before ready: chatThreadMessageCreated:${threadId}`,
     );
 
-    expect(
-      context.mocks.ably.hasSubscription(
-        `chatThreadMessageCreated:${threadId}`,
+    expectNoChatThreadSubscriptions(threadId);
+  });
+
+  it("preserves the ready catchup error and cleans up subscriptions", async () => {
+    mockSignedInUser();
+    const threadId = "test-thread-ready-catchup-failure";
+    const dataSource = createRemoteChatThreadDataSource(threadId);
+
+    await context.store.set(setupRealtime$, context.signal);
+
+    await expect(
+      context.store.set(
+        dataSource.subscribeRealtime$,
+        {
+          threadId,
+          handlers: {
+            onMessageCreated$: keepAliveLoop$,
+            onMessageUpdated$: keepAlivePayloadLoop$,
+            onRunChanged$: keepAliveLoop$,
+            onAutomationsChanged$: keepAliveLoop$,
+            onSubscribed$: failReadyCatchupAfterReady$,
+          },
+        },
+        context.signal,
       ),
-    ).toBeFalsy();
-    expect(
-      context.mocks.ably.hasSubscription(
-        `chatThreadMessageUpdated:${threadId}`,
-      ),
-    ).toBeFalsy();
-    expect(
-      context.mocks.ably.hasSubscription(`chatThreadRunCreated:${threadId}`),
-    ).toBeFalsy();
-    expect(
-      context.mocks.ably.hasSubscription(`chatThreadRunUpdated:${threadId}`),
-    ).toBeFalsy();
-    expect(
-      context.mocks.ably.hasSubscription(
-        `chatThreadAutomationsChanged:${threadId}`,
-      ),
-    ).toBeFalsy();
+    ).rejects.toThrow("ready catchup failed");
+
+    expectNoChatThreadSubscriptions(threadId);
   });
 });

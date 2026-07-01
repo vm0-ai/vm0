@@ -426,7 +426,7 @@ function createSubscribeRealtime() {
             if (!synced.ok) {
               set(resetSubscriptionSignal$);
               await Promise.allSettled(subscriptionPromises);
-              subscriptionSignal.throwIfAborted();
+              signal.throwIfAborted();
               throw synced.error;
             }
           }
