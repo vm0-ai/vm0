@@ -2,8 +2,8 @@
 //! codex (`CODEX_SEARCH:{dir_len}:{dir}:{id}` marker → bounded layout scan +
 //! optional zstd decode).
 //!
-//! The event metadata capture path writes one of two payloads to
-//! `paths::session_history_path_file()`:
+//! The event metadata capture path writes one of two payloads to the
+//! `GuestPaths::session_history_path_file()` runtime file:
 //!
 //! - Claude: a literal filesystem path to the `.jsonl` history file.
 //! - Codex:  a length-prefixed

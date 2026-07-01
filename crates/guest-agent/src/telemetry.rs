@@ -61,14 +61,7 @@ impl TelemetryPaths {
     }
 
     fn from_legacy_paths() -> Self {
-        Self {
-            system_log_file: paths::system_log_file().to_string(),
-            metrics_log_file: paths::metrics_log_file().to_string(),
-            sandbox_ops_file: paths::sandbox_ops_file().to_string(),
-            system_log_pos_file: paths::telemetry_system_log_pos_file().to_string(),
-            metrics_pos_file: paths::telemetry_metrics_pos_file().to_string(),
-            sandbox_ops_pos_file: paths::telemetry_sandbox_ops_pos_file().to_string(),
-        }
+        Self::from_guest_paths(&paths::legacy_paths_from_process_env())
     }
 }
 
