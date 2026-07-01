@@ -258,6 +258,46 @@ describe("realtime signals", () => {
     expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
   });
 
+  it("cleans up a loop subscription when abort races subscribe resolution", async () => {
+    mockSignedInUser();
+    const topic = "test:subscribe-abort-race";
+    const subscriber = new AbortController();
+
+    await context.store.set(setupRealtime$, context.signal);
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      {
+        topic,
+        loopCommand$: finishLoop$,
+      },
+      subscriber.signal,
+    );
+    subscriber.abort(abortError("subscriber aborted"));
+
+    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+    expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+  });
+
+  it("cleans up a payload subscription when abort races subscribe resolution", async () => {
+    mockSignedInUser();
+    const topic = "test:payload-subscribe-abort-race";
+    const subscriber = new AbortController();
+
+    await context.store.set(setupRealtime$, context.signal);
+    const loopPromise = context.store.set(
+      setAblyPayloadLoop$,
+      {
+        topic,
+        loopCommand$: keepAlivePayloadLoop$,
+      },
+      subscriber.signal,
+    );
+    subscriber.abort(abortError("subscriber aborted"));
+
+    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+    expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+  });
+
   it("reruns an active loop on reconnect", async () => {
     mockSignedInUser();
     const topic = "test:reconnect";
@@ -293,6 +333,46 @@ describe("realtime signals", () => {
 
     subscriber.abort(abortError("test done"));
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("reruns a loop for a notification received while the handler is in flight", async () => {
+    mockSignedInUser();
+    const topic = "test:in-flight-notification";
+    const firstRunCanFinish = context.mocks.deferred<void>();
+    let runs = 0;
+    const loop$ = command(async (_ctx, signal: AbortSignal) => {
+      runs += 1;
+      if (runs === 1) {
+        await firstRunCanFinish.promise;
+        signal.throwIfAborted();
+        return false;
+      }
+      return true;
+    });
+
+    await context.store.set(setupRealtime$, context.signal);
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      {
+        topic,
+        loopCommand$: loop$,
+      },
+      context.signal,
+    );
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    context.mocks.ably.trigger(topic);
+    await waitFor(() => {
+      expect(runs).toBe(1);
+    });
+
+    context.mocks.ably.trigger(topic);
+    firstRunCanFinish.resolve();
+
+    await expect(loopPromise).resolves.toBeUndefined();
+    expect(runs).toBe(2);
   });
 
   it("removes settled realtime wait abort listeners between notifications", async () => {

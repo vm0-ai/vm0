@@ -76,6 +76,15 @@ function isAblyConnectionClosedError(error: unknown): boolean {
   return errorMessage(error) === "Connection closed";
 }
 
+async function subscribeChannel(
+  channel: RealtimeChannel,
+  topic: string,
+  callback: (message: InboundMessage) => void,
+): Promise<boolean> {
+  await channel.subscribe(topic, callback);
+  return true;
+}
+
 const runWithChannel$ = command(
   async (
     { set },
@@ -89,10 +98,14 @@ const runWithChannel$ = command(
     // separate computeds.
     signal.throwIfAborted();
     let deferred = createDeferredPromise(signal);
+    let poked = false;
 
     const pokeLoop = () => {
+      if (poked) {
+        return;
+      }
+      poked = true;
       deferred.resolve(true);
-      deferred = createDeferredPromise(signal);
     };
 
     const callback = (message: InboundMessage) => {
@@ -139,15 +152,16 @@ const runWithChannel$ = command(
 
     // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
     try {
-      await channel.subscribe(topic, callback);
+      subscribed = await subscribeChannel(channel, topic, callback);
       signal.throwIfAborted();
-      subscribed = true;
       options?.onSubscribed?.();
       L.debug("subscribed to topic: " + topic);
 
       while (!signal.aborted) {
         await deferred.promise;
         signal.throwIfAborted();
+        deferred = createDeferredPromise(signal);
+        poked = false;
 
         // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
         try {
@@ -209,11 +223,15 @@ const runWithChannelPayload$ = command(
   ): Promise<void> => {
     signal.throwIfAborted();
     let deferred = createDeferredPromise(signal);
+    let poked = false;
     const pendingPayloads: unknown[] = [];
 
     const pokeLoop = () => {
+      if (poked) {
+        return;
+      }
+      poked = true;
       deferred.resolve(true);
-      deferred = createDeferredPromise(signal);
     };
 
     const callback = (message: InboundMessage) => {
@@ -261,15 +279,16 @@ const runWithChannelPayload$ = command(
 
     // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
     try {
-      await channel.subscribe(topic, callback);
+      subscribed = await subscribeChannel(channel, topic, callback);
       signal.throwIfAborted();
-      subscribed = true;
       options?.onSubscribed?.();
       L.debug("subscribed to payload topic: " + topic);
 
       while (!signal.aborted) {
         await deferred.promise;
         signal.throwIfAborted();
+        deferred = createDeferredPromise(signal);
+        poked = false;
 
         while (pendingPayloads.length > 0) {
           const payload = pendingPayloads.shift();
