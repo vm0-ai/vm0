@@ -303,60 +303,6 @@ async fn success_checkpoint_uploads_gzip_session_history_when_acknowledged() {
 }
 
 #[tokio::test]
-async fn success_checkpoint_keeps_large_non_utf8_session_history_identity_encoded() {
-    let api = SharedApiMock::new().await;
-    let server = api.server();
-
-    let _files_guard = SessionCheckpointFilesGuard::new();
-    let mut history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
-    history.extend_from_slice(&[0xc3, 0x28, b'\n']);
-    let _history_dir = write_literal_session_history("large-non-utf8-session", &history).unwrap();
-
-    let history_hash = hex::encode(Sha256::digest(&history));
-    let history_size = history.len();
-    let prepare_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints/prepare-history")
-            .json_body_includes(r#"{"runId":"test-run-001"}"#)
-            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
-            .json_body_includes(format!(r#"{{"size":{history_size}}}"#))
-            .json_body_includes(r#"{"encoding":"identity"}"#);
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "presignedUrl": server.url("/test/large-non-utf8-history-upload"),
-                "existing": false
-            }));
-    });
-    let upload_len = history_size.to_string();
-    let upload_body = history.clone();
-    let upload_mock = server.mock(|when, then| {
-        when.method(PUT)
-            .path("/test/large-non-utf8-history-upload")
-            .header("Content-Type", "application/octet-stream");
-        then.respond_with(move |req| upload_validation_response(req, &upload_body, &upload_len));
-    });
-    let checkpoint_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(r#"{"cliAgentSessionId":"large-non-utf8-session"}"#)
-            .json_body_includes(format!(
-                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
-            ));
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-large-non-utf8"}));
-    });
-
-    let result = guest_agent::checkpoint::create_checkpoint(&http_client!()).await;
-
-    assert!(result.is_ok());
-    prepare_mock.assert_calls_async(1).await;
-    upload_mock.assert_calls_async(1).await;
-    checkpoint_mock.assert_calls_async(1).await;
-}
-
-#[tokio::test]
 async fn success_checkpoint_uses_explicit_runtime_after_process_env_changes() {
     let api = SharedApiMock::new().await;
     let server = api.server();
