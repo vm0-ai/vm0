@@ -2485,6 +2485,12 @@ const createNormalChatRun$ = command(
       return runResult;
     }
     if (runResult.body.status === "cancelled") {
+      if (args.body.revokesMessageId) {
+        return conflict("Recommended follow-up has already been used");
+      }
+      if (args.body.clientMessageId) {
+        return duplicateClientMessageIdResponse();
+      }
       return {
         status: 201 as const,
         body: {
