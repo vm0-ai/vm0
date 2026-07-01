@@ -38,6 +38,20 @@ function stalePersonalCodexProvider(): ModelProviderResponse {
 function connectedPersonalCodexProvider(): ModelProviderResponse {
   return {
     ...stalePersonalCodexProvider(),
+    subscriptionUsage: {
+      fiveHour: {
+        usedPercent: 18,
+        remainingPercent: 82,
+        resetAt: "2030-01-01T05:00:00.000Z",
+        windowSeconds: 18_000,
+      },
+      weekly: {
+        usedPercent: 45,
+        remainingPercent: 55,
+        resetAt: "2030-01-07T00:00:00.000Z",
+        windowSeconds: 604_800,
+      },
+    },
     needsReconnect: false,
     lastRefreshErrorCode: null,
   };
@@ -57,6 +71,20 @@ function connectedPersonalClaudeCodeProvider(): ModelProviderResponse {
     planType: "pro",
     subscriptionResetPeriod: "weekly",
     subscriptionNextResetAt: "2030-01-07T00:00:00.000Z",
+    subscriptionUsage: {
+      fiveHour: {
+        usedPercent: 12,
+        remainingPercent: 88,
+        resetAt: "2030-01-01T05:00:00.000Z",
+        windowSeconds: 18_000,
+      },
+      weekly: {
+        usedPercent: 24,
+        remainingPercent: 76,
+        resetAt: "2030-01-07T00:00:00.000Z",
+        windowSeconds: 604_800,
+      },
+    },
     needsReconnect: false,
     lastRefreshErrorCode: null,
     createdAt: "2026-03-01T00:00:00Z",
@@ -240,10 +268,13 @@ describe("personal model providers settings", () => {
     await waitFor(() => {
       expect(screen.getByText("Claude Code connected")).toBeInTheDocument();
       expect(
-        within(claudeCodeRow).getByText(
-          "Connected (claude.user@example.com, Pro, resets Jan 7, 2030, 12:00 AM UTC)",
-        ),
+        within(claudeCodeRow).getByText("Connected (Pro)"),
       ).toBeInTheDocument();
+      expect(
+        within(claudeCodeRow).queryByText(/claude\.user@example\.com/),
+      ).not.toBeInTheDocument();
+      expect(within(claudeCodeRow).getByText("88% left")).toBeInTheDocument();
+      expect(within(claudeCodeRow).getByText("76% left")).toBeInTheDocument();
       expect(
         within(claudeCodeRow).queryByText(/Unavailable|Unknown/),
       ).not.toBeInTheDocument();
@@ -268,22 +299,61 @@ describe("personal model providers settings", () => {
       "oauth-card-claude-code-oauth-token",
     );
     expect(
-      within(claudeCodeRow).getByText(
-        "Connected (claude.user@example.com, Pro, resets Jan 7, 2030, 12:00 AM UTC)",
-      ),
+      within(claudeCodeRow).getByText("Connected (Pro)"),
+    ).toBeInTheDocument();
+    expect(
+      within(claudeCodeRow).queryByText(/claude\.user@example\.com/),
+    ).not.toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("5h")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("88% left")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("Week")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("76% left")).toBeInTheDocument();
+    expect(
+      within(claudeCodeRow).getByText("resets Jan 1, 2030, 5:00 AM UTC"),
     ).toBeInTheDocument();
     expect(
       within(claudeCodeRow).queryByText(/Unavailable|Unknown|Account:|Reset:/),
     ).not.toBeInTheDocument();
 
     const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
+    expect(within(codexRow).getByText("Connected (Pro)")).toBeInTheDocument();
     expect(
-      within(codexRow).getByText(
-        "Connected (Personal ChatGPT, Pro, resets Jan 1, 2030, 12:00 AM UTC)",
-      ),
+      within(codexRow).queryByText(/Personal ChatGPT/),
+    ).not.toBeInTheDocument();
+    expect(within(codexRow).getByText("82% left")).toBeInTheDocument();
+    expect(within(codexRow).getByText("55% left")).toBeInTheDocument();
+    expect(
+      within(codexRow).queryByText(/Account:|Plan:|Reset:|Connected .*resets/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("falls back to stored Claude Code reset metadata when usage is unavailable", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "member",
+    });
+    context.mocks.data.personalModelProviders([
+      {
+        ...connectedPersonalClaudeCodeProvider(),
+        subscriptionUsage: undefined,
+      },
+    ]);
+
+    await openModelSettings();
+
+    const claudeCodeRow = await screen.findByTestId(
+      "oauth-card-claude-code-oauth-token",
+    );
+    expect(
+      within(claudeCodeRow).getByText("Connected (Pro)"),
     ).toBeInTheDocument();
     expect(
-      within(codexRow).queryByText(/Account:|Plan:|Reset:/),
+      within(claudeCodeRow).getByText("resets Jan 7, 2030, 12:00 AM UTC"),
+    ).toBeInTheDocument();
+    expect(
+      within(claudeCodeRow).queryByText("76% left"),
     ).not.toBeInTheDocument();
   });
 

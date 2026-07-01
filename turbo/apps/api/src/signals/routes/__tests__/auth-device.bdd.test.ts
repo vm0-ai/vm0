@@ -782,6 +782,20 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
     ).toMatchObject({
       workspaceName: "claude.user@example.com",
       planType: "pro",
+      subscriptionUsage: {
+        fiveHour: {
+          usedPercent: 12,
+          remainingPercent: 88,
+          resetAt: "2030-01-01T05:00:00.000Z",
+          windowSeconds: 18_000,
+        },
+        weekly: {
+          usedPercent: 24,
+          remainingPercent: 76,
+          resetAt: "2030-01-07T00:00:00.000Z",
+          windowSeconds: 604_800,
+        },
+      },
     });
 
     await support.deletePersonalModelProvider(

@@ -269,10 +269,12 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
             primary_window: {
               limit_window_seconds: 18_000,
               reset_at: 1_893_441_600,
+              used_percent: 25,
             },
             secondary_window: {
               limit_window_seconds: 604_800,
               reset_at: 1_893_456_000,
+              used_percent: 40,
             },
           },
         });
@@ -302,6 +304,31 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
         subscriptionResetPeriod: "weekly",
         subscriptionNextResetAt: "2030-01-01T00:00:00.000Z",
         needsReconnect: false,
+      },
+    });
+
+    const listed = await accept(
+      client.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(listed.body.modelProviders).toHaveLength(1);
+    expect(listed.body.modelProviders[0]).toMatchObject({
+      type: "codex-oauth-token",
+      subscriptionUsage: {
+        fiveHour: {
+          usedPercent: 25,
+          remainingPercent: 75,
+          resetAt: "2029-12-31T20:00:00.000Z",
+          windowSeconds: 18_000,
+        },
+        weekly: {
+          usedPercent: 40,
+          remainingPercent: 60,
+          resetAt: "2030-01-01T00:00:00.000Z",
+          windowSeconds: 604_800,
+        },
       },
     });
   });

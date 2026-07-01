@@ -1,13 +1,26 @@
 import { z } from "zod";
 
+import type { SubscriptionUsageMetadata } from "./model-provider-subscription-usage.types";
+
 const CLAUDE_CODE_API_BASE_URL = "https://api.anthropic.com";
 const CLAUDE_CODE_OAUTH_BETA = "oauth-2025-04-20";
 const CLAUDE_CODE_USER_AGENT = "claude-code/2.1.161";
+const FIVE_HOUR_SECONDS = 5 * 60 * 60;
+const WEEK_SECONDS = 7 * 24 * 60 * 60;
 
 const usageWindowSchema = z
   .object({
+    limit_window_seconds: z.number().nullable().optional(),
     resets_at: z.string().nullable().optional(),
     resetsAt: z.string().nullable().optional(),
+    reset_at: z.string().nullable().optional(),
+    resetAt: z.string().nullable().optional(),
+    used_percentage: z.number().nullable().optional(),
+    used_percent: z.number().nullable().optional(),
+    usedPercentage: z.number().nullable().optional(),
+    usedPercent: z.number().nullable().optional(),
+    utilization: z.number().nullable().optional(),
+    window_seconds: z.number().nullable().optional(),
   })
   .passthrough();
 
@@ -15,6 +28,8 @@ const usageRateLimitsSchema = z
   .object({
     five_hour: usageWindowSchema.nullable().optional(),
     seven_day: usageWindowSchema.nullable().optional(),
+    seven_day_opus: usageWindowSchema.nullable().optional(),
+    seven_day_sonnet: usageWindowSchema.nullable().optional(),
   })
   .passthrough();
 
@@ -59,6 +74,7 @@ interface ClaudeCodeSubscriptionMetadata {
   readonly planType?: string | null;
   readonly subscriptionResetPeriod?: string | null;
   readonly subscriptionNextResetAt?: Date | null;
+  readonly subscriptionUsage?: SubscriptionUsageMetadata | null;
 }
 
 function nonEmptyString(value: string | null | undefined): string | null {
@@ -120,7 +136,129 @@ function nextResetAt(value: string | null | undefined): Date | null {
 function nextResetAtFromWindow(
   window: UsageWindow | null | undefined,
 ): Date | null {
-  return nextResetAt(window?.resets_at ?? window?.resetsAt);
+  return nextResetAt(
+    window?.resets_at ??
+      window?.resetsAt ??
+      window?.reset_at ??
+      window?.resetAt,
+  );
+}
+
+function clampPercent(value: number): number {
+  return Math.min(100, Math.max(0, value));
+}
+
+function normalizedPercent(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value)
+    ? clampPercent(value)
+    : null;
+}
+
+function usedPercentFromWindow(
+  window: UsageWindow | null | undefined,
+): number | null {
+  return normalizedPercent(
+    window?.utilization ??
+      window?.used_percentage ??
+      window?.used_percent ??
+      window?.usedPercentage ??
+      window?.usedPercent,
+  );
+}
+
+function windowSecondsFromWindow(
+  window: UsageWindow | null | undefined,
+  fallback: number,
+): number {
+  const seconds = window?.limit_window_seconds ?? window?.window_seconds;
+  return typeof seconds === "number" && Number.isFinite(seconds)
+    ? seconds
+    : fallback;
+}
+
+function subscriptionUsageWindowFromClaudeWindow(
+  window: UsageWindow | null | undefined,
+  fallbackWindowSeconds: number,
+): NonNullable<SubscriptionUsageMetadata["fiveHour"]> | null {
+  if (!window) {
+    return null;
+  }
+
+  const usedPercent = usedPercentFromWindow(window);
+  const resetAt = nextResetAtFromWindow(window);
+  if (usedPercent === null && resetAt === null) {
+    return null;
+  }
+
+  return {
+    usedPercent,
+    remainingPercent:
+      usedPercent === null ? null : clampPercent(100 - usedPercent),
+    resetAt,
+    windowSeconds: windowSecondsFromWindow(window, fallbackWindowSeconds),
+  };
+}
+
+function directOrNestedWindow(
+  usage: UsageResponse,
+  key: "five_hour" | "seven_day" | "seven_day_opus" | "seven_day_sonnet",
+): UsageWindow | null | undefined {
+  return usage.rate_limits?.[key] ?? usage[key];
+}
+
+function chooseClaudeWeeklyWindow(
+  usage: UsageResponse,
+): NonNullable<SubscriptionUsageMetadata["weekly"]> | null {
+  const sevenDay = subscriptionUsageWindowFromClaudeWindow(
+    directOrNestedWindow(usage, "seven_day"),
+    WEEK_SECONDS,
+  );
+  if (sevenDay) {
+    return sevenDay;
+  }
+
+  const candidates = [
+    subscriptionUsageWindowFromClaudeWindow(
+      directOrNestedWindow(usage, "seven_day_opus"),
+      WEEK_SECONDS,
+    ),
+    subscriptionUsageWindowFromClaudeWindow(
+      directOrNestedWindow(usage, "seven_day_sonnet"),
+      WEEK_SECONDS,
+    ),
+  ].filter(
+    (window): window is NonNullable<SubscriptionUsageMetadata["weekly"]> => {
+      return window !== null;
+    },
+  );
+
+  candidates.sort((left, right) => {
+    return (
+      (right.usedPercent ?? -1) - (left.usedPercent ?? -1) ||
+      (left.resetAt?.getTime() ?? Number.MAX_SAFE_INTEGER) -
+        (right.resetAt?.getTime() ?? Number.MAX_SAFE_INTEGER)
+    );
+  });
+
+  return candidates[0] ?? null;
+}
+
+function subscriptionUsageFromClaudeUsage(
+  usage: UsageResponse,
+): SubscriptionUsageMetadata | null {
+  const fiveHour = subscriptionUsageWindowFromClaudeWindow(
+    directOrNestedWindow(usage, "five_hour"),
+    FIVE_HOUR_SECONDS,
+  );
+  const weekly = chooseClaudeWeeklyWindow(usage);
+
+  if (!fiveHour && !weekly) {
+    return null;
+  }
+  return {
+    fiveHour,
+    weekly,
+  };
 }
 
 function resetMetadataFromUsage(
@@ -129,10 +267,8 @@ function resetMetadataFromUsage(
   ClaudeCodeSubscriptionMetadata,
   "subscriptionResetPeriod" | "subscriptionNextResetAt"
 > {
-  const rateLimits = usage.rate_limits;
-  const weeklyResetAt =
-    nextResetAtFromWindow(rateLimits?.seven_day) ??
-    nextResetAtFromWindow(usage.seven_day);
+  const subscriptionUsage = subscriptionUsageFromClaudeUsage(usage);
+  const weeklyResetAt = subscriptionUsage?.weekly?.resetAt;
   if (weeklyResetAt) {
     return {
       subscriptionResetPeriod: "weekly",
@@ -140,9 +276,7 @@ function resetMetadataFromUsage(
     };
   }
 
-  const fiveHourResetAt =
-    nextResetAtFromWindow(rateLimits?.five_hour) ??
-    nextResetAtFromWindow(usage.five_hour);
+  const fiveHourResetAt = subscriptionUsage?.fiveHour?.resetAt;
   if (fiveHourResetAt) {
     return {
       subscriptionResetPeriod: "5-hour window",
@@ -207,7 +341,7 @@ async function fetchUsageMetadata(args: {
 }): Promise<
   Pick<
     ClaudeCodeSubscriptionMetadata,
-    "subscriptionResetPeriod" | "subscriptionNextResetAt"
+    "subscriptionResetPeriod" | "subscriptionNextResetAt" | "subscriptionUsage"
   >
 > {
   const parsed = usageResponseSchema.safeParse(
@@ -220,7 +354,11 @@ async function fetchUsageMetadata(args: {
   if (!parsed.success) {
     throw new Error("Claude Code usage response shape unrecognized");
   }
-  return resetMetadataFromUsage(parsed.data);
+  const subscriptionUsage = subscriptionUsageFromClaudeUsage(parsed.data);
+  return {
+    ...resetMetadataFromUsage(parsed.data),
+    ...(subscriptionUsage ? { subscriptionUsage } : {}),
+  };
 }
 
 function hasMetadata(metadata: ClaudeCodeSubscriptionMetadata): boolean {

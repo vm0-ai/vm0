@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 import { now } from "../../lib/time";
+import type {
+  SubscriptionUsageMetadata,
+  SubscriptionUsageWindowMetadata,
+} from "./model-provider-subscription-usage.types";
 
 const CHATGPT_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CODEX_ORIGINATOR = "codex_cli_rs";
@@ -8,6 +12,7 @@ const CODEX_USER_AGENT = "codex_cli_rs/0.0.0";
 const WEEK_SECONDS = 7 * 24 * 60 * 60;
 const DAY_SECONDS = 24 * 60 * 60;
 const HOUR_SECONDS = 60 * 60;
+const FIVE_HOUR_SECONDS = 5 * HOUR_SECONDS;
 const MINUTE_SECONDS = 60;
 
 const rateLimitWindowSchema = z
@@ -15,6 +20,7 @@ const rateLimitWindowSchema = z
     limit_window_seconds: z.number().nullable().optional(),
     reset_after_seconds: z.number().nullable().optional(),
     reset_at: z.number().nullable().optional(),
+    used_percent: z.number().nullable().optional(),
   })
   .passthrough();
 
@@ -61,6 +67,7 @@ interface CodexUsageMetadata {
   readonly workspaceName: string | null;
   readonly subscriptionResetPeriod: string | null;
   readonly subscriptionNextResetAt: Date | null;
+  readonly subscriptionUsage: SubscriptionUsageMetadata | null;
 }
 
 interface UsageResetWindow {
@@ -189,6 +196,78 @@ function chooseSubscriptionResetWindow(
   return windows[0] ?? null;
 }
 
+function clampPercent(value: number): number {
+  return Math.min(100, Math.max(0, value));
+}
+
+function normalizedPercent(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value)
+    ? clampPercent(value)
+    : null;
+}
+
+function subscriptionUsageWindowFromCodexWindow(
+  window: RateLimitWindow | null | undefined,
+): SubscriptionUsageWindowMetadata | null {
+  if (!window) {
+    return null;
+  }
+
+  const usedPercent = normalizedPercent(window.used_percent);
+  const resetAt = dateFromResetWindow(window);
+  const usageWindow = {
+    usedPercent,
+    remainingPercent:
+      usedPercent === null ? null : clampPercent(100 - usedPercent),
+    resetAt,
+    windowSeconds: window.limit_window_seconds ?? null,
+  };
+
+  return usedPercent !== null || resetAt !== null ? usageWindow : null;
+}
+
+function subscriptionUsageFromRateLimit(
+  rateLimit: z.infer<typeof rateLimitDetailsSchema> | null | undefined,
+): SubscriptionUsageMetadata | null {
+  if (!rateLimit) {
+    return null;
+  }
+
+  const primary = subscriptionUsageWindowFromCodexWindow(
+    rateLimit.primary_window,
+  );
+  const secondary = subscriptionUsageWindowFromCodexWindow(
+    rateLimit.secondary_window,
+  );
+  const windows = [primary, secondary].filter(
+    (window): window is SubscriptionUsageWindowMetadata => {
+      return window !== null;
+    },
+  );
+  const windowBySeconds = (seconds: number) => {
+    return (
+      windows.find((window) => {
+        return window.windowSeconds === seconds;
+      }) ?? null
+    );
+  };
+
+  const fiveHour =
+    windowBySeconds(FIVE_HOUR_SECONDS) ??
+    (primary?.windowSeconds === WEEK_SECONDS ? null : primary);
+  const weekly =
+    windowBySeconds(WEEK_SECONDS) ??
+    (secondary?.windowSeconds === FIVE_HOUR_SECONDS ? null : secondary);
+
+  if (!fiveHour && !weekly) {
+    return null;
+  }
+  return {
+    fiveHour,
+    weekly,
+  };
+}
+
 export async function fetchCodexUsageMetadata(args: {
   readonly accessToken: string;
   readonly accountId: string;
@@ -222,5 +301,6 @@ export async function fetchCodexUsageMetadata(args: {
     workspaceName: workspaceNameFromUsage(parsed.data),
     subscriptionResetPeriod: resetWindow?.period ?? null,
     subscriptionNextResetAt: resetWindow?.nextResetAt ?? null,
+    subscriptionUsage: subscriptionUsageFromRateLimit(parsed.data.rate_limit),
   };
 }
