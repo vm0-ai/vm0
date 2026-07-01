@@ -250,6 +250,31 @@ class TestReportModelProviderUsage:
         assert observed is False
         assert webhook.request_count == 0
 
+    def test_logs_warning_when_observation_missing_sandbox_token(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 50}
+        proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log)
+
+        with mitm_ctx(api_url="https://api.vm0.ai"):
+            observed = usage.report_model_provider_usage_observation(flow, "run-abc-123")
+
+        assert observed is False
+        assert jsonl_exists_after_flush(proxy_log)
+        [entry] = read_jsonl_entries_after_flush(proxy_log)
+        assert entry["level"] == "warn"
+        assert (
+            entry["message"]
+            == "Cannot report model usage observation: missing sandbox_token or api_url"
+        )
+        assert entry["type"] == "model_usage_observation"
+
     def test_skips_non_model_provider(self, real_flow, fresh_usage_executor, usage_webhook_api):
         """Should NOT reach the webhook boundary for non-model-provider requests."""
         flow = real_flow(with_response=False, host="api.github.com")
