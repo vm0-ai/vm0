@@ -73,17 +73,19 @@ const onceTrigger = {
   updatedAt: "2026-06-01T00:00:00Z",
 };
 
-function composeByNameHandler() {
-  return http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
-    const url = new URL(request.url);
-    if (url.searchParams.get("name") !== "my-agent") {
-      return HttpResponse.json(
-        { error: { message: "Not found", code: "NOT_FOUND" } },
-        { status: 404 },
-      );
-    }
-    return HttpResponse.json(mockCompose);
-  });
+function composeByIdHandler() {
+  return http.get(
+    "http://localhost:3000/api/agent/composes/:id",
+    ({ params }) => {
+      if (params.id !== AGENT_ID) {
+        return HttpResponse.json(
+          { error: { message: "Not found", code: "NOT_FOUND" } },
+          { status: 404 },
+        );
+      }
+      return HttpResponse.json(mockCompose);
+    },
+  );
 }
 
 describe("zero automation create command", () => {
@@ -115,7 +117,7 @@ describe("zero automation create command", () => {
         "-n",
         "alerts",
         "--agent",
-        "my-agent",
+        AGENT_ID,
         "-p",
         "Summarize alerts",
       ]);
@@ -127,11 +129,34 @@ describe("zero automation create command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
+  it("should reject a non-UUID --agent value", async () => {
+    await expect(async () => {
+      await createCommand.parseAsync([
+        "node",
+        "cli",
+        "-n",
+        "alerts",
+        "--agent",
+        "my-agent",
+        "-p",
+        "Summarize alerts",
+        "--cron",
+        "0 9 * * *",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain('Invalid agent ID "my-agent"');
+    expect(errorCalls).toContain("expected a UUID");
+    expect(errorCalls).toContain("zero agent list");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
   it("should create with an inline cron trigger (--cron sugar)", async () => {
     let capturedBody: Record<string, unknown> | undefined;
 
     server.use(
-      composeByNameHandler(),
+      composeByIdHandler(),
       http.post(
         "http://localhost:3000/api/automations",
         async ({ request }) => {
@@ -150,7 +175,7 @@ describe("zero automation create command", () => {
       "-n",
       "alerts",
       "--agent",
-      "my-agent",
+      AGENT_ID,
       "-p",
       "Summarize alerts",
       "--cron",
@@ -174,7 +199,7 @@ describe("zero automation create command", () => {
     let capturedBody: Record<string, unknown> | undefined;
 
     server.use(
-      composeByNameHandler(),
+      composeByIdHandler(),
       http.post(
         "http://localhost:3000/api/automations",
         async ({ request }) => {
@@ -193,7 +218,7 @@ describe("zero automation create command", () => {
       "-n",
       "alerts",
       "--agent",
-      "my-agent",
+      AGENT_ID,
       "-p",
       "Summarize alerts",
       "--once",
@@ -217,7 +242,7 @@ describe("zero automation create command", () => {
         "-n",
         "alerts",
         "--agent",
-        "my-agent",
+        AGENT_ID,
         "-p",
         "Summarize alerts",
         "--once",
@@ -235,7 +260,7 @@ describe("zero automation create command", () => {
     let capturedBody: Record<string, unknown> | undefined;
 
     server.use(
-      composeByNameHandler(),
+      composeByIdHandler(),
       http.post(
         "http://localhost:3000/api/automations",
         async ({ request }) => {
@@ -254,7 +279,7 @@ describe("zero automation create command", () => {
       "-n",
       "alerts",
       "--agent",
-      "my-agent",
+      AGENT_ID,
       "-p",
       "poll",
       "--loop",
@@ -275,7 +300,7 @@ describe("zero automation create command", () => {
         "-n",
         "alerts",
         "--agent",
-        "my-agent",
+        AGENT_ID,
         "-p",
         "poll",
         "--loop",
@@ -297,7 +322,7 @@ describe("zero automation create command", () => {
         "-n",
         "alerts",
         "--agent",
-        "my-agent",
+        AGENT_ID,
         "-p",
         "poll",
         "--cron",
@@ -315,7 +340,7 @@ describe("zero automation create command", () => {
 
   it("should surface API validation errors", async () => {
     server.use(
-      composeByNameHandler(),
+      composeByIdHandler(),
       http.post("http://localhost:3000/api/automations", () => {
         return HttpResponse.json(
           {
@@ -336,7 +361,7 @@ describe("zero automation create command", () => {
         "-n",
         "alerts",
         "--agent",
-        "my-agent",
+        AGENT_ID,
         "-p",
         "Summarize alerts",
         "--cron",
