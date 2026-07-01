@@ -195,6 +195,7 @@ import { testOnboardingStatusStateRoutes } from "./routes/test-onboarding-status
 import { testMemoryStateRoutes } from "./routes/test-memory-state";
 import { testUsageInsightStateRoutes } from "./routes/test-usage-insight-state";
 import { testUsageStateRoutes } from "./routes/test-usage-state";
+import { testUserExportStateRoutes } from "./routes/test-user-export-state";
 import { testWorkflowTriggerStateRoutes } from "./routes/test-workflow-trigger-state";
 import { testChatMessagesStateRoutes } from "./routes/test-chat-messages-state";
 import { testWebhooksStateRoutes } from "./routes/test-webhooks-state";
@@ -398,6 +399,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...testMemoryStateRoutes,
   ...testUsageInsightStateRoutes,
   ...testUsageStateRoutes,
+  ...testUserExportStateRoutes,
   ...testWorkflowTriggerStateRoutes,
   ...testChatMessagesStateRoutes,
   ...testWebhooksStateRoutes,

@@ -13,9 +13,13 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
-import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
+import {
+  cleanupUserExportState,
+  createOpsLogsApi,
+} from "./helpers/api-bdd-ops-logs";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { createFixtureTracker } from "./helpers/zero-route-test";
 
 /*
  * OPS-01 run log search, BILL-02 model stats, and OPS-01 user export.
@@ -33,9 +37,22 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
  * from interrupted past runs in a colliding window cannot flake assertions.
  */
 
-const context = testContext();
 const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
+// Register before testContext(): Vitest runs afterEach hooks in stack order, so
+// this cleanup runs after testContext drains detached user-export work.
+const trackUserExportActor = createFixtureTracker<ApiTestUser>(
+  cleanupUserExportState,
+);
+
+async function createUserExportActor(
+  bdd: ReturnType<typeof createBddApi>,
+): Promise<ApiTestUser> {
+  return await trackUserExportActor(Promise.resolve(bdd.user()));
+}
+
+const context = testContext();
+
 type UserExportStatusBody = Extract<
   Awaited<
     ReturnType<ReturnType<typeof createOpsLogsApi>["requestGetUserExport"]>
@@ -693,7 +710,7 @@ describe("OPS-01: user data export", () => {
   it("exports user data end to end with active, cooldown, refresh, and latest-job visibility", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
-    const actor = bdd.user();
+    const actor = await createUserExportActor(bdd);
     const exportStartAt = Date.UTC(2026, 4, 12, 5);
     const downloadUrl = "https://r2.example.com/bdd-export.zip?sig=test";
 
@@ -823,7 +840,7 @@ describe("OPS-01: user data export", () => {
   it("surfaces failed exports and allows an immediate retry", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
-    const actor = bdd.user();
+    const actor = await createUserExportActor(bdd);
     const failedStartAt = Date.UTC(2026, 4, 20, 9);
 
     mockNow(failedStartAt);
@@ -869,7 +886,7 @@ describe("OPS-01: user data export", () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
-    const actor = bdd.user();
+    const actor = await createUserExportActor(bdd);
 
     await misc.requestEmailUnsubscribe(unsubscribeToken(actor.userId), [200]);
 
