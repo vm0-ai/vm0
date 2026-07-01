@@ -4,7 +4,6 @@ import {
   type MemoryDetailResponse,
 } from "@vm0/api-contracts/contracts/zero-memory";
 import {
-  MEMORY_ACTIVITY_DEFAULT_LIMIT,
   zeroMemoryActivityContract,
   type MemoryActivityResponse,
 } from "@vm0/api-contracts/contracts/zero-memory-activity";
@@ -18,6 +17,8 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 
 export type MemoryTab = "updates" | "raw";
+
+export const MEMORY_ACTIVITY_RECENT_LIMIT = 7;
 
 const internalSelectedMemoryFilePath$ = state<string | null>(null);
 
@@ -81,38 +82,12 @@ export const memoryActivity$ = computed(
   async (get): Promise<MemoryActivityResponse> => {
     get(memoryActivityReload$);
     const client = get(zeroClient$)(zeroMemoryActivityContract);
-    const result = await accept(client.get(), [200]);
+    const result = await accept(
+      client.get({ query: { limit: MEMORY_ACTIVITY_RECENT_LIMIT } }),
+      [200],
+    );
     return result.body;
   },
-);
-
-type MemoryActivityEntries = MemoryActivityResponse["entries"];
-
-interface MemoryActivityExtraPage {
-  readonly entries: MemoryActivityEntries;
-  readonly nextCursor: string | null;
-}
-
-interface MemoryActivityPaginationState {
-  readonly key: string;
-  readonly pages: readonly MemoryActivityExtraPage[];
-}
-
-function paginationKey(page: MemoryActivityResponse): string {
-  const tailVersionId =
-    page.entries[page.entries.length - 1]?.toVersionId ?? "";
-  return `${page.nextCursor ?? ""}:${tailVersionId}`;
-}
-
-function matchesPaginationKey<T extends { readonly key: string }>(
-  state: T | null,
-  key: string,
-): state is T {
-  return state !== null && state.key === key;
-}
-
-const extraMemoryActivityPages$ = state<MemoryActivityPaginationState | null>(
-  null,
 );
 
 function memoryDevRefreshMessage(body: MemoryDevRefreshResponse): string {
@@ -126,7 +101,6 @@ function memoryDevRefreshMessage(body: MemoryDevRefreshResponse): string {
 }
 
 const reloadMemoryActivity$ = command(({ set }): void => {
-  set(extraMemoryActivityPages$, null);
   set(memoryActivityReload$, (current) => {
     return current + 1;
   });
@@ -142,78 +116,5 @@ export const refreshMemoryDevSummaries$ = command(
     signal.throwIfAborted();
     toast.success(memoryDevRefreshMessage(result.body));
     set(reloadMemoryActivity$);
-  },
-);
-
-export const memoryActivityExtraEntries$ = computed(async (get) => {
-  const firstPage = await get(memoryActivity$);
-  const key = paginationKey(firstPage);
-  const state = get(extraMemoryActivityPages$);
-  if (!matchesPaginationKey(state, key)) {
-    return [];
-  }
-  return state.pages.flatMap((page) => {
-    return page.entries;
-  });
-});
-
-export const memoryActivityHasLoadedExtraPages$ = computed(async (get) => {
-  const firstPage = await get(memoryActivity$);
-  const state = get(extraMemoryActivityPages$);
-  return matchesPaginationKey(state, paginationKey(firstPage));
-});
-
-export const memoryActivityExtraHasMore$ = computed(async (get) => {
-  const firstPage = await get(memoryActivity$);
-  const key = paginationKey(firstPage);
-  const state = get(extraMemoryActivityPages$);
-  if (!matchesPaginationKey(state, key) || state.pages.length === 0) {
-    return false;
-  }
-  return state.pages[state.pages.length - 1]!.nextCursor !== null;
-});
-
-export const memoryActivityLatestCursor$ = computed(async (get) => {
-  const firstPage = await get(memoryActivity$);
-  const key = paginationKey(firstPage);
-  const state = get(extraMemoryActivityPages$);
-  if (!matchesPaginationKey(state, key) || state.pages.length === 0) {
-    return null;
-  }
-  return state.pages[state.pages.length - 1]!.nextCursor;
-});
-
-export const loadMoreMemoryActivity$ = command(
-  async ({ get, set }, cursor: string, signal: AbortSignal): Promise<void> => {
-    const firstPage = await get(memoryActivity$);
-    signal.throwIfAborted();
-    const key = paginationKey(firstPage);
-
-    const client = get(zeroClient$)(zeroMemoryActivityContract);
-    const result = await accept(
-      client.get({
-        query: {
-          cursor,
-          limit: MEMORY_ACTIVITY_DEFAULT_LIMIT,
-        },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-
-    set(extraMemoryActivityPages$, (current) => {
-      const pages = matchesPaginationKey(current, key) ? current.pages : [];
-      return {
-        key,
-        pages: [
-          ...pages,
-          {
-            entries: result.body.entries,
-            nextCursor: result.body.nextCursor,
-          },
-        ],
-      };
-    });
   },
 );

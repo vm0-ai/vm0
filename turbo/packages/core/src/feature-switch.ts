@@ -264,13 +264,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.MemoryDevRefresh]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Show the internal Memory page dev refresh action for staff prompt iteration.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.HtmlArtifactCommentEditing]: {
     maintainer: "bingjie@vm0.ai",
     description:

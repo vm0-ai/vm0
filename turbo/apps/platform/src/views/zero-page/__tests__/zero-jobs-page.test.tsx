@@ -410,13 +410,13 @@ describe("zero jobs page", () => {
     });
 
     dialog = await openCreateDialog("Private");
-    await fill(
-      screen.getByPlaceholderText("e.g. Research Assistant"),
-      "Private Analyst",
+    const privateAgentInput = screen.getByPlaceholderText(
+      "e.g. Research Assistant",
     );
-    fireEvent.keyDown(screen.getByPlaceholderText("e.g. Research Assistant"), {
-      key: "Enter",
-    });
+    await fill(privateAgentInput, "Private Analyst");
+    const privateAgentForm = privateAgentInput.closest("form");
+    expect(privateAgentForm).not.toBeNull();
+    fireEvent.submit(privateAgentForm!);
 
     await waitFor(() => {
       expect(screen.getByText("Private Analyst")).toBeInTheDocument();
