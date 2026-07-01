@@ -20,7 +20,6 @@ import {
   hasConnectorDeviceAuthGrant,
   hasConnectorExternalCodeGrant,
 } from "@vm0/connectors/connector-utils";
-import { shouldShowConnectorConnectNotice } from "../../../lib/google-security-warning.ts";
 import {
   zeroConnectorScopeDiffContract,
   zeroConnectorExternalCodeSessionContract,
@@ -120,60 +119,6 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
 type ConnectorConnectLaunchMode = "oauth-auth-code" | "modal";
-
-export function getConnectorConnectLaunchMode({
-  type,
-  availableAuthMethods,
-  preferModalForConnectorNotice = false,
-}: {
-  readonly type: ConnectorType;
-  readonly availableAuthMethods: readonly ConnectorAuthMethodId[];
-  readonly preferModalForConnectorNotice?: boolean;
-}): ConnectorConnectLaunchMode {
-  const [authMethod] = availableAuthMethods;
-  if (availableAuthMethods.length !== 1 || !authMethod) {
-    return "modal";
-  }
-  if (getConnectorAuthMethod(type, authMethod)?.grant.kind !== "auth-code") {
-    return "modal";
-  }
-  if (preferModalForConnectorNotice && shouldShowConnectorConnectNotice(type)) {
-    return "modal";
-  }
-  return "oauth-auth-code";
-}
-
-export function getAvailableAuthCodeAuthMethod(
-  type: ConnectorType,
-  availableAuthMethods: readonly ConnectorAuthMethodId[],
-  authMethod: string,
-): ConnectorAuthMethodId | null {
-  const authMethodResult = connectorAuthMethodIdSchema.safeParse(authMethod);
-  if (!authMethodResult.success) {
-    return null;
-  }
-  if (!availableAuthMethods.includes(authMethodResult.data)) {
-    return null;
-  }
-  if (
-    getConnectorAuthMethod(type, authMethodResult.data)?.grant.kind !==
-    "auth-code"
-  ) {
-    return null;
-  }
-  return authMethodResult.data;
-}
-
-export function getOnlyAvailableAuthCodeAuthMethod(
-  type: ConnectorType,
-  availableAuthMethods: readonly ConnectorAuthMethodId[],
-): ConnectorAuthMethodId | null {
-  const [authMethod] = availableAuthMethods;
-  if (availableAuthMethods.length !== 1 || !authMethod) {
-    return null;
-  }
-  return getAvailableAuthCodeAuthMethod(type, availableAuthMethods, authMethod);
-}
 
 export function getConnectorStatusConnectLaunchMode(
   connector: ConnectorTypeWithStatus,

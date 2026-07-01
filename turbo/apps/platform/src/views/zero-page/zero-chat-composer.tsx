@@ -6652,6 +6652,7 @@ export function ZeroChatComposer({
             if (type && !authorizedSet.has(type)) {
               const authorized = await handleConnectSuccess(type);
               if (!authorized) {
+                setPendingConnectType(null);
                 return;
               }
             }
@@ -6665,6 +6666,7 @@ export function ZeroChatComposer({
           unconnected={unconnectedConnectors}
           pollingType={pollingConnType}
           onClose={() => {
+            setPendingConnectType(null);
             return setShowAddDialog(false);
           }}
           onSelect={(type) => {
