@@ -3070,6 +3070,59 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("does not refocus the chat emoji button or show its tooltip after closing the picker from outside", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({
+      currentTitle: "🔥 Current keyboard thread",
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+    });
+
+    const emojiButton = screen.getByLabelText("Change emoji");
+    function visibleChatThreadIconTooltip(): HTMLElement | undefined {
+      return screen.queryAllByText("Chat thread icon").find((element) => {
+        try {
+          expect(element).toBeVisible();
+          return true;
+        } catch {
+          return false;
+        }
+      });
+    }
+
+    await user.hover(emojiButton);
+    await waitFor(() => {
+      expect(visibleChatThreadIconTooltip()).toBeDefined();
+    });
+
+    await user.click(emojiButton);
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+
+    fireEvent.pointerOut(emojiButton);
+    fireEvent.mouseOut(emojiButton);
+    click(document.body);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(visibleChatThreadIconTooltip()).toBeUndefined();
+      expect(emojiButton).not.toHaveFocus();
+    });
+  });
+
   it("replaces the current chat emoji from the Shift+F2 picker", async () => {
     const renameRequest = vi.fn();
     mockResizeObserver();
