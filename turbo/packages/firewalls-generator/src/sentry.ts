@@ -115,7 +115,7 @@ const SENTRY_SCOPE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "member:read": "Read organization member and SCIM user records.",
   "member:write": "Create and update organization members and SCIM users.",
   "org:admin":
-    "Administer organization-level resources, including destructive organization actions.",
+    "Delete and administer organization-level resources such as dashboards, saved queries, notifications, external users, and Sentry apps.",
   "org:ci":
     "Use CI and deployment workflows, including releases, deploys, and build artifacts.",
   "org:integrations":
@@ -125,7 +125,7 @@ const SENTRY_SCOPE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "org:write":
     "Create and update organization-level resources such as dashboards, saved queries, forwarding, teams, workflows, and Sentry apps.",
   "project:admin":
-    "Administer project resources, including destructive project-level changes.",
+    "Delete and administer project-level resources such as projects, keys, hooks, filters, monitors, releases, rules, and symbol sources.",
   "project:distribution": "Read project build distribution artifacts.",
   "project:read":
     "Read project settings, events, environments, releases, monitors, replays, rules, keys, teams, and user feedback.",
