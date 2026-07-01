@@ -30,6 +30,9 @@ type ExportViewState =
   | "failed"
   | "rate-limited";
 
+const PRIMARY_ACTION_BUTTON_CLASS =
+  "h-9 w-full gap-2 bg-foreground text-background hover:bg-foreground/90 active:bg-foreground/80";
+
 function formatRelativeTime(dateStr: string): string {
   const diffMs = new Date(dateStr).getTime() - now();
   if (!Number.isFinite(diffMs) || diffMs <= 0) {
@@ -220,7 +223,7 @@ function ExportActions({
   if (viewState === "download" && downloadUrl) {
     return (
       <div className="flex w-full flex-col gap-2">
-        <Button asChild className="h-9 w-full gap-2">
+        <Button asChild className={PRIMARY_ACTION_BUTTON_CLASS}>
           <a href={downloadUrl} download>
             <IconDownload size={16} stroke={1.8} />
             Download export
@@ -257,7 +260,7 @@ function ExportActions({
   return (
     <Button
       type="button"
-      className="h-9 w-full gap-2"
+      className={PRIMARY_ACTION_BUTTON_CLASS}
       disabled={triggering}
       onClick={onTrigger}
     >
