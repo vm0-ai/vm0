@@ -1,4 +1,14 @@
-//! Guest agent library — exposes modules for the binary and integration tests.
+//! Guest agent library for the binary and integration tests.
+//!
+//! The production runtime model is explicit:
+//! - [`run_context::GuestRuntime::from_process_env`] is the startup boundary
+//!   that captures runner-provided process state.
+//! - [`env::GuestConfigRaw`] is the raw environment snapshot.
+//! - [`env::GuestConfig`] owns immutable run-scoped configuration.
+//! - [`paths::GuestPaths`] owns immutable run-scoped filesystem paths.
+//!
+//! Do not add process-global facade readers for run-scoped environment values
+//! or paths. Thread `GuestConfig` and `GuestPaths` through the caller instead.
 
 pub mod active_input;
 mod artifact;

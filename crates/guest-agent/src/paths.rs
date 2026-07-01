@@ -1,5 +1,10 @@
 //! Guest filesystem paths and derived runtime-file paths.
 //!
+//! [`GuestPaths`] is the owned path model for one guest-agent run. It is built
+//! from the runtime directory captured at bootstrap and then passed explicitly
+//! through callers. Avoid adding zero-argument facade readers that derive paths
+//! from process-global environment state.
+//!
 //! Naming conventions:
 //! - "system log" = guest-agent's own stderr (matches TS `SYSTEM_LOG_FILE` and API `systemLog`)
 //! - "agent log" = AI agent (Claude Code) stdout output
