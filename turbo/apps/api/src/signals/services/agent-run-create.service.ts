@@ -5190,7 +5190,7 @@ async function cancelChatLaunchAssociationRun(
   tx: DbTransaction,
   runId: string,
 ): Promise<void> {
-  await tx
+  const [cancelled] = await tx
     .update(agentRuns)
     .set({
       status: "cancelled",
@@ -5202,7 +5202,12 @@ async function cancelChatLaunchAssociationRun(
         eq(agentRuns.id, runId),
         inArray(agentRuns.status, ["queued", "pending", "failed"]),
       ),
-    );
+    )
+    .returning({ id: agentRuns.id });
+  if (!cancelled) {
+    return;
+  }
+  await tx.delete(agentRunCallbacks).where(eq(agentRunCallbacks.runId, runId));
 }
 
 async function insertAtomicLaunchRunRecord(args: {
