@@ -1098,18 +1098,20 @@ describe("CHAT-02: completed chat callback", () => {
       });
     });
 
-    const ghost = await api.createRun(actor, {
-      agentId,
-      prompt: "ghost pre-dispatch queued prompt",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.requestCancelRun(actor, ghost.runId, [200]);
-    await waitForRunStatus(actor, ghost.runId, "cancelled");
-    await postChatMessagesStateAction({
-      action: "attach-pre-dispatch-cancelled-run-to-thread",
-      run_id: ghost.runId,
-      thread_id: first.threadId,
-    });
+    for (let index = 0; index < 6; index += 1) {
+      const ghost = await api.createRun(actor, {
+        agentId,
+        prompt: `ghost pre-dispatch queued prompt ${index}`,
+        modelProvider: "anthropic-api-key",
+      });
+      await api.requestCancelRun(actor, ghost.runId, [200]);
+      await waitForRunStatus(actor, ghost.runId, "cancelled");
+      await postChatMessagesStateAction({
+        action: "attach-pre-dispatch-cancelled-run-to-thread",
+        run_id: ghost.runId,
+        thread_id: first.threadId,
+      });
+    }
 
     const second = await startChatRun(actor, {
       agentId,
@@ -1122,8 +1124,9 @@ describe("CHAT-02: completed chat callback", () => {
     expect(appended).toContain(`- RUN_ID: ${first.runId}`);
     expect(appended).toContain("User: anchor before ghost");
     expect(appended).toContain("Assistant: anchor answer");
-    expect(appended).not.toContain(`- RUN_ID: ${ghost.runId}`);
     expect(appended).not.toContain("ghost pre-dispatch queued prompt");
+    const secondContext = await waitForRunContext(actor, second.runId);
+    expect(secondContext.body.sessionId).toBe(`bdd-cli-${first.runId}`);
 
     await api.requestCancelRun(actor, second.runId, [200]);
     await waitForRunStatus(actor, second.runId, "cancelled");
