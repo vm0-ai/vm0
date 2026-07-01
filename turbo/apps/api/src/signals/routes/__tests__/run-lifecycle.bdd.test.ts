@@ -1274,6 +1274,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       ) {
         throw new Error("enqueue telemetry failed");
       }
+      return true;
     });
 
     const queued = await api.createRun(actor, {
