@@ -91,6 +91,9 @@ fn restored_session_identity_requires_valid_hash_ref() {
                 hash: "hash-a".into(),
                 url: "https://example.com/history".into(),
                 size: Some(12),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -111,6 +114,9 @@ fn restored_session_identity_requires_valid_hash_ref() {
                 hash: "hash-a".into(),
                 url: "https://example.com/history".into(),
                 size: Some(12),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -129,6 +135,9 @@ fn restored_session_identity_changes_with_framework_session_and_history_hash() {
                 hash: "hash-a".into(),
                 url: "https://example.com/history".into(),
                 size: Some(12),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -142,6 +151,9 @@ fn restored_session_identity_changes_with_framework_session_and_history_hash() {
                 hash: "hash-b".into(),
                 url: "https://example.com/history".into(),
                 size: Some(12),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -157,6 +169,9 @@ fn restored_session_identity_changes_with_framework_session_and_history_hash() {
                 hash: "hash-a".into(),
                 url: "https://example.com/history".into(),
                 size: Some(12),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -173,6 +188,9 @@ fn restored_session_identity_changes_with_framework_session_and_history_hash() {
                 hash: "hash-a".into(),
                 url: "https://example.com/history".into(),
                 size: Some(12),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -187,6 +205,9 @@ fn restored_session_identity_changes_with_framework_session_and_history_hash() {
                 hash: "hash-a".into(),
                 url: "https://example.com/history".into(),
                 size: Some(12),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -209,6 +230,9 @@ fn restore_session_writes_history() {
                 hash: hex::encode(Sha256::digest(history.as_bytes())),
                 url: "https://example.com/history".into(),
                 size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -327,6 +351,9 @@ fn restore_session_writes_codex_session() {
                 hash: hex::encode(Sha256::digest(history.as_bytes())),
                 url: "https://example.com/history".into(),
                 size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });

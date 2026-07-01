@@ -13,20 +13,103 @@ use crate::session_history_identity::{
 };
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 use bytes::Bytes;
+use flate2::{Compression, write::GzEncoder};
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use std::borrow::Cow;
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::time::Duration;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+const SESSION_HISTORY_ENCODING_IDENTITY: &str = "identity";
+const SESSION_HISTORY_ENCODING_GZIP: &str = "gzip";
+const SESSION_HISTORY_GZIP_MIN_BYTES: usize = 64 * 1024;
 
 #[derive(Clone, Copy)]
 enum CheckpointMode {
     Success,
     Recovery,
+}
+
+enum SessionHistoryUploadBody {
+    Identity(Vec<u8>),
+    Gzip { raw: Vec<u8>, gzip: Vec<u8> },
+}
+
+struct SessionHistoryUpload {
+    raw_size: u64,
+    body: SessionHistoryUploadBody,
+}
+
+impl SessionHistoryUpload {
+    fn requested_encoding(&self) -> &'static str {
+        match self.body {
+            SessionHistoryUploadBody::Identity(_) => SESSION_HISTORY_ENCODING_IDENTITY,
+            SessionHistoryUploadBody::Gzip { .. } => SESSION_HISTORY_ENCODING_GZIP,
+        }
+    }
+
+    fn requested_encoded_size(&self) -> u64 {
+        match &self.body {
+            SessionHistoryUploadBody::Identity(raw) => raw.len() as u64,
+            SessionHistoryUploadBody::Gzip { gzip, .. } => gzip.len() as u64,
+        }
+    }
+
+    fn into_server_accepted_bytes(self, accepted_encoding: Option<&str>) -> (&'static str, Bytes) {
+        match self.body {
+            SessionHistoryUploadBody::Identity(raw) => {
+                (SESSION_HISTORY_ENCODING_IDENTITY, Bytes::from(raw))
+            }
+            SessionHistoryUploadBody::Gzip { raw: _, gzip }
+                if accepted_encoding == Some(SESSION_HISTORY_ENCODING_GZIP) =>
+            {
+                (SESSION_HISTORY_ENCODING_GZIP, Bytes::from(gzip))
+            }
+            SessionHistoryUploadBody::Gzip { raw, .. } => {
+                (SESSION_HISTORY_ENCODING_IDENTITY, Bytes::from(raw))
+            }
+        }
+    }
+}
+
+fn gzip_session_history(history_bytes: &[u8]) -> Result<Vec<u8>, AgentError> {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+    encoder
+        .write_all(history_bytes)
+        .map_err(|error| AgentError::Checkpoint(format!("gzip session history: {error}")))?;
+    encoder
+        .finish()
+        .map_err(|error| AgentError::Checkpoint(format!("finish gzip session history: {error}")))
+}
+
+fn build_session_history_upload(
+    history_bytes: Vec<u8>,
+) -> Result<SessionHistoryUpload, AgentError> {
+    let raw_size = history_bytes.len() as u64;
+    if history_bytes.len() < SESSION_HISTORY_GZIP_MIN_BYTES {
+        return Ok(SessionHistoryUpload {
+            raw_size,
+            body: SessionHistoryUploadBody::Identity(history_bytes),
+        });
+    }
+
+    let gzip_bytes = gzip_session_history(&history_bytes)?;
+    if gzip_bytes.len() >= history_bytes.len() {
+        return Ok(SessionHistoryUpload {
+            raw_size,
+            body: SessionHistoryUploadBody::Identity(history_bytes),
+        });
+    }
+
+    Ok(SessionHistoryUpload {
+        raw_size,
+        body: SessionHistoryUploadBody::Gzip {
+            raw: history_bytes,
+            gzip: gzip_bytes,
+        },
+    })
 }
 
 impl CheckpointMode {
@@ -132,18 +215,21 @@ async fn upload_session_history(
     http: &HttpClient,
     run_id: &str,
     history_hash: &str,
-    history_size: u64,
-    history_bytes: Vec<u8>,
+    history_upload: SessionHistoryUpload,
 ) -> Result<(), AgentError> {
     let prep_start = std::time::Instant::now();
     let url = http.checkpoint_prepare_history_url()?;
+    let requested_encoding = history_upload.requested_encoding();
+    let requested_encoded_size = history_upload.requested_encoded_size();
     let prep_resp = match http
         .post_json(
             url,
             &json!({
                 "runId": run_id,
                 "hash": history_hash,
-                "size": history_size,
+                "size": history_upload.raw_size,
+                "encoding": requested_encoding,
+                "encodedSize": requested_encoded_size,
             }),
             constants::HTTP_MAX_RETRIES,
         )
@@ -172,7 +258,7 @@ async fn upload_session_history(
     if existing {
         log_info!(
             LOG_TAG,
-            "Session history already exists in S3 (deduplicated)"
+            "Session history already exists in S3 (deduplicated, encoding={requested_encoding})"
         );
         return Ok(());
     }
@@ -184,14 +270,25 @@ async fn upload_session_history(
             AgentError::Checkpoint("No presignedUrl in prepare-history response".into())
         })?;
 
-    log_info!(LOG_TAG, "Uploading session history to S3...");
+    let response_encoding = prep_resp.get("encoding").and_then(|v| v.as_str());
+    let (upload_encoding, upload_bytes) =
+        history_upload.into_server_accepted_bytes(response_encoding);
+    if requested_encoding == SESSION_HISTORY_ENCODING_GZIP
+        && upload_encoding == SESSION_HISTORY_ENCODING_IDENTITY
+    {
+        log_info!(
+            LOG_TAG,
+            "Prepare-history response did not acknowledge gzip; uploading identity session history"
+        );
+    }
+
+    log_info!(
+        LOG_TAG,
+        "Uploading session history to S3 (encoding={upload_encoding})..."
+    );
     let upload_start = std::time::Instant::now();
     if let Err(e) = http
-        .put_presigned(
-            presigned_url,
-            Bytes::from(history_bytes),
-            "application/octet-stream",
-        )
+        .put_presigned(presigned_url, upload_bytes, "application/octet-stream")
         .await
     {
         record_sandbox_op(
@@ -532,8 +629,7 @@ async fn create_checkpoint_impl(
             http,
             inputs.run_id,
             &history_hash,
-            history_size,
-            history_bytes
+            build_session_history_upload(history_bytes)?
         ),
         snapshot_artifact_entries(http, inputs.run_id, inputs.artifact_entries),
     )?;

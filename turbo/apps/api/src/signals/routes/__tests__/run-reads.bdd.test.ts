@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { gzipSync } from "node:zlib";
 
 import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
@@ -137,6 +138,14 @@ function s3TextBody(text: string): AsyncIterable<Buffer> {
   return {
     async *[Symbol.asyncIterator]() {
       yield Buffer.from(text, "utf8");
+    },
+  };
+}
+
+function s3BytesBody(bytes: Buffer): AsyncIterable<Buffer> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield bytes;
     },
   };
 }
@@ -978,6 +987,106 @@ describe("RUN-04: session and checkpoint reads", () => {
 });
 
 describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning", () => {
+  it("returns compressed resume history refs only to compressed-capable runners", async () => {
+    const actor = await entitledActor();
+    const composeName = `bdd-gzip-resume-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const history = `{"type":"init"}\n{"type":"human","text":"compressed-${randomUUID()}"}\n`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const compressedHistory = gzipSync(Buffer.from(history, "utf8"));
+    const compressedKey = `session-history-blobs/${historyHash}/gzip.blob`;
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (s3CommandKey(command) === compressedKey) {
+        return Promise.resolve({
+          ContentLength: compressedHistory.length,
+          Body: s3BytesBody(compressedHistory),
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "create compressed checkpoint",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const headers = sandboxHeaders(claim.sandboxToken);
+    const prepared = await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: historyHash,
+        size: Buffer.byteLength(history, "utf8"),
+        encoding: "gzip",
+        encodedSize: compressedHistory.length,
+      },
+      headers,
+      [200],
+    );
+    expect(prepared.body).toMatchObject({
+      existing: false,
+      encoding: "gzip",
+    });
+    const checkpointed = await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${run.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      headers,
+      [200],
+    );
+    mustOk(checkpointed, "compressed resume checkpoint");
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0 },
+      headers,
+      [200],
+    );
+
+    const compressedResume = await api.createDirectRun(actor, {
+      checkpointId: checkpointed.body.checkpointId,
+      prompt: "resume with compressed ref",
+    });
+    const compressedClaim = await api.claimRunnerJob(compressedResume.runId, {
+      capabilities: [
+        "resumeSessionHistoryRef",
+        "resumeSessionHistoryCompressedRef",
+      ],
+    });
+    expect(compressedClaim.resumeSession).toMatchObject({
+      sessionId: `bdd-cli-${run.runId}`,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: expect.any(String),
+        encoding: "gzip",
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: compressedHistory.length,
+      },
+    });
+    await api.requestCancelRun(actor, compressedResume.runId, [200]);
+
+    const rawOnlyResume = await api.createDirectRun(actor, {
+      checkpointId: checkpointed.body.checkpointId,
+      prompt: "resume with raw-ref-only runner",
+    });
+    const rawOnlyClaim = await api.claimRunnerJob(rawOnlyResume.runId, {
+      capabilities: ["resumeSessionHistoryRef"],
+    });
+    expect(rawOnlyClaim.resumeSession).toStrictEqual({
+      sessionId: `bdd-cli-${run.runId}`,
+      sessionHistory: history,
+    });
+  });
+
   it("restores volumes, memory, and conversation state when resuming checkpoints", async () => {
     const storages = createStoragesBddApi(context);
     const actor = await entitledActor();

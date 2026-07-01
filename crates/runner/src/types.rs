@@ -311,12 +311,26 @@ pub struct ResumeSessionHistoryRef {
     pub url: String,
     #[serde(default)]
     pub size: Option<u64>,
+    #[serde(default)]
+    pub encoding: Option<ResumeSessionHistoryEncoding>,
+    #[serde(default, rename = "rawSize")]
+    pub raw_size: Option<u64>,
+    #[serde(default, rename = "encodedSize")]
+    pub encoded_size: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 pub enum ResumeSessionHistoryRefKind {
     #[serde(rename = "blob")]
     Blob,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+pub enum ResumeSessionHistoryEncoding {
+    #[serde(rename = "identity")]
+    Identity,
+    #[serde(rename = "gzip")]
+    Gzip,
 }
 
 impl ResumeSession {

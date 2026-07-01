@@ -186,6 +186,9 @@ async fn assert_checkpointed_final_identity_helper_failure_falls_back(
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
                 size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -572,6 +575,9 @@ async fn run_in_sandbox_materializes_resume_session_history_ref_before_restore()
                 hash: hex::encode(Sha256::digest(history)),
                 url: serve_history_once(history).await,
                 size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -624,6 +630,9 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
                 )
                 .await,
                 size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -702,6 +711,9 @@ async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
                 hash: hex::encode(Sha256::digest(b"different")),
                 url: serve_history_once(history).await,
                 size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -784,6 +796,9 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
                 hash: hex::encode(Sha256::digest(&history)),
                 url: server.url("/history.blob?token=secret"),
                 size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -904,6 +919,9 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_reports
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
                 size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -995,6 +1013,9 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_exec_er
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
                 size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -1099,6 +1120,9 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
                 size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -1111,6 +1135,9 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/other-history.blob?token=secret"),
                 size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -1181,6 +1208,9 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
                 size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -1264,6 +1294,9 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
                 size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -1346,6 +1379,9 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
                 size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });
@@ -1605,6 +1641,9 @@ async fn run_in_sandbox_redacts_session_history_download_details_from_telemetry(
                 hash: expected_hash.clone(),
                 url: serve_history_once(history).await,
                 size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: None,
+                encoded_size: None,
             },
         },
     });

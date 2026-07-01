@@ -667,6 +667,9 @@ mod tests {
                     hash: history_hash.into(),
                     url: "http://127.0.0.1:9/history.blob".into(),
                     size,
+                    encoding: None,
+                    raw_size: None,
+                    encoded_size: None,
                 },
             },
         });
@@ -869,6 +872,9 @@ mod tests {
                     hash: history_hash.clone(),
                     url: "http://127.0.0.1:9/history.blob".into(),
                     size: Some(12),
+                    encoding: None,
+                    raw_size: None,
+                    encoded_size: None,
                 },
             },
         });

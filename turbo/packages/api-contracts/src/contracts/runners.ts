@@ -22,6 +22,7 @@ export const CANONICAL_CODEX_MEMORY_MOUNT_PATH = `${CANONICAL_GUEST_HOME_DIR}/.c
 // Shared resume history size contract. Rust consumers import the generated
 // binding from `api_contracts::generated::constants`.
 export const RESUME_SESSION_HISTORY_MAX_BYTES = 128 * 1024 * 1024;
+export const sessionHistoryEncodingSchema = z.enum(["identity", "gzip"]);
 
 export function elapsedSinceApiStartMs(
   apiStartTimeMs: number | undefined,
@@ -179,23 +180,45 @@ const resumeSessionHistoryBlobRefSchema = z.object({
   kind: z.literal("blob"),
   hash: z.string().regex(/^[a-f0-9]{64}$/),
 });
+const resumeSessionHistorySizeSchema = z
+  .number()
+  .int()
+  .nonnegative()
+  .max(RESUME_SESSION_HISTORY_MAX_BYTES);
+const compressedResumeSessionHistorySizeSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(RESUME_SESSION_HISTORY_MAX_BYTES);
 
 const storedResumeSessionRefSchema = z.object({
   sessionId: z.string(),
   historyRef: resumeSessionHistoryBlobRefSchema,
 });
 
+const resumeSessionIdentityHistoryRefSchema = resumeSessionHistoryBlobRefSchema
+  .extend({
+    url: z.string().url(),
+    encoding: z.literal("identity").optional(),
+    size: resumeSessionHistorySizeSchema.optional(),
+  })
+  .strict();
+
+const resumeSessionGzipHistoryRefSchema = resumeSessionHistoryBlobRefSchema
+  .extend({
+    url: z.string().url(),
+    encoding: z.literal("gzip"),
+    rawSize: compressedResumeSessionHistorySizeSchema,
+    encodedSize: compressedResumeSessionHistorySizeSchema,
+  })
+  .strict();
+
 const resumeSessionRefSchema = z.object({
   sessionId: z.string(),
-  historyRef: resumeSessionHistoryBlobRefSchema.extend({
-    url: z.string().url(),
-    size: z
-      .number()
-      .int()
-      .nonnegative()
-      .max(RESUME_SESSION_HISTORY_MAX_BYTES)
-      .optional(),
-  }),
+  historyRef: z.union([
+    resumeSessionGzipHistoryRefSchema,
+    resumeSessionIdentityHistoryRefSchema,
+  ]),
 });
 
 export const storedResumeSessionSchema = z.union([
@@ -430,4 +453,6 @@ export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
 export type StoredResumeSession = z.infer<typeof storedResumeSessionSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
-export type RunnerClaimCapability = "resumeSessionHistoryRef";
+export type RunnerClaimCapability =
+  | "resumeSessionHistoryRef"
+  | "resumeSessionHistoryCompressedRef";

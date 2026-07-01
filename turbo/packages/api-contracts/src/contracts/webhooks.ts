@@ -4,6 +4,7 @@ import { apiErrorSchema } from "./errors";
 import {
   artifactMissingRootPolicySchema,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  sessionHistoryEncodingSchema,
   secretConnectorMetadataMapSchema,
 } from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
@@ -466,19 +467,46 @@ export const webhookCheckpointsPrepareHistoryContract = c.router({
     method: "POST",
     path: "/api/webhooks/agent/checkpoints/prepare-history",
     headers: authHeadersSchema,
-    body: z.object({
-      runId: z.string().min(1, "runId is required"),
-      hash: sha256HexSchema,
-      size: z
-        .number()
-        .int()
-        .positive("size must be a positive integer")
-        .max(RESUME_SESSION_HISTORY_MAX_BYTES),
-    }),
+    body: z
+      .object({
+        runId: z.string().min(1, "runId is required"),
+        hash: sha256HexSchema,
+        size: z
+          .number()
+          .int()
+          .positive("size must be a positive integer")
+          .max(RESUME_SESSION_HISTORY_MAX_BYTES),
+        encoding: sessionHistoryEncodingSchema.optional(),
+        encodedSize: z
+          .number()
+          .int()
+          .positive("encodedSize must be a positive integer")
+          .max(RESUME_SESSION_HISTORY_MAX_BYTES)
+          .optional(),
+      })
+      .superRefine((body, ctx) => {
+        const encoding = body.encoding ?? "identity";
+        const encodedSize = body.encodedSize ?? body.size;
+        if (encoding === "identity" && encodedSize !== body.size) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["encodedSize"],
+            message: "identity encodedSize must equal size",
+          });
+        }
+        if (encoding === "gzip" && body.encodedSize === undefined) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["encodedSize"],
+            message: "gzip encodedSize is required",
+          });
+        }
+      }),
     responses: {
       200: z.object({
         presignedUrl: z.string().optional(),
         existing: z.boolean(),
+        encoding: sessionHistoryEncodingSchema.optional(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

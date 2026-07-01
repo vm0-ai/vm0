@@ -271,6 +271,37 @@ describe("runner resume session contract", () => {
 
     expect(resumeSessionSchema.safeParse(resumeSession).success).toBe(false);
   });
+
+  it("accepts gzip hash-backed claim resume sessions with explicit sizes", () => {
+    const resumeSession = {
+      sessionId: "sess-123",
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: "https://r2.example.com/session-history/history.blob?sig=secret",
+        encoding: "gzip",
+        rawSize: 1024,
+        encodedSize: 128,
+      },
+    };
+
+    expect(resumeSessionSchema.parse(resumeSession)).toEqual(resumeSession);
+  });
+
+  it("rejects malformed gzip claim resume sessions", () => {
+    const resumeSession = {
+      sessionId: "sess-123",
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: "https://r2.example.com/session-history/history.blob?sig=secret",
+        encoding: "gzip",
+        encodedSize: 128,
+      },
+    };
+
+    expect(resumeSessionSchema.safeParse(resumeSession).success).toBe(false);
+  });
 });
 
 describe("runner claim capability contract", () => {

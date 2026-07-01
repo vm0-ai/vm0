@@ -8,6 +8,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { conversations } from "@vm0/db/schema/conversation";
+import { sessionHistoryBlobRepresentations } from "@vm0/db/schema/session-history-blob-representation";
 import type { ContextArtifact } from "@vm0/db/types";
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
@@ -19,6 +20,12 @@ import { nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { generatePresignedPutUrl, s3ObjectExists } from "../external/s3";
+import {
+  resumeSessionHistoryGzipBlobKey,
+  resumeSessionHistoryRawBlobKey,
+  SESSION_HISTORY_ENCODING_GZIP,
+  SESSION_HISTORY_ENCODING_IDENTITY,
+} from "./session-history-blobs";
 
 type CheckpointCreateBody = z.infer<
   typeof webhookCheckpointsContract.create.body
@@ -186,7 +193,12 @@ export const prepareCheckpointHistoryUpload$ = command(
     }
 
     const bucketName = env("R2_USER_STORAGES_BUCKET_NAME");
-    const s3Key = `blobs/${input.body.hash}.blob`;
+    const encoding = input.body.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
+    const encodedSize = input.body.encodedSize ?? input.body.size;
+    const s3Key =
+      encoding === SESSION_HISTORY_ENCODING_GZIP
+        ? resumeSessionHistoryGzipBlobKey(input.body.hash)
+        : resumeSessionHistoryRawBlobKey(input.body.hash);
     const [existingBlob] = await db
       .select({ hash: blobs.hash })
       .from(blobs)
@@ -195,13 +207,38 @@ export const prepareCheckpointHistoryUpload$ = command(
     signal.throwIfAborted();
 
     if (existingBlob) {
-      const exists = await get(s3ObjectExists(bucketName, s3Key));
-      signal.throwIfAborted();
-      if (exists) {
-        return {
-          status: 200 as const,
-          body: { existing: true },
-        };
+      if (encoding === SESSION_HISTORY_ENCODING_IDENTITY) {
+        const exists = await get(s3ObjectExists(bucketName, s3Key));
+        signal.throwIfAborted();
+        if (exists) {
+          return {
+            status: 200 as const,
+            body: { existing: true, encoding },
+          };
+        }
+      } else {
+        const [existingRepresentation] = await db
+          .select({ rawHash: sessionHistoryBlobRepresentations.rawHash })
+          .from(sessionHistoryBlobRepresentations)
+          .where(
+            and(
+              eq(sessionHistoryBlobRepresentations.rawHash, input.body.hash),
+              eq(sessionHistoryBlobRepresentations.encoding, encoding),
+            ),
+          )
+          .limit(1);
+        signal.throwIfAborted();
+
+        if (existingRepresentation) {
+          const exists = await get(s3ObjectExists(bucketName, s3Key));
+          signal.throwIfAborted();
+          if (exists) {
+            return {
+              status: 200 as const,
+              body: { existing: true, encoding },
+            };
+          }
+        }
       }
     }
 
@@ -225,11 +262,37 @@ export const prepareCheckpointHistoryUpload$ = command(
       });
     signal.throwIfAborted();
 
+    if (encoding !== SESSION_HISTORY_ENCODING_IDENTITY) {
+      await db
+        .insert(sessionHistoryBlobRepresentations)
+        .values({
+          rawHash: input.body.hash,
+          encoding,
+          rawSize: input.body.size,
+          encodedSize,
+          objectKey: s3Key,
+        })
+        .onConflictDoUpdate({
+          target: [
+            sessionHistoryBlobRepresentations.rawHash,
+            sessionHistoryBlobRepresentations.encoding,
+          ],
+          set: {
+            rawSize: input.body.size,
+            encodedSize,
+            objectKey: s3Key,
+            updatedAt: nowDate(),
+          },
+        });
+      signal.throwIfAborted();
+    }
+
     return {
       status: 200 as const,
       body: {
         presignedUrl,
         existing: false,
+        encoding,
       },
     };
   },
