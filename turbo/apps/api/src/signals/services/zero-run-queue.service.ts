@@ -377,6 +377,66 @@ async function loadQueuedRunnerJobPayload(
   return payload;
 }
 
+async function publishRemovedStaleQueueSideEffects(
+  orgId: string,
+): Promise<void> {
+  await publishOrgSignal(orgId, "queue:changed");
+}
+
+async function publishPromotedQueueSideEffects(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
+    readonly runnerNotification: RunnerNotification | null;
+  },
+): Promise<void> {
+  await publishOrgSignal(args.orgId, "queue:changed");
+
+  if (args.queueMarkerNotification) {
+    await publishUserSignal(
+      [args.queueMarkerNotification.userId],
+      `chatThreadMessageCreated:${args.queueMarkerNotification.chatThreadId}`,
+    );
+    await publishThreadListChanged(args.queueMarkerNotification.userId);
+  }
+
+  if (args.runnerNotification) {
+    await notifyRunnerJob(db, args.runnerNotification);
+  }
+}
+
+async function promoteQueuedCandidateWithSideEffects(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly row: QueueCandidate;
+    readonly payload: QueuedRunnerJobPayload | null;
+  },
+): Promise<"drained" | "full" | "skipped"> {
+  const result = await promoteQueuedCandidate(db, args);
+  if (result.status === "removed-stale") {
+    await publishRemovedStaleQueueSideEffects(args.orgId);
+    return "skipped";
+  }
+  if (result.status === "full") {
+    return "full";
+  }
+  if (result.status === "lost") {
+    L.debug("drainOrgQueue: queued run already transitioned, skipping", {
+      runId: args.row.runId,
+    });
+    return "skipped";
+  }
+
+  await publishPromotedQueueSideEffects(db, {
+    orgId: args.orgId,
+    queueMarkerNotification: result.queueMarkerNotification,
+    runnerNotification: result.runnerNotification,
+  });
+  return "drained";
+}
+
 /**
  * Drain the org's queued runs after a concurrency slot frees up.
  *
@@ -418,45 +478,18 @@ export const drainOrgQueue$ = command(
             )
           : null;
 
-      const result = await promoteQueuedCandidate(writeDb, {
+      const result = await promoteQueuedCandidateWithSideEffects(writeDb, {
         orgId: args.orgId,
         row,
         payload,
       });
       signal.throwIfAborted();
-      if (result.status === "removed-stale") {
-        await publishOrgSignal(args.orgId, "queue:changed");
-        signal.throwIfAborted();
-        continue;
-      }
-      if (result.status === "full") {
+      if (result === "full") {
         return 0;
       }
-      if (result.status === "lost") {
-        L.debug("drainOrgQueue: queued run already transitioned, skipping", {
-          runId: row.runId,
-        });
+      if (result === "skipped") {
         continue;
       }
-
-      await publishOrgSignal(args.orgId, "queue:changed");
-      signal.throwIfAborted();
-
-      if (result.queueMarkerNotification) {
-        await publishUserSignal(
-          [result.queueMarkerNotification.userId],
-          `chatThreadMessageCreated:${result.queueMarkerNotification.chatThreadId}`,
-        );
-        signal.throwIfAborted();
-        await publishThreadListChanged(result.queueMarkerNotification.userId);
-        signal.throwIfAborted();
-      }
-
-      if (result.runnerNotification) {
-        await notifyRunnerJob(writeDb, result.runnerNotification);
-        signal.throwIfAborted();
-      }
-
       return 1;
     }
 
