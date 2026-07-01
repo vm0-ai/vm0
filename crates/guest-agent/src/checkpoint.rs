@@ -7,6 +7,7 @@ use crate::env;
 use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::paths;
+use crate::run_context::GuestRuntime;
 use crate::session_history;
 use crate::session_history_identity::{
     FinalSessionHistoryIdentityBuildError, build_final_session_history_identity,
@@ -97,12 +98,51 @@ enum ArtifactSnapshotPlan<'a> {
     },
 }
 
+struct CheckpointInputs<'a> {
+    run_id: &'a str,
+    framework: env::Framework,
+    home_dir: &'a str,
+    artifact_entries: &'a [env::ArtifactEnv],
+    session_id_file: &'a str,
+    session_history_path_file: &'a str,
+    final_session_history_identity_file: &'a str,
+}
+
+impl<'a> CheckpointInputs<'a> {
+    fn from_runtime(runtime: &'a GuestRuntime) -> Self {
+        Self {
+            run_id: &runtime.config.run_id,
+            framework: runtime.config.framework,
+            home_dir: &runtime.config.home_dir,
+            artifact_entries: &runtime.config.artifacts,
+            session_id_file: runtime.paths.session_id_file(),
+            session_history_path_file: runtime.paths.session_history_path_file(),
+            final_session_history_identity_file: runtime
+                .paths
+                .final_session_history_identity_file(),
+        }
+    }
+
+    fn from_legacy_env() -> Self {
+        Self {
+            run_id: env::run_id(),
+            framework: env::Framework::from_env(),
+            home_dir: env::home_dir(),
+            artifact_entries: env::artifacts(),
+            session_id_file: paths::session_id_file(),
+            session_history_path_file: paths::session_history_path_file(),
+            final_session_history_identity_file: paths::final_session_history_identity_file(),
+        }
+    }
+}
+
 /// Prepare + upload the session history to S3 via a presigned URL. If the
 /// prepare endpoint reports `existing=true`, skip the upload (content-addressed
 /// dedup). Telemetry is recorded under `session_history_prepare` and
 /// `session_history_s3_upload` to match the pre-parallelization op names.
 async fn upload_session_history(
     http: &HttpClient,
+    run_id: &str,
     history_hash: &str,
     history_size: u64,
     history_bytes: Vec<u8>,
@@ -113,7 +153,7 @@ async fn upload_session_history(
         .post_json(
             url,
             &json!({
-                "runId": env::run_id(),
+                "runId": run_id,
                 "hash": history_hash,
                 "size": history_size,
             }),
@@ -190,6 +230,7 @@ async fn upload_session_history(
 /// receiver's canonical artifact snapshot schema.
 async fn snapshot_artifact_entries(
     http: &HttpClient,
+    run_id: &str,
     entries: &[env::ArtifactEnv],
 ) -> Result<Option<serde_json::Value>, AgentError> {
     if entries.is_empty() {
@@ -290,7 +331,7 @@ async fn snapshot_artifact_entries(
             "Creating VAS snapshot for artifact '{}'",
             entry.name
         );
-        let message = format!("Checkpoint from run {}", env::run_id());
+        let message = format!("Checkpoint from run {run_id}");
         let snapshot = artifact::create_snapshot(
             http,
             artifact::CreateSnapshotRequest {
@@ -298,7 +339,7 @@ async fn snapshot_artifact_entries(
                 files,
                 storage_name: &entry.name,
                 storage_type: "artifact",
-                run_id: env::run_id(),
+                run_id,
                 message: &message,
                 parent_version_id: &entry.version_id,
             },
@@ -322,8 +363,36 @@ async fn snapshot_artifact_entries(
 
 /// Create a checkpoint after a successful run.
 pub async fn create_checkpoint(http: &HttpClient) -> Result<(), AgentError> {
+    let inputs = CheckpointInputs::from_legacy_env();
+    create_checkpoint_with_inputs(http, &inputs).await
+}
+
+/// Create a checkpoint after a successful run using the explicit runtime snapshot.
+pub async fn create_checkpoint_for_runtime(runtime: &GuestRuntime) -> Result<(), AgentError> {
+    let inputs = CheckpointInputs::from_runtime(runtime);
+    create_checkpoint_with_inputs(&runtime.http, &inputs).await
+}
+
+/// Create a best-effort recovery checkpoint after an abnormal CLI exit.
+pub async fn create_recovery_checkpoint(http: &HttpClient) -> Result<(), AgentError> {
+    let inputs = CheckpointInputs::from_legacy_env();
+    create_recovery_checkpoint_with_inputs(http, &inputs).await
+}
+
+/// Create a best-effort recovery checkpoint using the explicit runtime snapshot.
+pub async fn create_recovery_checkpoint_for_runtime(
+    runtime: &GuestRuntime,
+) -> Result<(), AgentError> {
+    let inputs = CheckpointInputs::from_runtime(runtime);
+    create_recovery_checkpoint_with_inputs(&runtime.http, &inputs).await
+}
+
+async fn create_checkpoint_with_inputs(
+    http: &HttpClient,
+    inputs: &CheckpointInputs<'_>,
+) -> Result<(), AgentError> {
     let start = std::time::Instant::now();
-    let result = create_checkpoint_impl(http, CheckpointMode::Success).await;
+    let result = create_checkpoint_impl(http, CheckpointMode::Success, inputs).await;
     record_sandbox_op(
         CheckpointMode::Success.total_op(),
         start.elapsed(),
@@ -333,10 +402,12 @@ pub async fn create_checkpoint(http: &HttpClient) -> Result<(), AgentError> {
     result
 }
 
-/// Create a best-effort recovery checkpoint after an abnormal CLI exit.
-pub async fn create_recovery_checkpoint(http: &HttpClient) -> Result<(), AgentError> {
+async fn create_recovery_checkpoint_with_inputs(
+    http: &HttpClient,
+    inputs: &CheckpointInputs<'_>,
+) -> Result<(), AgentError> {
     let start = std::time::Instant::now();
-    let result = create_checkpoint_impl(http, CheckpointMode::Recovery).await;
+    let result = create_checkpoint_impl(http, CheckpointMode::Recovery, inputs).await;
     record_sandbox_op(
         CheckpointMode::Recovery.total_op(),
         start.elapsed(),
@@ -346,14 +417,10 @@ pub async fn create_recovery_checkpoint(http: &HttpClient) -> Result<(), AgentEr
     result
 }
 
-async fn create_checkpoint_impl(http: &HttpClient, mode: CheckpointMode) -> Result<(), AgentError> {
-    create_checkpoint_impl_with_artifacts(http, mode, env::artifacts()).await
-}
-
-async fn create_checkpoint_impl_with_artifacts(
+async fn create_checkpoint_impl(
     http: &HttpClient,
     mode: CheckpointMode,
-    artifact_entries: &[env::ArtifactEnv],
+    inputs: &CheckpointInputs<'_>,
 ) -> Result<(), AgentError> {
     log_info!(LOG_TAG, "Creating {}...", mode.log_label());
 
@@ -361,7 +428,7 @@ async fn create_checkpoint_impl_with_artifacts(
     // directly — an explicit `exists()` check would be a redundant stat plus a
     // TOCTOU race between check and read.
     let session_id_start = std::time::Instant::now();
-    let cli_agent_session_id = match std::fs::read_to_string(paths::session_id_file()) {
+    let cli_agent_session_id = match std::fs::read_to_string(inputs.session_id_file) {
         Ok(s) => s.trim().to_string(),
         Err(e) if e.kind() == ErrorKind::NotFound => {
             return Err(fail(
@@ -394,18 +461,22 @@ async fn create_checkpoint_impl_with_artifacts(
     // a literal jsonl path (Claude) or a codex marker. `session_history`
     // abstracts the difference and decompresses zstd-compressed codex sessions.
     let history_read_start = std::time::Instant::now();
-    let history_marker_payload =
-        match crate::session_metadata::resolve_history_marker_payload(&cli_agent_session_id) {
-            Ok(payload) => payload,
-            Err(e) => {
-                return Err(fail(
-                    mode,
-                    "session_history_read",
-                    history_read_start,
-                    e.to_string(),
-                ));
-            }
-        };
+    let history_marker_payload = match crate::session_metadata::resolve_history_marker_payload_from(
+        inputs.framework,
+        inputs.home_dir,
+        inputs.session_history_path_file,
+        &cli_agent_session_id,
+    ) {
+        Ok(payload) => payload,
+        Err(e) => {
+            return Err(fail(
+                mode,
+                "session_history_read",
+                history_read_start,
+                e.to_string(),
+            ));
+        }
+    };
     let history_bytes =
         match session_history::read_session_history_from_payload(&history_marker_payload) {
             Ok(b) => b,
@@ -481,14 +552,20 @@ async fn create_checkpoint_impl_with_artifacts(
     // (prepare + HEAD update). Serial, wall time was dominated by whichever
     // was longer plus the other; concurrent, it's just the longer one.
     let (_, artifact_snapshots) = tokio::try_join!(
-        upload_session_history(http, &history_hash, history_size, history_bytes),
-        snapshot_artifact_entries(http, artifact_entries),
+        upload_session_history(
+            http,
+            inputs.run_id,
+            &history_hash,
+            history_size,
+            history_bytes
+        ),
+        snapshot_artifact_entries(http, inputs.run_id, inputs.artifact_entries),
     )?;
 
     // Build and send checkpoint payload (session history hash only, content uploaded to S3)
-    let cli_agent_type = env::Framework::from_env().agent_type();
+    let cli_agent_type = inputs.framework.agent_type();
     let mut payload = json!({
-        "runId": env::run_id(),
+        "runId": inputs.run_id,
         "cliAgentType": cli_agent_type,
         "cliAgentSessionId": cli_agent_session_id,
         "cliAgentSessionHistoryHash": history_hash,
@@ -527,6 +604,8 @@ async fn create_checkpoint_impl_with_artifacts(
             &history_hash,
             history_size,
             &history_marker_payload,
+            inputs.framework,
+            inputs.final_session_history_identity_file,
         );
         log_info!(LOG_TAG, "{} created successfully: {id}", mode.log_label());
         record_sandbox_op("checkpoint_api_call", api_start.elapsed(), true, None);
@@ -547,12 +626,14 @@ fn write_final_session_history_identity(
     history_hash: &str,
     history_size: u64,
     history_marker_payload: &str,
+    framework: env::Framework,
+    final_session_history_identity_file: &str,
 ) {
     if !matches!(mode, CheckpointMode::Success) {
         return;
     }
     let identity = match build_final_session_history_identity(
-        env::Framework::from_env(),
+        framework,
         cli_agent_session_id,
         history_hash,
         history_size,
@@ -591,7 +672,7 @@ fn write_final_session_history_identity(
             return;
         }
     };
-    match paths::write_private(paths::final_session_history_identity_file(), bytes) {
+    match paths::write_private(final_session_history_identity_file, bytes) {
         Ok(()) => {
             record_sandbox_op(
                 "session_history_identity_written",
@@ -723,7 +804,7 @@ mod tests {
             missing_root_policy: None,
         }];
 
-        let err = snapshot_artifact_entries(&http, &entries)
+        let err = snapshot_artifact_entries(&http, "test-run", &entries)
             .await
             .unwrap_err();
 
@@ -760,7 +841,7 @@ mod tests {
             missing_root_policy: Some(ArtifactEntryMissingRootPolicy::Fail),
         }];
 
-        let err = snapshot_artifact_entries(&http, &entries)
+        let err = snapshot_artifact_entries(&http, "test-run", &entries)
             .await
             .unwrap_err();
 
@@ -809,7 +890,7 @@ mod tests {
             },
         ];
 
-        let err = snapshot_artifact_entries(&http, &entries)
+        let err = snapshot_artifact_entries(&http, "test-run", &entries)
             .await
             .unwrap_err();
 
@@ -846,7 +927,7 @@ mod tests {
             missing_root_policy: Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
         }];
 
-        let snapshots = snapshot_artifact_entries(&http, &entries)
+        let snapshots = snapshot_artifact_entries(&http, "test-run", &entries)
             .await
             .unwrap()
             .unwrap();
@@ -892,7 +973,7 @@ mod tests {
             missing_root_policy: Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
         }];
 
-        let err = snapshot_artifact_entries(&http, &entries)
+        let err = snapshot_artifact_entries(&http, "test-run", &entries)
             .await
             .unwrap_err();
 
@@ -956,7 +1037,17 @@ mod tests {
             missing_root_policy: None,
         }];
 
-        let err = create_checkpoint_impl_with_artifacts(&http, CheckpointMode::Success, &entries)
+        let inputs = CheckpointInputs {
+            run_id: "checkpoint-missing-mount",
+            framework: env::Framework::ClaudeCode,
+            home_dir: env::home_dir(),
+            artifact_entries: &entries,
+            session_id_file: paths::session_id_file(),
+            session_history_path_file: paths::session_history_path_file(),
+            final_session_history_identity_file: paths::final_session_history_identity_file(),
+        };
+
+        let err = create_checkpoint_impl(&http, CheckpointMode::Success, &inputs)
             .await
             .unwrap_err();
 
