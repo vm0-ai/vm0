@@ -25,7 +25,7 @@ import {
   type ConnectorManualGrantConfig,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import type { ReactElement } from "react";
+import type { FormEvent, ReactElement } from "react";
 import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import {
   allConnectorTypes$,
@@ -251,25 +251,28 @@ function ManualGrantForm({
     return !cfg.required || hasTokenInputValue(fieldValues[name]);
   });
 
-  const handleSubmit = onDomEventFn(async () => {
-    if (!allFilled || submitting) {
-      return;
-    }
-    await submit(
-      type,
-      authMethod,
-      fieldValues,
-      {
-        showPermissionDialog: showPermissionDialogOnConnect,
-      },
-      pageSignal,
-    );
-    clearForm(type);
-    await onSuccess();
-  });
+  const handleSubmit = onDomEventFn(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!allFilled || submitting) {
+        return;
+      }
+      await submit(
+        type,
+        authMethod,
+        fieldValues,
+        {
+          showPermissionDialog: showPermissionDialogOnConnect,
+        },
+        pageSignal,
+      );
+      clearForm(type);
+      await onSuccess();
+    },
+  );
 
   return (
-    <div className="flex flex-col gap-3">
+    <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
       {method.helpText && <ConnectorHelpText text={method.helpText} />}
       {fieldEntries.map(([name, fieldConfig]) => {
         return (
@@ -289,13 +292,13 @@ function ManualGrantForm({
         );
       })}
       <Button
-        onClick={handleSubmit}
+        type="submit"
         disabled={!allFilled || submitting}
         className="w-full"
       >
         {submitting ? "Saving..." : "Save"}
       </Button>
-    </div>
+    </form>
   );
 }
 
@@ -710,6 +713,7 @@ type PendingConnectorExternalCodeState = Extract<
   { readonly status: "pending" | "completing" }
 >;
 type ExternalCodeButtonHandler = (event: unknown) => void;
+type ExternalCodeSubmitHandler = (event: FormEvent<HTMLFormElement>) => void;
 
 function ExternalCodeStartContent({
   type,
@@ -764,12 +768,12 @@ function ExternalCodePendingContent({
   current: PendingConnectorExternalCodeState;
   onOpen: ExternalCodeButtonHandler;
   onCodeChange: (code: string) => void;
-  onComplete: ExternalCodeButtonHandler;
+  onComplete: ExternalCodeSubmitHandler;
 }) {
   const completing = current.status === "completing";
   const connectorLabel = CONNECTOR_TYPES[type].label;
   return (
-    <div className="flex flex-col gap-3">
+    <form className="flex flex-col gap-3" onSubmit={onComplete}>
       {method.helpText && <ConnectorHelpText text={method.helpText} />}
       <p className="text-sm text-muted-foreground">
         Open {connectorLabel} sign-in, then paste the authorization code
@@ -805,15 +809,14 @@ function ExternalCodePendingContent({
         </p>
       )}
       <Button
-        type="button"
-        onClick={onComplete}
+        type="submit"
         disabled={completing || current.code.trim().length === 0}
         className="w-full"
         data-testid="connector-external-code-complete"
       >
         {completing ? "Connecting..." : "Complete connection"}
       </Button>
-    </div>
+    </form>
   );
 }
 
@@ -840,7 +843,8 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
     );
   });
 
-  const complete = onDomEventFn(async () => {
+  const complete = onDomEventFn(async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     await props.completeExternalCodeAndSettle(
       {
         type: props.item.type,

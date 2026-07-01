@@ -8,7 +8,7 @@ const RENAME_NOTICE = [
   "The schedule commands were renamed: schedules are Automations now.",
   "",
   `Manage them with ${chalk.cyan("zero automation")}, for example:`,
-  `  ${chalk.cyan('zero automation create <name> --agent <agent> --cron "0 9 * * *" "<instruction>"')}`,
+  `  ${chalk.cyan('zero automation create -n alerts --agent <agent-id> -p "<instruction>" --cron "0 9 * * *"')}`,
   `  ${chalk.cyan("zero automation list")}`,
   `  ${chalk.cyan("zero automation --help")}`,
 ].join("\n");

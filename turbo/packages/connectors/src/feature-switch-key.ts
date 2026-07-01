@@ -53,4 +53,5 @@ export enum FeatureSwitchKey {
   ConnectorAccessManagement = "connectorAccessManagement",
   PresentationTemplateRunbook = "presentationTemplateRunbook",
   AgentUnreadIndicators = "agentUnreadIndicators",
+  AgentsPageRedesign = "agentsPageRedesign",
 }

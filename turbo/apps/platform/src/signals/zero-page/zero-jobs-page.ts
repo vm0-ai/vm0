@@ -40,6 +40,18 @@ export const setJobsVisibility$ = command(
   },
 );
 
+// -- Active tab -------------------------------------------------------------
+
+const internalActiveTab$ = state<"public" | "private">("private");
+export const jobsActiveTab$ = computed((get) => {
+  return get(internalActiveTab$);
+});
+export const setJobsActiveTab$ = command(
+  ({ set }, tab: "public" | "private") => {
+    set(internalActiveTab$, tab);
+  },
+);
+
 // -- Avatar -----------------------------------------------------------------
 
 const internalAvatarUrl$ = state(randomSvgAvatarUrl());
