@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { waitFor } from "@testing-library/react";
 import {
   chatThreadMessagesContract,
   type PagedChatMessage,
@@ -9,6 +10,7 @@ import {
   mockUser,
 } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
+import { detach, Reason } from "../../utils.ts";
 
 const idbStoreMock = vi.hoisted(() => {
   let cachedMessages: unknown[] = [];
@@ -173,5 +175,60 @@ describe("createIdbCachedDataSource initial page cache", () => {
     expect(ids(idbStoreMock.getMessages() as PagedChatMessage[])).toStrictEqual(
       ids(range(1, 53)),
     );
+  });
+
+  it("keeps warming later run-finished payloads after a stale thread payload", async () => {
+    mockUser({ id: "user_1", fullName: "Test User" }, { token: "token" });
+    mockOrganization({
+      activeOrg: { id: "org_1", name: "Test Org" },
+      memberships: [{ id: "org_1" }],
+    });
+
+    const staleThreadId = "00000000-0000-4000-8000-000000000998";
+    const liveThreadId = "00000000-0000-4000-8000-000000000999";
+    idbStoreMock.setMessages([message(1)]);
+    const seenThreadIds: string[] = [];
+    ctx.mocks.api(chatThreadMessagesContract.list, ({ params, respond }) => {
+      seenThreadIds.push(params.threadId);
+      if (params.threadId === staleThreadId) {
+        return respond(404, {
+          error: { message: "Thread not found", code: "NOT_FOUND" },
+        });
+      }
+      return respond(200, { messages: [message(2)] });
+    });
+
+    const { setupRealtime$ } = await import("../../realtime.ts");
+    const { subscribeBackgroundChatThreadRunFinished$ } =
+      await import("../background-chat-thread-cache.ts");
+
+    await ctx.store.set(setupRealtime$, ctx.signal);
+    const subscriptionPromise = ctx.store.set(
+      subscribeBackgroundChatThreadRunFinished$,
+      ctx.signal,
+    );
+    detach(subscriptionPromise, Reason.Daemon);
+    await waitFor(() => {
+      expect(
+        ctx.mocks.ably.hasSubscription("chatThreadRunFinished"),
+      ).toBeTruthy();
+    });
+
+    ctx.mocks.ably.trigger("chatThreadRunFinished", {
+      threadId: staleThreadId,
+    });
+    await waitFor(() => {
+      expect(seenThreadIds).toContain(staleThreadId);
+    });
+
+    ctx.mocks.ably.trigger("chatThreadRunFinished", { threadId: liveThreadId });
+    await waitFor(() => {
+      expect(seenThreadIds).toContain(liveThreadId);
+      expect(idbStoreMock.upsertMessages).toHaveBeenCalledWith(
+        liveThreadId,
+        [message(2)],
+        ctx.signal,
+      );
+    });
   });
 });
