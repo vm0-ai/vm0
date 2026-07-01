@@ -16,6 +16,7 @@ import {
   IconFileMusic,
   IconPhoto,
   IconPencil,
+  IconWand,
   IconLoader2,
   IconZoomReset,
   IconX,
@@ -62,6 +63,7 @@ import {
   openArtifactSidebarPreview$,
   openPresentationEditor$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
+import { openArtifactImageEdit$ } from "../../signals/zero-page/zero-image-edit.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   presentationHtmlPreviewUrl,
@@ -274,10 +276,12 @@ function LightboxBodyScrollLock() {
 function DialogIconButton({
   ariaLabel,
   children,
+  dataTestId,
   onClick,
 }: {
   ariaLabel: string;
   children: ReactNode;
+  dataTestId?: string;
   onClick: () => void;
 }) {
   return (
@@ -287,6 +291,7 @@ function DialogIconButton({
       className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       aria-label={ariaLabel}
       title={ariaLabel}
+      data-testid={dataTestId}
     >
       {children}
     </button>
@@ -338,6 +343,18 @@ function ArtifactDialogEditHtmlButton({ onClick }: { onClick: () => void }) {
   return (
     <DialogIconButton ariaLabel="Edit page" onClick={onClick}>
       <IconPencil size={18} stroke={1.8} />
+    </DialogIconButton>
+  );
+}
+
+function ArtifactDialogEditImageButton({ onClick }: { onClick: () => void }) {
+  return (
+    <DialogIconButton
+      ariaLabel="Edit image"
+      dataTestId="image-edit-open"
+      onClick={onClick}
+    >
+      <IconWand size={18} stroke={1.8} />
     </DialogIconButton>
   );
 }
@@ -1057,6 +1074,7 @@ function ArtifactPreviewDialogActions({
 }) {
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
   const openArtifactSidebarHtmlEdit = useSet(openArtifactSidebarHtmlEdit$);
+  const openArtifactImageEdit = useSet(openArtifactImageEdit$);
   const openArtifactSidebarPreview = useSet(openArtifactSidebarPreview$);
   const openPresentationEditor = useSet(openPresentationEditor$);
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
@@ -1070,6 +1088,9 @@ function ArtifactPreviewDialogActions({
     preview.kind === "html" &&
     artifact?.artifactKind === "hosted-site" &&
     Boolean(features?.[FeatureSwitchKey.HtmlArtifactCommentEditing]);
+  const showImageEdit =
+    preview.kind === "image" &&
+    Boolean(features?.[FeatureSwitchKey.ImageEditing]);
   const resetDialogImageZoom = (targetFullscreen: boolean) => {
     resetArtifactDialogImageZoom({
       fullscreen,
@@ -1090,6 +1111,14 @@ function ArtifactPreviewDialogActions({
   };
   const openHtmlEditInSplitView = () => {
     openArtifactSidebarHtmlEdit({ fullscreen, url: preview.url });
+    closeLightboxWithDialogExit();
+  };
+  const openImageEditInSplitView = () => {
+    resetDialogImageZoom(fullscreen);
+    resetZoomableImageCanvasZoom(
+      zoomableArtifactImageKey("artifact-sidebar", preview.url, "sidebar"),
+    );
+    openArtifactImageEdit(preview.url);
     closeLightboxWithDialogExit();
   };
 
@@ -1119,6 +1148,12 @@ function ArtifactPreviewDialogActions({
       {showHtmlEdit && (
         <>
           <ArtifactDialogEditHtmlButton onClick={openHtmlEditInSplitView} />
+          <ArtifactActionSeparator />
+        </>
+      )}
+      {showImageEdit && (
+        <>
+          <ArtifactDialogEditImageButton onClick={openImageEditInSplitView} />
           <ArtifactActionSeparator />
         </>
       )}
