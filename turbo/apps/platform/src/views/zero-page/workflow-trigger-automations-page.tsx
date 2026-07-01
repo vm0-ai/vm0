@@ -179,6 +179,9 @@ export function humanReadableTriggerRuleLabel(
   if (trigger.eventType === "google-calendar-event-updated") {
     return `When calendar ${quote(trigger.eventConfig.calendarId)} event is updated`;
   }
+  if (trigger.eventType === "google-calendar-event-cancelled") {
+    return `When calendar ${quote(trigger.eventConfig.calendarId)} event is cancelled`;
+  }
   if (trigger.eventType === "webhook-received") {
     return "When an inbound webhook is received";
   }
@@ -200,7 +203,8 @@ export function triggerTypeLabel(trigger: ZeroWorkflowTriggerSummary): string {
   }
   if (
     trigger.eventType === "google-calendar-event-created" ||
-    trigger.eventType === "google-calendar-event-updated"
+    trigger.eventType === "google-calendar-event-updated" ||
+    trigger.eventType === "google-calendar-event-cancelled"
   ) {
     return "Google Calendar";
   }

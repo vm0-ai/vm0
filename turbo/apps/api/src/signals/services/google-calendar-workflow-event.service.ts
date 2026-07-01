@@ -5,6 +5,7 @@ import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import {
+  googleCalendarEventCancelledEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
   googleCalendarEventUpdatedEventConfigSchema,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -160,7 +161,7 @@ type GoogleCalendarWatchStateRow =
   typeof googleCalendarWatchStates.$inferSelect;
 type GoogleCalendarEventSnapshotRow =
   typeof googleCalendarEventSnapshots.$inferSelect;
-type GoogleCalendarChangeType = "created" | "updated";
+type GoogleCalendarChangeType = "created" | "updated" | "cancelled";
 
 interface GoogleCalendarEventTriggerRow {
   readonly trigger: TriggerRow;
@@ -788,6 +789,15 @@ function eventChangeKey(
   if (changeType === "created") {
     return "created";
   }
+  if (changeType === "cancelled") {
+    if (event.etag) {
+      return `cancelled:etag:${event.etag}`;
+    }
+    if (event.updated) {
+      return `cancelled:updated:${event.updated}`;
+    }
+    return `cancelled:${event.id}`;
+  }
   if (event.etag) {
     return `etag:${event.etag}`;
   }
@@ -853,11 +863,30 @@ function calendarEventChangeForSnapshot(args: {
   readonly event: GoogleCalendarEvent;
   readonly previous: GoogleCalendarEventSnapshotRow | undefined;
 }): CalendarEventChange | null {
+  const currentSnapshot = eventSnapshotValue(args.event);
   if (args.event.status === "cancelled") {
-    return null;
+    if (
+      args.previous?.status === "cancelled" &&
+      !eventRevisionChanged({
+        previous: args.previous,
+        event: args.event,
+        currentSnapshot,
+      })
+    ) {
+      return null;
+    }
+    return {
+      changeType: "cancelled",
+      event: args.event,
+      eventChangeKey: eventChangeKey("cancelled", args.event),
+      previousSnapshot: args.previous?.snapshot ?? null,
+      changedFields: changedCalendarEventFields(
+        args.previous?.snapshot ?? null,
+        currentSnapshot,
+      ),
+    };
   }
 
-  const currentSnapshot = eventSnapshotValue(args.event);
   if (!args.previous) {
     return {
       changeType: "created",
@@ -1268,6 +1297,12 @@ function parseGoogleCalendarEventTriggerConfig(
     );
     return config.success ? { calendarId: config.data.calendarId } : null;
   }
+  if (trigger.eventType === "google-calendar-event-cancelled") {
+    const config = googleCalendarEventCancelledEventConfigSchema.safeParse(
+      trigger.eventConfig,
+    );
+    return config.success ? { calendarId: config.data.calendarId } : null;
+  }
   return null;
 }
 
@@ -1309,6 +1344,7 @@ async function loadGoogleCalendarEventTriggers(args: {
         inArray(zeroWorkflowTriggers.eventType, [
           "google-calendar-event-created",
           "google-calendar-event-updated",
+          "google-calendar-event-cancelled",
         ]),
       ),
     );
@@ -1351,7 +1387,9 @@ function buildGoogleCalendarWorkflowEventSystemPrompt(args: {
   const triggerDescription =
     args.event.changeType === "created"
       ? "a Google Calendar event-created workflow trigger matched a newly created calendar event."
-      : "a Google Calendar event-updated workflow trigger matched an updated calendar event.";
+      : args.event.changeType === "updated"
+        ? "a Google Calendar event-updated workflow trigger matched an updated calendar event."
+        : "a Google Calendar event-cancelled workflow trigger matched a cancelled calendar event.";
   return [
     "# Current context",
     `You are running because ${triggerDescription}`,
@@ -1457,7 +1495,10 @@ function googleCalendarTriggerMatchesChange(
   if (changeType === "created") {
     return trigger.trigger.eventType === "google-calendar-event-created";
   }
-  return trigger.trigger.eventType === "google-calendar-event-updated";
+  if (changeType === "updated") {
+    return trigger.trigger.eventType === "google-calendar-event-updated";
+  }
+  return trigger.trigger.eventType === "google-calendar-event-cancelled";
 }
 
 async function dispatchCalendarEventChanges(args: {
