@@ -2295,7 +2295,7 @@ function createRunTracking({
     dataSource,
   });
 
-  const shouldRunPreSubscribeCatchup$ = command(
+  const shouldRunSubscribeReadyCatchup$ = command(
     async ({ get }, signal: AbortSignal): Promise<boolean> => {
       const initial = await get(initialPage$);
       signal.throwIfAborted();
@@ -2309,22 +2309,30 @@ function createRunTracking({
     },
   );
 
+  const onSubscribed$ = command(async ({ get, set }, sig: AbortSignal) => {
+    L.debug("subscribeChatThread$ catchup start", { threadId });
+    set(reloadThread$);
+    await get(threadData$);
+    sig.throwIfAborted();
+    if (await set(shouldRunSubscribeReadyCatchup$, sig)) {
+      await set(fetchNextPage$, sig);
+    }
+    const latestMessageId = await get(latestChatMessageId$);
+    sig.throwIfAborted();
+    if (latestMessageId) {
+      // In-place message updates, such as completed marker followups, are not
+      // returned by a sinceId fetch. Refresh the latest loaded row after the
+      // realtime callbacks are registered so update events racing with this
+      // fetch are queued instead of missed.
+      await set(fetchUpdatedMessage$, { messageId: latestMessageId }, sig);
+    }
+    await set(markThreadReadIfNeeded$, sig);
+    sig.throwIfAborted();
+    L.debug("subscribeChatThread$ catchup done", { threadId });
+  });
+
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ start", { threadId });
-
-    // Catch up any messages that arrived since the initial page was loaded.
-    // Cache hits and active runs still need a catch-up fetch. A fresh remote
-    // empty page on an idle thread can skip it because it would repeat the same
-    // no-cursor request before the realtime loop starts.
-    L.debug("subscribeChatThread$ pre-subscribe fetchNextPage$ start", {
-      threadId,
-    });
-    if (await set(shouldRunPreSubscribeCatchup$, signal)) {
-      await set(fetchNextPage$, signal);
-    }
-    L.debug("subscribeChatThread$ pre-subscribe fetchNextPage$ done", {
-      threadId,
-    });
 
     const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
       L.debug("onMessageCreated$ fired", { threadId });
@@ -2382,6 +2390,7 @@ function createRunTracking({
             onMessageUpdated$,
             onRunChanged$,
             onAutomationsChanged$,
+            onSubscribed$,
           },
         },
         signal,

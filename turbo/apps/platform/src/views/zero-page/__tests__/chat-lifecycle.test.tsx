@@ -5040,6 +5040,69 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("catches recommended follow-ups written before realtime subscription is ready", async () => {
+    const assistantReply = "I can turn this into a launch package.";
+    const followupPrompt = "Create a presentation outline";
+    const completedMarker: Extract<PagedChatMessage, { role: "assistant" }> = {
+      id: "msg-followup-subscribe-gap-completed",
+      role: "assistant",
+      content: null,
+      runId: "run-followup-subscribe-gap",
+      runLifecycleEvent: "completed",
+      createdAt: "2026-06-09T10:01:01Z",
+    };
+    const fetchedMessageIds: string[] = [];
+    let updatedAfterInitialList = false;
+
+    mockChatLifecycle(context, {
+      threadId: FOLLOWUP_THREAD_ID,
+      threadTitle: "Launch package",
+      chatMessages: [
+        {
+          id: "msg-followup-subscribe-gap-user",
+          role: "user",
+          content: "Package this launch plan",
+          runId: "run-followup-subscribe-gap",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-followup-subscribe-gap-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-followup-subscribe-gap",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        completedMarker,
+      ],
+      afterInitialMessagesList: () => {
+        if (updatedAfterInitialList) {
+          return;
+        }
+        updatedAfterInitialList = true;
+        completedMarker.recommendedFollowups = [
+          {
+            prompt: followupPrompt,
+            kind: "generate",
+            generationType: "presentation",
+          },
+        ];
+      },
+      onMessageGet: (messageId) => {
+        fetchedMessageIds.push(messageId);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FOLLOWUP_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(fetchedMessageIds).toContain(completedMarker.id);
+      expect(buttonByText(followupPrompt)).toBeInTheDocument();
+    });
+  });
+
   it("keeps stale recommended follow-ups hidden after the user advances the thread", async () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";

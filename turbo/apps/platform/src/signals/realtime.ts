@@ -21,6 +21,42 @@ interface PendingAblySubscription {
 
 const pendingAblySubscriptions$ = state<readonly PendingAblySubscription[]>([]);
 
+interface RealtimeSubscribeOptions {
+  readonly onSubscribed?: () => void;
+}
+
+interface RealtimeLoopArgs {
+  readonly channel: RealtimeChannel;
+  readonly topic: string;
+  readonly loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>;
+  readonly options?: RealtimeSubscribeOptions;
+}
+
+interface RealtimePayloadLoopArgs {
+  readonly channel: RealtimeChannel;
+  readonly topic: string;
+  readonly loopCommand$: Command<
+    Promise<boolean> | boolean,
+    [unknown, AbortSignal]
+  >;
+  readonly options?: RealtimeSubscribeOptions;
+}
+
+interface SetAblyLoopArgs {
+  readonly topic: string;
+  readonly loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>;
+  readonly options?: RealtimeSubscribeOptions;
+}
+
+interface SetAblyPayloadLoopArgs {
+  readonly topic: string;
+  readonly loopCommand$: Command<
+    Promise<boolean> | boolean,
+    [unknown, AbortSignal]
+  >;
+  readonly options?: RealtimeSubscribeOptions;
+}
+
 function errorMessage(error: unknown): string | undefined {
   if (error instanceof Error) {
     return error.message;
@@ -43,9 +79,7 @@ function isAblyConnectionClosedError(error: unknown): boolean {
 const runWithChannel$ = command(
   async (
     { set },
-    channel: RealtimeChannel,
-    topic: string,
-    loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>,
+    { channel, topic, loopCommand$, options }: RealtimeLoopArgs,
     signal: AbortSignal,
   ): Promise<void> => {
     // No implicit prime on subscribe. Callers whose loop body sets up baseline
@@ -108,6 +142,7 @@ const runWithChannel$ = command(
       await channel.subscribe(topic, callback);
       signal.throwIfAborted();
       subscribed = true;
+      options?.onSubscribed?.();
       L.debug("subscribed to topic: " + topic);
 
       while (!signal.aborted) {
@@ -169,9 +204,7 @@ const runPayloadNotification$ = command(
 const runWithChannelPayload$ = command(
   async (
     { set },
-    channel: RealtimeChannel,
-    topic: string,
-    loopCommand$: Command<Promise<boolean> | boolean, [unknown, AbortSignal]>,
+    { channel, topic, loopCommand$, options }: RealtimePayloadLoopArgs,
     signal: AbortSignal,
   ): Promise<void> => {
     signal.throwIfAborted();
@@ -231,6 +264,7 @@ const runWithChannelPayload$ = command(
       await channel.subscribe(topic, callback);
       signal.throwIfAborted();
       subscribed = true;
+      options?.onSubscribed?.();
       L.debug("subscribed to payload topic: " + topic);
 
       while (!signal.aborted) {
@@ -419,6 +453,23 @@ const userChannel$ = command(
   },
 );
 
+export const setAblyLoopWithOptions$ = command(
+  async (
+    { set },
+    { topic, loopCommand$, options }: SetAblyLoopArgs,
+    signal: AbortSignal,
+  ) => {
+    const channel = await set(userChannel$, topic, signal);
+    signal.throwIfAborted();
+    await set(
+      runWithChannel$,
+      { channel, topic, loopCommand$, options },
+      signal,
+    );
+    signal.throwIfAborted();
+  },
+);
+
 export const setAblyLoop$ = command(
   async (
     { set },
@@ -426,9 +477,24 @@ export const setAblyLoop$ = command(
     loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>,
     signal: AbortSignal,
   ) => {
+    await set(setAblyLoopWithOptions$, { topic, loopCommand$ }, signal);
+    signal.throwIfAborted();
+  },
+);
+
+export const setAblyPayloadLoopWithOptions$ = command(
+  async (
+    { set },
+    { topic, loopCommand$, options }: SetAblyPayloadLoopArgs,
+    signal: AbortSignal,
+  ) => {
     const channel = await set(userChannel$, topic, signal);
     signal.throwIfAborted();
-    await set(runWithChannel$, channel, topic, loopCommand$, signal);
+    await set(
+      runWithChannelPayload$,
+      { channel, topic, loopCommand$, options },
+      signal,
+    );
     signal.throwIfAborted();
   },
 );
@@ -440,9 +506,7 @@ export const setAblyPayloadLoop$ = command(
     loopCommand$: Command<Promise<boolean> | boolean, [unknown, AbortSignal]>,
     signal: AbortSignal,
   ) => {
-    const channel = await set(userChannel$, topic, signal);
-    signal.throwIfAborted();
-    await set(runWithChannelPayload$, channel, topic, loopCommand$, signal);
+    await set(setAblyPayloadLoopWithOptions$, { topic, loopCommand$ }, signal);
     signal.throwIfAborted();
   },
 );

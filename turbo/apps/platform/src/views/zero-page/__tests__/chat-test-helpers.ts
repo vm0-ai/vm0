@@ -423,6 +423,7 @@ export function mockChatLifecycle(
      * Lets tests prove the latest-message view renders before silent backfill.
      */
     beforeHistoryGate?: Promise<void>;
+    afterInitialMessagesList?: () => void;
     onRunCreate?: (body: {
       prompt?: string;
       clientMessageId?: string;
@@ -724,13 +725,15 @@ export function mockChatLifecycle(
 
     lastDeliveredVersion = assistantVersion;
     const latestMessages = pagedMessages.slice(historyMessages.length);
-    return respond(200, {
+    const body = {
       messages: latestMessages
         .slice(Math.max(0, latestMessages.length - limit))
         .map(cloneMockPagedMessage),
       hasHistoryBefore:
         historyMessages.length > 0 || latestMessages.length > limit,
-    });
+    };
+    options?.afterInitialMessagesList?.();
+    return respond(200, body);
   });
   context.mocks.api(chatThreadMessagesContract.get, ({ params, respond }) => {
     options?.onMessageGet?.(params.messageId);
