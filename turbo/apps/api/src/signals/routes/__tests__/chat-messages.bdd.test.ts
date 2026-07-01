@@ -1485,8 +1485,7 @@ describe("CHAT-02: explicit provider pins", () => {
       });
     };
     const cleanupRunAndKeys = async () => {
-      await deleteVm0KimiKeys();
-      await cancelRunIfCreated();
+      await Promise.all([deleteVm0KimiKeys(), cancelRunIfCreated()]);
     };
 
     await (async () => {

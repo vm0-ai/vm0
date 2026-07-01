@@ -13,6 +13,15 @@ const vm0ApiKeySeedSchema = z.object({
   label: z.string(),
 });
 
+const vm0ApiKeyVendorSchema = z.enum([
+  "anthropic",
+  "deepseek",
+  "minimax",
+  "moonshot",
+  "openai",
+  "openrouter",
+]);
+
 export const testChatMessagesStateActionBodySchema = z.discriminatedUnion(
   "action",
   [
@@ -37,13 +46,13 @@ export const testChatMessagesStateActionBodySchema = z.discriminatedUnion(
     }),
     z.object({
       action: z.literal("replace-vm0-api-keys"),
-      vendor: z.string(),
+      vendor: vm0ApiKeyVendorSchema,
       model: z.string(),
       keys: z.array(vm0ApiKeySeedSchema),
     }),
     z.object({
       action: z.literal("delete-vm0-api-keys"),
-      vendor: z.string(),
+      vendor: vm0ApiKeyVendorSchema,
       model: z.string(),
     }),
     z.object({
