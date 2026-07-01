@@ -385,13 +385,15 @@ export function mockClaudeCodeTokenEndpoint(): ClaudeCodeTokenEndpointRecorder {
     http.get("https://api.anthropic.com/api/oauth/usage", ({ request }) => {
       recorded.usage.push(request.headers);
       return HttpResponse.json({
-        five_hour: {
-          utilization: 12,
-          resets_at: "2030-01-01T05:00:00.000Z",
-        },
-        seven_day: {
-          utilization: 24,
-          resets_at: "2030-01-07T00:00:00.000Z",
+        rate_limits: {
+          five_hour: {
+            utilization: 12,
+            resets_at: "2030-01-01T05:00:00.000Z",
+          },
+          seven_day: {
+            utilization: 24,
+            resets_at: "2030-01-07T00:00:00.000Z",
+          },
         },
       });
     }),

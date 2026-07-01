@@ -25,17 +25,40 @@ const rateLimitDetailsSchema = z
   })
   .passthrough();
 
+const namedMetadataSchema = z
+  .object({
+    title: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
+    display_name: z.string().nullable().optional(),
+    displayName: z.string().nullable().optional(),
+  })
+  .passthrough();
+
 const codexUsageResponseSchema = z
   .object({
     plan_type: z.string().nullable().optional(),
+    account: namedMetadataSchema.nullable().optional(),
+    account_name: z.string().nullable().optional(),
+    chatgpt_account_name: z.string().nullable().optional(),
+    chatgpt_organization_name: z.string().nullable().optional(),
+    chatgpt_workspace_display_name: z.string().nullable().optional(),
+    chatgpt_workspace_name: z.string().nullable().optional(),
+    chatgpt_workspace_title: z.string().nullable().optional(),
+    organization: namedMetadataSchema.nullable().optional(),
+    organization_name: z.string().nullable().optional(),
     rate_limit: rateLimitDetailsSchema.nullable().optional(),
+    workspace: namedMetadataSchema.nullable().optional(),
+    workspace_name: z.string().nullable().optional(),
   })
   .passthrough();
 
 type RateLimitWindow = z.infer<typeof rateLimitWindowSchema>;
+type CodexNamedMetadata = z.infer<typeof namedMetadataSchema>;
+type CodexUsageResponse = z.infer<typeof codexUsageResponseSchema>;
 
 interface CodexUsageMetadata {
   readonly planType: string | null;
+  readonly workspaceName: string | null;
   readonly subscriptionResetPeriod: string | null;
   readonly subscriptionNextResetAt: Date | null;
 }
@@ -49,6 +72,38 @@ interface UsageResetWindow {
 function nonEmptyString(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : null;
+}
+
+function nameFromMetadata(
+  metadata: CodexNamedMetadata | null | undefined,
+): string | null {
+  if (!metadata) {
+    return null;
+  }
+  return (
+    nonEmptyString(metadata.title) ??
+    nonEmptyString(metadata.name) ??
+    nonEmptyString(metadata.display_name) ??
+    nonEmptyString(metadata.displayName) ??
+    null
+  );
+}
+
+function workspaceNameFromUsage(usage: CodexUsageResponse): string | null {
+  return (
+    nameFromMetadata(usage.organization) ??
+    nameFromMetadata(usage.workspace) ??
+    nonEmptyString(usage.chatgpt_workspace_name) ??
+    nonEmptyString(usage.chatgpt_workspace_title) ??
+    nonEmptyString(usage.chatgpt_workspace_display_name) ??
+    nonEmptyString(usage.chatgpt_organization_name) ??
+    nonEmptyString(usage.organization_name) ??
+    nonEmptyString(usage.workspace_name) ??
+    nameFromMetadata(usage.account) ??
+    nonEmptyString(usage.chatgpt_account_name) ??
+    nonEmptyString(usage.account_name) ??
+    null
+  );
 }
 
 function periodLabel(seconds: number | null | undefined): string | null {
@@ -164,6 +219,7 @@ export async function fetchCodexUsageMetadata(args: {
   const resetWindow = chooseSubscriptionResetWindow(parsed.data.rate_limit);
   return {
     planType: nonEmptyString(parsed.data.plan_type),
+    workspaceName: workspaceNameFromUsage(parsed.data),
     subscriptionResetPeriod: resetWindow?.period ?? null,
     subscriptionNextResetAt: resetWindow?.nextResetAt ?? null,
   };

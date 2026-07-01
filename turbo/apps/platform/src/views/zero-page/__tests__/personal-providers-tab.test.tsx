@@ -27,6 +27,7 @@ function stalePersonalCodexProvider(): ModelProviderResponse {
     workspaceName: "Personal ChatGPT",
     planType: "pro",
     subscriptionResetPeriod: "Weekly",
+    subscriptionNextResetAt: "2030-01-01T00:00:00.000Z",
     needsReconnect: true,
     lastRefreshErrorCode: "refresh_token_expired",
     createdAt: "2026-03-01T00:00:00Z",
@@ -55,6 +56,7 @@ function connectedPersonalClaudeCodeProvider(): ModelProviderResponse {
     workspaceName: "claude.user@example.com",
     planType: "pro",
     subscriptionResetPeriod: "weekly",
+    subscriptionNextResetAt: "2030-01-07T00:00:00.000Z",
     needsReconnect: false,
     lastRefreshErrorCode: null,
     createdAt: "2026-03-01T00:00:00Z",
@@ -239,7 +241,7 @@ describe("personal model providers settings", () => {
       expect(screen.getByText("Claude Code connected")).toBeInTheDocument();
       expect(
         within(claudeCodeRow).getByText(
-          "Connected (claude.user@example.com, Pro, resets weekly)",
+          "Connected (claude.user@example.com, Pro, resets Jan 7, 2030, 12:00 AM UTC)",
         ),
       ).toBeInTheDocument();
       expect(
@@ -267,7 +269,7 @@ describe("personal model providers settings", () => {
     );
     expect(
       within(claudeCodeRow).getByText(
-        "Connected (claude.user@example.com, Pro, resets weekly)",
+        "Connected (claude.user@example.com, Pro, resets Jan 7, 2030, 12:00 AM UTC)",
       ),
     ).toBeInTheDocument();
     expect(
@@ -277,7 +279,7 @@ describe("personal model providers settings", () => {
     const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
     expect(
       within(codexRow).getByText(
-        "Connected (Personal ChatGPT, Pro, resets weekly)",
+        "Connected (Personal ChatGPT, Pro, resets Jan 1, 2030, 12:00 AM UTC)",
       ),
     ).toBeInTheDocument();
     expect(

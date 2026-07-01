@@ -174,7 +174,7 @@ export async function handleCodexAuthJsonPaste(args: CodexAuthJsonPasteArgs) {
       selectedModel: args.selectedModel,
       metadata: {
         tokenExpiresAt: parsed.tokenExpiresAt,
-        workspaceName: parsed.workspaceName,
+        workspaceName: usageMetadata?.workspaceName ?? parsed.workspaceName,
         planType: usageMetadata?.planType ?? parsed.planType,
         ...(usageMetadata
           ? {

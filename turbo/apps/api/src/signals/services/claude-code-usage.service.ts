@@ -7,13 +7,20 @@ const CLAUDE_CODE_USER_AGENT = "claude-code/2.1.161";
 const usageWindowSchema = z
   .object({
     resets_at: z.string().nullable().optional(),
+    resetsAt: z.string().nullable().optional(),
   })
   .passthrough();
 
-const usageResponseSchema = z
+const usageRateLimitsSchema = z
   .object({
     five_hour: usageWindowSchema.nullable().optional(),
     seven_day: usageWindowSchema.nullable().optional(),
+  })
+  .passthrough();
+
+const usageResponseSchema = usageRateLimitsSchema
+  .extend({
+    rate_limits: usageRateLimitsSchema.nullable().optional(),
   })
   .passthrough();
 
@@ -45,6 +52,7 @@ const profileResponseSchema = z
 
 type ProfileResponse = z.infer<typeof profileResponseSchema>;
 type UsageResponse = z.infer<typeof usageResponseSchema>;
+type UsageWindow = z.infer<typeof usageWindowSchema>;
 
 interface ClaudeCodeSubscriptionMetadata {
   readonly workspaceName?: string | null;
@@ -109,13 +117,22 @@ function nextResetAt(value: string | null | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function nextResetAtFromWindow(
+  window: UsageWindow | null | undefined,
+): Date | null {
+  return nextResetAt(window?.resets_at ?? window?.resetsAt);
+}
+
 function resetMetadataFromUsage(
   usage: UsageResponse,
 ): Pick<
   ClaudeCodeSubscriptionMetadata,
   "subscriptionResetPeriod" | "subscriptionNextResetAt"
 > {
-  const weeklyResetAt = nextResetAt(usage.seven_day?.resets_at);
+  const rateLimits = usage.rate_limits;
+  const weeklyResetAt =
+    nextResetAtFromWindow(rateLimits?.seven_day) ??
+    nextResetAtFromWindow(usage.seven_day);
   if (weeklyResetAt) {
     return {
       subscriptionResetPeriod: "weekly",
@@ -123,7 +140,9 @@ function resetMetadataFromUsage(
     };
   }
 
-  const fiveHourResetAt = nextResetAt(usage.five_hour?.resets_at);
+  const fiveHourResetAt =
+    nextResetAtFromWindow(rateLimits?.five_hour) ??
+    nextResetAtFromWindow(usage.five_hour);
   if (fiveHourResetAt) {
     return {
       subscriptionResetPeriod: "5-hour window",

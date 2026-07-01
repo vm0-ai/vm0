@@ -208,6 +208,10 @@ function formatSubscriptionReset(
         month: "short",
         day: "numeric",
         year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: "UTC",
+        timeZoneName: "short",
       })}`;
     }
     return `resets ${nextResetAt}`;

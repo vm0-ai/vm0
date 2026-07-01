@@ -668,7 +668,11 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
         `Expected Claude Code device auth start, got ${started.status}`,
       );
     }
-    const state = new URL(started.body.browserUrl).searchParams.get("state");
+    const browserUrl = new URL(started.body.browserUrl);
+    expect(browserUrl.searchParams.get("scope")).toBe(
+      "user:profile user:inference",
+    );
+    const state = browserUrl.searchParams.get("state");
     if (!state) {
       throw new Error("Missing state in Claude Code browser URL");
     }

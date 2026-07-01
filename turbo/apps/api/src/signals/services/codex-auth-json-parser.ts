@@ -36,16 +36,29 @@ function decodeJwtPayload(token: string): unknown {
   return parsed;
 }
 
+const chatgptNamedClaimSchema = z
+  .object({
+    title: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
+    display_name: z.string().nullable().optional(),
+    displayName: z.string().nullable().optional(),
+  })
+  .passthrough();
+
 const chatgptAuthClaimsSchema = z
   .object({
     chatgpt_account_id: z.string().optional(),
     chatgpt_plan_type: z.string().optional(),
-    organization: z
-      .object({ title: z.string().optional() })
-      .partial()
-      .optional(),
-    workspace: z.object({ name: z.string().optional() }).partial().optional(),
-    chatgpt_workspace_name: z.string().optional(),
+    organization: chatgptNamedClaimSchema.nullable().optional(),
+    workspace: chatgptNamedClaimSchema.nullable().optional(),
+    account: chatgptNamedClaimSchema.nullable().optional(),
+    chatgpt_workspace_name: z.string().nullable().optional(),
+    chatgpt_workspace_title: z.string().nullable().optional(),
+    chatgpt_workspace_display_name: z.string().nullable().optional(),
+    chatgpt_organization_name: z.string().nullable().optional(),
+    chatgpt_account_name: z.string().nullable().optional(),
+    organization_name: z.string().nullable().optional(),
+    workspace_name: z.string().nullable().optional(),
   })
   .passthrough();
 
@@ -57,12 +70,38 @@ const chatgptIdTokenClaimsSchema = z
   .passthrough();
 
 type ChatgptAuthClaims = z.infer<typeof chatgptAuthClaimsSchema>;
+type ChatgptNamedClaim = z.infer<typeof chatgptNamedClaimSchema>;
+
+function nonEmptyString(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : null;
+}
+
+function extractNamedClaim(claim: ChatgptNamedClaim | null | undefined) {
+  if (!claim) {
+    return null;
+  }
+  return (
+    nonEmptyString(claim.title) ??
+    nonEmptyString(claim.name) ??
+    nonEmptyString(claim.display_name) ??
+    nonEmptyString(claim.displayName) ??
+    null
+  );
+}
 
 function extractWorkspaceName(authClaims: ChatgptAuthClaims): string | null {
   return (
-    authClaims.organization?.title ??
-    authClaims.workspace?.name ??
-    authClaims.chatgpt_workspace_name ??
+    extractNamedClaim(authClaims.organization) ??
+    extractNamedClaim(authClaims.workspace) ??
+    nonEmptyString(authClaims.chatgpt_workspace_name) ??
+    nonEmptyString(authClaims.chatgpt_workspace_title) ??
+    nonEmptyString(authClaims.chatgpt_workspace_display_name) ??
+    nonEmptyString(authClaims.chatgpt_organization_name) ??
+    nonEmptyString(authClaims.organization_name) ??
+    nonEmptyString(authClaims.workspace_name) ??
+    extractNamedClaim(authClaims.account) ??
+    nonEmptyString(authClaims.chatgpt_account_name) ??
     null
   );
 }
