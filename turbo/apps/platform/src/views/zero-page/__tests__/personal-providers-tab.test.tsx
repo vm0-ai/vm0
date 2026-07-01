@@ -2,7 +2,7 @@ import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/z
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   click,
@@ -169,6 +169,26 @@ function connectButtonInRow(row: HTMLElement, label: string): HTMLElement {
   return button;
 }
 
+function formatResetInTimeZone(resetAt: string, timeZone: string): string {
+  return `resets ${new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+    timeZoneName: "short",
+  }).format(new Date(resetAt))}`;
+}
+
+function mockBrowserTimeZone(timeZone: string): void {
+  const resolvedOptions = new Intl.DateTimeFormat().resolvedOptions();
+  vi.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions").mockReturnValue({
+    ...resolvedOptions,
+    timeZone,
+  });
+}
+
 describe("personal model providers settings", () => {
   it("opens personal Claude Code login from model settings", async () => {
     context.mocks.data.org({
@@ -282,6 +302,7 @@ describe("personal model providers settings", () => {
   });
 
   it("shows available subscription details in the connected status", async () => {
+    mockBrowserTimeZone("America/New_York");
     context.mocks.data.org({
       id: "org_1",
       slug: "test-org",
@@ -309,7 +330,9 @@ describe("personal model providers settings", () => {
     expect(within(claudeCodeRow).getByText("Week")).toBeInTheDocument();
     expect(within(claudeCodeRow).getByText("76% left")).toBeInTheDocument();
     expect(
-      within(claudeCodeRow).getByText("resets Jan 1, 2030, 5:00 AM UTC"),
+      within(claudeCodeRow).getByText(
+        formatResetInTimeZone("2030-01-01T05:00:00.000Z", "America/New_York"),
+      ),
     ).toBeInTheDocument();
     expect(
       within(claudeCodeRow).queryByText(/Unavailable|Unknown|Account:|Reset:/),
@@ -328,6 +351,7 @@ describe("personal model providers settings", () => {
   });
 
   it("falls back to stored Claude Code reset metadata when usage is unavailable", async () => {
+    mockBrowserTimeZone("America/New_York");
     context.mocks.data.org({
       id: "org_1",
       slug: "test-org",
@@ -350,7 +374,9 @@ describe("personal model providers settings", () => {
       within(claudeCodeRow).getByText("Connected (Pro)"),
     ).toBeInTheDocument();
     expect(
-      within(claudeCodeRow).getByText("resets Jan 7, 2030, 12:00 AM UTC"),
+      within(claudeCodeRow).getByText(
+        formatResetInTimeZone("2030-01-07T00:00:00.000Z", "America/New_York"),
+      ),
     ).toBeInTheDocument();
     expect(
       within(claudeCodeRow).queryByText("76% left"),
