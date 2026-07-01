@@ -2048,6 +2048,7 @@ describe("CHAT-02: initial thinking indicator", () => {
     });
     expect(upstreamAuthorization).toBe("Bearer thinking-key");
     expect(promptPayload).toContain("few short paragraphs");
+    expect(promptPayload).toContain("Match the current user's language");
     expect(promptPayload).toContain("Draft a launch checklist");
 
     await cancelChatRun(actor, run.runId);

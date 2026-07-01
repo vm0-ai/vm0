@@ -147,6 +147,7 @@ async function generateInitialThinkingText(args: {
           "Write user-visible progress copy for a chat UI while the assistant is preparing its response.",
           "Use the current user message and recent thread history to describe what is being prepared. It can be a few short paragraphs when useful, and should feel concrete, relevant, and specific rather than generic.",
           "Do not answer the user. Do not reveal hidden reasoning, chain-of-thought, private analysis, or internal steps. Do not mention tools unless the user explicitly asked for a tool-like task.",
+          "Match the current user's language.",
           "Return plain text only, with no markdown, headings, bullets, or quotes.",
         ].join("\n"),
       },
