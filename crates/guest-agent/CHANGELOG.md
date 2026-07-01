@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.43.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.3...guest-agent-v0.43.4) (2026-07-01)
+
+
+### Refactoring
+
+* migrate guest-agent CLI runtime inputs ([#19514](https://github.com/vm0-ai/vm0/issues/19514)) ([bee67d0](https://github.com/vm0-ai/vm0/commit/bee67d0bc1b5d2d90b7fe0e664dc0a6579c7e16f))
+
 ## [0.43.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.2...guest-agent-v0.43.3) (2026-06-30)
 
 ## [0.43.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.1...guest-agent-v0.43.2) (2026-06-30)
