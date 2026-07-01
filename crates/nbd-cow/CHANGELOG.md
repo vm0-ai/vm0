@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.55](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.54...nbd-cow-v0.4.55) (2026-07-01)
+
+
+### Performance Improvements
+
+* move nbd cow io off dispatch workers ([#19624](https://github.com/vm0-ai/vm0/issues/19624)) ([35673e6](https://github.com/vm0-ai/vm0/commit/35673e6e05da221fa3f6ce1e6ccd78ba07d98083))
+
 ## [0.4.54](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.53...nbd-cow-v0.4.54) (2026-07-01)
 
 
