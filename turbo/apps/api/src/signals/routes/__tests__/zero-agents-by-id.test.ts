@@ -408,12 +408,12 @@ describe("DELETE /api/zero/agents/:id", () => {
         return Promise.resolve({
           Contents: [
             {
-              Key: `${input.Prefix}/v1/archive.tar.gz`,
+              Key: `${input.Prefix}v1/archive.tar.gz`,
               Size: 1024,
               LastModified: new Date("2025-01-01T00:00:00.000Z"),
             },
             {
-              Key: `${input.Prefix}/v1/manifest.json`,
+              Key: `${input.Prefix}v1/manifest.json`,
               Size: 256,
               LastModified: new Date("2025-01-01T00:00:00.000Z"),
             },
