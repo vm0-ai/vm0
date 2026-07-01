@@ -85,6 +85,7 @@ export const testChatMessagesStateActionResponseSchema = z.object({
   ok: z.literal(true),
   computer_use_host_id: z.string().nullable().optional(),
   run_model_provider: z.string().nullable().optional(),
+  run_selected_model: z.string().nullable().optional(),
 });
 
 export const testChatMessagesStateContract = c.router({

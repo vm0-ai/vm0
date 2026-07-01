@@ -481,13 +481,6 @@ function buildQueuedCreateZeroRunArgs(
       attachFiles: input.queuedMessage.attachFiles,
       attachFileMetadata: input.queuedMessage.attachFileMetadata,
       generationTemplate: input.queuedMessage.generationTemplate,
-      zeroRunModelPin: {
-        modelProvider: input.queuedMessage.modelProviderType ?? undefined,
-        modelProviderId: input.queuedMessage.modelProviderId,
-        modelProviderCredentialScope:
-          input.queuedMessage.modelProviderCredentialScope,
-        selectedModel: input.queuedMessage.selectedModel,
-      },
     },
     modelProviderId: input.queuedMessage.modelProviderId ?? undefined,
     modelProviderCredentialScope:

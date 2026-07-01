@@ -99,6 +99,7 @@ async function readRunModelMetadataForAction(
   const [run] = await db
     .select({
       modelProvider: zeroRuns.modelProvider,
+      selectedModel: zeroRuns.selectedModel,
     })
     .from(zeroRuns)
     .where(eq(zeroRuns.id, body.run_id))
@@ -112,6 +113,7 @@ async function readRunModelMetadataForAction(
   }
   return actionOk({
     run_model_provider: run.modelProvider,
+    run_selected_model: run.selectedModel,
   });
 }
 

@@ -901,7 +901,8 @@ describe("CHAT-02: completed chat callback", () => {
       action: "read-run-model-metadata",
       run_id: claimed.runId,
     });
-    expect(metadata.run_model_provider).toBe("vm0");
+    expect(metadata.run_model_provider).toStrictEqual(expect.any(String));
+    expect(metadata.run_selected_model).toStrictEqual(expect.any(String));
     await expectChatCallbackPreCreateTimingActions(claimed.runId, [
       "api_dispatch_pre_create_zero_chat_callback_load_terminal",
       "api_dispatch_pre_create_zero_chat_callback_prepare_completed",

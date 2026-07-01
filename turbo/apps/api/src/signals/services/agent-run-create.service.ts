@@ -432,7 +432,6 @@ type ChatLaunchGenerationTemplate =
 interface BaseChatLaunchAssociation {
   readonly threadId: string;
   readonly userId: string;
-  readonly zeroRunModelPin: ChatLaunchZeroRunModelPin;
 }
 
 export type ChatLaunchAssociation =
@@ -447,6 +446,7 @@ export type ChatLaunchAssociation =
         | null;
       readonly generationTemplate: ChatLaunchGenerationTemplate;
       readonly clearDraft: boolean;
+      readonly zeroRunModelPin: ChatLaunchZeroRunModelPin;
     })
   | (BaseChatLaunchAssociation & {
       readonly kind: "auto-send-queued-message-claim";
@@ -4221,6 +4221,14 @@ function validateChatLaunchAssociationArgs(
   return null;
 }
 
+function chatLaunchZeroRunModelPin(
+  association: ChatLaunchAssociation | undefined,
+): ChatLaunchZeroRunModelPin | undefined {
+  return association?.kind === "normal-user-message"
+    ? association.zeroRunModelPin
+    : undefined;
+}
+
 function zeroRunModelProviderValues(
   modelProvider: ResolvedModelProviderEnvironment | null,
   zeroRunModelPin: ChatLaunchZeroRunModelPin | undefined,
@@ -4970,7 +4978,9 @@ async function commitFailedLaunch(args: {
       artifacts: args.context.artifacts,
       additionalVolumes: args.context.additionalVolumes,
       modelProvider: args.context.modelProvider,
-      zeroRunModelPin: args.createArgs.chatLaunchAssociation?.zeroRunModelPin,
+      zeroRunModelPin: chatLaunchZeroRunModelPin(
+        args.createArgs.chatLaunchAssociation,
+      ),
       callbackRows: args.callbackRows,
       chatThreadId: args.createArgs.chatThreadId,
       zeroRunMetadata: args.createArgs.zeroRunMetadata,
@@ -5232,8 +5242,9 @@ async function insertAtomicLaunchRunRecord(args: {
         artifacts: args.commit.context.artifacts,
         additionalVolumes: args.commit.context.additionalVolumes,
         modelProvider: args.commit.context.modelProvider,
-        zeroRunModelPin:
-          args.commit.createArgs.chatLaunchAssociation?.zeroRunModelPin,
+        zeroRunModelPin: chatLaunchZeroRunModelPin(
+          args.commit.createArgs.chatLaunchAssociation,
+        ),
         callbackRows: args.commit.callbackRows,
         chatThreadId: args.commit.createArgs.chatThreadId,
         zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
