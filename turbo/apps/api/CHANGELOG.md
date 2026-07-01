@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.203.1](https://github.com/vm0-ai/vm0/compare/api-v1.203.0...api-v1.203.1) (2026-07-01)
+
+
+### Bug Fixes
+
+* scope data export feature switch to org ([#19700](https://github.com/vm0-ai/vm0/issues/19700)) ([ae28726](https://github.com/vm0-ai/vm0/commit/ae2872625db443cbba1398a8215fa4e5e8c3d153))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.139.1
+    * @vm0/core bumped to 8.384.1
+    * @vm0/db bumped to 1.83.2
+
 ## [1.203.0](https://github.com/vm0-ai/vm0/compare/api-v1.202.0...api-v1.203.0) (2026-07-01)
 
 
