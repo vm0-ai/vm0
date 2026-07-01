@@ -843,26 +843,15 @@ async function buildArtifactEntryFromInput(
   },
 ): Promise<ManifestArtifact> {
   const { artifact, resolved } = args.input;
-  const [archiveUrl, manifestUrl] = await Promise.all([
-    get(
-      generatePresignedGetUrl(
-        args.bucket,
-        `${resolved.s3Key}/archive.tar.gz`,
-        DOWNLOAD_URL_TTL_SECONDS,
-        undefined,
-        true,
-      ),
+  const archiveUrl = await get(
+    generatePresignedGetUrl(
+      args.bucket,
+      `${resolved.s3Key}/archive.tar.gz`,
+      DOWNLOAD_URL_TTL_SECONDS,
+      undefined,
+      true,
     ),
-    get(
-      generatePresignedGetUrl(
-        args.bucket,
-        `${resolved.s3Key}/manifest.json`,
-        DOWNLOAD_URL_TTL_SECONDS,
-        undefined,
-        true,
-      ),
-    ),
-  ]);
+  );
 
   return {
     mountPath: artifact.mountPath,
@@ -870,7 +859,6 @@ async function buildArtifactEntryFromInput(
     vasStorageId: resolved.storageId,
     vasVersionId: resolved.versionId,
     archiveUrl,
-    manifestUrl,
     ...(artifact.missingRootPolicy
       ? { missingRootPolicy: artifact.missingRootPolicy }
       : {}),

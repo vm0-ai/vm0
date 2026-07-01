@@ -35,9 +35,6 @@ pub mod runners {
             pub vas_version_id: String,
             /// Presigned URL for downloading the artifact archive.
             pub archive_url: String,
-            /// Optional presigned URL for downloading the artifact manifest.
-            #[serde(default, skip_serializing_if = "Option::is_none")]
-            pub manifest_url: Option<String>,
             /// Optional policy for a missing artifact root; absence behaves like `fail`.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
