@@ -117,6 +117,22 @@ function countSessionHistoryBlobReads(hash: string): number {
   }).length;
 }
 
+function presignedUrlKeysSince(
+  startIndex: number,
+): readonly (string | undefined)[] {
+  return context.mocks.s3.getSignedUrl.mock.calls
+    .slice(startIndex)
+    .map(([, command]) => {
+      return s3CommandKey(command);
+    });
+}
+
+function hasManifestPresign(keys: readonly (string | undefined)[]): boolean {
+  return keys.some((key) => {
+    return key?.endsWith("/manifest.json") ?? false;
+  });
+}
+
 function s3TextBody(text: string): AsyncIterable<Buffer> {
   return {
     async *[Symbol.asyncIterator]() {
@@ -767,6 +783,8 @@ describe("RUN-04: session and checkpoint reads", () => {
     });
     const plainCompose = await createClaudeCompose(actor, "bdd-plain");
 
+    const presignCallsBeforeRun =
+      context.mocks.s3.getSignedUrl.mock.calls.length;
     const r1 = await api.createDirectRun(actor, {
       agentComposeId: secretCompose.composeId,
       prompt: "produce a session with artifacts",
@@ -779,6 +797,13 @@ describe("RUN-04: session and checkpoint reads", () => {
     if (!outArtifact) {
       throw new Error("Expected the claim manifest to mount bdd-out");
     }
+    expect(outArtifact.archiveUrl).toStrictEqual(expect.any(String));
+    expect(outArtifact.vasStorageId).toStrictEqual(expect.any(String));
+    expect(outArtifact.vasVersionId).toStrictEqual(expect.any(String));
+    expect("manifestUrl" in outArtifact).toBeFalsy();
+    expect(
+      hasManifestPresign(presignedUrlKeysSince(presignCallsBeforeRun)),
+    ).toBeFalsy();
 
     const headers1 = sandboxHeaders(claim1.sandboxToken);
     const withArtifacts = await webhooks.requestAgentCheckpoint(
@@ -1009,6 +1034,8 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     });
 
     const versionPrefix = volumeVersion.slice(0, 16);
+    const presignCallsBeforeRun =
+      context.mocks.s3.getSignedUrl.mock.calls.length;
     const r1 = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
       prompt: "pin the volume by version prefix",
@@ -1026,11 +1053,18 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     });
     expect(memory1).toMatchObject({
       mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+      archiveUrl: expect.any(String),
+      vasStorageId: expect.any(String),
+      vasVersionId: expect.any(String),
       missingRootPolicy: "preserveParentVersion",
     });
     if (!memory1) {
       throw new Error("Expected the claim manifest to mount memory");
     }
+    expect("manifestUrl" in memory1).toBeFalsy();
+    expect(
+      hasManifestPresign(presignedUrlKeysSince(presignCallsBeforeRun)),
+    ).toBeFalsy();
 
     const headers1 = sandboxHeaders(claim1.sandboxToken);
     const checkpointed = await webhooks.requestAgentCheckpoint(
