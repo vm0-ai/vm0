@@ -17,12 +17,14 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WORKFLOW_TEMPLATE_ITEMS,
   r2ImageTransformUrl,
   type PresentationTemplateItem,
 } from "@vm0/core";
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
+  type GenerationTemplateRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
@@ -88,10 +90,16 @@ function expectTextBefore(firstText: string, secondText: string): void {
   ).toBeTruthy();
 }
 
+function queryTabByText(text: string): HTMLElement | null {
+  return (
+    queryAllByRoleFast("tab").find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+    }) ?? null
+  );
+}
+
 function tabByText(text: string): HTMLElement {
-  const tab = queryAllByRoleFast("tab").find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
+  const tab = queryTabByText(text);
   if (!tab) {
     throw new Error(`${text} tab not found`);
   }
@@ -3584,6 +3592,110 @@ describe("chat composer templates", () => {
       );
       expect(
         screen.queryByLabelText(`Remove video template ${videoStyle.title}`),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("hides workflow templates when workflow automation is disabled", async () => {
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(tabByText("Presentation")).toBeInTheDocument();
+      expect(tabByText("Illustration")).toBeInTheDocument();
+      expect(tabByText("Video")).toBeInTheDocument();
+      expect(queryTabByText("Workflow")).not.toBeInTheDocument();
+    });
+  });
+
+  it("selects and sends a workflow template from the picker", async () => {
+    const user = userEvent.setup({ delay: null });
+    const workflowTemplate = WORKFLOW_TEMPLATE_ITEMS[0]!;
+    let submittedTemplate: GenerationTemplateRequest | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate: (body) => {
+        submittedTemplate = body.generationTemplate;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(tabByText("Workflow")).toBeInTheDocument();
+    });
+    click(tabByText("Workflow"));
+
+    await waitFor(() => {
+      expect(screen.getByText(workflowTemplate.title)).toBeInTheDocument();
+      expect(
+        screen.getByText(workflowTemplate.description),
+      ).toBeInTheDocument();
+    });
+
+    await fill(screen.getByLabelText("Search templates"), "no workflow match");
+    await waitFor(() => {
+      expect(screen.getByText("No matches")).toBeInTheDocument();
+    });
+
+    await fill(screen.getByLabelText("Search templates"), "auto-inbox");
+    click(
+      screen.getByLabelText(
+        `Select workflow template ${workflowTemplate.title}`,
+      ),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(
+        screen.getByLabelText(
+          `Remove workflow template ${workflowTemplate.title}`,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("Create this inbox workflow");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(submittedTemplate).toStrictEqual({
+        type: "workflow",
+        selection: { workflowTemplateId: workflowTemplate.id },
+      });
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+      expect(
+        screen.queryByLabelText(
+          `Remove workflow template ${workflowTemplate.title}`,
+        ),
       ).not.toBeInTheDocument();
     });
   });

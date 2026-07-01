@@ -5,6 +5,7 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
 import {
   chatMessagesContract,
@@ -2220,6 +2221,67 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, fresh.runId);
   }, 120_000);
 
+  it("injects workflow templates as one-shot context without merging sticky artifact templates", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    const workflowTemplate = WORKFLOW_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    if (!workflowTemplate) {
+      throw new Error("Expected a registered workflow template");
+    }
+
+    const sticky = await sendChatRun(actor, {
+      agentId,
+      prompt: "draw a labeled inbox",
+      generationTemplate: {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      },
+    });
+    const stickyPrompt = (await api.readRun(actor, sticky.runId))
+      .appendSystemPrompt;
+    expect(stickyPrompt).toContain("# Artifact Template Context");
+    expect(stickyPrompt).toContain(style.illustrationStyleId);
+    await cancelChatRun(actor, sticky.runId);
+
+    const workflow = await sendChatRun(actor, {
+      agentId,
+      threadId: sticky.threadId,
+      prompt: "create the workflow version",
+      generationTemplate: {
+        type: "workflow",
+        selection: { workflowTemplateId: workflowTemplate.id },
+      },
+    });
+    const workflowPrompt = (await api.readRun(actor, workflow.runId))
+      .appendSystemPrompt;
+    expect(workflowPrompt).toContain("# Workflow Template Context");
+    expect(workflowPrompt).toContain(
+      `Auto-inbox label (${workflowTemplate.id})`,
+    );
+    expect(workflowPrompt).toContain("Use the workflow-setup skill");
+    expect(workflowPrompt).toContain("Gmail label-applied automation");
+    expect(workflowPrompt).not.toContain("# Artifact Template Context");
+    expect(workflowPrompt).not.toContain(style.illustrationStyleId);
+    await cancelChatRun(actor, workflow.runId);
+
+    const followUp = await sendChatRun(actor, {
+      agentId,
+      threadId: sticky.threadId,
+      prompt: "continue the thread",
+    });
+    const followUpPrompt = (await api.readRun(actor, followUp.runId))
+      .appendSystemPrompt;
+    expect(followUpPrompt).not.toContain("# Workflow Template Context");
+    expect(followUpPrompt).not.toContain(workflowTemplate.id);
+    expect(followUpPrompt).toContain("# Artifact Template Context");
+    expect(followUpPrompt).toContain(style.illustrationStyleId);
+    await cancelChatRun(actor, followUp.runId);
+  }, 120_000);
+
   it("rejects unknown generation template selections", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
@@ -2282,6 +2344,13 @@ describe("CHAT-02: generation templates and attachments", () => {
           selection: { stylePresetId: "video-style:missing" },
         },
         message: "Unknown video template",
+      },
+      {
+        generationTemplate: {
+          type: "workflow",
+          selection: { workflowTemplateId: "workflow-template:missing" },
+        },
+        message: "Unknown workflow template",
       },
     ];
     for (const arm of arms) {
