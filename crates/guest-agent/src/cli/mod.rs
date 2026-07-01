@@ -29,13 +29,10 @@ mod process_group;
 mod termination;
 
 pub use codex_app_server_events::{CodexAppServerEventError, notification_to_codex_event};
-pub use codex_setup::{setup_codex, setup_codex_for_config};
-pub use command::build_cli_command;
+pub use codex_setup::setup_codex_for_config;
 pub use framework::{ClaudeResultStatus, ClaudeResultSummary};
 
-use crate::active_input::{
-    ActiveInputController, ActiveInputRuntime, ActiveInputWriter, ReplayUserEventAction,
-};
+use crate::active_input::{ActiveInputController, ActiveInputWriter, ReplayUserEventAction};
 use crate::constants;
 use crate::env;
 use crate::error::AgentError;
@@ -56,7 +53,9 @@ use std::path::Path;
 use std::pin::Pin;
 use std::process::{ExitStatus, Stdio};
 use std::time::{Duration, Instant};
-use termination::{CliTerminationRuntime, ControlTerminationLog, TerminationReason};
+use termination::{
+    CliTerminationRuntime, ControlTerminationLog, PostResultCleanupPolicy, TerminationReason,
+};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
 use tokio::time::Sleep;
@@ -145,16 +144,17 @@ async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
 pub struct CliFailureDiagnostic {
     /// Terminal failure message selected from CLI stdout JSONL.
     ///
-    /// When produced by [`execute_cli`], this message has already been
-    /// secret-masked, line-break escaped, and bounded before exposure.
+    /// When produced by [`execute_cli_with_active_input_for_config`], this
+    /// message has already been secret-masked, line-break escaped, and bounded
+    /// before exposure.
     pub message: String,
 
     /// High-level source of the stdout-derived failure detail.
     ///
-    /// Values produced by [`execute_cli`] use `ClaudeResult` for Claude Code
-    /// terminal result events and `CodexJsonl` for Codex JSONL failure events.
-    /// The final run diagnostic may still prefer stderr when this stdout
-    /// message is generic.
+    /// Values produced by [`execute_cli_with_active_input_for_config`] use
+    /// `ClaudeResult` for Claude Code terminal result events and `CodexJsonl`
+    /// for Codex JSONL failure events. The final run diagnostic may still
+    /// prefer stderr when this stdout message is generic.
     pub source: FailureDetailSource,
 
     /// Optional structured failure reason parsed from supported CLI payloads.
@@ -224,15 +224,15 @@ pub struct CliExecutionResult {
     pub cli_termination: Option<CliTerminationDiagnostic>,
 }
 
-/// Heartbeat completion signal observed by [`execute_cli`].
+/// Heartbeat completion signal observed by CLI execution.
 ///
 /// The top-level guest-agent owns the heartbeat task handle so shutdown can
-/// stop it before final telemetry. `execute_cli` only needs this one-shot
+/// stop it before final telemetry. CLI execution only needs this one-shot
 /// status while the CLI process is running.
 pub enum HeartbeatStatus {
     /// The heartbeat loop returned an error while CLI execution was running.
     ///
-    /// `execute_cli` treats this as a guest-agent control-path failure and may
+    /// CLI execution treats this as a guest-agent control-path failure and may
     /// terminate the CLI process group so final diagnostics can report the
     /// heartbeat failure.
     Failed(AgentError),
@@ -274,10 +274,12 @@ pub(super) struct CliRuntimeConfig<'a> {
     mock_codex_path: Cow<'a, str>,
     home_dir: Cow<'a, str>,
     api_url: Cow<'a, str>,
+    api_start_time: Cow<'a, str>,
     openai_model: Cow<'a, str>,
     openai_base_url: Cow<'a, str>,
     codex_oauth_mode: bool,
     stuck_tool_timeout_secs: u64,
+    post_result_cleanup_policy: PostResultCleanupPolicy,
     agent_log_file: Cow<'a, str>,
     session_id_file: Cow<'a, str>,
     session_history_path_file: Cow<'a, str>,
@@ -303,82 +305,21 @@ impl<'a> CliRuntimeConfig<'a> {
             mock_codex_path: Cow::Borrowed(&config.mock_codex_path),
             home_dir: Cow::Borrowed(&config.home_dir),
             api_url: Cow::Borrowed(&config.api_url),
+            api_start_time: Cow::Borrowed(&config.api_start_time),
             openai_model: Cow::Borrowed(user_env_value(&config.user_env, "OPENAI_MODEL")),
             openai_base_url: Cow::Borrowed(user_env_value(&config.user_env, "OPENAI_BASE_URL")),
             codex_oauth_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty(),
             stuck_tool_timeout_secs: config.stuck_tool_timeout_secs,
+            post_result_cleanup_policy: PostResultCleanupPolicy::new(
+                config.post_result_sigterm_grace,
+                config.post_result_total_cap,
+                config.post_result_sigkill_grace,
+            ),
             agent_log_file: Cow::Borrowed(paths.agent_log_file()),
             session_id_file: Cow::Borrowed(paths.session_id_file()),
             session_history_path_file: Cow::Borrowed(paths.session_history_path_file()),
             event_error_flag: Cow::Borrowed(paths.event_error_flag()),
             user_env: &config.user_env,
-        }
-    }
-
-    fn from_legacy_env(framework: env::Framework) -> Self {
-        let is_claude = matches!(framework, env::Framework::ClaudeCode);
-        let is_codex = matches!(framework, env::Framework::Codex);
-        let use_mock_claude = is_claude && env::use_mock_claude();
-        let use_mock_codex = is_codex && env::use_mock_codex();
-        let use_codex_app_server_backend = is_codex && env::use_codex_app_server_backend();
-        let paths = paths::legacy_paths_from_process_env();
-        Self {
-            framework,
-            run_id: Cow::Borrowed(env::run_id()),
-            prompt: Cow::Borrowed(env::prompt()),
-            resume_session_id: Cow::Borrowed(env::resume_session_id()),
-            append_system_prompt: Cow::Borrowed(env::append_system_prompt()),
-            disallowed_tools: if is_claude {
-                Cow::Borrowed(env::disallowed_tools())
-            } else {
-                Cow::Borrowed("")
-            },
-            tools: if is_claude {
-                Cow::Borrowed(env::tools())
-            } else {
-                Cow::Borrowed("")
-            },
-            settings: if is_claude {
-                Cow::Borrowed(env::settings())
-            } else {
-                Cow::Borrowed("")
-            },
-            use_mock_claude,
-            mock_claude_path: if use_mock_claude {
-                Cow::Owned(env::mock_claude_path())
-            } else {
-                Cow::Borrowed("")
-            },
-            use_mock_codex,
-            use_codex_app_server_backend,
-            mock_codex_path: if use_mock_codex {
-                Cow::Owned(env::mock_codex_path())
-            } else {
-                Cow::Borrowed("")
-            },
-            home_dir: Cow::Borrowed(env::home_dir()),
-            api_url: Cow::Owned(child_env::runner_visible_api_url_from_process_env()),
-            openai_model: if is_codex {
-                Cow::Borrowed(env::openai_model())
-            } else {
-                Cow::Borrowed("")
-            },
-            openai_base_url: if is_codex {
-                Cow::Borrowed(env::openai_base_url())
-            } else {
-                Cow::Borrowed("")
-            },
-            codex_oauth_mode: is_codex && env::is_codex_oauth_mode(),
-            stuck_tool_timeout_secs: if is_claude {
-                env::stuck_tool_timeout_secs()
-            } else {
-                constants::STUCK_TOOL_TIMEOUT_SECS
-            },
-            agent_log_file: Cow::Owned(paths.agent_log_file().to_string()),
-            session_id_file: Cow::Owned(paths.session_id_file().to_string()),
-            session_history_path_file: Cow::Owned(paths.session_history_path_file().to_string()),
-            event_error_flag: Cow::Owned(paths.event_error_flag().to_string()),
-            user_env: env::user_env(),
         }
     }
 
@@ -405,6 +346,7 @@ enum ParsedEventAction {
 struct CliEventIngestor {
     seq: u32,
     run_id: String,
+    api_start_time: String,
     last_read_event_at: Option<Instant>,
     session_metadata_capture: events::SessionMetadataCapture,
     failure_diagnostic: Option<CliFailureDiagnostic>,
@@ -415,6 +357,7 @@ impl CliEventIngestor {
         Self {
             seq: 0,
             run_id: runtime.run_id.to_string(),
+            api_start_time: runtime.api_start_time.to_string(),
             last_read_event_at: None,
             session_metadata_capture: events::SessionMetadataCapture::from_values(
                 runtime.framework,
@@ -448,7 +391,7 @@ impl CliEventIngestor {
         }
         self.last_read_event_at = Some(Instant::now());
         if self.seq == 0 {
-            timing::record_e2e_from_api("api_to_cli_init");
+            timing::record_e2e_from_api_start("api_to_cli_init", &self.api_start_time);
         }
         self.session_metadata_capture.capture_event(event, masker);
 
@@ -521,67 +464,11 @@ impl CliEventIngestor {
     }
 }
 
-/// Execute the CLI process, streaming JSONL events and racing against heartbeat.
-pub async fn execute_cli(
-    masker: &SecretMasker,
-    heartbeat_monitor: HeartbeatMonitor,
-    http: HttpClient,
-) -> Result<CliExecutionResult, AgentError> {
-    let framework = env::Framework::from_env();
-    let active_input =
-        ActiveInputRuntime::new_with_initial_prompt(env::run_id(), false, env::prompt());
-    let runtime = CliRuntimeConfig::from_legacy_env(framework);
-    execute_cli_inner(
-        masker,
-        heartbeat_monitor,
-        http,
-        active_input.into_writer(),
-        &runtime,
-    )
-    .await
-}
-
-/// Execute the CLI process with caller-owned active-input state.
-///
-/// This is the active-input variant of [`execute_cli`]. Use it when the caller
-/// has already created an active-input runtime for the run and needs the
-/// process-control side to feed accepted follow-up user input into the CLI
-/// execution path.
-/// The provided [`ActiveInputWriter`] is consumed for this single CLI
-/// execution.
-///
-/// For Claude stream-json stdin, the initial prompt frame is written first. If
-/// active input is enabled, accepted follow-up user frames are written after the
-/// initial prompt until the active-input terminal closes. When active input is
-/// enabled, internally replayed initial-prompt and follow-up user events are
-/// filtered from outbound API event delivery.
-///
-/// For the experimental Codex app-server backend, active input is delivered through
-/// `turn/steer` for the active turn. Ordinary Codex execution still uses
-/// `codex exec --json` and does not consume active input.
-///
-/// Result collection, event-drain watermarking, heartbeat handling, shutdown,
-/// process-group termination, and error semantics otherwise match
-/// [`execute_cli`].
-pub async fn execute_cli_with_active_input(
-    masker: &SecretMasker,
-    heartbeat_monitor: HeartbeatMonitor,
-    http: HttpClient,
-    active_input: ActiveInputWriter,
-) -> Result<CliExecutionResult, AgentError> {
-    let framework = env::Framework::from_env();
-    let runtime = CliRuntimeConfig::from_legacy_env(framework);
-    execute_cli_inner(masker, heartbeat_monitor, http, active_input, &runtime).await
-}
-
 /// Execute the CLI process using values captured in a [`env::GuestConfig`] and
 /// [`paths::GuestPaths`].
 ///
 /// Production guest-agent bootstrap should prefer this entry point so CLI
 /// setup observes the same immutable runtime snapshot as the rest of the run.
-/// The legacy [`execute_cli`] and [`execute_cli_with_active_input`] wrappers
-/// remain for transitional tests and callers that still use process env
-/// facades.
 pub async fn execute_cli_with_active_input_for_config(
     masker: &SecretMasker,
     heartbeat_monitor: HeartbeatMonitor,
@@ -747,7 +634,8 @@ async fn execute_cli_inner(
     // See: https://github.com/vm0-ai/vm0/issues/11667
     let termination_deadline = tokio::time::sleep(Duration::MAX);
     tokio::pin!(termination_deadline);
-    let mut termination_runtime = CliTerminationRuntime::new(process_group);
+    let mut termination_runtime =
+        CliTerminationRuntime::new(process_group, runtime.post_result_cleanup_policy);
 
     // Stuck-tool watchdog: workaround for Claude Code bug where
     // WebSearch/WebFetch hang indefinitely. Track all in-flight tool calls;
@@ -1412,7 +1300,7 @@ fn with_carried_failure_reason(
 
 #[cfg(test)]
 mod tests {
-    use super::termination::CliTerminationRuntime;
+    use super::termination::{CliTerminationRuntime, PostResultCleanupPolicy};
     use super::{
         CliExitObservation, CliFailureDiagnostic, claude_initial_prompt_frame,
         codex_home_for_home_dir, record_cli_exit, select_failure_diagnostic, set_cli_current_dir,
@@ -1489,7 +1377,14 @@ mod tests {
         tokio::pin!(termination_deadline);
         let drain_deadline = tokio::time::sleep(Duration::MAX);
         tokio::pin!(drain_deadline);
-        let mut runtime = CliTerminationRuntime::new(None);
+        let mut runtime = CliTerminationRuntime::new(
+            None,
+            PostResultCleanupPolicy::new(
+                Duration::from_secs(3),
+                Duration::from_secs(60),
+                Duration::from_secs(1),
+            ),
+        );
         assert!(runtime.arm_post_result_cleanup(false, termination_deadline.as_mut()));
 
         let mut cli_status = None;

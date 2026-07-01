@@ -6,7 +6,6 @@ use crate::content_hash;
 use crate::env;
 use crate::error::AgentError;
 use crate::http::HttpClient;
-use crate::paths;
 use crate::run_context::GuestRuntime;
 use crate::session_history;
 use crate::session_history_identity::{
@@ -120,21 +119,6 @@ impl<'a> CheckpointInputs<'a> {
             session_history_path_file: Cow::Borrowed(runtime.paths.session_history_path_file()),
             final_session_history_identity_file: Cow::Borrowed(
                 runtime.paths.final_session_history_identity_file(),
-            ),
-        }
-    }
-
-    fn from_legacy_env() -> Self {
-        let paths = paths::legacy_paths_from_process_env();
-        Self {
-            run_id: env::run_id(),
-            framework: env::Framework::from_env(),
-            home_dir: env::home_dir(),
-            artifact_entries: env::artifacts(),
-            session_id_file: Cow::Owned(paths.session_id_file().to_string()),
-            session_history_path_file: Cow::Owned(paths.session_history_path_file().to_string()),
-            final_session_history_identity_file: Cow::Owned(
-                paths.final_session_history_identity_file().to_string(),
             ),
         }
     }
@@ -365,22 +349,10 @@ async fn snapshot_artifact_entries(
     Ok(Some(serde_json::Value::Array(results)))
 }
 
-/// Create a checkpoint after a successful run.
-pub async fn create_checkpoint(http: &HttpClient) -> Result<(), AgentError> {
-    let inputs = CheckpointInputs::from_legacy_env();
-    create_checkpoint_with_inputs(http, &inputs).await
-}
-
 /// Create a checkpoint after a successful run using the explicit runtime snapshot.
 pub async fn create_checkpoint_for_runtime(runtime: &GuestRuntime) -> Result<(), AgentError> {
     let inputs = CheckpointInputs::from_runtime(runtime);
     create_checkpoint_with_inputs(&runtime.http, &inputs).await
-}
-
-/// Create a best-effort recovery checkpoint after an abnormal CLI exit.
-pub async fn create_recovery_checkpoint(http: &HttpClient) -> Result<(), AgentError> {
-    let inputs = CheckpointInputs::from_legacy_env();
-    create_recovery_checkpoint_with_inputs(http, &inputs).await
 }
 
 /// Create a best-effort recovery checkpoint using the explicit runtime snapshot.
@@ -676,7 +648,7 @@ fn write_final_session_history_identity(
             return;
         }
     };
-    match paths::write_private(final_session_history_identity_file, bytes) {
+    match crate::paths::write_private(final_session_history_identity_file, bytes) {
         Ok(()) => {
             record_sandbox_op(
                 "session_history_identity_written",
@@ -730,23 +702,26 @@ mod tests {
     use httpmock::prelude::*;
     use std::time::Duration;
 
-    struct CheckpointFilesGuard;
+    struct CheckpointFilesGuard {
+        guest_paths: crate::paths::GuestPaths,
+    }
 
     impl CheckpointFilesGuard {
-        fn new() -> Self {
-            cleanup_checkpoint_files();
-            Self
+        fn new(guest_paths: &crate::paths::GuestPaths) -> Self {
+            cleanup_checkpoint_files(guest_paths);
+            Self {
+                guest_paths: guest_paths.clone(),
+            }
         }
     }
 
     impl Drop for CheckpointFilesGuard {
         fn drop(&mut self) {
-            cleanup_checkpoint_files();
+            cleanup_checkpoint_files(&self.guest_paths);
         }
     }
 
-    fn cleanup_checkpoint_files() {
-        let guest_paths = paths::legacy_paths_from_process_env();
+    fn cleanup_checkpoint_files(guest_paths: &crate::paths::GuestPaths) {
         let _ = std::fs::remove_file(guest_paths.session_id_file());
         let _ = std::fs::remove_file(guest_paths.session_history_path_file());
     }
@@ -994,23 +969,17 @@ mod tests {
     async fn checkpoint_missing_mount_fails_before_final_checkpoint_api_call() {
         let server = MockServer::start();
         let dir = tempfile::tempdir().unwrap();
-        unsafe {
-            std::env::set_var("VM0_RUN_ID", "checkpoint-missing-mount");
-            std::env::set_var(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-                dir.path().join("runtime"),
-            );
-        }
-        let _files_guard = CheckpointFilesGuard::new();
-        let guest_paths = paths::legacy_paths_from_process_env();
+        let guest_paths = crate::paths::GuestPaths::from_runtime_dir(dir.path().join("runtime"));
+        let _files_guard = CheckpointFilesGuard::new(&guest_paths);
         let history_path = dir.path().join("history.jsonl");
+        let home_dir = dir.path().join("home").to_string_lossy().into_owned();
         std::fs::write(&history_path, r#"{"type":"system"}"#).unwrap();
-        paths::write_private(
+        crate::paths::write_private(
             guest_paths.session_id_file(),
             "session-with-missing-artifact",
         )
         .unwrap();
-        paths::write_private(
+        crate::paths::write_private(
             guest_paths.session_history_path_file(),
             history_path.to_string_lossy().as_ref(),
         )
@@ -1050,7 +1019,7 @@ mod tests {
         let inputs = CheckpointInputs {
             run_id: "checkpoint-missing-mount",
             framework: env::Framework::ClaudeCode,
-            home_dir: env::home_dir(),
+            home_dir: &home_dir,
             artifact_entries: &entries,
             session_id_file: guest_paths.session_id_file().into(),
             session_history_path_file: guest_paths.session_history_path_file().into(),

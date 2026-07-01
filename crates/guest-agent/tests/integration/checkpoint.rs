@@ -46,7 +46,11 @@ impl Drop for EnvVarRestore {
     }
 }
 
-fn write_derived_claude_history(session_id: &str, history: &str) -> Result<(), String> {
+fn write_derived_claude_history(
+    home_dir: &str,
+    session_id: &str,
+    history: &str,
+) -> Result<(), String> {
     let (session_id_file, _) = session_file_paths();
     guest_agent::paths::write_private(&session_id_file, session_id)
         .map_err(|e| format!("write session id: {e}"))?;
@@ -54,7 +58,7 @@ fn write_derived_claude_history(session_id: &str, history: &str) -> Result<(), S
         .strip_prefix('/')
         .unwrap_or(guest_agent::paths::CANONICAL_WORKING_DIR)
         .replace('/', "-");
-    let history_path = std::path::Path::new(guest_agent::env::home_dir())
+    let history_path = std::path::Path::new(home_dir)
         .join(".claude")
         .join("projects")
         .join(format!("-{project_name}"))
@@ -415,7 +419,7 @@ async fn assert_recovery_checkpoint_derives_claude_history_marker(
         guest_agent::paths::write_private(&session_history_path_file, "")
             .map_err(|e| format!("write empty history marker: {e}"))?;
     }
-    write_derived_claude_history(session_id, &history)?;
+    write_derived_claude_history(&runtime.config.home_dir, session_id, &history)?;
 
     let prepare_mock = server.mock(|when, then| {
         when.method(POST)

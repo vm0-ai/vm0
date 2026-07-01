@@ -46,13 +46,6 @@ struct Matcher {
 }
 
 impl SecretMasker {
-    /// Build a masker from the `VM0_SECRET_VALUES` environment variable.
-    pub fn from_env() -> Self {
-        let masker = Self::from_raw(env::secret_values());
-        masker.add_sensitive_value(env::resume_session_id());
-        masker
-    }
-
     /// Build a masker from an owned guest-agent config.
     pub fn from_config(config: &env::GuestConfig) -> Self {
         let masker = Self::from_raw(&config.secret_values);

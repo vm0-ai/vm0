@@ -18,7 +18,6 @@
 //! could skew these values with no way for the runner to correct them. Do
 //! not treat either field as authoritative for security decisions.
 
-use crate::env;
 use crate::http::HttpClient;
 use guest_common::{log_info, log_warn};
 use serde::Serialize;
@@ -43,8 +42,8 @@ fn as_optional(value: &str) -> Option<&str> {
 }
 
 /// Report a successful run to the host. Only called after
-/// `checkpoint::create_checkpoint()` returns Ok, which guarantees the
-/// `checkpoints` row exists so the complete route can build `RunResult`.
+/// `checkpoint::create_checkpoint_for_runtime()` returns Ok, which guarantees
+/// the `checkpoints` row exists so the complete route can build `RunResult`.
 ///
 /// `sandbox_id` and `sandbox_reuse_result` are relayed analytics values;
 /// empty strings are serialized as absent so an unset env var is equivalent
@@ -56,22 +55,6 @@ fn as_optional(value: &str) -> Option<&str> {
 ///
 /// Fire-and-forget. Returns `()` and never propagates errors — the runner's
 /// fallback call covers any failure here.
-pub async fn report_success(
-    http: &HttpClient,
-    sandbox_id: &str,
-    sandbox_reuse_result: &str,
-    last_event_sequence: Option<u32>,
-) {
-    report_success_for_run(
-        http,
-        env::run_id(),
-        sandbox_id,
-        sandbox_reuse_result,
-        last_event_sequence,
-    )
-    .await;
-}
-
 /// Report a successful run using an explicitly supplied run id.
 pub async fn report_success_for_run(
     http: &HttpClient,

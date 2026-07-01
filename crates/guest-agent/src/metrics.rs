@@ -4,7 +4,6 @@
 //! `libc::statvfs` for disk. Writes JSONL to the metrics log file.
 
 use crate::constants;
-use crate::paths;
 use serde::Serialize;
 use std::io::Write;
 use std::time::Duration;
@@ -173,12 +172,6 @@ fn write_metrics_entry(metrics_log_file: &str, entry: &MetricsEntry) {
     {
         let _ = writeln!(f, "{json}");
     }
-}
-
-/// Background loop writing metrics JSONL every `METRICS_INTERVAL_SECS`.
-pub async fn metrics_loop(shutdown: CancellationToken) {
-    let paths = paths::legacy_paths_from_process_env();
-    metrics_loop_for_path(shutdown, paths.metrics_log_file().to_string()).await;
 }
 
 /// Background loop writing metrics JSONL to an explicit runtime metrics file.

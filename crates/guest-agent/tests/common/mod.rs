@@ -507,8 +507,8 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
 
 /// Configure one test binary for the experimental Codex app-server backend.
 ///
-/// Must be called before building a `GuestRuntime` or using legacy env accessors
-/// because those APIs capture process env at initialization time.
+/// Must be called before building a `GuestRuntime` because runtime bootstrap
+/// captures the process env snapshot.
 ///
 /// # Safety
 /// Callers must use this from a single-test integration binary before any other
@@ -573,8 +573,8 @@ fn read_codex_session_history_events_for_path(
 }
 
 /// Configure the process environment for a reap test. Must be called before
-/// building a `GuestRuntime` or using legacy env accessors because those APIs
-/// capture process env at initialization time.
+/// building a `GuestRuntime` because runtime bootstrap captures the process env
+/// snapshot.
 ///
 /// `prompt` decides which mock-claude test prefix runs:
 /// - `@hang-after-result` → SIGTERM path

@@ -1,10 +1,5 @@
 //! Codex setup should write API-key auth.json without invoking external Codex.
 //!
-//! This test lives in its own binary because `guest_agent::env` caches values
-//! in process-wide `LazyLock`s.
-
-mod common;
-
 use guest_agent::masker::SecretMasker;
 use serde_json::Value;
 #[cfg(unix)]
@@ -38,22 +33,22 @@ async fn api_key_setup_writes_auth_without_invoking_codex() -> TestResult {
     let path = format!("{}:{original_path}", bin_dir.display());
 
     unsafe {
-        common::clear_guest_agent_bootstrap_env_for_test();
-        std::env::set_var("CLI_AGENT_TYPE", "codex");
-        std::env::set_var(guest_contracts::env::RUN_ID_ENV, "codex-setup-api-key");
-        std::env::set_var(guest_contracts::env::USER_ENV_FILE_ENV, &user_env_path);
-        std::env::set_var(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-            &runtime_dir,
-        );
-        std::env::set_var("HOME", tmp.path());
         std::env::set_var("PATH", path);
     }
+
+    let config = guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
+        run_id: "codex-setup-api-key".to_string(),
+        cli_agent_type: "codex".to_string(),
+        user_env_file: user_env_path.to_string_lossy().into_owned(),
+        guest_runtime_dir: Some(runtime_dir),
+        home: Some(tmp.path().to_string_lossy().into_owned()),
+        ..Default::default()
+    })?;
 
     let masker = SecretMasker::from_raw("");
     tokio::time::timeout(
         Duration::from_secs(2),
-        guest_agent::cli::setup_codex(&masker),
+        guest_agent::cli::setup_codex_for_config(&masker, &config),
     )
     .await
     .expect("codex auth setup should return promptly")?;

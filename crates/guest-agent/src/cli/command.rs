@@ -10,24 +10,6 @@ use guest_common::log_info;
 
 use super::{CliRuntimeConfig, LOG_TAG};
 
-/// Build the CLI command + args based on `CLI_AGENT_TYPE`.
-pub fn build_cli_command() -> Result<Vec<String>, AgentError> {
-    build_cli_command_for_framework(env::Framework::from_env(), false)
-}
-
-pub(super) fn build_cli_command_for_framework(
-    framework: env::Framework,
-    replay_user_messages: bool,
-) -> Result<Vec<String>, AgentError> {
-    match framework {
-        env::Framework::ClaudeCode => Ok(build_claude_command(
-            env::use_mock_claude(),
-            replay_user_messages,
-        )),
-        env::Framework::Codex => Ok(build_codex_command(env::use_mock_codex())),
-    }
-}
-
 pub(super) fn build_cli_command_for_runtime(
     runtime: &CliRuntimeConfig<'_>,
     replay_user_messages: bool,
@@ -119,22 +101,6 @@ fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
     }
 
     args
-}
-
-fn build_claude_command(use_mock: bool, replay_user_messages: bool) -> Vec<String> {
-    let mock_claude_path = use_mock.then(env::mock_claude_path);
-    build_claude_command_with_config(
-        use_mock,
-        mock_claude_path.as_deref().unwrap_or(""),
-        ClaudeArgsConfig {
-            resume_id: env::resume_session_id(),
-            append_system_prompt: env::append_system_prompt(),
-            disallowed_tools: env::disallowed_tools(),
-            tools: env::tools(),
-            settings: env::settings(),
-            replay_user_messages,
-        },
-    )
 }
 
 fn build_claude_command_with_config(
@@ -264,19 +230,6 @@ fn build_codex_args(
     args
 }
 
-fn build_codex_command(use_mock: bool) -> Vec<String> {
-    let mock_codex_path = use_mock.then(env::mock_codex_path);
-    build_codex_command_with_config(
-        use_mock,
-        mock_codex_path.as_deref().unwrap_or(""),
-        env::openai_model(),
-        env::openai_base_url(),
-        env::resume_session_id(),
-        env::append_system_prompt(),
-        env::prompt(),
-    )
-}
-
 fn build_codex_command_with_config(
     use_mock: bool,
     mock_codex_path: &str,
@@ -355,7 +308,22 @@ mod tests {
     fn build_claude_command_for_test(use_mock: bool) -> Vec<String> {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
-        build_claude_command(use_mock, true)
+        build_claude_command_with_config(
+            use_mock,
+            if use_mock {
+                env::DEFAULT_MOCK_CLAUDE_PATH
+            } else {
+                ""
+            },
+            ClaudeArgsConfig {
+                resume_id: "",
+                append_system_prompt: "",
+                disallowed_tools: "",
+                tools: "",
+                settings: "",
+                replay_user_messages: true,
+            },
+        )
     }
 
     fn assert_claude_prompt_is_not_positional(args: &[String], prompt: &str) {
@@ -446,11 +414,8 @@ mod tests {
     #[test]
     fn build_claude_command_uses_mock_binary() {
         // Unit tests run in the lib-test binary where
-        // `VM0_MOCK_CLAUDE_PATH` is unset, so `env::mock_claude_path()`
-        // falls through to `DEFAULT_MOCK_CLAUDE_PATH`. Asserting
-        // against the const (not the accessor) catches regressions in
-        // the default path itself — the previous form compared the
-        // accessor against itself and was tautological.
+        // Asserting against the const catches regressions in the default path
+        // itself.
         let cmd = build_claude_command_for_test(true);
         assert_eq!(cmd[0], env::DEFAULT_MOCK_CLAUDE_PATH);
     }
@@ -491,7 +456,19 @@ mod tests {
     fn build_codex_command_for_test(use_mock: bool) -> Vec<String> {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
-        build_codex_command(use_mock)
+        build_codex_command_with_config(
+            use_mock,
+            if use_mock {
+                env::DEFAULT_MOCK_CODEX_PATH
+            } else {
+                ""
+            },
+            "",
+            "",
+            "",
+            "",
+            "",
+        )
     }
 
     #[test]

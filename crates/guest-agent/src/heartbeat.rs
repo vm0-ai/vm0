@@ -5,7 +5,6 @@
 //! via `tokio::select!`.
 
 use crate::constants;
-use crate::env;
 use crate::error::AgentError;
 use crate::http::HttpClient;
 use guest_common::{log_error, log_info, log_warn};
@@ -22,22 +21,6 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 ///
 /// The caller should race this against CLI execution so that a network
 /// failure terminates the run early.
-pub async fn heartbeat_loop(
-    http: HttpClient,
-    shutdown: CancellationToken,
-) -> Result<(), AgentError> {
-    heartbeat_loop_for_run(env::run_id().to_string(), http, shutdown).await
-}
-
-/// Like [`heartbeat_loop`] but with a configurable interval.
-pub async fn heartbeat_loop_with_interval(
-    http: HttpClient,
-    shutdown: CancellationToken,
-    interval: Duration,
-) -> Result<(), AgentError> {
-    heartbeat_loop_for_run_with_interval(env::run_id().to_string(), http, shutdown, interval).await
-}
-
 /// Run the heartbeat loop for an explicitly supplied run id.
 pub async fn heartbeat_loop_for_run(
     run_id: String,
