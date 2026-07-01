@@ -19,14 +19,6 @@ class UsageReportingContext:
         self.api_url = api_url
         self.proxy_log_path = proxy_log_path
 
-    def __repr__(self) -> str:
-        return (
-            "UsageReportingContext("
-            f"sandbox_token={'<present>' if self.sandbox_token else '<missing>'}, "
-            f"api_url={self.api_url!r}, "
-            f"proxy_log_path={self.proxy_log_path!r})"
-        )
-
     @property
     def missing_sandbox_token(self) -> bool:
         return not bool(self.sandbox_token)
