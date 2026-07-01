@@ -614,7 +614,9 @@ describe("connectors page", () => {
     click(menuItemByText("All"));
 
     await expectConnectorCardsVisible({ github: true, asana: true });
-    expect(search()).toBe("?keywords=connect");
+    const params = new URLSearchParams(search());
+    expect(params.get("keywords")).toBe("connect");
+    expect(params.has("connection")).toBe(false);
   });
 
   it("filters connectors by agent when access management is enabled", async () => {
