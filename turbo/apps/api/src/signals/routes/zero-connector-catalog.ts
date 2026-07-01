@@ -63,7 +63,11 @@ const listConnectorCatalogStatusInner$ = command(
     signal.throwIfAborted();
 
     const connectorState = await get(
-      zeroConnectorList({ orgId: auth.orgId, userId: auth.userId }),
+      zeroConnectorList({
+        orgId: auth.orgId,
+        userId: auth.userId,
+        featureStates: context.featureStates,
+      }),
     );
     signal.throwIfAborted();
 

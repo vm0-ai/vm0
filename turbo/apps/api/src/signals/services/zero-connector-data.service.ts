@@ -417,39 +417,49 @@ function omittedManualGrantFieldNames(
 export function zeroConnectorList(args: {
   readonly orgId: string;
   readonly userId: string;
+  readonly featureStates?: FeatureStates;
 }): Computed<Promise<ConnectorListResponse>> {
   return computed(async (get): Promise<ConnectorListResponse> => {
     const db = get(db$);
-    const [storedRows, overrides] = await Promise.all([
-      db
-        .select({
-          id: connectors.id,
-          type: connectors.type,
-          authMethod: connectors.authMethod,
-          externalId: connectors.externalId,
-          externalUsername: connectors.externalUsername,
-          externalEmail: connectors.externalEmail,
-          oauthScopes: connectors.oauthScopes,
-          needsReconnect: connectors.needsReconnect,
-          reconnectReason: connectors.reconnectReason,
-          tokenExpiresAt: connectors.tokenExpiresAt,
-          createdAt: connectors.createdAt,
-          updatedAt: connectors.updatedAt,
-        })
-        .from(connectors)
-        .where(
-          and(
-            eq(connectors.orgId, args.orgId),
-            eq(connectors.userId, args.userId),
-          ),
+    const storedRowsPromise = db
+      .select({
+        id: connectors.id,
+        type: connectors.type,
+        authMethod: connectors.authMethod,
+        externalId: connectors.externalId,
+        externalUsername: connectors.externalUsername,
+        externalEmail: connectors.externalEmail,
+        oauthScopes: connectors.oauthScopes,
+        needsReconnect: connectors.needsReconnect,
+        reconnectReason: connectors.reconnectReason,
+        tokenExpiresAt: connectors.tokenExpiresAt,
+        createdAt: connectors.createdAt,
+        updatedAt: connectors.updatedAt,
+      })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
         ),
-      get(userFeatureSwitchOverrides(args.orgId, args.userId)),
+      );
+    const featureStatesPromise = (async () => {
+      if (args.featureStates) {
+        return args.featureStates;
+      }
+      const overrides = await get(
+        userFeatureSwitchOverrides(args.orgId, args.userId),
+      );
+      return getAllFeatureStates({
+        userId: args.userId,
+        orgId: args.orgId,
+        overrides,
+      });
+    })();
+    const [storedRows, featureStates] = await Promise.all([
+      storedRowsPromise,
+      featureStatesPromise,
     ]);
-    const featureStates = getAllFeatureStates({
-      userId: args.userId,
-      orgId: args.orgId,
-      overrides,
-    });
 
     const now = nowDate();
     const connectorList: ConnectorResponse[] = storedRows.flatMap((row) => {
