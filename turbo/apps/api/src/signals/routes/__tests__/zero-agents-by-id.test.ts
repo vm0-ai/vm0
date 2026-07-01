@@ -13,10 +13,12 @@ import {
 } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 
 const context = testContext();
 const bdd = createBddApi(context);
 const api = createRunsAutomationsApi(context);
+const storages = createStoragesBddApi(context);
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
@@ -28,6 +30,45 @@ function agentsClient() {
 
 function bearerHeaders(token: string): { readonly authorization: string } {
   return { authorization: `Bearer ${token}` };
+}
+
+function commandInput(command: unknown): Record<string, unknown> {
+  if (
+    typeof command === "object" &&
+    command !== null &&
+    "input" in command &&
+    typeof command.input === "object" &&
+    command.input !== null
+  ) {
+    return command.input as Record<string, unknown>;
+  }
+  return {};
+}
+
+function s3DeletedObjectKeys(): readonly string[] {
+  return context.mocks.s3.send.mock.calls.flatMap(([command]) => {
+    const input = commandInput(command);
+    const request = input.Delete;
+    if (
+      typeof request !== "object" ||
+      request === null ||
+      !("Objects" in request) ||
+      !Array.isArray(request.Objects)
+    ) {
+      return [];
+    }
+    return request.Objects.flatMap((object) => {
+      if (
+        typeof object === "object" &&
+        object !== null &&
+        "Key" in object &&
+        typeof object.Key === "string"
+      ) {
+        return [object.Key];
+      }
+      return [];
+    });
+  });
 }
 
 async function createAgent(
@@ -334,6 +375,70 @@ describe("DELETE /api/zero/agents/:id", () => {
         code: "NOT_FOUND",
       },
     });
+  });
+
+  it("sweeps the agent instructions volume after deleting the agent", async () => {
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected org-scoped actor");
+    }
+    const baselineVolumes = await storages.listStorages(actor, "volume");
+    const agent = await createAgent(actor, {
+      displayName: "Sweep Agent",
+    });
+
+    const volumesAfterCreate = await storages.listStorages(actor, "volume");
+    const createdVolumes = volumesAfterCreate.filter((volume) => {
+      return !baselineVolumes.some((baseline) => {
+        return baseline.name === volume.name;
+      });
+    });
+    expect(createdVolumes).toHaveLength(1);
+    const instructionsVolume = createdVolumes[0];
+    if (!instructionsVolume) {
+      throw new Error("Expected an instructions volume");
+    }
+
+    let listedPrefix = "";
+    context.mocks.s3.send.mockClear();
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      const input = commandInput(command);
+      if (typeof input.Prefix === "string") {
+        listedPrefix = input.Prefix;
+        return Promise.resolve({
+          Contents: [
+            {
+              Key: `${input.Prefix}v1/archive.tar.gz`,
+              Size: 1024,
+              LastModified: new Date("2025-01-01T00:00:00.000Z"),
+            },
+            {
+              Key: `${input.Prefix}v1/manifest.json`,
+              Size: 256,
+              LastModified: new Date("2025-01-01T00:00:00.000Z"),
+            },
+          ],
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    await bdd.deleteAgent(actor, agent.agentId);
+
+    const expectedListPrefix = `${actor.orgId}/volume/${
+      instructionsVolume.name
+    }/`;
+    expect(listedPrefix).toBe(expectedListPrefix);
+    expect(s3DeletedObjectKeys()).toStrictEqual([
+      `${expectedListPrefix}v1/archive.tar.gz`,
+      `${expectedListPrefix}v1/manifest.json`,
+    ]);
+    const afterVolumes = await storages.listStorages(actor, "volume");
+    expect(
+      afterVolumes.some((volume) => {
+        return volume.name === instructionsVolume.name;
+      }),
+    ).toBeFalsy();
   });
 
   it("allows an owner API key to delete a private agent", async () => {

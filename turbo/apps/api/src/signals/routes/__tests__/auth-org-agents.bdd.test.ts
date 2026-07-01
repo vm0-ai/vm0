@@ -974,7 +974,7 @@ describe("COMPOSE-01", () => {
     expectApiError(crossOrg.body);
     expect(crossOrg.body.error.code).toBe("NOT_FOUND");
 
-    await api.deleteZeroCompose(admin, created.composeId);
+    await api.deleteAgent(admin, created.composeId);
     const deleted = await api.requestReadComposeById(
       admin,
       created.composeId,
