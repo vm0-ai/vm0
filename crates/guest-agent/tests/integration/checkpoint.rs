@@ -13,6 +13,14 @@ fn runtime_from_process_env() -> Result<guest_agent::run_context::GuestRuntime, 
     guest_agent::run_context::GuestRuntime::from_process_env()
 }
 
+fn session_file_paths() -> (String, String) {
+    let paths = shared_guest_paths();
+    (
+        paths.session_id_file().to_string(),
+        paths.session_history_path_file().to_string(),
+    )
+}
+
 struct EnvVarRestore {
     key: &'static str,
     value: Option<OsString>,
@@ -39,7 +47,8 @@ impl Drop for EnvVarRestore {
 }
 
 fn write_derived_claude_history(session_id: &str, history: &str) -> Result<(), String> {
-    guest_agent::paths::write_private(guest_agent::paths::session_id_file(), session_id)
+    let (session_id_file, _) = session_file_paths();
+    guest_agent::paths::write_private(&session_id_file, session_id)
         .map_err(|e| format!("write session id: {e}"))?;
     let project_name = guest_agent::paths::CANONICAL_WORKING_DIR
         .strip_prefix('/')
@@ -64,14 +73,15 @@ fn write_literal_session_history(
     session_id: &str,
     history: &[u8],
 ) -> Result<tempfile::TempDir, String> {
+    let (session_id_file, session_history_path_file) = session_file_paths();
     let dir = tempfile::tempdir().map_err(|e| format!("create temp history dir: {e}"))?;
     let history_path = dir.path().join(format!("{session_id}.jsonl"));
     std::fs::write(&history_path, history)
         .map_err(|e| format!("write history {}: {e}", history_path.display()))?;
-    guest_agent::paths::write_private(guest_agent::paths::session_id_file(), session_id)
+    guest_agent::paths::write_private(&session_id_file, session_id)
         .map_err(|e| format!("write session id: {e}"))?;
     guest_agent::paths::write_private(
-        guest_agent::paths::session_history_path_file(),
+        &session_history_path_file,
         history_path.to_string_lossy().as_ref(),
     )
     .map_err(|e| format!("write session history marker: {e}"))?;
@@ -338,10 +348,10 @@ async fn recovery_checkpoint_uploads_valid_session_history() {
     let history_path = dir.path().join("history.jsonl");
     let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant"}"# + "\n";
     std::fs::write(&history_path, &history).unwrap();
-    guest_agent::paths::write_private(guest_agent::paths::session_id_file(), "recovery-session")
-        .unwrap();
+    let (session_id_file, session_history_path_file) = session_file_paths();
+    guest_agent::paths::write_private(&session_id_file, "recovery-session").unwrap();
     guest_agent::paths::write_private(
-        guest_agent::paths::session_history_path_file(),
+        &session_history_path_file,
         history_path.to_string_lossy().as_ref(),
     )
     .unwrap();
@@ -401,7 +411,8 @@ async fn assert_recovery_checkpoint_derives_claude_history_marker(
     };
     let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant"}"# + "\n";
     if seed_empty_marker {
-        guest_agent::paths::write_private(guest_agent::paths::session_history_path_file(), "")
+        let (_, session_history_path_file) = session_file_paths();
+        guest_agent::paths::write_private(&session_history_path_file, "")
             .map_err(|e| format!("write empty history marker: {e}"))?;
     }
     write_derived_claude_history(session_id, &history)?;
@@ -476,10 +487,10 @@ async fn recovery_checkpoint_rejects_partial_jsonl_without_error_file() {
         r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant""#,
     )
     .unwrap();
-    guest_agent::paths::write_private(guest_agent::paths::session_id_file(), "partial-session")
-        .unwrap();
+    let (session_id_file, session_history_path_file) = session_file_paths();
+    guest_agent::paths::write_private(&session_id_file, "partial-session").unwrap();
     guest_agent::paths::write_private(
-        guest_agent::paths::session_history_path_file(),
+        &session_history_path_file,
         history_path.to_string_lossy().as_ref(),
     )
     .unwrap();
@@ -589,8 +600,8 @@ async fn recovery_checkpoint_skips_when_derived_history_is_missing() {
 
     let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
-    guest_agent::paths::write_private(guest_agent::paths::session_id_file(), "missing-history")
-        .unwrap();
+    let (session_id_file, _) = session_file_paths();
+    guest_agent::paths::write_private(&session_id_file, "missing-history").unwrap();
 
     let prepare_mock = server.mock(|when, then| {
         when.method(POST)
@@ -624,8 +635,8 @@ async fn recovery_checkpoint_rejects_invalid_session_id_without_marker() {
 
     let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
-    guest_agent::paths::write_private(guest_agent::paths::session_id_file(), "../unsafe-session")
-        .unwrap();
+    let (session_id_file, _) = session_file_paths();
+    guest_agent::paths::write_private(&session_id_file, "../unsafe-session").unwrap();
 
     let prepare_mock = server.mock(|when, then| {
         when.method(POST)

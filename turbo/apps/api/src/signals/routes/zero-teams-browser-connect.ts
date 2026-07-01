@@ -29,12 +29,73 @@ function appRedirect(path: string): Response {
   return redirectResponse(`${env("APP_URL")}${path}`);
 }
 
-function connectError(message: string): Response {
-  return appRedirect(`/settings/teams?error=${encodeURIComponent(message)}`);
+function teamsSettingsParams(
+  query: {
+    readonly tenantId?: string;
+    readonly teamsUserId?: string;
+    readonly displayName?: string;
+    readonly upn?: string;
+    readonly conversationId?: string;
+    readonly channelId?: string;
+    readonly threadId?: string;
+    readonly orgId?: string;
+  },
+  extras: Readonly<Record<string, string | null | undefined>>,
+): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(extras)) {
+    if (value) {
+      params.set(key, value);
+    }
+  }
+  if (query.tenantId) {
+    params.set("tenantId", query.tenantId);
+  }
+  if (query.teamsUserId) {
+    params.set("teamsUserId", query.teamsUserId);
+  }
+  if (query.displayName) {
+    params.set("displayName", query.displayName);
+  }
+  if (query.upn) {
+    params.set("upn", query.upn);
+  }
+  if (query.conversationId) {
+    params.set("conversationId", query.conversationId);
+  }
+  if (query.channelId) {
+    params.set("channelId", query.channelId);
+  }
+  if (query.threadId) {
+    params.set("threadId", query.threadId);
+  }
+  if (query.orgId) {
+    params.set("orgId", query.orgId);
+  }
+  return params;
 }
 
-function connectSuccess(): Response {
-  return appRedirect("/settings/teams?status=connected");
+function connectError(
+  message: string,
+  query: Parameters<typeof teamsSettingsParams>[0] = {},
+): Response {
+  const params = teamsSettingsParams(query, { error: message });
+  return appRedirect(`/settings/teams?${params.toString()}`);
+}
+
+function connectSuccess(
+  query: Parameters<typeof teamsSettingsParams>[0],
+  installation: {
+    readonly teamsTenantName?: string | null;
+    readonly teamsTeamName?: string | null;
+  },
+): Response {
+  const params = teamsSettingsParams(query, {
+    status: "connected",
+    tenantName: installation.teamsTenantName,
+    teamName: installation.teamsTeamName,
+  });
+  return appRedirect(`/settings/teams?${params.toString()}`);
 }
 
 function signInRedirect(requestUrl: string): Response {
@@ -64,7 +125,7 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
   const teamsUserId = query.teamsUserId;
 
   if (!tenantId || !teamsUserId) {
-    return connectError(invalidConnectLinkMessage);
+    return connectError(invalidConnectLinkMessage, query);
   }
 
   const db = get(db$);
@@ -76,13 +137,13 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (!installation) {
-    return connectError(installationNotFoundMessage);
+    return connectError(installationNotFoundMessage, query);
   }
 
   const effectiveOrgId = query.orgId ?? auth.orgId;
   if (!installation.orgId) {
     if (!effectiveOrgId || auth.orgRole !== "admin") {
-      return connectError(adminRequiredMessage);
+      return connectError(adminRequiredMessage, query);
     }
   } else if (!effectiveOrgId || effectiveOrgId !== installation.orgId) {
     L.debug("Org check failed", {
@@ -91,12 +152,12 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
       installationOrgId: installation.orgId,
       userId: auth.userId,
     });
-    return connectError(orgMismatchMessage);
+    return connectError(orgMismatchMessage, query);
   }
 
   const orgId = installation.orgId ?? effectiveOrgId;
   if (!orgId) {
-    return connectError(adminRequiredMessage);
+    return connectError(adminRequiredMessage, query);
   }
 
   const result = await set(
@@ -118,17 +179,17 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (result.kind === "not_found") {
-    return connectError(result.message);
+    return connectError(result.message, query);
   }
 
   if (result.kind === "forbidden") {
-    return connectError(result.message);
+    return connectError(result.message, query);
   }
 
   await set(publishTeamsChanged$, { orgId, userIds: [auth.userId] }, signal);
   signal.throwIfAborted();
 
-  return connectSuccess();
+  return connectSuccess(query, result.installation);
 });
 
 export const zeroTeamsBrowserConnectRoutes: readonly RouteEntry[] = [
