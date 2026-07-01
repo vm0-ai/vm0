@@ -140,11 +140,13 @@ describe("Python builtin firewall catalog composition", () => {
       const catalog = await buildPythonBuiltinFirewallCatalog({
         modelProviderFirewalls: [],
       });
-      const permission = catalog.firewalls.clerk?.apis[0]?.permissions?.find(
-        (candidate) => {
+      const permission = catalog.firewalls.clerk?.apis
+        .flatMap((api) => {
+          return api.permissions ?? [];
+        })
+        .find((candidate) => {
           return candidate.name === "users:read";
-        },
-      );
+        });
 
       expect(permission).toBeDefined();
       expect(permission).toMatchObject({
