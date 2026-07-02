@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.526.0](https://github.com/vm0-ai/vm0/compare/app-v0.525.0...app-v0.526.0) (2026-07-02)
+
+
+### Features
+
+* **platform:** resume publishable HTML artifact edit drafts ([#19744](https://github.com/vm0-ai/vm0/issues/19744)) ([159189b](https://github.com/vm0-ai/vm0/commit/159189bb6ea6c097cf28b8a73e2cf4ae0357d763))
+
+
+### Bug Fixes
+
+* slide thinking typewriter overflow ([#19745](https://github.com/vm0-ai/vm0/issues/19745)) ([d3b9dcf](https://github.com/vm0-ai/vm0/commit/d3b9dcf4ab15116cc8202beb496391ac57f5f9b0))
+
 ## [0.525.0](https://github.com/vm0-ai/vm0/compare/app-v0.524.1...app-v0.525.0) (2026-07-02)
 
 
