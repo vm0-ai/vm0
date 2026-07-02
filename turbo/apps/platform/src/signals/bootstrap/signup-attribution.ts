@@ -49,16 +49,12 @@ function trackGoogleAdsSignupConversion(
     return;
   }
 
-  try {
-    gtag("event", "conversion", {
-      send_to: GOOGLE_ADS_SIGNUP_SEND_TO,
-      value: SIGNUP_CONVERSION_VALUE_USD,
-      currency: "USD",
-    });
-    storage?.setItem(SIGNUP_CONVERSION_RECORDED_KEY, fingerprint);
-  } catch {
-    // Conversion tracking should never block sign-up attribution persistence.
-  }
+  gtag("event", "conversion", {
+    send_to: GOOGLE_ADS_SIGNUP_SEND_TO,
+    value: SIGNUP_CONVERSION_VALUE_USD,
+    currency: "USD",
+  });
+  storage?.setItem(SIGNUP_CONVERSION_RECORDED_KEY, fingerprint);
 }
 
 export const recordSignupAttribution$ = command(

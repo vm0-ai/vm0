@@ -10,6 +10,9 @@ import { recordSignupAttribution$ } from "../bootstrap/signup-attribution.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
+const STORED_AD_ATTRIBUTION_KEY = "vm0.adAttribution";
+const SIGNUP_ATTRIBUTION_RECORDED_KEY = "vm0.signupAttributionRecorded";
+const SIGNUP_CONVERSION_RECORDED_KEY = "vm0.googleAdsSignupConversionRecorded";
 const SIGNUP_SEND_TO = "AW-18144854014/OlLBCNXGgqwcEP7_kcxD";
 
 type WindowWithGtag = Window & {
@@ -63,7 +66,7 @@ function installGtagMock() {
 
 function storePaidSignupAttribution(): void {
   window.sessionStorage.setItem(
-    "vm0.adAttribution",
+    STORED_AD_ATTRIBUTION_KEY,
     new URLSearchParams({
       source_type: "paid",
       gclid: "click-123",
@@ -77,7 +80,9 @@ function storePaidSignupAttribution(): void {
 
 describe("signup attribution Google Ads conversion", () => {
   afterEach(() => {
-    window.sessionStorage.clear();
+    window.sessionStorage.removeItem(STORED_AD_ATTRIBUTION_KEY);
+    window.sessionStorage.removeItem(SIGNUP_ATTRIBUTION_RECORDED_KEY);
+    window.sessionStorage.removeItem(SIGNUP_CONVERSION_RECORDED_KEY);
   });
 
   it("fires the Signup conversion after first-time signup attribution is recorded", async () => {
