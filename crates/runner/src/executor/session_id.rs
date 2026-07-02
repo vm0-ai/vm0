@@ -57,4 +57,33 @@ mod tests {
             format!("{}...[truncated 2 bytes]", "a".repeat(MAX_SESSION_ID_LEN))
         );
     }
+
+    #[test]
+    fn invalid_session_id_preview_escapes_and_truncates_overlong_values() {
+        let id = format!("bad\n{}", "a".repeat(200));
+        let preview = invalid_session_id_diagnostic_preview(&id);
+
+        assert!(preview.contains("bad\\n"), "got: {preview}");
+        assert!(preview.contains("[truncated 76 bytes]"), "got: {preview}");
+        assert!(
+            !preview.contains(&id),
+            "preview should not contain the full invalid id: {preview}"
+        );
+    }
+
+    #[test]
+    fn invalid_session_id_preview_truncates_at_char_boundary() {
+        let id = "€".repeat(50);
+        let preview = invalid_session_id_diagnostic_preview(&id);
+
+        assert!(preview.contains("\\u{20ac}"), "got: {preview}");
+        assert!(
+            preview.ends_with("...[truncated 24 bytes]"),
+            "got: {preview}"
+        );
+        assert!(
+            !preview.contains(&id),
+            "preview should not contain the full invalid id: {preview}"
+        );
+    }
 }
