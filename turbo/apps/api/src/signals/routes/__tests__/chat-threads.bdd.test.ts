@@ -167,12 +167,25 @@ async function sendChatRun(
 async function claimChatRun(
   runnerGroup: string,
   runId: string,
+  heldCliAgentSessionId?: string,
 ): Promise<{
   readonly claim: RunnerClaim;
   readonly sandboxHeaders: { readonly authorization: string };
 }> {
   await api.heartbeatRunner(runnerGroup);
-  const claim = await api.claimRunnerJob(runId);
+  const claim = await api.claimRunnerJob(
+    runId,
+    heldCliAgentSessionId
+      ? {
+          heldSessionStates: [
+            {
+              sessionId: heldCliAgentSessionId,
+              lastCompletedAt: new Date(now()).toISOString(),
+            },
+          ],
+        }
+      : {},
+  );
   return {
     claim,
     sandboxHeaders: { authorization: `Bearer ${claim.sandboxToken}` },
@@ -2112,7 +2125,11 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       threadId: run1.threadId,
       prompt: "second artifact run",
     });
-    const claim2 = await claimChatRun(runnerGroup, run2.runId);
+    const claim2 = await claimChatRun(
+      runnerGroup,
+      run2.runId,
+      `bdd-cli-${run1.runId}`,
+    );
     const bearer2 = `Bearer ${zeroTokenFromClaim(claim2.claim)}`;
     await chat.completeUploadWithBearer(bearer2, { id: sharedId }, [200]);
 
@@ -2614,7 +2631,7 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
     expect(appended).toContain("Assistant: [no stored assistant message]");
 
     // The second run resumes the session checkpointed by the first.
-    const claim2 = await claimChatRun(runnerGroup, run2Id);
+    const claim2 = await claimChatRun(runnerGroup, run2Id, `bdd-cli-${run1Id}`);
     expect(claim2.claim.resumeSession?.sessionId).toBe(`bdd-cli-${run1Id}`);
 
     // A send into a thread with an active run queues the message.
@@ -2702,7 +2719,7 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       throw new Error("Expected the workflow-mounting v1 send to create a run");
     }
     const run4Id = workflowSend.body.runId;
-    const claim4 = await claimChatRun(runnerGroup, run4Id);
+    const claim4 = await claimChatRun(runnerGroup, run4Id, `bdd-cli-${run2Id}`);
     expect(claim4.claim.storageManifest?.storages).toContainEqual(
       expect.objectContaining({
         name: workflowStorageName,
@@ -2727,7 +2744,11 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
     if (afterDelete.status !== 201 || afterDelete.body.runId === null) {
       throw new Error("Expected the post-delete v1 send to create a run");
     }
-    const claim5 = await claimChatRun(runnerGroup, afterDelete.body.runId);
+    const claim5 = await claimChatRun(
+      runnerGroup,
+      afterDelete.body.runId,
+      `bdd-cli-${run2Id}`,
+    );
     expect(JSON.stringify(claim5.claim)).not.toContain(workflowStorageName);
     await cancelChatRun(actor, afterDelete.body.runId);
   }, 180_000);
