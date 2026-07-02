@@ -39,7 +39,9 @@ import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
 export type WorkflowDetailTab = "automations" | "instructions" | "info";
-export type WorkflowIndexFilterTab = "automations" | "all";
+export type WorkflowAutomationFilter = "all" | "automated" | "without";
+export type WorkflowVisibilityFilter = "all" | "private" | "public";
+export type WorkflowSortMode = "recent" | "next-run";
 export type WorkflowCopyDialogAgent = {
   readonly id: string;
   readonly displayName: string | null;
@@ -202,31 +204,102 @@ export const workflowCopyDialogState$ = computed((get) => {
   return get(internalWorkflowCopyDialogState$);
 });
 
-const WORKFLOW_INDEX_FILTER_TAB_PARAM = "tab";
-const DEFAULT_WORKFLOW_INDEX_FILTER_TAB: WorkflowIndexFilterTab = "automations";
+const AUTOMATION_FILTER_PARAM = "automation";
+const VISIBILITY_FILTER_PARAM = "visibility";
+const SORT_MODE_PARAM = "sort";
 
-function isWorkflowIndexFilterTab(tab: string): tab is WorkflowIndexFilterTab {
-  return tab === "automations" || tab === "all";
+function readSearchParam<T extends string>(
+  get: <V>(atom: Computed<V>) => V,
+  key: string,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  const value = get(searchParams$).get(key) ?? "";
+  return (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : fallback;
 }
 
-export const workflowIndexFilterTab$ = computed(
-  (get): WorkflowIndexFilterTab => {
-    const tab = get(searchParams$).get(WORKFLOW_INDEX_FILTER_TAB_PARAM) ?? "";
-    return isWorkflowIndexFilterTab(tab)
-      ? tab
-      : DEFAULT_WORKFLOW_INDEX_FILTER_TAB;
+export const workflowAutomationFilter$ = computed(
+  (get): WorkflowAutomationFilter => {
+    return readSearchParam(
+      get,
+      AUTOMATION_FILTER_PARAM,
+      ["all", "automated", "without"],
+      "all",
+    );
   },
 );
 
-export const setWorkflowIndexFilterTab$ = command(
-  ({ get, set }, tab: WorkflowIndexFilterTab) => {
-    const params = new URLSearchParams(get(searchParams$));
-    if (tab === DEFAULT_WORKFLOW_INDEX_FILTER_TAB) {
-      params.delete(WORKFLOW_INDEX_FILTER_TAB_PARAM);
-    } else {
-      params.set(WORKFLOW_INDEX_FILTER_TAB_PARAM, tab);
-    }
-    set(replaceSearchParams$, params);
+export const workflowVisibilityFilter$ = computed(
+  (get): WorkflowVisibilityFilter => {
+    return readSearchParam(
+      get,
+      VISIBILITY_FILTER_PARAM,
+      ["all", "private", "public"],
+      "all",
+    );
+  },
+);
+
+export const workflowSortMode$ = computed((get): WorkflowSortMode => {
+  return readSearchParam(
+    get,
+    SORT_MODE_PARAM,
+    ["recent", "next-run"],
+    "recent",
+  );
+});
+
+function nextSearchParams(
+  current: URLSearchParams,
+  key: string,
+  value: string,
+  fallback: string,
+): URLSearchParams {
+  const params = new URLSearchParams(current);
+  if (value === fallback) {
+    params.delete(key);
+  } else {
+    params.set(key, value);
+  }
+  return params;
+}
+
+export const setWorkflowAutomationFilter$ = command(
+  ({ get, set }, value: WorkflowAutomationFilter) => {
+    set(
+      replaceSearchParams$,
+      nextSearchParams(
+        get(searchParams$),
+        AUTOMATION_FILTER_PARAM,
+        value,
+        "all",
+      ),
+    );
+  },
+);
+
+export const setWorkflowVisibilityFilter$ = command(
+  ({ get, set }, value: WorkflowVisibilityFilter) => {
+    set(
+      replaceSearchParams$,
+      nextSearchParams(
+        get(searchParams$),
+        VISIBILITY_FILTER_PARAM,
+        value,
+        "all",
+      ),
+    );
+  },
+);
+
+export const setWorkflowSortMode$ = command(
+  ({ get, set }, value: WorkflowSortMode) => {
+    set(
+      replaceSearchParams$,
+      nextSearchParams(get(searchParams$), SORT_MODE_PARAM, value, "recent"),
+    );
   },
 );
 
