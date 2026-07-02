@@ -7066,7 +7066,7 @@ describe("initial thinking indicator", () => {
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 
-  it("restarts on full follow-up lines before sliding a short tail", async () => {
+  it("restarts on every follow-up line instead of sliding a short tail", async () => {
     const threadId = "thread-initial-thinking-rollover";
     const thinking = "ABCDEFG";
     mockThinkingTypewriterLayout({
@@ -7133,13 +7133,14 @@ describe("initial thinking indicator", () => {
 
     const label = await screen.findByLabelText(thinking);
     await waitFor(() => {
-      expect(label).toHaveTextContent("...EFG");
+      expect(label).toHaveTextContent(/^G$/);
     });
     expect(
       Array.from(displayedLabels).some((value) => {
         return value === "D" || value === "DE" || value === "DEF";
       }),
     ).toBeTruthy();
+    expect(displayedLabels.has("...EFG")).toBeFalsy();
     expect(label).not.toHaveTextContent(thinking);
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
