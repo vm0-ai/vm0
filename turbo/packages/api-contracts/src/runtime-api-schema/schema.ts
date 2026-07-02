@@ -76,7 +76,7 @@ export async function readRuntimeApiSchemaDocument(
   return parseRuntimeApiSchemaDocument(JSON.parse(raw));
 }
 
-export function parseRuntimeApiSchemaDocument(
+function parseRuntimeApiSchemaDocument(
   value: unknown,
 ): RuntimeApiSchemaDocument {
   const document = runtimeApiSchemaDocumentSchema.parse(
