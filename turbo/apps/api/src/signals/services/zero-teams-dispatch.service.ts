@@ -309,12 +309,6 @@ function buildTeamsPrompt(args: {
     ...optionalLine("Teams app ID", args.activity.teamsAppId),
     ...optionalLine("Bot ID", recipient?.id ?? args.installation.botId),
     ...optionalLine("Bot name", recipient?.name ?? args.installation.botName),
-    `Teams user ID: ${args.activity.sender.id}`,
-    ...optionalLine("Teams user display name", args.activity.sender.name),
-    ...optionalLine(
-      "Teams user principal name",
-      args.activity.sender.userPrincipalName,
-    ),
   ].join("\n");
 }
 

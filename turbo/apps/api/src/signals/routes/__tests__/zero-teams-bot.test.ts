@@ -216,6 +216,25 @@ async function postTeamsActivity(args: {
   });
 }
 
+function promptSection(
+  prompt: string,
+  heading: string,
+  nextHeading?: string,
+): string {
+  const startIndex = prompt.indexOf(heading);
+  if (startIndex === -1) {
+    throw new Error(`Missing prompt section ${heading}`);
+  }
+  if (!nextHeading) {
+    return prompt.slice(startIndex);
+  }
+
+  const endIndex = prompt.indexOf(nextHeading, startIndex + heading.length);
+  return endIndex === -1
+    ? prompt.slice(startIndex)
+    : prompt.slice(startIndex, endIndex);
+}
+
 async function connectTeamsFixture(
   fixture: TeamsConnectFixture,
 ): Promise<void> {
@@ -425,27 +444,42 @@ describe("POST /api/zero/teams/bot", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
+    const currentUserPrompt = promptSection(
+      appendSystemPrompt,
+      "# Current User Info",
+      "# Current Integration",
+    );
+    const currentIntegrationPrompt = promptSection(
+      appendSystemPrompt,
+      "# Current Integration",
+    );
     expect(claim.prompt).toBe("ship the Teams dispatch");
-    expect(appendSystemPrompt).toContain(
+    expect(currentIntegrationPrompt).toContain(
       "You are currently running inside: Microsoft Teams",
     );
     expect(appendSystemPrompt).toContain("Microsoft Teams messaging and files");
-    expect(appendSystemPrompt).toContain(`Tenant ID: ${fixture.teamsTenantId}`);
-    expect(appendSystemPrompt).toContain(`Team ID: ${fixture.teamsTeamId}`);
-    expect(appendSystemPrompt).toContain(
+    expect(currentIntegrationPrompt).toContain(
+      `Tenant ID: ${fixture.teamsTenantId}`,
+    );
+    expect(currentIntegrationPrompt).toContain(
+      `Team ID: ${fixture.teamsTeamId}`,
+    );
+    expect(currentIntegrationPrompt).toContain(
       "Conversation ID: 19:thread@thread.tacv2",
     );
-    expect(appendSystemPrompt).toContain("Thread ID: root-dispatch");
-    expect(appendSystemPrompt).toContain(
+    expect(currentIntegrationPrompt).toContain("Thread ID: root-dispatch");
+    expect(currentIntegrationPrompt).not.toContain("Teams user ID:");
+    expect(currentIntegrationPrompt).not.toContain("Teams display name:");
+    expect(currentIntegrationPrompt).not.toContain(
+      "Teams user principal name:",
+    );
+    expect(currentUserPrompt).toContain(
       `Teams user ID: ${fixture.teamsUserId}`,
     );
-    expect(appendSystemPrompt).toContain(
+    expect(currentUserPrompt).toContain(
       "Teams user principal name: ada@example.com",
     );
-    expect(appendSystemPrompt).toContain("# Current User Info");
-    expect(appendSystemPrompt).toContain(
-      "Teams user display name: Ada Lovelace",
-    );
+    expect(currentUserPrompt).toContain("Teams display name: Ada Lovelace");
   });
 
   it("asks connected Teams users to configure a default agent", async () => {
