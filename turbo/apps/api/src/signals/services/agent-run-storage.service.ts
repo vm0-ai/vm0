@@ -1203,7 +1203,7 @@ async function buildStorageEntriesFromPlans(
   const systemRequests = systemPlans.map((plan) => {
     return systemStoragePresignedUrlRequest({ bucket: args.bucket, plan });
   });
-  const systemUrlsByCacheKey = await resolveSystemStoragePresignedUrls({
+  const systemUrlsByCacheKeyPromise = resolveSystemStoragePresignedUrls({
     db: args.db,
     get,
     requests: systemRequests,
@@ -1224,6 +1224,7 @@ async function buildStorageEntriesFromPlans(
         });
       }
 
+      const systemUrlsByCacheKey = await systemUrlsByCacheKeyPromise;
       const request = systemStoragePresignedUrlRequest({
         bucket: args.bucket,
         plan,

@@ -29,11 +29,12 @@ export const systemStoragePresignedUrlCache = pgTable(
       index("idx_system_storage_presigned_url_cache_refresh_after").on(
         table.refreshAfter,
       ),
-      index("idx_system_storage_presigned_url_cache_expires_at").on(
-        table.expiresAt,
-      ),
       index("idx_system_storage_presigned_url_cache_last_requested_at").on(
         table.lastRequestedAt,
+      ),
+      index("idx_system_storage_presigned_url_cache_active_refresh").on(
+        table.lastRequestedAt,
+        table.refreshAfter,
       ),
     ];
   },
