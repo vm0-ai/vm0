@@ -643,6 +643,7 @@ async function resolveSessionHistory(
   hash: string | null,
   encoding: string | null,
   rawSize: number | null,
+  encodedSize: number | null,
   legacyText: string | null,
 ): Promise<Buffer | string | null> {
   if (hash) {
@@ -651,9 +652,10 @@ async function resolveSessionHistory(
     const result = await settle(
       loadSessionHistoryBlob(runtime, {
         encoding: normalizedEncoding,
-        expectedSize: rawSize && rawSize > 0 ? rawSize : undefined,
+        encodedSize: encodedSize && encodedSize > 0 ? encodedSize : undefined,
         hash,
         key,
+        rawSize: rawSize && rawSize > 0 ? rawSize : undefined,
       }),
     );
     runtime.signal.throwIfAborted();
@@ -671,17 +673,18 @@ async function resolveSessionHistory(
 async function loadSessionHistoryBlob(
   runtime: ExportRuntime,
   args: {
+    readonly encodedSize: number | undefined;
     readonly encoding: SessionHistoryBlobEncoding;
-    readonly expectedSize: number | undefined;
     readonly hash: string;
     readonly key: string;
+    readonly rawSize: number | undefined;
   },
 ): Promise<Buffer> {
   const encodedBuffer = await runtime.get(
     downloadS3BufferWithMaxBytes(
       runtime.bucket,
       args.key,
-      RESUME_SESSION_HISTORY_MAX_BYTES,
+      args.encodedSize ?? RESUME_SESSION_HISTORY_MAX_BYTES,
     ),
   );
   const rawBuffer =
@@ -689,10 +692,10 @@ async function loadSessionHistoryBlob(
       ? await gunzipSessionHistoryBufferWithMaxBytes(
           args.key,
           encodedBuffer,
-          args.expectedSize ?? RESUME_SESSION_HISTORY_MAX_BYTES,
+          args.rawSize ?? RESUME_SESSION_HISTORY_MAX_BYTES,
         )
       : encodedBuffer;
-  return verifySessionHistoryBuffer(args.hash, rawBuffer, args.expectedSize);
+  return verifySessionHistoryBuffer(args.hash, rawBuffer, args.rawSize);
 }
 
 function verifySessionHistoryBuffer(
@@ -777,6 +780,7 @@ async function collectConversationMessages(
       cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
       cliAgentSessionHistory: conversations.cliAgentSessionHistory,
       sessionHistoryBlobEncoding: blobs.encoding,
+      sessionHistoryBlobEncodedSize: blobs.encodedSize,
       sessionHistoryBlobRawSize: blobs.rawSize,
     })
     .from(agentSessions)
@@ -795,6 +799,7 @@ async function collectConversationMessages(
       session.cliAgentSessionHistoryHash,
       session.sessionHistoryBlobEncoding,
       session.sessionHistoryBlobRawSize,
+      session.sessionHistoryBlobEncodedSize,
       session.cliAgentSessionHistory,
     );
 

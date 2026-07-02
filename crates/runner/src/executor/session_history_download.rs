@@ -382,6 +382,18 @@ fn validate_identity_ref(
     timings: &mut SessionHistoryDownloadTimings,
 ) -> RunnerResult<()> {
     let validation_started = Instant::now();
+    if history_ref.raw_size == 0 {
+        timings.add_validation(validation_started.elapsed(), false);
+        return Err(RunnerError::Internal(
+            "identity session history rawSize must be positive".into(),
+        ));
+    }
+    if history_ref.encoded_size == 0 {
+        timings.add_validation(validation_started.elapsed(), false);
+        return Err(RunnerError::Internal(
+            "identity session history encodedSize must be positive".into(),
+        ));
+    }
     if history_ref.raw_size > RESUME_SESSION_HISTORY_MAX_BYTES {
         timings.add_validation(validation_started.elapsed(), false);
         return Err(RunnerError::Internal(format!(
@@ -752,6 +764,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn materializer_rejects_identity_ref_with_zero_size() {
+        let hash = hex::encode(Sha256::digest([]));
+        let session = ref_session(
+            "http://127.0.0.1:9/history.blob?token=secret".to_string(),
+            hash,
+            0,
+            0,
+        );
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                assert!(
+                    error.to_string().contains("rawSize must be positive"),
+                    "unexpected error: {error}"
+                );
+                assert_no_phase(timings.request_status());
+                assert_no_phase(timings.body_read());
+                assert_phase_failure(timings.validation());
+                assert_no_phase(timings.hash_verification());
+            }
+            _ => panic!("expected failed materialization"),
+        }
+    }
+
+    #[tokio::test]
     async fn materializer_downloads_decompresses_and_verifies_gzip_hash() {
         let body = b"{\"type\":\"init\"}\n{\"type\":\"user\",\"message\":\"hello\"}\n";
         let compressed = gzip_bytes(body);
@@ -934,8 +975,8 @@ mod tests {
         let session = ref_session(
             serve_once("200 OK", b"", Some(RESUME_SESSION_HISTORY_MAX_BYTES + 1)).await,
             hex::encode(Sha256::digest(b"")),
-            0,
-            0,
+            1,
+            1,
         );
 
         let result = start_materializer(&session)
@@ -1004,8 +1045,8 @@ mod tests {
         let session = ref_session(
             format!("http://{address}/history.blob?token=secret"),
             hex::encode(Sha256::digest(b"")),
-            0,
-            0,
+            1,
+            1,
         );
         let cancel = CancellationToken::new();
         cancel.cancel();
@@ -1044,8 +1085,8 @@ mod tests {
         let session = ref_session(
             format!("http://{address}/history.blob?token=secret"),
             hex::encode(Sha256::digest(b"")),
-            0,
-            0,
+            1,
+            1,
         );
 
         let materializer = start_materializer(&session);
@@ -1081,8 +1122,8 @@ mod tests {
         let session = ref_session(
             format!("http://{address}/history.blob?token=secret"),
             hex::encode(Sha256::digest(b"")),
-            0,
-            0,
+            1,
+            1,
         );
         let cancel = CancellationToken::new();
 
