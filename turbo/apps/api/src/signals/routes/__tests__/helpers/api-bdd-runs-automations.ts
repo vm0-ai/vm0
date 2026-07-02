@@ -1053,11 +1053,22 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
     },
 
-    async pollRunner(group?: string) {
+    async pollRunner(
+      group?: string,
+      args: {
+        readonly heldSessionStates?: RunnerPollBody["heldSessionStates"];
+      } = {},
+    ) {
       return await accept(
         runsAutomationApp(context)(runnersPollContract).poll({
           headers: runnerHeaders(true),
-          body: { group: group ?? "vm0/test", profiles: ["vm0/default"] },
+          body: {
+            group: group ?? "vm0/test",
+            profiles: ["vm0/default"],
+            ...(args.heldSessionStates === undefined
+              ? {}
+              : { heldSessionStates: args.heldSessionStates }),
+          },
         }),
         [200],
       );
