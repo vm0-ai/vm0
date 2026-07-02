@@ -361,6 +361,11 @@ jobs:
             exit 1
           fi
 
+          minimum_system_version=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$plist" 2>/dev/null || true)
+          if [ "$minimum_system_version" != "14.0" ]; then
+            echo "::error::Expected LSMinimumSystemVersion 14.0, found ${minimum_system_version:-missing}"
+            exit 1
+          fi
           /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero Computer Use"
           /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero Computer Use"
           /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero Computer Use"
@@ -387,6 +392,12 @@ jobs:
           if [ ! -d "$dmg_mount/Zero Computer Use.app" ]; then
             echo "DMG should contain Zero Computer Use.app"
             find "$dmg_mount" -maxdepth 2 -print || true
+            exit 1
+          fi
+          mounted_plist="$dmg_mount/Zero Computer Use.app/Contents/Info.plist"
+          mounted_minimum_system_version=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$mounted_plist" 2>/dev/null || true)
+          if [ "$mounted_minimum_system_version" != "14.0" ]; then
+            echo "::error::Expected mounted app LSMinimumSystemVersion 14.0, found ${mounted_minimum_system_version:-missing}"
             exit 1
           fi
           if [ ! -L "$dmg_mount/Applications" ]; then

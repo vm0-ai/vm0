@@ -19,6 +19,9 @@ export const ZERO_DESKTOP_DOWNLOAD_URL = new URL(
   resolveApiBaseForNavigation("api"),
 ).toString();
 
+export const ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL =
+  "Requires macOS 14 or newer.";
+
 export const ZERO_DESKTOP_INTEL_DOWNLOAD_URL = new URL(
   ZERO_DESKTOP_INTEL_DMG_DOWNLOAD_PATH,
   resolveApiBaseForNavigation("api"),
