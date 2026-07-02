@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.45.2...guest-agent-v0.45.3) (2026-07-02)
+
+
+### Bug Fixes
+
+* **guest-agent:** compress non-utf8 session history uploads ([#19826](https://github.com/vm0-ai/vm0/issues/19826)) ([7b0d449](https://github.com/vm0-ai/vm0/commit/7b0d44977de5ba2b435ebbd3c9b4b557f0ca9ae3))
+
 ## [0.45.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.45.1...guest-agent-v0.45.2) (2026-07-02)
 
 
