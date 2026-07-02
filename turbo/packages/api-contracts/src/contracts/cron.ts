@@ -139,6 +139,7 @@ const cronRefreshSystemStoragePresignedUrlsResponseSchema = z.object({
   success: z.literal(true),
   due: z.number(),
   refreshed: z.number(),
+  pruned: z.number(),
 });
 
 export const CRON_AGGREGATE_MODEL_STATS_MAX_HOURS = 24 * 32;

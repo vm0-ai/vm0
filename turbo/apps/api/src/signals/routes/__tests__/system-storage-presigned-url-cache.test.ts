@@ -411,6 +411,7 @@ describe("system storage presigned URL cache", () => {
           success: true,
           due: 3,
           refreshed: 3,
+          pruned: 0,
         });
 
         const rows = await readCacheRowsByObjectKeyPrefix(prefix);
@@ -475,6 +476,7 @@ describe("system storage presigned URL cache", () => {
           success: true,
           due: 2,
           refreshed: 2,
+          pruned: 0,
         });
 
         const rows = await readCacheRowsByObjectKeyPrefix(prefix);
@@ -488,6 +490,63 @@ describe("system storage presigned URL cache", () => {
             return row.storage_version_id === inactiveVersionId;
           })?.presigned_url,
         ).toBe("https://r2.example.com/inactive-old");
+      },
+    );
+  });
+
+  it("prunes inactive expired cache rows from cron", async () => {
+    const prefix = `${SYSTEM_ORG_ID}/volume/cache-prune-${randomUUID()}`;
+    await withCacheCleanup(
+      {
+        objectKeyPrefix: prefix,
+      },
+      async () => {
+        const now = nowDate();
+        const expiredAt = new Date(now.getTime() - 60 * 60 * 1000);
+        const futureExpiresAt = new Date(now.getTime() + 60 * 60 * 1000);
+        const refreshAfter = new Date(now.getTime() - 60 * 1000);
+        const inactiveRequestedAt = new Date(
+          now.getTime() - 48 * 60 * 60 * 1000,
+        );
+
+        for (let index = 0; index < 2; index += 1) {
+          const versionId = `p${index}`.repeat(32).slice(0, 64);
+          await seedCacheRow({
+            bucket: BUCKET,
+            objectKey: `${prefix}/${versionId}/archive.tar.gz`,
+            storageVersionId: versionId,
+            presignedUrl: `https://r2.example.com/expired-inactive-${index}`,
+            expiresAt: expiredAt,
+            refreshAfter,
+            lastRequestedAt: inactiveRequestedAt,
+          });
+        }
+
+        const inactiveFreshVersionId = "p9".repeat(32).slice(0, 64);
+        await seedCacheRow({
+          bucket: BUCKET,
+          objectKey: `${prefix}/${inactiveFreshVersionId}/archive.tar.gz`,
+          storageVersionId: inactiveFreshVersionId,
+          presignedUrl: "https://r2.example.com/fresh-inactive",
+          expiresAt: futureExpiresAt,
+          refreshAfter,
+          lastRequestedAt: inactiveRequestedAt,
+        });
+
+        const refreshed = await accept(
+          cronClient().refresh({ headers: cronHeaders() }),
+          [200],
+        );
+        expect(refreshed.body).toStrictEqual({
+          success: true,
+          due: 0,
+          refreshed: 0,
+          pruned: 2,
+        });
+
+        const rows = await readCacheRowsByObjectKeyPrefix(prefix);
+        expect(rows).toHaveLength(1);
+        expect(rows[0]?.storage_version_id).toBe(inactiveFreshVersionId);
       },
     );
   });

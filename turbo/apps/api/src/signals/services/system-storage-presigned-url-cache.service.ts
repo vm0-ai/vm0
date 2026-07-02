@@ -18,6 +18,7 @@ const SYSTEM_STORAGE_PRESIGNED_URL_TOUCH_INTERVAL_SECONDS = 30 * 60;
 const SYSTEM_STORAGE_PRESIGNED_URL_ACTIVE_WINDOW_SECONDS = 24 * 60 * 60;
 const SYSTEM_STORAGE_PRESIGNED_URL_CACHE_POLICY = "system-storage-url-v1";
 export const SYSTEM_STORAGE_PRESIGNED_URL_REFRESH_LIMIT = 3;
+export const SYSTEM_STORAGE_PRESIGNED_URL_PRUNE_LIMIT = 100;
 
 export type SystemStoragePresignedUrlCacheStatus =
   | "hit"
@@ -209,6 +210,50 @@ async function touchRecentlyUsedCacheRows(
     );
 }
 
+async function pruneInactiveExpiredCacheRows(
+  db: Db,
+  issuedAt: Date,
+  limit: number,
+  signal?: AbortSignal,
+): Promise<number> {
+  const inactiveCutoff = activeCutoff(issuedAt);
+  const rows = await db
+    .select({ cacheKey: systemStoragePresignedUrlCache.cacheKey })
+    .from(systemStoragePresignedUrlCache)
+    .where(
+      and(
+        lte(systemStoragePresignedUrlCache.expiresAt, issuedAt),
+        lte(systemStoragePresignedUrlCache.lastRequestedAt, inactiveCutoff),
+      ),
+    )
+    .orderBy(
+      asc(systemStoragePresignedUrlCache.lastRequestedAt),
+      asc(systemStoragePresignedUrlCache.expiresAt),
+    )
+    .limit(limit);
+  signal?.throwIfAborted();
+
+  const cacheKeys = rows.map((row) => {
+    return row.cacheKey;
+  });
+  if (cacheKeys.length === 0) {
+    return 0;
+  }
+
+  const deletedRows = await db
+    .delete(systemStoragePresignedUrlCache)
+    .where(
+      and(
+        inArray(systemStoragePresignedUrlCache.cacheKey, cacheKeys),
+        lte(systemStoragePresignedUrlCache.expiresAt, issuedAt),
+        lte(systemStoragePresignedUrlCache.lastRequestedAt, inactiveCutoff),
+      ),
+    )
+    .returning({ cacheKey: systemStoragePresignedUrlCache.cacheKey });
+  signal?.throwIfAborted();
+  return deletedRows.length;
+}
+
 export async function resolveSystemStoragePresignedUrls(args: {
   readonly db: Db;
   readonly get: ComputedGetter;
@@ -314,9 +359,16 @@ export async function refreshDueSystemStoragePresignedUrls(args: {
   readonly db: Db;
   readonly get: ComputedGetter;
   readonly limit?: number;
+  readonly pruneLimit?: number;
   readonly signal?: AbortSignal;
-}): Promise<{ readonly due: number; readonly refreshed: number }> {
+}): Promise<{
+  readonly due: number;
+  readonly refreshed: number;
+  readonly pruned: number;
+}> {
   const limit = args.limit ?? SYSTEM_STORAGE_PRESIGNED_URL_REFRESH_LIMIT;
+  const pruneLimit =
+    args.pruneLimit ?? SYSTEM_STORAGE_PRESIGNED_URL_PRUNE_LIMIT;
   const issuedAt = nowDate();
   const rows = await args.db
     .select({
@@ -368,5 +420,12 @@ export async function refreshDueSystemStoragePresignedUrls(args: {
   });
   args.signal?.throwIfAborted();
 
-  return { due: rows.length, refreshed: freshValues.length };
+  const pruned = await pruneInactiveExpiredCacheRows(
+    args.db,
+    issuedAt,
+    pruneLimit,
+    args.signal,
+  );
+
+  return { due: rows.length, refreshed: freshValues.length, pruned };
 }
