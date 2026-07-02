@@ -1,5 +1,13 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { execFile } from "node:child_process";
+import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -324,6 +332,57 @@ async function stopDaemon(daemonDir: string): Promise<void> {
   } catch {
     // Test cleanup should not mask the original assertion failure.
   }
+}
+
+async function sendRawDaemonRequest(
+  daemonDir: string,
+  request: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  return await new Promise((resolve, reject) => {
+    const socket = createConnection(path.join(daemonDir, "daemon.sock"));
+    let buffer = "";
+    let settled = false;
+    let timer: NodeJS.Timeout | undefined;
+    const settle = (value: Error | Record<string, unknown>): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+      if (value instanceof Error) {
+        reject(value);
+        return;
+      }
+      resolve(value);
+    };
+    timer = setTimeout(() => {
+      settle(new Error("Timed out waiting for vm0-computer daemon response"));
+      socket.destroy();
+    }, 3_000);
+    socket.setEncoding("utf8");
+    socket.once("error", settle);
+    socket.once("connect", () => {
+      socket.write(`${JSON.stringify(request)}\n`);
+    });
+    socket.on("data", (chunk: string) => {
+      buffer += chunk;
+      const newlineIndex = buffer.indexOf("\n");
+      if (newlineIndex === -1) {
+        return;
+      }
+      try {
+        settle(
+          JSON.parse(buffer.slice(0, newlineIndex)) as Record<string, unknown>,
+        );
+      } catch (error) {
+        settle(error instanceof Error ? error : new Error(String(error)));
+      } finally {
+        socket.destroy();
+      }
+    });
+  });
 }
 
 describe("computer use native backend", () => {
@@ -1287,6 +1346,13 @@ describe("computer use native backend", () => {
         socketPath: path.join(daemonDir, "daemon.sock"),
       });
       expect(typeof status.pid).toBe("number");
+      expect((await stat(daemonDir)).mode & 0o777).toBe(0o700);
+      expect(
+        (await stat(path.join(daemonDir, "daemon.sock"))).mode & 0o777,
+      ).toBe(0o600);
+      expect(
+        (await stat(path.join(daemonDir, "daemon.auth"))).mode & 0o777,
+      ).toBe(0o600);
 
       const stopResult = await execFileAsync(
         process.execPath,
@@ -1294,6 +1360,35 @@ describe("computer use native backend", () => {
         { cwd: desktopRoot, env: daemonEnv(daemonDir) },
       );
       expect(stopResult.stdout).toContain("vm0-computer daemon stopped");
+    } finally {
+      await stopDaemon(daemonDir);
+      await rm(daemonDir, { recursive: true, force: true });
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects unauthenticated vm0-computer daemon socket requests", async () => {
+    const helper = await createSessionHelper();
+    const daemonDir = await createDaemonDir();
+
+    try {
+      await startDaemon(helper.helperPath, daemonDir);
+
+      await expect(
+        sendRawDaemonRequest(daemonDir, { type: "status" }),
+      ).resolves.toMatchObject({
+        status: "error",
+        message: "Unauthorized vm0-computer daemon request",
+      });
+
+      const statusResult = await execFileAsync(
+        process.execPath,
+        [cliPath, "daemon", "status"],
+        { cwd: desktopRoot, env: daemonEnv(daemonDir) },
+      );
+      expect(JSON.parse(statusResult.stdout)).toMatchObject({
+        running: true,
+      });
     } finally {
       await stopDaemon(daemonDir);
       await rm(daemonDir, { recursive: true, force: true });
