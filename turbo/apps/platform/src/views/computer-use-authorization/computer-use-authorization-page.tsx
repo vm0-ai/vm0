@@ -8,6 +8,7 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import type { ComputerUseHost } from "@vm0/api-contracts/contracts/zero-computer-use";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Button } from "@vm0/ui/components/ui/button";
 import {
   applyComputerUseAuthorizationRequest$,
@@ -17,10 +18,12 @@ import {
   zeroDesktopDownloadSupportStatus$,
   visibleComputerUseHosts,
   ZERO_DESKTOP_DOWNLOAD_URL,
+  ZERO_DESKTOP_INTEL_DOWNLOAD_URL,
   ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL,
   ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import computerUseIllustration from "../zero-page/assets/computer-use-illustration.png";
 import { Vm0LogoLink } from "../zero-page/zero-directed-shared.tsx";
@@ -86,6 +89,9 @@ function HostOption({
 }
 
 function EmptyHosts() {
+  const features = useGet(featureSwitch$);
+  const showIntelDownload =
+    features[FeatureSwitchKey.DesktopX64Download] ?? false;
   const downloadSupportLoadable = useLoadable(
     zeroDesktopDownloadSupportStatus$,
   );
@@ -115,7 +121,28 @@ function EmptyHosts() {
           {ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL}
         </p>
       </div>
-      {downloadSupportStatus === "unsupported-intel-mac" ? (
+      {showIntelDownload ? (
+        <div className="flex w-full max-w-sm flex-col gap-2">
+          <a
+            href={ZERO_DESKTOP_DOWNLOAD_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            <IconDownload size={16} />
+            Download for Apple Silicon
+          </a>
+          <a
+            href={ZERO_DESKTOP_INTEL_DOWNLOAD_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            <IconDownload size={16} />
+            Download for Intel Mac
+          </a>
+        </div>
+      ) : downloadSupportStatus === "unsupported-intel-mac" ? (
         <Button type="button" variant="outline" disabled className="h-9">
           <IconAlertTriangle size={16} />
           {ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL}

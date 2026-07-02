@@ -126,9 +126,12 @@ oracle independent from `vm0-computer` output.
 
 The `Desktop` GitHub Actions workflow builds macOS artifacts for internal
 testing. Run the workflow manually from GitHub Actions, then download the
-`zero-desktop-macos-arm64-unsigned` artifact.
+artifact that matches the target Mac:
 
-The downloaded GitHub artifact contains `Zero-darwin-arm64.zip`. Unzip both
+- `zero-desktop-macos-arm64-unsigned` for Apple Silicon Macs
+- `zero-desktop-macos-x64-unsigned` for Intel Macs
+
+The downloaded GitHub artifact contains `Zero-darwin-<arch>.zip`. Unzip both
 layers, then open `Zero Computer Use.app`.
 
 These artifacts are ad-hoc signed, not Developer ID signed, and not notarized.
@@ -147,12 +150,14 @@ Desktop releases are versioned by release-please. Changes under
 `desktop-vX.Y.Z` GitHub Release.
 
 When release-please creates the `desktop-vX.Y.Z` GitHub Release, the
-`build-desktop-release` job in the release-please workflow checks out the
-matching tag, builds the production `Zero Computer Use.app`, signs it with the
-Developer ID Application certificate, notarizes it for direct distribution
-outside the Mac App Store, validates the stapled ticket, uploads
-`Zero-darwin-arm64-X.Y.Z.zip` and `Zero-darwin-arm64-X.Y.Z.dmg` to the matching
-GitHub Release, and updates the Desktop update manifest.
+`build-desktop-release` jobs in the release-please workflow check out the
+matching tag, build the production `Zero Computer Use.app` for Apple Silicon
+and Intel Macs, sign each app with the Developer ID Application certificate,
+notarize them for direct distribution outside the Mac App Store, validate the
+stapled tickets, and upload `Zero-darwin-arm64-X.Y.Z.zip`,
+`Zero-darwin-arm64-X.Y.Z.dmg`, `Zero-darwin-x64-X.Y.Z.zip`, and
+`Zero-darwin-x64-X.Y.Z.dmg` to the matching GitHub Release. After both
+architectures finish, the release workflow updates the Desktop update manifest.
 
 Use the DMG for manual installation. It opens with a styled Finder background,
 `Zero Computer Use.app` on the left, and an `/Applications` symlink on the right

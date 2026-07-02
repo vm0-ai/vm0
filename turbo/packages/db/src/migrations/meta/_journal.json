@@ -3676,6 +3676,13 @@
       "when": 1782948094918,
       "tag": "0524_restore_claude_fable_5",
       "breakpoints": true
+    },
+    {
+      "idx": 525,
+      "version": "7",
+      "when": 1782966203349,
+      "tag": "0525_wakeful_siren",
+      "breakpoints": true
     }
   ]
 }

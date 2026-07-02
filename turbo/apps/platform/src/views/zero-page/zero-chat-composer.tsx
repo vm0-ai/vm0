@@ -155,6 +155,7 @@ import { rootSignal$ } from "../../signals/root-signal.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   zeroDesktopDownloadSupportStatus$,
+  ZERO_DESKTOP_INTEL_DOWNLOAD_URL,
   ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL,
   ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
@@ -5830,6 +5831,9 @@ function ComputerUseDownloadDialog({
     downloadSupportLoadable.state === "hasData"
       ? downloadSupportLoadable.data
       : "checking";
+  const features = useGet(featureSwitch$);
+  const showIntelDownload =
+    features[FeatureSwitchKey.DesktopX64Download] ?? false;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -5854,7 +5858,41 @@ function ComputerUseDownloadDialog({
           </p>
         </DialogHeader>
         <div className="px-6 pb-6 pt-4">
-          {downloadSupportStatus === "unsupported-intel-mac" ? (
+          {showIntelDownload ? (
+            <div className="flex flex-col gap-2">
+              <Button asChild size="lg" className="w-full justify-start">
+                <a
+                  href={downloadUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => {
+                    onOpenChange(false);
+                  }}
+                >
+                  <IconDownload size={16} stroke={1.5} />
+                  Download for Apple Silicon
+                </a>
+              </Button>
+              <Button
+                asChild
+                size="lg"
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <a
+                  href={ZERO_DESKTOP_INTEL_DOWNLOAD_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => {
+                    onOpenChange(false);
+                  }}
+                >
+                  <IconDownload size={16} stroke={1.5} />
+                  Download for Intel Mac
+                </a>
+              </Button>
+            </div>
+          ) : downloadSupportStatus === "unsupported-intel-mac" ? (
             <Button type="button" size="lg" className="w-full" disabled>
               <IconAlertTriangle size={16} stroke={1.5} />
               {ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL}

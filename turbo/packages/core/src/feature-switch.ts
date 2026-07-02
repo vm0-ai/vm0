@@ -277,6 +277,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.DesktopX64Download]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Show Intel Mac download links for Zero Computer Use after darwin-x64 release artifacts are available.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.PresentationTemplateRunbook]: {
     maintainer: "bingjie@vm0.ai",
     description:

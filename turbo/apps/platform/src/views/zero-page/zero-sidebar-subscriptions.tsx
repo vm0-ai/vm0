@@ -12,7 +12,7 @@ import {
 
 import { personalConfiguredProviders$ } from "../../signals/zero-page/settings/personal-model-providers.ts";
 
-export type SubscriptionUsage = NonNullable<
+type SubscriptionUsage = NonNullable<
   ModelProviderResponse["subscriptionUsage"]
 >;
 type SubscriptionUsageWindow = NonNullable<SubscriptionUsage["fiveHour"]>;
@@ -25,7 +25,7 @@ const SUBSCRIPTION_PROVIDERS = [
   readonly label: string;
 }[];
 
-export interface SubscriptionUsageRow {
+interface SubscriptionUsageRow {
   readonly type: ModelProviderType;
   readonly label: string;
   readonly usage: SubscriptionUsage;
