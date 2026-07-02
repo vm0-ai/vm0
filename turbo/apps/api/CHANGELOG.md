@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.208.3](https://github.com/vm0-ai/vm0/compare/api-v1.208.2...api-v1.208.3) (2026-07-02)
+
+
+### Bug Fixes
+
+* protect same-session runner affinity claims ([#19764](https://github.com/vm0-ai/vm0/issues/19764)) ([5bbd286](https://github.com/vm0-ai/vm0/commit/5bbd2862e2eceb51a71ba681a24d64b87894d712))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.3
+    * @vm0/core bumped to 8.389.1
+    * @vm0/db bumped to 1.85.2
+
 ## [1.208.2](https://github.com/vm0-ai/vm0/compare/api-v1.208.1...api-v1.208.2) (2026-07-02)
 
 
