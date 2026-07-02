@@ -108,6 +108,11 @@ function activeCutoff(issuedAt: Date): Date {
   );
 }
 
+function timestampWithoutTimeZone(value: Date): string {
+  // Raw SQL Date params compare as timestamptz; these columns store UTC timestamp.
+  return value.toISOString().replace("T", " ").replace("Z", "");
+}
+
 async function signCacheValue(args: {
   readonly get: ComputedGetter;
   readonly request: SystemStoragePresignedUrlRequest;
@@ -199,18 +204,32 @@ async function touchRecentlyUsedCacheRows(
   if (cacheKeys.length === 0) {
     return;
   }
-  await db
-    .update(systemStoragePresignedUrlCache)
-    .set({ lastRequestedAt: issuedAt })
-    .where(
-      and(
-        inArray(systemStoragePresignedUrlCache.cacheKey, cacheKeys),
-        lte(
-          systemStoragePresignedUrlCache.lastRequestedAt,
-          touchCutoff(issuedAt),
-        ),
-      ),
-    );
+  const orderedCacheKeys = [...cacheKeys].sort((left, right) => {
+    return left.localeCompare(right);
+  });
+  const cacheKeySql = sql.join(
+    orderedCacheKeys.map((cacheKey) => {
+      return sql`${cacheKey}`;
+    }),
+    sql.raw(", "),
+  );
+  const issuedAtTimestamp = timestampWithoutTimeZone(issuedAt);
+  const touchCutoffTimestamp = timestampWithoutTimeZone(touchCutoff(issuedAt));
+  await db.execute(sql`
+    WITH locked AS (
+      SELECT ${systemStoragePresignedUrlCache.cacheKey}
+      FROM ${systemStoragePresignedUrlCache}
+      WHERE
+        ${systemStoragePresignedUrlCache.cacheKey} IN (${cacheKeySql})
+        AND ${systemStoragePresignedUrlCache.lastRequestedAt} <= ${touchCutoffTimestamp}::timestamp
+      ORDER BY ${systemStoragePresignedUrlCache.cacheKey}
+      FOR UPDATE OF ${systemStoragePresignedUrlCache}
+    )
+    UPDATE ${systemStoragePresignedUrlCache}
+    SET last_requested_at = ${issuedAtTimestamp}::timestamp
+    FROM locked
+    WHERE ${systemStoragePresignedUrlCache.cacheKey} = locked.cache_key
+  `);
 }
 
 async function pruneInactiveExpiredCacheRows(
@@ -220,41 +239,39 @@ async function pruneInactiveExpiredCacheRows(
   signal?: AbortSignal,
 ): Promise<number> {
   const inactiveCutoff = activeCutoff(issuedAt);
-  const rows = await db
-    .select({ cacheKey: systemStoragePresignedUrlCache.cacheKey })
-    .from(systemStoragePresignedUrlCache)
-    .where(
-      and(
-        lte(systemStoragePresignedUrlCache.expiresAt, issuedAt),
-        lte(systemStoragePresignedUrlCache.lastRequestedAt, inactiveCutoff),
-      ),
+  const issuedAtTimestamp = timestampWithoutTimeZone(issuedAt);
+  const inactiveCutoffTimestamp = timestampWithoutTimeZone(inactiveCutoff);
+  const deletedRows = await db.execute<{ readonly cacheKey: string }>(sql`
+    WITH candidates AS (
+      SELECT ${systemStoragePresignedUrlCache.cacheKey} AS "cacheKey"
+      FROM ${systemStoragePresignedUrlCache}
+      WHERE
+        ${systemStoragePresignedUrlCache.expiresAt} <= ${issuedAtTimestamp}::timestamp
+        AND ${systemStoragePresignedUrlCache.lastRequestedAt} <= ${inactiveCutoffTimestamp}::timestamp
+      ORDER BY
+        ${systemStoragePresignedUrlCache.lastRequestedAt},
+        ${systemStoragePresignedUrlCache.expiresAt},
+        ${systemStoragePresignedUrlCache.cacheKey}
+      LIMIT ${limit}
+    ),
+    locked AS (
+      SELECT ${systemStoragePresignedUrlCache.cacheKey} AS "cacheKey"
+      FROM ${systemStoragePresignedUrlCache}
+      INNER JOIN candidates
+        ON ${systemStoragePresignedUrlCache.cacheKey} = candidates."cacheKey"
+      WHERE
+        ${systemStoragePresignedUrlCache.expiresAt} <= ${issuedAtTimestamp}::timestamp
+        AND ${systemStoragePresignedUrlCache.lastRequestedAt} <= ${inactiveCutoffTimestamp}::timestamp
+      ORDER BY ${systemStoragePresignedUrlCache.cacheKey}
+      FOR UPDATE OF ${systemStoragePresignedUrlCache}
     )
-    .orderBy(
-      asc(systemStoragePresignedUrlCache.lastRequestedAt),
-      asc(systemStoragePresignedUrlCache.expiresAt),
-    )
-    .limit(limit);
+    DELETE FROM ${systemStoragePresignedUrlCache}
+    USING locked
+    WHERE ${systemStoragePresignedUrlCache.cacheKey} = locked."cacheKey"
+    RETURNING ${systemStoragePresignedUrlCache.cacheKey} AS "cacheKey"
+  `);
   signal?.throwIfAborted();
-
-  const cacheKeys = rows.map((row) => {
-    return row.cacheKey;
-  });
-  if (cacheKeys.length === 0) {
-    return 0;
-  }
-
-  const deletedRows = await db
-    .delete(systemStoragePresignedUrlCache)
-    .where(
-      and(
-        inArray(systemStoragePresignedUrlCache.cacheKey, cacheKeys),
-        lte(systemStoragePresignedUrlCache.expiresAt, issuedAt),
-        lte(systemStoragePresignedUrlCache.lastRequestedAt, inactiveCutoff),
-      ),
-    )
-    .returning({ cacheKey: systemStoragePresignedUrlCache.cacheKey });
-  signal?.throwIfAborted();
-  return deletedRows.length;
+  return deletedRows.rows.length;
 }
 
 export async function resolveSystemStoragePresignedUrls(args: {
@@ -337,10 +354,10 @@ export async function resolveSystemStoragePresignedUrls(args: {
       });
     }),
   );
-  await Promise.all([
-    upsertCacheValues(args.db, freshValues, { updateLastRequestedAt: true }),
-    touchRecentlyUsedCacheRows(args.db, cacheKeysToTouch, issuedAt),
-  ]);
+  await upsertCacheValues(args.db, freshValues, {
+    updateLastRequestedAt: true,
+  });
+  await touchRecentlyUsedCacheRows(args.db, cacheKeysToTouch, issuedAt);
 
   for (let index = 0; index < needsFresh.length; index += 1) {
     const entry = needsFresh[index];
