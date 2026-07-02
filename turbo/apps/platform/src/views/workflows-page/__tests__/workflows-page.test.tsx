@@ -852,6 +852,16 @@ function linkByAriaLabel(label: string): HTMLAnchorElement {
   return link;
 }
 
+function tabByName(name: string): HTMLElement {
+  const tab = queryAllByRoleFast("tab").find((candidate) => {
+    return candidate.textContent?.trim() === name;
+  });
+  if (!tab) {
+    throw new Error(`${name} tab not found`);
+  }
+  return tab;
+}
+
 function selectOptionByLabel(
   label: string,
   option: string | RegExp,
@@ -936,7 +946,7 @@ describe("workflows routes", () => {
     );
 
     // "Automated" keeps only workflows that have at least one automation.
-    click(screen.getByRole("tab", { name: "Automated" }));
+    click(tabByName("Automated"));
     await waitFor(() => {
       expect(search()).toBe("?automation=automated");
     });
@@ -946,7 +956,7 @@ describe("workflows routes", () => {
     expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
 
     // "Without automation" keeps only the manual workflows.
-    click(screen.getByRole("tab", { name: "Without automation" }));
+    click(tabByName("Without automation"));
     await waitFor(() => {
       expect(search()).toBe("?automation=without");
     });
@@ -955,7 +965,7 @@ describe("workflows routes", () => {
     expect(linkByAriaLabel("Open Launch Checklist")).toBeInTheDocument();
 
     // Clearing the filter returns to the full list.
-    click(screen.getByRole("tab", { name: "All" }));
+    click(tabByName("All"));
     await waitFor(() => {
       expect(search()).toBe("");
     });

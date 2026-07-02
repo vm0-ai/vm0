@@ -568,22 +568,26 @@ function FilterTabs<T extends string>({
     <Tabs
       value={value}
       onValueChange={(next) => {
-        const match = options.find((option) => option.value === next);
+        const match = options.find((option) => {
+          return option.value === next;
+        });
         if (match) {
           onChange(match.value);
         }
       }}
     >
       <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-        {options.map((option) => (
-          <TabsTrigger
-            key={option.value}
-            value={option.value}
-            className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
-          >
-            {option.label}
-          </TabsTrigger>
-        ))}
+        {options.map((option) => {
+          return (
+            <TabsTrigger
+              key={option.value}
+              value={option.value}
+              className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
+            >
+              {option.label}
+            </TabsTrigger>
+          );
+        })}
       </TabsList>
     </Tabs>
   );
