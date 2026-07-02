@@ -14,7 +14,7 @@ import {
 import { MIN_VERSION_PREFIX_LENGTH } from "@vm0/core/version-id";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { computed, type Computed } from "ccstate";
-import { and, eq, inArray, like } from "drizzle-orm";
+import { and, eq, inArray, isNull, like } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { generatePresignedGetUrl, putS3Object } from "../external/s3";
@@ -125,6 +125,12 @@ interface StorageLookup {
   readonly type: StorageType;
 }
 
+interface ArtifactStorageRow {
+  readonly id: string;
+  readonly headVersionId: string | null;
+  readonly s3Prefix: string;
+}
+
 interface StorageIndexEntry {
   readonly storageId: string;
   readonly headVersionId: string | null;
@@ -213,6 +219,17 @@ const STORAGE_MANIFEST_COUNT_BUCKET_DIMENSIONS = [
   "9_16",
   "17_plus",
 ] as const;
+const STORAGE_MANIFEST_ARTIFACT_ENSURE_ACTION_TYPES = [
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_lookup_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
+] as const satisfies readonly ApiDispatchTimingActionType[];
+
+type StorageManifestArtifactEnsureActionType =
+  (typeof STORAGE_MANIFEST_ARTIFACT_ENSURE_ACTION_TYPES)[number];
 
 function storageManifestCountBucket(count: number): StorageManifestCountBucket {
   if (count <= 0) {
@@ -253,6 +270,12 @@ export class StorageManifestBuildStats {
   private systemPresignCacheStaleReuseCount = 0;
   private systemPresignCacheSyncRefreshCount = 0;
   private nonSystemPresignCount = 0;
+  private artifactEnsureAlreadyInitializedCount = 0;
+  private artifactEnsureMissingStorageCount = 0;
+  private artifactEnsureCreatedStorageCount = 0;
+  private artifactEnsureLostCreateRaceCount = 0;
+  private artifactEnsureMissingHeadVersionCount = 0;
+  private artifactEnsureInitializedEmptyVersionCount = 0;
   private readonly presignCandidateCounts = new Map<string, number>();
 
   recordRequestedInputs(args: {
@@ -347,6 +370,30 @@ export class StorageManifestBuildStats {
     this.nonSystemPresignCount += 1;
   }
 
+  recordArtifactEnsureAlreadyInitialized(): void {
+    this.artifactEnsureAlreadyInitializedCount += 1;
+  }
+
+  recordArtifactEnsureMissingStorage(): void {
+    this.artifactEnsureMissingStorageCount += 1;
+  }
+
+  recordArtifactEnsureCreatedStorage(): void {
+    this.artifactEnsureCreatedStorageCount += 1;
+  }
+
+  recordArtifactEnsureLostCreateRace(): void {
+    this.artifactEnsureLostCreateRaceCount += 1;
+  }
+
+  recordArtifactEnsureMissingHeadVersion(): void {
+    this.artifactEnsureMissingHeadVersionCount += 1;
+  }
+
+  recordArtifactEnsureInitializedEmptyVersion(): void {
+    this.artifactEnsureInitializedEmptyVersionCount += 1;
+  }
+
   recordFinalManifest(args: {
     readonly composeEntries: readonly ManifestStorage[];
     readonly additionalEntries: readonly ManifestStorage[];
@@ -394,6 +441,26 @@ export class StorageManifestBuildStats {
       storage_manifest_duplicate_presign_candidate_count_bucket:
         storageManifestCountBucket(this.duplicatePresignCandidateCount()),
       ...this.systemPresignCacheDimensions(),
+      ...this.artifactEnsureDimensions(),
+    };
+  }
+
+  artifactEnsureDimensions(): ApiDispatchTimingDimensions {
+    return {
+      storage_manifest_artifact_ensure_already_initialized_count_bucket:
+        storageManifestCountBucket(this.artifactEnsureAlreadyInitializedCount),
+      storage_manifest_artifact_ensure_missing_storage_count_bucket:
+        storageManifestCountBucket(this.artifactEnsureMissingStorageCount),
+      storage_manifest_artifact_ensure_created_storage_count_bucket:
+        storageManifestCountBucket(this.artifactEnsureCreatedStorageCount),
+      storage_manifest_artifact_ensure_lost_create_race_count_bucket:
+        storageManifestCountBucket(this.artifactEnsureLostCreateRaceCount),
+      storage_manifest_artifact_ensure_missing_head_version_count_bucket:
+        storageManifestCountBucket(this.artifactEnsureMissingHeadVersionCount),
+      storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+        storageManifestCountBucket(
+          this.artifactEnsureInitializedEmptyVersionCount,
+        ),
     };
   }
 
@@ -485,6 +552,83 @@ export class StorageManifestBuildStats {
         storageManifestCountBucket(this.nonSystemPresignCount),
     };
   }
+}
+
+class StorageManifestArtifactEnsureTiming {
+  private readonly windows = new Map<
+    StorageManifestArtifactEnsureActionType,
+    StorageManifestPhaseTimingWindow
+  >();
+
+  constructor(
+    private readonly timing: ApiDispatchTimingCollector | undefined,
+  ) {}
+
+  async measure<T>(
+    actionType: StorageManifestArtifactEnsureActionType,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    if (!this.timing) {
+      return await operation();
+    }
+
+    const window = this.windowFor(actionType);
+    const startedAt = now();
+    window.startedAt =
+      window.startedAt === undefined
+        ? startedAt
+        : Math.min(window.startedAt, startedAt);
+    return await operation().finally(() => {
+      const finishedAt = now();
+      window.finishedAt =
+        window.finishedAt === undefined
+          ? finishedAt
+          : Math.max(window.finishedAt, finishedAt);
+    });
+  }
+
+  flush(): void {
+    if (!this.timing) {
+      return;
+    }
+
+    for (const actionType of STORAGE_MANIFEST_ARTIFACT_ENSURE_ACTION_TYPES) {
+      const window = this.windows.get(actionType);
+      const finishedAt = window?.finishedAt ?? now();
+      this.timing.recordElapsed(
+        actionType,
+        "nested",
+        window?.startedAt ?? finishedAt,
+        finishedAt,
+      );
+    }
+  }
+
+  private windowFor(
+    actionType: StorageManifestArtifactEnsureActionType,
+  ): StorageManifestPhaseTimingWindow {
+    const existing = this.windows.get(actionType);
+    if (existing) {
+      return existing;
+    }
+
+    const created: StorageManifestPhaseTimingWindow = {
+      startedAt: undefined,
+      finishedAt: undefined,
+    };
+    this.windows.set(actionType, created);
+    return created;
+  }
+}
+
+async function measureStorageManifestArtifactEnsure<T>(
+  timing: StorageManifestArtifactEnsureTiming | undefined,
+  actionType: StorageManifestArtifactEnsureActionType,
+  operation: () => Promise<T>,
+): Promise<T> {
+  return timing
+    ? await timing.measure(actionType, operation)
+    : await operation();
 }
 
 class StorageManifestEntryPhaseTiming {
@@ -700,14 +844,7 @@ function createEmptyStorageManifest(): string {
 async function findStorage(
   db: Db,
   lookup: StorageLookup,
-): Promise<
-  | {
-      readonly id: string;
-      readonly headVersionId: string | null;
-      readonly s3Prefix: string;
-    }
-  | undefined
-> {
+): Promise<ArtifactStorageRow | undefined> {
   const [storage] = await db
     .select({
       id: storages.id,
@@ -770,24 +907,37 @@ async function loadStorageIndex(
   return index;
 }
 
-function ensureArtifactStorage(args: {
+interface EnsureArtifactStorageArgs {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly name: string;
   readonly bucket: string;
-}): Computed<Promise<void>> {
-  return computed(async (get): Promise<void> => {
-    const lookup = {
-      orgId: args.orgId,
-      userId: args.userId,
-      name: args.name,
-      type: "artifact" as const,
-    };
-    let storage = await findStorage(args.db, lookup);
+  readonly timing?: StorageManifestArtifactEnsureTiming;
+  readonly stats?: StorageManifestBuildStats;
+}
 
-    if (!storage) {
-      const [created] = await args.db
+async function findOrCreateArtifactStorage(
+  args: EnsureArtifactStorageArgs,
+  lookup: StorageLookup,
+): Promise<ArtifactStorageRow | undefined> {
+  const storage = await measureStorageManifestArtifactEnsure(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_ensure_artifact_lookup_storage",
+    async () => {
+      return await findStorage(args.db, lookup);
+    },
+  );
+  if (storage) {
+    return storage;
+  }
+
+  args.stats?.recordArtifactEnsureMissingStorage();
+  const [created] = await measureStorageManifestArtifactEnsure(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
+    async () => {
+      return await args.db
         .insert(storages)
         .values({
           orgId: args.orgId,
@@ -802,60 +952,156 @@ function ensureArtifactStorage(args: {
           headVersionId: storages.headVersionId,
           s3Prefix: storages.s3Prefix,
         });
-      storage = created ?? (await findStorage(args.db, lookup));
-    }
+    },
+  );
+  if (created) {
+    args.stats?.recordArtifactEnsureCreatedStorage();
+    return created;
+  }
 
+  const refetched = await measureStorageManifestArtifactEnsure(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
+    async () => {
+      return await findStorage(args.db, lookup);
+    },
+  );
+  if (refetched) {
+    args.stats?.recordArtifactEnsureLostCreateRace();
+  }
+  return refetched;
+}
+
+async function recordInitializedArtifactFastPath(
+  args: EnsureArtifactStorageArgs,
+): Promise<void> {
+  args.stats?.recordArtifactEnsureAlreadyInitialized();
+  await measureStorageManifestArtifactEnsure(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
+    async () => {},
+  );
+}
+
+async function uploadEmptyArtifactObjects(
+  get: ComputedGetter,
+  args: EnsureArtifactStorageArgs,
+  s3Key: string,
+): Promise<void> {
+  await measureStorageManifestArtifactEnsure(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+    async () => {
+      await Promise.all([
+        get(
+          putS3Object(
+            args.bucket,
+            `${s3Key}/manifest.json`,
+            createEmptyStorageManifest(),
+            "application/json",
+          ),
+        ),
+        get(
+          putS3Object(
+            args.bucket,
+            `${s3Key}/archive.tar.gz`,
+            EMPTY_TAR_GZ,
+            "application/gzip",
+          ),
+        ),
+      ]);
+    },
+  );
+}
+
+async function insertInitialArtifactVersion(args: {
+  readonly db: Db;
+  readonly userId: string;
+  readonly storage: ArtifactStorageRow;
+  readonly versionId: string;
+  readonly s3Key: string;
+  readonly timing?: StorageManifestArtifactEnsureTiming;
+}): Promise<boolean> {
+  return await measureStorageManifestArtifactEnsure(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
+    async () => {
+      return await args.db.transaction(async (tx) => {
+        await tx
+          .insert(storageVersions)
+          .values({
+            id: args.versionId,
+            storageId: args.storage.id,
+            s3Key: args.s3Key,
+            size: 0,
+            fileCount: 0,
+            message: "Initial empty artifact",
+            createdBy: args.userId,
+          })
+          .onConflictDoNothing();
+        const [updated] = await tx
+          .update(storages)
+          .set({
+            headVersionId: args.versionId,
+            size: 0,
+            fileCount: 0,
+            updatedAt: nowDate(),
+          })
+          .where(
+            and(
+              eq(storages.id, args.storage.id),
+              isNull(storages.headVersionId),
+            ),
+          )
+          .returning({ id: storages.id });
+        return updated !== undefined;
+      });
+    },
+  );
+}
+
+async function initializeEmptyArtifactStorage(
+  get: ComputedGetter,
+  args: EnsureArtifactStorageArgs,
+  storage: ArtifactStorageRow,
+): Promise<void> {
+  args.stats?.recordArtifactEnsureMissingHeadVersion();
+  const versionId = computeContentHashFromHashes(storage.id, []);
+  const s3Key = `${storage.s3Prefix}/${versionId}`;
+  await uploadEmptyArtifactObjects(get, args, s3Key);
+  const initializedHead = await insertInitialArtifactVersion({
+    db: args.db,
+    userId: args.userId,
+    storage,
+    versionId,
+    s3Key,
+    timing: args.timing,
+  });
+  if (initializedHead) {
+    args.stats?.recordArtifactEnsureInitializedEmptyVersion();
+  }
+}
+
+function ensureArtifactStorage(
+  args: EnsureArtifactStorageArgs,
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const lookup = {
+      orgId: args.orgId,
+      userId: args.userId,
+      name: args.name,
+      type: "artifact" as const,
+    };
+    const storage = await findOrCreateArtifactStorage(args, lookup);
     if (!storage) {
       throw new Error(`Failed to create artifact storage "${args.name}"`);
     }
     if (storage.headVersionId) {
+      await recordInitializedArtifactFastPath(args);
       return;
     }
 
-    const versionId = computeContentHashFromHashes(storage.id, []);
-    const s3Key = `${storage.s3Prefix}/${versionId}`;
-    await Promise.all([
-      get(
-        putS3Object(
-          args.bucket,
-          `${s3Key}/manifest.json`,
-          createEmptyStorageManifest(),
-          "application/json",
-        ),
-      ),
-      get(
-        putS3Object(
-          args.bucket,
-          `${s3Key}/archive.tar.gz`,
-          EMPTY_TAR_GZ,
-          "application/gzip",
-        ),
-      ),
-    ]);
-
-    await args.db.transaction(async (tx) => {
-      await tx
-        .insert(storageVersions)
-        .values({
-          id: versionId,
-          storageId: storage.id,
-          s3Key,
-          size: 0,
-          fileCount: 0,
-          message: "Initial empty artifact",
-          createdBy: args.userId,
-        })
-        .onConflictDoNothing();
-      await tx
-        .update(storages)
-        .set({
-          headVersionId: versionId,
-          size: 0,
-          fileCount: 0,
-          updatedAt: nowDate(),
-        })
-        .where(eq(storages.id, storage.id));
-    });
+    await initializeEmptyArtifactStorage(get, args, storage);
   });
 }
 
@@ -1382,8 +1628,12 @@ async function ensureStorageManifestArtifacts(
     readonly bucket: string;
     readonly artifacts: readonly ContextArtifact[];
     readonly timing?: ApiDispatchTimingCollector;
+    readonly stats?: StorageManifestBuildStats;
   },
 ): Promise<void> {
+  const artifactEnsureTiming = new StorageManifestArtifactEnsureTiming(
+    args.timing,
+  );
   await measureApiDispatchTiming(
     args.timing,
     "api_dispatch_prepare_storage_manifest_ensure_artifacts",
@@ -1398,10 +1648,17 @@ async function ensureStorageManifestArtifacts(
               userId: args.userId,
               name: artifact.name,
               bucket: args.bucket,
+              timing: artifactEnsureTiming,
+              stats: args.stats,
             }),
           );
         }),
-      );
+      ).finally(() => {
+        artifactEnsureTiming.flush();
+      });
+    },
+    () => {
+      return args.stats?.artifactEnsureDimensions();
     },
   );
 }
@@ -1697,6 +1954,7 @@ export function prepareAgentRunStorageManifest(
       bucket,
       artifacts,
       timing: args.timing,
+      stats: args.stats,
     });
 
     const storageIndex = await loadTimedStorageIndex({
