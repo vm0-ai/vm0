@@ -15,7 +15,9 @@ use super::diagnostics::{
     AgentStdoutStreamDiagnostics, append_stdout_stream_diagnostics_to_stream_log, copy_guest_logs,
     read_guest_cli_agent_session_id,
 };
-use super::session_id::{canonical_codex_thread_id, is_valid_session_id};
+use super::session_id::{
+    canonical_codex_thread_id, invalid_session_id_diagnostic_preview, is_valid_session_id,
+};
 use super::telemetry::record_workspace_cache_result;
 use super::{
     ExecuteOutcome, ExecutionFailure, ExecutorConfig, JobParams, NewSandboxDispatch, RunnerError,
@@ -598,7 +600,7 @@ fn normalize_guest_cli_agent_session_id_for_parking(
             warn!(
                 run_id = %context.run_id,
                 framework = "codex",
-                session_id = %session_id,
+                session_id = %invalid_session_id_diagnostic_preview(&session_id),
                 "ignoring invalid guest session ID for framework"
             );
             None
@@ -610,7 +612,7 @@ fn normalize_guest_cli_agent_session_id_for_parking(
                 warn!(
                     run_id = %context.run_id,
                     framework = "claude-code",
-                    session_id = %session_id,
+                    session_id = %invalid_session_id_diagnostic_preview(&session_id),
                     "ignoring invalid guest session ID for framework"
                 );
                 None

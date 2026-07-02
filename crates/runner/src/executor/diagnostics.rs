@@ -35,7 +35,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tracing::{info, warn};
 
 use super::env::is_runner_owned_env_key;
-use super::session_id::is_valid_session_id;
+use super::session_id::{invalid_session_id_diagnostic_preview, is_valid_session_id};
 use super::session_restore::SessionRestoreDiagnostics;
 use super::{
     AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT, AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT,
@@ -619,7 +619,7 @@ pub(super) async fn read_guest_cli_agent_session_id(
             if !is_valid_session_id(&id) {
                 warn!(
                     run_id = %run_id,
-                    session_id = %id,
+                    session_id = %invalid_session_id_diagnostic_preview(&id),
                     "ignoring invalid guest session ID"
                 );
                 return None;
