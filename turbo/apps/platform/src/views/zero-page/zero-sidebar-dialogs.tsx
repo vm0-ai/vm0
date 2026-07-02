@@ -427,7 +427,6 @@ export function AgentListDialog({
 
   const handleChat = (agentId: string | null) => {
     onOpenChange(false);
-    setQuery("");
     onSelectChatAgent?.(agentId);
   };
 
