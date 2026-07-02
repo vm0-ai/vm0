@@ -2005,6 +2005,72 @@ jobs:
       - name: Build summary
         run: echo "✅ E2B templates built successfully (development account)"
 
+  lint-runtime-api-compat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    needs: [detect-release]
+    if: needs.detect-release.outputs.skip != 'true'
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Download online runtime API schema
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCHEMA_RELEASE_TAG: runtime-api-schema-prod
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/runtime-api-schema
+
+          if gh release view "$SCHEMA_RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            if gh release download "$SCHEMA_RELEASE_TAG" \
+              --repo "${{ github.repository }}" \
+              --pattern current.json \
+              --dir /tmp/runtime-api-schema \
+              --clobber; then
+              echo "Downloaded online runtime API schema"
+            else
+              echo "::warning::Runtime API schema release exists, but current.json is not available yet."
+            fi
+          else
+            echo "::warning::Runtime API schema release $SCHEMA_RELEASE_TAG does not exist yet; compatibility report will be skipped."
+          fi
+
+      - name: Check runtime API compatibility (report only)
+        working-directory: turbo
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/runtime-api-schema
+
+          pnpm --filter @vm0/api-contracts run build:runtime-api-schema -- --out /tmp/runtime-api-schema/candidate.json
+
+          if [ -f /tmp/runtime-api-schema/current.json ]; then
+            pnpm --filter @vm0/api-contracts run lint-runtime-api-compat -- \
+              --against /tmp/runtime-api-schema/current.json \
+              --current /tmp/runtime-api-schema/candidate.json \
+              --report-out /tmp/runtime-api-schema/report.json \
+              --warn-only
+          else
+            echo "::warning::No online runtime API schema found. Generated candidate schema only."
+            printf '{"findings":[],"skipped":"online schema not found"}\n' > /tmp/runtime-api-schema/report.json
+          fi
+
+      - name: Upload runtime API compatibility report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: runtime-api-compat-report
+          path: |
+            /tmp/runtime-api-schema/candidate.json
+            /tmp/runtime-api-schema/current.json
+            /tmp/runtime-api-schema/report.json
+          if-no-files-found: warn
+          retention-days: 14
+
   # Lighthouse CI audit for web homepage (failure blocks merge, skip is allowed)
   ci-gate-turbo:
     runs-on: ubuntu-latest
