@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
@@ -6376,31 +6377,53 @@ describe("chat lifecycle", () => {
   it("transcribes voice input into the composer", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "voice-input-thread";
+    const draftPatches: unknown[] = [];
+    const toastError = vi.spyOn(toast, "error");
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
+    context.mocks.http.patch(
+      "*/api/zero/chat-threads/:id",
+      async ({ request }) => {
+        draftPatches.push(await request.json());
+        return new Response(null, { status: 200 });
+      },
+    );
     context.mocks.http.post("*/api/zero/voice-io/stt", () => {
       return new Response(JSON.stringify({ text: "Summarize the standup" }), {
         headers: { "Content-Type": "application/json" },
       });
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
+      const textarea = await waitFor(() => {
+        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+      });
 
-    await user.click(await screen.findByLabelText("Voice input"));
+      await user.click(await screen.findByLabelText("Voice input"));
 
-    await waitFor(() => {
-      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
-    });
+      await waitFor(() => {
+        expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+      });
 
-    await user.click(screen.getByLabelText("Stop recording"));
+      await user.click(screen.getByLabelText("Stop recording"));
 
-    await waitFor(() => {
-      expect(textarea).toHaveValue("Summarize the standup");
-    });
+      await waitFor(() => {
+        expect(textarea).toHaveValue("Summarize the standup");
+      });
+      await waitFor(() => {
+        expect(draftPatches).toContainEqual({
+          draftContent: "Summarize the standup",
+          draftAttachments: null,
+        });
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
+    } finally {
+      toastError.mockRestore();
+    }
   });
 
   it("shows voice input starting state while the browser opens the microphone", async () => {
