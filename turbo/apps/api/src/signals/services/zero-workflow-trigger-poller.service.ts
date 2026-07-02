@@ -360,6 +360,8 @@ export const executeDueWorkflowTriggers$ = command(
         agentId: row.agentId,
         workflowName: row.workflowName,
         chatThreadId,
+        allowClaimedOnceScheduleTrigger:
+          claimed.scheduleType === "once" && !claimed.enabled,
       };
 
       const runResult = await settle(
