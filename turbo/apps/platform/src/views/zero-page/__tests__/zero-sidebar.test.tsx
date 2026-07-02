@@ -24,7 +24,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
+import {
+  PLACEHOLDER,
+  splitChatThreadListResponse,
+} from "./chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -1272,6 +1275,53 @@ describe("zero sidebar", () => {
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
     expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
+  });
+
+  it("opens the agent picker from the global shortcut while composer is focused", async () => {
+    prepareAgentTeam();
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
+    composer.focus();
+    fireEvent.keyDown(composer, {
+      key: "a",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
+    expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
+  });
+
+  it("ignores global shortcuts while a dialog is open", async () => {
+    prepareAgentTeam();
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      expect(sidebar()).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, {
+      key: "a",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+
+    expect(screen.queryByText("Keyboard Shortcuts")).not.toBeInTheDocument();
   });
 
   it("selects an agent from the picker with arrow keys and enter", async () => {

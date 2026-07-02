@@ -78,11 +78,6 @@ import {
 } from "../../signals/utils.ts";
 import { sendMode$ } from "../../signals/send-mode.ts";
 import {
-  navigateToNewChat$,
-  toggleSidebarOff$,
-} from "../../signals/zero-page/zero-nav.ts";
-import { openAgentListDialog$ } from "../../signals/zero-page/zero-sidebar-state.ts";
-import {
   activeGoalDialogGoal$,
   activeGoalDialogThreadId$,
   closeChatThreadGoalDialog$,
@@ -6774,9 +6769,6 @@ export function ZeroChatComposer({
   const sendModeLoadable = useLastLoadable(sendMode$);
   const sendMode =
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
-  const toggleSidebar = useSet(toggleSidebarOff$);
-  const newChat = useSet(navigateToNewChat$);
-  const openAgentListDialog = useSet(openAgentListDialog$);
 
   const handleKeyDown = (e: KeyboardEventLike) => {
     if (window.matchMedia("(pointer: coarse)").matches) {
@@ -6790,15 +6782,6 @@ export function ZeroChatComposer({
         ...(sendMode === "enter" ? { enter: send } : { "mod+enter": send }),
         escape: () => {
           (e.target as HTMLElement).blur();
-        },
-        "mod+b": () => {
-          toggleSidebar();
-        },
-        "mod+shift+o": () => {
-          detach(newChat(pageSignal), Reason.DomCallback);
-        },
-        "mod+shift+a": () => {
-          openAgentListDialog();
         },
       },
       e,

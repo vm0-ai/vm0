@@ -15,6 +15,7 @@
 
 export interface KeyboardEventLike {
   key: string;
+  code?: string;
   metaKey: boolean;
   ctrlKey: boolean;
   shiftKey: boolean;
@@ -84,6 +85,43 @@ function parseShortcut(shortcut: string): ParsedShortcut {
   return { mod, shift, alt, key };
 }
 
+const SHIFTED_DIGIT_KEYS: Record<string, string> = {
+  "0": ")",
+  "1": "!",
+  "2": "@",
+  "3": "#",
+  "4": "$",
+  "5": "%",
+  "6": "^",
+  "7": "&",
+  "8": "*",
+  "9": "(",
+};
+
+function eventDigit(e: KeyboardEventLike): string | null {
+  const codeMatch = e.code?.match(/^(?:Digit|Numpad)([0-9])$/);
+  if (codeMatch) {
+    return codeMatch[1]!;
+  }
+  const key = e.key.toLowerCase();
+  if (/^[0-9]$/.test(key)) {
+    return key;
+  }
+  for (const [digit, shiftedKey] of Object.entries(SHIFTED_DIGIT_KEYS)) {
+    if (key === shiftedKey) {
+      return digit;
+    }
+  }
+  return null;
+}
+
+function matchesShortcutKey(parsed: ParsedShortcut, e: KeyboardEventLike) {
+  if (parsed.shift && /^[0-9]$/.test(parsed.key)) {
+    return eventDigit(e) === parsed.key;
+  }
+  return e.key.toLowerCase() === parsed.key;
+}
+
 // ---------------------------------------------------------------------------
 // Matching
 // ---------------------------------------------------------------------------
@@ -98,7 +136,7 @@ export function matchShortcut(shortcut: string, e: KeyboardEventLike): boolean {
     e.shiftKey === parsed.shift &&
     e.altKey === parsed.alt &&
     !extraMod &&
-    e.key.toLowerCase() === parsed.key
+    matchesShortcutKey(parsed, e)
   );
 }
 

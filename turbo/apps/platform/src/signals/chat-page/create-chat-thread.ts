@@ -2000,6 +2000,22 @@ function createSkeletonSignals() {
   return { skeletonVisible$, showSkeleton$, hideSkeleton$ };
 }
 
+function createContainerRef() {
+  const internalContainerEl$ = state<HTMLElement | null>(null);
+  const containerEl$ = computed((get) => {
+    return get(internalContainerEl$);
+  });
+  const setContainerRef$ = onRef(
+    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener("abort", () => {
+        set(internalContainerEl$, null);
+      });
+      set(internalContainerEl$, el);
+    }),
+  );
+  return { containerEl$, setContainerRef$ };
+}
+
 function createInputRef() {
   const internalInputRef$ = state<HTMLElement | null>(null);
   const setInputRef$ = onRef(
@@ -3527,6 +3543,7 @@ export function createChatThreadSignals(
   } = createScrollSignals(threadId);
   const { skeletonVisible$, showSkeleton$, hideSkeleton$ } =
     createSkeletonSignals();
+  const { containerEl$, setContainerRef$ } = createContainerRef();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
   const { agentId$, agentDisplayName$, defaultModelSelection$, agentPinned$ } =
@@ -3592,6 +3609,8 @@ export function createChatThreadSignals(
     ...computerUseHostSelection,
     ...messageActions,
     ...scrollSignals,
+    containerEl$,
+    setContainerRef$,
     awayFromBottom$,
     skeletonVisible$,
     showSkeleton$,
