@@ -3711,6 +3711,13 @@
       "when": 1782984397133,
       "tag": "0529_light_butterfly",
       "breakpoints": true
+    },
+    {
+      "idx": 530,
+      "version": "7",
+      "when": 1782991773971,
+      "tag": "0530_chat_thread_snapshots",
+      "breakpoints": true
     }
   ]
 }
