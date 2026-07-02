@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.204.2](https://github.com/vm0-ai/vm0/compare/api-v1.204.1...api-v1.204.2) (2026-07-02)
+
+
+### Bug Fixes
+
+* keep follow-up markers after assistant content ([#19737](https://github.com/vm0-ai/vm0/issues/19737)) ([d135270](https://github.com/vm0-ai/vm0/commit/d135270c327e2aece0a9a014128928e1e230107b))
+
 ## [1.204.1](https://github.com/vm0-ai/vm0/compare/api-v1.204.0...api-v1.204.1) (2026-07-02)
 
 
