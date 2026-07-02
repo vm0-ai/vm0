@@ -766,6 +766,11 @@ const updateAgentCustomConnectorsInner$ = command(
         },
       };
     }
+    if (updated.status === "customConnectorsNotConfigured") {
+      return validationError(
+        `Custom connector ids are not configured for this user: ${updated.unconfiguredIds.join(", ")}`,
+      );
+    }
 
     return {
       status: 200 as const,

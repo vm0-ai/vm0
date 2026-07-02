@@ -1629,6 +1629,9 @@ const authorizeProposalAgent$ = command(
     if (added.status === "customConnectorsNotFound") {
       return notFound("Custom connector not found");
     }
+    if (added.status === "customConnectorsNotConfigured") {
+      return undefined;
+    }
     return args.agentId;
   },
 );
