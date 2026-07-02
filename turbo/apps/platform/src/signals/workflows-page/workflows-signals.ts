@@ -659,12 +659,7 @@ export const openWorkflowChat$ = command(
   },
 );
 
-type WorkflowVisibilityAction =
-  | "request-publish"
-  | "cancel-publish-request"
-  | "approve-publish"
-  | "reject-publish"
-  | "demote";
+type WorkflowVisibilityAction = "publish" | "demote";
 
 export const changeWorkflowVisibility$ = command(
   async (
@@ -676,15 +671,9 @@ export const changeWorkflowVisibility$ = command(
     const params = { workflowId: input.workflowId };
     const options = { params, fetchOptions: { signal } };
     const request =
-      input.action === "request-publish"
-        ? client.requestPublish(options)
-        : input.action === "cancel-publish-request"
-          ? client.cancelPublishRequest(options)
-          : input.action === "approve-publish"
-            ? client.approvePublish(options)
-            : input.action === "reject-publish"
-              ? client.rejectPublish(options)
-              : client.demote(options);
+      input.action === "publish"
+        ? client.publish(options)
+        : client.demote(options);
     await accept(request, [200]);
     signal.throwIfAborted();
     set(reloadWorkflows$);

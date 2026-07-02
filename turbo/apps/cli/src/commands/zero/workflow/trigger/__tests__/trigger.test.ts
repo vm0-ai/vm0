@@ -32,9 +32,9 @@ const workflowSummary = {
   displayName: "Tell a joke",
   description: "Tell one short joke",
   visibility: "private",
-  requestToPublish: false,
   ownerUserId: "user-123",
   canManage: true,
+  canPublish: true,
 };
 
 const triggerBase = {
