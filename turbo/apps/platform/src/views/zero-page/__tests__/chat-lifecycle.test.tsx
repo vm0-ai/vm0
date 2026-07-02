@@ -1487,7 +1487,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps thinking when a different run completes while another run is open", async () => {
+  it("ignores active run ids when loaded messages end at a completed run", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-stale-lifecycle-thinking",
       activeRunIds: ["run-r2"],
@@ -1552,10 +1552,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText("Continue the plan")).toBeInTheDocument();
       expect(screen.getByText("The next step is ready.")).toBeInTheDocument();
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      expect(
-        document.querySelector("[data-thinking-indicator]"),
-      ).not.toBeNull();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });
   });
 
@@ -1604,7 +1601,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps thinking for an older active run when a newer run completes", async () => {
+  it("does not use active run ids to revive an older run after a newer run completes", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-concurrent-run-completed-later",
       activeRunIds: ["run-concurrent-active"],
@@ -1659,14 +1656,11 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("The current status summary is ready."),
       ).toBeInTheDocument();
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      expect(
-        document.querySelector("[data-thinking-indicator]"),
-      ).not.toBeNull();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });
   });
 
-  it("keeps thinking when an older active run is outside the loaded message window", async () => {
+  it("does not use active run ids when active messages are outside the loaded window", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-active-run-outside-loaded-window",
       activeRunIds: ["run-active-outside-window"],
@@ -1688,10 +1682,7 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      expect(
-        document.querySelector("[data-thinking-indicator]"),
-      ).not.toBeNull();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });
   });
 
