@@ -313,6 +313,30 @@ class TestDecodeRequestBodyForNetworkLogCapture:
             is None
         )
 
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd"])
+    def test_incomplete_compressed_body_returns_none_before_decode_limit(self, headers, encoding):
+        compressed = _compress_one_shot_body(encoding, b"hello request body" * 100)
+
+        assert (
+            decode_request_body_for_network_log_capture(
+                compressed[:-1],
+                headers(("Content-Encoding", encoding)),
+            )
+            is None
+        )
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd"])
+    def test_decode_limit_exceeded_returns_truncated_prefix(self, headers, encoding):
+        body = b"x" * 1024
+
+        decoded = decode_request_body_for_network_log_capture(
+            _compress_one_shot_body(encoding, body),
+            headers(("Content-Encoding", encoding)),
+            max_output=128,
+        )
+
+        assert decoded == body[:128]
+
     def test_identity_and_missing_encoding_return_original_bytes(self, headers):
         data = b'{"hello":"world"}'
 
