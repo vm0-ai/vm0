@@ -1910,16 +1910,46 @@ fn concurrent_resume_writes_preserve_all_turns() -> std::io::Result<()> {
         ));
     }
 
+    let mut io_failures = Vec::new();
+    let mut status_failures = Vec::new();
+    let mut error_kind = None;
     for (prompt, handle) in handles {
-        let out = handle
-            .join()
-            .map_err(|_| std::io::Error::other(format!("resume thread panicked: {prompt}")))??;
-        assert_eq!(
-            out.status, 0,
-            "resume child failed for {prompt}: status={}; stderr={:?}",
-            out.status, out.stderr
-        );
+        match handle.join() {
+            Ok(Ok(out)) if out.status == 0 => {}
+            Ok(Ok(out)) => {
+                status_failures.push(format!(
+                    "{prompt}: status={}; stderr={:?}",
+                    out.status, out.stderr
+                ));
+            }
+            Ok(Err(err)) => {
+                error_kind.get_or_insert(err.kind());
+                io_failures.push(format!("{prompt}: {err}"));
+            }
+            Err(_) => {
+                error_kind.get_or_insert(std::io::ErrorKind::Other);
+                io_failures.push(format!("{prompt}: resume thread panicked"));
+            }
+        }
     }
+    if !io_failures.is_empty() {
+        let mut message = format!("resume child errors: {}", io_failures.join("; "));
+        if !status_failures.is_empty() {
+            message.push_str(&format!(
+                "; resume child non-zero statuses: {}",
+                status_failures.join("; ")
+            ));
+        }
+        return Err(std::io::Error::new(
+            error_kind.unwrap_or(std::io::ErrorKind::Other),
+            message,
+        ));
+    }
+    assert!(
+        status_failures.is_empty(),
+        "resume child non-zero statuses: {}",
+        status_failures.join("; ")
+    );
 
     let session_path = require_session_file(dir.path())?;
     let events = read_session_file(&session_path)?;
