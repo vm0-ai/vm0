@@ -348,6 +348,14 @@
       }
     },
     {
+      "name": "literal host rejects extra leading segment",
+      "host": "evil.api.github.com",
+      "pattern": "api.github.com",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
       "name": "plain host parameter captures lowercase segment",
       "host": "ACME.zendesk.com",
       "pattern": "{subdomain}.zendesk.com",
@@ -563,6 +571,14 @@
       "name": "runtime URL with backslash fails closed",
       "url": "https://api.github.com/re\\pos",
       "base": "https://api.github.com/repos",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "malformed runtime URL fails closed",
+      "url": "https://[::1",
+      "base": "https://api.github.com",
       "expected": {
         "kind": "no-match"
       }
