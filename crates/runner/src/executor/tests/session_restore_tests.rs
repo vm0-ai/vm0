@@ -11,7 +11,6 @@ use super::super::DEFAULT_EXEC_TIMEOUT;
 use super::super::session_id::{canonical_codex_thread_id, is_valid_session_id};
 use super::super::session_restore::{MaterializedResumeSession, restore_session};
 use super::support::{CapturedEvent, CapturedEvents, minimal_context, sandbox_write_file_error};
-use crate::paths::diagnostic_session_fingerprint;
 use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::types::{
     ResumeSession, ResumeSessionHistory, ResumeSessionHistoryRef, ResumeSessionHistoryRefKind,
@@ -236,7 +235,7 @@ async fn restore_session_rejects_invalid_session_id() {
 }
 
 #[test]
-fn restore_session_logs_fingerprint_without_raw_claude_session_id() {
+fn restore_session_logs_claude_session_id() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "claude-code".into();
@@ -247,20 +246,16 @@ fn restore_session_logs_fingerprint_without_raw_claude_session_id() {
 
     let diagnostics = result.unwrap();
     assert_eq!(diagnostics.framework, "claude-code");
-    assert_eq!(
-        diagnostics.session_fingerprint,
-        diagnostic_session_fingerprint(raw_session_id)
-    );
+    assert_eq!(diagnostics.session_id, raw_session_id);
     assert_eq!(diagnostics.bytes_in, session.history_bytes().len());
-    assert_captured_events_do_not_contain(&events, raw_session_id);
     let event = captured_event(&events, "restored session history");
     assert_eq!(
         event.fields.get("framework").map(String::as_str),
         Some("claude-code")
     );
     assert_eq!(
-        event.fields.get("session_fingerprint").map(String::as_str),
-        Some(diagnostic_session_fingerprint(raw_session_id).as_str())
+        event.fields.get("session_id").map(String::as_str),
+        Some(raw_session_id)
     );
     assert!(
         !event.fields.contains_key("path"),
@@ -349,7 +344,7 @@ fn restore_session_writes_codex_session() {
 }
 
 #[test]
-fn restore_session_logs_fingerprint_without_raw_codex_session_id() {
+fn restore_session_logs_codex_session_id() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
@@ -360,23 +355,16 @@ fn restore_session_logs_fingerprint_without_raw_codex_session_id() {
 
     let diagnostics = result.unwrap();
     assert_eq!(diagnostics.framework, "codex");
-    assert_eq!(
-        diagnostics.session_fingerprint,
-        diagnostic_session_fingerprint(raw_session_id)
-    );
+    assert_eq!(diagnostics.session_id, raw_session_id);
     assert_eq!(diagnostics.bytes_in, session.history_bytes().len());
-    assert_captured_events_do_not_contain(&events, raw_session_id);
     let restore_event = captured_event(&events, "restored session history");
     assert_eq!(
         restore_event.fields.get("framework").map(String::as_str),
         Some("codex")
     );
     assert_eq!(
-        restore_event
-            .fields
-            .get("session_fingerprint")
-            .map(String::as_str),
-        Some(diagnostic_session_fingerprint(raw_session_id).as_str())
+        restore_event.fields.get("session_id").map(String::as_str),
+        Some(raw_session_id)
     );
     assert!(
         !restore_event.fields.contains_key("path"),
@@ -602,7 +590,7 @@ async fn restore_session_fails_when_codex_cleanup_exceeds_scan_budget() {
 }
 
 #[tokio::test]
-async fn restore_session_redacts_codex_cleanup_failure_output() {
+async fn restore_session_preserves_codex_cleanup_failure_output() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
@@ -633,25 +621,14 @@ async fn restore_session_redacts_codex_cleanup_failure_output() {
 
     let message = err.to_string();
     assert!(message.contains("codex session cleanup failed"));
-    assert!(message.contains("[redacted-session-path]"));
-    assert!(message.contains("[redacted-session-id]"));
-    assert!(
-        !message.contains(session_id),
-        "cleanup failure must not echo raw session id: {message}"
-    );
-    assert!(
-        !message.contains(&session_id_no_dashes),
-        "cleanup failure must not echo no-dash session id: {message}"
-    );
-    assert!(
-        !message.contains(session_path),
-        "cleanup failure must not echo raw session path: {message}"
-    );
+    assert!(message.contains(session_id), "got: {message}");
+    assert!(message.contains(&session_id_no_dashes), "got: {message}");
+    assert!(message.contains(session_path), "got: {message}");
     assert!(sandbox.write_file_calls().is_empty());
 }
 
 #[tokio::test]
-async fn restore_session_redacts_non_exited_codex_cleanup_failure_output() {
+async fn restore_session_preserves_non_exited_codex_cleanup_failure_output() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
@@ -685,15 +662,14 @@ async fn restore_session_redacts_non_exited_codex_cleanup_failure_output() {
 
     let message = err.to_string();
     assert!(message.contains("codex session cleanup failed (wait failed)"));
-    assert!(message.contains("[redacted-session-path]"));
-    assert!(message.contains("[redacted-session-id]"));
-    assert!(!message.contains(session_id));
-    assert!(!message.contains(&session_id_no_dashes));
+    assert!(message.contains(session_id), "got: {message}");
+    assert!(message.contains(&session_id_no_dashes), "got: {message}");
+    assert!(message.contains(session_path), "got: {message}");
     assert!(sandbox.write_file_calls().is_empty());
 }
 
 #[tokio::test]
-async fn restore_session_redacts_claude_write_file_error() {
+async fn restore_session_preserves_claude_write_file_error() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "claude-code".into();
@@ -708,20 +684,12 @@ async fn restore_session_redacts_claude_write_file_error() {
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
 
     let message = err.to_string();
-    assert!(message.contains("[redacted-session-path]"));
-    assert!(message.contains("[redacted-session-id]"));
-    assert!(
-        !message.contains(session_id),
-        "write failure must not echo raw session id: {message}"
-    );
-    assert!(
-        !message.contains(session_path),
-        "write failure must not echo raw session path: {message}"
-    );
+    assert!(message.contains(session_id), "got: {message}");
+    assert!(message.contains(session_path), "got: {message}");
 }
 
 #[tokio::test]
-async fn restore_session_redacts_codex_write_file_error() {
+async fn restore_session_preserves_codex_write_file_error() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
@@ -749,24 +717,13 @@ async fn restore_session_redacts_codex_write_file_error() {
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
 
     let message = err.to_string();
-    assert!(message.contains("[redacted-session-path]"));
-    assert!(message.contains("[redacted-session-id]"));
-    assert!(
-        !message.contains(session_id),
-        "write failure must not echo raw session id: {message}"
-    );
-    assert!(
-        !message.contains(&session_id_no_dashes),
-        "write failure must not echo no-dash session id: {message}"
-    );
-    assert!(
-        !message.contains(session_path),
-        "write failure must not echo raw session path: {message}"
-    );
+    assert!(message.contains(session_id), "got: {message}");
+    assert!(message.contains(&session_id_no_dashes), "got: {message}");
+    assert!(message.contains(session_path), "got: {message}");
 }
 
 #[tokio::test]
-async fn restore_session_redacts_codex_original_no_dash_write_file_error() {
+async fn restore_session_preserves_codex_original_no_dash_write_file_error() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
@@ -794,24 +751,13 @@ async fn restore_session_redacts_codex_original_no_dash_write_file_error() {
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
 
     let message = err.to_string();
-    assert!(message.contains("[redacted-session-path]"));
-    assert!(message.contains("[redacted-session-id]"));
-    assert!(
-        !message.contains(raw_session_id),
-        "write failure must not echo raw no-dash session id: {message}"
-    );
-    assert!(
-        !message.contains(canonical_session_id),
-        "write failure must not echo canonical session id: {message}"
-    );
-    assert!(
-        !message.contains(session_path),
-        "write failure must not echo raw session path: {message}"
-    );
+    assert!(message.contains(raw_session_id), "got: {message}");
+    assert!(message.contains(canonical_session_id), "got: {message}");
+    assert!(message.contains(session_path), "got: {message}");
 }
 
 #[tokio::test]
-async fn restore_session_redacts_codex_mixed_case_original_write_file_error() {
+async fn restore_session_preserves_codex_mixed_case_original_write_file_error() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
@@ -838,19 +784,12 @@ async fn restore_session_redacts_codex_mixed_case_original_write_file_error() {
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
 
     let message = err.to_string();
-    assert!(message.contains("[redacted-session-id]"));
-    assert!(
-        !message.contains(raw_session_id),
-        "write failure must not echo mixed-case raw session id: {message}"
-    );
-    assert!(
-        !message.contains(canonical_session_id),
-        "write failure must not echo canonical session id: {message}"
-    );
+    assert!(message.contains(raw_session_id), "got: {message}");
+    assert!(message.contains(canonical_session_id), "got: {message}");
 }
 
 #[tokio::test]
-async fn restore_session_redacts_write_file_invalid_state() {
+async fn restore_session_preserves_write_file_invalid_state() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "claude-code".into();
@@ -867,20 +806,12 @@ async fn restore_session_redacts_write_file_invalid_state() {
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
 
     let message = err.to_string();
-    assert!(message.contains("[redacted-session-path]"));
-    assert!(message.contains("[redacted-session-id]"));
-    assert!(
-        !message.contains(session_id),
-        "invalid-state failure must not echo raw session id: {message}"
-    );
-    assert!(
-        !message.contains(session_path),
-        "invalid-state failure must not echo raw session path: {message}"
-    );
+    assert!(message.contains(session_id), "got: {message}");
+    assert!(message.contains(session_path), "got: {message}");
 }
 
 #[tokio::test]
-async fn restore_session_redaction_does_not_rewrite_markers() {
+async fn restore_session_preserves_session_path_and_id_words() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "claude-code".into();
@@ -895,21 +826,13 @@ async fn restore_session_redaction_does_not_rewrite_markers() {
 
     let message = err.to_string();
     assert!(
-        message.contains("failed to write [redacted-session-path] for [redacted-session-id]"),
-        "redaction markers should stay readable: {message}"
-    );
-    assert!(
-        !message.contains("[redacted-[redacted-session-id]"),
-        "redaction markers must not be recursively rewritten: {message}"
-    );
-    assert!(
-        !message.contains(session_path),
-        "write failure must not echo raw session path: {message}"
+        message.contains(&format!("failed to write {session_path} for {session_id}")),
+        "got: {message}"
     );
 }
 
 #[tokio::test]
-async fn restore_session_redaction_preserves_words_for_short_ids() {
+async fn restore_session_preserves_short_session_id() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "claude-code".into();
@@ -924,16 +847,8 @@ async fn restore_session_redaction_preserves_words_for_short_ids() {
 
     let message = err.to_string();
     assert!(
-        message.contains("failed to write [redacted-session-path] for [redacted-session-id]"),
-        "short session id redaction should preserve surrounding words: {message}"
-    );
-    assert!(
-        !message.contains("f[redacted-session-id]iled"),
-        "short session id redaction must not rewrite ordinary words: {message}"
-    );
-    assert!(
-        !message.contains(session_path),
-        "write failure must not echo raw session path: {message}"
+        message.contains(&format!("failed to write {session_path} for {session_id}")),
+        "got: {message}"
     );
 }
 
@@ -1052,15 +967,4 @@ fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a Capture
                 .is_some_and(|actual| actual == message)
         })
         .unwrap_or_else(|| panic!("missing event {message:?}; captured={events:#?}"))
-}
-
-fn assert_captured_events_do_not_contain(events: &[CapturedEvent], raw: &str) {
-    for event in events {
-        for (field, value) in &event.fields {
-            assert!(
-                !value.contains(raw),
-                "captured field {field} leaked raw session id {raw:?}: {event:#?}"
-            );
-        }
-    }
 }

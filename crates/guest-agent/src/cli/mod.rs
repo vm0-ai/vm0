@@ -387,15 +387,13 @@ impl CliEventIngestor {
         Self::write_raw_line(log_file, raw_line).await;
 
         if event.get("type").and_then(serde_json::Value::as_str) == Some("stream_event") {
-            self.session_metadata_capture
-                .register_event_session_identifier(event, masker);
             return Ok(ParsedEventAction::Skip);
         }
         self.last_read_event_at = Some(Instant::now());
         if self.seq == 0 {
             timing::record_e2e_from_api_start("api_to_cli_init", &self.api_start_time);
         }
-        self.session_metadata_capture.capture_event(event, masker);
+        self.session_metadata_capture.capture_event(event);
 
         if behavior.logs_codex_failure_diagnostics()
             && let Some(diagnostic) = events::masked_codex_failure_diagnostic(event, masker)
@@ -503,7 +501,6 @@ async fn execute_cli_inner(
 
     let behavior = CliFrameworkBehavior::new(runtime.framework);
     let replay_user_messages = active_input.is_enabled();
-    masker.add_sensitive_value(runtime.resume_session_id.as_ref());
     log_info!(LOG_TAG, "Starting {} execution...", behavior.agent_type());
 
     let cmd = command::build_cli_command_for_runtime(runtime, replay_user_messages)?;

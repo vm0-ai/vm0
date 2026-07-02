@@ -54,7 +54,7 @@ use crate::kmsg_log;
 use crate::lock;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogManager;
-use crate::paths::{HomePaths, LogPaths, RunnerPaths, diagnostic_session_fingerprint, touch_mtime};
+use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
 use crate::provider::{ApiProvider, JobProvider, LocalProvider};
 use crate::proxy;
@@ -819,16 +819,9 @@ enum SignalSource {
 #[derive(Debug, PartialEq, Eq)]
 enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
-    IdleCleanupProcessed {
-        expired_count: usize,
-    },
-    BeforeIdlePoolOwnershipTransfer {
-        run_id: RunId,
-    },
-    VmParkedForReuse {
-        run_id: RunId,
-        session_fingerprint: String,
-    },
+    IdleCleanupProcessed { expired_count: usize },
+    BeforeIdlePoolOwnershipTransfer { run_id: RunId },
+    VmParkedForReuse { run_id: RunId, session_id: String },
     UsageFlushRequested,
 }
 
@@ -934,11 +927,8 @@ impl StartLoopTestObserver {
         self.record(StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id });
     }
 
-    fn notify_vm_parked_for_reuse(&self, run_id: RunId, session_fingerprint: String) {
-        self.record(StartLoopEvent::VmParkedForReuse {
-            run_id,
-            session_fingerprint,
-        });
+    fn notify_vm_parked_for_reuse(&self, run_id: RunId, session_id: String) {
+        self.record(StartLoopEvent::VmParkedForReuse { run_id, session_id });
     }
 
     fn notify_usage_flush_requested(&self) {
@@ -984,8 +974,8 @@ impl StartLoopTestObserver {
         self.wait_for(timeout, "VM parked for reuse", |event| match event {
             StartLoopEvent::VmParkedForReuse {
                 run_id: observed_run_id,
-                session_fingerprint,
-            } if *observed_run_id == run_id => Some(session_fingerprint.clone()),
+                session_id,
+            } if *observed_run_id == run_id => Some(session_id.clone()),
             _ => None,
         })
         .await
@@ -1356,10 +1346,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 if let Some(evicted) =
                     evict_oldest_idle_entry(&shared.idle_pool, &shared.status).await
                 {
-                    let session_fingerprint =
-                        diagnostic_session_fingerprint(evicted.cli_agent_session_id());
                     info!(
-                        session_fingerprint = %session_fingerprint,
+                        session_id = %evicted.cli_agent_session_id(),
                         profile = %evicted.profile_name(),
                         vcpu = evicted.budget_vcpu(),
                         memory_mb = evicted.budget_memory_mb(),

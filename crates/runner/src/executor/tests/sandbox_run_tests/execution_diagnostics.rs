@@ -175,7 +175,7 @@ async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn execute_prepared_sandbox_run_logs_guest_session_fingerprint_without_raw_id() {
+async fn execute_prepared_sandbox_run_logs_guest_session_id() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -212,15 +212,10 @@ async fn execute_prepared_sandbox_run_logs_guest_session_fingerprint_without_raw
         outcome.discovered_cli_agent_session_id.as_deref(),
         Some(raw_session_id)
     );
-    assert_captured_events_do_not_contain(&events, raw_session_id);
     let event = captured_event(&events, "read guest session ID for parking");
     assert_eq!(
-        event.fields.get("session_fingerprint").map(String::as_str),
-        Some(crate::paths::diagnostic_session_fingerprint(raw_session_id).as_str())
-    );
-    assert!(
-        !event.fields.contains_key("session_id"),
-        "guest session read diagnostic must not include raw session_id field: {event:#?}"
+        event.fields.get("session_id").map(String::as_str),
+        Some(raw_session_id)
     );
 }
 
@@ -265,11 +260,10 @@ async fn execute_prepared_sandbox_run_canonicalizes_codex_discovered_cli_agent_s
         outcome.discovered_cli_agent_session_id.as_deref(),
         Some(canonical_session_id)
     );
-    assert_captured_events_do_not_contain(&events, raw_session_id);
     let event = captured_event(&events, "read guest session ID for parking");
     assert_eq!(
-        event.fields.get("session_fingerprint").map(String::as_str),
-        Some(crate::paths::diagnostic_session_fingerprint(canonical_session_id).as_str())
+        event.fields.get("session_id").map(String::as_str),
+        Some(canonical_session_id)
     );
 }
 
@@ -309,15 +303,14 @@ async fn execute_prepared_sandbox_run_ignores_non_uuid_codex_discovered_cli_agen
 
     assert_eq!(outcome.exit_code(), 0);
     assert!(outcome.discovered_cli_agent_session_id.is_none());
-    assert_captured_events_do_not_contain(&events, raw_session_id);
     let event = captured_event(&events, "ignoring invalid guest session ID for framework");
     assert_eq!(
         event.fields.get("framework").map(String::as_str),
         Some("codex")
     );
     assert_eq!(
-        event.fields.get("session_fingerprint").map(String::as_str),
-        Some(crate::paths::diagnostic_session_fingerprint(raw_session_id).as_str())
+        event.fields.get("session_id").map(String::as_str),
+        Some(raw_session_id)
     );
 }
 
@@ -387,17 +380,6 @@ fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a Capture
                 .is_some_and(|actual| actual == message)
         })
         .unwrap_or_else(|| panic!("missing event {message:?}; captured={events:#?}"))
-}
-
-fn assert_captured_events_do_not_contain(events: &[CapturedEvent], raw: &str) {
-    for event in events {
-        for (field, value) in &event.fields {
-            assert!(
-                !value.contains(raw),
-                "captured field {field} leaked raw session id {raw:?}: {event:#?}"
-            );
-        }
-    }
 }
 
 #[tokio::test]

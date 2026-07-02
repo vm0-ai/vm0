@@ -2,12 +2,8 @@ use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 use shell_quote::quote_shell_arg;
 use tracing::info;
 
-use super::{
-    MaterializedResumeSession, SessionRestoreDiagnostics, redact_session_restore_diagnostic,
-    write_session_history_file,
-};
+use super::{MaterializedResumeSession, SessionRestoreDiagnostics, write_session_history_file};
 use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
-use crate::paths::diagnostic_session_fingerprint;
 use crate::types::ExecutionContext;
 
 use super::super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
@@ -114,23 +110,17 @@ pub(super) async fn restore_codex_session(
     )
     .await?;
 
-    write_session_history_file(
-        sandbox,
-        &session_path,
-        &[session_id, original_session_id],
-        session_history,
-    )
-    .await?;
+    write_session_history_file(sandbox, &session_path, session_history).await?;
 
     let diagnostics = SessionRestoreDiagnostics {
         framework: "codex",
-        session_fingerprint: diagnostic_session_fingerprint(session_id),
+        session_id: session_id.to_string(),
         bytes_in: session_history.len(),
     };
     info!(
         run_id = %context.run_id,
         framework = diagnostics.framework,
-        session_fingerprint = %diagnostics.session_fingerprint,
+        session_id = %diagnostics.session_id,
         bytes_in = diagnostics.bytes_in,
         "restored session history",
     );
@@ -167,15 +157,14 @@ async fn cleanup_existing_codex_session_files(
         )
         .await?;
     if !helper_exec_succeeded(&result) {
-        return Err(RunnerError::Internal(redact_session_restore_diagnostic(
-            format_helper_exec_failure("codex session cleanup", &result),
-            &[session_id],
-            session_path,
+        return Err(RunnerError::Internal(format_helper_exec_failure(
+            "codex session cleanup",
+            &result,
         )));
     }
     info!(
         run_id = %context.run_id,
-        session_fingerprint = %diagnostic_session_fingerprint(session_id),
+        session_id = %session_id,
         "cleaned up existing codex session files before restore",
     );
     Ok(())
