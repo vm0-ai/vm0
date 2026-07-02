@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.131.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.17...runner-rs-v0.131.18) (2026-07-02)
+
+
+### Bug Fixes
+
+* protect same-session runner affinity claims ([#19764](https://github.com/vm0-ai/vm0/issues/19764)) ([5bbd286](https://github.com/vm0-ai/vm0/commit/5bbd2862e2eceb51a71ba681a24d64b87894d712))
+
+## [0.131.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.16...runner-rs-v0.131.17) (2026-07-02)
+
+## [0.131.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.15...runner-rs-v0.131.16) (2026-07-02)
+
+
+### Refactoring
+
+* **mitm-addon:** separate body decode policies ([#19818](https://github.com/vm0-ai/vm0/issues/19818)) ([2cceb77](https://github.com/vm0-ai/vm0/commit/2cceb77c50ae250bdce23e6ff652d51a43789ea5))
+
+
+### Performance Improvements
+
+* **mitm-addon:** adapt zstd stream input chunks ([#19856](https://github.com/vm0-ai/vm0/issues/19856)) ([7be6db8](https://github.com/vm0-ai/vm0/commit/7be6db8324af2bae96ac78c10d73317a59271edb))
+
 ## [0.131.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.14...runner-rs-v0.131.15) (2026-07-02)
 
 

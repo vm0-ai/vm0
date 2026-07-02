@@ -4,9 +4,6 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { customConnectorProposalSchema } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
 import { connectors$ } from "../external/connectors.ts";
 import {
   allConnectorTypes$,
@@ -14,7 +11,7 @@ import {
   setSelectedConnectorType$,
 } from "../zero-page/settings/connectors.ts";
 import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-type.ts";
-import { agentConnectorAuthorizationsReload$ } from "../zero-page/agent-connector-authorizations.ts";
+import { isAgentConnectorAuthorized } from "../zero-page/agent-connector-authorizations.ts";
 import { jsonParseBase64UrlOr } from "../utils.ts";
 
 export interface ConnectorActionDescriptor {
@@ -192,14 +189,12 @@ export function createConnectorActionBlock(
     if (get(authorizedOverride$)) {
       return true;
     }
-    get(agentConnectorAuthorizationsReload$);
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroUserConnectorsContract);
-    const result = await accept(
-      client.get({ params: { id: descriptor.agentId } }),
-      [200],
+    return await get(
+      isAgentConnectorAuthorized({
+        agentId: descriptor.agentId,
+        connectorType: descriptor.connectorType,
+      }),
     );
-    return result.body.enabledTypes.includes(descriptor.connectorType);
   });
 
   const complete$ = computed(async (get): Promise<boolean> => {

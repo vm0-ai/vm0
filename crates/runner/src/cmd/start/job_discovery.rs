@@ -28,6 +28,7 @@ use crate::executor::{
 use crate::http::HttpClient;
 use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
 use crate::ids::RunId;
+use crate::paths::short_digest;
 use crate::provider::{ClaimedJob, JobCandidate};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::restored_session_identity::{
@@ -35,7 +36,7 @@ use crate::restored_session_identity::{
 };
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
 use crate::status::{RunnerMode, StatusTracker};
-use crate::types::{ExecutionContext, SandboxReuseResult};
+use crate::types::{ExecutionContext, HeldSessionState, SandboxReuseResult};
 
 pub(super) struct DiscoveredJob {
     pub(super) candidate: JobCandidate,
@@ -305,12 +306,13 @@ async fn publish_active_run_status(
 }
 
 async fn claim_with_local_admission(
-    mut candidate: JobCandidate,
+    candidate: JobCandidate,
     run_id: RunId,
     job_vcpu: u32,
     job_memory: u32,
     ctx: &DiscoveredJobContext<'_>,
 ) -> Option<AdmittedClaim> {
+    let mut candidate = prepare_affinity_protected_candidate(candidate, ctx).await?;
     candidate.mark_local_admission_started();
 
     // Reserve resources before claiming so we don't waste a job that another
@@ -378,6 +380,61 @@ async fn claim_with_local_admission(
     Some(admission.into_admitted(claimed))
 }
 
+async fn prepare_affinity_protected_candidate(
+    candidate: JobCandidate,
+    ctx: &DiscoveredJobContext<'_>,
+) -> Option<JobCandidate> {
+    if !candidate.is_affinity_protected() {
+        return Some(candidate);
+    }
+    let Some(cli_agent_session_id) = candidate.cli_agent_session_id().map(str::to_owned) else {
+        return Some(candidate);
+    };
+
+    let held_session_states = current_local_held_session_states(ctx).await;
+    if held_session_states
+        .iter()
+        .any(|state| state.session_id == cli_agent_session_id)
+    {
+        return Some(candidate);
+    }
+
+    let delay = candidate
+        .affinity_protection_remaining()
+        .unwrap_or_default();
+    let session_fingerprint = diagnostic_session_fingerprint(&cli_agent_session_id);
+    info!(
+        run_id = %candidate.run_id(),
+        session_fingerprint = %session_fingerprint,
+        delay_ms = delay.as_millis(),
+        "same-session affinity protected by another runner, deferring claim"
+    );
+    ctx.spawn_ctx.provider.defer_poll_after(delay).await;
+    None
+}
+
+fn diagnostic_session_fingerprint(session_id: &str) -> String {
+    short_digest(session_id)
+}
+
+async fn current_local_held_session_states(
+    ctx: &DiscoveredJobContext<'_>,
+) -> Vec<HeldSessionState> {
+    let idle_states = {
+        let pool = ctx.idle_pool.lock().await;
+        pool.held_session_states()
+    };
+    if let Some(workspace_cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref() {
+        let cache_states = workspace_cache.held_session_states().await;
+        ctx.spawn_ctx
+            .held_session_snapshot
+            .update_workspace_cache_states(cache_states);
+    }
+    ctx.spawn_ctx
+        .held_session_snapshot
+        .current_held_session_states(idle_states, &ctx.spawn_ctx.active_cli_agent_sessions, None)
+}
+
 async fn try_reuse_from_pool(
     run_id: RunId,
     request: ReuseAdmissionRequest<'_>,
@@ -422,12 +479,11 @@ async fn try_reuse_from_pool(
     };
     // Take the entry under the pool lock, then drop the lock before any awaits
     // so unpark does not block other take/park operations.
-    let (taken, snapshot, held_session_states) = {
+    let (taken, snapshot) = {
         let mut pool = ctx.idle_pool.lock().await;
         let taken = pool.take(cli_agent_session_id);
         let snapshot = taken.as_ref().map(|_| pool.status_snapshot());
-        let held_session_states = pool.held_session_states();
-        (taken, snapshot, held_session_states)
+        (taken, snapshot)
     };
     let took_idle_session = taken.is_some();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
@@ -437,23 +493,8 @@ async fn try_reuse_from_pool(
             .spawn_ctx
             .held_session_snapshot
             .might_contain_workspace_cache_session(cli_agent_session_id);
-    let held_session_states = ctx
-        .spawn_ctx
-        .held_session_snapshot
-        .current_held_session_states(
-            held_session_states,
-            &ctx.spawn_ctx.active_cli_agent_sessions,
-            Some(cli_agent_session_id),
-        );
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::HeldSessionStateRefresh, started_at);
-    let started_at = Instant::now();
-    ctx.spawn_ctx
-        .provider
-        .set_held_session_states(held_session_states)
-        .await;
     let needs_session_affinity_refresh = took_idle_session || claimed_workspace_cache_session;
-    pre_spawn_timing
-        .record_phase_elapsed(RunnerPreSpawnPhase::ProviderHeldSessionUpdate, started_at);
     match taken {
         Some(entry)
             if entry.profile_name() == profile_name

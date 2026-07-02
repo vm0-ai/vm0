@@ -219,6 +219,10 @@ async function claimChatRun(
   return { authorization: `Bearer ${claim.body.sandboxToken}` };
 }
 
+function cliAgentSessionIdForChatRun(runId: string): string {
+  return `bdd-cli-${runId}`;
+}
+
 async function waitForThreadMessages(
   actor: ApiTestUser,
   threadId: string,
@@ -296,7 +300,7 @@ async function completeChatRunOk(
     {
       runId,
       cliAgentType: "claude-code",
-      cliAgentSessionId: `bdd-cli-${runId}`,
+      cliAgentSessionId: cliAgentSessionIdForChatRun(runId),
       cliAgentSessionHistoryHash: historyHash,
     },
     sandboxHeaders,

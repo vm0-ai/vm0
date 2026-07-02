@@ -12,6 +12,7 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.ChatInitialThinkingIndicator, {}),
     ).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.DataExport, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -91,6 +92,7 @@ describe("getAllFeatureStates", () => {
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
     expect(states[FeatureSwitchKey.ChatInitialThinkingIndicator]).toBe(true);
+    expect(states[FeatureSwitchKey.DataExport]).toBe(true);
   });
 
   it("should enable switches when orgId matches enabledOrgIdHashes", () => {
@@ -131,6 +133,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ChatInitialThinkingIndicator]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.DataExport]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -150,6 +153,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatInitialThinkingIndicator]).toBe(
       true,
     );
+    expect(otherOrgStates[FeatureSwitchKey.DataExport]).toBe(true);
   });
 
   it("should apply overrides to enable disabled features", () => {

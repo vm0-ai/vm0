@@ -173,7 +173,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.DataExport]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the data export option in account menu",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
@@ -284,6 +284,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ComputerUseDesktopPlugins]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable Zero Desktop Computer Use plugins for local resources, starting with the bundled filesystem plugin gateway.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.DesktopX64Download]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -347,6 +354,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Route voice input speech-to-text requests through BytePlus Seed ASR flash mode instead of OpenAI.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ImageEditing]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable in-canvas image editing (remove background, enhance) from the image preview and artifact sidebar.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

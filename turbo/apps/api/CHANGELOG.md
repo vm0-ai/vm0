@@ -1,5 +1,66 @@
 # Changelog
 
+## [1.208.3](https://github.com/vm0-ai/vm0/compare/api-v1.208.2...api-v1.208.3) (2026-07-02)
+
+
+### Bug Fixes
+
+* protect same-session runner affinity claims ([#19764](https://github.com/vm0-ai/vm0/issues/19764)) ([5bbd286](https://github.com/vm0-ai/vm0/commit/5bbd2862e2eceb51a71ba681a24d64b87894d712))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.3
+    * @vm0/core bumped to 8.389.1
+    * @vm0/db bumped to 1.85.2
+
+## [1.208.2](https://github.com/vm0-ai/vm0/compare/api-v1.208.1...api-v1.208.2) (2026-07-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.2
+    * @vm0/connectors bumped to 1.128.0
+    * @vm0/core bumped to 8.389.0
+    * @vm0/db bumped to 1.85.1
+
+## [1.208.1](https://github.com/vm0-ai/vm0/compare/api-v1.208.0...api-v1.208.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* drop the fallback DB note for generation template selections ([#19831](https://github.com/vm0-ai/vm0/issues/19831)) ([83cb5f3](https://github.com/vm0-ai/vm0/commit/83cb5f35ca84d4dc3d6f83ef639ed95b581e9129))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.1
+    * @vm0/core bumped to 8.388.0
+    * @vm0/db bumped to 1.85.0
+
+## [1.208.0](https://github.com/vm0-ai/vm0/compare/api-v1.207.1...api-v1.208.0) (2026-07-02)
+
+
+### Features
+
+* add Desktop Computer Use filesystem plugins ([#19814](https://github.com/vm0-ai/vm0/issues/19814)) ([062a44c](https://github.com/vm0-ai/vm0/commit/062a44c181536df868bc6b081bae0dd7a2d9d9d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.0
+    * @vm0/connectors bumped to 1.127.0
+    * @vm0/core bumped to 8.387.0
+    * @vm0/db bumped to 1.84.6
+
 ## [1.207.1](https://github.com/vm0-ai/vm0/compare/api-v1.207.0...api-v1.207.1) (2026-07-02)
 
 

@@ -1116,10 +1116,18 @@ describe("workflow detail page", () => {
     });
     expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/automations`);
     expect(search()).toBe("");
-    expect(screen.getByText("Schedule")).toBeInTheDocument();
-    expect(screen.getAllByText("Last run").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Next run").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Schedule")).not.toBeInTheDocument();
+    expect(screen.getByText("Last")).toBeInTheDocument();
+    expect(screen.getByText("Next")).toBeInTheDocument();
+    expect(screen.queryByText("Active")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "Disable Every weekday at 9:00 AM" }),
+    ).toBeInTheDocument();
     expect(buttonByText("Run now")).toBeInTheDocument();
+    expect(screen.queryByText("Delete automation")).not.toBeInTheDocument();
+    click(buttonByText("More actions"));
+    expect(menuItemByText("Delete automation")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
     click(buttonByText("Settings"));
     await waitFor(() => {
       expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
@@ -1982,7 +1990,7 @@ describe("workflow detail page", () => {
       expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
     });
 
-    click(buttonByText("Edit"));
+    click(buttonByText("Edit automation"));
 
     const updateTriggerForm = screen.getByRole("form", {
       name: "Update schedule automation",
@@ -2034,7 +2042,7 @@ describe("workflow detail page", () => {
       expect(screen.getByText("Every 1 hour")).toBeInTheDocument();
     });
 
-    click(buttonByText("Edit"));
+    click(buttonByText("Edit automation"));
 
     const updateTriggerForm = screen.getByRole("form", {
       name: "Update schedule automation",
@@ -2089,7 +2097,7 @@ describe("workflow detail page", () => {
       );
     });
 
-    click(buttonByText("Edit"));
+    click(buttonByText("Edit automation"));
 
     const updateTriggerForm = screen.getByRole("form", {
       name: "Update Gmail new message automation",
@@ -2145,7 +2153,7 @@ describe("workflow detail page", () => {
       expect(screen.getByText("Gmail label applied")).toBeInTheDocument();
     });
 
-    click(buttonByText("Edit"));
+    click(buttonByText("Edit automation"));
 
     const updateTriggerForm = screen.getByRole("form", {
       name: "Update Gmail label automation",

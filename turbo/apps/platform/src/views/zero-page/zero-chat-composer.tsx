@@ -322,6 +322,7 @@ interface ZeroChatComposerProps {
     value: GenerationTemplateRequest | undefined;
     onChange: (value: GenerationTemplateRequest | undefined) => void;
   };
+  onCreateWorkflowPrompt?: () => void;
   computerUse?: {
     hosts: readonly ComposerComputerUseHost[];
     loading: boolean;
@@ -5393,6 +5394,49 @@ function ComposerTemplatePickerSlot({
   );
 }
 
+function CreateWorkflowPromptButton({
+  onCreateWorkflowPrompt,
+}: {
+  onCreateWorkflowPrompt: () => void;
+}) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9"
+            aria-label="Create workflow"
+            onClick={onCreateWorkflowPrompt}
+          >
+            <IconRoute size={18} stroke={1.5} aria-hidden="true" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          Create workflow
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ComposerWorkflowPromptSlot({
+  workflowAutomationEnabled,
+  onCreateWorkflowPrompt,
+}: {
+  workflowAutomationEnabled: boolean;
+  onCreateWorkflowPrompt: (() => void) | undefined;
+}) {
+  if (!workflowAutomationEnabled || !onCreateWorkflowPrompt) {
+    return null;
+  }
+  return (
+    <CreateWorkflowPromptButton
+      onCreateWorkflowPrompt={onCreateWorkflowPrompt}
+    />
+  );
+}
+
 function ConnectorTriggerIcons({
   connectors,
   hasComputerUse,
@@ -6453,6 +6497,7 @@ export function ZeroChatComposer({
   actionsLoading = false,
   modelPicker,
   templatePicker,
+  onCreateWorkflowPrompt,
   computerUse,
   modelPickerLoading = false,
   submitBlocker,
@@ -6915,6 +6960,10 @@ export function ZeroChatComposer({
                   <ComposerTemplatePickerSlot
                     picker={templatePicker}
                     workflowAutomationEnabled={workflowAutomationEnabled}
+                  />
+                  <ComposerWorkflowPromptSlot
+                    workflowAutomationEnabled={workflowAutomationEnabled}
+                    onCreateWorkflowPrompt={onCreateWorkflowPrompt}
                   />
                   <ConnectorsPopoverButton
                     agentConnectors={agentConnectors}

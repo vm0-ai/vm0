@@ -96,16 +96,6 @@ fn build_session_history_upload(
         });
     }
 
-    // TODO: Remove the non-UTF-8 identity fallback after compressed session
-    // history refs are guaranteed everywhere. It only exists so old inline
-    // resume paths do not need to stringify binary history.
-    if std::str::from_utf8(&history_bytes).is_err() {
-        return Ok(SessionHistoryUpload {
-            raw_size,
-            body: SessionHistoryUploadBody::Identity(history_bytes),
-        });
-    }
-
     let gzip_bytes = gzip_session_history(&history_bytes)?;
     if gzip_bytes.len() >= history_bytes.len() {
         return Ok(SessionHistoryUpload {

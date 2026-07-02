@@ -50,6 +50,7 @@ export enum FeatureSwitchKey {
   MemoryViewer = "memoryViewer",
   HtmlArtifactCommentEditing = "htmlArtifactCommentEditing",
   ComputerUseDelegatedAuthorization = "computerUseDelegatedAuthorization",
+  ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   DesktopX64Download = "desktopX64Download",
   PresentationTemplateRunbook = "presentationTemplateRunbook",
   PresentationImageUnsplashPreferred = "presentationImageUnsplashPreferred",
@@ -60,4 +61,5 @@ export enum FeatureSwitchKey {
   ChatInitialThinkingIndicator = "chatInitialThinkingIndicator",
   TeamsIntegration = "teamsIntegration",
   BytePlusVoiceInputStt = "bytePlusVoiceInputStt",
+  ImageEditing = "imageEditing",
 }

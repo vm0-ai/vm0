@@ -2790,16 +2790,15 @@ describe("CHAT-02: generation templates and attachments", () => {
     // type. Both "sticky" and "workflow" were cancelled, so the general
     // "# Web Chat Run Context" replay is suppressed in favor of resuming the
     // existing session (see prepareRecentChatContext) — the illustration
-    // selection surfaces instead via the incomplete round replay (its own
-    // marker) and the "# Prior Template Selection" fallback note, neither of
-    // which workflow selections get (one-shot by design, no marker at all).
+    // selection surfaces instead via the incomplete round replay's own
+    // marker. Workflow selections never get a marker at all (one-shot by
+    // design), so nothing carries the workflow template forward.
     expect(followUpPrompt).not.toContain("# Workflow Template Context");
     expect(followUpPrompt).not.toContain(workflowTemplate.id);
     expect(followUpPrompt).not.toContain("# Artifact Template Context");
     expect(followUpPrompt).not.toContain("# Web Chat Run Context");
     expect(followUpPrompt).toContain("# Incomplete Rounds Context");
     expect(followUpPrompt).toContain("Selected a template");
-    expect(followUpPrompt).toContain("# Prior Template Selection");
     expect(followUpPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, followUp.runId);
   }, 120_000);

@@ -1,0 +1,246 @@
+{
+  "segmentParseCases": [
+    {
+      "name": "empty segment is a literal",
+      "segment": "",
+      "expected": {
+        "kind": "literal",
+        "value": ""
+      }
+    },
+    {
+      "name": "plain literal",
+      "segment": "repos",
+      "expected": {
+        "kind": "literal",
+        "value": "repos"
+      }
+    },
+    {
+      "name": "pure parameter",
+      "segment": "{owner}",
+      "expected": {
+        "kind": "param",
+        "prefix": "",
+        "name": "owner",
+        "suffix": "",
+        "greedy": ""
+      }
+    },
+    {
+      "name": "parameter with suffix",
+      "segment": "{repo}.git",
+      "expected": {
+        "kind": "param",
+        "prefix": "",
+        "name": "repo",
+        "suffix": ".git",
+        "greedy": ""
+      }
+    },
+    {
+      "name": "prefix with parameter",
+      "segment": "v{version}",
+      "expected": {
+        "kind": "param",
+        "prefix": "v",
+        "name": "version",
+        "suffix": "",
+        "greedy": ""
+      }
+    },
+    {
+      "name": "prefix with parameter and suffix",
+      "segment": "pre-{name}.json",
+      "expected": {
+        "kind": "param",
+        "prefix": "pre-",
+        "name": "name",
+        "suffix": ".json",
+        "greedy": ""
+      }
+    },
+    {
+      "name": "greedy plus marker",
+      "segment": "{rest+}",
+      "expected": {
+        "kind": "param",
+        "prefix": "",
+        "name": "rest",
+        "suffix": "",
+        "greedy": "+"
+      }
+    },
+    {
+      "name": "greedy star marker",
+      "segment": "{rest*}",
+      "expected": {
+        "kind": "param",
+        "prefix": "",
+        "name": "rest",
+        "suffix": "",
+        "greedy": "*"
+      }
+    },
+    {
+      "name": "greedy plus marker with prefix",
+      "segment": "pre-{rest+}",
+      "expected": {
+        "kind": "param",
+        "prefix": "pre-",
+        "name": "rest",
+        "suffix": "",
+        "greedy": "+"
+      }
+    },
+    {
+      "name": "greedy star marker with suffix",
+      "segment": "{rest*}.json",
+      "expected": {
+        "kind": "param",
+        "prefix": "",
+        "name": "rest",
+        "suffix": ".json",
+        "greedy": "*"
+      }
+    },
+    {
+      "name": "parameter name preserves internal plus marker",
+      "segment": "{na+me}",
+      "expected": {
+        "kind": "param",
+        "prefix": "",
+        "name": "na+me",
+        "suffix": "",
+        "greedy": ""
+      }
+    },
+    {
+      "name": "empty parameter name",
+      "segment": "{}",
+      "expected": {
+        "kind": "error",
+        "reasonIncludes": "empty parameter name"
+      }
+    },
+    {
+      "name": "empty parameter name with prefix and suffix",
+      "segment": "prefix{}suffix",
+      "expected": {
+        "kind": "error",
+        "reasonIncludes": "empty parameter name"
+      }
+    },
+    {
+      "name": "greedy plus marker without name",
+      "segment": "{+}",
+      "expected": {
+        "kind": "error",
+        "reasonIncludes": "empty parameter name"
+      }
+    },
+    {
+      "name": "greedy star marker without name",
+      "segment": "{*}",
+      "expected": {
+        "kind": "error",
+        "reasonIncludes": "empty parameter name"
+      }
+    },
+    {
+      "name": "adjacent parameters",
+      "segment": "{a}{b}",
+      "expected": {
+        "kind": "error",
+        "reasonIncludes": "adjacent parameters"
+      }
+    },
+    {
+      "name": "literal-separated parameters",
+      "segment": "{a}.{b}",
+      "expected": {
+        "kind": "error",
+        "reasonIncludes": "literal-separated parameters"
+      }
+    },
+    {
+      "name": "nested braces",
+      "segment": "{{name}}",
+      "expected": {
+        "kind": "error",
+        "reasonIncludes": "literal-separated parameters"
+      }
+    },
+    {
+      "name": "unbalanced opening brace",
+      "segment": "{name",
+      "expected": {
+        "kind": "error",
+        "reasonIncludes": "unbalanced brace"
+      }
+    },
+    {
+      "name": "unbalanced closing brace",
+      "segment": "name}",
+      "expected": {
+        "kind": "error",
+        "reasonIncludes": "unbalanced brace"
+      }
+    },
+    {
+      "name": "closing brace before opening brace",
+      "segment": "}name{",
+      "expected": {
+        "kind": "error",
+        "reasonIncludes": "unbalanced brace"
+      }
+    }
+  ],
+  "pathSplitCases": [
+    {
+      "name": "empty path",
+      "path": "",
+      "expected": []
+    },
+    {
+      "name": "root path",
+      "path": "/",
+      "expected": []
+    },
+    {
+      "name": "path without leading slash",
+      "path": "repos/octocat",
+      "expected": ["repos", "octocat"]
+    },
+    {
+      "name": "path with leading slash",
+      "path": "/repos/octocat",
+      "expected": ["repos", "octocat"]
+    },
+    {
+      "name": "repeated slash inside path",
+      "path": "/repos//octocat",
+      "expected": ["repos", "", "octocat"]
+    },
+    {
+      "name": "double leading slash removes only one slash",
+      "path": "//repos/octocat",
+      "expected": ["", "repos", "octocat"]
+    },
+    {
+      "name": "trailing slash",
+      "path": "/repos/octocat/",
+      "expected": ["repos", "octocat", ""]
+    },
+    {
+      "name": "repeated trailing slash",
+      "path": "/repos/octocat//",
+      "expected": ["repos", "octocat", "", ""]
+    },
+    {
+      "name": "slash-only repeated path",
+      "path": "///",
+      "expected": ["", "", ""]
+    }
+  ]
+}

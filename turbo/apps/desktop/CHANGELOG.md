@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.22.3](https://github.com/vm0-ai/vm0/compare/desktop-v0.22.2...desktop-v0.22.3) (2026-07-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.3
+
+## [0.22.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.22.1...desktop-v0.22.2) (2026-07-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.2
+
+## [0.22.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.22.0...desktop-v0.22.1) (2026-07-02)
+
+
+### Refactoring
+
+* **desktop:** decompose main.ts god module into controllers ([#19852](https://github.com/vm0-ai/vm0/issues/19852)) ([0f2f760](https://github.com/vm0-ai/vm0/commit/0f2f7602347e1fdb1004a8cb2d28dbc7af73c1e3))
+* **desktop:** remove vm0-computer CLI daemon ([#19847](https://github.com/vm0-ai/vm0/issues/19847)) ([555e6b8](https://github.com/vm0-ai/vm0/commit/555e6b88cdfbef472aa4f4352516939318e9f505))
+* **desktop:** split renderer App.tsx into feature modules ([#19851](https://github.com/vm0-ai/vm0/issues/19851)) ([caa8661](https://github.com/vm0-ai/vm0/commit/caa8661951f55c7063561471f561c40af189eaa9))
+
+
+### Performance Improvements
+
+* **desktop:** stop sending unused elements/visibleText/visibleElements in computer-use results ([#19861](https://github.com/vm0-ai/vm0/issues/19861)) ([38f43f4](https://github.com/vm0-ai/vm0/commit/38f43f4b7306640f912d40ce17c60e6b28b893d8)), closes [#19854](https://github.com/vm0-ai/vm0/issues/19854)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.1
+
+## [0.22.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.21.0...desktop-v0.22.0) (2026-07-02)
+
+
+### Features
+
+* add Desktop Computer Use filesystem plugins ([#19814](https://github.com/vm0-ai/vm0/issues/19814)) ([062a44c](https://github.com/vm0-ai/vm0/commit/062a44c181536df868bc6b081bae0dd7a2d9d9d6))
+
+
+### Bug Fixes
+
+* harden vm0-computer daemon socket ([#19846](https://github.com/vm0-ai/vm0/issues/19846)) ([6972537](https://github.com/vm0-ai/vm0/commit/69725375677430121ffea19e7723b1b0b119df49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.0
+
 ## [0.21.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.20.5...desktop-v0.21.0) (2026-07-02)
 
 

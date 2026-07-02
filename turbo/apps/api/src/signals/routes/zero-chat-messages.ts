@@ -89,10 +89,7 @@ import {
   buildGenerationTemplatePrompt,
   describeGenerationTemplateSelection,
 } from "./generation-template-prompt";
-import {
-  fallbackGenerationTemplateNote,
-  resolveThreadGenerationTemplatePrompt,
-} from "./thread-generation-template";
+import { resolveThreadGenerationTemplatePrompt } from "./thread-generation-template";
 
 type SendBody = z.infer<typeof chatMessagesContract.send.body>;
 
@@ -2285,26 +2282,10 @@ const prepareNormalSend$ = command(
       thread.incompleteContext,
     );
     signal.throwIfAborted();
-    const liveGenerationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
+    const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
       explicit: args.body.generationTemplate,
       presentationRunbookEnabled: featureSwitches.presentationRunbookEnabled,
     });
-    const fallbackNote = await fallbackGenerationTemplateNote({
-      db,
-      threadId: thread.threadId,
-      explicit: args.body.generationTemplate,
-      replaySuppressed: priorContext.length === 0 && !thread.isNewThread,
-    });
-    signal.throwIfAborted();
-    const generationTemplatePrompt = [
-      liveGenerationTemplatePrompt,
-      fallbackNote,
-    ]
-      .filter((part) => {
-        return part.length > 0;
-      })
-      .join("\n\n");
-    signal.throwIfAborted();
     const persistedExplicitSelection =
       await maybePersistExplicitModelFirstSelection({
         db,
@@ -2667,7 +2648,7 @@ function validateCodexServiceTier(params: {
     return undefined;
   }
   return badRequestMessage(
-    "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 or GPT-5.4 runs",
+    "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 runs",
   );
 }
 

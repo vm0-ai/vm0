@@ -1,6 +1,7 @@
 """Tests for shared HTTP body decoding helpers."""
 
 import gzip
+import hashlib
 import zlib
 
 import brotli
@@ -14,7 +15,32 @@ from body_decoding import (
     decompress_body,
 )
 from body_limits import DEFAULT_BODY_DECODE_LIMIT, STREAM_DECODE_CHUNK_LIMIT
-from tests.body_decode_helpers import pseudo_random_ascii, track_brotli_decompressor
+from tests.body_decode_helpers import (
+    pseudo_random_ascii,
+    track_brotli_decompressor,
+    track_zstd_decompressor,
+)
+
+
+def _deterministic_low_ratio_bytes(size: int) -> bytes:
+    data = bytearray()
+    counter = 0
+    while len(data) < size:
+        data.extend(hashlib.sha256(counter.to_bytes(8, "little")).digest())
+        counter += 1
+    return bytes(data[:size])
+
+
+def _compress_one_shot_body(encoding: str, body: bytes) -> bytes:
+    if encoding == "gzip":
+        return gzip.compress(body)
+    if encoding == "deflate":
+        return zlib.compress(body)
+    if encoding == "br":
+        return brotli.compress(body)
+    if encoding == "zstd":
+        return zstandard.ZstdCompressor().compress(body)
+    raise AssertionError(f"unsupported test encoding: {encoding}")
 
 
 class TestStreamDecodeFeed:
@@ -150,6 +176,66 @@ class TestStreamDecodeFeed:
         assert len(chunks) > 1
         assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
 
+    def test_zstd_large_low_ratio_input_ramps_up(self, headers, monkeypatch):
+        plaintext = _deterministic_low_ratio_bytes(512 * 1024)
+        compressed = zstandard.ZstdCompressor().compress(plaintext)
+        stats = track_zstd_decompressor(monkeypatch)
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(headers(("Content-Encoding", "zstd")), chunks.append)
+        assert session is not None
+
+        session.feed(compressed)
+
+        assert b"".join(chunks) == plaintext
+        assert session.finish_error() is None
+        assert stats.max_input > 4
+        assert stats.calls < len(compressed) // 8
+
+    def test_zstd_high_ratio_input_stays_small_before_large_output(self, headers, monkeypatch):
+        plaintext = b"A" * (STREAM_DECODE_CHUNK_LIMIT * 4 + 123)
+        compressed = zstandard.ZstdCompressor().compress(plaintext)
+        stats = track_zstd_decompressor(monkeypatch)
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(headers(("Content-Encoding", "zstd")), chunks.append)
+        assert session is not None
+
+        session.feed(compressed)
+
+        assert b"".join(chunks) == plaintext
+        assert session.finish_error() is None
+        assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
+        assert stats.max_input <= 12
+
+    def test_zstd_mixed_ratio_input_keeps_transient_output_small(self, headers, monkeypatch):
+        plaintext = _deterministic_low_ratio_bytes(256 * 1024) + (
+            b"A" * (STREAM_DECODE_CHUNK_LIMIT * 64)
+        )
+        compressed = zstandard.ZstdCompressor().compress(plaintext)
+        stats = track_zstd_decompressor(monkeypatch)
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(headers(("Content-Encoding", "zstd")), chunks.append)
+        assert session is not None
+
+        session.feed(compressed)
+
+        assert b"".join(chunks) == plaintext
+        assert session.finish_error() is None
+        assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
+        assert stats.max_input <= 12
+        assert stats.max_output <= STREAM_DECODE_CHUNK_LIMIT * 4
+
+    def test_concatenated_zstd_frames_same_callback(self, headers):
+        first = zstandard.ZstdCompressor().compress(b"hello ")
+        second = zstandard.ZstdCompressor().compress(b"world")
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(headers(("Content-Encoding", "zstd")), chunks.append)
+        assert session is not None
+
+        session.feed(first + second)
+
+        assert b"".join(chunks) == b"hello world"
+        assert session.finish_error() is None
+
     def test_zstd_streaming_uses_decompressobj_for_finalization(self, headers, monkeypatch):
         real_decompressor = zstandard.ZstdDecompressor
         stats = {"stream_writer": 0, "decompressobj": 0}
@@ -201,7 +287,8 @@ class TestStreamDecodeFeed:
         assert "br" in log.debug.call_args[0][0]
         assert chunks == []
 
-    def test_zstd_error_logs_once_and_short_circuits(self, headers, mitm_ctx):
+    def test_zstd_error_logs_once_and_short_circuits(self, headers, mitm_ctx, monkeypatch):
+        stats = track_zstd_decompressor(monkeypatch)
         chunks: list[bytes] = []
         with mitm_ctx() as log:
             parse = create_stream_decode_feed(headers(("Content-Encoding", "zstd")), chunks.append)
@@ -210,6 +297,7 @@ class TestStreamDecodeFeed:
             parse(b"more garbage")
         assert log.debug.call_count == 1
         assert "zstd" in log.debug.call_args[0][0]
+        assert stats.calls == 1
         assert chunks == []
 
     def test_error_without_ctx_log_does_not_raise(self, headers):
@@ -461,23 +549,16 @@ class TestDecodeRequestBodyForNetworkLogCapture:
         hdrs = headers(("Content-Encoding", "identity"))
         assert decode_request_body_for_network_log_capture(data, hdrs) == data
 
-    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
-    def test_zlib_valid_body_returns_decoded_bytes(self, headers, encoding):
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd"])
+    def test_valid_body_returns_decoded_bytes(self, headers, encoding):
         data = b'{"hello":"world"}'
-        compressed = gzip.compress(data) if encoding == "gzip" else zlib.compress(data)
+        compressed = _compress_one_shot_body(encoding, data)
         hdrs = headers(("Content-Encoding", encoding))
         assert decode_request_body_for_network_log_capture(compressed, hdrs) == data
 
-    @pytest.mark.parametrize(
-        ("encoding", "compressed"),
-        [
-            ("gzip", gzip.compress(b"")),
-            ("deflate", zlib.compress(b"")),
-            ("br", brotli.compress(b"")),
-            ("zstd", zstandard.ZstdCompressor().compress(b"")),
-        ],
-    )
-    def test_valid_empty_compressed_body_returns_empty_bytes(self, headers, encoding, compressed):
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd"])
+    def test_valid_empty_compressed_body_returns_empty_bytes(self, headers, encoding):
+        compressed = _compress_one_shot_body(encoding, b"")
         hdrs = headers(("Content-Encoding", encoding))
         assert decode_request_body_for_network_log_capture(compressed, hdrs) == b""
 
@@ -485,18 +566,28 @@ class TestDecodeRequestBodyForNetworkLogCapture:
         hdrs = headers(("Content-Encoding", "x-custom"))
         assert decode_request_body_for_network_log_capture(b"opaque", hdrs) is None
 
-    def test_invalid_compressed_body_returns_none(self, headers):
-        hdrs = headers(("Content-Encoding", "gzip"))
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd"])
+    def test_invalid_compressed_body_returns_none(self, headers, encoding):
+        hdrs = headers(("Content-Encoding", encoding))
         assert decode_request_body_for_network_log_capture(b"not gzip", hdrs) is None
 
-    def test_truncated_gzip_partial_decode_returns_decoded_bytes(self, headers):
-        data = b"x" * 100_000
-        compressed = gzip.compress(data)
-        truncated = compressed[: len(compressed) // 2]
-        hdrs = headers(("Content-Encoding", "gzip"))
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd"])
+    def test_incomplete_compressed_body_returns_none_before_decode_limit(self, headers, encoding):
+        compressed = _compress_one_shot_body(encoding, b"hello request body" * 100)
+        hdrs = headers(("Content-Encoding", encoding))
 
-        result = decode_request_body_for_network_log_capture(truncated, hdrs)
+        assert decode_request_body_for_network_log_capture(compressed[:-1], hdrs) is None
 
-        assert result is not None
-        assert len(result) > 1024
-        assert set(result) == {ord("x")}
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd"])
+    def test_decode_limit_exceeded_returns_truncated_prefix(self, headers, encoding):
+        body = b"x" * 1024
+        compressed = _compress_one_shot_body(encoding, body)
+        hdrs = headers(("Content-Encoding", encoding))
+
+        decoded = decode_request_body_for_network_log_capture(
+            compressed,
+            hdrs,
+            max_output=128,
+        )
+
+        assert decoded == body[:128]
