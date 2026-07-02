@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.208.0](https://github.com/vm0-ai/vm0/compare/api-v1.207.1...api-v1.208.0) (2026-07-02)
+
+
+### Features
+
+* add Desktop Computer Use filesystem plugins ([#19814](https://github.com/vm0-ai/vm0/issues/19814)) ([062a44c](https://github.com/vm0-ai/vm0/commit/062a44c181536df868bc6b081bae0dd7a2d9d9d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.0
+    * @vm0/connectors bumped to 1.127.0
+    * @vm0/core bumped to 8.387.0
+    * @vm0/db bumped to 1.84.6
+
 ## [1.207.1](https://github.com/vm0-ai/vm0/compare/api-v1.207.0...api-v1.207.1) (2026-07-02)
 
 

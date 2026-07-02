@@ -127,7 +127,6 @@ export function AgentsPageTabs() {
           <AgentTabsView
             activeTab={activeTab}
             onTabChange={setActiveTab}
-            publicAgentCount={publicAgentCount}
             atPublicLimit={atPublicLimit}
             onCreate={openCreateDialog}
           />
@@ -151,13 +150,11 @@ export function AgentsPageTabs() {
 function AgentTabsView({
   activeTab,
   onTabChange,
-  publicAgentCount,
   atPublicLimit,
   onCreate,
 }: {
   activeTab: Visibility;
   onTabChange: (tab: Visibility) => void;
-  publicAgentCount: number;
   atPublicLimit: boolean;
   onCreate: (visibility: Visibility) => void;
 }) {
@@ -214,25 +211,17 @@ function AgentTabsView({
             </TabsTrigger>
           </TabsList>
         </Tabs>
-        <div className="flex items-center gap-4">
-          {activeTab === "public" && (
-            <PublicSlotIndicator
-              used={publicAgentCount}
-              total={MAX_PUBLIC_AGENTS}
-            />
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="zero-btn-morandi h-8 rounded-lg border"
-            disabled={createDisabled}
-            onClick={() => {
-              return onCreate(activeTab);
-            }}
-          >
-            Create
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="zero-btn-morandi h-9 shrink-0 rounded-lg border"
+          disabled={createDisabled}
+          onClick={() => {
+            return onCreate(activeTab);
+          }}
+        >
+          Create
+        </Button>
       </div>
 
       {skeleton ? (
@@ -253,44 +242,6 @@ function AgentTabsView({
         />
       ) : null}
     </div>
-  );
-}
-
-function PublicSlotIndicator({ used, total }: { used: number; total: number }) {
-  const radius = 6.5;
-  const circumference = 2 * Math.PI * radius;
-  const fraction = total > 0 ? Math.min(1, used / total) : 0;
-  return (
-    <span
-      className="flex items-center gap-2 text-xs text-muted-foreground"
-      aria-label={`${used} of ${total} public agents used`}
-    >
-      <svg width="16" height="16" viewBox="0 0 18 18" aria-hidden="true">
-        <circle
-          cx="9"
-          cy="9"
-          r={radius}
-          fill="none"
-          stroke="hsl(var(--gray-300))"
-          strokeWidth="3"
-        />
-        <circle
-          cx="9"
-          cy="9"
-          r={radius}
-          fill="none"
-          stroke="hsl(var(--foreground))"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeDasharray={`${circumference * fraction} ${circumference}`}
-          transform="rotate(-90 9 9)"
-        />
-      </svg>
-      <span aria-hidden="true">
-        <span className="font-semibold text-foreground">{used}</span> / {total}{" "}
-        public
-      </span>
-    </span>
   );
 }
 
@@ -675,7 +626,7 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="block w-fit max-w-full truncate text-sm font-medium text-foreground">
+                    <span className="block w-fit max-w-full truncate text-sm font-medium text-foreground underline decoration-dashed decoration-[hsl(var(--gray-400))] underline-offset-4">
                       {displayName}
                     </span>
                   </TooltipTrigger>
@@ -686,6 +637,10 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
                     style={{
                       backgroundColor: "hsl(var(--popover))",
                       color: "hsl(var(--popover-foreground))",
+                      // Matches --zero-card-shadow; inlined because the tooltip
+                      // portal renders outside .zero-app where the var is scoped.
+                      boxShadow:
+                        "0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02)",
                       whiteSpace: "normal",
                     }}
                   >

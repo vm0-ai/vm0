@@ -17,6 +17,18 @@ from body_limits import DEFAULT_BODY_DECODE_LIMIT, STREAM_DECODE_CHUNK_LIMIT
 from tests.body_decode_helpers import pseudo_random_ascii, track_brotli_decompressor
 
 
+def _compress_one_shot_body(encoding: str, body: bytes) -> bytes:
+    if encoding == "gzip":
+        return gzip.compress(body)
+    if encoding == "deflate":
+        return zlib.compress(body)
+    if encoding == "br":
+        return brotli.compress(body)
+    if encoding == "zstd":
+        return zstandard.ZstdCompressor().compress(body)
+    raise AssertionError(f"unsupported test encoding: {encoding}")
+
+
 class TestStreamDecodeFeed:
     """Direct tests for the bounded push-style streaming decoder."""
 
@@ -461,23 +473,16 @@ class TestDecodeRequestBodyForNetworkLogCapture:
         hdrs = headers(("Content-Encoding", "identity"))
         assert decode_request_body_for_network_log_capture(data, hdrs) == data
 
-    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
-    def test_zlib_valid_body_returns_decoded_bytes(self, headers, encoding):
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd"])
+    def test_valid_body_returns_decoded_bytes(self, headers, encoding):
         data = b'{"hello":"world"}'
-        compressed = gzip.compress(data) if encoding == "gzip" else zlib.compress(data)
+        compressed = _compress_one_shot_body(encoding, data)
         hdrs = headers(("Content-Encoding", encoding))
         assert decode_request_body_for_network_log_capture(compressed, hdrs) == data
 
-    @pytest.mark.parametrize(
-        ("encoding", "compressed"),
-        [
-            ("gzip", gzip.compress(b"")),
-            ("deflate", zlib.compress(b"")),
-            ("br", brotli.compress(b"")),
-            ("zstd", zstandard.ZstdCompressor().compress(b"")),
-        ],
-    )
-    def test_valid_empty_compressed_body_returns_empty_bytes(self, headers, encoding, compressed):
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd"])
+    def test_valid_empty_compressed_body_returns_empty_bytes(self, headers, encoding):
+        compressed = _compress_one_shot_body(encoding, b"")
         hdrs = headers(("Content-Encoding", encoding))
         assert decode_request_body_for_network_log_capture(compressed, hdrs) == b""
 
@@ -485,18 +490,28 @@ class TestDecodeRequestBodyForNetworkLogCapture:
         hdrs = headers(("Content-Encoding", "x-custom"))
         assert decode_request_body_for_network_log_capture(b"opaque", hdrs) is None
 
-    def test_invalid_compressed_body_returns_none(self, headers):
-        hdrs = headers(("Content-Encoding", "gzip"))
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd"])
+    def test_invalid_compressed_body_returns_none(self, headers, encoding):
+        hdrs = headers(("Content-Encoding", encoding))
         assert decode_request_body_for_network_log_capture(b"not gzip", hdrs) is None
 
-    def test_truncated_gzip_partial_decode_returns_decoded_bytes(self, headers):
-        data = b"x" * 100_000
-        compressed = gzip.compress(data)
-        truncated = compressed[: len(compressed) // 2]
-        hdrs = headers(("Content-Encoding", "gzip"))
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd"])
+    def test_incomplete_compressed_body_returns_none_before_decode_limit(self, headers, encoding):
+        compressed = _compress_one_shot_body(encoding, b"hello request body" * 100)
+        hdrs = headers(("Content-Encoding", encoding))
 
-        result = decode_request_body_for_network_log_capture(truncated, hdrs)
+        assert decode_request_body_for_network_log_capture(compressed[:-1], hdrs) is None
 
-        assert result is not None
-        assert len(result) > 1024
-        assert set(result) == {ord("x")}
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd"])
+    def test_decode_limit_exceeded_returns_truncated_prefix(self, headers, encoding):
+        body = b"x" * 1024
+        compressed = _compress_one_shot_body(encoding, body)
+        hdrs = headers(("Content-Encoding", encoding))
+
+        decoded = decode_request_body_for_network_log_capture(
+            compressed,
+            hdrs,
+            max_output=128,
+        )
+
+        assert decoded == body[:128]

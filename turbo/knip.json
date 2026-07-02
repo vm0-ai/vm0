@@ -65,7 +65,6 @@
         "vite.renderer.config.ts",
         "src/main.ts",
         "src/preload.ts",
-        "src/vm0-computer.ts",
         "src/renderer/main.tsx",
         "src/**/*.{test,spec}.{ts,tsx}"
       ],

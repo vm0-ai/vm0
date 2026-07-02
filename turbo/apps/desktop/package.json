@@ -1,22 +1,17 @@
 {
   "name": "@vm0/desktop",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "private": true,
   "productName": "Zero Computer Use",
   "description": "Zero desktop shell",
   "main": "dist/main.js",
-  "bin": {
-    "vm0-computer": "dist/vm0-computer.js"
-  },
   "scripts": {
-    "build": "pnpm build:native && pnpm build:electron && pnpm build:mcp-filesystem && pnpm build:cli && pnpm build:renderer",
-    "build:cli": "tsup src/vm0-computer.ts --format cjs --platform node --target node20 --out-dir dist --sourcemap --external electron && chmod +x dist/vm0-computer.js",
+    "build": "pnpm build:native && pnpm build:electron && pnpm build:mcp-filesystem && pnpm build:renderer",
     "build:electron": "tsup --config tsup.electron.config.js",
     "build:mcp-filesystem": "tsup --config tsup.mcp-filesystem.config.js",
     "build:native": "node scripts/build-native-helper.js",
     "build:renderer": "vite build --config vite.renderer.config.ts",
     "check-types": "tsc --noEmit",
-    "computer-use:eval": "pnpm build:native && pnpm build:cli && pnpm exec tsx scripts/computer-use-eval.ts",
     "dev": "pnpm build && electron-forge start",
     "dev:packaged": "pnpm package && node scripts/run-packaged-app.js",
     "lint": "oxlint src --deny-warnings",
@@ -25,8 +20,7 @@
     "start": "electron-forge start",
     "test": "vitest run",
     "test:native": "node scripts/test-native-helper.js",
-    "upload:sentry": "node scripts/upload-sentry-artifacts.js",
-    "vm0-computer": "pnpm build:cli && node dist/vm0-computer.js"
+    "upload:sentry": "node scripts/upload-sentry-artifacts.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

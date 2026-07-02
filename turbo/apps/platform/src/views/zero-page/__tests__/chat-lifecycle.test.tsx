@@ -4003,7 +4003,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("starts a workflow prompt from an assistant message when the composer is empty", async () => {
+  it("starts a workflow prompt from the composer when the composer is empty", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "assistant-message-create-workflow-empty";
     const assistantReply = "We can turn this into a workflow.";
@@ -4042,11 +4042,13 @@ describe("chat lifecycle", () => {
     if (!(assistantGroup instanceof HTMLElement)) {
       throw new Error("assistant message group not found");
     }
-    const copyButton = within(assistantGroup).getByLabelText("Copy message");
-    const workflowButton =
-      within(assistantGroup).getByLabelText("Create workflow");
     expect(
-      copyButton.compareDocumentPosition(workflowButton) &
+      within(assistantGroup).queryByLabelText("Create workflow"),
+    ).not.toBeInTheDocument();
+    const templateButton = buttonByLabel("Template");
+    const workflowButton = buttonByLabel("Create workflow");
+    expect(
+      templateButton.compareDocumentPosition(workflowButton) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
@@ -4110,13 +4112,8 @@ describe("chat lifecycle", () => {
       expect(editor).toHaveTextContent(draft);
     });
 
-    const assistantMessage = await screen.findByText(assistantReply);
-    const assistantGroup = assistantMessage.closest('[data-role="assistant"]');
-    if (!(assistantGroup instanceof HTMLElement)) {
-      throw new Error("assistant message group not found");
-    }
-    const workflowButton =
-      within(assistantGroup).getByLabelText("Create workflow");
+    await screen.findByText(assistantReply);
+    const workflowButton = buttonByLabel("Create workflow");
 
     click(workflowButton);
 
@@ -4181,14 +4178,8 @@ describe("chat lifecycle", () => {
       },
     });
 
-    const assistantMessage = await screen.findByText(assistantReply);
-    const assistantGroup = assistantMessage.closest('[data-role="assistant"]');
-    if (!(assistantGroup instanceof HTMLElement)) {
-      throw new Error("assistant message group not found");
-    }
-    expect(
-      within(assistantGroup).queryByLabelText("Create workflow"),
-    ).not.toBeInTheDocument();
+    await screen.findByText(assistantReply);
+    expect(screen.queryByLabelText("Create workflow")).not.toBeInTheDocument();
   });
 
   it("shows linked automations from the chat header sidebar", async () => {

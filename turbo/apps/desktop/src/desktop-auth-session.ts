@@ -248,6 +248,17 @@ export class DesktopAuthSession {
     await this.onAuthCompleted();
   }
 
+  /**
+   * Fire-and-forget consume of a parsed auth callback, so callers just hand
+   * the session a callback instead of re-implementing the consume plumbing.
+   */
+  consumeCallback(
+    callback: DesktopAuthCallback,
+    onError: (error: unknown) => void,
+  ): void {
+    void this.consumeCode(callback.code, callback.handoffId).catch(onError);
+  }
+
   queuePendingCallback(callback: DesktopAuthCallback): void {
     this.pendingCallback = callback;
   }

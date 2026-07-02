@@ -398,4 +398,30 @@ describe("DesktopAuthSession", () => {
     // signed out.
     expect(runAuthWindow).toHaveBeenCalledOnce();
   });
+
+  it("consumes a handed callback fire-and-forget", async () => {
+    const { session, runAuthWindow, onAuthCompleted } = createSession();
+    const onError = vi.fn();
+
+    session.consumeCallback({ code: "code-abc", handoffId: "h-1" }, onError);
+
+    await vi.waitFor(() => {
+      expect(onAuthCompleted).toHaveBeenCalledOnce();
+    });
+    expect(runAuthWindow).toHaveBeenCalledOnce();
+    expect(runAuthWindow.mock.calls[0]?.[0].url).toContain("code-abc");
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("routes consume failures for a handed callback to onError", async () => {
+    const { session, runAuthWindow } = createSession();
+    runAuthWindow.mockRejectedValue(new Error("consume failed"));
+    const onError = vi.fn();
+
+    session.consumeCallback({ code: "code-abc", handoffId: null }, onError);
+
+    await vi.waitFor(() => {
+      expect(onError).toHaveBeenCalledOnce();
+    });
+  });
 });
