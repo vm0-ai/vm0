@@ -675,7 +675,7 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="block w-fit max-w-full truncate text-sm font-medium text-foreground">
+                    <span className="block w-fit max-w-full truncate text-sm font-medium text-foreground underline decoration-dashed decoration-[hsl(var(--gray-400))] underline-offset-4">
                       {displayName}
                     </span>
                   </TooltipTrigger>
@@ -686,6 +686,10 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
                     style={{
                       backgroundColor: "hsl(var(--popover))",
                       color: "hsl(var(--popover-foreground))",
+                      // Matches --zero-card-shadow; inlined because the tooltip
+                      // portal renders outside .zero-app where the var is scoped.
+                      boxShadow:
+                        "0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02)",
                       whiteSpace: "normal",
                     }}
                   >
