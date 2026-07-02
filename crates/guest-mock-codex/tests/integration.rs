@@ -162,14 +162,6 @@ fn cli_run_timeout_error_after_kill(args: &[&str]) -> std::io::Error {
     )
 }
 
-fn spawn(codex_home: &Path, args: &[&str]) -> std::io::Result<Child> {
-    let mut cmd = Command::new(BIN);
-    cmd.env("CODEX_HOME", codex_home).args(args);
-    cmd.env_remove("MOCK_CODEX_FIXTURE");
-    cmd.stdout(Stdio::null()).stderr(Stdio::null());
-    cmd.spawn()
-}
-
 struct AppServerProcess {
     child: Option<Child>,
     stdin: Option<ChildStdin>,
@@ -1906,17 +1898,27 @@ fn concurrent_resume_writes_preserve_all_turns() -> std::io::Result<()> {
     assert_eq!(first.status, 0);
     let thread_id = first.events[0]["thread_id"].as_str().unwrap();
 
-    let mut children = Vec::new();
+    let mut handles = Vec::new();
     for prompt in ["turn-1", "turn-2", "turn-3", "turn-4", "turn-5"] {
-        children.push(spawn(
-            dir.path(),
-            &["exec", "resume", thread_id, "--", prompt],
-        )?);
+        let codex_home = dir.path().to_path_buf();
+        let thread_id = thread_id.to_string();
+        handles.push((
+            prompt,
+            std::thread::spawn(move || {
+                run(&codex_home, &["exec", "resume", &thread_id, "--", prompt])
+            }),
+        ));
     }
 
-    for mut child in children {
-        let status = child.wait()?;
-        assert!(status.success(), "resume child failed with {status}");
+    for (prompt, handle) in handles {
+        let out = handle
+            .join()
+            .map_err(|_| std::io::Error::other(format!("resume thread panicked: {prompt}")))??;
+        assert_eq!(
+            out.status, 0,
+            "resume child failed for {prompt}: status={}; stderr={:?}",
+            out.status, out.stderr
+        );
     }
 
     let session_path = require_session_file(dir.path())?;
