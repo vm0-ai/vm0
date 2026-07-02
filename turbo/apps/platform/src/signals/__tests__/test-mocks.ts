@@ -524,6 +524,8 @@ function mockAudioContext(signal: AbortSignal): void {
 }
 
 interface VoiceInputMockOptions {
+  readonly audioContextReady?: Promise<void>;
+  readonly getUserMediaReady?: Promise<void>;
   readonly rms?: number;
 }
 
@@ -564,7 +566,7 @@ function mockVoiceInput(
 
   class TestVoiceAudioContext {
     resume(): Promise<void> {
-      return Promise.resolve();
+      return options.audioContextReady ?? Promise.resolve();
     }
 
     close(): Promise<void> {
@@ -622,7 +624,9 @@ function mockVoiceInput(
         return Promise.resolve([] as MediaDeviceInfo[]);
       },
       getUserMedia: () => {
-        return Promise.resolve(stream);
+        return (options.getUserMediaReady ?? Promise.resolve()).then(() => {
+          return stream;
+        });
       },
     },
   );

@@ -215,6 +215,7 @@ import {
   audioInputAvailable$,
   audioInputQuota$,
   sttRecording$,
+  sttStarting$,
   sttTranscribing$,
   sttVoiceLevel$,
   startRecording$,
@@ -5931,6 +5932,7 @@ function MicButton({
   const available = useLastResolved(audioInputAvailable$) ?? false;
   const quota = useLastResolved(audioInputQuota$) ?? null;
   const recording = useGet(sttRecording$);
+  const starting = useGet(sttStarting$);
   const transcribing = useGet(sttTranscribing$);
   const voiceLevel = useGet(sttVoiceLevel$);
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
@@ -5946,7 +5948,7 @@ function MicButton({
   }
 
   const handleClick = () => {
-    if (transcribing) {
+    if (starting || transcribing) {
       return;
     }
     if (recording) {
@@ -5978,22 +5980,24 @@ function MicButton({
             type="button"
             className={cn(
               "relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
-              recording || transcribing
+              recording || starting || transcribing
                 ? "bg-[#2E9E9F] text-white hover:bg-[#279394]"
                 : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             onClick={handleClick}
-            disabled={transcribing}
+            disabled={starting || transcribing}
             aria-label={
               recording
                 ? "Stop recording"
-                : transcribing
-                  ? "Transcribing"
-                  : "Voice input"
+                : starting
+                  ? "Starting voice input"
+                  : transcribing
+                    ? "Transcribing"
+                    : "Voice input"
             }
           >
-            {transcribing ? (
-              <IconLoader2 size={17} stroke={1.7} className="animate-spin" />
+            {starting || transcribing ? (
+              <span className="mic-starting-spinner" aria-hidden="true" />
             ) : recording ? (
               <>
                 <span
@@ -6015,9 +6019,11 @@ function MicButton({
         <TooltipContent side="top" className="text-xs">
           {recording
             ? "Stop recording"
-            : transcribing
-              ? "Transcribing..."
-              : "Voice input"}
+            : starting
+              ? "Opening microphone..."
+              : transcribing
+                ? "Transcribing..."
+                : "Voice input"}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

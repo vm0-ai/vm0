@@ -1129,6 +1129,30 @@ details[open] > summary > span:first-child {
  * Mic button – voice activity fill
  * ------------------------------------------------------------------------- */
 
+.mic-starting-spinner {
+  display: block;
+  width: 17px;
+  height: 17px;
+  border: 2px solid rgb(255 255 255 / 0.35);
+  border-top-color: #ffffff;
+  border-radius: 9999px;
+  pointer-events: none;
+  transform: rotate(0deg) translateZ(0);
+  transform-origin: 50% 50%;
+  animation: mic-starting-spin 0.7s linear infinite;
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+@keyframes mic-starting-spin {
+  from {
+    transform: rotate(0deg) translateZ(0);
+  }
+  to {
+    transform: rotate(360deg) translateZ(0);
+  }
+}
+
 .mic-volume-icon-meter {
   position: absolute;
   bottom: 16px;

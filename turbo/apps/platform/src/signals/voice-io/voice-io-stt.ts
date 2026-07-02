@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { delay } from "signal-timers";
 import {
   zeroVoiceIoQuotaContract,
   type AudioInputQuotaResponse,
@@ -25,11 +26,13 @@ const resetRecord$ = resetSignal();
 // ---------------------------------------------------------------------------
 
 const internalRecording$ = state(false);
+const internalStarting$ = state(false);
 const internalTranscribing$ = state(false);
 const internalSpeechDetected$ = state(false);
 const internalVoiceLevel$ = state(0);
 const internalVoiceDetectedDuringRecording$ = state(false);
 const internalVoiceActivityAvailable$ = state(false);
+const internalVoiceActivityCoversRecording$ = state(false);
 const internalStream$ = state<MediaStream | null>(null);
 const internalChunks$ = state<Blob[]>([]);
 const internalRecorder$ = state<MediaRecorder | null>(null);
@@ -42,6 +45,10 @@ const audioInputQuotaReload$ = state(0);
 
 export const sttRecording$ = computed((get) => {
   return get(internalRecording$);
+});
+
+export const sttStarting$ = computed((get) => {
+  return get(internalStarting$);
 });
 
 export const sttTranscribing$ = computed((get) => {
@@ -103,6 +110,7 @@ function stopAllTracks(stream: MediaStream | null) {
 
 const VOICE_ACTIVITY_RMS_THRESHOLD = 0.025;
 const VOICE_ACTIVITY_HOLD_MS = 300;
+const VOICE_ACTIVITY_START_GRACE_MS = 500;
 
 interface VoiceActivity {
   readonly detected: boolean;
@@ -131,6 +139,47 @@ function audioActivityNow(): number {
   return typeof performance !== "undefined"
     ? performance.now()
     : currentTimeMs();
+}
+
+function waitForBrowserPaint(signal: AbortSignal): Promise<void> {
+  if (
+    typeof window === "undefined" ||
+    typeof window.requestAnimationFrame !== "function" ||
+    typeof window.cancelAnimationFrame !== "function"
+  ) {
+    return Promise.resolve();
+  }
+
+  const deferred = createDeferredPromise<void>(signal);
+  let firstFrameId: number | null = null;
+  let secondFrameId: number | null = null;
+
+  function cleanup(): void {
+    signal.removeEventListener("abort", handleAbort);
+  }
+
+  function finish(): void {
+    cleanup();
+    if (!deferred.settled()) {
+      deferred.resolve(undefined);
+    }
+  }
+
+  function handleAbort(): void {
+    if (firstFrameId !== null) {
+      window.cancelAnimationFrame(firstFrameId);
+    }
+    if (secondFrameId !== null) {
+      window.cancelAnimationFrame(secondFrameId);
+    }
+    finish();
+  }
+
+  signal.addEventListener("abort", handleAbort, { once: true });
+  firstFrameId = window.requestAnimationFrame(() => {
+    secondFrameId = window.requestAnimationFrame(finish);
+  });
+  return deferred.promise;
 }
 
 function rms(samples: Float32Array<ArrayBufferLike>): number {
@@ -293,11 +342,13 @@ function logSttFailure(
 
 const resetState$ = command(({ set }) => {
   set(internalRecording$, false);
+  set(internalStarting$, false);
   set(internalTranscribing$, false);
   set(internalSpeechDetected$, false);
   set(internalVoiceLevel$, 0);
   set(internalVoiceDetectedDuringRecording$, false);
   set(internalVoiceActivityAvailable$, false);
+  set(internalVoiceActivityCoversRecording$, false);
   set(internalChunks$, []);
   set(internalRecorder$, null);
   set(internalAudioActivityMonitor$, null);
@@ -336,6 +387,13 @@ function audioContextConstructor(): typeof AudioContext | undefined {
     window.AudioContext ??
     (window as WindowWithWebkitAudioContext).webkitAudioContext
   );
+}
+
+function createMediaRecorder(stream: MediaStream): MediaRecorder {
+  const mimeType = chooseMimeType();
+  return mimeType
+    ? new MediaRecorder(stream, { mimeType })
+    : new MediaRecorder(stream);
 }
 
 async function readSttApiResponse(
@@ -383,36 +441,49 @@ async function openMedia(signal: AbortSignal) {
 
 export const startRecording$ = command(
   async ({ get, set }, parentSignal: AbortSignal) => {
-    if (get(internalRecording$) || get(internalTranscribing$)) {
+    if (
+      get(internalStarting$) ||
+      get(internalRecording$) ||
+      get(internalTranscribing$)
+    ) {
       return;
     }
 
     const signal = set(resetRecord$, parentSignal);
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(resetState$);
+      },
+      { once: true },
+    );
+    set(internalStarting$, true);
     set(internalSpeechDetected$, false);
     set(internalVoiceLevel$, 0);
     set(internalVoiceDetectedDuringRecording$, false);
     set(internalVoiceActivityAvailable$, false);
+    set(internalVoiceActivityCoversRecording$, false);
 
-    const stream = await openMedia(signal);
+    await waitForBrowserPaint(signal);
+    await delay(0, { signal });
+    signal.throwIfAborted();
+
+    const streamResult = await settle(openMedia(signal), signal);
+    if (!streamResult.ok) {
+      L.error("Microphone start failed", streamResult.error);
+      toast.error("Microphone access denied");
+      set(internalStarting$, false);
+      return;
+    }
+    const stream = streamResult.value;
     if (!stream) {
+      set(internalStarting$, false);
       return;
     }
 
-    const mimeType = chooseMimeType();
-    const recorder = mimeType
-      ? new MediaRecorder(stream, { mimeType })
-      : new MediaRecorder(stream);
-    const audioActivityMonitor = await startAudioActivityMonitor(
-      stream,
-      (activity) => {
-        set(internalSpeechDetected$, activity.detected);
-        set(internalVoiceLevel$, activity.level);
-        if (activity.level > 0) {
-          set(internalVoiceDetectedDuringRecording$, true);
-        }
-      },
-      signal,
-    );
+    set(internalStarting$, false);
+    const recorder = createMediaRecorder(stream);
+    let audioActivityMonitor: AudioActivityMonitor | null = null;
 
     set(internalChunks$, []);
 
@@ -435,11 +506,41 @@ export const startRecording$ = command(
     });
 
     recorder.start();
+    const recordingStartedAt = audioActivityNow();
     set(internalRecording$, true);
     set(internalStream$, stream);
     set(internalRecorder$, recorder);
+    const audioActivityMonitorResult = await settle(
+      startAudioActivityMonitor(
+        stream,
+        (activity) => {
+          set(internalSpeechDetected$, activity.detected);
+          set(internalVoiceLevel$, activity.level);
+          if (activity.level > 0) {
+            set(internalVoiceDetectedDuringRecording$, true);
+          }
+        },
+        signal,
+      ),
+      signal,
+    );
+    signal.throwIfAborted();
+    if (!audioActivityMonitorResult.ok) {
+      L.error(
+        "Audio activity monitor start failed",
+        audioActivityMonitorResult.error,
+      );
+      set(internalVoiceActivityAvailable$, false);
+      return;
+    }
+    audioActivityMonitor = audioActivityMonitorResult.value;
+    const monitorStartedAt = audioActivityNow();
     set(internalAudioActivityMonitor$, audioActivityMonitor);
     set(internalVoiceActivityAvailable$, audioActivityMonitor !== null);
+    set(
+      internalVoiceActivityCoversRecording$,
+      monitorStartedAt - recordingStartedAt <= VOICE_ACTIVITY_START_GRACE_MS,
+    );
   },
 );
 
@@ -452,6 +553,7 @@ export const stopAndTranscribe$ = command(
     const recorder = get(internalRecorder$);
     const cancelSilentRecording =
       get(internalVoiceActivityAvailable$) &&
+      get(internalVoiceActivityCoversRecording$) &&
       !get(internalVoiceDetectedDuringRecording$);
     const audioActivityMonitor = get(internalAudioActivityMonitor$);
     if (audioActivityMonitor) {
