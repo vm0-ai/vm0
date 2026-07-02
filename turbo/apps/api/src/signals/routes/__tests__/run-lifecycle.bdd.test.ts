@@ -139,6 +139,12 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest",
   "api_dispatch_prepare_storage_manifest_resolve_inputs",
   "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_lookup_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
   "api_dispatch_prepare_storage_manifest_load_storage_index",
   "api_dispatch_prepare_storage_manifest_build_entries",
   "api_dispatch_prepare_storage_manifest_build_compose_entries",
@@ -156,6 +162,12 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
 const API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest_resolve_inputs",
   "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_lookup_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
   "api_dispatch_prepare_storage_manifest_load_storage_index",
   "api_dispatch_prepare_storage_manifest_build_entries",
   "api_dispatch_prepare_storage_manifest_build_compose_entries",
@@ -966,6 +978,29 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_dropped_compose_count_bucket: "1",
         storage_manifest_planned_presign_count_bucket: "2_4",
         storage_manifest_duplicate_presign_candidate_count_bucket: "0",
+        storage_manifest_artifact_ensure_already_initialized_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_storage_count_bucket: "1",
+        storage_manifest_artifact_ensure_created_storage_count_bucket: "1",
+        storage_manifest_artifact_ensure_lost_create_race_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_head_version_count_bucket: "1",
+        storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+          "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_artifact_ensure_already_initialized_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_storage_count_bucket: "1",
+        storage_manifest_artifact_ensure_created_storage_count_bucket: "1",
+        storage_manifest_artifact_ensure_lost_create_race_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_head_version_count_bucket: "1",
+        storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+          "1",
       }),
     );
     expect(
@@ -1033,7 +1068,92 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "https://r2.example.com",
     ]);
 
+    const claim = await api.claimRunnerJob(created.runId);
+    const memoryArtifact = claim.storageManifest?.artifacts.find((artifact) => {
+      return artifact.vasStorageName === "memory";
+    });
+    expect(memoryArtifact).toMatchObject({
+      archiveUrl: expect.any(String),
+      vasStorageId: expect.any(String),
+      vasVersionId: expect.any(String),
+      missingRootPolicy: "preserveParentVersion",
+    });
+    if (!memoryArtifact) {
+      throw new Error("Expected the claim manifest to include memory");
+    }
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      memoryArtifact.archiveUrl,
+      memoryArtifact.vasStorageId,
+      memoryArtifact.vasVersionId,
+    ]);
+
+    const initialized = await api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt: "storage manifest dimensions initialized artifact path",
+      additionalVolumes: [
+        {
+          name: storageName,
+          version: prepared.versionId,
+          mountPath,
+        },
+      ],
+    });
+    const initializedTimingEvents = apiDispatchTimingEventsForRun(
+      initialized.runId,
+    );
+    expect(
+      singleApiDispatchEvent(
+        initializedTimingEvents,
+        "api_dispatch_prepare_storage_manifest",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_artifact_ensure_already_initialized_count_bucket: "1",
+        storage_manifest_artifact_ensure_missing_storage_count_bucket: "0",
+        storage_manifest_artifact_ensure_created_storage_count_bucket: "0",
+        storage_manifest_artifact_ensure_lost_create_race_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_head_version_count_bucket: "0",
+        storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+          "0",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        initializedTimingEvents,
+        "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_artifact_ensure_already_initialized_count_bucket: "1",
+        storage_manifest_artifact_ensure_missing_storage_count_bucket: "0",
+        storage_manifest_artifact_ensure_created_storage_count_bucket: "0",
+        storage_manifest_artifact_ensure_lost_create_race_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_head_version_count_bucket: "0",
+        storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+          "0",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        initializedTimingEvents,
+        "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+      ).duration_ms,
+    ).toBe(0);
+    expect(
+      singleApiDispatchEvent(
+        initializedTimingEvents,
+        "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
+      ).duration_ms,
+    ).toBe(0);
+    expectApiDispatchTimingEventsNotToLeak(initializedTimingEvents, [
+      storageName,
+      mountPath,
+      prepared.versionId,
+      headVersionId,
+    ]);
+
     await api.requestCancelRun(actor, created.runId, [200]);
+    await api.requestCancelRun(actor, initialized.runId, [200]);
   });
 
   it("keeps a direct launch claimable when run-context ingest fails", async () => {
