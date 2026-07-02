@@ -2624,7 +2624,7 @@ function isCodexFastServiceTierModel(
   const bareModel = model?.startsWith("openai/")
     ? model.slice("openai/".length)
     : model;
-  return bareModel === "gpt-5.5" || bareModel === "gpt-5.4";
+  return bareModel === "gpt-5.5";
 }
 
 function validateCodexServiceTier(params: {

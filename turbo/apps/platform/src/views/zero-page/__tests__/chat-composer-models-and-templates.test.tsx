@@ -134,6 +134,19 @@ function linkByText(text: string): HTMLElement {
   return link;
 }
 
+function buttonContainingText(
+  text: string,
+  container: ParentNode = document.body,
+) {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim().includes(text);
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
 function presentationTemplateGridScrollContainer(): HTMLElement {
   const scrollContainer = screen
     .getByRole("dialog")
@@ -1145,14 +1158,19 @@ describe("chat composer models", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+      path: `/agents/${AGENT_ID}/chat`,
     });
 
     click(await findComposerModel("GPT-5.5"));
-    await expect(screen.findByText("Fast mode")).resolves.toBeInTheDocument();
-    click(screen.getByLabelText("Fast mode"));
-    await expect(screen.findByText("Fast")).resolves.toBeInTheDocument();
+    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
+    click(buttonContainingText("Fast", runSpeed));
+    await waitFor(() => {
+      expect(buttonContainingText("Fast", runSpeed)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
     await user.keyboard("{Escape}");
     await waitFor(() => {
       expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
@@ -1177,16 +1195,17 @@ describe("chat composer models", () => {
 
   it("hides Codex fast mode when the feature switch is off", async () => {
     const codexProvider = buildProvider({
-      id: "00000000-0000-4000-a000-000000000913",
+      id: "00000000-0000-4000-a000-000000000922",
       type: "codex-oauth-token",
       framework: "codex",
       secretName: null,
       authMethod: "auth_json",
       secretNames: ["CODEX_AUTH_JSON"],
     });
+
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
-        id: "00000000-0000-4000-a000-000000000914",
+        id: "00000000-0000-4000-a000-000000000921",
         model: "gpt-5.5",
         modelLabel: "GPT-5.5",
         isDefault: true,
@@ -1200,16 +1219,55 @@ describe("chat composer models", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: { [FeatureSwitchKey.CodexFastMode]: false },
+      path: `/agents/${AGENT_ID}/chat`,
     });
 
     click(await findComposerModel("GPT-5.5"));
     await waitFor(() => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("group", { name: "Run speed" }),
+      ).not.toBeInTheDocument();
     });
-    expect(screen.queryByText("Fast mode")).not.toBeInTheDocument();
-    expect(screen.queryByText("Fast")).not.toBeInTheDocument();
+  });
+
+  it("hides Codex fast mode for non GPT-5.5 subscription models", async () => {
+    const codexProvider = buildProvider({
+      id: "00000000-0000-4000-a000-000000000932",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: null,
+      authMethod: "auth_json",
+      secretNames: ["CODEX_AUTH_JSON"],
+    });
+
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000931",
+        model: "gpt-5.4",
+        modelLabel: "GPT-5.4",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([codexProvider]);
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    click(await findComposerModel("GPT-5.4"));
+    await waitFor(() => {
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("group", { name: "Run speed" }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("keeps the agent chat model picker open while user model preference refreshes", async () => {
