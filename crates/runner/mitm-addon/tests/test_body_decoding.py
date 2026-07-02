@@ -1,6 +1,7 @@
 """Tests for shared HTTP body decoding helpers."""
 
 import gzip
+import hashlib
 import zlib
 
 import brotli
@@ -14,7 +15,20 @@ from body_decoding import (
     decompress_body,
 )
 from body_limits import DEFAULT_BODY_DECODE_LIMIT, STREAM_DECODE_CHUNK_LIMIT
-from tests.body_decode_helpers import pseudo_random_ascii, track_brotli_decompressor
+from tests.body_decode_helpers import (
+    pseudo_random_ascii,
+    track_brotli_decompressor,
+    track_zstd_decompressor,
+)
+
+
+def _deterministic_low_ratio_bytes(size: int) -> bytes:
+    data = bytearray()
+    counter = 0
+    while len(data) < size:
+        data.extend(hashlib.sha256(counter.to_bytes(8, "little")).digest())
+        counter += 1
+    return bytes(data[:size])
 
 
 class TestStreamDecodeFeed:
@@ -150,6 +164,48 @@ class TestStreamDecodeFeed:
         assert len(chunks) > 1
         assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
 
+    def test_zstd_large_low_ratio_input_ramps_up(self, headers, monkeypatch):
+        plaintext = _deterministic_low_ratio_bytes(512 * 1024)
+        compressed = zstandard.ZstdCompressor().compress(plaintext)
+        stats = track_zstd_decompressor(monkeypatch)
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(headers(("Content-Encoding", "zstd")), chunks.append)
+        assert session is not None
+
+        session.feed(compressed)
+
+        assert b"".join(chunks) == plaintext
+        assert session.finish_error() is None
+        assert stats.max_input > 4
+        assert stats.calls < len(compressed) // 64
+
+    def test_zstd_high_ratio_input_stays_small_before_large_output(self, headers, monkeypatch):
+        plaintext = b"A" * (STREAM_DECODE_CHUNK_LIMIT * 4 + 123)
+        compressed = zstandard.ZstdCompressor().compress(plaintext)
+        stats = track_zstd_decompressor(monkeypatch)
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(headers(("Content-Encoding", "zstd")), chunks.append)
+        assert session is not None
+
+        session.feed(compressed)
+
+        assert b"".join(chunks) == plaintext
+        assert session.finish_error() is None
+        assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
+        assert stats.max_input <= 16
+
+    def test_concatenated_zstd_frames_same_callback(self, headers):
+        first = zstandard.ZstdCompressor().compress(b"hello ")
+        second = zstandard.ZstdCompressor().compress(b"world")
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(headers(("Content-Encoding", "zstd")), chunks.append)
+        assert session is not None
+
+        session.feed(first + second)
+
+        assert b"".join(chunks) == b"hello world"
+        assert session.finish_error() is None
+
     def test_zstd_streaming_uses_decompressobj_for_finalization(self, headers, monkeypatch):
         real_decompressor = zstandard.ZstdDecompressor
         stats = {"stream_writer": 0, "decompressobj": 0}
@@ -201,7 +257,8 @@ class TestStreamDecodeFeed:
         assert "br" in log.debug.call_args[0][0]
         assert chunks == []
 
-    def test_zstd_error_logs_once_and_short_circuits(self, headers, mitm_ctx):
+    def test_zstd_error_logs_once_and_short_circuits(self, headers, mitm_ctx, monkeypatch):
+        stats = track_zstd_decompressor(monkeypatch)
         chunks: list[bytes] = []
         with mitm_ctx() as log:
             parse = create_stream_decode_feed(headers(("Content-Encoding", "zstd")), chunks.append)
@@ -210,6 +267,7 @@ class TestStreamDecodeFeed:
             parse(b"more garbage")
         assert log.debug.call_count == 1
         assert "zstd" in log.debug.call_args[0][0]
+        assert stats.calls == 1
         assert chunks == []
 
     def test_error_without_ctx_log_does_not_raise(self, headers):
