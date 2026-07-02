@@ -1508,6 +1508,14 @@ describe("chat lifecycle", () => {
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:00:04Z",
         },
+        {
+          id: "msg-stale-thinking-r2",
+          role: "assistant",
+          content: null,
+          thinking: "Continuing the plan",
+          runId: "run-r2",
+          createdAt: "2026-06-09T10:00:05Z",
+        },
       ],
     });
 
@@ -1571,7 +1579,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps thinking for an older active run when a newer run completes", async () => {
+  it("keeps thinking for an active run when the message stream shows later activity", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-concurrent-run-completed-later",
       activeRunIds: ["run-concurrent-active"],
@@ -1614,6 +1622,14 @@ describe("chat lifecycle", () => {
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:01:02Z",
         },
+        {
+          id: "msg-concurrent-active-thinking",
+          role: "assistant",
+          content: null,
+          thinking: "Still monitoring deployment",
+          runId: "run-concurrent-active",
+          createdAt: "2026-06-09T10:01:03Z",
+        },
       ],
     });
 
@@ -1633,7 +1649,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps thinking when an older active run is outside the loaded message window", async () => {
+  it("ignores active run ids when the loaded message stream is complete", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-active-run-outside-loaded-window",
       activeRunIds: ["run-active-outside-window"],
@@ -1655,10 +1671,8 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      expect(
-        document.querySelector("[data-thinking-indicator]"),
-      ).not.toBeNull();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });
   });
 
@@ -7083,6 +7097,46 @@ describe("initial thinking indicator", () => {
     });
     const label = await screen.findByLabelText("Reviewing your request");
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
+  });
+
+  it("renders the thinking marker before thread detail resolves", async () => {
+    const threadId = "thread-initial-thinking-thread-detail-gated";
+    const threadGate = context.mocks.deferred<void>();
+    mockChatLifecycle(context, {
+      threadId,
+      threadGate: threadGate.promise,
+      chatMessages: [
+        {
+          id: "msg-thinking-detail-gated-user",
+          role: "user",
+          content: "Draft a launch checklist",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-thinking-detail-gated-marker",
+          role: "assistant",
+          content: null,
+          thinking: "Reading the prompt",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
+      },
+    });
+
+    const label = await screen.findByLabelText("Reading the prompt");
+    expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
+
+    threadGate.resolve();
   });
 
   it("restarts on every follow-up line instead of sliding a short tail", async () => {

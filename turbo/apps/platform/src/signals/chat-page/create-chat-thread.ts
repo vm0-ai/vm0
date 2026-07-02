@@ -382,7 +382,6 @@ type AssistantPagedChatMessage = Extract<
 
 interface RunIndicatorScanContext {
   readonly terminatedRunIds: Set<string>;
-  readonly activeRunIds: Set<string>;
   readonly queuedRunIds: Set<string>;
   sawQueued: boolean;
   sawInactiveRunActivity: boolean;
@@ -392,17 +391,6 @@ function inactiveRunIndicatorState(
   scan: RunIndicatorScanContext,
 ): RunIndicatorState {
   return scan.sawQueued ? "queued" : null;
-}
-
-function unresolvedActiveRunIndicatorState(
-  scan: RunIndicatorScanContext,
-): RunIndicatorState {
-  for (const runId of scan.activeRunIds) {
-    if (!scan.queuedRunIds.has(runId)) {
-      return "running";
-    }
-  }
-  return inactiveRunIndicatorState(scan);
 }
 
 function rememberQueuedRun(
@@ -429,7 +417,7 @@ function runActivityIndicatorState(
     scan.sawInactiveRunActivity = true;
     return undefined;
   }
-  if (scan.sawInactiveRunActivity && !scan.activeRunIds.has(runId)) {
+  if (scan.sawInactiveRunActivity) {
     return undefined;
   }
   return "running";
@@ -472,17 +460,11 @@ function nonAssistantRunIndicatorState(
 
 function deriveRunIndicatorStateFromRawMessages(
   raw: readonly ChatMessageProjectionEntry[],
-  activeRunIds: readonly string[],
 ): RunIndicatorState {
   const revokedMessageIds = revokedMessageIdsFromRawMessages(raw);
   const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
   const scan: RunIndicatorScanContext = {
     terminatedRunIds,
-    activeRunIds: new Set(
-      activeRunIds.filter((runId) => {
-        return !terminatedRunIds.has(runId);
-      }),
-    ),
     queuedRunIds: new Set<string>(),
     sawQueued: false,
     sawInactiveRunActivity: false,
@@ -509,9 +491,7 @@ function deriveRunIndicatorStateFromRawMessages(
       return state;
     }
   }
-  return scan.activeRunIds.size > 0
-    ? unresolvedActiveRunIndicatorState(scan)
-    : inactiveRunIndicatorState(scan);
+  return inactiveRunIndicatorState(scan);
 }
 
 function liveRunIdsFromRawMessages(
@@ -1686,7 +1666,7 @@ function createPagedMessages(
     serverMessages$,
     optimisticMessages$,
   });
-  const latestRunStatus$ = createLatestRunStatus(rawMessages$, threadData$);
+  const latestRunStatus$ = createLatestRunStatus(rawMessages$);
 
   // The thread's active goal, folded from the (goal-marker) message stream so
   // the composer reads it without polling /api/automations. Reads rawMessages$
@@ -2034,16 +2014,10 @@ function createInputRef() {
 
 function createLatestRunStatus(
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
-  threadData$: Computed<Promise<ChatThread | null>>,
 ) {
   return computed(async (get): Promise<string | null> => {
-    const rawPromise = get(rawMessages$);
-    const threadPromise = get(threadData$);
-    const [raw, thread] = await Promise.all([rawPromise, threadPromise]);
-    return deriveRunIndicatorStateFromRawMessages(
-      raw,
-      thread?.activeRunIds ?? [],
-    );
+    const raw = await get(rawMessages$);
+    return deriveRunIndicatorStateFromRawMessages(raw);
   });
 }
 

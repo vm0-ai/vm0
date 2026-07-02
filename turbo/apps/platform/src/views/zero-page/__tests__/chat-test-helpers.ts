@@ -423,6 +423,11 @@ export function mockChatLifecycle(
      * Lets tests prove the latest-message view renders before silent backfill.
      */
     beforeHistoryGate?: Promise<void>;
+    /**
+     * Promise the thread detail handler awaits before responding. Lets tests
+     * prove the transcript can render before thread metadata resolves.
+     */
+    threadGate?: Promise<void>;
     afterInitialMessagesList?: () => void;
     onRunCreate?: (body: {
       prompt?: string;
@@ -752,7 +757,10 @@ export function mockChatLifecycle(
     }
     return respond(200, cloneMockPagedMessage(message));
   });
-  context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+  context.mocks.api(chatThreadByIdContract.get, async ({ respond }) => {
+    if (options?.threadGate) {
+      await options.threadGate;
+    }
     const lifecycleActiveRunIds =
       runAssociated && !terminal.has(runStatus) ? [MOCK_RUN_ID] : [];
     const activeRunIds = [...optionActiveRunIds, ...lifecycleActiveRunIds];
