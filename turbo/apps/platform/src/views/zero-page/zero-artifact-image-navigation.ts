@@ -12,7 +12,7 @@ export type ImageArtifactNavigationItem = {
   readonly runId: string;
 };
 
-export type ImageArtifactNavigation = {
+type ImageArtifactNavigation = {
   readonly next?: ImageArtifactNavigationItem;
   readonly previous?: ImageArtifactNavigationItem;
 };
@@ -23,7 +23,7 @@ export type ImageArtifactNavigation = {
  * rendered body `blocks` (image previews parsed from message content, e.g.
  * agent-generated images). Structurally satisfied by `EnrichedChatMessage`.
  */
-export type MessageImageSource = {
+type MessageImageSource = {
   readonly attachFiles?: readonly {
     readonly url: string;
     readonly filename: string;

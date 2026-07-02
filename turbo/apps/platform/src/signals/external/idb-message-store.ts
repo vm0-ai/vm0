@@ -3,6 +3,7 @@ import {
   pagedChatMessageSchema,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatMessageOrderSequence } from "../chat-message-order.ts";
 import { logger } from "../log.ts";
 import {
   CHAT_MESSAGES_ORDER_INDEX,
@@ -78,12 +79,24 @@ function storedMessage(
   return {
     ...message,
     threadId,
-    orderSequence: message.sequenceNumber ?? -1,
+    orderSequence: chatMessageOrderSequence(message),
   };
 }
 
 function threadOrderRange(threadId: string): IDBKeyRange {
   return IDBKeyRange.bound([threadId], [threadId, []]);
+}
+
+function storedOrderSequence(raw: unknown, message: PagedChatMessage): number {
+  if (
+    raw !== null &&
+    typeof raw === "object" &&
+    !Array.isArray(raw) &&
+    typeof (raw as { orderSequence?: unknown }).orderSequence === "number"
+  ) {
+    return (raw as { orderSequence: number }).orderSequence;
+  }
+  return chatMessageOrderSequence(message);
 }
 
 function createIdbMessageStores(userId: string, orgId: string) {
@@ -162,7 +175,7 @@ function createIdbMessageStores(userId: string, orgId: string) {
         [
           threadId,
           anchorMsg.createdAt,
-          anchorMsg.sequenceNumber ?? -1,
+          storedOrderSequence(anchor, anchorMsg),
           beforeId,
         ],
       );
