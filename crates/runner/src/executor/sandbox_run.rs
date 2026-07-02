@@ -24,7 +24,6 @@ use super::{
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::network_log_manager::NetworkLogSession;
-use crate::paths::diagnostic_session_fingerprint;
 use crate::proxy;
 use crate::telemetry::JobTelemetry;
 use crate::types::ExecutionContext;
@@ -570,7 +569,7 @@ pub(super) async fn execute_prepared_sandbox_run(
             if let Some(ref sid) = id {
                 info!(
                     run_id = %context.run_id,
-                    session_fingerprint = %diagnostic_session_fingerprint(sid),
+                    session_id = %sid,
                     "read guest session ID for parking"
                 );
             }
@@ -599,7 +598,7 @@ fn normalize_guest_cli_agent_session_id_for_parking(
             warn!(
                 run_id = %context.run_id,
                 framework = "codex",
-                session_fingerprint = %diagnostic_session_fingerprint(&session_id),
+                session_id = %session_id,
                 "ignoring invalid guest session ID for framework"
             );
             None
@@ -611,7 +610,7 @@ fn normalize_guest_cli_agent_session_id_for_parking(
                 warn!(
                     run_id = %context.run_id,
                     framework = "claude-code",
-                    session_fingerprint = %diagnostic_session_fingerprint(&session_id),
+                    session_id = %session_id,
                     "ignoring invalid guest session ID for framework"
                 );
                 None

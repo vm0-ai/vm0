@@ -199,7 +199,7 @@ fn send_event_extracts_codex_thread_id_and_writes_marker() {
         marker.ends_with(&format!(":{thread_id}")),
         "marker should end with the thread id, got: {marker}"
     );
-    assert_eq!(masker.mask_string(thread_id), "***");
+    assert_eq!(masker.mask_string(thread_id), thread_id);
 
     let system_log = std::fs::read_to_string(&system_log_path).expect("system log written");
     assert!(
@@ -251,7 +251,7 @@ fn send_event_canonicalizes_codex_thread_id_before_writing_marker() {
 }
 
 #[test]
-fn send_event_seeds_existing_codex_thread_id_without_repairing_history_marker() {
+fn send_event_keeps_existing_codex_thread_id_without_repairing_history_marker() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let _files_guard = CodexResumeFilesGuard::new();
 
@@ -291,7 +291,7 @@ fn send_event_seeds_existing_codex_thread_id_without_repairing_history_marker() 
                 "ordinary events must not create missing history markers"
             );
         }
-        assert_eq!(masker.mask_string(thread_id), "***");
+        assert_eq!(masker.mask_string(thread_id), thread_id);
     }
 }
 
@@ -412,10 +412,6 @@ fn send_event_codex_ignores_malformed_thread_id() {
             !Path::new(&session_id_file).exists(),
             "malformed thread_id must not be persisted: {thread_id}"
         );
-        if thread_id.len() >= 5 {
-            assert_eq!(masker.mask_string(thread_id), "***");
-        } else {
-            assert_eq!(masker.mask_string(thread_id), thread_id);
-        }
+        assert_eq!(masker.mask_string(thread_id), thread_id);
     }
 }

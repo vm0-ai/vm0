@@ -28,7 +28,6 @@ use crate::idle_pool::{
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogSession;
-use crate::paths::diagnostic_session_fingerprint;
 #[cfg(test)]
 use crate::provider::CompletionAuth;
 use crate::resource_budget::BudgetLease;
@@ -157,7 +156,6 @@ pub(super) async fn finalize_sandbox_for_completion(
     let mut session_affinity_changed = false;
     let mut session_affinity_refresh_sent = false;
     let budget = if let Some(cli_agent_session_id) = parkable_cli_agent_session_id {
-        let session_fingerprint = diagnostic_session_fingerprint(&cli_agent_session_id);
         // Inflate the guest balloon BEFORE acquiring the pool lock —
         // the HTTP call to Firecracker can take milliseconds, and we
         // must not block other take/park operations on it.
@@ -187,7 +185,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 } = failure.active;
                 warn!(
                     run_id = %run_id,
-                    session_fingerprint = %session_fingerprint,
+                    session_id = %cli_agent_session_id,
                     error = %failure.error,
                     "sandbox park failed, destroying instead of parking"
                 );
@@ -229,7 +227,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
             info!(
                 run_id = %run_id,
-                session_fingerprint = %session_fingerprint,
+                session_id = %cli_agent_session_id,
                 "job cancelled while parking, destroying VM"
             );
             let destroy_result = destroy_active_owned_idle_payload(
@@ -257,7 +255,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     if cancel.is_cancelled() {
                         info!(
                             run_id = %run_id,
-                            session_fingerprint = %session_fingerprint,
+                            session_id = %cli_agent_session_id,
                             "job cancelled before idle pool ownership transfer, destroying VM"
                         );
                         drop(transfer_guard);
@@ -281,7 +279,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 if cancel.is_cancelled() {
                     info!(
                         run_id = %run_id,
-                        session_fingerprint = %session_fingerprint,
+                        session_id = %cli_agent_session_id,
                         "job cancelled before idle pool ownership transfer, destroying VM"
                     );
                     drop(transfer_guard);
@@ -303,10 +301,10 @@ pub(super) async fn finalize_sandbox_for_completion(
                 let candidate = candidate.with_last_completed_at(completed_at.clone());
                 break match pool.park(candidate) {
                     ParkResult::Parked => {
-                        info!(run_id = %run_id, session_fingerprint = %session_fingerprint, "VM parked for reuse");
+                        info!(run_id = %run_id, session_id = %cli_agent_session_id, "VM parked for reuse");
                         #[cfg(test)]
                         test_observer
-                            .notify_vm_parked_for_reuse(run_id, session_fingerprint.clone());
+                            .notify_vm_parked_for_reuse(run_id, cli_agent_session_id.clone());
                         cleanup_state.mark_idle_pool_owned();
                         #[cfg(test)]
                         maybe_panic_outer_job(
@@ -334,7 +332,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         BudgetOwnership::idle_owned()
                     }
                     ParkResult::Replaced(evicted) => {
-                        info!(run_id = %run_id, session_fingerprint = %session_fingerprint, "VM parked, evicting previous");
+                        info!(run_id = %run_id, session_id = %cli_agent_session_id, "VM parked, evicting previous");
                         cleanup_state.mark_idle_pool_owned();
                         #[cfg(test)]
                         maybe_panic_outer_job(
@@ -362,7 +360,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         BudgetOwnership::idle_owned()
                     }
                     ParkResult::Rejected(rejected) => {
-                        info!(run_id = %run_id, session_fingerprint = %session_fingerprint, "idle parking rejected, destroying VM");
+                        info!(run_id = %run_id, session_id = %cli_agent_session_id, "idle parking rejected, destroying VM");
                         drop(transfer_guard);
                         drop(pool);
                         // Pool unchanged (park rejected) — no status
@@ -523,16 +521,14 @@ async fn stop_and_destroy_sandbox(
     mut context: ActiveCleanupContext<'_>,
 ) -> DestroyOutcome {
     let mut uncertain = false;
-    let session_fingerprint = context
-        .cli_agent_session_id
-        .map(diagnostic_session_fingerprint);
+    let session_id = context.cli_agent_session_id;
     match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
         Ok(Ok(())) => {}
         Ok(Err(e)) => warn!(
             run_id = %context.run_id,
             sandbox_id = %context.sandbox_id,
             profile_name = context.profile_name,
-            session_fingerprint = ?session_fingerprint,
+            session_id = ?session_id,
             reason = context.reason,
             error = %e,
             "sandbox stop failed during active cleanup"
@@ -542,7 +538,7 @@ async fn stop_and_destroy_sandbox(
                 run_id = %context.run_id,
                 sandbox_id = %context.sandbox_id,
                 profile_name = context.profile_name,
-                session_fingerprint = ?session_fingerprint,
+                session_id = ?session_id,
                 reason = context.reason,
                 "sandbox stop panicked during active cleanup"
             );
@@ -564,7 +560,7 @@ async fn stop_and_destroy_sandbox(
             run_id = %context.run_id,
             sandbox_id = %context.sandbox_id,
             profile_name = context.profile_name,
-            session_fingerprint = ?session_fingerprint,
+            session_id = ?session_id,
             reason = context.reason,
             "sandbox destroy panicked during active cleanup"
         );
@@ -811,7 +807,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finalizer_parking_log_uses_session_fingerprint() {
+    async fn finalizer_parking_log_uses_session_id() {
         let (_budget, lease) = test_budget_lease();
         let fixture = FinalizeTestFixture::new().await;
         let network_log_session = fixture.network_log_session().await;
@@ -842,15 +838,11 @@ mod tests {
             context,
         )
         .await;
-        let field = observer
+        let session_id = observer
             .wait_vm_parked_for_reuse(run_id, Duration::from_secs(1))
             .await;
 
-        assert_eq!(field, diagnostic_session_fingerprint(raw_session_id));
-        assert!(
-            !field.contains(raw_session_id),
-            "parking diagnostic field must not include raw session id: {field}"
-        );
+        assert_eq!(session_id, raw_session_id);
     }
 
     #[tokio::test]

@@ -46,7 +46,7 @@ use super::{
 };
 use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
 use crate::ids::RunId;
-use crate::paths::{LogPaths, diagnostic_session_fingerprint};
+use crate::paths::LogPaths;
 use crate::types::ExecutionContext;
 
 const AGENT_ENV_VALUE_SIZE_DIAGNOSTIC_LIMIT: usize = 5;
@@ -410,9 +410,9 @@ pub(super) fn log_agent_bootstrap_abnormal_exit_diagnostics(
         .session_restore_diagnostics
         .map(|diagnostics| diagnostics.framework)
         .unwrap_or("none");
-    let resume_session_fingerprint = context
+    let resume_session_id = context
         .session_restore_diagnostics
-        .map(|diagnostics| diagnostics.session_fingerprint.as_str())
+        .map(|diagnostics| diagnostics.session_id.as_str())
         .unwrap_or("");
     let resume_session_bytes_in = context
         .session_restore_diagnostics
@@ -442,7 +442,7 @@ pub(super) fn log_agent_bootstrap_abnormal_exit_diagnostics(
         env_keys = %context.env_key_diagnostics.logged_keys_csv(),
         omitted_env_key_count = context.env_key_diagnostics.omitted_key_count,
         resume_session_framework = %resume_session_framework,
-        resume_session_fingerprint = %resume_session_fingerprint,
+        resume_session_id = %resume_session_id,
         resume_session_bytes_in = ?resume_session_bytes_in,
         "agent bootstrap abnormal exit diagnostics"
     );
@@ -619,7 +619,7 @@ pub(super) async fn read_guest_cli_agent_session_id(
             if !is_valid_session_id(&id) {
                 warn!(
                     run_id = %run_id,
-                    session_fingerprint = %diagnostic_session_fingerprint(&id),
+                    session_id = %id,
                     "ignoring invalid guest session ID"
                 );
                 return None;
