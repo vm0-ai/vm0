@@ -416,6 +416,7 @@ describe("POST /api/zero/teams/bot", () => {
         },
         rawText: "<at>Zero</at> deploy the preview",
         text: "deploy the preview",
+        mentionsRecipient: true,
         idempotencyKey: "19:thread@thread.tacv2:message:activity-1",
       },
     });
@@ -461,6 +462,99 @@ describe("POST /api/zero/teams/bot", () => {
       tenantName: "Tenant One",
       teamId: "team-1",
       teamName: "Team One",
+    });
+  });
+
+  it("ignores Teams channel messages that do not mention the bot", async () => {
+    botFrameworkHandlers();
+
+    const response = await postTeamsActivity({
+      activity: teamsMessageActivity(botFixture(), {
+        id: "activity-unmentioned-channel",
+        text: "hello channel",
+        entities: [],
+      }),
+      token: teamsToken(),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      activity: {
+        kind: "message",
+        text: "hello channel",
+        mentionsRecipient: false,
+      },
+      dispatch: { kind: "ignored" },
+    });
+  });
+
+  it("handles Teams personal messages without requiring a bot mention", async () => {
+    botFrameworkHandlers();
+
+    const response = await postTeamsActivity({
+      activity: teamsMessageActivity(botFixture(), {
+        id: "activity-personal-dm",
+        conversation: {
+          id: "a:personal-conversation",
+          conversationType: "personal",
+        },
+        channelData: {
+          tenant: { id: "tenant-1", name: "Tenant One" },
+          teamsAppId: "teams-app-test",
+        },
+        text: "hello from dm",
+        entities: [],
+        replyToId: null,
+      }),
+      token: teamsToken(),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      activity: {
+        kind: "message",
+        conversationType: "personal",
+        threadId: "activity-personal-dm",
+        text: "hello from dm",
+        mentionsRecipient: false,
+      },
+      dispatch: {
+        kind: "notice",
+        replyText: expect.stringContaining("Please connect"),
+      },
+    });
+  });
+
+  it("preserves non-bot Teams mentions in message text", async () => {
+    botFrameworkHandlers();
+
+    const response = await postTeamsActivity({
+      activity: teamsMessageActivity(botFixture(), {
+        id: "activity-user-mention",
+        text: "<at>Zero</at> ask <at>Grace Hopper</at> to review",
+        entities: [
+          {
+            type: "mention",
+            text: "<at>Zero</at>",
+            mentioned: { id: "28:bot-1", name: "Zero" },
+          },
+          {
+            type: "mention",
+            text: "<at>Grace Hopper</at>",
+            mentioned: { id: "29:user-2", name: "Grace Hopper" },
+          },
+        ],
+      }),
+      token: teamsToken(),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      activity: {
+        kind: "message",
+        text: "ask @Grace Hopper (29:user-2) to review",
+        mentionsRecipient: true,
+      },
     });
   });
 
@@ -512,6 +606,33 @@ describe("POST /api/zero/teams/bot", () => {
       runId: firstRunId,
       sandboxToken: firstClaim.sandboxToken,
     });
+
+    const channelContextResponse = await postTeamsActivity({
+      activity: teamsMessageActivity(fixture, {
+        id: "activity-channel-context-1",
+        replyToId: null,
+        text: "<at>Zero</at> start another topic",
+      }),
+      token: teamsToken(),
+    });
+    expect(channelContextResponse.status).toBe(200);
+    const channelContextBody = await channelContextResponse.json();
+    const channelContextRunId = dispatchRunId(channelContextBody.dispatch);
+    await runsApi.heartbeatRunner(runnerGroup);
+    const channelContextClaim =
+      await runsApi.claimRunnerJob(channelContextRunId);
+    const channelContextAppendSystemPrompt =
+      channelContextClaim.appendSystemPrompt ?? "";
+    const recentChannelContext = promptSection(
+      channelContextAppendSystemPrompt,
+      "# Recent Channel Messages",
+    );
+    expect(channelContextClaim.prompt).toBe("start another topic");
+    expect(recentChannelContext).toContain("remember the deployment target");
+    expect(recentChannelContext).not.toContain("start another topic");
+    expect(channelContextAppendSystemPrompt).not.toContain(
+      "# Microsoft Teams Thread Context",
+    );
 
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(fixture, {

@@ -11,7 +11,7 @@ import { teamsUserAgentPreferences } from "@vm0/db/schema/teams-user-agent-prefe
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import type { TeamsInboundActivity } from "@vm0/api-contracts/contracts/zero-teams-bot";
-import { and, desc, eq, or } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, or } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
@@ -334,6 +334,19 @@ const TEAMS_CONTEXT_PREAMBLE = [
 function formatTeamsThreadContext(
   messages: readonly TeamsThreadContextMessage[],
 ): string {
+  return formatTeamsContext("# Microsoft Teams Thread Context", messages);
+}
+
+function formatRecentTeamsChannelContext(
+  messages: readonly TeamsThreadContextMessage[],
+): string {
+  return formatTeamsContext("# Recent Channel Messages", messages);
+}
+
+function formatTeamsContext(
+  header: string,
+  messages: readonly TeamsThreadContextMessage[],
+): string {
   if (messages.length === 0) {
     return "";
   }
@@ -342,7 +355,7 @@ function formatTeamsThreadContext(
   const formattedMessages = messages.map((message, index) => {
     return formatTeamsContextMessage(message, index - totalMessages);
   });
-  return `# Microsoft Teams Thread Context\n\n${TEAMS_CONTEXT_PREAMBLE}\n\n${formattedMessages.join(
+  return `${header}\n\n${TEAMS_CONTEXT_PREAMBLE}\n\n${formattedMessages.join(
     "\n\n",
   )}\n\n---`;
 }
@@ -380,6 +393,82 @@ async function fetchTeamsThreadContext(args: {
       };
     }),
   );
+}
+
+async function fetchRecentTeamsChannelContext(args: {
+  readonly db: Db;
+  readonly activity: TeamsMessageActivity;
+  readonly connection: TeamsConnection;
+}): Promise<string> {
+  const rows = await args.db
+    .select({
+      prompt: agentRuns.prompt,
+    })
+    .from(teamsOrgThreadSessions)
+    .innerJoin(
+      agentRuns,
+      eq(agentRuns.sessionId, teamsOrgThreadSessions.agentSessionId),
+    )
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(
+      and(
+        eq(teamsOrgThreadSessions.connectionId, args.connection.id),
+        eq(
+          teamsOrgThreadSessions.teamsConversationId,
+          args.activity.conversationId,
+        ),
+        args.activity.channelId
+          ? eq(teamsOrgThreadSessions.teamsChannelId, args.activity.channelId)
+          : isNull(teamsOrgThreadSessions.teamsChannelId),
+        ne(teamsOrgThreadSessions.teamsThreadId, args.activity.threadId),
+        eq(zeroRuns.triggerSource, "teams"),
+      ),
+    )
+    .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
+    .limit(10);
+  return formatRecentTeamsChannelContext(
+    [...rows].reverse().map((row) => {
+      return {
+        text: row.prompt,
+        senderId: args.connection.teamsUserId,
+        senderName: args.connection.teamsUserDisplayName,
+        senderPrincipalName: args.connection.teamsUserPrincipalName,
+      };
+    }),
+  );
+}
+
+function isTeamsDirectMessage(activity: TeamsMessageActivity): boolean {
+  return activity.conversationType === "personal";
+}
+
+function shouldDispatchTeamsMessage(activity: TeamsMessageActivity): boolean {
+  return isTeamsDirectMessage(activity) || activity.mentionsRecipient;
+}
+
+async function fetchTeamsPromptContext(args: {
+  readonly db: Db;
+  readonly activity: TeamsMessageActivity;
+  readonly sessionId: string | undefined;
+  readonly connection: TeamsConnection;
+}): Promise<string> {
+  const recentChannelContext = isTeamsDirectMessage(args.activity)
+    ? ""
+    : await fetchRecentTeamsChannelContext({
+        db: args.db,
+        activity: args.activity,
+        connection: args.connection,
+      });
+  const threadContext = await fetchTeamsThreadContext({
+    db: args.db,
+    sessionId: args.sessionId,
+    connection: args.connection,
+  });
+  return [recentChannelContext, threadContext]
+    .filter((context) => {
+      return context.length > 0;
+    })
+    .join("\n\n");
 }
 
 function buildTeamsPrompt(args: {
@@ -548,6 +637,34 @@ function connectNotice(
   };
 }
 
+function composeResolutionNotice(
+  status: Exclude<EffectiveComposeResolution["status"], "resolved">,
+): TeamsMessageDispatchResult {
+  switch (status) {
+    case "not_configured": {
+      return {
+        kind: "notice",
+        replyText:
+          "No agent is configured for this org. Please ask your org admin to set a default agent.",
+      };
+    }
+    case "not_found": {
+      return {
+        kind: "notice",
+        replyText:
+          "The configured agent could not be found. Please contact your org admin.",
+      };
+    }
+    case "not_accessible": {
+      return {
+        kind: "notice",
+        replyText:
+          "The configured agent is not available to your Microsoft Teams account.",
+      };
+    }
+  }
+}
+
 export const dispatchTeamsMessageToAgent$ = command(
   async (
     { set },
@@ -563,6 +680,10 @@ export const dispatchTeamsMessageToAgent$ = command(
     }
 
     const activity = args.activity;
+    if (!shouldDispatchTeamsMessage(activity)) {
+      return { kind: "ignored" };
+    }
+
     const prompt = activity.text.trim();
     if (!prompt) {
       return {
@@ -604,31 +725,8 @@ export const dispatchTeamsMessageToAgent$ = command(
     });
     signal.throwIfAborted();
 
-    switch (effectiveCompose.status) {
-      case "not_configured": {
-        return {
-          kind: "notice",
-          replyText:
-            "No agent is configured for this org. Please ask your org admin to set a default agent.",
-        };
-      }
-      case "not_found": {
-        return {
-          kind: "notice",
-          replyText:
-            "The configured agent could not be found. Please contact your org admin.",
-        };
-      }
-      case "not_accessible": {
-        return {
-          kind: "notice",
-          replyText:
-            "The configured agent is not available to your Microsoft Teams account.",
-        };
-      }
-      case "resolved": {
-        break;
-      }
+    if (effectiveCompose.status !== "resolved") {
+      return composeResolutionNotice(effectiveCompose.status);
     }
 
     const modelRoute = await set(
@@ -652,8 +750,9 @@ export const dispatchTeamsMessageToAgent$ = command(
     });
     signal.throwIfAborted();
 
-    const threadContext = await fetchTeamsThreadContext({
+    const threadContext = await fetchTeamsPromptContext({
       db,
+      activity,
       sessionId: existingSessionId,
       connection,
     });
