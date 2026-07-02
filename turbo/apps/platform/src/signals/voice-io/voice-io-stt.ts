@@ -1,5 +1,4 @@
 import { command, computed, state } from "ccstate";
-import { delay } from "signal-timers";
 import {
   zeroVoiceIoQuotaContract,
   type AudioInputQuotaResponse,
@@ -465,7 +464,6 @@ export const startRecording$ = command(
     set(internalVoiceActivityCoversRecording$, false);
 
     await waitForBrowserPaint(signal);
-    await delay(0, { signal });
     signal.throwIfAborted();
 
     const streamResult = await settle(openMedia(signal), signal);
