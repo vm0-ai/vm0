@@ -39,7 +39,8 @@ function isJsonSyntaxPromptFragment(prompt: string): boolean {
       char !== "]" &&
       char !== "{" &&
       char !== "}" &&
-      char !== ","
+      char !== "," &&
+      char.trim() !== ""
     ) {
       onlyJsonPunctuation = false;
       break;
