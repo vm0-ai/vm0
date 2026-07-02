@@ -423,6 +423,11 @@ const SW_FONT_QUERY_SELECTOR_PATTERN =
 const SELECT_VALUE_ASSIGNMENT_PATTERN =
   /\b([A-Za-z_$][\w$]*)\.value\s*=\s*(['"])(.*?)\2/g;
 
+const SET_PALETTE_CALL_PATTERN =
+  /\bsetPalette\s*\(\s*([A-Za-z_$][\w$]*)\.value\s*\)/g;
+const SET_FONT_CALL_PATTERN =
+  /\bsetFont\s*\(\s*([A-Za-z_$][\w$]*)\.value\s*\)/g;
+
 function collectPatternVariableNames(
   scriptText: string,
   patterns: readonly RegExp[],
@@ -447,11 +452,13 @@ function extractSelectVariableNames(
     ? collectPatternVariableNames(scriptText, [
         SW_PAL_GET_BY_ID_PATTERN,
         SW_PAL_QUERY_SELECTOR_PATTERN,
+        SET_PALETTE_CALL_PATTERN,
       ])
     : selectId === THEME_SWITCHER_SELECT_IDS.font
       ? collectPatternVariableNames(scriptText, [
           SW_FONT_GET_BY_ID_PATTERN,
           SW_FONT_QUERY_SELECTOR_PATTERN,
+          SET_FONT_CALL_PATTERN,
         ])
       : new Set<string>();
 }
