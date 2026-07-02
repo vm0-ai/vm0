@@ -24,6 +24,7 @@ import {
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
+import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
 
 export type TriggerRow = typeof zeroWorkflowTriggers.$inferSelect;
 
@@ -268,6 +269,35 @@ async function checkActivePreviousWorkflowRun(args: {
   );
 }
 
+async function checkWorkflowTriggerTargetReadable(args: {
+  readonly db: Db;
+  readonly trigger: TriggerRow;
+  readonly agentId: string;
+  readonly timing: ApiDispatchTimingCollector;
+  readonly signal: AbortSignal;
+}): Promise<RunFailure | undefined> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_workflow_trigger_check_target_access",
+    "nested",
+    async (): Promise<RunFailure | undefined> => {
+      const canFire = await workflowTriggerCanFire(args.db, {
+        trigger: args.trigger,
+        agentId: args.agentId,
+        signal: args.signal,
+      });
+      args.signal.throwIfAborted();
+      if (!canFire) {
+        return {
+          kind: "conflict",
+          message: "Workflow trigger is paused or no longer readable",
+        };
+      }
+      return undefined;
+    },
+  );
+}
+
 async function resolveTimedWorkflowModelContext(args: {
   readonly db: Db;
   readonly trigger: TriggerRow;
@@ -343,6 +373,17 @@ export const runWorkflowTriggerNow$ = command(
     });
     if (activePreviousRunFailure) {
       return activePreviousRunFailure;
+    }
+
+    const targetAccessFailure = await checkWorkflowTriggerTargetReadable({
+      db,
+      trigger,
+      agentId,
+      timing,
+      signal,
+    });
+    if (targetAccessFailure) {
+      return targetAccessFailure;
     }
 
     const modelContext = await resolveTimedWorkflowModelContext({

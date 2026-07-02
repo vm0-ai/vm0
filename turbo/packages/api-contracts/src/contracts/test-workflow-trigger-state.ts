@@ -20,6 +20,7 @@ export const testWorkflowTriggerStateActionBodySchema = z
       "seed-github-installation",
       "seed-github-user-link",
       "set-owner-timezone",
+      "set-agent-visibility",
       "seed-active-run",
       "set-trigger-run-state",
       "get-trigger",

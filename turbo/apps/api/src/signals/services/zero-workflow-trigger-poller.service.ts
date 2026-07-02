@@ -21,6 +21,7 @@ import {
   type RunFailure,
   type TriggerRow,
 } from "./zero-workflow-trigger-run.service";
+import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
 import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
 import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
 
@@ -305,6 +306,24 @@ export const executeDueWorkflowTriggers$ = command(
           .set({ enabled: false, nextRunAt: null, updatedAt: currentTime })
           .where(eq(zeroWorkflowTriggers.id, row.trigger.id));
         signal.throwIfAborted();
+        skipped++;
+        continue;
+      }
+
+      const canFire = await workflowTriggerCanFire(db, {
+        trigger: row.trigger,
+        agentId: row.agentId,
+        signal,
+      });
+      signal.throwIfAborted();
+      if (!canFire) {
+        log.debug("Workflow trigger skipped: trigger is paused", {
+          triggerId: row.trigger.id,
+          workflowId: row.trigger.workflowId,
+          agentId: row.agentId,
+          orgId: row.trigger.orgId,
+          userId: row.trigger.ownerUserId,
+        });
         skipped++;
         continue;
       }

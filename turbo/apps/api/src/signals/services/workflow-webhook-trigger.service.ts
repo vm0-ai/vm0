@@ -31,6 +31,7 @@ import {
   type RunWorkflowTriggerResult,
   type TriggerRow,
 } from "./zero-workflow-trigger-run.service";
+import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
 import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
 
 export const WORKFLOW_WEBHOOK_BODY_LIMIT_BYTES = 1_000_000;
@@ -317,6 +318,15 @@ async function loadWebhookTriggerForToken(args: {
     .limit(1);
   args.signal.throwIfAborted();
   if (!row) {
+    return null;
+  }
+  const canFire = await workflowTriggerCanFire(args.db, {
+    trigger: row.trigger,
+    agentId: row.agentId,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+  if (!canFire) {
     return null;
   }
   const currentTime = nowDate();
