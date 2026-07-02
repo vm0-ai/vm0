@@ -936,7 +936,7 @@ describe("workflows routes", () => {
     );
 
     // "Automated" keeps only workflows that have at least one automation.
-    click(buttonByText("Automated"));
+    click(screen.getByRole("tab", { name: "Automated" }));
     await waitFor(() => {
       expect(search()).toBe("?automation=automated");
     });
@@ -946,7 +946,7 @@ describe("workflows routes", () => {
     expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
 
     // "Without automation" keeps only the manual workflows.
-    click(buttonByText("Without automation"));
+    click(screen.getByRole("tab", { name: "Without automation" }));
     await waitFor(() => {
       expect(search()).toBe("?automation=without");
     });
@@ -955,7 +955,7 @@ describe("workflows routes", () => {
     expect(linkByAriaLabel("Open Launch Checklist")).toBeInTheDocument();
 
     // Clearing the filter returns to the full list.
-    click(buttonByText("All"));
+    click(screen.getByRole("tab", { name: "All" }));
     await waitFor(() => {
       expect(search()).toBe("");
     });

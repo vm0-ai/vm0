@@ -13,6 +13,9 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Tabs,
+  TabsList,
+  TabsTrigger,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -53,15 +56,6 @@ type WorkflowTriggerEntryMap = ReadonlyMap<
   readonly WorkflowTriggerAutomationEntry[]
 >;
 
-const AGENT_AVATAR_CLASSES = [
-  "bg-indigo-500",
-  "bg-emerald-500",
-  "bg-amber-500",
-  "bg-rose-500",
-  "bg-sky-500",
-  "bg-violet-500",
-] as const;
-
 function workflowTriggerEntryMap(
   entries: readonly WorkflowTriggerAutomationEntry[],
 ): WorkflowTriggerEntryMap {
@@ -84,14 +78,6 @@ function initials(label: string): string {
     return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
   }
   return (words[0]?.slice(0, 2) || "??").toUpperCase();
-}
-
-function agentAvatarClass(agentId: string): string {
-  let hash = 0;
-  for (const char of agentId) {
-    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  }
-  return AGENT_AVATAR_CLASSES[hash % AGENT_AVATAR_CLASSES.length]!;
 }
 
 function triggerDotClass(entry: WorkflowTriggerAutomationEntry): string {
@@ -120,10 +106,7 @@ function AgentAvatar({ workflow }: { readonly workflow: ZeroWorkflowSummary }) {
   const label = agentLabel(workflow);
   return (
     <span
-      className={cn(
-        "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[10px] font-semibold text-white",
-        agentAvatarClass(workflow.agentId),
-      )}
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border/60 bg-gray-50 text-[10px] font-semibold text-muted-foreground"
       aria-label={`Runs as ${label}`}
     >
       {initials(label)}
@@ -139,7 +122,7 @@ function MemberAvatar({
   const label = ownerLabel(workflow);
   if (workflow.ownerUserImageUrl) {
     return (
-      <span className="h-5 w-5 shrink-0 overflow-hidden rounded-full border border-border/60 bg-gray-50">
+      <span className="h-6 w-6 shrink-0 overflow-hidden rounded-full border border-border/60 bg-gray-50">
         <img
           src={workflow.ownerUserImageUrl}
           alt={label}
@@ -149,7 +132,7 @@ function MemberAvatar({
     );
   }
   return (
-    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-[9px] font-semibold text-white">
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-gray-50 text-[10px] font-semibold text-muted-foreground">
       {initials(label)}
     </span>
   );
@@ -198,7 +181,7 @@ function ConnectorPopoverList({
             className="rounded-lg px-2 py-2 hover:bg-gray-50"
           >
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 px-2 py-0.5 text-xs font-medium text-foreground/80">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-50 px-2 py-0.5 text-xs font-medium text-muted-foreground">
                 <span
                   className={cn(
                     "h-1.5 w-1.5 rounded-full",
@@ -230,7 +213,7 @@ function ConnectorCell({
 }) {
   if (entries.length === 0) {
     return (
-      <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border/70 px-2.5 py-1 text-xs font-medium text-muted-foreground/70">
+      <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-gray-50 px-2.5 py-1 text-xs font-medium text-muted-foreground">
         <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
         Manual
       </span>
@@ -244,7 +227,7 @@ function ConnectorCell({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border/70 px-2.5 py-1 text-xs font-medium text-foreground/80 transition-colors hover:bg-gray-50"
+          className="inline-flex shrink-0 items-center gap-2 rounded-full bg-gray-50 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-100"
         >
           {lead ? (
             <span
@@ -324,7 +307,7 @@ function WorkflowRow({
 }) {
   const title = workflowTitle(workflow);
   return (
-    <article className="zero-card flex items-center gap-3 px-4 py-3 text-left text-foreground transition-colors hover:bg-gray-50">
+    <article className="zero-card flex items-center gap-3 px-5 py-4 text-left text-foreground transition-colors hover:bg-gray-50">
       <TooltipProvider delayDuration={200}>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -569,28 +552,40 @@ export function WorkflowListPanel({
   );
 }
 
-function FilterChip({
-  active,
-  onClick,
-  children,
+function FilterTabs<T extends string>({
+  value,
+  options,
+  onChange,
 }: {
-  readonly active: boolean;
-  readonly onClick: () => void;
-  readonly children: ReactNode;
+  readonly value: T;
+  readonly options: readonly {
+    readonly value: T;
+    readonly label: ReactNode;
+  }[];
+  readonly onChange: (value: T) => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
-        active
-          ? "border-foreground bg-foreground text-background"
-          : "border-border/70 text-muted-foreground hover:bg-gray-50",
-      )}
+    <Tabs
+      value={value}
+      onValueChange={(next) => {
+        const match = options.find((option) => option.value === next);
+        if (match) {
+          onChange(match.value);
+        }
+      }}
     >
-      {children}
-    </button>
+      <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+        {options.map((option) => (
+          <TabsTrigger
+            key={option.value}
+            value={option.value}
+            className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
+          >
+            {option.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }
 
@@ -607,100 +602,61 @@ function WorkflowFilterBar({
   const setVisibility = useSet(setWorkflowVisibilityFilter$);
   const setSortMode = useSet(setWorkflowSortMode$);
 
-  const toggleVisibility = (value: "private" | "public") => {
-    setVisibility(visibility === value ? "all" : value);
-  };
-
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <FilterChip
-        active={automation === "all"}
-        onClick={() => {
-          setAutomation("all");
-        }}
-      >
-        All
-      </FilterChip>
-      <FilterChip
-        active={automation === "automated"}
-        onClick={() => {
-          setAutomation("automated");
-        }}
-      >
-        <IconBolt size={13} stroke={1.8} />
-        Automated
-      </FilterChip>
-      <FilterChip
-        active={automation === "without"}
-        onClick={() => {
-          setAutomation("without");
-        }}
-      >
-        Without automation
-      </FilterChip>
-      <span className="mx-1 h-5 w-px bg-border/70" />
-      <FilterChip
-        active={visibility === "private"}
-        onClick={() => {
-          toggleVisibility("private");
-        }}
-      >
-        <IconLock size={13} stroke={1.8} />
-        Private
-      </FilterChip>
-      <FilterChip
-        active={visibility === "public"}
-        onClick={() => {
-          toggleVisibility("public");
-        }}
-      >
-        <IconWorld size={13} stroke={1.8} />
-        Public
-      </FilterChip>
-      <div className="ml-auto inline-flex items-center rounded-full border border-border/70 p-0.5">
-        <SortOption
-          active={sortMode === "recent"}
-          onClick={() => {
-            setSortMode("recent");
-          }}
-        >
-          Recent
-        </SortOption>
-        <SortOption
-          active={sortMode === "next-run"}
-          onClick={() => {
-            setSortMode("next-run");
-          }}
-        >
-          Next run
-        </SortOption>
+      <FilterTabs
+        value={automation}
+        onChange={setAutomation}
+        options={[
+          { value: "all", label: "All" },
+          {
+            value: "automated",
+            label: (
+              <>
+                <IconBolt size={13} stroke={1.8} />
+                Automated
+              </>
+            ),
+          },
+          { value: "without", label: "Without automation" },
+        ]}
+      />
+      <FilterTabs
+        value={visibility}
+        onChange={setVisibility}
+        options={[
+          { value: "all", label: "Any" },
+          {
+            value: "private",
+            label: (
+              <>
+                <IconLock size={13} stroke={1.8} />
+                Private
+              </>
+            ),
+          },
+          {
+            value: "public",
+            label: (
+              <>
+                <IconWorld size={13} stroke={1.8} />
+                Public
+              </>
+            ),
+          },
+        ]}
+      />
+      <div className="ml-auto">
+        <FilterTabs
+          value={sortMode}
+          onChange={setSortMode}
+          options={[
+            { value: "recent", label: "Recent" },
+            { value: "next-run", label: "Next run" },
+          ]}
+        />
       </div>
     </div>
-  );
-}
-
-function SortOption({
-  active,
-  onClick,
-  children,
-}: {
-  readonly active: boolean;
-  readonly onClick: () => void;
-  readonly children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
-        active
-          ? "bg-gray-100 text-foreground"
-          : "text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
   );
 }
 
