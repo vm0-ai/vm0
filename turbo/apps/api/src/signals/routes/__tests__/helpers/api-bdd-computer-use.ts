@@ -72,6 +72,13 @@ interface ComputerUseWriteCommandBody {
   readonly clickCount?: number;
 }
 
+type ComputerUsePluginCommandBody = Omit<
+  ComputerUsePluginCallBody,
+  "timeoutMs"
+> & {
+  readonly timeoutMs?: number;
+};
+
 type ComputerUseCompleteBody =
   | {
       readonly status: "succeeded";
@@ -87,6 +94,22 @@ interface RecordedComputerUseS3Put {
   readonly key: string;
   readonly body: Buffer;
   readonly contentType: string;
+}
+
+async function binaryResponseBodyToBuffer(body: unknown): Promise<Buffer> {
+  if (body instanceof Blob) {
+    return Buffer.from(await body.arrayBuffer());
+  }
+  if (Buffer.isBuffer(body)) {
+    return body;
+  }
+  if (body instanceof Uint8Array) {
+    return Buffer.from(body);
+  }
+  if (body instanceof ArrayBuffer) {
+    return Buffer.from(body);
+  }
+  throw new Error("Expected a binary computer-use plugin content body");
 }
 
 interface ComputerUseS3Fake {
@@ -513,12 +536,12 @@ export function createComputerUseBddApi(context: TestContext) {
 
     async createComputerUsePluginCommand(
       auth: ComputerUseAuth,
-      body: ComputerUsePluginCallBody,
+      body: ComputerUsePluginCommandBody,
     ): Promise<ComputerUseCommandCreateResponse> {
       const response = await accept(
         pluginCommandClient().create({
           headers: authenticate(auth),
-          body: { timeoutMs: 60_000, ...body },
+          body: { ...body, timeoutMs: body.timeoutMs ?? 60_000 },
         }),
         [200],
       );
@@ -527,13 +550,13 @@ export function createComputerUseBddApi(context: TestContext) {
 
     async requestCreateComputerUsePluginCommand(
       auth: ComputerUseAuth,
-      body: ComputerUsePluginCallBody,
+      body: ComputerUsePluginCommandBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409)[],
     ) {
       return await accept(
         pluginCommandClient().create({
           headers: authenticate(auth),
-          body: { timeoutMs: 60_000, ...body },
+          body: { ...body, timeoutMs: body.timeoutMs ?? 60_000 },
         }),
         statuses,
       );
@@ -611,16 +634,14 @@ export function createComputerUseBddApi(context: TestContext) {
         [200],
       );
       const body: unknown = response.body;
-      if (!(body instanceof Blob)) {
-        throw new Error("Expected a binary computer-use plugin content body");
-      }
+      const bytes = await binaryResponseBodyToBuffer(body);
       const contentDisposition = response.headers.get("content-disposition");
       return {
         contentType: response.headers.get("content-type"),
         fileName: contentDisposition
           ? (/filename="([^"]+)"/.exec(contentDisposition)?.[1] ?? null)
           : null,
-        bytes: Buffer.from(await body.arrayBuffer()),
+        bytes,
       };
     },
 

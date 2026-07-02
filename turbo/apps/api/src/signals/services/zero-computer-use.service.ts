@@ -334,7 +334,10 @@ function hostSupportsCommand(params: {
   readonly payload: Record<string, unknown>;
 }): boolean {
   if (params.host.supportedCapabilities.length === 0) {
-    return COMPUTER_USE_LEGACY_COMMANDS.includes(params.kind);
+    return (
+      params.kind !== COMPUTER_USE_PLUGIN_CALL_KIND &&
+      COMPUTER_USE_LEGACY_COMMANDS.includes(params.kind)
+    );
   }
   const required = commandRequiredCapabilities({
     kind: params.kind,
@@ -1831,7 +1834,7 @@ export const completeComputerUseHostCommand$ = command(
         storageError ?? (params.status === "failed" ? params.error : null);
       const finalStatus = finalError ? "failed" : params.status;
       const commandResult =
-        finalStatus === "succeeded"
+        finalStatus === "succeeded" && params.status === "succeeded"
           ? (storedResult ?? params.result)
           : { error: finalError };
       const [updated] = await tx

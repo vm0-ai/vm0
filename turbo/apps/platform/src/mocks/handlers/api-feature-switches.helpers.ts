@@ -21,7 +21,10 @@ export function setMockFeatureSwitches(
   }
   server.use(
     mockApi(zeroFeatureSwitchesContract.get, ({ respond }) => {
-      return respond(200, { switches: sanitized });
+      return respond(200, {
+        switches: sanitized,
+        effectiveSwitches: sanitized,
+      });
     }),
   );
 }
