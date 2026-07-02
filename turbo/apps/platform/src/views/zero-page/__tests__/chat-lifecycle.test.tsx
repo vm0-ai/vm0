@@ -5233,6 +5233,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(fetchedMessageIds).toContain(completedMarker.id);
       expect(buttonByText(followupPrompt)).toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });
   });
 
