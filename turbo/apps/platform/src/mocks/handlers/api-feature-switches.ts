@@ -15,11 +15,14 @@ import { mockApi } from "../msw-contract.ts";
 
 export const apiFeatureSwitchesHandlers = [
   mockApi(zeroFeatureSwitchesContract.get, ({ respond }) => {
-    return respond(200, { switches: {} });
+    return respond(200, { switches: {}, effectiveSwitches: {} });
   }),
 
   mockApi(zeroFeatureSwitchesContract.update, ({ body, respond }) => {
-    return respond(200, { switches: body.switches });
+    return respond(200, {
+      switches: body.switches,
+      effectiveSwitches: body.switches,
+    });
   }),
 
   mockApi(zeroFeatureSwitchesContract.delete, ({ respond }) => {

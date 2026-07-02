@@ -16,8 +16,10 @@ import {
 } from "electron";
 import {
   ComputerUseSnapshotStore,
+  SUPPORTED_COMPUTER_USE_CAPABILITIES,
   executeComputerUseCommand,
 } from "./computer-use-accessibility";
+import { COMPUTER_USE_PLUGIN_CALL_KIND } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
 import {
   MAC_AUTOMATION_SETTINGS_URL,
   createAutomationPermissionDeniedPrompt,
@@ -61,6 +63,7 @@ import {
 import { DesktopComputerUseAutoStartSupervisor } from "./desktop-computer-use-autostart";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
 import { readOrCreateComputerUseInstallationId } from "./desktop-computer-use-installation";
+import { DesktopFilesystemPluginManager } from "./desktop-filesystem-plugin";
 import { DesktopKeepAwakeController } from "./desktop-keep-awake";
 import { startDesktopLaunchComputerUse } from "./desktop-launch-computer-use";
 import {
@@ -121,6 +124,8 @@ const desktopAuthSelectOrgUrl = buildDesktopAuthSelectOrgUrl(
 const desktopAuthTokenUrl = buildDesktopAuthTokenUrl(config.webUrl);
 const localRendererUrl = desktopRendererUrl();
 const ZERO_DEBUG_FEATURE_SWITCH_KEY = "zeroDebug";
+const COMPUTER_USE_DESKTOP_PLUGINS_FEATURE_SWITCH_KEY =
+  "computerUseDesktopPlugins";
 const ZERO_FEATURE_SWITCHES_PATH = "/api/zero/feature-switches";
 const noAllowedAppOrigins: ReadonlySet<string> = new Set();
 const ELECTRON_ERR_ABORTED = -3;
@@ -143,6 +148,7 @@ let computerUseManualStopRequested = false;
 let computerUseNativeBackendDisposed = false;
 let desktopTray: DesktopTrayController | null = null;
 let keepAwakeController: DesktopKeepAwakeController | null = null;
+let filesystemPluginManager: DesktopFilesystemPluginManager | null = null;
 let developerToolsAvailable = false;
 let developerToolsEnabled = false;
 let developerToolsRefresh: Promise<void> | null = null;
@@ -199,6 +205,9 @@ function refreshDesktopTrayAuth(): void {
 }
 
 function notifyComputerUseChanged(): void {
+  filesystemPluginManager?.setHostRuntimeOnline(
+    computerUseRuntime?.getState().status === "online",
+  );
   notifyDesktopComputerUseChanged();
   refreshDesktopTray();
   computerUseAutoStart.restartRecoverableRuntimeState();
@@ -252,11 +261,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function zeroDebugEnabledFromFeatureSwitches(value: unknown): boolean {
-  if (!isRecord(value) || !isRecord(value.switches)) {
+function featureSwitchEnabledFromBody(value: unknown, key: string): boolean {
+  if (!isRecord(value)) {
     return false;
   }
-  return value.switches[ZERO_DEBUG_FEATURE_SWITCH_KEY] === true;
+  if (isRecord(value.effectiveSwitches)) {
+    return value.effectiveSwitches[key] === true;
+  }
+  if (isRecord(value.switches)) {
+    return value.switches[key] === true;
+  }
+  return false;
 }
 
 async function refreshDeveloperToolsAvailability(): Promise<void> {
@@ -265,6 +280,7 @@ async function refreshDeveloperToolsAvailability(): Promise<void> {
   );
   if (response.status === 401) {
     setDeveloperToolsAvailability(false);
+    filesystemPluginManager?.setFeatureEnabled(false);
     return;
   }
   if (!response.ok) {
@@ -273,7 +289,15 @@ async function refreshDeveloperToolsAvailability(): Promise<void> {
     );
   }
   const body: unknown = await response.json();
-  setDeveloperToolsAvailability(zeroDebugEnabledFromFeatureSwitches(body));
+  setDeveloperToolsAvailability(
+    featureSwitchEnabledFromBody(body, ZERO_DEBUG_FEATURE_SWITCH_KEY),
+  );
+  filesystemPluginManager?.setFeatureEnabled(
+    featureSwitchEnabledFromBody(
+      body,
+      COMPUTER_USE_DESKTOP_PLUGINS_FEATURE_SWITCH_KEY,
+    ),
+  );
 }
 
 function refreshDeveloperToolsAvailabilityForState(): void {
@@ -449,6 +473,17 @@ function getComputerUseBridgeState(): DesktopComputerUseState {
       enabled: false,
       active: false,
     },
+    plugins: {
+      filesystem: filesystemPluginManager?.getState() ?? {
+        featureEnabled: false,
+        enabled: false,
+        allowedDirectories: [],
+        status: "disabled",
+        lastError: null,
+        version: "",
+        capabilities: [],
+      },
+    },
   };
 }
 
@@ -473,6 +508,24 @@ function releaseKeepAwake(): void {
   keepAwakeController?.release();
 }
 
+function ensureFilesystemPluginManager(): DesktopFilesystemPluginManager {
+  if (!filesystemPluginManager) {
+    filesystemPluginManager = new DesktopFilesystemPluginManager({
+      preferencesPath: desktopPreferencesPath(),
+      onChange: notifyComputerUseChanged,
+    });
+    filesystemPluginManager.load();
+  }
+  return filesystemPluginManager;
+}
+
+function supportedComputerUseCapabilities(): readonly string[] {
+  return [
+    ...SUPPORTED_COMPUTER_USE_CAPABILITIES,
+    ...(filesystemPluginManager?.getCapabilities() ?? []),
+  ];
+}
+
 async function startComputerUseRuntime(
   options: { readonly userInitiated?: boolean } = {},
 ): Promise<DesktopComputerUseState> {
@@ -489,6 +542,7 @@ async function startComputerUseRuntime(
   }
   if (startupGate.status !== "ready") {
     if (computerUseRuntime) {
+      filesystemPluginManager?.setHostRuntimeOnline(false);
       await computerUseRuntime.stop();
       computerUseRuntime = null;
     }
@@ -519,7 +573,11 @@ async function startComputerUseRuntime(
         return fetch(input, init);
       },
       getPermissions: refreshComputerUsePermissionState,
+      getSupportedCapabilities: supportedComputerUseCapabilities,
       executeCommand: (command, permissions) => {
+        if (command.kind === COMPUTER_USE_PLUGIN_CALL_KIND) {
+          return ensureFilesystemPluginManager().execute(command);
+        }
         return executeComputerUseCommand(command, permissions, {
           nativeBackend: computerUseNativeBackend,
           snapshotStore: computerUseSnapshotStore,
@@ -530,13 +588,46 @@ async function startComputerUseRuntime(
     });
   }
   await computerUseRuntime.start();
+  filesystemPluginManager?.setHostRuntimeOnline(
+    computerUseRuntime.getState().status === "online",
+  );
   return getComputerUseBridgeState();
 }
 
 async function stopComputerUseRuntime(): Promise<DesktopComputerUseState> {
   computerUseManualStopRequested = true;
+  filesystemPluginManager?.setHostRuntimeOnline(false);
   await computerUseRuntime?.stop();
   notifyComputerUseChanged();
+  return getComputerUseBridgeState();
+}
+
+function setFilesystemPluginEnabled(enabled: boolean): DesktopComputerUseState {
+  ensureFilesystemPluginManager().setEnabled(enabled);
+  return getComputerUseBridgeState();
+}
+
+async function addFilesystemPluginAllowedDirectory(): Promise<DesktopComputerUseState> {
+  const options = {
+    properties: ["openDirectory", "createDirectory"],
+  } satisfies Electron.OpenDialogOptions;
+  const window = currentDialogWindow();
+  const result = window
+    ? await dialog.showOpenDialog(window, options)
+    : await dialog.showOpenDialog(options);
+  if (!result.canceled) {
+    const [directory] = result.filePaths;
+    if (directory) {
+      ensureFilesystemPluginManager().addAllowedDirectory(directory);
+    }
+  }
+  return getComputerUseBridgeState();
+}
+
+function removeFilesystemPluginAllowedDirectory(
+  directory: string,
+): DesktopComputerUseState {
+  ensureFilesystemPluginManager().removeAllowedDirectory(directory);
   return getComputerUseBridgeState();
 }
 
@@ -570,6 +661,7 @@ async function probeComputerUseAutomation(
 }
 
 function installComputerUse(): void {
+  ensureFilesystemPluginManager();
   installComputerUseIpc(
     {
       getState: getComputerUseBridgeState,
@@ -580,6 +672,9 @@ function installComputerUse(): void {
       requestScreenRecordingPermission: requestComputerUseScreenRecording,
       probeAutomationPermission: probeComputerUseAutomation,
       setKeepAwakeEnabled,
+      setFilesystemPluginEnabled,
+      addFilesystemPluginAllowedDirectory,
+      removeFilesystemPluginAllowedDirectory,
     },
     { rendererUrl: localRendererUrl },
   );
@@ -611,6 +706,7 @@ async function stopComputerUseRuntimeForQuit(): Promise<void> {
     return;
   }
 
+  filesystemPluginManager?.setHostRuntimeOnline(false);
   await Promise.race([
     runtime.stop(),
     new Promise<void>((resolve) => {
@@ -650,6 +746,7 @@ async function signOutDesktopSession(): Promise<void> {
   const runtime = computerUseRuntime;
   computerUseRuntime = null;
   computerUseBlockedHostState = null;
+  filesystemPluginManager?.setHostRuntimeOnline(false);
   try {
     await runtime?.stop();
   } finally {
