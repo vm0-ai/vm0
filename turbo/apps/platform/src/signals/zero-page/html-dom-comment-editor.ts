@@ -871,6 +871,9 @@ function installFrameStyles(doc: Document): void {
       opacity: 1 !important;
       pointer-events: auto !important;
     }
+    [${HTML_DOM_COMMENT_DELETE_ATTR}]:hover {
+      background: rgba(255, 255, 255, 0.28) !important;
+    }
     [${HTML_DOM_COMMENT_FLASH_ATTR}="true"] {
       animation: vm0-html-comment-flash 900ms ease-out both !important;
     }
@@ -1654,6 +1657,7 @@ function styleCommentMarkerLabel(label: HTMLElement): void {
   label.style.position = "absolute";
   label.style.display = "flex";
   label.style.alignItems = "center";
+  label.style.justifyContent = "center";
   label.style.boxSizing = "border-box";
   label.style.maxWidth = `${FRAME_COMMENT_LABEL_MAX_WIDTH}px`;
   label.style.width = `${FRAME_COMMENT_LABEL_MAX_WIDTH}px`;
@@ -1670,6 +1674,7 @@ function styleCommentMarkerLabel(label: HTMLElement): void {
   label.style.fontWeight = "600";
   label.style.lineHeight = `${FRAME_COMMENT_LABEL_LINE_HEIGHT}px`;
   label.style.overflow = "hidden";
+  label.style.textAlign = "center";
   label.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.18)";
   label.style.pointerEvents = "auto";
 }
@@ -1678,10 +1683,13 @@ function styleCommentMarkerLabelText(labelText: HTMLElement): void {
   labelText.dataset.testid = "html-dom-comment-tag-text";
   labelText.style.display = "-webkit-box";
   labelText.style.width = "100%";
+  labelText.style.boxSizing = "border-box";
   labelText.style.lineHeight = `${FRAME_COMMENT_LABEL_LINE_HEIGHT}px`;
   labelText.style.whiteSpace = "normal";
   labelText.style.overflow = "hidden";
   labelText.style.overflowWrap = "anywhere";
+  labelText.style.padding = "0 18px";
+  labelText.style.textAlign = "center";
   labelText.style.setProperty("-webkit-box-orient", "vertical");
   labelText.style.setProperty(
     "-webkit-line-clamp",
@@ -1714,15 +1722,17 @@ function styleCommentMarkerDeleteButton(params: {
   params.button.setAttribute("aria-label", "Delete comment");
   params.button.textContent = "x";
   params.button.style.position = "absolute";
+  params.button.style.right = "8px";
+  params.button.style.top = "50%";
   params.button.style.display = "inline-flex";
   params.button.style.alignItems = "center";
   params.button.style.justifyContent = "center";
-  params.button.style.width = "18px";
-  params.button.style.height = "18px";
-  params.button.style.border = "1px solid rgb(37, 99, 235)";
+  params.button.style.width = "20px";
+  params.button.style.height = "20px";
+  params.button.style.border = "0";
   params.button.style.borderRadius = "999px";
-  params.button.style.background = "white";
-  params.button.style.color = "rgb(37, 99, 235)";
+  params.button.style.background = "rgba(255, 255, 255, 0.18)";
+  params.button.style.color = "white";
   params.button.style.cursor = "pointer";
   params.button.style.fontFamily =
     "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
@@ -1732,12 +1742,11 @@ function styleCommentMarkerDeleteButton(params: {
   params.button.style.opacity = "0";
   params.button.style.padding = "0";
   params.button.style.pointerEvents = "none";
-  params.button.style.boxShadow = "0 2px 6px rgba(15, 23, 42, 0.18)";
-  params.button.style.transition = "opacity 120ms ease, box-shadow 120ms ease";
+  params.button.style.transform = "translateY(-50%)";
+  params.button.style.transition = "opacity 120ms ease, background 120ms ease";
 }
 
 function positionCommentMarkerParts(params: {
-  readonly deleteButton: HTMLElement;
   readonly dot: HTMLElement;
   readonly label: HTMLElement;
   readonly leader: HTMLElement;
@@ -1769,12 +1778,6 @@ function positionCommentMarkerParts(params: {
       params.leader.style.borderTop = "2px dashed rgb(37, 99, 235)";
       params.label.style.left = `${FRAME_COMMENT_CONNECTOR_GAP}px`;
       params.label.style.top = `${markerCenterY - labelCenterOffset}px`;
-      params.deleteButton.style.left = `${
-        FRAME_COMMENT_CONNECTOR_GAP + FRAME_COMMENT_LABEL_MAX_WIDTH - 10
-      }px`;
-      params.deleteButton.style.top = `${
-        markerCenterY - labelCenterOffset - 8
-      }px`;
       break;
     }
     case "bottom": {
@@ -1786,10 +1789,6 @@ function positionCommentMarkerParts(params: {
       params.leader.style.borderLeft = "2px dashed rgb(37, 99, 235)";
       params.label.style.left = "0";
       params.label.style.top = `${FRAME_COMMENT_CONNECTOR_GAP}px`;
-      params.deleteButton.style.left = `${
-        FRAME_COMMENT_LABEL_MAX_WIDTH - 10
-      }px`;
-      params.deleteButton.style.top = `${FRAME_COMMENT_CONNECTOR_GAP - 8}px`;
       break;
     }
     case "left": {
@@ -1801,12 +1800,6 @@ function positionCommentMarkerParts(params: {
       params.leader.style.borderTop = "2px dashed rgb(37, 99, 235)";
       params.dot.style.left = `${params.rect.width - FRAME_COMMENT_DOT_SIZE}px`;
       params.dot.style.top = `${markerCenterY - dotCenterOffset}px`;
-      params.deleteButton.style.left = `${
-        FRAME_COMMENT_LABEL_MAX_WIDTH - 10
-      }px`;
-      params.deleteButton.style.top = `${
-        markerCenterY - labelCenterOffset - 8
-      }px`;
       break;
     }
     case "top": {
@@ -1818,10 +1811,6 @@ function positionCommentMarkerParts(params: {
       params.leader.style.borderLeft = "2px dashed rgb(37, 99, 235)";
       params.dot.style.left = `${markerCenterX - dotCenterOffset}px`;
       params.dot.style.top = `${params.rect.height - FRAME_COMMENT_DOT_SIZE}px`;
-      params.deleteButton.style.left = `${
-        FRAME_COMMENT_LABEL_MAX_WIDTH - 10
-      }px`;
-      params.deleteButton.style.top = "-8px";
       break;
     }
   }
@@ -1874,16 +1863,15 @@ function createFrameCommentMarker(params: {
     button: deleteButton,
     commentId: params.comment.id,
   });
-  label.append(labelText);
+  label.append(labelText, deleteButton);
   positionCommentMarkerParts({
-    deleteButton,
     dot,
     label,
     leader,
     placement: params.position.placement,
     rect: params.position.rect,
   });
-  marker.append(dot, leader, label, deleteButton);
+  marker.append(dot, leader, label);
   return marker;
 }
 

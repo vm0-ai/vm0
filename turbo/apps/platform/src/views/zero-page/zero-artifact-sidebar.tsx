@@ -1020,41 +1020,55 @@ function ArtifactSidebarHeader({
   onClose: () => void;
 }) {
   const compactActions = onBack !== undefined;
+  const features = useLastResolved(featureSwitch$);
+  const showHtmlControls =
+    kind === "html" &&
+    artifactKind === "hosted-site" &&
+    Boolean(features?.[FeatureSwitchKey.HtmlArtifactCommentEditing]) &&
+    htmlState !== undefined;
+  const htmlEditActive = showHtmlControls && htmlState !== "idle";
 
   return (
-    <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4 py-2">
-      {onBack && (
-        <ArtifactActionTooltip label="Back to all artifacts">
-          <button
-            type="button"
-            onClick={onBack}
-            aria-label="Back to all artifacts"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-          >
-            <IconArrowLeft size={16} />
-          </button>
-        </ArtifactActionTooltip>
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-foreground">
-          {title}
-        </div>
-        {subtitle && (
-          <div className="mt-0.5 truncate text-xs text-muted-foreground">
-            {subtitle}
-          </div>
+    <div className="grid min-h-14 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-border/60 px-4 py-2">
+      <div className="flex min-w-0 items-center gap-3">
+        {onBack && (
+          <ArtifactActionTooltip label="Back to all artifacts">
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="Back to all artifacts"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+            >
+              <IconArrowLeft size={16} />
+            </button>
+          </ArtifactActionTooltip>
         )}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-foreground">
+            {title}
+          </div>
+          {subtitle && (
+            <div className="mt-0.5 truncate text-xs text-muted-foreground">
+              {subtitle}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="justify-self-center">
+        {showHtmlControls && <ArtifactHtmlEditStatus state={htmlState} />}
       </div>
       <ArtifactSidebarActions
         compactActions={compactActions}
         artifactKind={artifactKind}
         fullscreen={fullscreen}
+        htmlEditActive={htmlEditActive}
         htmlState={htmlState}
         kind={kind}
         onClose={onClose}
         onEditHtml={onEditHtml}
         onEditPresentation={onEditPresentation}
         onExitHtmlEdit={onExitHtmlEdit}
+        showHtmlControls={showHtmlControls}
         onToggleFullscreen={onToggleFullscreen}
         syncTarget={syncTarget}
         title={title}
@@ -1068,12 +1082,14 @@ function ArtifactSidebarActions({
   artifactKind,
   compactActions,
   fullscreen,
+  htmlEditActive,
   htmlState,
   kind,
   onClose,
   onEditHtml,
   onEditPresentation,
   onExitHtmlEdit,
+  showHtmlControls,
   onToggleFullscreen,
   syncTarget,
   title,
@@ -1082,29 +1098,26 @@ function ArtifactSidebarActions({
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   compactActions: boolean;
   fullscreen: boolean;
+  htmlEditActive: boolean;
   htmlState?: HtmlArtifactHeaderState;
   kind?: ArtifactKindForBody;
   onClose: () => void;
   onEditHtml?: () => void;
   onEditPresentation?: () => void;
   onExitHtmlEdit?: () => void;
+  showHtmlControls: boolean;
   onToggleFullscreen: () => void;
   syncTarget?: ArtifactDownloadSyncTarget;
   title: string;
   url?: string;
 }) {
-  const features = useLastResolved(featureSwitch$);
   const showPresentationEdit =
     artifactKind === "presentation-html" && onEditPresentation !== undefined;
-  const showHtmlControls =
-    kind === "html" &&
-    artifactKind === "hosted-site" &&
-    Boolean(features?.[FeatureSwitchKey.HtmlArtifactCommentEditing]) &&
-    htmlState !== undefined;
-  const htmlEditActive = showHtmlControls && htmlState !== "idle";
+  const htmlExitAction =
+    htmlState === "editing" && onExitHtmlEdit ? onExitHtmlEdit : undefined;
 
   return (
-    <div className="flex shrink-0 items-center gap-1">
+    <div className="flex shrink-0 items-center gap-1 justify-self-end">
       {url && (
         <>
           {!htmlEditActive && (
@@ -1131,10 +1144,6 @@ function ArtifactSidebarActions({
           )}
           {showHtmlControls && (
             <>
-              <ArtifactHtmlEditStatus state={htmlState} />
-              {htmlState === "editing" && onExitHtmlEdit && (
-                <ArtifactExitHtmlEditAction onClick={onExitHtmlEdit} />
-              )}
               {onEditHtml && <ArtifactEditHtmlAction onClick={onEditHtml} />}
               <ArtifactActionSeparator />
             </>
@@ -1145,12 +1154,13 @@ function ArtifactSidebarActions({
         fullscreen={fullscreen}
         onToggleFullscreen={onToggleFullscreen}
       />
-      {!htmlEditActive &&
-        (compactActions ? (
-          <ArtifactMoreActions onClose={onClose} />
-        ) : (
-          <ArtifactCloseAction onClose={onClose} />
-        ))}
+      {htmlExitAction ? (
+        <ArtifactExitHtmlEditAction onClick={htmlExitAction} />
+      ) : compactActions ? (
+        <ArtifactMoreActions onClose={onClose} />
+      ) : (
+        <ArtifactCloseAction onClose={onClose} />
+      )}
     </div>
   );
 }
@@ -1188,15 +1198,15 @@ function ArtifactEditHtmlAction({ onClick }: { onClick: () => void }) {
 
 function ArtifactExitHtmlEditAction({ onClick }: { onClick: () => void }) {
   return (
-    <ArtifactActionTooltip label="Exit editing and keep preview open">
+    <ArtifactActionTooltip label="Exit editing">
       <button
         type="button"
         onClick={onClick}
-        aria-label="Exit editing and keep preview open"
+        aria-label="Exit editing"
         data-testid="artifact-sidebar-exit-html-edit"
-        className="inline-flex h-8 items-center rounded-full border border-border/80 bg-background px-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted/60"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
       >
-        Exit
+        <IconX size={16} />
       </button>
     </ArtifactActionTooltip>
   );
