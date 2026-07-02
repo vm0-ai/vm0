@@ -24,4 +24,3 @@ export function writeDesktopPreferenceRecord(
   mkdirSync(path.dirname(filePath), { recursive: true });
   writeFileSync(filePath, `${JSON.stringify(preferences, null, 2)}\n`, "utf8");
 }
-
