@@ -30,12 +30,28 @@ use crate::proxy;
 use crate::telemetry::JobTelemetry;
 use crate::types::ExecutionContext;
 use crate::workspace_image_cache::{
-    WorkspaceImageLease, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
+    WorkspaceCacheCheckoutResult, WorkspaceImageLease, WorkspaceImageLeaseIdentity,
+    WorkspaceImagePrepareRequest,
 };
 use crate::workspace_mount::ensure_workspace_drive_mounted;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
 const SLOW_PROXY_REGISTER_THRESHOLD: Duration = Duration::from_secs(3);
+const RUNNER_FRESH_WORKSPACE_IMAGE_PREPARE: &str = "runner_fresh_workspace_image_prepare";
+const RUNNER_FRESH_SANDBOX_FACTORY_CREATE: &str = "runner_fresh_sandbox_factory_create";
+const RUNNER_FRESH_SANDBOX_PROXY_REGISTER: &str = "runner_fresh_sandbox_proxy_register";
+const RUNNER_FRESH_SANDBOX_START: &str = "runner_fresh_sandbox_start";
+const RUNNER_FRESH_SANDBOX_RETRY_WITHOUT_WORKSPACE_IMAGE: &str =
+    "runner_fresh_sandbox_retry_without_workspace_image";
+
+const WORKSPACE_IMAGE_PREPARE_INVALID_WORKING_DIR: &str =
+    "workspace_image_prepare_invalid_working_dir";
+const WORKSPACE_IMAGE_PREPARE_LOCK_BUSY: &str = "workspace_image_prepare_lock_busy";
+const WORKSPACE_IMAGE_PREPARE_INVALID_METADATA: &str = "workspace_image_prepare_invalid_metadata";
+const WORKSPACE_IMAGE_PREPARE_DISK_PRESSURE: &str = "workspace_image_prepare_disk_pressure";
+const SANDBOX_FACTORY_CREATE_FAILED: &str = "sandbox_factory_create_failed";
+const SANDBOX_PROXY_REGISTER_FAILED: &str = "sandbox_proxy_register_failed";
+const SANDBOX_START_FAILED: &str = "sandbox_start_failed";
 
 #[cfg(test)]
 pub(super) async fn execute_new_sandbox(
@@ -122,6 +138,12 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 sandbox_id = %sandbox_id,
                 error = %error,
                 "workspace image cache hit failed during sandbox preparation; retrying with fresh workspace image"
+            );
+            telemetry.record(
+                RUNNER_FRESH_SANDBOX_RETRY_WITHOUT_WORKSPACE_IMAGE,
+                Duration::ZERO,
+                true,
+                None,
             );
             workspace_image = None;
             match create_started_sandbox(
@@ -234,6 +256,7 @@ pub(super) async fn prepare_workspace_image(
     telemetry: &mut JobTelemetry,
 ) -> Option<WorkspaceImageLease> {
     let cache = config.workspace_cache.as_ref()?;
+    let prepare_started = Instant::now();
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
@@ -247,8 +270,31 @@ pub(super) async fn prepare_workspace_image(
             workspace_drive_required: true,
         })
         .await;
+    let prepare_error = workspace_image_prepare_error(lease.result());
+    telemetry.record(
+        RUNNER_FRESH_WORKSPACE_IMAGE_PREPARE,
+        prepare_started.elapsed(),
+        prepare_error.is_none(),
+        prepare_error,
+    );
     record_workspace_cache_result(telemetry, lease.result());
     Some(lease)
+}
+
+fn workspace_image_prepare_error(result: WorkspaceCacheCheckoutResult) -> Option<&'static str> {
+    match result {
+        WorkspaceCacheCheckoutResult::Hit
+        | WorkspaceCacheCheckoutResult::Miss
+        | WorkspaceCacheCheckoutResult::NoSession => None,
+        WorkspaceCacheCheckoutResult::InvalidWorkingDir => {
+            Some(WORKSPACE_IMAGE_PREPARE_INVALID_WORKING_DIR)
+        }
+        WorkspaceCacheCheckoutResult::LockBusy => Some(WORKSPACE_IMAGE_PREPARE_LOCK_BUSY),
+        WorkspaceCacheCheckoutResult::InvalidMetadata => {
+            Some(WORKSPACE_IMAGE_PREPARE_INVALID_METADATA)
+        }
+        WorkspaceCacheCheckoutResult::DiskPressure => Some(WORKSPACE_IMAGE_PREPARE_DISK_PRESSURE),
+    }
 }
 
 async fn create_started_sandbox(
@@ -284,9 +330,24 @@ async fn create_started_sandbox(
 
     info!(run_id = %context.run_id, sandbox_id = %sandbox_id, "creating sandbox");
     let t = Instant::now();
+    let factory_create_started = Instant::now();
     let mut sandbox = match factory.create(sandbox_config).await {
-        Ok(s) => s,
+        Ok(s) => {
+            telemetry.record(
+                RUNNER_FRESH_SANDBOX_FACTORY_CREATE,
+                factory_create_started.elapsed(),
+                true,
+                None,
+            );
+            s
+        }
         Err(e) => {
+            telemetry.record(
+                RUNNER_FRESH_SANDBOX_FACTORY_CREATE,
+                factory_create_started.elapsed(),
+                false,
+                Some(SANDBOX_FACTORY_CREATE_FAILED),
+            );
             telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
             return Err(SandboxPrepareError::retry(e.into()));
         }
@@ -296,20 +357,34 @@ async fn create_started_sandbox(
     let proxy_register_started = Instant::now();
     let network_log_session = match register_proxy(config, context, &source_ip).await {
         Ok(session) => {
+            let proxy_register_elapsed = proxy_register_started.elapsed();
+            telemetry.record(
+                RUNNER_FRESH_SANDBOX_PROXY_REGISTER,
+                proxy_register_elapsed,
+                true,
+                None,
+            );
             log_proxy_register_success(
                 context.run_id,
                 sandbox_id,
                 &params.profile_name,
-                proxy_register_started.elapsed(),
+                proxy_register_elapsed,
             );
             session
         }
         Err(e) => {
+            let proxy_register_elapsed = proxy_register_started.elapsed();
+            telemetry.record(
+                RUNNER_FRESH_SANDBOX_PROXY_REGISTER,
+                proxy_register_elapsed,
+                false,
+                Some(SANDBOX_PROXY_REGISTER_FAILED),
+            );
             log_proxy_register_failure(
                 context.run_id,
                 sandbox_id,
                 &params.profile_name,
-                proxy_register_started.elapsed(),
+                proxy_register_elapsed,
                 &e.to_string(),
             );
             telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
@@ -318,7 +393,14 @@ async fn create_started_sandbox(
         }
     };
 
+    let sandbox_start_started = Instant::now();
     if let Err(e) = sandbox.start().await {
+        telemetry.record(
+            RUNNER_FRESH_SANDBOX_START,
+            sandbox_start_started.elapsed(),
+            false,
+            Some(SANDBOX_START_FAILED),
+        );
         telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
         if let Err(unregister_error) = unregister_proxy_registry(config, &source_ip).await {
             warn!(
@@ -333,6 +415,12 @@ async fn create_started_sandbox(
         destroy_sandbox_panic_safe(factory, sandbox).await;
         return Err(SandboxPrepareError::retry(e.into()));
     }
+    telemetry.record(
+        RUNNER_FRESH_SANDBOX_START,
+        sandbox_start_started.elapsed(),
+        true,
+        None,
+    );
     telemetry.record("vm_create", t.elapsed(), true, None);
 
     let mount_started = Instant::now();

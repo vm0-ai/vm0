@@ -249,6 +249,9 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         "runner_executor_start_to_spawn",
         "runner_claim_to_spawn",
         "runner_fresh_sandbox_prepare",
+        "runner_fresh_sandbox_factory_create",
+        "runner_fresh_sandbox_proxy_register",
+        "runner_fresh_sandbox_start",
         "runner_guest_timezone_sync",
         "runner_user_env_write",
         "runner_agent_env_build",
@@ -262,6 +265,7 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     }
     assert_pre_spawn_phase_actions_succeeded(&telemetry);
     assert_lacks_action(&telemetry, "runner_reused_sandbox_prepare");
+    assert_lacks_action(&telemetry, "runner_fresh_workspace_image_prepare");
     assert_lacks_action(&telemetry, "runner_guest_state_restore");
 }
 
@@ -321,6 +325,9 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     }
     assert_pre_spawn_phase_actions_succeeded(&telemetry);
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_prepare");
+    assert_lacks_action(&telemetry, "runner_fresh_sandbox_factory_create");
+    assert_lacks_action(&telemetry, "runner_fresh_sandbox_proxy_register");
+    assert_lacks_action(&telemetry, "runner_fresh_sandbox_start");
     assert_lacks_action(&telemetry, "runner_guest_timezone_sync");
 }
 
