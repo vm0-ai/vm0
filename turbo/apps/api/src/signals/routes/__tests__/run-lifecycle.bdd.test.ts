@@ -1400,7 +1400,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("protects same-session follow-up runner claims during the affinity grace window", async () => {
+  it("exposes same-session affinity metadata to runner poll responses", async () => {
     const api = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -1431,12 +1431,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       [200],
     );
 
-    const heldSessionStates = [
-      {
-        sessionId: cliAgentSessionId,
-        lastCompletedAt: nowDate().toISOString(),
-      },
-    ];
     const protectedFollowUp = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
@@ -1444,46 +1438,22 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       modelProvider: "anthropic-api-key",
     });
 
-    const nonHolderPoll = await api.requestPollRunner(
+    const protectedPoll = await api.requestPollRunner(
       true,
       { group: runnerGroup, profiles: ["vm0/default"] },
       [200],
     );
-    if (nonHolderPoll.status !== 200) {
-      throw new Error("Expected non-holder poll to return 200");
+    if (protectedPoll.status !== 200) {
+      throw new Error("Expected affinity poll to return 200");
     }
-    expect(nonHolderPoll.body.job).toBeNull();
-
-    const holderPoll = await api.requestPollRunner(
-      true,
-      {
-        group: runnerGroup,
-        profiles: ["vm0/default"],
-        heldSessionStates,
-      },
-      [200],
-    );
-    if (holderPoll.status !== 200) {
-      throw new Error("Expected holder poll to return 200");
-    }
-    expect(holderPoll.body.job?.runId).toBe(protectedFollowUp.runId);
-    expect(holderPoll.body.job?.cliAgentSessionId).toBe(cliAgentSessionId);
-    expect(holderPoll.body.job?.affinityProtectedUntil).toStrictEqual(
+    expect(protectedPoll.body.job?.runId).toBe(protectedFollowUp.runId);
+    expect(protectedPoll.body.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(protectedPoll.body.job?.affinityProtectedUntil).toStrictEqual(
       expect.any(String),
     );
 
-    const protectedClaim = await api.requestClaimRunnerJob(
-      true,
-      protectedFollowUp.runId,
-      [409],
-    );
-    expectApiError(protectedClaim.body);
-    expect(protectedClaim.body.error.code).toBe("AFFINITY_PROTECTED");
-
-    const holderClaim = await api.claimRunnerJob(protectedFollowUp.runId, {
-      heldSessionStates,
-    });
-    expect(holderClaim.prompt).toBe("continue affinity-protected session");
+    const protectedClaim = await api.claimRunnerJob(protectedFollowUp.runId);
+    expect(protectedClaim.prompt).toBe("continue affinity-protected session");
     await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
 
     const expiredFollowUp = await api.createRun(actor, {

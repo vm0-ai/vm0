@@ -382,7 +382,7 @@ async fn claim_with_local_admission(
 }
 
 async fn prepare_affinity_protected_candidate(
-    mut candidate: JobCandidate,
+    candidate: JobCandidate,
     ctx: &DiscoveredJobContext<'_>,
 ) -> Option<JobCandidate> {
     if !candidate.is_affinity_protected() {
@@ -392,12 +392,11 @@ async fn prepare_affinity_protected_candidate(
         return Some(candidate);
     };
 
-    let held_session_states = current_claim_held_session_states(ctx).await;
+    let held_session_states = current_local_held_session_states(ctx).await;
     if held_session_states
         .iter()
         .any(|state| state.session_id == cli_agent_session_id)
     {
-        candidate.set_claim_held_session_states(held_session_states);
         return Some(candidate);
     }
 
@@ -415,7 +414,7 @@ async fn prepare_affinity_protected_candidate(
     None
 }
 
-async fn current_claim_held_session_states(
+async fn current_local_held_session_states(
     ctx: &DiscoveredJobContext<'_>,
 ) -> Vec<HeldSessionState> {
     let idle_states = {
@@ -428,15 +427,9 @@ async fn current_claim_held_session_states(
             .held_session_snapshot
             .update_workspace_cache_states(cache_states);
     }
-    let held_session_states = ctx
-        .spawn_ctx
-        .held_session_snapshot
-        .current_held_session_states(idle_states, &ctx.spawn_ctx.active_cli_agent_sessions, None);
     ctx.spawn_ctx
-        .provider
-        .set_held_session_states(held_session_states.clone())
-        .await;
-    held_session_states
+        .held_session_snapshot
+        .current_held_session_states(idle_states, &ctx.spawn_ctx.active_cli_agent_sessions, None)
 }
 
 async fn try_reuse_from_pool(
@@ -498,7 +491,7 @@ async fn try_reuse_from_pool(
             .spawn_ctx
             .held_session_snapshot
             .might_contain_workspace_cache_session(cli_agent_session_id);
-    let held_session_states = ctx
+    let _ = ctx
         .spawn_ctx
         .held_session_snapshot
         .current_held_session_states(
@@ -507,14 +500,7 @@ async fn try_reuse_from_pool(
             Some(cli_agent_session_id),
         );
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::HeldSessionStateRefresh, started_at);
-    let started_at = Instant::now();
-    ctx.spawn_ctx
-        .provider
-        .set_held_session_states(held_session_states)
-        .await;
     let needs_session_affinity_refresh = took_idle_session || claimed_workspace_cache_session;
-    pre_spawn_timing
-        .record_phase_elapsed(RunnerPreSpawnPhase::ProviderHeldSessionUpdate, started_at);
     match taken {
         Some(entry)
             if entry.profile_name() == profile_name

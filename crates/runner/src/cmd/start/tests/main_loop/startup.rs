@@ -3,7 +3,7 @@ use super::super::support::{
     mock_run_config_with_runtime, shutdown, test_profiles, wait_status_mode,
 };
 use crate::provider::{ClaimedJob, CompletionAuth, JobCandidate};
-use crate::types::{HeartbeatState, HeldSessionState, SandboxReuseResult};
+use crate::types::{HeartbeatState, SandboxReuseResult};
 use async_trait::async_trait;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -35,8 +35,6 @@ impl crate::provider::JobProvider for ShutdownRecordingProvider {
     }
 
     async fn heartbeat(&self, _state: &HeartbeatState) {}
-
-    async fn set_held_session_states(&self, _states: Vec<HeldSessionState>) {}
 
     async fn shutdown(&self) {
         self.shutdowns.fetch_add(1, Ordering::SeqCst);

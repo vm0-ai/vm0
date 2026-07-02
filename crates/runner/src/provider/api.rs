@@ -1,6 +1,5 @@
 //! [`JobProvider`] backed by an Ably control plane + HTTP polling + REST API.
 
-use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -10,7 +9,7 @@ use tracing::{error, info, warn};
 
 use api_contracts::generated::routes;
 use reqwest::{RequestBuilder, Response, StatusCode};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Serialize, de::DeserializeOwned};
 
 use super::api_ably_supervisor::{
     AblySupervisor, AblySupervisorConfig, DirectCandidateSenders, DirectJobCandidate, PollDue,
@@ -25,8 +24,7 @@ use crate::http::HttpClient;
 use crate::ids::RunId;
 use crate::run_cancellation::SharedRunCancellationMap;
 use crate::types::{
-    CompleteRequest, ExecutionContext, HeartbeatState, HeldSessionState, Job,
-    MAX_HELD_SESSION_STATES, PollResponse, SandboxReuseResult,
+    CompleteRequest, ExecutionContext, HeartbeatState, Job, PollResponse, SandboxReuseResult,
 };
 use sandbox::SandboxId;
 
@@ -35,8 +33,6 @@ use sandbox::SandboxId;
 struct ClaimRequestBody {
     telemetry: ClaimRequestTelemetry,
     capabilities: [ClaimCapability; 2],
-    #[serde(skip_serializing_if = "Option::is_none")]
-    held_session_states: Option<Vec<HeldSessionState>>,
 }
 
 #[derive(Serialize)]
@@ -71,16 +67,6 @@ struct PollApiResult {
     http_request_elapsed: Duration,
 }
 
-#[derive(Deserialize)]
-struct ApiErrorBody {
-    error: ApiErrorPayload,
-}
-
-#[derive(Deserialize)]
-struct ApiErrorPayload {
-    code: String,
-}
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -91,38 +77,11 @@ const POLL_SLOW: Duration = Duration::from_secs(30);
 const POLL_FAST: Duration = Duration::from_secs(5);
 /// Retry delay after a job-notification wakeup reaches poll but poll fails.
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
-/// Fallback server-side affinity window when a candidate lacks a usable
-/// `affinityProtectedUntil` deadline. Keep in sync with the API service.
-const AFFINITY_PROTECTED_RETRY_FALLBACK: Duration = Duration::from_secs(2);
-/// Small retry backoff when the API says a claim is still affinity-protected.
-const AFFINITY_PROTECTED_RETRY_JITTER: Duration = Duration::from_millis(50);
 const DIRECT_CANDIDATE_QUEUE_CAPACITY: usize = 128;
 
 enum DiscoveryWakeup {
     Direct(DirectJobCandidate),
     Poll(PollDue),
-}
-
-fn request_held_session_states<'a>(
-    states: &'a [HeldSessionState],
-    required_session_id: Option<&str>,
-) -> Cow<'a, [HeldSessionState]> {
-    if states.len() <= MAX_HELD_SESSION_STATES {
-        return Cow::Borrowed(states);
-    }
-
-    let mut capped = states.to_vec();
-    capped.sort_unstable_by(|a, b| {
-        let a_required = required_session_id == Some(a.session_id.as_str());
-        let b_required = required_session_id == Some(b.session_id.as_str());
-        b_required.cmp(&a_required).then_with(|| {
-            b.last_completed_at
-                .cmp(&a.last_completed_at)
-                .then_with(|| a.session_id.cmp(&b.session_id))
-        })
-    });
-    capped.truncate(MAX_HELD_SESSION_STATES);
-    Cow::Owned(capped)
 }
 
 // ---------------------------------------------------------------------------
@@ -153,8 +112,6 @@ pub struct ApiProvider {
     broadcast_direct_candidate_rx: tokio::sync::Mutex<mpsc::Receiver<DirectJobCandidate>>,
     /// Background Ably control-plane task.
     ably_supervisor: AblySupervisor,
-    /// Session generations held in the idle pool, sent in poll requests for affinity ordering.
-    held_session_states: tokio::sync::Mutex<Vec<HeldSessionState>>,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -200,7 +157,6 @@ impl ApiProvider {
             _broadcast_direct_candidate_tx: broadcast_direct_candidate_tx,
             broadcast_direct_candidate_rx: tokio::sync::Mutex::new(broadcast_direct_candidate_rx),
             ably_supervisor,
-            held_session_states: tokio::sync::Mutex::new(Vec::new()),
             cancel,
         })
     }
@@ -296,7 +252,6 @@ impl JobProvider for ApiProvider {
             let reason = due.reason();
             let poll_due_started_at = Instant::now();
 
-            let held_session_states = self.held_session_states.lock().await.clone();
             let poll_result = tokio::select! {
                 biased;
                 () = self.cancel.cancelled() => {
@@ -319,7 +274,7 @@ impl JobProvider for ApiProvider {
                     }
                     return None;
                 }
-                result = self.api.poll(&self.group, &self.profiles, &held_session_states, reason) => result,
+                result = self.api.poll(&self.group, &self.profiles, reason) => result,
             };
 
             match poll_result {
@@ -396,19 +351,6 @@ impl JobProvider for ApiProvider {
                 info!(run_id = %run_id, "already claimed, skipping");
                 None
             }
-            Err(RunnerError::AffinityProtected) => {
-                let delay = candidate
-                    .affinity_protection_remaining()
-                    .unwrap_or(AFFINITY_PROTECTED_RETRY_FALLBACK)
-                    .saturating_add(AFFINITY_PROTECTED_RETRY_JITTER);
-                info!(
-                    run_id = %run_id,
-                    delay_ms = delay.as_millis(),
-                    "claim rejected by affinity protection, deferring poll"
-                );
-                self.poll_wakeups.request_deferred_poll_after(delay).await;
-                None
-            }
             Err(e) => {
                 error!(run_id = %run_id, error = %e, "claim failed");
                 self.poll_wakeups.request_immediate_poll().await;
@@ -421,10 +363,6 @@ impl JobProvider for ApiProvider {
         if let Err(e) = self.api.heartbeat(state).await {
             warn!(error = %e, "heartbeat failed");
         }
-    }
-
-    async fn set_held_session_states(&self, states: Vec<HeldSessionState>) {
-        *self.held_session_states.lock().await = states;
     }
 
     async fn defer_poll_after(&self, delay: Duration) {
@@ -503,10 +441,9 @@ impl ApiClient {
         &self,
         group: &str,
         profiles: &[String],
-        held_session_states: &[HeldSessionState],
         reason: PollReason,
     ) -> RunnerResult<PollApiResult> {
-        let body = poll_request_body(group, profiles, held_session_states, reason);
+        let body = poll_request_body(group, profiles, reason);
         let poll_started_at = Instant::now();
         let resp = send_api(
             self.http
@@ -567,10 +504,6 @@ impl ApiClient {
         .await?;
 
         if resp.status() == StatusCode::CONFLICT {
-            let (_, body) = read_api_error(resp).await;
-            if api_error_code_is(&body, "AFFINITY_PROTECTED") {
-                return Err(RunnerError::AffinityProtected);
-            }
             return Err(RunnerError::AlreadyClaimed);
         }
 
@@ -659,9 +592,6 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             ClaimCapability::ResumeSessionHistoryRef,
             ClaimCapability::ResumeSessionHistoryCompressedRef,
         ],
-        held_session_states: candidate.claim_held_session_states().map(|states| {
-            request_held_session_states(states, candidate.cli_agent_session_id()).into_owned()
-        }),
     }
 }
 
@@ -671,29 +601,14 @@ fn claim_telemetry_duration_ms(duration: Duration) -> u64 {
     duration_ms(duration).min(CLAIM_TELEMETRY_DURATION_MS_MAX)
 }
 
-fn poll_request_body(
-    group: &str,
-    profiles: &[String],
-    held_session_states: &[HeldSessionState],
-    reason: PollReason,
-) -> serde_json::Value {
-    let mut body = serde_json::json!({
+fn poll_request_body(group: &str, profiles: &[String], reason: PollReason) -> serde_json::Value {
+    serde_json::json!({
         "group": group,
         "profiles": profiles,
         "telemetry": {
             "pollReason": poll_reason_value(reason),
         },
-    });
-    let held_session_states = request_held_session_states(held_session_states, None);
-    if !held_session_states.is_empty()
-        && let Some(obj) = body.as_object_mut()
-    {
-        obj.insert(
-            "heldSessionStates".to_string(),
-            serde_json::json!(&*held_session_states),
-        );
-    }
-    body
+    })
 }
 
 fn poll_reason_value(reason: PollReason) -> &'static str {
@@ -737,10 +652,6 @@ async fn read_api_error(resp: Response) -> (StatusCode, String) {
 
 fn api_status_error(label: &str, status: StatusCode, body: &str) -> RunnerError {
     RunnerError::Api(format!("{label} {status}: {body}"))
-}
-
-fn api_error_code_is(body: &str, code: &str) -> bool {
-    serde_json::from_str::<ApiErrorBody>(body).is_ok_and(|api_error| api_error.error.code == code)
 }
 
 fn decode_api_json_bytes<T: DeserializeOwned>(body: &[u8]) -> Result<T, String> {
@@ -1028,7 +939,6 @@ mod tests {
             _broadcast_direct_candidate_tx: broadcast_direct_candidate_tx,
             broadcast_direct_candidate_rx: tokio::sync::Mutex::new(broadcast_direct_candidate_rx),
             ably_supervisor: AblySupervisor::disabled(),
-            held_session_states: tokio::sync::Mutex::new(Vec::new()),
             cancel,
         })
     }
@@ -1132,7 +1042,7 @@ mod tests {
     #[test]
     fn poll_request_body_serializes_poll_reason_telemetry() {
         let profiles = vec![crate::profile::DEFAULT_PROFILE.to_string()];
-        let body = poll_request_body("vm0/test", &profiles, &[], PollReason::Immediate);
+        let body = poll_request_body("vm0/test", &profiles, PollReason::Immediate);
 
         assert_eq!(body["group"], "vm0/test");
         assert_eq!(body["profiles"][0], crate::profile::DEFAULT_PROFILE);
@@ -1238,65 +1148,6 @@ mod tests {
         assert!(body["telemetry"].get("pollDueToJobDiscoveredMs").is_none());
         assert!(body["telemetry"].get("pollHttpRequestMs").is_none());
         assert!(body["telemetry"].get("pollReason").is_none());
-    }
-
-    #[test]
-    fn claim_request_body_serializes_claim_held_session_states() {
-        let mut candidate =
-            JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string());
-        candidate.set_claim_held_session_states(vec![HeldSessionState {
-            session_id: "sess-claim".to_string(),
-            last_completed_at: "2026-07-02T00:00:00.000Z".to_string(),
-        }]);
-
-        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
-
-        assert_eq!(body["heldSessionStates"][0]["sessionId"], "sess-claim");
-        assert_eq!(
-            body["heldSessionStates"][0]["lastCompletedAt"],
-            "2026-07-02T00:00:00.000Z"
-        );
-    }
-
-    #[test]
-    fn claim_request_body_caps_held_session_states_and_keeps_claim_session() {
-        let required_session_id = "sess-required";
-        let states: Vec<HeldSessionState> = (0..=MAX_HELD_SESSION_STATES)
-            .map(|index| HeldSessionState {
-                session_id: if index == 0 {
-                    required_session_id.to_string()
-                } else {
-                    format!("sess-{index:03}")
-                },
-                last_completed_at: format!(
-                    "2026-05-28T00:{:02}:{:02}.000Z",
-                    index / 60,
-                    index % 60
-                ),
-            })
-            .collect();
-        let mut candidate =
-            JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
-                .with_affinity_metadata(
-                    Some(required_session_id.to_string()),
-                    Some("2999-01-01T00:00:00.000Z".to_string()),
-                );
-        candidate.set_claim_held_session_states(states);
-
-        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
-        let held_session_states = body["heldSessionStates"].as_array().unwrap();
-
-        assert_eq!(held_session_states.len(), MAX_HELD_SESSION_STATES);
-        assert!(held_session_states.iter().any(|state| {
-            state["sessionId"]
-                .as_str()
-                .is_some_and(|session_id| session_id == required_session_id)
-        }));
-        assert!(held_session_states.iter().any(|state| {
-            state["sessionId"]
-                .as_str()
-                .is_some_and(|session_id| session_id == "sess-1024")
-        }));
     }
 
     async fn write_poll_job_response(socket: &mut tokio::net::TcpStream, run_id: RunId) {
@@ -1680,7 +1531,7 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let err = api
-            .poll("default", &[], &[], PollReason::Immediate)
+            .poll("default", &[], PollReason::Immediate)
             .await
             .unwrap_err();
 
@@ -1700,7 +1551,7 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let err = api
-            .poll("default", &[], &[], PollReason::Immediate)
+            .poll("default", &[], PollReason::Immediate)
             .await
             .unwrap_err();
 
@@ -1712,75 +1563,6 @@ mod tests {
             other => panic!("expected RunnerError::Api, got {other:?}"),
         }
         mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn api_client_poll_sends_held_session_states() {
-        let server = MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(POST)
-                    .path(routes::runners::poll::POLL.path)
-                    .json_body(serde_json::json!({
-                        "group": "default",
-                        "profiles": ["vm0/default"],
-                        "telemetry": {
-                            "pollReason": "deferred"
-                        },
-                        "heldSessionStates": [
-                            {
-                                "sessionId": "sess-a",
-                                "lastCompletedAt": "2026-05-28T00:00:00.000Z"
-                            }
-                        ]
-                    }));
-                then.status(200)
-                    .json_body(serde_json::json!({ "job": null }));
-            })
-            .await;
-        let api = api_client_for_server(&server);
-        let profiles = vec!["vm0/default".to_string()];
-        let held_session_states = vec![HeldSessionState {
-            session_id: "sess-a".to_string(),
-            last_completed_at: "2026-05-28T00:00:00.000Z".to_string(),
-        }];
-
-        let poll = api
-            .poll(
-                "default",
-                &profiles,
-                &held_session_states,
-                PollReason::Deferred,
-            )
-            .await
-            .unwrap();
-
-        assert!(poll.job.is_none());
-        mock.assert_async().await;
-    }
-
-    #[test]
-    fn request_held_session_states_caps_to_newest_contract_limit() {
-        let states: Vec<HeldSessionState> = (0..=MAX_HELD_SESSION_STATES)
-            .map(|index| HeldSessionState {
-                session_id: format!("sess-{index:03}"),
-                last_completed_at: format!(
-                    "2026-05-28T00:{:02}:{:02}.000Z",
-                    index / 60,
-                    index % 60
-                ),
-            })
-            .collect();
-
-        let capped = request_held_session_states(&states, None);
-        let capped_sessions: Vec<&str> = capped
-            .iter()
-            .map(|state| state.session_id.as_str())
-            .collect();
-
-        assert_eq!(capped_sessions.len(), MAX_HELD_SESSION_STATES);
-        assert!(!capped_sessions.contains(&"sess-000"));
-        assert!(capped_sessions.contains(&"sess-1024"));
     }
 
     #[tokio::test]
@@ -1803,31 +1585,6 @@ mod tests {
             assert!(matches!(err, RunnerError::AlreadyClaimed));
             mock.assert_async().await;
         }
-    }
-
-    #[tokio::test]
-    async fn api_client_claim_affinity_protected_conflict_is_retryable() {
-        let server = MockServer::start_async().await;
-        let run_id = RunId::nil();
-        let path = format!("/api/runners/jobs/{run_id}/claim");
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(POST).path(path.as_str());
-                then.status(409).json_body(serde_json::json!({
-                    "error": {
-                        "message": "Job is protected",
-                        "code": "AFFINITY_PROTECTED"
-                    }
-                }));
-            })
-            .await;
-        let api = api_client_for_server(&server);
-
-        let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
-        let err = api.claim(&candidate).await.unwrap_err();
-
-        assert!(matches!(err, RunnerError::AffinityProtected));
-        mock.assert_async().await;
     }
 
     #[tokio::test]
@@ -2046,7 +1803,6 @@ mod tests {
             .poll(
                 "default",
                 &[crate::profile::DEFAULT_PROFILE.to_string()],
-                &[],
                 PollReason::Immediate,
             )
             .await
@@ -2119,49 +1875,6 @@ mod tests {
             .await;
 
         assert!(claimed.is_none());
-        claim_mock.assert_calls_async(1).await;
-    }
-
-    #[tokio::test]
-    async fn api_provider_claim_affinity_protected_conflict_defers_poll() {
-        let server = MockServer::start_async().await;
-        let run_id = RunId::nil();
-        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
-        let claim_mock = server
-            .mock_async(|when, then| {
-                when.method(POST).path(claim_path.as_str());
-                then.status(409).json_body(serde_json::json!({
-                    "error": {
-                        "message": "Job is protected",
-                        "code": "AFFINITY_PROTECTED"
-                    }
-                }));
-            })
-            .await;
-        let wakeups = Arc::new(PollWakeups::new(false));
-        let provider = api_provider_for_test(
-            server.base_url(),
-            CancellationToken::new(),
-            Arc::clone(&wakeups),
-        );
-
-        let claimed = provider
-            .claim(JobCandidate::new(
-                run_id,
-                crate::profile::DEFAULT_PROFILE.to_string(),
-            ))
-            .await;
-
-        assert!(claimed.is_none());
-        let snapshot = wakeups.snapshot().await;
-        let deferred_poll_delay = snapshot
-            .deferred_poll_at
-            .expect("affinity-protected claim conflicts should defer instead of hot-polling")
-            .saturating_duration_since(tokio::time::Instant::now());
-        assert!(
-            deferred_poll_delay >= AFFINITY_PROTECTED_RETRY_FALLBACK,
-            "affinity-protected claim conflicts without a local deadline should wait for the server protection window"
-        );
         claim_mock.assert_calls_async(1).await;
     }
 

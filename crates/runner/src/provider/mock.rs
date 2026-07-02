@@ -25,7 +25,7 @@ use tracing::warn;
 
 use super::{ClaimedJob, CompletionAuth, JobCandidate, JobProvider};
 use crate::ids::RunId;
-use crate::types::{ExecutionContext, HeartbeatState, HeldSessionState, SandboxReuseResult};
+use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 use sandbox::SandboxId;
 
 /// Recorded completion from [`JobProvider::complete`].
@@ -57,7 +57,6 @@ pub struct MockJobProvider {
     claim_candidates: Arc<StdMutex<Vec<JobCandidate>>>,
     completions: Arc<StdMutex<Vec<Completion>>>,
     heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
-    held_session_state_updates: Arc<StdMutex<Vec<Vec<HeldSessionState>>>>,
     deferred_poll_delays: Arc<StdMutex<Vec<Duration>>>,
     cancel: CancellationToken,
     /// Fired each time `discover()` has reached its inner `select!` await
@@ -91,7 +90,6 @@ pub struct MockProviderHandle {
     claim_candidates: Arc<StdMutex<Vec<JobCandidate>>>,
     pub completions: Arc<StdMutex<Vec<Completion>>>,
     pub heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
-    held_session_state_updates: Arc<StdMutex<Vec<Vec<HeldSessionState>>>>,
     deferred_poll_delays: Arc<StdMutex<Vec<Duration>>>,
     /// See [`Self::wait_discover_entered`].
     discover_entered: Arc<Notify>,
@@ -126,7 +124,6 @@ impl MockJobProvider {
         let claim_candidates = Arc::new(StdMutex::new(Vec::new()));
         let completions = Arc::new(StdMutex::new(Vec::new()));
         let heartbeats = Arc::new(StdMutex::new(Vec::new()));
-        let held_session_state_updates = Arc::new(StdMutex::new(Vec::new()));
         let deferred_poll_delays = Arc::new(StdMutex::new(Vec::new()));
         let discover_entered = Arc::new(Notify::new());
         let completion_notify = Arc::new(Notify::new());
@@ -139,7 +136,6 @@ impl MockJobProvider {
             claim_candidates: Arc::clone(&claim_candidates),
             completions: Arc::clone(&completions),
             heartbeats: Arc::clone(&heartbeats),
-            held_session_state_updates: Arc::clone(&held_session_state_updates),
             deferred_poll_delays: Arc::clone(&deferred_poll_delays),
             cancel,
             discover_entered: Arc::clone(&discover_entered),
@@ -152,7 +148,6 @@ impl MockJobProvider {
             claim_candidates,
             completions,
             heartbeats,
-            held_session_state_updates,
             deferred_poll_delays,
             discover_entered,
             completion_notify,
@@ -225,13 +220,6 @@ impl MockProviderHandle {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .len()
-    }
-
-    pub fn held_session_state_updates(&self) -> Vec<Vec<HeldSessionState>> {
-        self.held_session_state_updates
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
     }
 
     pub fn claim_candidates(&self) -> Vec<JobCandidate> {
@@ -360,13 +348,6 @@ impl JobProvider for MockJobProvider {
             .unwrap_or_else(|e| e.into_inner())
             .push(state.clone());
         self.heartbeat_notify.notify_waiters();
-    }
-
-    async fn set_held_session_states(&self, states: Vec<HeldSessionState>) {
-        self.held_session_state_updates
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(states);
     }
 
     async fn defer_poll_after(&self, delay: Duration) {

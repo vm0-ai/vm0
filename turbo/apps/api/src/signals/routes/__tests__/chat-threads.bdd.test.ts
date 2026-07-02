@@ -167,25 +167,13 @@ async function sendChatRun(
 async function claimChatRun(
   runnerGroup: string,
   runId: string,
-  heldCliAgentSessionId?: string,
+  _heldCliAgentSessionId?: string,
 ): Promise<{
   readonly claim: RunnerClaim;
   readonly sandboxHeaders: { readonly authorization: string };
 }> {
   await api.heartbeatRunner(runnerGroup);
-  const claim = await api.claimRunnerJob(
-    runId,
-    heldCliAgentSessionId
-      ? {
-          heldSessionStates: [
-            {
-              sessionId: heldCliAgentSessionId,
-              lastCompletedAt: new Date(now()).toISOString(),
-            },
-          ],
-        }
-      : {},
-  );
+  const claim = await api.claimRunnerJob(runId);
   return {
     claim,
     sandboxHeaders: { authorization: `Bearer ${claim.sandboxToken}` },

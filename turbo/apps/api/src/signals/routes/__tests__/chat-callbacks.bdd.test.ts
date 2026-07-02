@@ -15,7 +15,6 @@ import { describe, expect, it, onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -202,28 +201,14 @@ async function queueChatMessage(
 async function claimChatRun(
   runnerGroup: string,
   runId: string,
-  heldCliAgentSessionId?: string,
+  _heldCliAgentSessionId?: string,
 ): Promise<{ readonly authorization: string }> {
   await api.heartbeatRunner(runnerGroup);
   let claim: Awaited<ReturnType<typeof api.requestClaimRunnerJob>> | undefined;
   await expect
     .poll(
       async () => {
-        claim = await api.requestClaimRunnerJob(
-          true,
-          runId,
-          [200, 404],
-          heldCliAgentSessionId === undefined
-            ? {}
-            : {
-                heldSessionStates: [
-                  {
-                    sessionId: heldCliAgentSessionId,
-                    lastCompletedAt: new Date(now()).toISOString(),
-                  },
-                ],
-              },
-        );
+        claim = await api.requestClaimRunnerJob(true, runId, [200, 404]);
         return claim.status;
       },
       { interval: 100, timeout: 10_000 },

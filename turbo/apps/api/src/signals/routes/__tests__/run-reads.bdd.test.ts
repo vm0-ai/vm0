@@ -157,18 +157,6 @@ function s3BytesBody(bytes: Buffer): AsyncIterable<Buffer> {
     },
   };
 }
-
-function heldCliAgentSession(sessionId: string) {
-  return {
-    heldSessionStates: [
-      {
-        sessionId,
-        lastCompletedAt: new Date(now()).toISOString(),
-      },
-    ],
-  };
-}
-
 async function createHashBackedResumeRun(
   actor: ApiTestUser,
   composeId: string,
@@ -1408,7 +1396,6 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     );
     const refClaim = await api.claimRunnerJob(refResumed.runId, {
       capabilities: ["resumeSessionHistoryRef"],
-      ...heldCliAgentSession(cliAgentSessionId),
     });
     expect(countSessionHistoryBlobReads(historyHash)).toBe(
       readsBeforeRefResumeCreate,
@@ -1435,10 +1422,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     expect(countSessionHistoryBlobReads(historyHash)).toBe(
       readsBeforeInlineResumeCreate,
     );
-    const claim2 = await api.claimRunnerJob(
-      resumed.runId,
-      heldCliAgentSession(cliAgentSessionId),
-    );
+    const claim2 = await api.claimRunnerJob(resumed.runId);
     expect(countSessionHistoryBlobReads(historyHash)).toBe(
       readsBeforeInlineResumeCreate + 1,
     );
@@ -1569,10 +1553,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       prompt: "continue the checkpointed session",
     });
     expect(continued.sessionId).toBe(r1.sessionId);
-    const continuedClaim = await api.claimRunnerJob(
-      continued.runId,
-      heldCliAgentSession(cliAgentSessionId),
-    );
+    const continuedClaim = await api.claimRunnerJob(continued.runId);
     expect(continuedClaim.resumeSession).toStrictEqual({
       sessionId: cliAgentSessionId,
       sessionHistory: history,
@@ -1613,7 +1594,6 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       true,
       resumed.runId,
       [400],
-      heldCliAgentSession(resumed.cliAgentSessionId),
     );
     expectApiError(failedClaim.body);
     expect(failedClaim.body.error.message).toBe(
@@ -1646,12 +1626,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       historyHash,
       "transient history",
     );
-    await api.requestClaimRunnerJob(
-      true,
-      resumed.runId,
-      [500],
-      heldCliAgentSession(resumed.cliAgentSessionId),
-    );
+    await api.requestClaimRunnerJob(true, resumed.runId, [500]);
 
     const pendingRun = await api.readRun(actor, resumed.runId);
     expect(pendingRun.status).toBe("pending");
@@ -1685,7 +1660,6 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       true,
       resumed.runId,
       [400],
-      heldCliAgentSession(resumed.cliAgentSessionId),
     );
     expectApiError(failedClaim.body);
     expect(failedClaim.body.error.message).toBe(
@@ -1727,7 +1701,6 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       true,
       resumed.runId,
       [400],
-      heldCliAgentSession(resumed.cliAgentSessionId),
     );
     expectApiError(failedClaim.body);
     expect(failedClaim.body.error.message).toBe(

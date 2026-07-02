@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 
 use crate::active_input::ActiveInputSource;
 use crate::ids::RunId;
-use crate::types::{ExecutionContext, HeartbeatState, HeldSessionState, SandboxReuseResult};
+use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 
 /// Low-cardinality source that first discovered a job candidate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -52,7 +52,6 @@ pub struct JobCandidate {
     poll_http_request_elapsed: Option<Duration>,
     cli_agent_session_id: Option<String>,
     affinity_protected_until: Option<DateTime<Utc>>,
-    claim_held_session_states: Option<Vec<HeldSessionState>>,
 }
 
 impl JobCandidate {
@@ -77,7 +76,6 @@ impl JobCandidate {
             poll_http_request_elapsed: None,
             cli_agent_session_id: None,
             affinity_protected_until: None,
-            claim_held_session_states: None,
         }
     }
 
@@ -94,7 +92,6 @@ impl JobCandidate {
             poll_http_request_elapsed: None,
             cli_agent_session_id: None,
             affinity_protected_until: None,
-            claim_held_session_states: None,
         }
     }
 
@@ -157,14 +154,6 @@ impl JobCandidate {
             .is_some_and(|remaining| !remaining.is_zero())
     }
 
-    pub(crate) fn claim_held_session_states(&self) -> Option<&[HeldSessionState]> {
-        self.claim_held_session_states.as_deref()
-    }
-
-    pub(crate) fn set_claim_held_session_states(&mut self, states: Vec<HeldSessionState>) {
-        self.claim_held_session_states = Some(states);
-    }
-
     pub(crate) fn with_affinity_metadata(
         mut self,
         cli_agent_session_id: Option<String>,
@@ -217,7 +206,6 @@ impl JobCandidate {
             poll_http_request_elapsed: None,
             cli_agent_session_id: None,
             affinity_protected_until: None,
-            claim_held_session_states: None,
         }
     }
 }
@@ -415,12 +403,6 @@ pub trait JobProvider: Send + Sync {
     /// Report runner state to the server. Fire-and-forget — failures are
     /// logged but do not affect runner operation.
     async fn heartbeat(&self, state: &HeartbeatState);
-
-    /// Update held sessions for poll affinity. Called when the idle-pool view
-    /// changes so the provider can include current session state in poll
-    /// requests.
-    /// Default no-op — only relevant for API-backed providers.
-    async fn set_held_session_states(&self, _states: Vec<HeldSessionState>) {}
 
     /// Delay the next API-backed poll until a protected same-session job can
     /// fall back to normal compatible-runner claiming.

@@ -85,7 +85,6 @@ const RUNNER_PRE_SPAWN_PHASE_ACTIONS: &[&str] = &[
     "runner_claim_device_rate_limits",
     "runner_claim_idle_reuse_lookup",
     "runner_claim_held_session_state_refresh",
-    "runner_claim_provider_held_session_update",
     "runner_claim_workspace_promotion_validation",
     "runner_claim_idle_unpark",
     "runner_claim_active_status_publish",
@@ -107,11 +106,10 @@ fn pre_spawn_timing_with_phases() -> RunnerPreSpawnTiming {
         (RunnerPreSpawnPhase::DeviceRateLimits, 3),
         (RunnerPreSpawnPhase::IdleReuseLookup, 4),
         (RunnerPreSpawnPhase::HeldSessionStateRefresh, 5),
-        (RunnerPreSpawnPhase::ProviderHeldSessionUpdate, 6),
-        (RunnerPreSpawnPhase::WorkspacePromotionValidation, 7),
-        (RunnerPreSpawnPhase::IdleUnpark, 8),
-        (RunnerPreSpawnPhase::ActiveStatusPublish, 9),
-        (RunnerPreSpawnPhase::SpawnJobSetup, 10),
+        (RunnerPreSpawnPhase::WorkspacePromotionValidation, 6),
+        (RunnerPreSpawnPhase::IdleUnpark, 7),
+        (RunnerPreSpawnPhase::ActiveStatusPublish, 8),
+        (RunnerPreSpawnPhase::SpawnJobSetup, 9),
     ] {
         timing.record_phase(phase, Duration::from_millis(duration_ms));
     }

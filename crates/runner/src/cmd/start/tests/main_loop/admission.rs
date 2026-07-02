@@ -250,7 +250,7 @@ async fn affinity_protected_candidate_without_local_session_defers_before_claim(
 }
 
 #[tokio::test(start_paused = true)]
-async fn affinity_protected_candidate_with_local_session_claims_with_held_state_proof() {
+async fn affinity_protected_candidate_with_local_session_claims() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&env.idle_pool);
@@ -288,18 +288,11 @@ async fn affinity_protected_candidate_with_local_session_claims_with_held_state_
     );
 
     let claim_candidates = env.handle.claim_candidates();
-    let claimed_candidate = claim_candidates
-        .iter()
-        .find(|candidate| candidate.run_id() == run_id)
-        .expect("claim should record the protected candidate");
-    let held_states = claimed_candidate
-        .claim_held_session_states()
-        .expect("held session proof should be attached to the claim");
     assert!(
-        held_states
+        claim_candidates
             .iter()
-            .any(|state| state.session_id == "sess-held-local"),
-        "held session proof should include the protected cli session"
+            .any(|candidate| candidate.run_id() == run_id),
+        "claim should record the protected candidate"
     );
     assert!(
         env.handle.deferred_poll_delays().is_empty(),

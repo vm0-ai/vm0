@@ -10,9 +10,6 @@ pub enum RunnerError {
     #[error("job already claimed by another runner")]
     AlreadyClaimed,
 
-    #[error("job is temporarily protected by same-session affinity")]
-    AffinityProtected,
-
     #[error("sandbox error: {0}")]
     Sandbox(#[from] sandbox::SandboxError),
 

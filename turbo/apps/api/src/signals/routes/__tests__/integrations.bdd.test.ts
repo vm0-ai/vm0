@@ -190,18 +190,12 @@ async function waitForExpectation(assertion: () => void): Promise<void> {
 async function pollRunnerRun(
   runnerGroup: string,
   message: string,
-  heldSessionStates?: ReturnType<
-    typeof heldSlackCliAgentSession
-  >["heldSessionStates"],
 ): Promise<string> {
   await runs.heartbeatRunner(runnerGroup);
   let runId: string | undefined;
   await expect
     .poll(async () => {
-      const poll = await runs.pollRunner(
-        runnerGroup,
-        heldSessionStates === undefined ? {} : { heldSessionStates },
-      );
+      const poll = await runs.pollRunner(runnerGroup);
       runId = poll.body.job?.runId;
       return runId ?? null;
     })
@@ -212,16 +206,10 @@ async function pollRunnerRun(
   return runId;
 }
 
-async function pollSlackRun(
-  runnerGroup: string,
-  heldSessionStates?: ReturnType<
-    typeof heldSlackCliAgentSession
-  >["heldSessionStates"],
-): Promise<string> {
+async function pollSlackRun(runnerGroup: string): Promise<string> {
   return await pollRunnerRun(
     runnerGroup,
     "Expected a Slack-triggered run in the runner queue",
-    heldSessionStates,
   );
 }
 
@@ -250,17 +238,6 @@ async function completeSlackTriggeredRun(args: {
     sandboxHeaders,
     [200],
   );
-}
-
-function heldSlackCliAgentSession(runId: string) {
-  return {
-    heldSessionStates: [
-      {
-        sessionId: `bdd-slack-cli-${runId}`,
-        lastCompletedAt: new Date(now()).toISOString(),
-      },
-    ],
-  };
 }
 
 function telegramDomainProbe() {
@@ -1263,12 +1240,8 @@ describe("INT-01: Slack app deep webhook flows", () => {
       thread_ts: threadTs,
       channel: channelId,
     });
-    const heldRun1Session = heldSlackCliAgentSession(run1Id);
-    const run2Id = await pollSlackRun(
-      runnerGroup,
-      heldRun1Session.heldSessionStates,
-    );
-    const claim2 = await runs.claimRunnerJob(run2Id, heldRun1Session);
+    const run2Id = await pollSlackRun(runnerGroup);
+    const claim2 = await runs.claimRunnerJob(run2Id);
     expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${run1Id}`);
     await completeSlackTriggeredRun({
       runId: run2Id,
@@ -1304,10 +1277,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       channel: channelId,
     });
     const run3Id = await pollSlackRun(runnerGroup);
-    const claim3 = await runs.claimRunnerJob(
-      run3Id,
-      heldSlackCliAgentSession(run1Id),
-    );
+    const claim3 = await runs.claimRunnerJob(run3Id);
     expect(claim3.resumeSession).toBeNull();
     await completeSlackTriggeredRun({
       runId: run3Id,
@@ -2436,12 +2406,8 @@ describe("INT-01: Slack app deep webhook flows", () => {
       thread_ts: threadT1,
       channel: channelId,
     });
-    const heldRun1Session = heldSlackCliAgentSession(run1Id);
-    const run3Id = await pollSlackRun(
-      runnerGroup,
-      heldRun1Session.heldSessionStates,
-    );
-    const claim3 = await runs.claimRunnerJob(run3Id, heldRun1Session);
+    const run3Id = await pollSlackRun(runnerGroup);
+    const claim3 = await runs.claimRunnerJob(run3Id);
     context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: run3Id,

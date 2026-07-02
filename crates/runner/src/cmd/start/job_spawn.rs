@@ -997,7 +997,7 @@ mod tests {
     use crate::resource_budget::ResourceBudget;
     use crate::restored_session_identity::RestoredSessionIdentity;
     use crate::status::StatusTracker;
-    use crate::types::{HeartbeatState, HeldSessionState};
+    use crate::types::HeartbeatState;
 
     struct NoopCompletionProvider;
 
@@ -1023,8 +1023,6 @@ mod tests {
         }
 
         async fn heartbeat(&self, _state: &HeartbeatState) {}
-
-        async fn set_held_session_states(&self, _states: Vec<HeldSessionState>) {}
 
         async fn shutdown(&self) {}
     }
