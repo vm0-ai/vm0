@@ -215,6 +215,24 @@ describe("openChatIdb", () => {
     expect(openDB).toHaveBeenCalledTimes(1);
   });
 
+  it("prevents reusing another cached database after reload is pending", async () => {
+    const firstDb = fakeDb();
+    const secondDb = fakeDb();
+    const { openDB, subject } = await setupSubject([firstDb, secondDb]);
+
+    await subject.openChatIdb("user_1", "org_1");
+    await subject.openChatIdb("user_1", "org_2");
+
+    firstDb.versionChangeListeners[0]?.(
+      versionChangeEvent(CHAT_IDB_VERSION, CHAT_IDB_VERSION + 1),
+    );
+
+    await expect(subject.openChatIdb("user_1", "org_2")).rejects.toThrow(
+      "Chat IndexedDB is closing for a page reload",
+    );
+    expect(openDB).toHaveBeenCalledTimes(2);
+  });
+
   it("does not close or reload when this open request is blocked", async () => {
     const db = fakeDb();
     const { calls, reload, subject } = await setupSubject([db]);

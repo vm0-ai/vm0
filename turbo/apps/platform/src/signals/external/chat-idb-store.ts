@@ -46,16 +46,16 @@ export function openChatIdb(
   userId: string,
   orgId: string,
 ): Promise<IDBPDatabase> {
-  const dbName = chatIdbName(userId, orgId);
-  const existing = chatIdbStoreState.dbPromises.get(dbName);
-  if (existing !== undefined) {
-    return existing;
-  }
-
   if (chatIdbStoreState.reloadTriggered) {
     return Promise.reject(
       new Error("Chat IndexedDB is closing for a page reload"),
     );
+  }
+
+  const dbName = chatIdbName(userId, orgId);
+  const existing = chatIdbStoreState.dbPromises.get(dbName);
+  if (existing !== undefined) {
+    return existing;
   }
 
   L.debug("openDB", { dbName });
