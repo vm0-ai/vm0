@@ -7,7 +7,6 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconSearch,
@@ -86,7 +85,6 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { noConnectorImg } from "./platform-assets.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { detach, onDomEventFn, Reason } from "../../signals/utils.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   Button,
   DropdownMenu,
@@ -976,9 +974,6 @@ export function ZeroConnectorsPage() {
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
   const disconnecting = disconnectLoadable.state === "loading";
-  const features = useLastResolved(featureSwitch$);
-  const showConnectorAccessManagement =
-    features?.[FeatureSwitchKey.ConnectorAccessManagement] ?? false;
 
   const connectHandler = (type: ConnectorType) => {
     const ct = filteredConnectors.find((c) => {
@@ -1040,7 +1035,7 @@ export function ZeroConnectorsPage() {
         connector={optimisticConnector}
         isPolling={isPolling}
         isDisconnecting={disconnecting}
-        showManageAccess={showConnectorAccessManagement}
+        showManageAccess
         onConnect={() => {
           return connectHandler(c.type);
         }}
@@ -1067,9 +1062,7 @@ export function ZeroConnectorsPage() {
     filteredCount: filteredConnectors.length,
     renderCard,
     search,
-    connectionFilter: showConnectorAccessManagement
-      ? connectionFilter
-      : { kind: "all" },
+    connectionFilter,
   });
   return (
     <div
@@ -1116,7 +1109,7 @@ export function ZeroConnectorsPage() {
                 activeTab={activeTab}
                 search={search}
                 setSearch={setSearch}
-                showAccessManagement={showConnectorAccessManagement}
+                showAccessManagement
                 connectionFilter={connectionFilter}
                 agents={agents}
                 setConnectionFilter={setConnectionFilter}

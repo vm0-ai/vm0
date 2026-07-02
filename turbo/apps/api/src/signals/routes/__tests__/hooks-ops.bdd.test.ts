@@ -152,7 +152,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
     ).toBeUndefined();
   });
 
-  it("stores data export as an org-scoped feature switch override", async () => {
+  it("stores org-scoped feature switch overrides", async () => {
     const orgId = `org_${randomUUID()}`;
     const owner = api.user({ orgId });
     const peer = api.user({ orgId });
@@ -164,6 +164,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
         body: {
           switches: {
             [FeatureSwitchKey.DataExport]: true,
+            [FeatureSwitchKey.AgentUnreadIndicators]: true,
             [FeatureSwitchKey.Dummy]: false,
           },
         },
@@ -171,6 +172,9 @@ describe("OPS-01: feature switches and report-error routes", () => {
       [200],
     );
     expect(ownerUpdate.body.switches[FeatureSwitchKey.DataExport]).toBeTruthy();
+    expect(
+      ownerUpdate.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
+    ).toBeTruthy();
     expect(ownerUpdate.body.switches[FeatureSwitchKey.Dummy]).toBeFalsy();
 
     const peerRead = await accept(
@@ -178,6 +182,9 @@ describe("OPS-01: feature switches and report-error routes", () => {
       [200],
     );
     expect(peerRead.body.switches[FeatureSwitchKey.DataExport]).toBeTruthy();
+    expect(
+      peerRead.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
+    ).toBeTruthy();
     expect(peerRead.body.switches[FeatureSwitchKey.Dummy]).toBeUndefined();
 
     const outsiderRead = await accept(
@@ -187,6 +194,9 @@ describe("OPS-01: feature switches and report-error routes", () => {
     expect(
       outsiderRead.body.switches[FeatureSwitchKey.DataExport],
     ).toBeUndefined();
+    expect(
+      outsiderRead.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
+    ).toBeUndefined();
 
     const peerUpdate = await accept(
       featureSwitchesClient().update({
@@ -194,12 +204,16 @@ describe("OPS-01: feature switches and report-error routes", () => {
         body: {
           switches: {
             [FeatureSwitchKey.DataExport]: false,
+            [FeatureSwitchKey.AgentUnreadIndicators]: false,
           },
         },
       }),
       [200],
     );
     expect(peerUpdate.body.switches[FeatureSwitchKey.DataExport]).toBeFalsy();
+    expect(
+      peerUpdate.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
+    ).toBeFalsy();
     expect(peerUpdate.body.switches[FeatureSwitchKey.Dummy]).toBeUndefined();
 
     const ownerReadAfterPeerUpdate = await accept(
@@ -208,6 +222,11 @@ describe("OPS-01: feature switches and report-error routes", () => {
     );
     expect(
       ownerReadAfterPeerUpdate.body.switches[FeatureSwitchKey.DataExport],
+    ).toBeFalsy();
+    expect(
+      ownerReadAfterPeerUpdate.body.switches[
+        FeatureSwitchKey.AgentUnreadIndicators
+      ],
     ).toBeFalsy();
     expect(
       ownerReadAfterPeerUpdate.body.switches[FeatureSwitchKey.Dummy],
@@ -225,6 +244,9 @@ describe("OPS-01: feature switches and report-error routes", () => {
     );
     expect(
       peerReadAfterDelete.body.switches[FeatureSwitchKey.DataExport],
+    ).toBeUndefined();
+    expect(
+      peerReadAfterDelete.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
     ).toBeUndefined();
     expect(
       peerReadAfterDelete.body.switches[FeatureSwitchKey.Dummy],
