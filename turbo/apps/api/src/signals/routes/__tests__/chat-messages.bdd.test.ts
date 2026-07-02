@@ -2404,7 +2404,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, video.runId);
   }, 90_000);
 
-  it("keeps an attached illustration style sticky across follow-ups and clears it for new threads", async () => {
+  it("is one-shot: a follow-up without re-attaching the style relies on the replayed marker, not a live block", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
@@ -2412,7 +2412,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       throw new Error("Expected a registered illustration style");
     }
 
-    // Turn 1: the user explicitly attaches the style.
+    // Turn 1: the user explicitly attaches the style — the live block is present.
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "draw a fox",
@@ -2440,8 +2440,10 @@ describe("CHAT-02: generation templates and attachments", () => {
       });
     });
 
-    // Turn 2: a follow-up in the same thread without re-attaching the style
-    // still gets it — inherited from thread-sticky state (vm0-ai/vm0#17525).
+    // Turn 2: a follow-up without re-attaching the style gets no live block —
+    // there is no thread-sticky DB default (see resolveThreadGenerationTemplatePrompt).
+    // It only sees the selection via the marker replayed inside "# Web Chat Run
+    // Context" for turn 1's message.
     const second = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
@@ -2449,12 +2451,14 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const secondPrompt = (await api.readRun(actor, second.runId))
       .appendSystemPrompt;
-    expect(secondPrompt).toContain("# Artifact Template Context");
+    expect(secondPrompt).not.toContain("# Artifact Template Context");
+    expect(secondPrompt).toContain("# Web Chat Run Context");
+    expect(secondPrompt).toContain("Template selected this turn");
     expect(secondPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, second.runId);
 
-    // Turn 3: attaching a video preset in the same thread keeps it alongside the
-    // illustration style — multiple template types coexist per thread.
+    // Turn 3: attaching a video preset now only resolves the video template live
+    // — templates no longer merge across types via thread-sticky DB state.
     const videoTemplate = VIDEO_TEMPLATE_ITEMS.find((item) => {
       return item.id === "video-template:epic-grandeur";
     });
@@ -2472,21 +2476,22 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const thirdPrompt = (await api.readRun(actor, third.runId))
       .appendSystemPrompt;
-    // Both template types coexist in the thread, so the combined prompt carries
-    // each type's distinguishing command and facts.
     expect(thirdPrompt).toContain(
       `Template: ${videoTemplate.title} (${videoTemplate.id})`,
     );
     expect(thirdPrompt).toContain(
       `zero generate video --provider built-in --template ${videoTemplate.id}`,
     );
-    expect(thirdPrompt).toContain(
+    // The illustration style is no longer live for this turn — it only shows up
+    // as the replayed marker on turn 1's message, not as its own resolved block.
+    expect(thirdPrompt).not.toContain(
       `zero generate image --provider built-in --style ${style.illustrationStyleId}`,
     );
     expect(thirdPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, third.runId);
 
-    // A brand-new thread starts clean: neither template carries over.
+    // A brand-new thread starts clean: neither template carries over — there is
+    // no DB-backed cross-thread state and no prior turns to replay a marker from.
     const fresh = await sendChatRun(actor, { agentId, prompt: "draw a cat" });
     const freshPrompt = (await api.readRun(actor, fresh.runId))
       .appendSystemPrompt;
@@ -2500,7 +2505,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, fresh.runId);
   }, 120_000);
 
-  it("injects workflow templates as one-shot context without merging sticky artifact templates", async () => {
+  it("injects workflow templates as one-shot context, independent of illustration template markers", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
@@ -2554,9 +2559,15 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const followUpPrompt = (await api.readRun(actor, followUp.runId))
       .appendSystemPrompt;
+    // No explicit selection this turn, so there is no live block for either
+    // type. Workflow selections never get a replayed marker (one-shot by
+    // design), but the illustration selection from the "sticky" turn still
+    // surfaces via its marker in the replayed "# Web Chat Run Context".
     expect(followUpPrompt).not.toContain("# Workflow Template Context");
     expect(followUpPrompt).not.toContain(workflowTemplate.id);
-    expect(followUpPrompt).toContain("# Artifact Template Context");
+    expect(followUpPrompt).not.toContain("# Artifact Template Context");
+    expect(followUpPrompt).toContain("# Web Chat Run Context");
+    expect(followUpPrompt).toContain("Template selected this turn");
     expect(followUpPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, followUp.runId);
   }, 120_000);
