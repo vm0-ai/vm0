@@ -154,6 +154,10 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
+  ZERO_DESKTOP_APPLE_SILICON_REQUIREMENT,
+  zeroDesktopDownloadSupportStatus$,
+} from "../../signals/zero-page/computer-use-hosts.ts";
+import {
   zeroAuthorizedConnectors$,
   authorizeConnector$,
   deauthorizeConnector$,
@@ -5818,6 +5822,14 @@ function ComputerUseDownloadDialog({
   onOpenChange: (open: boolean) => void;
   downloadUrl: string;
 }) {
+  const downloadSupportLoadable = useLoadable(
+    zeroDesktopDownloadSupportStatus$,
+  );
+  const downloadSupportStatus =
+    downloadSupportLoadable.state === "hasData"
+      ? downloadSupportLoadable.data
+      : "checking";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md gap-0 overflow-hidden p-0">
@@ -5832,25 +5844,41 @@ function ComputerUseDownloadDialog({
           <DialogTitle className="text-xl leading-7">
             Let Zero use your computer
           </DialogTitle>
-          <DialogDescription className="leading-6">
-            So Zero can work in your browser and apps for you, even ones with no
-            connector like LinkedIn or Reddit.
+          <DialogDescription className="flex flex-col gap-2 leading-6">
+            <span>
+              So Zero can work in your browser and apps for you, even ones with
+              no connector like LinkedIn or Reddit.
+            </span>
+            <span className="text-xs leading-4">
+              {ZERO_DESKTOP_APPLE_SILICON_REQUIREMENT}
+            </span>
           </DialogDescription>
         </DialogHeader>
         <div className="px-6 pb-6 pt-4">
-          <Button asChild size="lg" className="w-full">
-            <a
-              href={downloadUrl}
-              target="_blank"
-              rel="noreferrer"
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              <IconDownload size={16} stroke={1.5} />
-              Download for macOS
-            </a>
-          </Button>
+          {downloadSupportStatus === "unsupported-intel-mac" ? (
+            <Button type="button" size="lg" className="w-full" disabled>
+              <IconAlertTriangle size={16} stroke={1.5} />
+              Apple Silicon Mac required
+            </Button>
+          ) : downloadSupportStatus === "checking" ? (
+            <Button type="button" size="lg" className="w-full" disabled>
+              Checking compatibility
+            </Button>
+          ) : (
+            <Button asChild size="lg" className="w-full">
+              <a
+                href={downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => {
+                  onOpenChange(false);
+                }}
+              >
+                <IconDownload size={16} stroke={1.5} />
+                Download for macOS
+              </a>
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>
