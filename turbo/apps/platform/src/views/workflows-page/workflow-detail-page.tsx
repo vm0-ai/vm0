@@ -421,6 +421,9 @@ function DetailHeader({
           </div>
           <div className="mt-4 flex items-center gap-2 sm:mt-6">
             <WorkflowTabNav activeTab={activeTab} onTabChange={onTabChange} />
+            {activeTab === "automations" ? (
+              <WorkflowAddAutomationButton />
+            ) : null}
             <WorkflowChatButton detail={detail} />
           </div>
         </>
@@ -488,6 +491,22 @@ function WorkflowTabNav({
         </TabsTrigger>
       </TabsList>
     </Tabs>
+  );
+}
+
+function WorkflowAddAutomationButton() {
+  const features = useGet(featureSwitch$);
+  const setCreateDialog = useSet(setWorkflowTriggerCreateDialog$);
+  const workflowAutomationEnabled =
+    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
+
+  return (
+    <TriggerCreateMenu
+      onSelect={setCreateDialog}
+      githubLabelTriggersEnabled={workflowAutomationEnabled}
+      googleCalendarTriggersEnabled={workflowAutomationEnabled}
+      webhookTriggersEnabled={workflowAutomationEnabled}
+    />
   );
 }
 
@@ -2671,34 +2690,15 @@ function TriggersSection({
 }) {
   const createDialog = useGet(workflowTriggerCreateDialog$);
   const setCreateDialog = useSet(setWorkflowTriggerCreateDialog$);
-  const features = useGet(featureSwitch$);
   const userLoadable = useLoadable(user$);
   const preferences = useLastResolved(userPreferences$);
   const currentUserId =
     userLoadable.state === "hasData" ? (userLoadable.data?.id ?? "") : "";
   const displayTimezone = preferences?.timezone ?? browserTimezone();
   const triggers = detail.triggers;
-  const workflowAutomationEnabled =
-    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
 
   return (
     <section className="mx-auto flex max-w-[900px] flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="text-sm font-medium text-foreground">
-            Automations
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {triggers.length}
-          </span>
-        </div>
-        <TriggerCreateMenu
-          onSelect={setCreateDialog}
-          githubLabelTriggersEnabled={workflowAutomationEnabled}
-          googleCalendarTriggersEnabled={workflowAutomationEnabled}
-          webhookTriggersEnabled={workflowAutomationEnabled}
-        />
-      </div>
       <div className="flex flex-col gap-2">
         {triggers.length > 0 ? (
           <div className="zero-card overflow-visible">
@@ -4198,7 +4198,7 @@ function TriggerRow({
     <>
       <div
         className={cn(
-          "group grid min-w-0 grid-cols-1 gap-3 px-5 py-4 transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-gray-50 sm:grid-cols-[minmax(0,2fr)_minmax(8rem,0.8fr)_minmax(8rem,0.8fr)_auto_6.5rem] sm:items-center sm:gap-4",
+          "group grid min-w-0 grid-cols-1 gap-3 px-5 py-4 transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-gray-50 sm:grid-cols-[minmax(0,1.5fr)_minmax(7.5rem,0.9fr)_minmax(9rem,0.9fr)_auto_7.75rem] sm:items-center sm:gap-4",
           showDivider && "border-b border-border/50",
           !trigger.enabled && "opacity-75",
         )}
