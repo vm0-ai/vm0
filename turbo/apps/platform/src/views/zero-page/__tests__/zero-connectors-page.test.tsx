@@ -852,13 +852,7 @@ describe("connectors page", () => {
       return respond(200, { enabledTypes: ["github"] });
     });
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorAccessManagement]: true,
-      },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
@@ -902,13 +896,7 @@ describe("connectors page", () => {
       },
     );
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorAccessManagement]: true,
-      },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();

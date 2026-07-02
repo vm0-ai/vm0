@@ -79,8 +79,7 @@ import {
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { noConnectorImg } from "./platform-assets.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
-import { detach, onDomEventFn, Reason } from "../../signals/utils.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import {
   Button,
   DropdownMenu,
