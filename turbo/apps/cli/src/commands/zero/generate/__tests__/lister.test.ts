@@ -3,8 +3,35 @@ import { http, HttpResponse } from "msw";
 import chalk from "chalk";
 import { server } from "../../../../mocks/server";
 import { generateCommand } from "../index";
+import {
+  catalogStatusItem,
+  manualAuthMethod,
+  stubConnectorCatalogStatus,
+} from "../../__tests__/helpers/connector-catalog";
 
 const AGENT_ID = "550e8400-e29b-41d4-a716-446655440000";
+
+const CONNECTOR_LABELS: Record<string, string> = {
+  elevenlabs: "ElevenLabs",
+  fal: "fal.ai",
+  hume: "Hume",
+  "luma-ai": "Luma AI",
+  minimax: "MiniMax",
+  openai: "OpenAI",
+  replicate: "Replicate",
+  runway: "Runway",
+};
+
+const CONNECTOR_GENERATION: Record<string, readonly string[]> = {
+  elevenlabs: ["audio"],
+  fal: ["image", "video"],
+  hume: ["audio"],
+  "luma-ai": ["image", "video"],
+  minimax: ["audio"],
+  openai: ["audio", "image", "text"],
+  replicate: ["image", "video"],
+  runway: ["image", "video"],
+};
 
 function connector(
   type: string,
@@ -39,13 +66,44 @@ function stubConnectorsWithConfiguredTypes(
   connectors: Array<Record<string, unknown>>,
   configuredTypes: string[],
 ) {
-  return http.get("http://localhost:3000/api/zero/connectors", () => {
-    return HttpResponse.json({
-      connectors,
-      configuredTypes,
-      connectorProvidedBindings: [],
-    });
-  });
+  const connectedByType = new Map(
+    connectors.map((item) => {
+      const type = item.type as string;
+      return [
+        type,
+        catalogStatusItem({
+          connectorRef: type,
+          label: CONNECTOR_LABELS[type] ?? type,
+          generation: [...(CONNECTOR_GENERATION[type] ?? [])],
+          authMethods: [manualAuthMethod()],
+          connection: {
+            authMethod: item.authMethod as string,
+            externalUsername: (item.externalUsername as string | null) ?? null,
+            externalEmail: (item.externalEmail as string | null) ?? null,
+            reconnectReason: null,
+          },
+          connected: true,
+          connectionStatus:
+            (item.connectionStatus as "connected" | "reconnect-required") ??
+            "connected",
+        }),
+      ] as const;
+    }),
+  );
+  const visibleTypes = new Set([...configuredTypes, ...connectedByType.keys()]);
+  return stubConnectorCatalogStatus(
+    [...visibleTypes].map((type) => {
+      return (
+        connectedByType.get(type) ??
+        catalogStatusItem({
+          connectorRef: type,
+          label: CONNECTOR_LABELS[type] ?? type,
+          generation: [...(CONNECTOR_GENERATION[type] ?? [])],
+          authMethods: [manualAuthMethod()],
+        })
+      );
+    }),
+  );
 }
 
 function stubUserConnectors(enabledTypes: string[]) {
@@ -58,18 +116,16 @@ function stubUserConnectors(enabledTypes: string[]) {
 }
 
 function stubAvailableConnectors(types: string[]) {
-  return http.get("http://localhost:3000/api/zero/connectors/search", () => {
-    return HttpResponse.json({
-      connectors: types.map((type) => {
-        return {
-          id: type,
-          label: type,
-          description: type,
-          authMethods: ["api-token"],
-        };
-      }),
-    });
-  });
+  return stubConnectorCatalogStatus(
+    types.map((type) => {
+      return catalogStatusItem({
+        connectorRef: type,
+        label: CONNECTOR_LABELS[type] ?? type,
+        generation: [...(CONNECTOR_GENERATION[type] ?? [])],
+        authMethods: [manualAuthMethod()],
+      });
+    }),
+  );
 }
 
 describe("zero generate lister", () => {
@@ -176,18 +232,14 @@ describe("zero generate lister", () => {
     );
   });
 
-  it("does not mark runtime-configured but unavailable connectors as connectable", async () => {
-    server.use(
-      stubConnectorsWithConfiguredTypes([], ["bentoml"]),
-      stubAvailableConnectors([]),
-      stubUserConnectors([]),
-    );
+  it("does not list providers that are absent from the public catalog", async () => {
+    server.use(stubAvailableConnectors([]), stubUserConnectors([]));
 
     await generateCommand.parseAsync(["node", "cli", "text", "--all"]);
 
     const text = output();
-    expect(text).toContain("bentoml");
-    expect(text).toContain("not available for this account");
+    expect(text).toContain("No ready text generation connectors found.");
+    expect(text).not.toContain("bentoml");
     expect(text).not.toContain("/connectors/bentoml");
   });
 

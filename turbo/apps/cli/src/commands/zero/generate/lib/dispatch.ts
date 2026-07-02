@@ -25,7 +25,7 @@ export async function dispatchGenerate(
   const provider = options.provider?.trim();
 
   if (provider && provider !== "built-in") {
-    printConnectorGuidance(options.generationType, provider);
+    await printConnectorGuidance(options.generationType, provider);
     return { outcome: "handled" };
   }
 

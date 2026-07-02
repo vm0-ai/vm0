@@ -12,6 +12,11 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { searchCommand } from "../search";
 import chalk from "chalk";
+import {
+  authCodeMethod,
+  catalogStatusItem,
+  stubConnectorCatalogStatus,
+} from "../../__tests__/helpers/connector-catalog";
 
 const AGENT_UUID = "550e8400-e29b-41d4-a716-446655440000";
 const ALT_AGENT_UUID = "550e8400-e29b-41d4-a716-446655440099";
@@ -30,15 +35,53 @@ const connectedGithub = {
 };
 
 function stubConnectors(connectors: Array<Record<string, unknown>>) {
-  return http.get("http://localhost:3000/api/zero/connectors", () => {
-    return HttpResponse.json({
-      connectors,
-      configuredTypes: connectors.map((c) => {
-        return c.type as string;
-      }),
-      connectorProvidedBindings: [],
-    });
-  });
+  const connectedByType = new Map(
+    connectors.map((connector) => {
+      const scopeMismatch =
+        Array.isArray(connector.oauthScopes) &&
+        connector.oauthScopes.length === 1 &&
+        connector.oauthScopes[0] === "repo";
+      return [
+        connector.type as string,
+        catalogStatusItem({
+          connectorRef: connector.type as string,
+          authMethods: [authCodeMethod(connector.authMethod as string)],
+          tags: connector.type === "github" ? ["vcs"] : [],
+          connection: {
+            authMethod: connector.authMethod as string,
+            externalUsername:
+              (connector.externalUsername as string | null) ?? null,
+            externalEmail: (connector.externalEmail as string | null) ?? null,
+            reconnectReason: null,
+          },
+          connected: true,
+          connectionStatus: scopeMismatch
+            ? "scope-mismatch"
+            : ((connector.connectionStatus as
+                | "connected"
+                | "reconnect-required") ?? "connected"),
+          scopeMismatch,
+        }),
+      ] as const;
+    }),
+  );
+  const visibleTypes = new Set([
+    "github",
+    "mercury",
+    ...connectedByType.keys(),
+  ]);
+  return stubConnectorCatalogStatus(
+    [...visibleTypes].map((type) => {
+      return (
+        connectedByType.get(type) ??
+        catalogStatusItem({
+          connectorRef: type,
+          authMethods: [authCodeMethod("oauth")],
+          tags: type === "github" ? ["vcs"] : [],
+        })
+      );
+    }),
+  );
 }
 
 function stubAgent(id: string, displayName: string | null) {
@@ -64,18 +107,16 @@ function stubUserConnectors(id: string, enabledTypes: string[]) {
 }
 
 function stubAvailableConnectors(types: string[]) {
-  return http.get("http://localhost:3000/api/zero/connectors/search", () => {
-    return HttpResponse.json({
-      connectors: types.map((type) => {
-        return {
-          id: type,
-          label: type,
-          description: type,
-          authMethods: ["oauth"],
-        };
-      }),
-    });
-  });
+  return stubConnectorCatalogStatus(
+    types.map((type) => {
+      return catalogStatusItem({
+        connectorRef: type,
+        label: type.replaceAll("-", " "),
+        authMethods: [authCodeMethod("oauth")],
+        tags: type === "google-ads" ? ["ads"] : [],
+      });
+    }),
+  );
 }
 
 function findDataRows(lines: readonly string[]): string[] {
@@ -140,24 +181,24 @@ describe("zero connector search command", () => {
       expect(dataRows[0]).toMatch(/^github\s/);
     });
 
-    it("returns github for an environment name exact match (GH_TOKEN)", async () => {
+    it("does not match private environment names (GH_TOKEN)", async () => {
       await searchCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
       const lines = mockConsoleLog.mock.calls.flat() as string[];
       const output = lines.join("\n");
-      expect(output).not.toContain("No exact match");
+      expect(output).toContain("No matches found.");
       const dataRows = findDataRows(lines);
-      expect(dataRows[0]).toMatch(/^github\s/);
+      expect(dataRows).toHaveLength(0);
     });
 
-    it("returns github with No-exact-match banner for tag match GH_API_KEY", async () => {
+    it("does not match private secret names (GH_API_KEY)", async () => {
       await searchCommand.parseAsync(["node", "cli", "GH_API_KEY"]);
 
       const lines = mockConsoleLog.mock.calls.flat() as string[];
       const output = lines.join("\n");
-      expect(output).toContain("No exact match. Showing closest:");
+      expect(output).toContain("No matches found.");
       const dataRows = findDataRows(lines);
-      expect(dataRows[0]).toMatch(/^github\s/);
+      expect(dataRows).toHaveLength(0);
     });
 
     it("matches multiple connectors by shared tag vcs", async () => {
@@ -407,7 +448,7 @@ describe("zero connector search command", () => {
     });
 
     it("uses the server-visible catalog for feature-gated oauth connectors", async () => {
-      server.use(stubConnectors([]), stubAvailableConnectors(["google-ads"]));
+      server.use(stubAvailableConnectors(["google-ads"]));
 
       await searchCommand.parseAsync(["node", "cli", "google ads"]);
 
@@ -418,16 +459,19 @@ describe("zero connector search command", () => {
   });
 
   describe("error handling", () => {
-    it("surfaces auth errors from listZeroConnectors", async () => {
+    it("surfaces auth errors from public connector catalog status", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
-          return HttpResponse.json(
-            {
-              error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-            },
-            { status: 401 },
-          );
-        }),
+        http.get(
+          "http://localhost:3000/api/zero/connector-catalog/status",
+          () => {
+            return HttpResponse.json(
+              {
+                error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+              },
+              { status: 401 },
+            );
+          },
+        ),
       );
 
       await expect(async () => {

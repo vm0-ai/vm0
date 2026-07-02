@@ -1,19 +1,18 @@
 import chalk from "chalk";
+import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
-  CONNECTOR_TYPE_KEYS,
-  CONNECTOR_TYPES,
-  type ConnectorConfig,
-  type ConnectorGenerationType,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
-import { getConnectorGenerationTypes } from "@vm0/connectors/connector-utils";
-import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { getZeroAgentUserConnectors } from "../../../../lib/api/domains/zero-agents";
-import {
-  listZeroConnectors,
-  searchZeroConnectors,
-} from "../../../../lib/api/domains/zero-connectors";
+  getZeroAgentUserConnectors,
+  listZeroConnectorCatalogStatus,
+} from "../../../../lib/api";
 import { getPlatformOrigin } from "../../doctor/platform-url";
+
+type ConnectorGenerationType =
+  | "audio"
+  | "code"
+  | "document"
+  | "image"
+  | "text"
+  | "video";
 
 type BuiltInGenerationType =
   | "dashboard-design"
@@ -247,21 +246,18 @@ const GENERATION_TYPE_LABELS: Record<GenerationType, string> = {
   website: "Website",
 };
 
-type ConnectedConnector = ConnectorListResponse["connectors"][number];
-
 type CandidateStatus =
   | "ready"
   | "needs-reconnect"
   | "not-authorized"
-  | "not-connected"
-  | "not-available";
+  | "not-connected";
 
 interface ListerOptions {
   all?: boolean;
 }
 
 interface GenerationCandidate {
-  type: ConnectorType;
+  type: string;
   label: string;
   status: CandidateStatus;
   reason: string;
@@ -317,45 +313,32 @@ function getGenerationContext(
 
 function getGenerationConnectors(
   generationType: ConnectorGenerationType,
-): Array<[ConnectorType, ConnectorConfig]> {
-  return CONNECTOR_TYPE_KEYS.map((type): [ConnectorType, ConnectorConfig] => {
-    return [type, CONNECTOR_TYPES[type]];
-  })
-    .filter(([type]) => {
-      return getConnectorGenerationTypes(type).includes(generationType);
+  connectors: readonly PublicConnectorCatalogStatusItem[],
+): PublicConnectorCatalogStatusItem[] {
+  return connectors
+    .filter((connector) => {
+      return connector.generation.includes(generationType);
     })
-    .sort(([a], [b]) => {
-      return a.localeCompare(b);
+    .sort((a, b) => {
+      return a.connectorRef.localeCompare(b.connectorRef);
     });
 }
 
-function isConnectorType(type: string): type is ConnectorType {
-  return type in CONNECTOR_TYPES;
-}
-
-async function getFeatureAvailableConnectorTypes(): Promise<
-  Set<ConnectorType>
-> {
-  const catalog = await searchZeroConnectors();
-  return new Set(
-    catalog.connectors
-      .map((connector) => {
-        return connector.id;
-      })
-      .filter(isConnectorType),
-  );
-}
-
-function formatAccount(connector: ConnectedConnector): string | undefined {
-  if (connector.externalUsername) return `@${connector.externalUsername}`;
-  if (connector.externalEmail) return connector.externalEmail;
-  if (connector.externalId) return connector.externalId;
+function formatAccount(
+  connector: PublicConnectorCatalogStatusItem,
+): string | undefined {
+  if (connector.connection?.externalUsername) {
+    return `@${connector.connection.externalUsername}`;
+  }
+  if (connector.connection?.externalEmail) {
+    return connector.connection.externalEmail;
+  }
   return undefined;
 }
 
 function getAction(
   status: CandidateStatus,
-  type: ConnectorType,
+  type: string,
   label: string,
   agentId: string | undefined,
   platformOrigin: string,
@@ -392,43 +375,25 @@ function getAction(
 }
 
 function toCandidate(params: {
-  type: ConnectorType;
-  config: ConnectorConfig;
-  connector: ConnectedConnector | undefined;
-  configuredTypes: Set<ConnectorType>;
-  availableTypes: Set<ConnectorType>;
+  connector: PublicConnectorCatalogStatusItem;
   authorizedTypes: Set<string> | null;
   agentId: string | undefined;
   platformOrigin: string;
 }): GenerationCandidate {
-  const {
-    type,
-    config,
-    connector,
-    configuredTypes,
-    availableTypes,
-    authorizedTypes,
-    agentId,
-    platformOrigin,
-  } = params;
+  const { connector, authorizedTypes, agentId, platformOrigin } = params;
+  const type = connector.connectorRef;
 
   let status: CandidateStatus;
   let reason: string;
 
-  if (!availableTypes.has(type)) {
-    status = "not-available";
-    reason = "not available for this account";
-  } else if (connector?.connectionStatus === "reconnect-required") {
+  if (connector.connectionStatus === "reconnect-required") {
     status = "needs-reconnect";
     reason = "connected, reconnect required";
-  } else if (!connector) {
-    status = configuredTypes.has(type) ? "not-connected" : "not-available";
-    reason =
-      status === "not-connected"
-        ? agentId
-          ? "not connected or authorized for current agent"
-          : "not connected"
-        : "not available in this environment";
+  } else if (!connector.connected) {
+    status = "not-connected";
+    reason = agentId
+      ? "not connected or authorized for current agent"
+      : "not connected";
   } else if (authorizedTypes && !authorizedTypes.has(type)) {
     status = "not-authorized";
     reason = "connected, not authorized for current agent";
@@ -441,12 +406,12 @@ function toCandidate(params: {
 
   return {
     type,
-    label: config.label,
+    label: connector.label,
     status,
     reason,
-    account: connector ? formatAccount(connector) : undefined,
-    authMethod: connector?.authMethod,
-    ...getAction(status, type, config.label, agentId, platformOrigin),
+    account: connector.connected ? formatAccount(connector) : undefined,
+    authMethod: connector.connection?.authMethod,
+    ...getAction(status, type, connector.label, agentId, platformOrigin),
   };
 }
 
@@ -584,29 +549,17 @@ export async function runLister(
 ): Promise<void> {
   const connectorGenerationType = getConnectorGenerationType(generationType);
   const agentId = process.env.ZERO_AGENT_ID;
-  const [connectorList, availableTypes, enabledTypes, platformOrigin] =
-    await Promise.all([
-      listZeroConnectors(),
-      getFeatureAvailableConnectorTypes(),
-      agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
-      getPlatformOrigin(),
-    ]);
-  const connectedMap = new Map(
-    connectorList.connectors.map((connector) => {
-      return [connector.type, connector];
-    }),
-  );
-  const configuredTypes = new Set(connectorList.configuredTypes);
+  const [catalog, enabledTypes, platformOrigin] = await Promise.all([
+    listZeroConnectorCatalogStatus(),
+    agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
+    getPlatformOrigin(),
+  ]);
   const authorizedTypes = enabledTypes ? new Set(enabledTypes) : null;
   const candidates = connectorGenerationType
-    ? getGenerationConnectors(connectorGenerationType).map(
-        ([connectorType, config]) => {
+    ? getGenerationConnectors(connectorGenerationType, catalog.connectors).map(
+        (connector) => {
           return toCandidate({
-            type: connectorType,
-            config,
-            connector: connectedMap.get(connectorType),
-            configuredTypes,
-            availableTypes,
+            connector,
             authorizedTypes,
             agentId,
             platformOrigin,

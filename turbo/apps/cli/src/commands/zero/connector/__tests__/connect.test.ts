@@ -68,19 +68,19 @@ describe("zero connector connect command", () => {
       "cli",
       "zendesk",
       "--value",
-      "ZENDESK_API_TOKEN=secret-token",
+      "apiToken=secret-token",
       "--value",
-      "ZENDESK_SUBDOMAIN=example",
+      "subdomain=example",
       "--value",
-      "ZENDESK_EMAIL=support@example.com",
+      "email=support@example.com",
     ]);
 
     expect(receivedBody).toStrictEqual({
       authMethod: "api-token",
       values: {
-        ZENDESK_API_TOKEN: "secret-token",
-        ZENDESK_SUBDOMAIN: "example",
-        ZENDESK_EMAIL: "support@example.com",
+        apiToken: "secret-token",
+        subdomain: "example",
+        email: "support@example.com",
       },
     });
     const output = mockConsoleLog.mock.calls.flat().join("\n");
@@ -108,13 +108,13 @@ describe("zero connector connect command", () => {
       "--auth-method",
       "api-token",
       "--value",
-      "OPENAI_TOKEN=sk-test",
+      "apiKey=sk-test",
     ]);
 
     expect(receivedBody).toStrictEqual({
       authMethod: "api-token",
       values: {
-        OPENAI_TOKEN: "sk-test",
+        apiKey: "sk-test",
       },
     });
   });
@@ -134,7 +134,7 @@ describe("zero connector connect command", () => {
       "cli",
       "openai",
       "--value",
-      "OPENAI_TOKEN=sk-test",
+      "apiKey=sk-test",
       "--json",
     ]);
 
@@ -170,13 +170,7 @@ describe("zero connector connect command", () => {
     );
 
     await expect(
-      connectCommand.parseAsync([
-        "node",
-        "cli",
-        "openai",
-        "--value",
-        "OPENAI_TOKEN",
-      ]),
+      connectCommand.parseAsync(["node", "cli", "openai", "--value", "apiKey"]),
     ).rejects.toThrow("process.exit called");
 
     expect(requestCalled).toBeFalsy();
@@ -205,7 +199,7 @@ describe("zero connector connect command", () => {
         "--auth-method",
         "api-token",
         "--value",
-        "GITHUB_TOKEN=ghp-test",
+        "apiToken=ghp-test",
       ]),
     ).rejects.toThrow("process.exit called");
 
@@ -237,7 +231,7 @@ describe("zero connector connect command", () => {
         "--auth-method",
         "oauth",
         "--value",
-        "STRIPE_TOKEN=sk-test",
+        "apiKey=sk-test",
       ]),
     ).rejects.toThrow("process.exit called");
 
@@ -257,8 +251,7 @@ describe("zero connector connect command", () => {
           return HttpResponse.json(
             {
               error: {
-                message:
-                  "Missing required manual grant field(s): ZENDESK_EMAIL",
+                message: "Missing required manual grant field(s): email",
                 code: "BAD_REQUEST",
               },
             },
@@ -274,7 +267,7 @@ describe("zero connector connect command", () => {
         "cli",
         "zendesk",
         "--value",
-        "ZENDESK_API_TOKEN=secret-token",
+        "apiToken=secret-token",
       ]),
     ).rejects.toThrow("process.exit called");
 
@@ -307,7 +300,7 @@ describe("zero connector connect command", () => {
         "cli",
         "zendesk",
         "--value",
-        "ZENDESK_API_TOKEN=secret-token",
+        "apiToken=secret-token",
       ]),
     ).rejects.toThrow("process.exit called");
 
