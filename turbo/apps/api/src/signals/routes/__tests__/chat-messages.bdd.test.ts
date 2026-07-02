@@ -2453,7 +2453,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       .appendSystemPrompt;
     expect(secondPrompt).not.toContain("# Artifact Template Context");
     expect(secondPrompt).toContain("# Web Chat Run Context");
-    expect(secondPrompt).toContain("Template selected this turn");
+    expect(secondPrompt).toContain("This turn selected a template");
     expect(secondPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, second.runId);
 
@@ -2567,7 +2567,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(followUpPrompt).not.toContain(workflowTemplate.id);
     expect(followUpPrompt).not.toContain("# Artifact Template Context");
     expect(followUpPrompt).toContain("# Web Chat Run Context");
-    expect(followUpPrompt).toContain("Template selected this turn");
+    expect(followUpPrompt).toContain("This turn selected a template");
     expect(followUpPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, followUp.runId);
   }, 120_000);

@@ -580,7 +580,7 @@ function generationTemplateReplayMarker(
   }
   const description = describeGenerationTemplateSelection(generationTemplate);
   return description
-    ? `[Template selected this turn: ${description}. Stays in effect for later turns in this thread until a different one is selected.]\n`
+    ? `[This turn selected a template — ${description}. Stays in effect for later turns in this thread until a different one is selected.]\n`
     : "";
 }
 

@@ -324,25 +324,27 @@ export function describeGenerationTemplateSelection(
       generationTemplate.selection.illustrationStyleId,
     );
     return style
-      ? `illustration style "${style.name}" (${style.id})`
+      ? `using illustration style "${style.name}" (${style.id})`
       : null;
   }
   if (generationTemplate.type === "video") {
     const template = findVideoTemplate(
       generationTemplate.selection.stylePresetId,
     );
-    return template ? `video template "${template.name}" (${template.id})` : null;
+    return template
+      ? `using video template "${template.name}" (${template.id})`
+      : null;
   }
   if (generationTemplate.type === "presentation") {
     const template = findTemplate(generationTemplate.selection.templateId);
     return template
-      ? `presentation template "${template.name}" (${template.id})`
+      ? `using presentation template "${template.name}" (${template.id})`
       : null;
   }
   const template = findWorkflowTemplateItem(
     generationTemplate.selection.workflowTemplateId,
   );
   return template
-    ? `workflow template "${template.title}" (${template.id})`
+    ? `using workflow template "${template.title}" (${template.id})`
     : null;
 }
