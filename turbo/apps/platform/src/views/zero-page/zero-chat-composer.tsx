@@ -5861,12 +5861,8 @@ function ComputerUseDownloadDialog({
         </DialogHeader>
         <div className="px-6 pb-6 pt-4">
           {showIntelDownload ? (
-            <div className="flex flex-col gap-2">
-              <Button
-                asChild
-                size="lg"
-                className="h-auto min-h-11 w-full justify-start px-4 py-2"
-              >
+            <div className="flex flex-col items-center gap-3">
+              <Button asChild size="lg" className="w-full">
                 <a
                   href={downloadUrl}
                   aria-label="Download for Mac Apple Silicon"
@@ -5877,20 +5873,11 @@ function ComputerUseDownloadDialog({
                   }}
                 >
                   <IconDownload size={16} stroke={1.5} />
-                  <span className="flex flex-col items-start gap-0.5">
-                    <span>Download for Mac</span>
-                    <span className="text-xs font-normal text-primary-foreground/80">
-                      Apple Silicon
-                    </span>
-                  </span>
+                  Download for Mac (Apple Silicon)
                 </a>
               </Button>
-              <Button
-                asChild
-                size="lg"
-                variant="outline"
-                className="h-auto min-h-11 w-full justify-start px-4 py-2"
-              >
+              <p className="text-sm text-muted-foreground">
+                On an Intel Mac?{" "}
                 <a
                   href={ZERO_DESKTOP_INTEL_DOWNLOAD_URL}
                   aria-label="Download for Mac Intel"
@@ -5899,16 +5886,11 @@ function ComputerUseDownloadDialog({
                   onClick={() => {
                     onOpenChange(false);
                   }}
+                  className="font-medium text-primary hover:underline"
                 >
-                  <IconDownload size={16} stroke={1.5} />
-                  <span className="flex flex-col items-start gap-0.5">
-                    <span>Download for Mac</span>
-                    <span className="text-xs font-normal text-muted-foreground">
-                      Intel
-                    </span>
-                  </span>
+                  Download here
                 </a>
-              </Button>
+              </p>
             </div>
           ) : downloadSupportStatus === "unsupported-intel-mac" ? (
             <Button type="button" size="lg" className="w-full" disabled>
