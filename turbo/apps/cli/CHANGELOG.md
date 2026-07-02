@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.220.7](https://github.com/vm0-ai/vm0/compare/cli-v9.220.6...cli-v9.220.7) (2026-07-02)
+
+
+### Bug Fixes
+
+* remove workflow publish approval flow ([#19767](https://github.com/vm0-ai/vm0/issues/19767)) ([19d0fa7](https://github.com/vm0-ai/vm0/commit/19d0fa765fe2fb9a15d64e2a04616b41b8546a17))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.141.0
+    * @vm0/connectors bumped to 1.125.0
+    * @vm0/core bumped to 8.385.0
+
 ## [9.220.6](https://github.com/vm0-ai/vm0/compare/cli-v9.220.5...cli-v9.220.6) (2026-07-02)
 
 

@@ -129,18 +129,27 @@ jobs:
           echo "DB/API release coupling validated."
 
   build-desktop-release:
-    name: build-desktop-release
+    name: build-desktop-release-${{ matrix.arch }}
     needs: release-please
     if: ${{ needs.release-please.outputs.desktop_release_created == 'true' }}
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-latest
+          - arch: x64
+            runner: macos-15-intel
     defaults:
       run:
         working-directory: turbo
     permissions:
       contents: write
     env:
+      DESKTOP_ARCH: ${{ matrix.arch }}
       DESKTOP_VERSION: ${{ needs.release-please.outputs.desktop_version }}
       RELEASE_TAG: desktop-v${{ needs.release-please.outputs.desktop_version }}
       VM0_DESKTOP_SIGNING_IDENTITY: "Developer ID Application: Max & Zoe, Inc. (C5UWSXYB67)"
@@ -179,7 +188,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Desktop App* building signed macOS release...\n📦 Version: `${{ needs.release-please.outputs.desktop_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/desktop-v${{ needs.release-please.outputs.desktop_version }}|View Release>"
+                  text: "*Desktop App* building signed macOS `${{ matrix.arch }}` release...\n📦 Version: `${{ needs.release-please.outputs.desktop_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/desktop-v${{ needs.release-please.outputs.desktop_version }}|View Release>"
 
       - name: Record start time
         id: timer
@@ -283,14 +292,14 @@ jobs:
           pnpm -F @vm0/desktop upload:sentry
           node apps/desktop/scripts/run-forge-make-with-retry.js \
             --platform darwin \
-            --arch arm64 \
+            --arch "$DESKTOP_ARCH" \
             --targets @electron-forge/maker-zip
 
           desktop_dir="$PWD/apps/desktop"
-          app_dir="$desktop_dir/out/Zero Computer Use-darwin-arm64/Zero Computer Use.app"
-          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero Computer Use-darwin-arm64-$DESKTOP_VERSION.zip"
-          zip_artifact_path="apps/desktop/out/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
-          dmg_artifact_path="apps/desktop/out/Zero-darwin-arm64-$DESKTOP_VERSION.dmg"
+          app_dir="$desktop_dir/out/Zero Computer Use-darwin-$DESKTOP_ARCH/Zero Computer Use.app"
+          forge_zip="$desktop_dir/out/make/zip/darwin/$DESKTOP_ARCH/Zero Computer Use-darwin-$DESKTOP_ARCH-$DESKTOP_VERSION.zip"
+          zip_artifact_path="apps/desktop/out/Zero-darwin-$DESKTOP_ARCH-$DESKTOP_VERSION.zip"
+          dmg_artifact_path="apps/desktop/out/Zero-darwin-$DESKTOP_ARCH-$DESKTOP_VERSION.dmg"
 
           if [ ! -f "$forge_zip" ]; then
             echo "No Forge zip artifact found: $forge_zip"
@@ -321,11 +330,16 @@ jobs:
 
       - name: Verify signed and notarized macOS artifacts
         run: |
-          zip_artifact_path="apps/desktop/out/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
-          dmg_artifact_path="apps/desktop/out/Zero-darwin-arm64-$DESKTOP_VERSION.dmg"
-          app_dir="apps/desktop/out/Zero Computer Use-darwin-arm64/Zero Computer Use.app"
+          zip_artifact_path="apps/desktop/out/Zero-darwin-$DESKTOP_ARCH-$DESKTOP_VERSION.zip"
+          dmg_artifact_path="apps/desktop/out/Zero-darwin-$DESKTOP_ARCH-$DESKTOP_VERSION.dmg"
+          app_dir="apps/desktop/out/Zero Computer Use-darwin-$DESKTOP_ARCH/Zero Computer Use.app"
           plist="$app_dir/Contents/Info.plist"
           dmg_mount="$RUNNER_TEMP/zero-desktop-dmg"
+          case "$DESKTOP_ARCH" in
+            arm64) expected_mach_arch="arm64" ;;
+            x64) expected_mach_arch="x86_64" ;;
+            *) echo "Unsupported desktop architecture: $DESKTOP_ARCH"; exit 1 ;;
+          esac
 
           if [ ! -f "$zip_artifact_path" ]; then
             echo "No desktop zip artifact found"
@@ -351,6 +365,8 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero Computer Use"
           /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero Computer Use"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.vm0.zero.desktop"
+          file "$app_dir/Contents/MacOS/Zero Computer Use" | grep -q "$expected_mach_arch"
+          file "$app_dir/Contents/Resources/native/computer-use-helper" | grep -q "$expected_mach_arch"
           codesign --verify --deep --strict --verbose=2 "$app_dir"
           codesign --display --verbose=4 "$app_dir" 2>&1 | grep -F "Authority=$VM0_DESKTOP_SIGNING_IDENTITY"
           xcrun stapler validate "$app_dir"
@@ -407,47 +423,6 @@ jobs:
             --repo "${{ github.repository }}" \
             --clobber
 
-      - name: Publish Desktop update manifest
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MANIFEST_TAG: desktop-updates
-        run: |
-          manifest_dir="apps/desktop/out/update-manifest"
-          manifest_path="$manifest_dir/desktop-update-manifest.json"
-          zip_url="https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
-
-          mkdir -p "$manifest_dir"
-          if gh release view "$MANIFEST_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            if gh release view "$MANIFEST_TAG" \
-              --repo "${{ github.repository }}" \
-              --json assets \
-              --jq '.assets[].name' | grep -qx desktop-update-manifest.json; then
-              gh release download "$MANIFEST_TAG" \
-                --repo "${{ github.repository }}" \
-                --pattern desktop-update-manifest.json \
-                --dir "$manifest_dir" \
-                --clobber
-            fi
-          else
-            gh release create "$MANIFEST_TAG" \
-              --repo "${{ github.repository }}" \
-              --title "Desktop Updates" \
-              --notes "Mutable manifest used by the Desktop auto-update feed." \
-              --latest=false
-          fi
-
-          node apps/desktop/scripts/update-desktop-release-manifest.mjs \
-            --manifest "$manifest_path" \
-            --version "$DESKTOP_VERSION" \
-            --zip-url "$zip_url" \
-            --channel stable \
-            --platform darwin \
-            --arch arm64
-
-          gh release upload "$MANIFEST_TAG" "$manifest_path" \
-            --repo "${{ github.repository }}" \
-            --clobber
-
       - name: Calculate duration
         id: duration
         if: ${{ always() && steps.timer.outputs.start }}
@@ -473,7 +448,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Desktop App* ✅ Published signed macOS release\n📦 Version: `${{ needs.release-please.outputs.desktop_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/desktop-v${{ needs.release-please.outputs.desktop_version }}|View Release>\n⬇️ <${{ github.server_url }}/${{ github.repository }}/releases/download/desktop-v${{ needs.release-please.outputs.desktop_version }}/Zero-darwin-arm64-${{ needs.release-please.outputs.desktop_version }}.dmg|Download macOS DMG>\n🔄 <${{ github.server_url }}/${{ github.repository }}/releases/download/desktop-v${{ needs.release-please.outputs.desktop_version }}/Zero-darwin-arm64-${{ needs.release-please.outputs.desktop_version }}.zip|Auto-update ZIP>"
+                  text: "*Desktop App* ✅ Published signed macOS `${{ matrix.arch }}` artifacts\n📦 Version: `${{ needs.release-please.outputs.desktop_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/desktop-v${{ needs.release-please.outputs.desktop_version }}|View Release>\n⬇️ <${{ github.server_url }}/${{ github.repository }}/releases/download/desktop-v${{ needs.release-please.outputs.desktop_version }}/Zero-darwin-${{ matrix.arch }}-${{ needs.release-please.outputs.desktop_version }}.dmg|Download macOS DMG>\n🔄 <${{ github.server_url }}/${{ github.repository }}/releases/download/desktop-v${{ needs.release-please.outputs.desktop_version }}/Zero-darwin-${{ matrix.arch }}-${{ needs.release-please.outputs.desktop_version }}.zip|Auto-update ZIP>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -494,6 +469,88 @@ jobs:
       - name: Delete temporary keychain
         if: ${{ always() && steps.signing-certificate.outputs.keychain_path != '' }}
         run: security delete-keychain "${{ steps.signing-certificate.outputs.keychain_path }}" || true
+
+  publish-desktop-update-manifest:
+    name: publish-desktop-update-manifest
+    needs: [release-please, build-desktop-release]
+    if: ${{ needs.release-please.outputs.desktop_release_created == 'true' && needs.build-desktop-release.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: turbo
+    permissions:
+      contents: write
+    env:
+      DESKTOP_VERSION: ${{ needs.release-please.outputs.desktop_version }}
+      RELEASE_TAG: desktop-v${{ needs.release-please.outputs.desktop_version }}
+      MANIFEST_TAG: desktop-updates
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: desktop-v${{ needs.release-please.outputs.desktop_version }}
+
+      - name: Verify Desktop release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          release_assets="$(gh release view "$RELEASE_TAG" \
+            --repo "${{ github.repository }}" \
+            --json assets \
+            --jq '.assets[].name')"
+
+          for arch in arm64 x64; do
+            for extension in zip dmg; do
+              asset_name="Zero-darwin-$arch-$DESKTOP_VERSION.$extension"
+              if ! printf '%s\n' "$release_assets" | grep -qx "$asset_name"; then
+                echo "::error::Missing Desktop release asset: $asset_name"
+                printf '%s\n' "$release_assets"
+                exit 1
+              fi
+            done
+          done
+
+      - name: Publish Desktop update manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          manifest_dir="apps/desktop/out/update-manifest"
+          manifest_path="$manifest_dir/desktop-update-manifest.json"
+
+          mkdir -p "$manifest_dir"
+          if gh release view "$MANIFEST_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            if gh release view "$MANIFEST_TAG" \
+              --repo "${{ github.repository }}" \
+              --json assets \
+              --jq '.assets[].name' | grep -qx desktop-update-manifest.json; then
+              gh release download "$MANIFEST_TAG" \
+                --repo "${{ github.repository }}" \
+                --pattern desktop-update-manifest.json \
+                --dir "$manifest_dir" \
+                --clobber
+            fi
+          else
+            gh release create "$MANIFEST_TAG" \
+              --repo "${{ github.repository }}" \
+              --title "Desktop Updates" \
+              --notes "Mutable manifest used by the Desktop auto-update feed." \
+              --latest=false
+          fi
+
+          for arch in arm64 x64; do
+            zip_url="https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG/Zero-darwin-$arch-$DESKTOP_VERSION.zip"
+            node apps/desktop/scripts/update-desktop-release-manifest.mjs \
+              --manifest "$manifest_path" \
+              --version "$DESKTOP_VERSION" \
+              --zip-url "$zip_url" \
+              --channel stable \
+              --platform darwin \
+              --arch "$arch"
+          done
+
+          gh release upload "$MANIFEST_TAG" "$manifest_path" \
+            --repo "${{ github.repository }}" \
+            --clobber
 
   # Run database migrations in production for API releases only. The API staged
   # deployment is built first, then migrations run, then API traffic is promoted.

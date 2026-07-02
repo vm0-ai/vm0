@@ -56,6 +56,7 @@ import { nowDate } from "../../lib/time.ts";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
+import { chatMessageOrderSequence } from "../chat-message-order.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
@@ -208,18 +209,6 @@ function completedRunIdsFromMessages(
     }
   }
   return Array.from(ids);
-}
-
-function isUnterminatedAssistantRunMessage(
-  message: PagedChatMessage,
-  terminatedRunIds: Set<string>,
-): boolean {
-  return (
-    message.role === "assistant" &&
-    message.runId !== undefined &&
-    message.runLifecycleEvent === undefined &&
-    !terminatedRunIds.has(message.runId)
-  );
 }
 
 function createInterruptedAssistantMessage(
@@ -384,109 +373,145 @@ function terminatedRunIdsFromRawMessages(
   return terminatedRunIds;
 }
 
-function deriveRunIndicatorStateFromRawMessages(
-  raw: readonly ChatMessageProjectionEntry[],
-): string | null {
-  if (hasUnresolvedQueueMarker(raw)) {
+type RunIndicatorState = "running" | "queued" | null;
+
+type AssistantPagedChatMessage = Extract<
+  PagedChatMessage,
+  { role: "assistant" }
+>;
+
+interface RunIndicatorScanContext {
+  readonly terminatedRunIds: Set<string>;
+  readonly activeRunIds: Set<string>;
+  readonly queuedRunIds: Set<string>;
+  sawQueued: boolean;
+  sawInactiveRunActivity: boolean;
+}
+
+function inactiveRunIndicatorState(
+  scan: RunIndicatorScanContext,
+): RunIndicatorState {
+  return scan.sawQueued ? "queued" : null;
+}
+
+function unresolvedActiveRunIndicatorState(
+  scan: RunIndicatorScanContext,
+): RunIndicatorState {
+  for (const runId of scan.activeRunIds) {
+    if (!scan.queuedRunIds.has(runId)) {
+      return "running";
+    }
+  }
+  return inactiveRunIndicatorState(scan);
+}
+
+function rememberQueuedRun(
+  scan: RunIndicatorScanContext,
+  runId: string | undefined,
+): void {
+  if (runId !== undefined && scan.terminatedRunIds.has(runId)) {
+    return;
+  }
+  scan.sawQueued = true;
+  if (runId !== undefined) {
+    scan.queuedRunIds.add(runId);
+  }
+}
+
+function runActivityIndicatorState(
+  scan: RunIndicatorScanContext,
+  runId: string,
+): RunIndicatorState | undefined {
+  if (scan.queuedRunIds.has(runId)) {
     return "queued";
   }
+  if (scan.terminatedRunIds.has(runId)) {
+    scan.sawInactiveRunActivity = true;
+    return undefined;
+  }
+  if (scan.sawInactiveRunActivity && !scan.activeRunIds.has(runId)) {
+    return undefined;
+  }
+  return "running";
+}
 
-  const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
+function assistantRunIndicatorState(
+  scan: RunIndicatorScanContext,
+  message: AssistantPagedChatMessage,
+): RunIndicatorState | undefined {
+  const runId = message.runId;
+  if (runId !== undefined && message.runLifecycleEvent !== undefined) {
+    scan.sawInactiveRunActivity = true;
+    return undefined;
+  }
+  if (isQueueMarkerMessage(message)) {
+    rememberQueuedRun(scan, runId);
+    return undefined;
+  }
+  return runId === undefined
+    ? inactiveRunIndicatorState(scan)
+    : runActivityIndicatorState(scan, runId);
+}
+
+function nonAssistantRunIndicatorState(
+  scan: RunIndicatorScanContext,
+  entry: ChatMessageProjectionEntry,
+): RunIndicatorState | undefined {
+  if (isRawOptimisticRunMessage(entry)) {
+    return "running";
+  }
+  if (isRawQueuedUserMessage(entry)) {
+    scan.sawQueued = true;
+    return undefined;
+  }
+  const { runId } = entry.message;
+  return runId === undefined
+    ? undefined
+    : runActivityIndicatorState(scan, runId);
+}
+
+function deriveRunIndicatorStateFromRawMessages(
+  raw: readonly ChatMessageProjectionEntry[],
+  activeRunIds: readonly string[],
+): RunIndicatorState {
   const revokedMessageIds = revokedMessageIdsFromRawMessages(raw);
+  const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
+  const scan: RunIndicatorScanContext = {
+    terminatedRunIds,
+    activeRunIds: new Set(
+      activeRunIds.filter((runId) => {
+        return !terminatedRunIds.has(runId);
+      }),
+    ),
+    queuedRunIds: new Set<string>(),
+    sawQueued: false,
+    sawInactiveRunActivity: false,
+  };
 
-  let hasQueued = false;
-  for (const entry of raw) {
+  for (let index = raw.length - 1; index >= 0; index--) {
+    const entry = raw[index]!;
     const { message } = entry;
     if (revokedMessageIds.has(message.id)) {
       continue;
     }
-    if (
-      isUsageMessage(message) ||
-      isQueueMarkerMessage(message) ||
-      isGoalMarkerMessage(message)
-    ) {
+    if (isUsageMessage(message) || isGoalMarkerMessage(message)) {
       continue;
     }
     if (message.role === "assistant") {
-      if (isUnterminatedAssistantRunMessage(message, terminatedRunIds)) {
-        return "running";
+      const state = assistantRunIndicatorState(scan, message);
+      if (state !== undefined) {
+        return state;
       }
-      hasQueued = false;
       continue;
     }
-    if (isRawOptimisticRunMessage(entry)) {
-      return "running";
-    }
-    if (isRawQueuedUserMessage(entry)) {
-      hasQueued = true;
-      continue;
-    }
-    if (message.runId !== undefined && !terminatedRunIds.has(message.runId)) {
-      return "running";
+    const state = nonAssistantRunIndicatorState(scan, entry);
+    if (state !== undefined) {
+      return state;
     }
   }
-  return hasQueued ? "queued" : null;
-}
-
-function hasUnresolvedQueueMarker(
-  raw: readonly ChatMessageProjectionEntry[],
-): boolean {
-  const queueMarkers = new Map<
-    string,
-    { readonly runId: string; readonly index: number }
-  >();
-  const revokedIds = new Set(
-    raw.flatMap((entry) => {
-      return entry.message.revokesMessageId
-        ? [entry.message.revokesMessageId]
-        : [];
-    }),
-  );
-  const lastAssistantOutputIndexByRunId = new Map<string, number>();
-  const lastTerminalIndexByRunId = new Map<string, number>();
-  const lastInterruptIndexByRunId = new Map<string, number>();
-
-  for (const [index, entry] of raw.entries()) {
-    const { message } = entry;
-    if (isQueueMarkerMessage(message) && message.runId !== undefined) {
-      queueMarkers.set(message.id, { runId: message.runId, index });
-      continue;
-    }
-    if (message.interruptsRunId !== undefined) {
-      lastInterruptIndexByRunId.set(message.interruptsRunId, index);
-    }
-    if (message.role !== "assistant" || message.runId === undefined) {
-      continue;
-    }
-    if (message.runLifecycleEvent !== undefined) {
-      lastTerminalIndexByRunId.set(message.runId, index);
-      continue;
-    }
-    if (message.content !== null) {
-      lastAssistantOutputIndexByRunId.set(message.runId, index);
-    }
-  }
-
-  for (const [markerId, marker] of queueMarkers) {
-    if (revokedIds.has(markerId)) {
-      continue;
-    }
-    const laterAssistantOutputIndex =
-      lastAssistantOutputIndexByRunId.get(marker.runId) ?? -1;
-    const laterTerminalIndex = lastTerminalIndexByRunId.get(marker.runId) ?? -1;
-    const laterInterruptIndex =
-      lastInterruptIndexByRunId.get(marker.runId) ?? -1;
-    if (
-      Math.max(
-        laterAssistantOutputIndex,
-        laterTerminalIndex,
-        laterInterruptIndex,
-      ) <= marker.index
-    ) {
-      return true;
-    }
-  }
-  return false;
+  return scan.activeRunIds.size > 0
+    ? unresolvedActiveRunIndicatorState(scan)
+    : inactiveRunIndicatorState(scan);
 }
 
 function liveRunIdsFromRawMessages(
@@ -1202,8 +1227,8 @@ function compareServerMessageOrder(
     return createdAtOrder;
   }
 
-  const leftSequence = left.sequenceNumber ?? -1;
-  const rightSequence = right.sequenceNumber ?? -1;
+  const leftSequence = chatMessageOrderSequence(left);
+  const rightSequence = chatMessageOrderSequence(right);
   if (leftSequence !== rightSequence) {
     return leftSequence - rightSequence;
   }
@@ -1661,7 +1686,7 @@ function createPagedMessages(
     serverMessages$,
     optimisticMessages$,
   });
-  const latestRunStatus$ = createLatestRunStatus(rawMessages$);
+  const latestRunStatus$ = createLatestRunStatus(rawMessages$, threadData$);
 
   // The thread's active goal, folded from the (goal-marker) message stream so
   // the composer reads it without polling /api/automations. Reads rawMessages$
@@ -1993,10 +2018,16 @@ function createInputRef() {
 
 function createLatestRunStatus(
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
+  threadData$: Computed<Promise<ChatThread | null>>,
 ) {
   return computed(async (get): Promise<string | null> => {
-    const raw = await get(rawMessages$);
-    return deriveRunIndicatorStateFromRawMessages(raw);
+    const rawPromise = get(rawMessages$);
+    const threadPromise = get(threadData$);
+    const [raw, thread] = await Promise.all([rawPromise, threadPromise]);
+    return deriveRunIndicatorStateFromRawMessages(
+      raw,
+      thread?.activeRunIds ?? [],
+    );
   });
 }
 
@@ -2454,11 +2485,13 @@ function createSendOptimisticMessageEntry({
   threadId,
   clientMessageId,
   result,
+  generationTemplate,
   options,
 }: {
   threadId: string;
   clientMessageId: string;
   result: PreparedSendMessageResult;
+  generationTemplate: GenerationTemplateRequest | undefined;
   options: SendMessageOptions | undefined;
 }): OptimisticChatMessageEntry {
   return {
@@ -2469,7 +2502,7 @@ function createSendOptimisticMessageEntry({
       role: "user",
       content: result.prompt,
       attachFiles: result.attachments,
-      generationTemplate: options?.generationTemplate,
+      generationTemplate,
       ...sendMessageRevocationPatch(options),
       createdAt: nowDate().toISOString(),
     },
@@ -2530,6 +2563,7 @@ function createSendMessage(deps: SendMessageDeps) {
         L.debug("sendMessage$ no agentId, abort", { threadId });
         return;
       }
+      const generationTemplate = get(draft.generationTemplate$);
       const hasVisualAttachments = hasVisualDraftAttachments(
         get(draft.attachments$),
       );
@@ -2574,6 +2608,7 @@ function createSendMessage(deps: SendMessageDeps) {
           threadId,
           clientMessageId,
           result,
+          generationTemplate,
           options,
         }),
       );
@@ -2598,7 +2633,7 @@ function createSendMessage(deps: SendMessageDeps) {
               hasTextContent: result.hasTextContent,
               clientMessageId,
               modelSelection,
-              generationTemplate: options?.generationTemplate,
+              generationTemplate,
               ...(options && "computerUseHostId" in options
                 ? { computerUseHostId: options.computerUseHostId ?? null }
                 : {}),
@@ -2662,7 +2697,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
     async (
       { get, set },
       prompt: string,
-      generationTemplate: GenerationTemplateRequest | undefined,
       computerUseHostId: string | null | undefined,
       signal: AbortSignal,
     ) => {
@@ -2673,6 +2707,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         L.debug("queueMessage$ no thread data, abort", { threadId });
         return;
       }
+      const generationTemplate = get(draft.generationTemplate$);
 
       const modelSelection = await get(modelSelection$);
       signal.throwIfAborted();

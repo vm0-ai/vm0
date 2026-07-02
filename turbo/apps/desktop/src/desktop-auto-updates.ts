@@ -8,6 +8,7 @@ import {
 import type { DesktopConfig } from "./config";
 import { shouldNotifyUserForDesktopUpdate } from "./desktop-auto-update-policy";
 import {
+  desktopUpdateArchitecture,
   desktopUpdateFeedBaseUrl,
   shouldInstallDesktopAutoUpdates,
 } from "./desktop-update-feed";
@@ -97,7 +98,9 @@ async function handleDownloadedUpdate(
 export function installDesktopAutoUpdates(
   options: DesktopAutoUpdateOptions,
 ): boolean {
+  const updateArch = desktopUpdateArchitecture(process.arch);
   if (
+    !updateArch ||
     !shouldInstallDesktopAutoUpdates({
       environment: options.config.environment,
       isPackaged: app.isPackaged,
@@ -108,7 +111,7 @@ export function installDesktopAutoUpdates(
     return false;
   }
 
-  const baseUrl = desktopUpdateFeedBaseUrl(options.apiBaseUrl);
+  const baseUrl = desktopUpdateFeedBaseUrl(options.apiBaseUrl, updateArch);
   if (new URL(baseUrl).protocol !== "https:") {
     console.warn("Desktop auto-updates require an HTTPS feed URL");
     return false;

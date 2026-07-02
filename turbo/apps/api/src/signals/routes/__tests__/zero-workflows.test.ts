@@ -180,6 +180,7 @@ describe("zero workflows", () => {
       ownerUserId: owner.userId,
       agentId: agent.agentId,
       canManage: true,
+      canPublish: true,
     });
 
     const ownerList = await accept(
@@ -262,6 +263,7 @@ describe("zero workflows", () => {
       name: workflowName,
       visibility: "public",
       canManage: true,
+      canPublish: false,
     });
 
     const memberList = await accept(
@@ -273,6 +275,7 @@ describe("zero workflows", () => {
         name: workflowName,
         visibility: "public",
         canManage: false,
+        canPublish: false,
       }),
     );
   });
@@ -529,7 +532,7 @@ describe("zero workflows", () => {
     });
 
     const response = await accept(
-      visibilityClient().requestPublish({
+      visibilityClient().publish({
         headers: authHeaders(actor),
         params: { workflowId: privateWorkflow.body.id },
       }),

@@ -1379,10 +1379,70 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("clears thinking for a completed latest run with an older unterminated run", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-stale-run-before-completed-latest-run",
+      activeRunIds: [],
+      chatMessages: [
+        {
+          id: "msg-stale-run-user",
+          role: "user",
+          content: "Start the stale run",
+          runId: "run-stale-without-marker",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-stale-run-assistant",
+          role: "assistant",
+          content: "This old run never received a terminal marker.",
+          runId: "run-stale-without-marker",
+          runEventId: "event-stale-run-assistant-text",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-latest-run-user",
+          role: "user",
+          content: "Run the current task",
+          runId: "run-latest-completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-latest-run-assistant",
+          role: "assistant",
+          content: "The current task is complete.",
+          runId: "run-latest-completed",
+          runEventId: "event-latest-run-assistant-text",
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+        {
+          id: "msg-latest-run-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-latest-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-stale-run-before-completed-latest-run",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The current task is complete."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
   it("keeps thinking when a different run completes while another run is open", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-stale-lifecycle-thinking",
-      activeRunIds: [],
+      activeRunIds: ["run-r2"],
       chatMessages: [
         {
           id: "msg-stale-usage-r1",
@@ -1444,6 +1504,142 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText("Continue the plan")).toBeInTheDocument();
       expect(screen.getByText("The next step is ready.")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+  });
+
+  it("clears thinking when only the latest completed marker is loaded after an older unterminated run", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-completed-marker-only-after-stale-run",
+      activeRunIds: [],
+      chatMessages: [
+        {
+          id: "msg-marker-only-stale-user",
+          role: "user",
+          content: "Start an older run",
+          runId: "run-marker-only-stale",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-marker-only-stale-assistant",
+          role: "assistant",
+          content: "This older run is missing its terminal marker.",
+          runId: "run-marker-only-stale",
+          runEventId: "event-marker-only-stale-assistant-text",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-marker-only-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-marker-only-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-completed-marker-only-after-stale-run",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("This older run is missing its terminal marker."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("keeps thinking for an older active run when a newer run completes", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-concurrent-run-completed-later",
+      activeRunIds: ["run-concurrent-active"],
+      chatMessages: [
+        {
+          id: "msg-concurrent-active-user",
+          role: "user",
+          content: "Keep monitoring deployment",
+          runId: "run-concurrent-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-concurrent-active-assistant",
+          role: "assistant",
+          content: "Monitoring is still running.",
+          runId: "run-concurrent-active",
+          runEventId: "event-concurrent-active-assistant-text",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-concurrent-completed-user",
+          role: "user",
+          content: "Summarize current status",
+          runId: "run-concurrent-completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-concurrent-completed-assistant",
+          role: "assistant",
+          content: "The current status summary is ready.",
+          runId: "run-concurrent-completed",
+          runEventId: "event-concurrent-completed-assistant-text",
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+        {
+          id: "msg-concurrent-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-concurrent-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-concurrent-run-completed-later",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The current status summary is ready."),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+  });
+
+  it("keeps thinking when an older active run is outside the loaded message window", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-active-run-outside-loaded-window",
+      activeRunIds: ["run-active-outside-window"],
+      chatMessages: [
+        {
+          id: "msg-window-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-window-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-active-run-outside-loaded-window",
+    });
+
+    await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
       expect(
         document.querySelector("[data-thinking-indicator]"),
@@ -5235,7 +5431,8 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: assistantReply,
           runId: "run-followup",
-          createdAt: "2026-06-09T10:01:00Z",
+          sequenceNumber: 2,
+          createdAt: "2026-06-09T10:01:01Z",
         },
         completedMarker,
       ],
@@ -5268,6 +5465,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(fetchedMessageIds).toContain(completedMarker.id);
       expect(buttonByText(followupPrompt)).toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });
   });
 
@@ -5629,6 +5827,45 @@ describe("chat lifecycle", () => {
     });
     expect(requiredButton).toBeDisabled();
     expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
+  });
+
+  it("shows Apple Silicon and Intel download links when x64 downloads are enabled", async () => {
+    mockMacUserAgentData("x86");
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-download-x64";
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.DesktopX64Download]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await screen.findByText("Connect my computer"));
+
+    const appleSiliconDownload = await waitFor(() => {
+      return linkByText("Download for Apple Silicon");
+    });
+    expect(appleSiliconDownload).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
+      ),
+    );
+    expect(linkByText("Download for Intel Mac")).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "/api/zero/desktop/updates/stable/darwin/x64/dmg",
+      ),
+    );
+    expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Requires Apple Silicon Mac"),
+    ).not.toBeInTheDocument();
   });
 
   it("does not auto-select the only online Computer Use host", async () => {

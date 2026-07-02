@@ -3,7 +3,10 @@ import { resetSignal, tapError } from "../utils.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
-import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  GenerationTemplateRequest,
+  PersistedAttachment,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
@@ -204,6 +207,11 @@ function createChatAttachment(file: File): ZeroChatAttachment {
 export interface DraftSignals {
   input$: Computed<string>;
   setInput$: Command<void, [string]>;
+  generationTemplate$: Computed<GenerationTemplateRequest | undefined>;
+  setGenerationTemplate$: Command<
+    void,
+    [GenerationTemplateRequest | undefined]
+  >;
   attachments$: Computed<ZeroChatAttachment[]>;
   attachmentUploadSummary$: Computed<Promise<AttachmentUploadSummary>>;
   uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
@@ -211,7 +219,7 @@ export interface DraftSignals {
   removeAttachment$: Command<void, [ZeroChatAttachment]>;
   dragOver$: Computed<boolean>;
   setDragOver$: Command<void, [boolean]>;
-  /** Reset all draft state (input, attachments). Called after send. */
+  /** Reset all draft state (input, template, attachments). Called after send. */
   clear$: Command<void, []>;
   /** Seed draft from persisted server data. Only called when local cache was empty. */
   seed$: Command<void, [content: string, attachments: ZeroChatAttachment[]]>;
@@ -252,6 +260,9 @@ export function createRestoredAttachment(
 
 export function createDraftSignals(): DraftSignals {
   const internalInput$ = state("");
+  const internalGenerationTemplate$ = state<
+    GenerationTemplateRequest | undefined
+  >(undefined);
   const internalAttachments$ = state<ZeroChatAttachment[]>([]);
   const internalDragOver$ = state(false);
 
@@ -261,6 +272,15 @@ export function createDraftSignals(): DraftSignals {
   const setInput$ = command(({ set }, value: string) => {
     set(internalInput$, value);
   });
+
+  const generationTemplate$ = computed((get) => {
+    return get(internalGenerationTemplate$);
+  });
+  const setGenerationTemplate$ = command(
+    ({ set }, value: GenerationTemplateRequest | undefined) => {
+      set(internalGenerationTemplate$, value);
+    },
+  );
 
   const attachments$ = computed((get) => {
     return get(internalAttachments$);
@@ -333,6 +353,7 @@ export function createDraftSignals(): DraftSignals {
 
   const clear$ = command(({ get, set }) => {
     set(internalInput$, "");
+    set(internalGenerationTemplate$, undefined);
     // Cancel all pending uploads before clearing
     for (const attachment of get(internalAttachments$)) {
       set(attachment.cancel$);
@@ -351,6 +372,8 @@ export function createDraftSignals(): DraftSignals {
   return {
     input$,
     setInput$,
+    generationTemplate$,
+    setGenerationTemplate$,
     attachments$,
     attachmentUploadSummary$,
     uploadAttachment$,

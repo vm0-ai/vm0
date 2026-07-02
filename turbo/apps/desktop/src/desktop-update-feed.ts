@@ -2,7 +2,8 @@ import type { DesktopConfig } from "./config";
 
 const DESKTOP_UPDATE_CHANNEL = "stable";
 const DESKTOP_UPDATE_PLATFORM = "darwin";
-const DESKTOP_UPDATE_ARCH = "arm64";
+
+type DesktopUpdateArchitecture = "arm64" | "x64";
 
 interface DesktopAutoUpdateEligibility {
   readonly environment: DesktopConfig["environment"];
@@ -18,13 +19,22 @@ export function shouldInstallDesktopAutoUpdates(
     eligibility.environment === "production" &&
     eligibility.isPackaged &&
     eligibility.platform === DESKTOP_UPDATE_PLATFORM &&
-    eligibility.arch === DESKTOP_UPDATE_ARCH
+    desktopUpdateArchitecture(eligibility.arch) !== null
   );
 }
 
-export function desktopUpdateFeedBaseUrl(apiBaseUrl: string): string {
+export function desktopUpdateArchitecture(
+  arch: NodeJS.Architecture,
+): DesktopUpdateArchitecture | null {
+  return arch === "arm64" || arch === "x64" ? arch : null;
+}
+
+export function desktopUpdateFeedBaseUrl(
+  apiBaseUrl: string,
+  arch: DesktopUpdateArchitecture,
+): string {
   const url = new URL(apiBaseUrl);
-  url.pathname = `/api/desktop/updates/${DESKTOP_UPDATE_CHANNEL}/${DESKTOP_UPDATE_PLATFORM}/${DESKTOP_UPDATE_ARCH}`;
+  url.pathname = `/api/desktop/updates/${DESKTOP_UPDATE_CHANNEL}/${DESKTOP_UPDATE_PLATFORM}/${arch}`;
   url.search = "";
   url.hash = "";
   return url.toString().replace(/\/$/, "");

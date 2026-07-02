@@ -36,7 +36,7 @@ import {
 } from "../zero-page/workflow-trigger-automations-page.tsx";
 import { agentLabel, workflowTitle } from "./workflow-shared.tsx";
 
-type WorkflowGroupKey = "pending" | "public" | "private";
+type WorkflowGroupKey = "public" | "private";
 type WorkflowTriggerEntryMap = ReadonlyMap<
   string,
   readonly WorkflowTriggerAutomationEntry[]
@@ -46,15 +46,11 @@ const WORKFLOW_GROUPS: readonly {
   readonly key: WorkflowGroupKey;
   readonly label: string;
 }[] = [
-  { key: "pending", label: "Pending review" },
   { key: "public", label: "Public" },
   { key: "private", label: "Private" },
 ];
 
 function workflowGroupKey(workflow: ZeroWorkflowSummary): WorkflowGroupKey {
-  if (workflow.visibility === "private" && workflow.requestToPublish) {
-    return "pending";
-  }
   return workflow.visibility;
 }
 
@@ -66,7 +62,7 @@ function groupWorkflows(
       groups[workflowGroupKey(workflow)].push(workflow);
       return groups;
     },
-    { pending: [], public: [], private: [] },
+    { public: [], private: [] },
   );
 }
 
