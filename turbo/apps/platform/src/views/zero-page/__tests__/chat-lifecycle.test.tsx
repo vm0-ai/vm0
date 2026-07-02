@@ -1343,6 +1343,66 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("clears thinking for a completed latest run with an older unterminated run", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-stale-run-before-completed-latest-run",
+      activeRunIds: [],
+      chatMessages: [
+        {
+          id: "msg-stale-run-user",
+          role: "user",
+          content: "Start the stale run",
+          runId: "run-stale-without-marker",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-stale-run-assistant",
+          role: "assistant",
+          content: "This old run never received a terminal marker.",
+          runId: "run-stale-without-marker",
+          runEventId: "event-stale-run-assistant-text",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-latest-run-user",
+          role: "user",
+          content: "Run the current task",
+          runId: "run-latest-completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-latest-run-assistant",
+          role: "assistant",
+          content: "The current task is complete.",
+          runId: "run-latest-completed",
+          runEventId: "event-latest-run-assistant-text",
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+        {
+          id: "msg-latest-run-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-latest-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-stale-run-before-completed-latest-run",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The current task is complete."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
   it("keeps thinking when a different run completes while another run is open", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-stale-lifecycle-thinking",
