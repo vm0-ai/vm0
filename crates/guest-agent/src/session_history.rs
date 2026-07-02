@@ -12,9 +12,8 @@
 //!   resolution until checkpoint time when the file is on disk.
 //!
 //! `read_session_history` is the file-backed entry point. Checkpoint resolves
-//! missing marker payloads first, then calls `read_session_history_from_payload`.
-//! Both paths return history bytes, decompressing legacy `.zst` files when
-//! needed.
+//! missing marker payloads first, then calls the bounded payload reader. Both
+//! paths return history bytes, decompressing legacy `.zst` files when needed.
 //!
 //! See parent epic #11386, sub-issue #11419 for the design rationale.
 //!
