@@ -187,12 +187,16 @@ export const waitForGoogleDriveAndSyncArtifacts$ = command(
         }
 
         const createClient = get(zeroClient$);
-        await authorizeGoogleDriveForAgent({
-          agentId: params.agentId,
-          createClient,
-          signal: sig,
-        });
-        set(reloadAgentConnectorAuthorizations$);
+        await withCleanup(
+          authorizeGoogleDriveForAgent({
+            agentId: params.agentId,
+            createClient,
+            signal: sig,
+          }),
+          () => {
+            set(reloadAgentConnectorAuthorizations$);
+          },
+        );
         sig.throwIfAborted();
 
         await syncArtifactFilesToGoogleDrive({
