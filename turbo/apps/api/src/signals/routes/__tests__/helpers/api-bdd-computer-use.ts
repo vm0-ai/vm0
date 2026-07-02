@@ -103,6 +103,9 @@ function bufferFromBinaryChunk(chunk: unknown): Buffer {
   if (chunk instanceof Uint8Array) {
     return Buffer.from(chunk);
   }
+  if (ArrayBuffer.isView(chunk)) {
+    return Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+  }
   if (chunk instanceof ArrayBuffer) {
     return Buffer.from(chunk);
   }
@@ -156,8 +159,14 @@ async function binaryResponseBodyToBuffer(body: unknown): Promise<Buffer> {
   if (Buffer.isBuffer(body)) {
     return body;
   }
+  if (typeof body === "string") {
+    return Buffer.from(body);
+  }
   if (body instanceof Uint8Array) {
     return Buffer.from(body);
+  }
+  if (ArrayBuffer.isView(body)) {
+    return Buffer.from(body.buffer, body.byteOffset, body.byteLength);
   }
   if (body instanceof ArrayBuffer) {
     return Buffer.from(body);
@@ -168,17 +177,14 @@ async function binaryResponseBodyToBuffer(body: unknown): Promise<Buffer> {
   if (hasWebStreamReader(body)) {
     const reader = body.getReader();
     const chunks: Buffer[] = [];
-    try {
-      while (true) {
-        const result = await reader.read();
-        if (result.done) {
-          break;
-        }
-        chunks.push(bufferFromBinaryChunk(result.value));
+    while (true) {
+      const result = await reader.read();
+      if (result.done) {
+        break;
       }
-    } finally {
-      reader.releaseLock?.();
+      chunks.push(bufferFromBinaryChunk(result.value));
     }
+    reader.releaseLock?.();
     return Buffer.concat(chunks);
   }
   if (isAsyncIterable(body)) {
