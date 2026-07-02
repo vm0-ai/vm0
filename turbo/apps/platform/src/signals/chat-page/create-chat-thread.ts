@@ -7,6 +7,7 @@ import {
   type State,
 } from "ccstate";
 import { animationFrame, delay } from "signal-timers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { IN_VITEST } from "../../env.ts";
 import {
   onRef,
@@ -46,11 +47,14 @@ import {
   type AttachFile,
   type GenerationTemplateRequest,
   type ChatThreadArtifactRun,
-  type ModelSelectionRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
+import {
+  modelSelectionRequestFromSelection,
+  runOptionsFromModelProviderSelection,
+} from "./model-selection-request.ts";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
@@ -59,6 +63,7 @@ import { agentById } from "../agent.ts";
 import { chatMessageOrderSequence } from "../chat-message-order.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import {
   MODEL_FIRST_SELECTION_PROVIDER_ID,
@@ -2545,6 +2550,37 @@ function sendMessageRevocationPatch(options: SendMessageOptions | undefined): {
     : {};
 }
 
+function sendMessageRequestBody(params: {
+  readonly agentId: string;
+  readonly threadId: string;
+  readonly clientMessageId: string;
+  readonly result: PreparedSendMessageResult;
+  readonly modelSelection: ModelProviderSelection | null;
+  readonly codexFastModeEnabled: boolean;
+  readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly options: SendMessageOptions | undefined;
+}) {
+  const runOptions = runOptionsFromModelProviderSelection(
+    params.modelSelection,
+    params.codexFastModeEnabled,
+  );
+  return {
+    agentId: params.agentId,
+    prompt: params.result.prompt,
+    threadId: params.threadId,
+    hasTextContent: params.result.hasTextContent,
+    clientMessageId: params.clientMessageId,
+    modelSelection: modelSelectionRequestFromSelection(params.modelSelection),
+    ...(runOptions ? { runOptions } : {}),
+    generationTemplate: params.generationTemplate,
+    ...(params.options && "computerUseHostId" in params.options
+      ? { computerUseHostId: params.options.computerUseHostId ?? null }
+      : {}),
+    attachFiles: params.result.attachFiles,
+    ...sendMessageRevocationPatch(params.options),
+  };
+}
+
 function hasVisualDraftAttachments(
   attachments: readonly { contentType: string; filename: string }[],
 ): boolean {
@@ -2579,7 +2615,7 @@ function createSendMessage(deps: SendMessageDeps) {
     async (
       { get, set },
       prompt: string,
-      modelSelection: ModelSelectionRequest | null,
+      modelSelection: ModelProviderSelection | null,
       options: SendMessageOptions | undefined,
       signal: AbortSignal,
     ) => {
@@ -2649,25 +2685,23 @@ function createSendMessage(deps: SendMessageDeps) {
         { signal },
       );
 
+      const codexFastModeEnabled =
+        get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
       const client = get(zeroClient$)(chatMessagesContract);
       const [, sendResult] = await Promise.all([
         set(flushDraftClear$, signal),
         accept(
           client.send({
-            body: {
+            body: sendMessageRequestBody({
               agentId,
-              prompt: result.prompt,
-              threadId: threadId,
-              hasTextContent: result.hasTextContent,
               clientMessageId,
+              threadId,
+              result,
               modelSelection,
+              codexFastModeEnabled,
               generationTemplate,
-              ...(options && "computerUseHostId" in options
-                ? { computerUseHostId: options.computerUseHostId ?? null }
-                : {}),
-              attachFiles: result.attachFiles,
-              ...sendMessageRevocationPatch(options),
-            },
+              options,
+            }),
             fetchOptions: { signal },
           }),
           [201],

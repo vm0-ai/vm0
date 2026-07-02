@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import type { ReactNode, SyntheticEvent } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
-import { IconCpu } from "@tabler/icons-react";
+import { IconBolt, IconCpu } from "@tabler/icons-react";
 import {
   Select,
   SelectContent,
@@ -25,6 +25,7 @@ import {
   type ModelProviderType,
   type OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
+import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies";
 import { userModelPreference$ } from "../../../signals/external/user-model-preference";
 import { billingStatusAsync$ } from "../../../signals/zero-page/billing";
@@ -46,6 +47,7 @@ const MODEL_FIRST_SELECTION_PROVIDER_ID =
 export interface ModelProviderSelection {
   modelProviderId: string;
   selectedModel: string;
+  codexServiceTier?: CodexServiceTier;
 }
 
 interface ModelProviderPickerProps {
@@ -68,6 +70,8 @@ interface ModelProviderPickerProps {
    * the normal label on larger screens.
    */
   mobileIconTrigger?: boolean;
+  /** Enables the Codex fast mode split control for eligible ChatGPT subscription models. */
+  codexFastModeEnabled?: boolean;
   /** Controlled open state for programmatic toggle (e.g. keyboard shortcut). */
   open?: boolean;
   /** Callback when the open state changes. */
@@ -254,12 +258,56 @@ function selectionAllowedValue(
     : null;
 }
 
+function codexFastModeAvailableForModel(
+  policies: OrgModelPolicy[],
+  selectedModel: string | null | undefined,
+): boolean {
+  if (!selectedModel || selectedModel !== "gpt-5.5") {
+    return false;
+  }
+  const policy = policies.find((candidate) => {
+    return candidate.model === selectedModel;
+  });
+  return (
+    policy?.routeStatus === "valid" &&
+    policy.defaultProviderType === "codex-oauth-token"
+  );
+}
+
+function selectionWithCodexServiceTier(
+  selection: ModelProviderSelection | null,
+  current: ModelProviderSelection | null,
+  policies: OrgModelPolicy[],
+  codexFastModeEnabled: boolean,
+): ModelProviderSelection | null {
+  if (!selection) {
+    return null;
+  }
+  if (
+    codexFastModeEnabled &&
+    current?.codexServiceTier === "fast" &&
+    codexFastModeAvailableForModel(policies, selection.selectedModel)
+  ) {
+    return { ...selection, codexServiceTier: "fast" };
+  }
+  return selection;
+}
+
+function codexServiceTierForTrigger(
+  available: boolean,
+  value: ModelProviderSelection | null,
+): CodexServiceTier | undefined {
+  return available ? value?.codexServiceTier : undefined;
+}
+
 function ModelFirstTriggerLabel({
   selectedModel,
+  codexServiceTier,
   placeholder,
   mobileIcon,
 }: {
   selectedModel: string | null;
+  codexServiceTier?: CodexServiceTier;
   placeholder: string;
   mobileIcon: boolean;
 }) {
@@ -278,8 +326,16 @@ function ModelFirstTriggerLabel({
       mobileIcon={mobileIcon}
       iconType={iconType}
       label={
-        <span className="truncate">
-          {getCanonicalModelDisplayName(selectedModel)}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate">
+            {getCanonicalModelDisplayName(selectedModel)}
+          </span>
+          {codexServiceTier === "fast" && (
+            <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded bg-amber-500/10 px-1.5 text-[11px] font-medium leading-none text-amber-700 dark:text-amber-300">
+              <IconBolt size={12} stroke={1.8} />
+              Fast
+            </span>
+          )}
         </span>
       }
     />
@@ -323,6 +379,7 @@ function ModelFirstDisabledPickerLabel({
     >
       <ModelFirstTriggerLabel
         selectedModel={selectedModel}
+        codexServiceTier={resolved?.codexServiceTier}
         placeholder={placeholder}
         mobileIcon={mobileIconTrigger}
       />
@@ -414,7 +471,7 @@ function ModelFirstPolicyItems({
         </div>
       ) : (
         <SelectGroup>
-          <SelectLabel className="pl-2 pr-8 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
+          <SelectLabel className="pl-2 pr-8 py-1.5 text-xs font-medium text-muted-foreground">
             Models
           </SelectLabel>
           {policies.map((policy) => {
@@ -432,6 +489,168 @@ function ModelFirstPolicyItems({
   );
 }
 
+function CodexFastModeSplitPanel({
+  checked,
+  selectedModel,
+  onCheckedChange,
+}: {
+  checked: boolean;
+  selectedModel: string;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  const stopSelectDismiss = (event: SyntheticEvent) => {
+    event.stopPropagation();
+  };
+  return (
+    <div className="w-[132px] border-l border-border/70 p-2">
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+        <span className="text-xs font-medium text-foreground">Run speed</span>
+        <span className="truncate text-[11px] text-muted-foreground">
+          {getCanonicalModelDisplayName(selectedModel)}
+        </span>
+      </div>
+      <div
+        role="group"
+        aria-label="Run speed"
+        className="grid gap-1.5"
+        onClick={stopSelectDismiss}
+        onPointerDown={stopSelectDismiss}
+      >
+        <button
+          type="button"
+          aria-pressed={!checked}
+          className={cn(
+            "flex min-h-14 flex-col justify-center rounded-lg border px-2.5 py-2 text-left transition-colors hover:bg-gray-50",
+            checked
+              ? "border-border/70 bg-background text-muted-foreground"
+              : "border-border bg-gray-50 text-foreground",
+          )}
+          onClick={() => {
+            onCheckedChange(false);
+          }}
+        >
+          <span className="text-xs font-medium">Standard</span>
+          <span className="mt-0.5 text-[11px] leading-3 text-muted-foreground">
+            Balanced use
+          </span>
+        </button>
+        <button
+          type="button"
+          aria-pressed={checked}
+          className={cn(
+            "flex min-h-14 flex-col justify-center rounded-lg border px-2.5 py-2 text-left transition-colors hover:bg-gray-50",
+            checked
+              ? "border-border bg-gray-50 text-foreground"
+              : "border-border/70 bg-background text-muted-foreground",
+          )}
+          onClick={() => {
+            onCheckedChange(true);
+          }}
+        >
+          <span className="inline-flex items-center gap-1 text-xs font-medium">
+            <IconBolt size={12} stroke={1.8} />
+            Fast
+          </span>
+          <span className="mt-0.5 text-[11px] leading-3 text-muted-foreground">
+            Prioritize speed
+          </span>
+        </button>
+      </div>
+      <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+        Uses more Codex credits.
+      </p>
+    </div>
+  );
+}
+
+function CodexFastModeSelectControl({
+  selectedModel,
+  codexServiceTier,
+  onChange,
+}: {
+  selectedModel: string;
+  codexServiceTier: CodexServiceTier | undefined;
+  onChange: (value: ModelProviderSelection | null) => void;
+}) {
+  return (
+    <CodexFastModeSplitPanel
+      checked={codexServiceTier === "fast"}
+      selectedModel={selectedModel}
+      onCheckedChange={(checked) => {
+        onChange({
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel,
+          ...(checked ? { codexServiceTier: "fast" as const } : {}),
+        });
+      }}
+    />
+  );
+}
+
+function ModelFirstModelPickerContent({
+  selectValue,
+  placeholder,
+  policies,
+  selectableValue,
+  limitedFree1,
+  codexFastModeAvailable,
+  selectedModel,
+  codexServiceTier,
+  onChange,
+}: {
+  selectValue: string;
+  placeholder: string;
+  policies: OrgModelPolicy[];
+  selectableValue: ModelProviderSelection | null;
+  limitedFree1: boolean;
+  codexFastModeAvailable: boolean;
+  selectedModel: string | null;
+  codexServiceTier: CodexServiceTier | undefined;
+  onChange: (value: ModelProviderSelection | null) => void;
+}) {
+  return (
+    <SelectContent
+      className={cn(
+        "max-h-[280px]",
+        codexFastModeAvailable ? "min-w-[372px]" : "min-w-[260px]",
+      )}
+    >
+      <div
+        className={cn(
+          "min-w-0",
+          codexFastModeAvailable && "grid grid-cols-[minmax(0,1fr)_132px]",
+        )}
+      >
+        <div className="min-w-0">
+          {selectValue === INHERIT_SENTINEL && (
+            <SelectItem
+              value={INHERIT_SENTINEL}
+              className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
+              disabled
+              aria-hidden="true"
+            >
+              {placeholder}
+            </SelectItem>
+          )}
+          <ModelFirstPolicyItems
+            policies={policies}
+            explicitSelectedModel={selectableValue?.selectedModel ?? null}
+            limitedFree1={limitedFree1}
+            showSeparator={false}
+          />
+        </div>
+        {codexFastModeAvailable && selectedModel && (
+          <CodexFastModeSelectControl
+            selectedModel={selectedModel}
+            codexServiceTier={codexServiceTier}
+            onChange={onChange}
+          />
+        )}
+      </div>
+    </SelectContent>
+  );
+}
+
 function ModelFirstModelPicker({
   value,
   onChange,
@@ -439,6 +658,7 @@ function ModelFirstModelPicker({
   triggerClassName,
   compactTrigger,
   mobileIconTrigger,
+  codexFastModeEnabled = false,
   open,
   onOpenChange,
   disabled,
@@ -468,7 +688,13 @@ function ModelFirstModelPicker({
     selectablePolicies,
   );
   const selectedModel = resolved?.selectedModel ?? null;
-  const explicitSelectedModel = selectableValue?.selectedModel ?? null;
+  const codexFastModeAvailable =
+    codexFastModeEnabled &&
+    codexFastModeAvailableForModel(selectablePolicies, selectedModel);
+  const codexServiceTier = codexServiceTierForTrigger(
+    codexFastModeAvailable,
+    value,
+  );
   const selectValue =
     selectableValue?.selectedModel ?? selectedModel ?? INHERIT_SENTINEL;
   const triggerAriaLabel = selectedModel
@@ -506,7 +732,14 @@ function ModelFirstModelPicker({
           openComparePlans();
           return;
         }
-        onChange(modelFirstSelectionFromRaw(raw));
+        onChange(
+          selectionWithCodexServiceTier(
+            modelFirstSelectionFromRaw(raw),
+            value,
+            selectablePolicies,
+            codexFastModeEnabled,
+          ),
+        );
       }}
       open={open}
       onOpenChange={onOpenChange}
@@ -518,29 +751,23 @@ function ModelFirstModelPicker({
         <SelectValue placeholder={placeholder}>
           <ModelFirstTriggerLabel
             selectedModel={selectedModel}
+            codexServiceTier={codexServiceTier}
             placeholder={placeholder}
             mobileIcon={mobileIconTrigger}
           />
         </SelectValue>
       </SelectTrigger>
-      <SelectContent className="max-h-[280px] min-w-[260px]">
-        {selectValue === INHERIT_SENTINEL && (
-          <SelectItem
-            value={INHERIT_SENTINEL}
-            className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
-            disabled
-            aria-hidden="true"
-          >
-            {placeholder}
-          </SelectItem>
-        )}
-        <ModelFirstPolicyItems
-          policies={policies}
-          explicitSelectedModel={explicitSelectedModel}
-          limitedFree1={limitedFree1}
-          showSeparator={false}
-        />
-      </SelectContent>
+      <ModelFirstModelPickerContent
+        selectValue={selectValue}
+        placeholder={placeholder}
+        policies={policies}
+        selectableValue={selectableValue}
+        limitedFree1={limitedFree1}
+        codexFastModeAvailable={codexFastModeAvailable}
+        selectedModel={selectedModel}
+        codexServiceTier={codexServiceTier}
+        onChange={onChange}
+      />
     </Select>
   );
 }
@@ -552,6 +779,7 @@ export function ModelProviderPicker({
   triggerClassName,
   compactTrigger = false,
   mobileIconTrigger = false,
+  codexFastModeEnabled = false,
   open,
   onOpenChange,
   disabled = false,
@@ -564,6 +792,7 @@ export function ModelProviderPicker({
       triggerClassName={triggerClassName}
       compactTrigger={compactTrigger}
       mobileIconTrigger={mobileIconTrigger}
+      codexFastModeEnabled={codexFastModeEnabled}
       open={open}
       onOpenChange={onOpenChange}
       disabled={disabled}

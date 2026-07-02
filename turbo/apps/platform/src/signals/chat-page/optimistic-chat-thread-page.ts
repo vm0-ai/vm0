@@ -1,4 +1,5 @@
 import { command, computed } from "ccstate";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { clerk$ } from "../auth.ts";
 import { patchThreadMeta$ } from "../external/idb-thread-meta-store.ts";
 import {
@@ -65,7 +66,13 @@ import { onRejection, toVoid } from "../utils.ts";
 import { resolveModelFirstUserDefaultSelection } from "../zero-page/model-default-selection.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
+import {
+  modelSelectionRequestFromSelection,
+  runOptionsFromModelProviderSelection,
+} from "./model-selection-request.ts";
+import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 
 export type { OptimisticChatPane };
 export { optimisticChatThread$ };
@@ -101,7 +108,7 @@ const writeThreadAgentToCache$ = command(
 interface SendNewThreadMessageRequest {
   agentId: string;
   prompt: string;
-  modelSelection: ModelSelectionRequest | null;
+  modelSelection: ModelProviderSelection | null;
   generationTemplate: GenerationTemplateRequest | undefined;
   computerUseHostId?: string | null;
 }
@@ -114,11 +121,37 @@ interface SendNewThreadMessageResult {
 interface PreparedNewThreadPayload {
   prompt: string;
   attachFiles: AttachFile[] | undefined;
+  attachments: PagedChatMessage["attachFiles"];
   hasTextContent: boolean;
 }
 
 interface SendNewThreadMessagePending extends PendingChatThread {
   sendResult: Promise<SendNewThreadMessageResult>;
+}
+
+function createNewThreadOptimisticMessageEntry({
+  threadId,
+  clientMessageId,
+  prepared,
+  generationTemplate,
+}: {
+  threadId: string;
+  clientMessageId: string;
+  prepared: PreparedNewThreadPayload;
+  generationTemplate: GenerationTemplateRequest | undefined;
+}): OptimisticChatMessageEntry {
+  return {
+    threadId,
+    optimisticUserMessageAssociation: "run",
+    message: {
+      id: clientMessageId,
+      role: "user",
+      content: prepared.prompt,
+      attachFiles: prepared.attachments,
+      generationTemplate,
+      createdAt: nowDate().toISOString(),
+    },
+  };
 }
 
 function newThreadSendBody({
@@ -127,6 +160,7 @@ function newThreadSendBody({
   clientMessageId,
   prepared,
   modelSelection,
+  codexFastModeEnabled,
   generationTemplate,
   computerUseHostId,
 }: {
@@ -134,21 +168,33 @@ function newThreadSendBody({
   threadId: string;
   clientMessageId: string;
   prepared: PreparedNewThreadPayload;
-  modelSelection: ModelSelectionRequest | null;
+  modelSelection: ModelProviderSelection | null;
+  codexFastModeEnabled: boolean;
   generationTemplate: GenerationTemplateRequest | undefined;
   computerUseHostId?: string | null;
 }) {
+  const runOptions = runOptionsFromModelProviderSelection(
+    modelSelection,
+    codexFastModeEnabled,
+  );
   return {
     agentId,
     prompt: prepared.prompt,
     clientThreadId: threadId,
     hasTextContent: prepared.hasTextContent,
     clientMessageId,
-    modelSelection,
+    modelSelection: modelSelectionRequestFromSelection(modelSelection),
+    ...(runOptions ? { runOptions } : {}),
     generationTemplate,
     ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
     attachFiles: prepared.attachFiles,
   };
+}
+
+function codexFastModeSwitchEnabled(
+  switches: Partial<Record<FeatureSwitchKey, boolean>>,
+): boolean {
+  return switches[FeatureSwitchKey.CodexFastMode] ?? false;
 }
 
 function hasVisualDraftAttachments(
@@ -641,19 +687,15 @@ const sendNewThreadMessage$ = command(
     }
     const threadId = crypto.randomUUID();
     const clientMessageId = crypto.randomUUID();
-    const messageCreatedAt = nowDate().toISOString();
-    set(appendOptimisticChatMessage$, {
-      threadId,
-      optimisticUserMessageAssociation: "run",
-      message: {
-        id: clientMessageId,
-        role: "user",
-        content: prepared.prompt,
-        attachFiles: prepared.attachments,
+    set(
+      appendOptimisticChatMessage$,
+      createNewThreadOptimisticMessageEntry({
+        threadId,
+        clientMessageId,
+        prepared,
         generationTemplate,
-        createdAt: messageCreatedAt,
-      },
-    });
+      }),
+    );
     const { createdAt, pendingThread } = await set(
       mintOptimisticPendingThread$,
       {
@@ -667,7 +709,6 @@ const sendNewThreadMessage$ = command(
     set(draft.clear$);
     const clearDraftResult = set(clearAgentDraftById$, agentId, signal);
     const createClient = get(zeroClient$);
-    const client = createClient(chatMessagesContract);
     const queuedOptimisticMessages$ =
       createQueuedOptimisticUserMessagesForThread(threadId);
     L.debug("sendNewThreadMessage$ POST chat/messages start", {
@@ -678,13 +719,16 @@ const sendNewThreadMessage$ = command(
       const [, result] = await Promise.all([
         clearDraftResult,
         accept(
-          client.send({
+          createClient(chatMessagesContract).send({
             body: newThreadSendBody({
               agentId,
               threadId,
               clientMessageId,
               prepared,
               modelSelection,
+              codexFastModeEnabled: codexFastModeSwitchEnabled(
+                get(featureSwitch$),
+              ),
               generationTemplate,
               computerUseHostId,
             }),
@@ -709,7 +753,8 @@ const sendNewThreadMessage$ = command(
         createClient,
         threadId: result.body.threadId,
         agentId,
-        modelSelection: replayModelSelection,
+        modelSelection:
+          modelSelectionRequestFromSelection(replayModelSelection),
         computerUseHostId:
           computerUseHostId === undefined ? undefined : replayComputerUseHostId,
         entries: queuedMessages,
