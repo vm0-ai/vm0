@@ -1192,9 +1192,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const emptyUploadStarted = new Promise<void>((resolve) => {
       markEmptyUploadStarted = resolve;
     });
-    onTestFinished(() => {
-      releaseEmptyUploads();
-    });
 
     let blockedEmptyPutCount = 0;
     context.mocks.s3.send.mockImplementation((command: unknown) => {
@@ -1215,7 +1212,30 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       agentComposeVersionId: headVersionId,
       prompt: "stale empty artifact initialization must not overwrite head",
     });
-    await emptyUploadStarted;
+    onTestFinished(async () => {
+      releaseEmptyUploads();
+      const created = await staleInitializerRun.then(
+        (run) => {
+          return run;
+        },
+        () => {
+          return undefined;
+        },
+      );
+      if (created) {
+        await api.requestCancelRun(actor, created.runId, [200]);
+      }
+    });
+
+    const gateResult = await Promise.race([
+      emptyUploadStarted.then(() => {
+        return "empty-upload-started" as const;
+      }),
+      staleInitializerRun.then(() => {
+        return "run-finished" as const;
+      }),
+    ]);
+    expect(gateResult).toBe("empty-upload-started");
 
     const artifactFile = storageTextFile(
       "artifact.txt",
@@ -1245,7 +1265,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
 
     releaseEmptyUploads();
-    const created = await staleInitializerRun;
+    await staleInitializerRun;
     expect(blockedEmptyPutCount).toBe(2);
     await expect(
       storages.downloadStorage(actor, {
@@ -1258,8 +1278,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         fileCount: 1,
       }),
     );
-
-    await api.requestCancelRun(actor, created.runId, [200]);
   });
 
   it("keeps a direct launch claimable when run-context ingest fails", async () => {
