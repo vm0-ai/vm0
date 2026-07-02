@@ -5134,7 +5134,7 @@ function dispatchRun(
 
     if (persisted.status === "pending") {
       ingestRunContextSnapshot(launch.runContextSnapshot);
-      await notifyRunnerJob(db, {
+      await notifyRunnerJob({
         runnerGroup: payload.runnerGroup,
         runId: args.run.id,
         profile: payload.profile,
@@ -6668,7 +6668,7 @@ async function committedAtomicLaunchResponse(args: {
   }
 
   ingestRunContextSnapshot(args.committed.runContextSnapshot);
-  await notifyRunnerJob(args.db, {
+  await notifyRunnerJob({
     runnerGroup: args.committed.runnerJobPayload.runnerGroup,
     runId: args.committed.run.id,
     profile: args.committed.runnerJobPayload.profile,
