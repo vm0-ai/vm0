@@ -291,6 +291,7 @@ interface LockedActiveRunRow extends Record<string, unknown> {
 }
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type ClientMessageIdReader = Pick<Db, "select">;
 
 const sendBody$ = bodyResultOf(chatMessagesContract.send);
 // Existing web chat threads carry a small recent-run window in the system
@@ -356,7 +357,7 @@ function resolveExistingClientMessageIdRow(
 }
 
 async function resolveClientMessageId(
-  db: Db,
+  db: ClientMessageIdReader,
   params: {
     readonly clientMessageId: string;
     readonly threadId: string;
@@ -1643,26 +1644,8 @@ function appendUnassociatedUserMessage(params: {
     if (!explicitId) {
       throw new Error("Failed to insert unassociated user message");
     }
-    const [existing] = await tx
-      .select({
-        chatThreadId: chatMessages.chatThreadId,
-        threadUserId: chatThreads.userId,
-        role: chatMessages.role,
-        content: chatMessages.content,
-        runId: chatMessages.runId,
-        revokesMessageId: chatMessages.revokesMessageId,
-        interruptsRunId: chatMessages.interruptsRunId,
-        error: chatMessages.error,
-        messageCreatedAt: chatMessages.createdAt,
-        runStatus: agentRuns.status,
-        runCreatedAt: agentRuns.createdAt,
-      })
-      .from(chatMessages)
-      .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
-      .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
-      .where(eq(chatMessages.id, explicitId))
-      .limit(1);
-    const resolution = resolveExistingClientMessageIdRow(existing, {
+    const resolution = await resolveClientMessageId(tx, {
+      clientMessageId: explicitId,
       threadId: params.threadId,
       userId: params.userId,
     });
@@ -2291,7 +2274,10 @@ async function appendInsufficientCreditsMessages(params: {
   readonly body: NormalSendBody;
   readonly userId: string;
   readonly orgId: string;
-}): Promise<CreatedChatMessageResponse> {
+}): Promise<
+  | CreatedChatMessageResponse
+  | ReturnType<typeof duplicateClientMessageIdResponse>
+> {
   const assistantContent = await buildInsufficientCreditsAssistantMessage({
     db: params.prepared.db,
     orgId: params.orgId,
@@ -2299,16 +2285,6 @@ async function appendInsufficientCreditsMessages(params: {
   const userCreatedAt = nowDate();
   const assistantCreatedAt = new Date(userCreatedAt.getTime() + 1);
   const result = await params.prepared.db.transaction(async (tx) => {
-    await tx
-      .update(chatThreads)
-      .set({ draftContent: null, draftAttachments: null })
-      .where(
-        and(
-          eq(chatThreads.id, params.prepared.thread.threadId),
-          eq(chatThreads.userId, params.userId),
-        ),
-      );
-
     const explicitId = params.body.clientMessageId ?? undefined;
     const fileIds = attachFileIds(params.body.attachFiles);
     const fileMetadata = attachFileMetadata(
@@ -2332,8 +2308,29 @@ async function appendInsufficientCreditsMessages(params: {
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
+    if (!userMessage) {
+      if (!explicitId) {
+        throw new Error("Failed to insert insufficient credits user message");
+      }
+      return {
+        inserted: false as const,
+        resolution: await resolveClientMessageId(tx, {
+          clientMessageId: explicitId,
+          threadId: params.prepared.thread.threadId,
+          userId: params.userId,
+        }),
+      };
+    }
 
-    const createdAt = userMessage?.createdAt ?? userCreatedAt;
+    await tx
+      .update(chatThreads)
+      .set({ draftContent: null, draftAttachments: null })
+      .where(
+        and(
+          eq(chatThreads.id, params.prepared.thread.threadId),
+          eq(chatThreads.userId, params.userId),
+        ),
+      );
     await tx.insert(chatMessages).values({
       chatThreadId: params.prepared.thread.threadId,
       role: "assistant",
@@ -2343,8 +2340,19 @@ async function appendInsufficientCreditsMessages(params: {
       createdAt: assistantCreatedAt,
       runId: null,
     });
-    return { createdAt };
+    return { inserted: true as const, createdAt: userMessage.createdAt };
   });
+
+  if (!result.inserted) {
+    const response = clientMessageIdResolutionResponse(
+      result.resolution,
+      params.prepared.thread.threadId,
+    );
+    if (!response) {
+      throw new Error("Failed to resolve insufficient credits client message");
+    }
+    return response;
+  }
 
   await publishChatMessageCreated(
     params.userId,

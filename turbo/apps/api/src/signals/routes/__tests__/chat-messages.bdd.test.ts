@@ -936,9 +936,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
     const messages = await chat.listThreadMessages(actor, thread.id);
     const concurrentMessages = userMessages(messages.messages).filter(
       (message) => {
-        return (
-          message.id === firstMessageId || message.id === secondMessageId
-        );
+        return message.id === firstMessageId || message.id === secondMessageId;
       },
     );
     expect(concurrentMessages).toHaveLength(2);
@@ -1425,6 +1423,39 @@ describe("CHAT-02: admission without spendable credits", () => {
     expect(retry.body).toStrictEqual(sent.body);
     const afterRetry = await chat.listThreadMessages(actor, sent.body.threadId);
     expect(afterRetry.messages).toHaveLength(2);
+
+    const concurrentClientMessageId = randomUUID();
+    const concurrentBody = {
+      ...sendBody,
+      threadId: sent.body.threadId,
+      clientMessageId: concurrentClientMessageId,
+      prompt: "blocked by suspended plan concurrently",
+    };
+    const [firstConcurrent, secondConcurrent] = await Promise.all([
+      chat.requestSendMessage(actor, concurrentBody, [201]),
+      chat.requestSendMessage(actor, concurrentBody, [201]),
+    ]);
+    expect(firstConcurrent.body).toStrictEqual(secondConcurrent.body);
+
+    const afterConcurrentRetry = await chat.listThreadMessages(
+      actor,
+      sent.body.threadId,
+    );
+    const concurrentUserMessages = userMessages(
+      afterConcurrentRetry.messages,
+    ).filter((message) => {
+      return message.id === concurrentClientMessageId;
+    });
+    expect(concurrentUserMessages).toHaveLength(1);
+    const concurrentGuidanceMessages = assistantMessages(
+      afterConcurrentRetry.messages,
+    ).filter((message) => {
+      return (
+        message.error === "insufficient_credits" &&
+        message.content?.includes("Upgrade to Pro")
+      );
+    });
+    expect(concurrentGuidanceMessages).toHaveLength(2);
   }, 60_000);
 });
 
