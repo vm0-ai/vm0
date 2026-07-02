@@ -270,7 +270,13 @@ async function connectorCategoryLabel(
   return `${category} (${count})`;
 }
 
-function mockTeamAPIs(): void {
+function mockTeamAPIs({
+  customConnector = createCustomConnector(),
+  onCustomConnectorUpdate,
+}: {
+  readonly customConnector?: CustomConnectorResponse;
+  readonly onCustomConnectorUpdate?: () => void;
+} = {}): void {
   context.mocks.data.team([
     createAgent(zeroAgentId, "Zero"),
     createAgent(researchAgentId, "Research Agent"),
@@ -299,7 +305,6 @@ function mockTeamAPIs(): void {
   ]);
   const enabledTypesByAgent = new Map<string, string[]>();
   const enabledCustomConnectorIdsByAgent = new Map<string, string[]>();
-  const customConnector = createCustomConnector();
   context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
     return respond(200, {
       enabledTypes: enabledTypesByAgent.get(params.id) ?? [],
@@ -330,6 +335,7 @@ function mockTeamAPIs(): void {
   context.mocks.api(
     zeroAgentCustomConnectorsContract.update,
     ({ body, params, respond }) => {
+      onCustomConnectorUpdate?.();
       const enabledCustomConnectorIds = applyCustomConnectorUpdate(
         enabledCustomConnectorIdsByAgent.get(params.id) ?? [],
         body,
@@ -427,6 +433,43 @@ describe("team page navigation", () => {
         screen.queryByText("Custom connectors saved"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("does not allow enabling custom connectors without a secret", async () => {
+    let updateCalls = 0;
+    mockTeamAPIs({
+      customConnector: {
+        ...createCustomConnector(),
+        connected: false,
+        missingRequiredFields: ["secret"],
+        configuredFieldKeys: [],
+        hasSecret: false,
+      },
+      onCustomConnectorUpdate: () => {
+        updateCalls += 1;
+      },
+    });
+
+    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Acme Search")).toBeInTheDocument();
+      expect(screen.getByText(/no secret set/)).toBeInTheDocument();
+    });
+
+    const toggle = screen.getByLabelText(
+      "Authorize Acme Search for this agent",
+    );
+    expect(toggle).toBeDisabled();
+
+    fireEvent.click(toggle);
+    expect(updateCalls).toBe(0);
+    expect(
+      screen.queryByText("Custom connectors saved"),
+    ).not.toBeInTheDocument();
   });
 
   it("does not reuse a failed connector authorization draft across agents", async () => {

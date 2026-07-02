@@ -17,12 +17,14 @@ function CustomConnectorPermissionRow({
   connector,
   enabled,
   loading,
+  disabled,
   isLast,
   onToggle,
 }: {
   connector: CustomConnectorResponse;
   enabled: boolean;
   loading: boolean;
+  disabled: boolean;
   isLast: boolean;
   onToggle: (checked: boolean) => void;
 }) {
@@ -51,6 +53,7 @@ function CustomConnectorPermissionRow({
       <LoadingSwitch
         checked={enabled}
         loading={loading}
+        disabled={disabled}
         onCheckedChange={onToggle}
         ariaLabel={`Authorize ${connector.displayName} for this agent`}
       />
@@ -94,12 +97,14 @@ export function JobCustomConnectorsSection() {
         supplied a secret for can be toggled on.
       </div>
       {connectors.map((c, i) => {
+        const enabled = addedSet.has(c.id);
         return (
           <CustomConnectorPermissionRow
             key={c.id}
             connector={c}
-            enabled={addedSet.has(c.id)}
+            enabled={enabled}
             loading={saving}
+            disabled={!c.hasSecret && !enabled}
             isLast={i === connectors.length - 1}
             onToggle={(checked) => {
               return handleToggle(c.id, checked);
