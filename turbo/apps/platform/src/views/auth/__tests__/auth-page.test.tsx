@@ -105,7 +105,7 @@ describe("app auth pages", () => {
     const redirectUrl = new URL(
       screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl ?? "",
     );
-    expect(redirectUrl.origin).toBe("https://www.vm7.ai:8443");
+    expect(redirectUrl.origin).toBe("https://www.vm0.ai");
     expect(redirectUrl.pathname).toBe("/onboarding/491858");
     expect(redirectUrl.searchParams.get("gclid")).toBe("click-123");
     expect(redirectUrl.searchParams.get("utm_campaign")).toBe("summer");
@@ -113,32 +113,35 @@ describe("app auth pages", () => {
     expect(redirectUrl.searchParams.get("vm0_experiment")).toBe("491858");
   });
 
-  it.each([
-    "staging-so.vm6.ai",
-    "staging-www.vm6.ai",
-    "pr-123-so.vm6.ai",
-    "pr-123-www.vm6.ai",
-  ])(
-    "normalizes staging onboarding sign-up redirect from %s",
-    async (hostname) => {
-      const redirectUrl = `https://${hostname}/onboarding/2afcf6?domain=pr-123-api.vm6.ai`;
-      const path = `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
-      setBrowserUrl(`https://app.vm0.ai${path}`);
+  it("keeps sign-up redirects to sibling origins of the current host", async () => {
+    const redirectUrl = "https://www.vm0.ai/onboarding/2afcf6?vm0_theme=light";
+    const path = `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
+    setBrowserUrl(`https://app.vm0.ai${path}`);
 
-      detachedSetupPage({ context, path });
+    detachedSetupPage({ context, path });
 
-      await waitFor(() => {
-        expect(screen.getByTestId("clerk-sign-up")).toBeInTheDocument();
-      });
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-sign-up")).toBeInTheDocument();
+    });
 
-      const normalizedRedirectUrl = new URL(
-        screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl ?? "",
-      );
-      expect(normalizedRedirectUrl.origin).toBe("https://www.vm7.ai:8443");
-      expect(normalizedRedirectUrl.pathname).toBe("/onboarding/2afcf6");
-      expect(normalizedRedirectUrl.searchParams.get("domain")).toBe(
-        "pr-123-api.vm6.ai",
-      );
-    },
-  );
+    expect(
+      screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl,
+    ).toBe(redirectUrl);
+  });
+
+  it("drops sign-up redirects to other environments", async () => {
+    const redirectUrl = "https://staging-www.vm6.ai/onboarding/2afcf6";
+    const path = `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
+    setBrowserUrl(`https://app.vm0.ai${path}`);
+
+    detachedSetupPage({ context, path });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-sign-up")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl,
+    ).toBe("https://app.vm0.ai");
+  });
 });
