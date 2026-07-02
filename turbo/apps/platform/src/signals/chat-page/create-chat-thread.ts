@@ -2544,9 +2544,9 @@ function sendMessageRequestBody(params: {
   readonly clientMessageId: string;
   readonly result: PreparedSendMessageResult;
   readonly modelSelection: ModelProviderSelection | null;
+  readonly codexFastModeEnabled: boolean;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly options: SendMessageOptions | undefined;
-  readonly codexFastModeEnabled: boolean;
 }) {
   const runOptions = runOptionsFromModelProviderSelection(
     params.modelSelection,
@@ -2673,9 +2673,9 @@ function createSendMessage(deps: SendMessageDeps) {
         { signal },
       );
 
-      const client = get(zeroClient$)(chatMessagesContract);
       const codexFastModeEnabled =
         get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
+      const client = get(zeroClient$)(chatMessagesContract);
       const [, sendResult] = await Promise.all([
         set(flushDraftClear$, signal),
         accept(
@@ -2686,9 +2686,9 @@ function createSendMessage(deps: SendMessageDeps) {
               threadId,
               result,
               modelSelection,
+              codexFastModeEnabled,
               generationTemplate,
               options,
-              codexFastModeEnabled,
             }),
             fetchOptions: { signal },
           }),

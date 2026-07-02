@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, SyntheticEvent } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { IconBolt, IconCpu } from "@tabler/icons-react";
 import {
@@ -10,7 +10,6 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
-  Switch,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -71,7 +70,7 @@ interface ModelProviderPickerProps {
    * the normal label on larger screens.
    */
   mobileIconTrigger?: boolean;
-  /** Enables the Codex fast mode row for eligible ChatGPT subscription models. */
+  /** Enables the Codex fast mode split control for eligible ChatGPT subscription models. */
   codexFastModeEnabled?: boolean;
   /** Controlled open state for programmatic toggle (e.g. keyboard shortcut). */
   open?: boolean;
@@ -263,10 +262,7 @@ function codexFastModeAvailableForModel(
   policies: OrgModelPolicy[],
   selectedModel: string | null | undefined,
 ): boolean {
-  if (
-    !selectedModel ||
-    (selectedModel !== "gpt-5.5" && selectedModel !== "gpt-5.4")
-  ) {
+  if (!selectedModel || selectedModel !== "gpt-5.5") {
     return false;
   }
   const policy = policies.find((candidate) => {
@@ -475,7 +471,7 @@ function ModelFirstPolicyItems({
         </div>
       ) : (
         <SelectGroup>
-          <SelectLabel className="pl-2 pr-8 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
+          <SelectLabel className="pl-2 pr-8 py-1.5 text-xs font-medium text-muted-foreground">
             Models
           </SelectLabel>
           {policies.map((policy) => {
@@ -493,63 +489,93 @@ function ModelFirstPolicyItems({
   );
 }
 
-function CodexFastModeControl({
+function CodexFastModeSplitPanel({
   checked,
+  selectedModel,
   onCheckedChange,
 }: {
   checked: boolean;
+  selectedModel: string;
   onCheckedChange: (checked: boolean) => void;
 }) {
+  const stopSelectDismiss = (event: SyntheticEvent) => {
+    event.stopPropagation();
+  };
   return (
-    <>
-      <SelectSeparator className="my-0" />
-      <div className="px-2 py-2">
-        <div className="flex min-w-0 items-center gap-3 rounded-md px-1.5 py-1">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300">
-            <IconBolt size={16} stroke={1.8} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium text-foreground">
-              Fast mode
-            </span>
-            <span className="block truncate text-xs text-muted-foreground">
-              Faster responses, higher Codex credit use
-            </span>
-          </span>
-          <Switch
-            checked={checked}
-            aria-label="Fast mode"
-            onCheckedChange={onCheckedChange}
-            onClick={(event) => {
-              event.stopPropagation();
-            }}
-            onPointerDown={(event) => {
-              event.stopPropagation();
-            }}
-          />
-        </div>
+    <div className="w-[132px] border-l border-border/70 p-2">
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+        <span className="text-xs font-medium text-foreground">Run speed</span>
+        <span className="truncate text-[11px] text-muted-foreground">
+          {getCanonicalModelDisplayName(selectedModel)}
+        </span>
       </div>
-    </>
+      <div
+        role="group"
+        aria-label="Run speed"
+        className="grid gap-1.5"
+        onClick={stopSelectDismiss}
+        onPointerDown={stopSelectDismiss}
+      >
+        <button
+          type="button"
+          aria-pressed={!checked}
+          className={cn(
+            "flex min-h-14 flex-col justify-center rounded-lg border px-2.5 py-2 text-left transition-colors hover:bg-gray-50",
+            checked
+              ? "border-border/70 bg-background text-muted-foreground"
+              : "border-border bg-gray-50 text-foreground",
+          )}
+          onClick={() => {
+            onCheckedChange(false);
+          }}
+        >
+          <span className="text-xs font-medium">Standard</span>
+          <span className="mt-0.5 text-[11px] leading-3 text-muted-foreground">
+            Balanced use
+          </span>
+        </button>
+        <button
+          type="button"
+          aria-pressed={checked}
+          className={cn(
+            "flex min-h-14 flex-col justify-center rounded-lg border px-2.5 py-2 text-left transition-colors hover:bg-gray-50",
+            checked
+              ? "border-border bg-gray-50 text-foreground"
+              : "border-border/70 bg-background text-muted-foreground",
+          )}
+          onClick={() => {
+            onCheckedChange(true);
+          }}
+        >
+          <span className="inline-flex items-center gap-1 text-xs font-medium">
+            <IconBolt size={12} stroke={1.8} />
+            Fast
+          </span>
+          <span className="mt-0.5 text-[11px] leading-3 text-muted-foreground">
+            Prioritize speed
+          </span>
+        </button>
+      </div>
+      <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+        Uses more Codex credits.
+      </p>
+    </div>
   );
 }
 
 function CodexFastModeSelectControl({
-  available,
   selectedModel,
   codexServiceTier,
   onChange,
 }: {
-  available: boolean;
-  selectedModel: string | null;
+  selectedModel: string;
   codexServiceTier: CodexServiceTier | undefined;
   onChange: (value: ModelProviderSelection | null) => void;
 }) {
-  if (!available || !selectedModel) {
-    return null;
-  }
   return (
-    <CodexFastModeControl
+    <CodexFastModeSplitPanel
       checked={codexServiceTier === "fast"}
+      selectedModel={selectedModel}
       onCheckedChange={(checked) => {
         onChange({
           modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
@@ -583,29 +609,44 @@ function ModelFirstModelPickerContent({
   onChange: (value: ModelProviderSelection | null) => void;
 }) {
   return (
-    <SelectContent className="max-h-[280px] min-w-[260px]">
-      {selectValue === INHERIT_SENTINEL && (
-        <SelectItem
-          value={INHERIT_SENTINEL}
-          className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
-          disabled
-          aria-hidden="true"
-        >
-          {placeholder}
-        </SelectItem>
+    <SelectContent
+      className={cn(
+        "max-h-[280px]",
+        codexFastModeAvailable ? "min-w-[372px]" : "min-w-[260px]",
       )}
-      <ModelFirstPolicyItems
-        policies={policies}
-        explicitSelectedModel={selectableValue?.selectedModel ?? null}
-        limitedFree1={limitedFree1}
-        showSeparator={false}
-      />
-      <CodexFastModeSelectControl
-        available={codexFastModeAvailable}
-        selectedModel={selectedModel}
-        codexServiceTier={codexServiceTier}
-        onChange={onChange}
-      />
+    >
+      <div
+        className={cn(
+          "min-w-0",
+          codexFastModeAvailable && "grid grid-cols-[minmax(0,1fr)_132px]",
+        )}
+      >
+        <div className="min-w-0">
+          {selectValue === INHERIT_SENTINEL && (
+            <SelectItem
+              value={INHERIT_SENTINEL}
+              className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
+              disabled
+              aria-hidden="true"
+            >
+              {placeholder}
+            </SelectItem>
+          )}
+          <ModelFirstPolicyItems
+            policies={policies}
+            explicitSelectedModel={selectableValue?.selectedModel ?? null}
+            limitedFree1={limitedFree1}
+            showSeparator={false}
+          />
+        </div>
+        {codexFastModeAvailable && selectedModel && (
+          <CodexFastModeSelectControl
+            selectedModel={selectedModel}
+            codexServiceTier={codexServiceTier}
+            onChange={onChange}
+          />
+        )}
+      </div>
     </SelectContent>
   );
 }

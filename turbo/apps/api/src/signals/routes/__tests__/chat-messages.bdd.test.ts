@@ -1684,9 +1684,14 @@ describe("CHAT-02: explicit provider pins", () => {
     }
   }, 90_000);
 
-  it("passes Codex fast mode only for ChatGPT subscription GPT-5.5 and GPT-5.4 sends", async () => {
+  it("passes Codex fast mode only for feature-enabled ChatGPT subscription GPT-5.5 sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    const actorWithOrg = { ...actor, orgId };
 
     await misc.upsertPersonalModelProvider(
       actor,
@@ -1706,13 +1711,6 @@ describe("CHAT-02: explicit provider pins", () => {
         modelProviderId: null,
       },
       {
-        model: "gpt-5.4-mini",
-        isDefault: false,
-        defaultProviderType: "codex-oauth-token",
-        credentialScope: "member",
-        modelProviderId: null,
-      },
-      {
         model: "gpt-5.4",
         isDefault: false,
         defaultProviderType: "codex-oauth-token",
@@ -1721,13 +1719,13 @@ describe("CHAT-02: explicit provider pins", () => {
       },
     ]);
 
-    const disabledThreadId = randomUUID();
-    const disabled = await chat.requestSendMessage(
+    const switchOffThreadId = randomUUID();
+    const switchOff = await chat.requestSendMessage(
       actor,
       {
         agentId,
-        prompt: "fast mode switch off",
-        clientThreadId: disabledThreadId,
+        prompt: "run codex fast with switch off",
+        clientThreadId: switchOffThreadId,
         modelSelection: {
           modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
           selectedModel: "gpt-5.5",
@@ -1736,23 +1734,15 @@ describe("CHAT-02: explicit provider pins", () => {
       },
       [400],
     );
-    expectApiError(disabled.body);
-    expect(disabled.body.error.message).toBe(
+    expectApiError(switchOff.body);
+    expect(switchOff.body.error.message).toBe(
       "Codex fast mode is not enabled for this workspace",
     );
-    await chat.requestReadThread(actor, disabledThreadId, [404]);
+    await chat.requestReadThread(actor, switchOffThreadId, [404]);
 
-    const orgId = actor.orgId;
-    if (!orgId) {
-      throw new Error("Expected entitled chat actor to have an org");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      {
-        [FeatureSwitchKey.CodexFastMode]: true,
-      },
-    );
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.CodexFastMode]: true,
+    });
 
     const fast = await sendChatRun(actor, {
       agentId,
@@ -1776,35 +1766,16 @@ describe("CHAT-02: explicit provider pins", () => {
     );
     await cancelChatRun(actor, fast.runId);
 
-    const fastGpt54 = await sendChatRun(actor, {
-      agentId,
-      prompt: "run codex fast 5.4",
-      modelSelection: {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "gpt-5.4",
-      },
-      runOptions: { codexServiceTier: "fast" },
-    });
-    const { claim: gpt54Claim } = await claimChatRun(
-      runnerGroup,
-      fastGpt54.runId,
-    );
-    const gpt54Environment = claimEnvironment(gpt54Claim);
-    expect(gpt54Claim.cliAgentType).toBe("codex");
-    expect(gpt54Environment.OPENAI_MODEL).toBe("gpt-5.4");
-    expect(gpt54Environment.VM0_CODEX_SERVICE_TIER).toBe("fast");
-    await cancelChatRun(actor, fastGpt54.runId);
-
     const rejectedThreadId = randomUUID();
     const rejected = await chat.requestSendMessage(
       actor,
       {
         agentId,
-        prompt: "mini cannot fast",
+        prompt: "5.4 cannot fast",
         clientThreadId: rejectedThreadId,
         modelSelection: {
           modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-          selectedModel: "gpt-5.4-mini",
+          selectedModel: "gpt-5.4",
         },
         runOptions: { codexServiceTier: "fast" },
       },
@@ -1812,7 +1783,7 @@ describe("CHAT-02: explicit provider pins", () => {
     );
     expectApiError(rejected.body);
     expect(rejected.body.error.message).toBe(
-      "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 or GPT-5.4 runs",
+      "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 runs",
     );
     await chat.requestReadThread(actor, rejectedThreadId, [404]);
   }, 90_000);

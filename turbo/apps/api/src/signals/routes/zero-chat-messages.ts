@@ -2643,7 +2643,7 @@ function isCodexFastServiceTierModel(
   const bareModel = model?.startsWith("openai/")
     ? model.slice("openai/".length)
     : model;
-  return bareModel === "gpt-5.5" || bareModel === "gpt-5.4";
+  return bareModel === "gpt-5.5";
 }
 
 function validateCodexServiceTier(params: {
@@ -2667,7 +2667,7 @@ function validateCodexServiceTier(params: {
     return undefined;
   }
   return badRequestMessage(
-    "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 or GPT-5.4 runs",
+    "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 runs",
   );
 }
 
