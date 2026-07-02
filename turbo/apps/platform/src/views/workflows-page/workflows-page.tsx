@@ -440,18 +440,10 @@ function workflowNextRunBucket(
   return soonest <= weekAhead ? "week" : "later";
 }
 
-function WorkflowSectionHeader({
-  label,
-  count,
-}: {
-  readonly label: string;
-  readonly count: number;
-}) {
+function WorkflowSectionHeader({ label }: { readonly label: string }) {
   return (
-    <div className="flex items-center gap-2 px-5 pb-1.5 pt-4">
+    <div className="px-5 pb-1.5 pt-4">
       <span className="text-xs font-semibold text-foreground/80">{label}</span>
-      <span className="text-xs text-muted-foreground/70">{count}</span>
-      <span className="h-px flex-1 bg-border/70" />
     </div>
   );
 }
@@ -525,10 +517,7 @@ function WorkflowNextRunGroups({
         return (
           <section key={section.key}>
             {index > 0 ? <WorkflowRowDivider /> : null}
-            <WorkflowSectionHeader
-              label={section.label}
-              count={sectionWorkflows.length}
-            />
+            <WorkflowSectionHeader label={section.label} />
             <WorkflowRowList
               workflows={sectionWorkflows}
               entriesByWorkflowId={entriesByWorkflowId}
