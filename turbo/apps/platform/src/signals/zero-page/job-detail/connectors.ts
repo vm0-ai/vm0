@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroClient$ } from "../../api-client.ts";
+import { withCleanup } from "../../utils.ts";
 import { accept } from "../../../lib/accept.ts";
 import { agentDetail$ } from "./detail.ts";
 
@@ -33,39 +34,77 @@ const authorizedConnectors$ = computed(async (get): Promise<string[]> => {
   return result.body.enabledTypes;
 });
 
-const internalAuthorizedConnectors$ = state<string[] | null>(null);
+type AuthorizedConnectorsDraft = {
+  readonly agentId: string;
+  readonly enabledTypes: readonly string[];
+};
+
+const internalAuthorizedConnectors$ = state<AuthorizedConnectorsDraft | null>(
+  null,
+);
 
 export const agentAuthorizedConnectors$ = computed(
   async (get): Promise<string[]> => {
+    const detail = await get(agentDetail$);
+    if (!detail?.agentId) {
+      return [];
+    }
     const local = get(internalAuthorizedConnectors$);
-    if (local !== null) {
-      return local;
+    if (local?.agentId === detail.agentId) {
+      return [...local.enabledTypes];
     }
     return await get(authorizedConnectors$);
   },
 );
 
-export const authorizeAgentConnector$ = command(
-  async ({ get, set }, name: string, _signal: AbortSignal) => {
-    if (get(internalAuthorizedConnectors$) === null) {
-      set(internalAuthorizedConnectors$, await get(authorizedConnectors$));
+const setAgentConnectorDraft$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly name: string;
+      readonly operation: "add" | "remove";
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const detail = await get(agentDetail$);
+    signal.throwIfAborted();
+    if (!detail?.agentId) {
+      return;
     }
-    set(internalAuthorizedConnectors$, (prev) => {
-      return Array.from(new Set([...(prev ?? []), name]));
+    const current = get(internalAuthorizedConnectors$);
+    const base =
+      current?.agentId === detail.agentId
+        ? current.enabledTypes
+        : await get(authorizedConnectors$);
+    signal.throwIfAborted();
+    const enabledTypes =
+      args.operation === "add"
+        ? Array.from(new Set([...base, args.name]))
+        : base.filter((s) => {
+            return s !== args.name;
+          });
+    set(internalAuthorizedConnectors$, {
+      agentId: detail.agentId,
+      enabledTypes,
     });
   },
 );
 
+const clearAgentConnectorDraft$ = command(({ set }, agentId: string): void => {
+  set(internalAuthorizedConnectors$, (current) => {
+    return current?.agentId === agentId ? null : current;
+  });
+});
+
+export const authorizeAgentConnector$ = command(
+  async ({ set }, name: string, signal: AbortSignal) => {
+    await set(setAgentConnectorDraft$, { name, operation: "add" }, signal);
+  },
+);
+
 export const deauthorizeAgentConnector$ = command(
-  async ({ get, set }, name: string, _signal: AbortSignal) => {
-    if (get(internalAuthorizedConnectors$) === null) {
-      set(internalAuthorizedConnectors$, await get(authorizedConnectors$));
-    }
-    set(internalAuthorizedConnectors$, (prev) => {
-      return (prev ?? []).filter((s) => {
-        return s !== name;
-      });
-    });
+  async ({ set }, name: string, signal: AbortSignal) => {
+    await set(setAgentConnectorDraft$, { name, operation: "remove" }, signal);
   },
 );
 
@@ -87,17 +126,22 @@ export const saveAgentConnectors$ = command(
     }
 
     const client = get(zeroClient$)(zeroUserConnectorsContract);
-    await accept(
-      client.update({
-        params: { id: detail.agentId },
-        body: { enabledTypes: [name], operation },
-        fetchOptions: { signal },
-      }),
-      [200],
+    await withCleanup(
+      (async () => {
+        await accept(
+          client.update({
+            params: { id: detail.agentId },
+            body: { enabledTypes: [name], operation },
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        signal.throwIfAborted();
+      })(),
+      () => {
+        set(clearAgentConnectorDraft$, detail.agentId);
+        set(reloadAgentConnectors$);
+      },
     );
-    signal.throwIfAborted();
-
-    set(internalAuthorizedConnectors$, null);
-    set(reloadAgentConnectors$);
   },
 );

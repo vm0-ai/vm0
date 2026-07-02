@@ -32,14 +32,23 @@ const seededCustomConnectors$ = computed(async (get): Promise<string[]> => {
   return result.body.enabledIds;
 });
 
-const internalAdded$ = state<string[] | null>(null);
+type CustomConnectorsDraft = {
+  readonly agentId: string;
+  readonly enabledIds: readonly string[];
+};
+
+const internalAdded$ = state<CustomConnectorsDraft | null>(null);
 const internalToggleSaving$ = state(false);
 
 export const agentAddedCustomConnectors$ = computed(
   async (get): Promise<string[]> => {
+    const detail = await get(agentDetail$);
+    if (!detail?.agentId) {
+      return [];
+    }
     const local = get(internalAdded$);
-    if (local !== null) {
-      return local;
+    if (local?.agentId === detail.agentId) {
+      return [...local.enabledIds];
     }
     return await get(seededCustomConnectors$);
   },
@@ -49,27 +58,60 @@ export const agentCustomConnectorToggleSaving$ = computed((get): boolean => {
   return get(internalToggleSaving$);
 });
 
-const addAgentCustomConnector$ = command(
-  async ({ get, set }, id: string, _signal: AbortSignal) => {
-    if (get(internalAdded$) === null) {
-      set(internalAdded$, await get(seededCustomConnectors$));
+const setAgentCustomConnectorDraft$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly id: string;
+      readonly operation: "add" | "remove";
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const detail = await get(agentDetail$);
+    signal.throwIfAborted();
+    if (!detail?.agentId) {
+      return;
     }
-    set(internalAdded$, (prev) => {
-      return Array.from(new Set([...(prev ?? []), id]));
+    const current = get(internalAdded$);
+    const base =
+      current?.agentId === detail.agentId
+        ? current.enabledIds
+        : await get(seededCustomConnectors$);
+    signal.throwIfAborted();
+    const enabledIds =
+      args.operation === "add"
+        ? Array.from(new Set([...base, args.id]))
+        : base.filter((s) => {
+            return s !== args.id;
+          });
+    set(internalAdded$, {
+      agentId: detail.agentId,
+      enabledIds,
     });
   },
 );
 
-const removeAgentCustomConnector$ = command(
-  async ({ get, set }, id: string, _signal: AbortSignal) => {
-    if (get(internalAdded$) === null) {
-      set(internalAdded$, await get(seededCustomConnectors$));
-    }
-    set(internalAdded$, (prev) => {
-      return (prev ?? []).filter((s) => {
-        return s !== id;
-      });
+const clearAgentCustomConnectorDraft$ = command(
+  ({ set }, agentId: string): void => {
+    set(internalAdded$, (current) => {
+      return current?.agentId === agentId ? null : current;
     });
+  },
+);
+
+const addAgentCustomConnector$ = command(
+  async ({ set }, id: string, signal: AbortSignal) => {
+    await set(setAgentCustomConnectorDraft$, { id, operation: "add" }, signal);
+  },
+);
+
+const removeAgentCustomConnector$ = command(
+  async ({ set }, id: string, signal: AbortSignal) => {
+    await set(
+      setAgentCustomConnectorDraft$,
+      { id, operation: "remove" },
+      signal,
+    );
   },
 );
 
@@ -87,18 +129,23 @@ const saveAgentCustomConnectors$ = command(
     }
 
     const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
-    await accept(
-      client.update({
-        params: { id: detail.agentId },
-        body: { enabledIds: [id], operation },
-        fetchOptions: { signal },
-      }),
-      [200],
+    await withCleanup(
+      (async () => {
+        await accept(
+          client.update({
+            params: { id: detail.agentId },
+            body: { enabledIds: [id], operation },
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        signal.throwIfAborted();
+      })(),
+      () => {
+        set(clearAgentCustomConnectorDraft$, detail.agentId);
+        set(reloadAgentCustomConnectors$);
+      },
     );
-    signal.throwIfAborted();
-
-    set(internalAdded$, null);
-    set(reloadAgentCustomConnectors$);
   },
 );
 
