@@ -305,7 +305,7 @@ async fn success_checkpoint_uploads_gzip_session_history_when_acknowledged() {
 }
 
 #[tokio::test]
-async fn success_checkpoint_keeps_large_non_utf8_session_history_identity_encoded() {
+async fn success_checkpoint_uploads_large_non_utf8_session_history_as_gzip_when_acknowledged() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
@@ -323,22 +323,33 @@ async fn success_checkpoint_keeps_large_non_utf8_session_history_identity_encode
             .json_body_includes(r#"{"runId":"test-run-001"}"#)
             .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
             .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
-            .json_body_includes(format!(r#"{{"encodedSize":{history_size}}}"#))
-            .json_body_includes(r#"{"encoding":"identity"}"#);
+            .json_body_includes(r#"{"encoding":"gzip"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
             .json_body(json!({
                 "presignedUrl": server.url("/test/large-non-utf8-history-upload"),
-                "existing": false
+                "existing": false,
+                "encoding": "gzip"
             }));
     });
-    let upload_len = history_size.to_string();
     let upload_body = history.clone();
     let upload_mock = server.mock(|when, then| {
         when.method(PUT)
             .path("/test/large-non-utf8-history-upload")
             .header("Content-Type", "application/octet-stream");
-        then.respond_with(move |req| upload_validation_response(req, &upload_body, &upload_len));
+        then.respond_with(move |req| {
+            if request_header_absent(req, "authorization")
+                && request_header_absent(req, "x-vercel-protection-bypass")
+                && req.body_ref() != upload_body.as_slice()
+            {
+                let mut decoded = Vec::new();
+                let decode_result = GzDecoder::new(req.body_ref()).read_to_end(&mut decoded);
+                if decode_result.is_ok() && decoded == upload_body {
+                    return http_status(200);
+                }
+            }
+            http_status(400)
+        });
     });
     let checkpoint_mock = server.mock(|when, then| {
         when.method(POST)

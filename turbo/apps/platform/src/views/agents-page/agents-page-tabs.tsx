@@ -2,7 +2,7 @@ import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { IconLoader2, IconWand } from "@tabler/icons-react";
+import { IconLoader2, IconPlus, IconWand } from "@tabler/icons-react";
 import {
   Card,
   CardContent,
@@ -214,13 +214,14 @@ function AgentTabsView({
         <Button
           variant="outline"
           size="sm"
-          className="zero-btn-morandi h-9 shrink-0 rounded-lg border"
+          className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
           disabled={createDisabled}
           onClick={() => {
             return onCreate(activeTab);
           }}
         >
-          Create
+          <IconPlus size={14} stroke={2} />
+          New agent
         </Button>
       </div>
 
@@ -626,7 +627,7 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="block w-fit max-w-full truncate text-sm font-medium text-foreground underline decoration-dashed decoration-[hsl(var(--gray-400))] underline-offset-4">
+                    <span className="block w-fit max-w-full truncate text-sm font-medium text-foreground underline decoration-dotted decoration-foreground/40 decoration-[1px] underline-offset-2">
                       {displayName}
                     </span>
                   </TooltipTrigger>
