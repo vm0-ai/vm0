@@ -134,6 +134,33 @@ mod tests {
                 .all(|part| matches!(part.parse::<u32>(), Ok(value) if *part == value.to_string()))
     }
 
+    fn template_build_installs_apt_package(package: &str) -> bool {
+        let mut in_apt_install = false;
+        for raw_line in TEMPLATE_BUILD_SCRIPT.lines() {
+            let line = raw_line.trim();
+            if line == r#"apt-get install -y \"# {
+                in_apt_install = true;
+                continue;
+            }
+
+            if !in_apt_install {
+                continue;
+            }
+
+            let package_line = line.strip_suffix('\\').unwrap_or(line).trim();
+            if package_line
+                .split_whitespace()
+                .any(|token| token == package)
+            {
+                return true;
+            }
+            if !line.ends_with('\\') {
+                in_apt_install = false;
+            }
+        }
+        false
+    }
+
     struct ProcessGroupCleanup {
         pgid_file: PathBuf,
     }
@@ -487,6 +514,18 @@ exit 1
         assert!(
             VERIFY_SCRIPT.contains(r#""${MOUNT_DIR}/usr/bin/pnpm""#),
             "verify-rootfs.sh should verify pnpm is present in sandbox images"
+        );
+    }
+
+    #[test]
+    fn template_installs_and_verifies_ffmpeg() {
+        assert!(
+            template_build_installs_apt_package("ffmpeg"),
+            "build-template.sh should install ffmpeg into sandbox templates"
+        );
+        assert!(
+            VERIFY_SCRIPT.contains(r#"check_required_executable "/usr/bin/ffmpeg" "ffmpeg""#),
+            "verify-rootfs.sh should verify ffmpeg is present in sandbox images"
         );
     }
 
