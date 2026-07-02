@@ -298,15 +298,20 @@ export function createUserConfigBddApi(context: TestContext) {
       credential: Credential,
       agentId: string,
       enabledTypes: readonly string[],
+      operation?: "replace" | "add" | "remove",
     ): Promise<{ readonly enabledTypes: string[] }> {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
         zeroUserConnectorsContract,
       );
+      const body =
+        operation === undefined
+          ? { enabledTypes: [...enabledTypes] }
+          : { enabledTypes: [...enabledTypes], operation };
       const response = await accept(
         client.update({
           headers: authenticate(credential),
           params: { id: agentId },
-          body: { enabledTypes: [...enabledTypes] },
+          body,
         }),
         [200],
       );
@@ -318,15 +323,20 @@ export function createUserConfigBddApi(context: TestContext) {
       agentId: string,
       enabledTypes: readonly string[],
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+      operation?: "replace" | "add" | "remove",
     ) {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
         zeroUserConnectorsContract,
       );
+      const body =
+        operation === undefined
+          ? { enabledTypes: [...enabledTypes] }
+          : { enabledTypes: [...enabledTypes], operation };
       return await accept(
         client.update({
           headers: authenticate(credential),
           params: { id: agentId },
-          body: { enabledTypes: [...enabledTypes] },
+          body,
         }),
         statuses,
       );

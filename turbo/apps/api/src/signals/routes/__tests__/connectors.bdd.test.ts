@@ -1506,6 +1506,54 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await bdd.deleteAgent(admin, agent.agentId);
   });
 
+  it("saves a connector proposal without authorizing when required values are missing", async () => {
+    const bdd = createBddApi(context);
+    bdd.acceptAgentStorageWrites();
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const agent = await bdd.createAgent(admin, {
+      displayName: "BDD Missing Proposal Value Agent",
+    });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    const saved = await connectorsApi.saveCustomConnectorProposal(admin, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Missing Proposal Value API",
+        prefixTemplates: [`https://${rand}.example.test/v1/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [],
+      },
+      values: [],
+      agentId: agent.agentId,
+    });
+
+    expect(saved.authorizedAgentId).toBeUndefined();
+    expect(saved.connector).toMatchObject({
+      connected: false,
+      missingRequiredFields: ["api_key"],
+      configuredFieldKeys: [],
+    });
+    await expect(
+      connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
+    ).resolves.toStrictEqual([]);
+
+    await connectorsApi.deleteCustomConnector(admin, saved.connector.id);
+    await bdd.deleteAgent(admin, agent.agentId);
+  });
+
   it("rejects connector proposal host variables that change URL structure", async () => {
     const bdd = createBddApi(context);
     const admin = bdd.user({ orgRole: "org:admin" });

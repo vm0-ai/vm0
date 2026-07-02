@@ -22,10 +22,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@vm0/ui";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import {
   groupFirewallMetadataPermissionsByCategory,
   type FirewallPermissionDetailMetadata,
@@ -107,6 +104,7 @@ interface PermissionsDrawerProps {
   agentId: string;
   targetKind?: "agent" | "workflow";
   connectorType: ConnectorType;
+  connectorLabel: string;
   displayName: string;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
@@ -188,16 +186,16 @@ function buildInitialPermissionDrawerState({
 
 function PermissionsDrawerHeader({
   connectorType,
+  connectorLabel,
   displayName,
   targetKind = "agent",
   surface,
 }: Pick<
   PermissionsDrawerProps,
-  "connectorType" | "displayName" | "targetKind"
+  "connectorType" | "connectorLabel" | "displayName" | "targetKind"
 > & {
   readonly surface: PermissionsSurface;
 }) {
-  const connectorLabel = CONNECTOR_TYPES[connectorType].label;
   const title = (
     <>
       {connectorLabel} permissions
@@ -1549,6 +1547,7 @@ function PermissionsContent({
     <>
       <PermissionsDrawerHeader
         connectorType={props.connectorType}
+        connectorLabel={props.connectorLabel}
         displayName={props.displayName}
         targetKind={props.targetKind}
         surface={surface}

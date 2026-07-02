@@ -1,8 +1,5 @@
 import { command, computed, state } from "ccstate";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroClient$ } from "../../api-client.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
@@ -50,6 +47,7 @@ export const confirmPermissionDialog$ = command(
   async (
     { get, set },
     connectorType: ConnectorType,
+    connectorLabel: string,
     onClose: () => void,
     signal: AbortSignal,
   ): Promise<void> => {
@@ -60,36 +58,35 @@ export const confirmPermissionDialog$ = command(
     }
     const createClient = get(zeroClient$);
     const client = createClient(zeroUserConnectorsContract);
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       [...selected].map(async (agentId) => {
         signal.throwIfAborted();
-        const existing = await accept(
-          client.get({
-            params: { id: agentId },
-            fetchOptions: { signal },
-          }),
-          [200],
-        );
-        signal.throwIfAborted();
-        const current = existing.body.enabledTypes;
-        if (current.includes(connectorType)) {
-          return;
-        }
-        await accept(
+        const result = await accept(
           client.update({
             params: { id: agentId },
-            body: { enabledTypes: [...current, connectorType] },
+            body: { enabledTypes: [connectorType], operation: "add" },
             fetchOptions: { signal },
           }),
-          [200],
+          [200, 404],
         );
+        return result.status === 200;
       }),
     );
     signal.throwIfAborted();
-    const config = CONNECTOR_TYPES[connectorType];
-    toast.success(
-      `${config.label} enabled for ${selected.size} agent${selected.size > 1 ? "s" : ""}`,
-    );
+    const failed = results.find((result): result is PromiseRejectedResult => {
+      return result.status === "rejected";
+    });
+    if (failed) {
+      throw failed.reason;
+    }
+    const enabledCount = results.filter((result) => {
+      return result.status === "fulfilled" && result.value;
+    }).length;
+    if (enabledCount > 0) {
+      toast.success(
+        `${connectorLabel} enabled for ${enabledCount} agent${enabledCount > 1 ? "s" : ""}`,
+      );
+    }
     set(reloadAgentConnectorAuthorizations$);
     onClose();
   },

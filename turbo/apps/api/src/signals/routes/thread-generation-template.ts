@@ -1,97 +1,89 @@
-import { eq } from "drizzle-orm";
-import type {
-  GenerationTemplateRequest,
-  StickyGenerationTemplateType,
-  ThreadGenerationTemplates,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import type { Db } from "../external/db";
-import { nowDate } from "../../lib/time";
-import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
+import { visibleChatMessageCondition } from "../services/zero-chat-message-shared.service";
+import {
+  buildGenerationTemplatePrompt,
+  describeGenerationTemplateSelection,
+} from "./generation-template-prompt";
 
-// Fixed order so the combined prompt is deterministic regardless of the order in
-// which the user attached each type.
-const TEMPLATE_TYPE_ORDER: readonly StickyGenerationTemplateType[] = [
-  "illustration",
-  "video",
-  "presentation",
-];
-
-async function getStoredThreadGenerationTemplates(
-  db: Db,
-  threadId: string,
-): Promise<ThreadGenerationTemplates> {
-  const [thread] = await db
-    .select({ generationTemplate: chatThreads.generationTemplate })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, threadId))
-    .limit(1);
-  return thread?.generationTemplate ?? {};
-}
-
-async function persistThreadGenerationTemplates(
-  db: Db,
-  threadId: string,
-  templates: ThreadGenerationTemplates,
-): Promise<void> {
-  await db
-    .update(chatThreads)
-    .set({ generationTemplate: templates, updatedAt: nowDate() })
-    .where(eq(chatThreads.id, threadId));
+/**
+ * Resolve the generation-template system prompt for a chat run.
+ *
+ * One-shot only: the prompt is built from the selection attached to *this*
+ * message and nothing else. There is no thread-sticky persistence — a
+ * follow-up message that doesn't reattach a template resolves to "", and the
+ * agent must rely on the marker embedded in the replayed prior-run text (see
+ * buildWebChatPriorRunsContext) to keep using the same template across turns.
+ * This trades a DB-backed "never expires" default for one signal that lives
+ * entirely in-context: no separate store to fall out of sync with what the
+ * agent actually sees.
+ */
+export function resolveThreadGenerationTemplatePrompt(args: {
+  readonly explicit: GenerationTemplateRequest | null | undefined;
+  readonly presentationRunbookEnabled?: boolean;
+}): string {
+  if (!args.explicit) {
+    return "";
+  }
+  const built = buildGenerationTemplatePrompt(args.explicit, {
+    presentationRunbookEnabled: args.presentationRunbookEnabled,
+  });
+  return built.status === "resolved" ? built.prompt : "";
 }
 
 /**
- * Resolve the generation-template system prompt for a chat run from thread-sticky
- * state, supporting multiple template types at once.
- *
- * Per message: an explicit selection (the tag attached this turn) updates only
- * its own type's slot and is persisted, leaving the thread's other types intact;
- * those other persisted templates are inherited. So one thread can keep an
- * illustration style and a video preset active together, follow-ups keep them
- * without restating, and the server injects every active type deterministically
- * on each run.
- *
- * There is intentionally no org/global default and persistence is thread-scoped:
- * a thread with no persisted templates (e.g. a brand-new thread) resolves to "",
- * so new sessions start clean with no cross-session carry-over. A stored template
- * whose style was removed from the registry degrades to no prompt for that type
- * rather than failing the run.
+ * Fallback for the one gap the in-context replay marker can't cover on its
+ * own: the general conversation replay (buildWebChatPriorRunsContext) is
+ * skipped whenever the thread has an incomplete round, because that case
+ * resumes an existing CLI session which already has the history natively
+ * (see prepareRecentChatContext / buildQueuedPriorContext). A generation
+ * template selection isn't part of that native session history the same way
+ * — it only ever reached the model as narrated text — so when the replay is
+ * skipped, a selection from before the incomplete round would otherwise
+ * disappear with no trace. This does one direct read of the most recent
+ * selection (no separate stored/merged state) and surfaces it only for that
+ * gap; call with `replaySuppressed: false` and it is a no-op.
  */
-export async function resolveThreadGenerationTemplatePrompt(args: {
+export async function fallbackGenerationTemplateNote(args: {
   readonly db: Db;
   readonly threadId: string;
   readonly explicit: GenerationTemplateRequest | null | undefined;
-  readonly presentationRunbookEnabled?: boolean;
+  readonly replaySuppressed: boolean;
 }): Promise<string> {
-  if (args.explicit?.type === "workflow") {
-    const built = buildGenerationTemplatePrompt(args.explicit, {
-      presentationRunbookEnabled: args.presentationRunbookEnabled,
-    });
-    return built.status === "resolved" ? built.prompt : "";
+  if (args.explicit || !args.replaySuppressed) {
+    return "";
   }
-
-  const stored = await getStoredThreadGenerationTemplates(
-    args.db,
-    args.threadId,
+  // Workflow selections are excluded in SQL, not filtered afterward — the most
+  // recent selection overall might be a workflow one, and filtering post-query
+  // would incorrectly hide an earlier non-workflow selection behind it instead
+  // of falling through to find it.
+  const [row] = await args.db
+    .select({ generationTemplate: chatMessages.generationTemplate })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, args.threadId),
+        eq(chatMessages.role, "user"),
+        isNotNull(chatMessages.generationTemplate),
+        sql`(${chatMessages.generationTemplate}->>'type') IS DISTINCT FROM 'workflow'`,
+        visibleChatMessageCondition(),
+      ),
+    )
+    .orderBy(desc(chatMessages.createdAt))
+    .limit(1);
+  if (!row?.generationTemplate) {
+    return "";
+  }
+  const description = describeGenerationTemplateSelection(
+    row.generationTemplate,
   );
-  const effective: ThreadGenerationTemplates = args.explicit
-    ? { ...stored, [args.explicit.type]: args.explicit }
-    : stored;
-  if (args.explicit) {
-    await persistThreadGenerationTemplates(args.db, args.threadId, effective);
-  }
-  return TEMPLATE_TYPE_ORDER.map((type) => {
-    const template = effective[type];
-    if (!template) {
-      return "";
-    }
-    const built = buildGenerationTemplatePrompt(template, {
-      presentationRunbookEnabled: args.presentationRunbookEnabled,
-    });
-    return built.status === "resolved" ? built.prompt : "";
-  })
-    .filter((prompt) => {
-      return prompt.length > 0;
-    })
-    .join("\n\n");
+  return description
+    ? [
+        "# Prior Template Selection",
+        "",
+        `Earlier in this thread, the user selected a template — ${description}. The usual replay of recent turns is skipped for this run because it resumes an existing session; this note exists only so that fact isn't lost.`,
+      ].join("\n")
+    : "";
 }

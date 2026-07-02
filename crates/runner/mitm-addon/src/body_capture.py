@@ -313,13 +313,12 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
                 flow.metadata.get(metadata_keys.REQUEST_STREAM_COMPLETE) is not True
             )
             req_ct = flow.request.headers.get("content-type", "")
-            request_body = body_decoding.decode_body_bounded(
+            request_body = body_decoding.decode_request_body_for_network_log_capture(
                 bytes(request_stream_body.buffer),
                 flow.request.headers,
                 max_output=BODY_CAPTURE_LIMIT + 1,
-                fail_on_unsupported_encoding=True,
             )
-            if request_body.failed:
+            if request_body is None:
                 if request_stream_body.truncated or request_stream_incomplete:
                     log_entry["request_body_truncated"] = True
                 log_entry["request_body_encoding"] = "binary"
@@ -327,22 +326,21 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
                 _set_body_fields(
                     log_entry,
                     "request",
-                    request_body.body,
+                    request_body,
                     req_ct,
                     already_truncated=request_stream_body.truncated or request_stream_incomplete,
                 )
         elif flow.request.raw_content:
             req_ct = flow.request.headers.get("content-type", "")
-            request_body = body_decoding.decode_body_bounded(
+            request_body = body_decoding.decode_request_body_for_network_log_capture(
                 flow.request.raw_content,
                 flow.request.headers,
                 max_output=BODY_CAPTURE_LIMIT + 1,
-                fail_on_unsupported_encoding=True,
             )
-            if request_body.failed:
+            if request_body is None:
                 log_entry["request_body_encoding"] = "binary"
             else:
-                _set_body_fields(log_entry, "request", request_body.body, req_ct)
+                _set_body_fields(log_entry, "request", request_body, req_ct)
 
     # Response headers
     if flow.response:

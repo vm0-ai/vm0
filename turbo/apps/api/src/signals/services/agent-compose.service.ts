@@ -85,6 +85,12 @@ function computeComposeVersionId(content: Record<string, unknown>): string {
   return createHash("sha256").update(canonical).digest("hex");
 }
 
+type RecomposeAgentIfStaleResult =
+  | { readonly status: "unchanged"; readonly versionId: string }
+  | { readonly status: "recomposed"; readonly versionId: string }
+  | { readonly status: "changed"; readonly versionId: string }
+  | { readonly status: "missing"; readonly versionId: string };
+
 /**
  * Rebuild the agent's compose head if its current head version is stale.
  *
@@ -103,12 +109,10 @@ function computeComposeVersionId(content: Record<string, unknown>): string {
  *    `(orgId, id)` and 404 if missing before calling here. We go straight
  *    to the version INSERT + head-pointer UPDATE.
  *
- * Like web, runs OUTSIDE any transaction the caller may be holding —
- * web's `serverSideCompose` is also called outside the user-connectors
- * DELETE+INSERT transaction. We mirror to preserve identical observable
- * behavior, including the same crash window: if recompose throws after
- * the caller's transaction commits, `agent_composes.head` stays stale
- * until the next mutation.
+ * Runs outside the caller's connector transaction, but guards the final head
+ * update with a row lock and the head value that the caller observed. If
+ * another runner updates the compose first, this command leaves that newer head
+ * intact instead of overwriting it with stale connector-save work.
  */
 export const recomposeAgentIfStale$ = command(
   async (
@@ -120,32 +124,47 @@ export const recomposeAgentIfStale$ = command(
       readonly currentHeadVersionId: string | null;
     },
     signal: AbortSignal,
-  ): Promise<{ recomposed: boolean; versionId: string }> => {
+  ): Promise<RecomposeAgentIfStaleResult> => {
     const content = buildZeroAgentComposeContent(args.agentName);
     const versionId = computeComposeVersionId(content);
-    if (versionId === args.currentHeadVersionId) {
-      return { recomposed: false, versionId };
-    }
 
     const writeDb = set(writeDb$);
-    await writeDb
-      .insert(agentComposeVersions)
-      .values({
-        id: versionId,
-        composeId: args.agentComposeId,
-        content,
-        createdBy: args.userId,
-      })
-      .onConflictDoNothing();
+    const result = await writeDb.transaction(async (tx) => {
+      const [compose] = await tx
+        .select({ headVersionId: agentComposes.headVersionId })
+        .from(agentComposes)
+        .where(eq(agentComposes.id, args.agentComposeId))
+        .for("update")
+        .limit(1);
+      if (!compose) {
+        return { status: "missing" as const, versionId };
+      }
+      if (compose.headVersionId === versionId) {
+        return { status: "unchanged" as const, versionId };
+      }
+      if (compose.headVersionId !== args.currentHeadVersionId) {
+        return { status: "changed" as const, versionId };
+      }
+
+      await tx
+        .insert(agentComposeVersions)
+        .values({
+          id: versionId,
+          composeId: args.agentComposeId,
+          content,
+          createdBy: args.userId,
+        })
+        .onConflictDoNothing();
+
+      await tx
+        .update(agentComposes)
+        .set({ headVersionId: versionId, updatedAt: nowDate() })
+        .where(eq(agentComposes.id, args.agentComposeId));
+      return { status: "recomposed" as const, versionId };
+    });
     signal.throwIfAborted();
 
-    await writeDb
-      .update(agentComposes)
-      .set({ headVersionId: versionId, updatedAt: nowDate() })
-      .where(eq(agentComposes.id, args.agentComposeId));
-    signal.throwIfAborted();
-
-    return { recomposed: true, versionId };
+    return result;
   },
 );
 

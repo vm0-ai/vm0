@@ -68,6 +68,24 @@ const THREAD_ID = "thread-model-template-1";
 const ANTHROPIC_PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 const MOONSHOT_PROVIDER_ID = "00000000-0000-4000-a000-000000000002";
 const ZAI_PROVIDER_ID = "00000000-0000-4000-a000-000000000003";
+
+function applyUserConnectorUpdate(
+  current: readonly string[],
+  body: {
+    readonly enabledTypes: readonly string[];
+    readonly operation?: "replace" | "add" | "remove";
+  },
+): string[] {
+  if (body.operation === "add") {
+    return Array.from(new Set([...current, ...body.enabledTypes]));
+  }
+  if (body.operation === "remove") {
+    return current.filter((type) => {
+      return !body.enabledTypes.includes(type);
+    });
+  }
+  return [...body.enabledTypes];
+}
 const NOW = "2026-05-08T00:00:00.000Z";
 
 function connectorSearchFixtureTypes(): readonly ConnectorType[] {
@@ -383,13 +401,15 @@ function mockManyConnectedConnectors(): void {
   ]);
 }
 
-function mockAgentConnectorAuthorizations(initialTypes: string[]): void {
-  let enabledTypes = initialTypes;
+function mockAgentConnectorAuthorizations(
+  initialTypes: readonly string[],
+): void {
+  let enabledTypes: string[] = [...initialTypes];
   context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
     return respond(200, { enabledTypes });
   });
   context.mocks.api(zeroUserConnectorsContract.update, ({ body, respond }) => {
-    enabledTypes = body.enabledTypes;
+    enabledTypes = applyUserConnectorUpdate(enabledTypes, body);
     return respond(200, { enabledTypes });
   });
 }

@@ -1,19 +1,13 @@
-import {
-  useGet,
-  useLastLoadable,
-  useLastResolved,
-  useSet,
-} from "ccstate-react";
+import { useGet, useLastLoadable, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
 import {
-  addAgentCustomConnector$,
-  removeAgentCustomConnector$,
-  saveAgentCustomConnectors$,
+  agentCustomConnectorToggleSaving$,
   agentAddedCustomConnectors$,
+  toggleAgentCustomConnector$,
 } from "../../signals/zero-page/job-detail/custom-connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -23,12 +17,14 @@ function CustomConnectorPermissionRow({
   connector,
   enabled,
   loading,
+  disabled,
   isLast,
   onToggle,
 }: {
   connector: CustomConnectorResponse;
   enabled: boolean;
   loading: boolean;
+  disabled: boolean;
   isLast: boolean;
   onToggle: (checked: boolean) => void;
 }) {
@@ -57,6 +53,7 @@ function CustomConnectorPermissionRow({
       <LoadingSwitch
         checked={enabled}
         loading={loading}
+        disabled={disabled}
         onCheckedChange={onToggle}
         ariaLabel={`Authorize ${connector.displayName} for this agent`}
       />
@@ -70,11 +67,9 @@ export function JobCustomConnectorsSection() {
   const addedLoadable = useLastLoadable(agentAddedCustomConnectors$);
   const added = addedLoadable.state === "hasData" ? addedLoadable.data : [];
   const addedSet = new Set(added);
-  const addCustom = useSet(addAgentCustomConnector$);
-  const removeCustom = useSet(removeAgentCustomConnector$);
-  const [saveLoadable, save] = useLoadableSet(saveAgentCustomConnectors$);
+  const [, toggle] = useLoadableSet(toggleAgentCustomConnector$);
   const pageSignal = useGet(pageSignal$);
-  const saving = saveLoadable.state === "loading";
+  const saving = useGet(agentCustomConnectorToggleSaving$);
 
   if (!connectors || connectors.length === 0) {
     return null;
@@ -84,14 +79,12 @@ export function JobCustomConnectorsSection() {
     if (saving) {
       return;
     }
-    const mutate = checked
-      ? addCustom(id, pageSignal)
-      : removeCustom(id, pageSignal);
     detach(
       (async () => {
-        await mutate;
-        await save(pageSignal);
-        toast.success("Custom connectors saved");
+        const saved = await toggle(id, checked, pageSignal);
+        if (saved) {
+          toast.success("Custom connectors saved");
+        }
       })(),
       Reason.DomCallback,
     );
@@ -104,12 +97,14 @@ export function JobCustomConnectorsSection() {
         supplied a secret for can be toggled on.
       </div>
       {connectors.map((c, i) => {
+        const enabled = addedSet.has(c.id);
         return (
           <CustomConnectorPermissionRow
             key={c.id}
             connector={c}
-            enabled={addedSet.has(c.id)}
+            enabled={enabled}
             loading={saving}
+            disabled={!c.hasSecret && !enabled}
             isLast={i === connectors.length - 1}
             onToggle={(checked) => {
               return handleToggle(c.id, checked);

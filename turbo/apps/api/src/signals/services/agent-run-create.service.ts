@@ -2996,6 +2996,31 @@ async function buildCustomConnectorRuntimeContext(args: {
       featureSwitchContext: args.featureSwitchContext,
     });
     const apis: ExpandedFirewallConfig["apis"] = [];
+    const headers = Object.fromEntries(
+      row.connector.headerInjections.flatMap((header) => {
+        const rendered = renderTemplateForRuntime({
+          template: header.valueTemplate,
+          connectorId: row.connector.id,
+          fields: row.connector.fields,
+          configuredValueMarkers: valueMarkers,
+        });
+        return rendered === null ? [] : [[header.name, rendered]];
+      }),
+    );
+    const query = Object.fromEntries(
+      row.connector.queryInjections.flatMap((queryInjection) => {
+        const rendered = renderTemplateForRuntime({
+          template: queryInjection.valueTemplate,
+          connectorId: row.connector.id,
+          fields: row.connector.fields,
+          configuredValueMarkers: valueMarkers,
+        });
+        return rendered === null ? [] : [[queryInjection.name, rendered]];
+      }),
+    );
+    if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {
+      continue;
+    }
     for (const prefixTemplate of row.connector.prefixTemplates) {
       const renderedPrefix = renderCustomConnectorRuntimePrefix({
         template: prefixTemplate,
@@ -3007,30 +3032,8 @@ async function buildCustomConnectorRuntimeContext(args: {
       apis.push({
         base: renderedPrefix,
         auth: {
-          headers: Object.fromEntries(
-            row.connector.headerInjections.map((header) => {
-              return [
-                header.name,
-                renderTemplateForRuntime({
-                  template: header.valueTemplate,
-                  connectorId: row.connector.id,
-                  fields: row.connector.fields,
-                }),
-              ];
-            }),
-          ),
-          query: Object.fromEntries(
-            row.connector.queryInjections.map((query) => {
-              return [
-                query.name,
-                renderTemplateForRuntime({
-                  template: query.valueTemplate,
-                  connectorId: row.connector.id,
-                  fields: row.connector.fields,
-                }),
-              ];
-            }),
-          ),
+          headers,
+          query,
         },
       });
     }

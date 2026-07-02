@@ -11,10 +11,7 @@ import {
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { agents$ } from "../../../../signals/agent.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { AvatarFromUrl } from "../../zero-sidebar-shared.tsx";
@@ -32,11 +29,13 @@ const VISIBLE_AGENT_COUNT = 16;
 
 interface ConnectorPermissionDialogProps {
   connectorType: ConnectorType;
+  connectorLabel: string;
   onClose: () => void;
 }
 
 export function ConnectorPermissionDialog({
   connectorType,
+  connectorLabel,
   onClose,
 }: ConnectorPermissionDialogProps) {
   const allAgents = useLastResolved(agents$);
@@ -48,8 +47,6 @@ export function ConnectorPermissionDialog({
   const pageSignal = useGet(pageSignal$);
 
   const submitting = confirmLoadable.state === "loading";
-
-  const config = CONNECTOR_TYPES[connectorType];
 
   const filtered = (() => {
     if (!allAgents) {
@@ -85,7 +82,7 @@ export function ConnectorPermissionDialog({
             <ConnectorIcon type={connectorType} size={20} />
           </div>
           <DialogTitle className="text-base font-medium">
-            {config.label}
+            {connectorLabel}
           </DialogTitle>
         </DialogHeader>
 
@@ -95,7 +92,7 @@ export function ConnectorPermissionDialog({
             <div className="flex flex-col items-center gap-6">
               <div className="flex flex-col items-center gap-2.5 text-center text-foreground">
                 <p className="text-lg font-medium leading-7">
-                  You&apos;ve successfully connected with {config.label}!
+                  You&apos;ve successfully connected with {connectorLabel}!
                 </p>
                 <p className="text-sm leading-5">
                   You can now let some of your agents to use this connector
@@ -179,7 +176,7 @@ export function ConnectorPermissionDialog({
             <Button
               onClick={() => {
                 detach(
-                  confirm(connectorType, onClose, pageSignal),
+                  confirm(connectorType, connectorLabel, onClose, pageSignal),
                   Reason.DomCallback,
                 );
               }}

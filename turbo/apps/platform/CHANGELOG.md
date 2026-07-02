@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.529.0](https://github.com/vm0-ai/vm0/compare/app-v0.528.0...app-v0.529.0) (2026-07-02)
+
+
+### Features
+
+* explain agent creator and role in a white card on name hover ([#19780](https://github.com/vm0-ai/vm0/issues/19780)) ([ec620ae](https://github.com/vm0-ai/vm0/commit/ec620aec3d38098174501bf58db443d012de056b))
+
+
+### Bug Fixes
+
+* consolidate chat shortcut bindings ([#19751](https://github.com/vm0-ai/vm0/issues/19751)) ([6c4e96d](https://github.com/vm0-ai/vm0/commit/6c4e96d3c2063ab788119ea8ea7912dce82f3eea))
+
 ## [0.528.0](https://github.com/vm0-ai/vm0/compare/app-v0.527.0...app-v0.528.0) (2026-07-02)
 
 
