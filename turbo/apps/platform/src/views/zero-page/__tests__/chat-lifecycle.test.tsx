@@ -6481,27 +6481,27 @@ describe("initial thinking indicator", () => {
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 
-  it("splits the thinking marker by the label width and restarts from the next segment", async () => {
-    const threadId = "thread-initial-thinking-segmented";
-    const thinking = "ABCDE";
+  it("slides the thinking marker after it exceeds the label width", async () => {
+    const threadId = "thread-initial-thinking-sliding";
+    const thinking = "ABCDEFG";
     mockThinkingTypewriterLayout({
       text: thinking,
-      labelWidth: 32,
-      parentWidth: 96,
+      labelWidth: 68,
+      parentWidth: 160,
       graphemeWidth: 10,
     });
     mockChatLifecycle(context, {
       threadId,
       chatMessages: [
         {
-          id: "msg-thinking-segmented-user",
+          id: "msg-thinking-sliding-user",
           role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
-          id: "msg-thinking-segmented-marker",
+          id: "msg-thinking-sliding-marker",
           role: "assistant",
           content: null,
           thinking,
@@ -6522,7 +6522,7 @@ describe("initial thinking indicator", () => {
 
     const label = await screen.findByLabelText(thinking);
     await waitFor(() => {
-      expect(label).toHaveTextContent("E");
+      expect(label).toHaveTextContent("...EFG");
     });
     expect(label).not.toHaveTextContent(thinking);
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();

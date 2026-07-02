@@ -2940,26 +2940,14 @@ function createCancelRunWithQueuedRecall({
 // ---------------------------------------------------------------------------
 
 const THINKING_TYPEWRITER_INTERVAL_MS = 28;
-const THINKING_TYPEWRITER_LINE_PAUSE_MS = 1000;
-const THINKING_TYPEWRITER_LINE_PAUSE_TICKS = IN_VITEST
-  ? 1
-  : Math.ceil(
-      THINKING_TYPEWRITER_LINE_PAUSE_MS / THINKING_TYPEWRITER_INTERVAL_MS,
-    );
 const THINKING_TYPEWRITER_WIDTH_GUARD_PX = 8;
-
-interface ThinkingTypewriterLine {
-  readonly graphemes: string[];
-  readonly text: string;
-}
+const THINKING_TYPEWRITER_OVERFLOW_PREFIX = "...";
 
 interface ThinkingTypewriterFrame {
   readonly messageId: string | undefined;
   readonly text: string;
   readonly width: number;
-  readonly lineIndex: number;
   readonly charIndex: number;
-  readonly pauseTicksRemaining: number;
   readonly displayedText: string;
   readonly complete: boolean;
 }
@@ -2969,9 +2957,7 @@ function emptyThinkingTypewriterFrame(): ThinkingTypewriterFrame {
     messageId: undefined,
     text: "",
     width: 0,
-    lineIndex: 0,
     charIndex: 0,
-    pauseTicksRemaining: 0,
     displayedText: "",
     complete: false,
   };
@@ -3027,16 +3013,6 @@ function lastRunThinkingMessageForIndicator(
     return message.runId === runId && isAssistantTextMessage(message);
   });
   return runHasAssistantText ? undefined : lastMessage;
-}
-
-function thinkingLineText(
-  line: ThinkingTypewriterLine | undefined,
-  charIndex: number,
-): string {
-  if (!line || charIndex <= 0) {
-    return "";
-  }
-  return line.graphemes.slice(0, charIndex).join("");
 }
 
 function thinkingTypewriterStep(width: number): number {
@@ -3107,47 +3083,46 @@ function thinkingLabelWidth(el: HTMLElement): number {
   );
 }
 
-function wrapThinkingTextForWidth(args: {
-  readonly text: string;
+function displayedSlidingThinkingText(args: {
+  readonly graphemes: readonly string[];
+  readonly charIndex: number;
   readonly width: number;
   readonly measureText: (value: string) => number | undefined;
-}): ThinkingTypewriterLine[] {
-  const graphemes = thinkingTextGraphemes(args.text);
-  if (graphemes.length === 0) {
-    return [];
+}): string {
+  const visibleGraphemes = args.graphemes.slice(0, args.charIndex);
+  const visibleText = visibleGraphemes.join("");
+  if (visibleText.length === 0) {
+    return "";
   }
-
   if (!Number.isFinite(args.width) || args.width <= 0) {
-    return [{ graphemes, text: args.text }];
+    return visibleText;
   }
 
   const maxWidth = Math.max(1, args.width - THINKING_TYPEWRITER_WIDTH_GUARD_PX);
-  const lines: ThinkingTypewriterLine[] = [];
-  let current: string[] = [];
+  const visibleWidth = args.measureText(visibleText);
+  if (visibleWidth === undefined || visibleWidth <= maxWidth) {
+    return visibleText;
+  }
 
-  for (const grapheme of graphemes) {
-    const candidate = [...current, grapheme];
-    const candidateText = candidate.join("");
-    const measured = args.measureText(candidateText);
-
+  let displayedText: string | undefined;
+  for (let start = visibleGraphemes.length - 1; start >= 0; start--) {
+    const candidate = `${THINKING_TYPEWRITER_OVERFLOW_PREFIX}${visibleGraphemes
+      .slice(start)
+      .join("")}`;
+    const measured = args.measureText(candidate);
     if (measured === undefined) {
-      return [{ graphemes, text: args.text }];
+      return visibleText;
     }
-
-    if (measured <= maxWidth || current.length === 0) {
-      current = candidate;
+    if (measured <= maxWidth) {
+      displayedText = candidate;
       continue;
     }
-
-    lines.push({ graphemes: current, text: current.join("") });
-    current = grapheme.trim().length === 0 ? [] : [grapheme];
+    if (displayedText) {
+      break;
+    }
   }
 
-  if (current.length > 0) {
-    lines.push({ graphemes: current, text: current.join("") });
-  }
-
-  return lines;
+  return displayedText ?? visibleGraphemes[visibleGraphemes.length - 1] ?? "";
 }
 
 function nextThinkingTypewriterFrame(args: {
@@ -3158,13 +3133,8 @@ function nextThinkingTypewriterFrame(args: {
   readonly measureText: (value: string) => number | undefined;
 }): ThinkingTypewriterFrame {
   const width = Math.max(0, Math.floor(args.width));
-  const lines = wrapThinkingTextForWidth({
-    text: args.text,
-    width,
-    measureText: args.measureText,
-  });
-
-  if (lines.length === 0) {
+  const graphemes = thinkingTextGraphemes(args.text);
+  if (graphemes.length === 0) {
     return emptyThinkingTypewriterFrame();
   }
 
@@ -3179,65 +3149,21 @@ function nextThinkingTypewriterFrame(args: {
           text: args.text,
           width,
         };
-  const lineIndex = Math.min(currentFrame.lineIndex, lines.length - 1);
-  const currentLine = lines[lineIndex]!;
-
-  if (currentFrame.pauseTicksRemaining > 0) {
-    return {
-      ...currentFrame,
-      lineIndex,
-      pauseTicksRemaining: currentFrame.pauseTicksRemaining - 1,
-      displayedText: currentLine.text,
-      complete: false,
-    };
-  }
-
-  if (currentFrame.charIndex >= currentLine.graphemes.length) {
-    const nextLineIndex = lineIndex + 1;
-    if (nextLineIndex >= lines.length) {
-      return {
-        ...currentFrame,
-        lineIndex,
-        charIndex: currentLine.graphemes.length,
-        displayedText: currentLine.text,
-        complete: true,
-      };
-    }
-
-    const nextLine = lines[nextLineIndex]!;
-    const nextCharIndex = Math.min(
-      nextLine.graphemes.length,
-      thinkingTypewriterStep(width),
-    );
-    return {
-      ...currentFrame,
-      lineIndex: nextLineIndex,
-      charIndex: nextCharIndex,
-      displayedText: thinkingLineText(nextLine, nextCharIndex),
-      complete:
-        nextLineIndex >= lines.length - 1 &&
-        nextCharIndex >= nextLine.graphemes.length,
-    };
-  }
-
   const nextCharIndex = Math.min(
-    currentLine.graphemes.length,
+    graphemes.length,
     currentFrame.charIndex + thinkingTypewriterStep(width),
   );
 
   return {
     ...currentFrame,
-    lineIndex,
     charIndex: nextCharIndex,
-    pauseTicksRemaining:
-      nextCharIndex >= currentLine.graphemes.length &&
-      lineIndex < lines.length - 1
-        ? THINKING_TYPEWRITER_LINE_PAUSE_TICKS
-        : 0,
-    displayedText: thinkingLineText(currentLine, nextCharIndex),
-    complete:
-      lineIndex >= lines.length - 1 &&
-      nextCharIndex >= currentLine.graphemes.length,
+    displayedText: displayedSlidingThinkingText({
+      graphemes,
+      charIndex: nextCharIndex,
+      width,
+      measureText: args.measureText,
+    }),
+    complete: nextCharIndex >= graphemes.length,
   };
 }
 
