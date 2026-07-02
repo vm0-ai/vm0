@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.533.0](https://github.com/vm0-ai/vm0/compare/app-v0.532.1...app-v0.533.0) (2026-07-02)
+
+
+### Features
+
+* refine workflow automation row actions ([#19860](https://github.com/vm0-ai/vm0/issues/19860)) ([f510f8a](https://github.com/vm0-ai/vm0/commit/f510f8aea077351d94f849f0975fec5d7f35d015))
+
+
+### Bug Fixes
+
+* refresh connector status after aborted connect ([#19879](https://github.com/vm0-ai/vm0/issues/19879)) ([493d7ae](https://github.com/vm0-ai/vm0/commit/493d7ae03e7a357b3edb04148fe05310effafb92))
+
 ## [0.532.1](https://github.com/vm0-ai/vm0/compare/app-v0.532.0...app-v0.532.1) (2026-07-02)
 
 

@@ -390,9 +390,8 @@ async function completeChatRunOk(
   sandboxHeaders: { readonly authorization: string },
   options: { readonly lastEventSequence?: number } = {},
 ): Promise<void> {
-  const historyHash = createHash("sha256")
-    .update(`bdd chat session history ${runId}`)
-    .digest("hex");
+  const history = `bdd chat session history ${runId}`;
+  const historyHash = createHash("sha256").update(history).digest("hex");
   await webhooks.requestAgentCheckpoint(
     {
       runId,
