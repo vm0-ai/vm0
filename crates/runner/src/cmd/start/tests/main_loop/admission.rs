@@ -1,10 +1,19 @@
 use super::super::super::*;
 use super::super::support::{
-    assert_run_exits_within, minimal_context, mock_run_config, mock_run_config_with_overrides,
-    push_job, shutdown, test_profiles, wait_budget_count, wait_cancel_token,
-    wait_cancel_token_removed, wait_discover_entered,
+    assert_run_exits_within, context_with_session, minimal_context, mock_run_config,
+    mock_run_config_with_overrides, push_job, seed_idle_pool, shutdown, test_profiles,
+    wait_budget_count, wait_cancel_token, wait_cancel_token_removed, wait_discover_entered,
 };
 use std::sync::Arc;
+
+const FUTURE_AFFINITY_PROTECTED_UNTIL: &str = "2999-01-01T00:00:00Z";
+
+fn affinity_protected_candidate(run_id: RunId, session_id: &str) -> crate::provider::JobCandidate {
+    crate::provider::JobCandidate::new(run_id, "vm0/default".into()).with_affinity_metadata(
+        Some(session_id.to_string()),
+        Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
+    )
+}
 
 /// TOCTOU regression: soft drain can arrive after the main loop has selected
 /// a discovered candidate but before claim. The candidate is still unowned at
@@ -200,6 +209,94 @@ async fn claim_run_id_mismatch_rolls_back_local_state() {
     assert!(
         completion.is_some(),
         "follow-up job should complete after mismatched claim is rejected"
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn affinity_protected_candidate_without_local_session_defers_before_claim() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        run_id,
+        Some(context_with_session(run_id, "sess-owned-elsewhere")),
+    );
+    env.handle
+        .discover_tx
+        .send(affinity_protected_candidate(run_id, "sess-owned-elsewhere"))
+        .unwrap();
+
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+
+    assert!(
+        env.handle.claim_candidates().is_empty(),
+        "runner must not claim a protected same-session candidate unless it holds the session"
+    );
+    assert_eq!(
+        env.handle.deferred_poll_delays().len(),
+        1,
+        "runner should schedule a follow-up poll after the affinity protection expires"
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn affinity_protected_candidate_with_local_session_claims() {
+    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&env.idle_pool);
+    seed_idle_pool(
+        &idle_pool,
+        &budget,
+        "sess-held-local",
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        run_id,
+        Some(context_with_session(run_id, "sess-held-local")),
+    );
+    env.handle
+        .discover_tx
+        .send(affinity_protected_candidate(run_id, "sess-held-local"))
+        .unwrap();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await;
+    assert!(
+        completion.is_some(),
+        "runner holding the protected session should claim and execute the job"
+    );
+
+    let claim_candidates = env.handle.claim_candidates();
+    assert!(
+        claim_candidates
+            .iter()
+            .any(|candidate| candidate.run_id() == run_id),
+        "claim should record the protected candidate"
+    );
+    assert!(
+        env.handle.deferred_poll_delays().is_empty(),
+        "runner holding the protected session should not defer the claim"
     );
 
     shutdown(&env, run_handle).await;

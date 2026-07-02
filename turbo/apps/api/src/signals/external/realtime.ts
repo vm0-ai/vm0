@@ -239,7 +239,10 @@ export async function publishRunnerJobNotification(
   group: string,
   runId: string,
   profile: string,
-  targetRunnerId: string | null = null,
+  affinity?: {
+    readonly cliAgentSessionId: string | null;
+    readonly affinityProtectedUntil: string | null;
+  },
 ): Promise<boolean> {
   const result = await settle(
     (async () => {
@@ -247,12 +250,14 @@ export async function publishRunnerJobNotification(
       await channel.publish("job", {
         runId,
         profile,
-        ...(targetRunnerId ? { targetRunnerId } : {}),
+        ...(affinity?.cliAgentSessionId
+          ? { cliAgentSessionId: affinity.cliAgentSessionId }
+          : {}),
+        ...(affinity?.affinityProtectedUntil
+          ? { affinityProtectedUntil: affinity.affinityProtectedUntil }
+          : {}),
       });
-      L.debug(
-        `Published job ${runId} to runner-group:${group}` +
-          (targetRunnerId ? ` (target: ${targetRunnerId})` : " (broadcast)"),
-      );
+      L.debug(`Published job ${runId} to runner-group:${group} (broadcast)`);
     })(),
   );
   if (result.ok) {

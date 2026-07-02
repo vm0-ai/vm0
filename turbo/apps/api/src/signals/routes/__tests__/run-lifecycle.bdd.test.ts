@@ -1399,6 +1399,83 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const cancelled = await api.readRun(actor, first.runId);
     expect(cancelled.status).toBe("cancelled");
   });
+
+  it("exposes same-session affinity metadata to runner poll responses", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "start affinity-protected session",
+      modelProvider: "anthropic-api-key",
+    });
+    const firstClaim = await api.claimRunnerJob(first.runId);
+    const cliAgentSessionId = `bdd-affinity-cli-${first.runId}`;
+    const history = `bdd affinity history ${first.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+
+    const protectedFollowUp = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continue affinity-protected session",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const protectedPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, profiles: ["vm0/default"] },
+      [200],
+    );
+    if (protectedPoll.status !== 200) {
+      throw new Error("Expected affinity poll to return 200");
+    }
+    expect(protectedPoll.body.job?.runId).toBe(protectedFollowUp.runId);
+    expect(protectedPoll.body.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(protectedPoll.body.job?.affinityProtectedUntil).toStrictEqual(
+      expect.any(String),
+    );
+
+    const protectedClaim = await api.claimRunnerJob(protectedFollowUp.runId);
+    expect(protectedClaim.prompt).toBe("continue affinity-protected session");
+    await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
+
+    const expiredFollowUp = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continue after affinity protection expires",
+      modelProvider: "anthropic-api-key",
+    });
+    mockNow(now() + 60_000);
+    const expiredClaim = await api.requestClaimRunnerJob(
+      true,
+      expiredFollowUp.runId,
+      [200],
+    );
+    if (expiredClaim.status !== 200) {
+      throw new Error("Expected expired affinity claim to succeed");
+    }
+    expect(expiredClaim.body.prompt).toBe(
+      "continue after affinity protection expires",
+    );
+    await api.requestCancelRun(actor, expiredFollowUp.runId, [200]);
+  });
 });
 
 describe("RUN-01: admission boundaries beyond request validation", () => {

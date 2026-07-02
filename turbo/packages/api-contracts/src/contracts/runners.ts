@@ -95,6 +95,12 @@ export const jobSchema = z.object({
   vars: z.record(z.string(), z.string()).nullable(),
   checkpointId: z.uuid().nullable(),
   experimentalProfile: z.string().optional(),
+  cliAgentSessionId: z.string().nullable().optional(),
+  affinityProtectedUntil: z
+    .string()
+    .datetime({ offset: true })
+    .nullable()
+    .optional(),
 });
 
 export const heldSessionStateSchema = z.object({
