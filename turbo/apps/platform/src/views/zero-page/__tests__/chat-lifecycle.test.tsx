@@ -924,11 +924,15 @@ function mockThinkingTypewriterLayout({
   labelWidth,
   parentWidth,
   graphemeWidth,
+  measureTextWidth = (value) => {
+    return Array.from(value).length * graphemeWidth;
+  },
 }: {
   readonly text: string;
   readonly labelWidth: number;
   readonly parentWidth: number;
   readonly graphemeWidth: number;
+  readonly measureTextWidth?: (value: string) => number;
 }): void {
   const getContextDescriptor = Object.getOwnPropertyDescriptor(
     HTMLCanvasElement.prototype,
@@ -981,7 +985,7 @@ function mockThinkingTypewriterLayout({
       return {
         measureText: (value: string) => {
           return {
-            width: Array.from(value).length * graphemeWidth,
+            width: measureTextWidth(value),
           } as TextMetrics;
         },
       } as CanvasRenderingContext2D;
@@ -6769,9 +6773,6 @@ describe("initial thinking indicator", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
-      },
     });
 
     await waitFor(() => {
@@ -6781,27 +6782,53 @@ describe("initial thinking indicator", () => {
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 
-  it("slides the thinking marker after it exceeds the label width", async () => {
-    const threadId = "thread-initial-thinking-sliding";
+  it("restarts on full follow-up lines before sliding a short tail", async () => {
+    const threadId = "thread-initial-thinking-rollover";
     const thinking = "ABCDEFG";
     mockThinkingTypewriterLayout({
       text: thinking,
-      labelWidth: 68,
+      labelWidth: 38,
       parentWidth: 160,
       graphemeWidth: 10,
+      measureTextWidth: (value) => {
+        return (
+          Array.from(value).filter((grapheme) => {
+            return grapheme !== ".";
+          }).length * 10
+        );
+      },
     });
+    const displayedLabels = new Set<string>();
+    const labelObserver = new MutationObserver(() => {
+      const label = document.querySelector(`[aria-label="${thinking}"]`);
+      if (label?.textContent) {
+        displayedLabels.add(label.textContent);
+      }
+    });
+    labelObserver.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        labelObserver.disconnect();
+      },
+      { once: true },
+    );
     mockChatLifecycle(context, {
       threadId,
       chatMessages: [
         {
-          id: "msg-thinking-sliding-user",
+          id: "msg-thinking-rollover-user",
           role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
-          id: "msg-thinking-sliding-marker",
+          id: "msg-thinking-rollover-marker",
           role: "assistant",
           content: null,
           thinking,
@@ -6824,6 +6851,11 @@ describe("initial thinking indicator", () => {
     await waitFor(() => {
       expect(label).toHaveTextContent("...EFG");
     });
+    expect(
+      Array.from(displayedLabels).some((value) => {
+        return value === "D" || value === "DE" || value === "DEF";
+      }),
+    ).toBeTruthy();
     expect(label).not.toHaveTextContent(thinking);
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
