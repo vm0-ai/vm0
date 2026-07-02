@@ -41,7 +41,7 @@ type WorkflowDetailActionDialog = "copy" | "delete" | null;
 export type WorkflowDetailTab = "automations" | "instructions" | "info";
 export type WorkflowAutomationFilter = "all" | "automated" | "without";
 export type WorkflowVisibilityFilter = "all" | "private" | "public";
-export type WorkflowSortMode = "recent" | "next-run";
+export type WorkflowSortMode = "next-run" | "alphabetical" | "created";
 export type WorkflowCopyDialogAgent = {
   readonly id: string;
   readonly displayName: string | null;
@@ -246,8 +246,8 @@ export const workflowSortMode$ = computed((get): WorkflowSortMode => {
   return readSearchParam(
     get(searchParams$),
     SORT_MODE_PARAM,
-    ["recent", "next-run"],
-    "recent",
+    ["next-run", "alphabetical", "created"],
+    "alphabetical",
   );
 });
 
@@ -298,7 +298,12 @@ export const setWorkflowSortMode$ = command(
   ({ get, set }, value: WorkflowSortMode) => {
     set(
       replaceSearchParams$,
-      nextSearchParams(get(searchParams$), SORT_MODE_PARAM, value, "recent"),
+      nextSearchParams(
+        get(searchParams$),
+        SORT_MODE_PARAM,
+        value,
+        "alphabetical",
+      ),
     );
   },
 );

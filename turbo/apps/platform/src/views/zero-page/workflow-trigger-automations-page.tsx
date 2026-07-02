@@ -276,8 +276,10 @@ function WorkflowAgentAvatar({
 
 export function TriggerListIcon({
   trigger,
+  size = "md",
 }: {
   readonly trigger: ZeroWorkflowTriggerSummary;
+  readonly size?: "sm" | "md";
 }) {
   const Icon = (() => {
     if (trigger.kind === "schedule") {
@@ -307,23 +309,27 @@ export function TriggerListIcon({
         ? "bg-amber-50 text-amber-700"
         : "bg-emerald-50 text-emerald-700";
 
+  const compact = size === "sm";
   return (
     <span
       className={cn(
-        "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border/60",
+        "flex shrink-0 items-center justify-center border border-border/60",
+        compact ? "h-8 w-8 rounded-lg" : "h-11 w-11 rounded-xl",
         tone,
       )}
       aria-hidden="true"
     >
-      <Icon size={20} stroke={1.6} />
+      <Icon size={compact ? 16 : 20} stroke={1.6} />
     </span>
   );
 }
 
 export function WorkflowTriggerEnabledSwitch({
   entry,
+  size = "default",
 }: {
   readonly entry: WorkflowTriggerAutomationEntry;
+  readonly size?: "default" | "sm";
 }) {
   const pageSignal = useGet(pageSignal$);
   const [enabledLoadable, setEnabled] = useLoadableSet(
@@ -336,8 +342,9 @@ export function WorkflowTriggerEnabledSwitch({
     <Switch
       checked={entry.trigger.enabled}
       disabled={busy || !entry.workflow.canManage}
+      size={size}
       aria-label={`${entry.trigger.enabled ? "Disable" : "Enable"} ${title}`}
-      className="h-6 w-11 data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted [&>span]:h-5 [&>span]:w-5 [&>span]:data-[state=checked]:translate-x-5"
+      className="data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted"
       onCheckedChange={(enabled) => {
         detach(
           setEnabled({ triggerId: entry.trigger.id, enabled }, pageSignal),

@@ -7,15 +7,23 @@ import {
   useSet,
 } from "ccstate-react";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
-import { IconBolt, IconLock, IconRoute, IconWorld } from "@tabler/icons-react";
+import {
+  IconBolt,
+  IconChevronDown,
+  IconLock,
+  IconPlus,
+  IconRoute,
+  IconWorld,
+} from "@tabler/icons-react";
 import {
   Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Popover,
   PopoverContent,
   PopoverTrigger,
-  Tabs,
-  TabsList,
-  TabsTrigger,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -41,6 +49,7 @@ import {
   type WorkflowVisibilityFilter,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
+import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import {
   CreateWorkflowAutomationDialog,
@@ -101,16 +110,16 @@ function connectorNames(
     .join(", ");
 }
 
-/** The agent that runs the workflow, drawn as a rounded square. */
+/** The agent that runs the workflow, drawn as its real avatar. */
 function AgentAvatar({ workflow }: { readonly workflow: ZeroWorkflowSummary }) {
   const label = agentLabel(workflow);
   return (
-    <span
-      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border/60 bg-gray-50 text-[10px] font-semibold text-muted-foreground"
-      aria-label={`Runs as ${label}`}
-    >
-      {initials(label)}
-    </span>
+    <AgentAvatarImg
+      name={workflow.agentId}
+      alt={`Runs as ${label}`}
+      className="h-6 w-6 shrink-0 rounded-md border border-border/60 bg-gray-50"
+      size={24}
+    />
   );
 }
 
@@ -178,25 +187,21 @@ function ConnectorPopoverList({
         return (
           <div
             key={entry.trigger.id}
-            className="rounded-lg px-2 py-2 hover:bg-gray-50"
+            className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50"
           >
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-50 px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                <span
-                  className={cn(
-                    "h-1.5 w-1.5 rounded-full",
-                    triggerDotClass(entry),
-                  )}
-                />
-                {triggerTypeLabel(entry.trigger)}
-              </span>
-              <div className="ml-auto">
-                <WorkflowTriggerEnabledSwitch entry={entry} />
-              </div>
-            </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-gray-50 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  triggerDotClass(entry),
+                )}
+              />
+              {triggerTypeLabel(entry.trigger)}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
               {humanReadableTriggerRuleLabel(entry.trigger, displayTimezone)}
-            </p>
+            </span>
+            <WorkflowTriggerEnabledSwitch entry={entry} size="sm" />
           </div>
         );
       })}
@@ -287,10 +292,10 @@ function WorkflowRowIcon({
 }) {
   const [lead] = entries;
   if (lead) {
-    return <TriggerListIcon trigger={lead.trigger} />;
+    return <TriggerListIcon trigger={lead.trigger} size="sm" />;
   }
   return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-muted-foreground">
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-gray-100 text-muted-foreground">
       <IconRoute size={16} stroke={1.7} />
     </span>
   );
@@ -318,7 +323,7 @@ function WorkflowRow({
               className="flex min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
             >
               <WorkflowRowIcon entries={entries} />
-              <span className="min-w-0 truncate text-sm font-medium">
+              <span className="min-w-0 truncate text-sm font-medium underline decoration-muted-foreground/40 decoration-dashed underline-offset-4">
                 {title}
               </span>
             </Link>
@@ -506,7 +511,7 @@ export function WorkflowListPanel({
   workflows,
   loading,
   emptyDescription,
-  sortMode = "recent",
+  sortMode = "alphabetical",
   triggerEntriesByWorkflowId,
   displayTimezone = new Intl.DateTimeFormat().resolvedOptions().timeZone,
 }: {
@@ -552,7 +557,7 @@ export function WorkflowListPanel({
   );
 }
 
-function FilterTabs<T extends string>({
+function FilterPills<T extends string>({
   value,
   options,
   onChange,
@@ -565,32 +570,97 @@ function FilterTabs<T extends string>({
   readonly onChange: (value: T) => void;
 }) {
   return (
-    <Tabs
-      value={value}
-      onValueChange={(next) => {
-        const match = options.find((option) => {
-          return option.value === next;
-        });
-        if (match) {
-          onChange(match.value);
-        }
-      }}
-    >
-      <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-        {options.map((option) => {
+    <div className="flex flex-wrap items-center gap-1.5">
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => {
+              onChange(option.value);
+            }}
+            className={cn(
+              "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors",
+              active
+                ? "bg-muted text-foreground"
+                : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+            )}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const SORT_OPTIONS: readonly {
+  readonly value: WorkflowSortMode;
+  readonly label: string;
+}[] = [
+  { value: "alphabetical", label: "Alphabetical" },
+  { value: "created", label: "Created time" },
+  { value: "next-run", label: "Next run" },
+];
+
+function SortDropdown({
+  value,
+  onChange,
+}: {
+  readonly value: WorkflowSortMode;
+  readonly onChange: (value: WorkflowSortMode) => void;
+}) {
+  const current = SORT_OPTIONS.find((option) => {
+    return option.value === value;
+  });
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="zero-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
+        >
+          <span className="text-muted-foreground">Sort:</span>
+          {current?.label ?? "Alphabetical"}
+          <IconChevronDown size={14} stroke={1.8} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {SORT_OPTIONS.map((option) => {
           return (
-            <TabsTrigger
+            <DropdownMenuItem
               key={option.value}
-              value={option.value}
-              className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
+              onSelect={() => {
+                onChange(option.value);
+              }}
             >
               {option.label}
-            </TabsTrigger>
+            </DropdownMenuItem>
           );
         })}
-      </TabsList>
-    </Tabs>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
+}
+
+function sortWorkflows(
+  workflows: readonly ZeroWorkflowSummary[],
+  sortMode: WorkflowSortMode,
+): readonly ZeroWorkflowSummary[] {
+  if (sortMode === "created") {
+    return [...workflows].sort((a, b) => {
+      return b.createdAt.localeCompare(a.createdAt);
+    });
+  }
+  if (sortMode === "alphabetical") {
+    return [...workflows].sort((a, b) => {
+      return workflowTitle(a).localeCompare(workflowTitle(b));
+    });
+  }
+  return workflows;
 }
 
 function WorkflowFilterBar({
@@ -607,8 +677,8 @@ function WorkflowFilterBar({
   const setSortMode = useSet(setWorkflowSortMode$);
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <FilterTabs
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <FilterPills
         value={automation}
         onChange={setAutomation}
         options={[
@@ -625,7 +695,7 @@ function WorkflowFilterBar({
           { value: "without", label: "Without automation" },
         ]}
       />
-      <FilterTabs
+      <FilterPills
         value={visibility}
         onChange={setVisibility}
         options={[
@@ -651,14 +721,7 @@ function WorkflowFilterBar({
         ]}
       />
       <div className="ml-auto">
-        <FilterTabs
-          value={sortMode}
-          onChange={setSortMode}
-          options={[
-            { value: "recent", label: "Recent" },
-            { value: "next-run", label: "Next run" },
-          ]}
-        />
+        <SortDropdown value={sortMode} onChange={setSortMode} />
       </div>
     </div>
   );
@@ -686,11 +749,14 @@ export function WorkflowsPage() {
     preferences?.timezone ??
     new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const filteredWorkflows = workflows
-    ? applyWorkflowFilters(
-        workflows,
-        triggerEntriesByWorkflowId,
-        automation,
-        visibility,
+    ? sortWorkflows(
+        applyWorkflowFilters(
+          workflows,
+          triggerEntriesByWorkflowId,
+          automation,
+          visibility,
+        ),
+        sortMode,
       )
     : null;
 
@@ -708,12 +774,14 @@ export function WorkflowsPage() {
           </div>
           <Button
             type="button"
+            variant="outline"
             size="sm"
-            className="h-9 shrink-0 rounded-lg bg-foreground px-3 text-background hover:bg-foreground/90"
+            className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border"
             onClick={() => {
               openCreateWorkflowDialog();
             }}
           >
+            <IconPlus size={14} stroke={2} />
             Create in chat
           </Button>
         </div>

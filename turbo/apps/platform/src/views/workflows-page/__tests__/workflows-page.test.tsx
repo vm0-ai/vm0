@@ -432,6 +432,7 @@ function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
     ownerUserId: workflow.ownerUserId,
     ownerUserDisplayName: "Test User",
     ownerUserImageUrl: null,
+    createdAt: workflow.createdAt,
     canManage: workflow.canManage,
     canPublish: workflow.canPublish,
   };
@@ -853,11 +854,11 @@ function linkByAriaLabel(label: string): HTMLAnchorElement {
 }
 
 function tabByName(name: string): HTMLElement {
-  const tab = queryAllByRoleFast("tab").find((candidate) => {
+  const tab = queryAllByRoleFast("button").find((candidate) => {
     return candidate.textContent?.trim() === name;
   });
   if (!tab) {
-    throw new Error(`${name} tab not found`);
+    throw new Error(`${name} filter pill not found`);
   }
   return tab;
 }
