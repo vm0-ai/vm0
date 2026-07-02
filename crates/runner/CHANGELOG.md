@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.131.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.12...runner-rs-v0.131.13) (2026-07-02)
+
+
+### Bug Fixes
+
+* expose runner session ids in diagnostics ([#19755](https://github.com/vm0-ai/vm0/issues/19755)) ([e4c62e1](https://github.com/vm0-ai/vm0/commit/e4c62e17ed7de8743f89dacf9edc62f7042307d6))
+
+
+### Refactoring
+
+* **runner:** simplify proxy registry test setup ([#19784](https://github.com/vm0-ai/vm0/issues/19784)) ([e2a77fc](https://github.com/vm0-ai/vm0/commit/e2a77fcfa15a819deaed1d4e9b6dd1f8313ff559))
+
+
+### Performance Improvements
+
+* add compressed resume session history transport ([#19667](https://github.com/vm0-ai/vm0/issues/19667)) ([ee23c32](https://github.com/vm0-ai/vm0/commit/ee23c326ccf794228d2c4f9dd6d8844cd032fc49))
+
 ## [0.131.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.11...runner-rs-v0.131.12) (2026-07-02)
 
 ## [0.131.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.10...runner-rs-v0.131.11) (2026-07-01)
