@@ -96,6 +96,13 @@ const googleCalendarWebhookResponseSchema = z.object({
   duplicates: z.number(),
 });
 
+const googleWorkspaceEventsWebhookResponseSchema = z.object({
+  success: z.literal(true),
+  watchStates: z.number(),
+  dispatched: z.number(),
+  duplicates: z.number(),
+});
+
 const workflowTriggerWebhookResponseSchema = z.object({
   success: z.literal(true),
   duplicate: z.boolean(),
@@ -137,6 +144,26 @@ export const webhookGoogleCalendarContract = c.router({
       503: thirdPartyWebhookErrorSchema,
     },
     summary: "Handle Google Calendar push notifications",
+  },
+});
+
+/**
+ * Google Workspace Events Pub/Sub push webhook contract for
+ * /api/webhooks/google-workspace-events.
+ */
+export const webhookGoogleWorkspaceEventsContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/google-workspace-events",
+    body: c.type<string>(),
+    responses: {
+      200: googleWorkspaceEventsWebhookResponseSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      429: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle Google Workspace Events Pub/Sub push notifications",
   },
 });
 
@@ -751,6 +778,8 @@ export type WebhookGithubContract = typeof webhookGithubContract;
 export type WebhookGmailContract = typeof webhookGmailContract;
 export type WebhookGoogleCalendarContract =
   typeof webhookGoogleCalendarContract;
+export type WebhookGoogleWorkspaceEventsContract =
+  typeof webhookGoogleWorkspaceEventsContract;
 export type WebhookStripeContract = typeof webhookStripeContract;
 export type WebhookWorkflowTriggerContract =
   typeof webhookWorkflowTriggerContract;

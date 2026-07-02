@@ -45,6 +45,7 @@ const GMAIL_TRIGGER_ID = "workflow-trigger-gmail-new-message";
 const GMAIL_LABEL_TRIGGER_ID = "workflow-trigger-gmail-label-applied";
 const GITHUB_LABEL_TRIGGER_ID = "workflow-trigger-github-label-applied";
 const GOOGLE_CALENDAR_TRIGGER_ID = "workflow-trigger-google-calendar-created";
+const GOOGLE_MEET_TRIGGER_ID = "workflow-trigger-google-meet-transcript";
 const WORKFLOW_CHAT_THREAD_ID = "00000000-0000-4000-a000-000000000300";
 const TRIGGER_RUN_THREAD_ID = "00000000-0000-4000-a000-000000000301";
 
@@ -122,6 +123,10 @@ type WorkflowGoogleCalendarEventUpdatedTriggerSummary = Extract<
 type WorkflowGoogleCalendarEventCancelledTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { kind: "event"; eventType: "google-calendar-event-cancelled" }
+>;
+type WorkflowGoogleMeetTranscriptGeneratedTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "event"; eventType: "google-meet-transcript-generated" }
 >;
 
 function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
@@ -286,6 +291,26 @@ function googleCalendarCancelledWorkflowTrigger(): WorkflowGoogleCalendarEventCa
     ownerUserId: CURRENT_USER_ID,
     enabled: true,
     chatThreadId: "thread_google_calendar_event_cancelled",
+    nextRunAt: null,
+    lastRunAt: null,
+  };
+}
+
+function googleMeetTranscriptGeneratedWorkflowTrigger(): WorkflowGoogleMeetTranscriptGeneratedTriggerSummary {
+  return {
+    id: GOOGLE_MEET_TRIGGER_ID,
+    kind: "event",
+    eventType: "google-meet-transcript-generated",
+    eventConfig: {
+      provider: "google-meet",
+      event: "transcript_generated",
+      scope: { type: "organizer_user" },
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_google_meet_transcript_generated",
     nextRunAt: null,
     lastRunAt: null,
   };
@@ -706,6 +731,12 @@ function mockCreateWorkflowTrigger(
       if (body.eventType === "google-calendar-event-cancelled") {
         return respond(201, {
           ...googleCalendarCancelledWorkflowTrigger(),
+          eventConfig: body.eventConfig,
+        });
+      }
+      if (body.eventType === "google-meet-transcript-generated") {
+        return respond(201, {
+          ...googleMeetTranscriptGeneratedWorkflowTrigger(),
           eventConfig: body.eventConfig,
         });
       }
@@ -1767,6 +1798,47 @@ describe("workflow detail page", () => {
           provider: "google-calendar",
           event: "event_cancelled",
           calendarId: "team@example.com",
+        },
+      });
+    });
+  });
+
+  it("creates a Google Meet transcript-generated trigger", async () => {
+    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowTrigger((body) => {
+      createBodies.push(body);
+    });
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.WorkflowAutomation]: true,
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+
+    await waitFor(() => {
+      expect(
+        menuItemByText(/^Google Meet transcript ready/),
+      ).toBeInTheDocument();
+    });
+    click(menuItemByText(/^Google Meet transcript ready/));
+
+    const createTriggerForm = await screen.findByRole("form", {
+      name: "Add Google Meet transcript automation",
+    });
+    fireEvent.submit(createTriggerForm);
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "google-meet-transcript-generated",
+        eventConfig: {
+          provider: "google-meet",
+          event: "transcript_generated",
+          scope: { type: "organizer_user" },
         },
       });
     });
