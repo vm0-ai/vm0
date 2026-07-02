@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
@@ -252,7 +252,7 @@ describe("zero sidebar account menu", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows compact subscriptions below credits in the account menu", async () => {
+  it("shows subscription usage grouped below credits in the account menu", async () => {
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
       connectedPersonalCodexProvider(),
@@ -273,9 +273,18 @@ describe("zero sidebar account menu", () => {
     const menu = await openAccountMenu();
     const panel = await within(menu).findByTestId("account-menu-subscriptions");
 
-    expect(within(panel).getByText("Subscriptions")).toBeInTheDocument();
-    expect(within(panel).getByText("Codex")).toBeInTheDocument();
-    expect(within(panel).getByText("Claude Code")).toBeInTheDocument();
+    expect(within(panel).queryByText("Subscriptions")).not.toBeInTheDocument();
+    expect(
+      within(panel).queryByLabelText("Refresh subscriptions"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(panel).getByRole("heading", { name: "Codex" }),
+    ).toBeInTheDocument();
+    expect(
+      within(panel).getByRole("heading", { name: "Claude Code" }),
+    ).toBeInTheDocument();
+    expect(within(panel).getAllByText("5h")).toHaveLength(2);
+    expect(within(panel).getAllByText("week")).toHaveLength(2);
     expect(within(panel).getByText("82%")).toBeInTheDocument();
     expect(within(panel).getByText("55%")).toBeInTheDocument();
     expect(within(panel).getByText("88%")).toBeInTheDocument();
@@ -287,14 +296,13 @@ describe("zero sidebar account menu", () => {
     expect(codexFiveHour).toHaveAttribute("aria-valuenow", "82");
 
     const credits = within(menu).getByText("12,500 credits");
-    const subscriptions = within(panel).getByText("Subscriptions");
+    const codex = within(panel).getByRole("heading", { name: "Codex" });
     expect(
-      credits.compareDocumentPosition(subscriptions) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
+      credits.compareDocumentPosition(codex) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  it("refreshes account menu subscriptions only when the refresh button is clicked", async () => {
+  it("refreshes account menu subscriptions when the menu opens", async () => {
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
       connectedPersonalCodexProvider(),
@@ -312,8 +320,8 @@ describe("zero sidebar account menu", () => {
       featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
     });
 
-    const menu = await openAccountMenu();
-    const panel = await within(menu).findByTestId("account-menu-subscriptions");
+    let menu = await openAccountMenu();
+    let panel = await within(menu).findByTestId("account-menu-subscriptions");
     expect(within(panel).getByText("82%")).toBeInTheDocument();
 
     context.mocks.data.personalModelProviders([
@@ -337,7 +345,13 @@ describe("zero sidebar account menu", () => {
     ]);
 
     expect(within(panel).queryByText("64%")).not.toBeInTheDocument();
-    click(within(panel).getByLabelText("Refresh subscriptions"));
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    menu = await openAccountMenu();
+    panel = await within(menu).findByTestId("account-menu-subscriptions");
 
     await waitFor(() => {
       expect(within(panel).getByText("64%")).toBeInTheDocument();
