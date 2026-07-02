@@ -91,6 +91,9 @@ const POLL_SLOW: Duration = Duration::from_secs(30);
 const POLL_FAST: Duration = Duration::from_secs(5);
 /// Retry delay after a job-notification wakeup reaches poll but poll fails.
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
+/// Fallback server-side affinity window when a candidate lacks a usable
+/// `affinityProtectedUntil` deadline. Keep in sync with the API service.
+const AFFINITY_PROTECTED_RETRY_FALLBACK: Duration = Duration::from_secs(2);
 /// Small retry backoff when the API says a claim is still affinity-protected.
 const AFFINITY_PROTECTED_RETRY_JITTER: Duration = Duration::from_millis(50);
 const DIRECT_CANDIDATE_QUEUE_CAPACITY: usize = 128;
@@ -387,24 +390,16 @@ impl JobProvider for ApiProvider {
                 None
             }
             Err(RunnerError::AffinityProtected) => {
-                if let Some(delay) = candidate.affinity_protection_remaining() {
-                    let delay = delay.saturating_add(AFFINITY_PROTECTED_RETRY_JITTER);
-                    info!(
-                        run_id = %run_id,
-                        delay_ms = delay.as_millis(),
-                        "claim rejected by affinity protection, deferring poll"
-                    );
-                    self.poll_wakeups.request_deferred_poll_after(delay).await;
-                } else {
-                    info!(
-                        run_id = %run_id,
-                        delay_ms = AFFINITY_PROTECTED_RETRY_JITTER.as_millis(),
-                        "claim rejected by affinity protection without active local deadline, deferring poll"
-                    );
-                    self.poll_wakeups
-                        .request_deferred_poll_after(AFFINITY_PROTECTED_RETRY_JITTER)
-                        .await;
-                }
+                let delay = candidate
+                    .affinity_protection_remaining()
+                    .unwrap_or(AFFINITY_PROTECTED_RETRY_FALLBACK)
+                    .saturating_add(AFFINITY_PROTECTED_RETRY_JITTER);
+                info!(
+                    run_id = %run_id,
+                    delay_ms = delay.as_millis(),
+                    "claim rejected by affinity protection, deferring poll"
+                );
+                self.poll_wakeups.request_deferred_poll_after(delay).await;
                 None
             }
             Err(e) => {
@@ -2111,9 +2106,13 @@ mod tests {
 
         assert!(claimed.is_none());
         let snapshot = wakeups.snapshot().await;
+        let deferred_poll_delay = snapshot
+            .deferred_poll_at
+            .expect("affinity-protected claim conflicts should defer instead of hot-polling")
+            .saturating_duration_since(tokio::time::Instant::now());
         assert!(
-            snapshot.deferred_poll_at.is_some(),
-            "affinity-protected claim conflicts should defer instead of hot-polling"
+            deferred_poll_delay >= AFFINITY_PROTECTED_RETRY_FALLBACK,
+            "affinity-protected claim conflicts without a local deadline should wait for the server protection window"
         );
         claim_mock.assert_calls_async(1).await;
     }
