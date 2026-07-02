@@ -19,12 +19,13 @@ type WindowWithGtag = Window & {
   gtag?: (...args: unknown[]) => void;
 };
 
-function mockSignedInUser(): void {
+function mockSignedInUser(options: { readonly createdAt?: Date } = {}): void {
   mockUser(
     {
       id: "test-user-123",
       fullName: "Test User",
       email: "test@example.com",
+      createdAt: options.createdAt ?? new Date(),
     },
     {
       token: "test-token",
@@ -105,6 +106,33 @@ describe("signup attribution Google Ads conversion", () => {
     await context.store.set(recordSignupAttribution$, context.signal);
 
     expect(gtag).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires the Signup conversion for a recent signup without stored ad attribution", async () => {
+    const gtag = installGtagMock();
+    mockSignedInUser();
+
+    await context.store.set(recordSignupAttribution$, context.signal);
+
+    expect(gtag).toHaveBeenCalledWith(
+      "event",
+      "conversion",
+      expect.objectContaining({
+        send_to: SIGNUP_SEND_TO,
+        value: 1,
+        currency: "USD",
+      }),
+    );
+  });
+
+  it("records attribution without firing the Signup conversion for older users", async () => {
+    const gtag = installGtagMock();
+    mockSignedInUser({ createdAt: new Date(Date.now() - 31 * 60 * 1000) });
+    storePaidSignupAttribution();
+
+    await context.store.set(recordSignupAttribution$, context.signal);
+
+    expect(gtag).not.toHaveBeenCalled();
   });
 
   it("does not fire the Signup conversion when attribution was already recorded server-side", async () => {
