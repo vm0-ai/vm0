@@ -4,8 +4,10 @@ import chalk from "chalk";
 import { server } from "../../../../mocks/server";
 import { generateCommand } from "../index";
 import {
+  catalogItem,
   catalogStatusItem,
   manualAuthMethod,
+  stubConnectorCatalog,
   stubConnectorCatalogStatus,
 } from "../../__tests__/helpers/connector-catalog";
 
@@ -241,6 +243,64 @@ describe("zero generate lister", () => {
     expect(text).toContain("No ready text generation connectors found.");
     expect(text).not.toContain("bentoml");
     expect(text).not.toContain("/connectors/bentoml");
+  });
+
+  it("prints connector guidance from the public catalog when --provider supports the generation type", async () => {
+    server.use(
+      stubConnectorCatalog([
+        catalogItem({
+          connectorRef: "replicate",
+          label: "Replicate",
+          generation: ["image"],
+          authMethods: [manualAuthMethod()],
+        }),
+      ]),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image",
+      "--provider",
+      "replicate",
+    ]);
+
+    const text = output();
+    expect(text).toContain(
+      'Replicate (replicate) handles image generation through its own connector skill, not through "zero generate".',
+    );
+    expect(text).toContain('Use the "replicate" skill in this session.');
+    expect(text).toContain("zero connector status replicate");
+    expect(text).not.toContain("Built-in command:");
+  });
+
+  it("uses the public catalog when --provider names a connector that does not advertise the generation type", async () => {
+    server.use(
+      stubConnectorCatalog([
+        catalogItem({
+          connectorRef: "elevenlabs",
+          label: "ElevenLabs",
+          generation: ["audio"],
+          authMethods: [manualAuthMethod()],
+        }),
+      ]),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image",
+      "--provider",
+      "elevenlabs",
+    ]);
+
+    const text = output();
+    expect(text).toContain(
+      "ElevenLabs (elevenlabs) does not advertise image generation.",
+    );
+    expect(text).toContain(
+      'Run "zero generate image" to see every provider that supports this generation type.',
+    );
   });
 
   it("suggests the built-in video command when no video connector is ready", async () => {

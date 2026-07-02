@@ -1,6 +1,8 @@
 import { http, HttpResponse } from "msw";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
+  PublicConnectorCatalogAuthMethodSummary,
+  PublicConnectorCatalogItem,
   PublicConnectorCatalogManualField,
   PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
@@ -56,6 +58,34 @@ export function authCodeMethod(
   };
 }
 
+function authMethodSummary(
+  method: PublicConnectorCatalogAuthMethodSummary,
+): PublicConnectorCatalogAuthMethodSummary {
+  return {
+    id: method.id,
+    label: method.label,
+    description: method.description,
+    grantKind: method.grantKind,
+  };
+}
+
+export function catalogItem(
+  overrides: Partial<PublicConnectorCatalogItem> & {
+    readonly connectorRef: string;
+  },
+): PublicConnectorCatalogItem {
+  return {
+    connectorRef: overrides.connectorRef,
+    label: overrides.label ?? overrides.connectorRef,
+    description: overrides.description ?? `${overrides.connectorRef} connector`,
+    category: overrides.category ?? "developer-tools",
+    generation: overrides.generation ?? [],
+    tags: overrides.tags ?? [],
+    authMethods: (overrides.authMethods ?? []).map(authMethodSummary),
+    permissionSummary: overrides.permissionSummary ?? permissionSummary(),
+  };
+}
+
 export function catalogStatusItem(
   overrides: Partial<PublicConnectorCatalogStatusItem> & {
     readonly connectorRef: string;
@@ -83,6 +113,14 @@ export function catalogStatusItem(
     singleAuthCodeAuthMethodId: overrides.singleAuthCodeAuthMethodId ?? null,
     connectNotice: overrides.connectNotice ?? null,
   };
+}
+
+export function stubConnectorCatalog(
+  connectors: readonly PublicConnectorCatalogItem[],
+) {
+  return http.get("http://localhost:3000/api/zero/connector-catalog", () => {
+    return HttpResponse.json({ connectors });
+  });
 }
 
 export function stubConnectorCatalogStatus(
