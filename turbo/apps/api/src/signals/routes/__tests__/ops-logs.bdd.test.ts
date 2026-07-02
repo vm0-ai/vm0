@@ -1262,7 +1262,9 @@ describe("OPS-01: user data export", () => {
     const history = `{"type":"init"}\n{"type":"human","text":"exported-${randomUUID()}"}\n`;
     const tamperedHistory = history.replace("exported-", "tampered-");
     const historyHash = createHash("sha256").update(history).digest("hex");
-    const compressedHistory = gzipSync(Buffer.from(history, "utf8"));
+    const tamperedCompressedHistory = gzipSync(
+      Buffer.from(tamperedHistory, "utf8"),
+    );
     const compressedKey = `blobs/${historyHash}.blob.gz`;
 
     await webhooks.requestAgentCheckpointPrepareHistory(
@@ -1270,7 +1272,7 @@ describe("OPS-01: user data export", () => {
         runId: run.runId,
         hash: historyHash,
         rawSize: Buffer.byteLength(history, "utf8"),
-        encodedSize: compressedHistory.length,
+        encodedSize: tamperedCompressedHistory.length,
         encoding: "gzip",
       },
       headers,
@@ -1299,10 +1301,7 @@ describe("OPS-01: user data export", () => {
     context.mocks.s3.getSignedUrl.mockResolvedValue(
       "https://r2.example.com/bdd-export-corrupt-history.zip?sig=test",
     );
-    misc.putS3Object(
-      compressedKey,
-      gzipSync(Buffer.from(tamperedHistory, "utf8")),
-    );
+    misc.putS3Object(compressedKey, tamperedCompressedHistory);
 
     const started = await api.requestPostUserExport(actor, [202]);
     const failedStatus = await waitForUserExportJobStatus(
