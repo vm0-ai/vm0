@@ -209,12 +209,12 @@ const VISIBILITY_FILTER_PARAM = "visibility";
 const SORT_MODE_PARAM = "sort";
 
 function readSearchParam<T extends string>(
-  get: <V>(atom: Computed<V>) => V,
+  params: URLSearchParams,
   key: string,
   allowed: readonly T[],
   fallback: T,
 ): T {
-  const value = get(searchParams$).get(key) ?? "";
+  const value = params.get(key) ?? "";
   return (allowed as readonly string[]).includes(value)
     ? (value as T)
     : fallback;
@@ -223,7 +223,7 @@ function readSearchParam<T extends string>(
 export const workflowAutomationFilter$ = computed(
   (get): WorkflowAutomationFilter => {
     return readSearchParam(
-      get,
+      get(searchParams$),
       AUTOMATION_FILTER_PARAM,
       ["all", "automated", "without"],
       "all",
@@ -234,7 +234,7 @@ export const workflowAutomationFilter$ = computed(
 export const workflowVisibilityFilter$ = computed(
   (get): WorkflowVisibilityFilter => {
     return readSearchParam(
-      get,
+      get(searchParams$),
       VISIBILITY_FILTER_PARAM,
       ["all", "private", "public"],
       "all",
@@ -244,7 +244,7 @@ export const workflowVisibilityFilter$ = computed(
 
 export const workflowSortMode$ = computed((get): WorkflowSortMode => {
   return readSearchParam(
-    get,
+    get(searchParams$),
     SORT_MODE_PARAM,
     ["recent", "next-run"],
     "recent",

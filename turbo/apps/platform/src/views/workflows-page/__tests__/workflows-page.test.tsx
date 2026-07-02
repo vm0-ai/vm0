@@ -146,23 +146,6 @@ function weekdayWorkflowTrigger(): WorkflowScheduleTriggerSummary {
   };
 }
 
-function intervalWorkflowTrigger(): WorkflowScheduleTriggerSummary {
-  return {
-    id: "workflow-trigger-interval-brief",
-    kind: "schedule",
-    schedule: {
-      type: "loop",
-      intervalSeconds: 15 * 60,
-    },
-    scheduleSummary: "Every 15 minutes",
-    ownerUserId: CURRENT_USER_ID,
-    enabled: true,
-    chatThreadId: "thread_interval_brief",
-    nextRunAt: "2026-06-19T01:15:00.000Z",
-    lastRunAt: "2026-06-19T01:00:00.000Z",
-  };
-}
-
 function gmailWorkflowTrigger(): WorkflowGmailNewMessageTriggerSummary {
   return {
     id: GMAIL_TRIGGER_ID,
@@ -869,16 +852,6 @@ function linkByAriaLabel(label: string): HTMLAnchorElement {
   return link;
 }
 
-function tabByText(text: string): HTMLElement {
-  const tab = queryAllByRoleFast("tab").find((candidate) => {
-    return textFor(candidate) === text;
-  });
-  if (!tab) {
-    throw new Error(`${text} tab not found`);
-  }
-  return tab;
-}
-
 function selectOptionByLabel(
   label: string,
   option: string | RegExp,
@@ -925,7 +898,7 @@ describe("workflows routes", () => {
     expect(screen.queryByText("Workflow not found.")).not.toBeInTheDocument();
   });
 
-  it("shows triggered workflows first on the workspace workflows page", async () => {
+  it("filters the workspace workflows by automation", async () => {
     context.mocks.data.userPreferences({ timezone: "UTC" });
     mockAgentPageApis();
     mockChatLifecycle(context);
@@ -946,40 +919,15 @@ describe("workflows routes", () => {
       expect(linkByAriaLabel("Open Sales Research")).toBeInTheDocument();
     });
     expect(search()).toBe("");
-    expect(tabByText("Automations")).toHaveAttribute("aria-selected", "true");
-    expect(screen.queryByText("Ops Playbook")).not.toBeInTheDocument();
-    expect(screen.queryByText("Launch Checklist")).not.toBeInTheDocument();
-    expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
 
-    const salesCard = articleByText("Sales Research");
-    expect(within(salesCard).getByText("Schedule")).toBeInTheDocument();
-    expect(
-      within(salesCard).getByText("Every weekday at 9:00 AM"),
-    ).toBeInTheDocument();
-    const switchControl = within(salesCard).getByRole("switch", {
-      name: "Disable Sales Research",
-    });
-    expect(switchControl).toHaveAttribute("aria-checked", "true");
-
-    click(switchControl);
-    await waitFor(() => {
-      expect(
-        within(articleByText("Sales Research")).getByRole("switch", {
-          name: "Enable Sales Research",
-        }),
-      ).toHaveAttribute("aria-checked", "false");
-    });
-
-    click(tabByText("All"));
-    await waitFor(() => {
-      expect(search()).toBe("?tab=all");
-    });
-    expect(tabByText("All")).toHaveAttribute("aria-selected", "true");
-    await waitFor(() => {
-      expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
-    });
+    // The default "All" view lists every workspace workflow.
+    expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
     expect(linkByAriaLabel("Open Launch Checklist")).toBeInTheDocument();
     expect(linkByAriaLabel("Open Support Intake")).toBeInTheDocument();
+
+    // The automated workflow surfaces its connector pill on the row.
+    const salesCard = articleByText("Sales Research");
+    expect(within(salesCard).getByText("Schedule")).toBeInTheDocument();
 
     const supportLink = linkByAriaLabel("Open Support Intake");
     expect(supportLink).toHaveAttribute(
@@ -987,12 +935,31 @@ describe("workflows routes", () => {
       `/workflows/${OTHER_WORKFLOW_ID}/automations`,
     );
 
-    click(tabByText("Automations"));
+    // "Automated" keeps only workflows that have at least one automation.
+    click(buttonByText("Automated"));
+    await waitFor(() => {
+      expect(search()).toBe("?automation=automated");
+    });
+    expect(linkByAriaLabel("Open Sales Research")).toBeInTheDocument();
+    expect(screen.queryByText("Ops Playbook")).not.toBeInTheDocument();
+    expect(screen.queryByText("Launch Checklist")).not.toBeInTheDocument();
+    expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
+
+    // "Without automation" keeps only the manual workflows.
+    click(buttonByText("Without automation"));
+    await waitFor(() => {
+      expect(search()).toBe("?automation=without");
+    });
+    expect(screen.queryByText("Sales Research")).not.toBeInTheDocument();
+    expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
+    expect(linkByAriaLabel("Open Launch Checklist")).toBeInTheDocument();
+
+    // Clearing the filter returns to the full list.
+    click(buttonByText("All"));
     await waitFor(() => {
       expect(search()).toBe("");
     });
-    expect(tabByText("Automations")).toHaveAttribute("aria-selected", "true");
-    expect(screen.queryByText("Ops Playbook")).not.toBeInTheDocument();
+    expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
 
     expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).toContain(
       "Help me create a workflow for this agent.",
@@ -1016,49 +983,6 @@ describe("workflows routes", () => {
       expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
     });
     await expectComposerText(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
-  });
-
-  it("runs a fixed interval trigger from the workflows page and links to the chat in a toast", async () => {
-    const runTriggerIds: string[] = [];
-    context.mocks.data.userPreferences({ timezone: "UTC" });
-    mockAgentPageApis();
-    mockChatLifecycle(context, { threadId: TRIGGER_RUN_THREAD_ID });
-    mockWorkflowApis([
-      { ...salesResearch(), triggers: [intervalWorkflowTrigger()] },
-    ]);
-    mockRunWorkflowTrigger((triggerId) => {
-      runTriggerIds.push(triggerId);
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/workflows",
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
-    });
-
-    await waitFor(() => {
-      expect(linkByAriaLabel("Open Sales Research")).toBeInTheDocument();
-    });
-    const salesCard = articleByText("Sales Research");
-    expect(within(salesCard).getByText("Every 15 minutes")).toBeInTheDocument();
-
-    click(buttonByText("Run now", salesCard));
-
-    await waitFor(() => {
-      expect(runTriggerIds).toStrictEqual(["workflow-trigger-interval-brief"]);
-    });
-    expect(pathname()).toBe("/workflows");
-    expect(search()).toBe("");
-    await expect(
-      screen.findByText("Workflow started"),
-    ).resolves.toBeInTheDocument();
-
-    click(buttonByText("View in chat"));
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/chats/${TRIGGER_RUN_THREAD_ID}`);
-    });
-    expect(search()).toBe("");
   });
 
   it("redirects the legacy agent workflows tab when workflow automation is enabled", async () => {

@@ -20,6 +20,7 @@ import {
   cn,
 } from "@vm0/ui";
 
+import { nowDate } from "../../lib/time.ts";
 import { openCreateWorkflowDialog$ } from "../../signals/automation-page/workflow-trigger-automation-dialog.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import {
@@ -483,7 +484,7 @@ function WorkflowNextRunGroups({
   readonly entriesByWorkflowId: WorkflowTriggerEntryMap;
   readonly displayTimezone: string;
 }) {
-  const now = new Date();
+  const now = nowDate();
   const buckets = new Map<NextRunBucket, ZeroWorkflowSummary[]>();
   for (const workflow of workflows) {
     const entries = entriesByWorkflowId.get(workflow.id) ?? [];
