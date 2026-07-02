@@ -69,6 +69,7 @@ import {
 } from "../../signals/zero-page/presentation-html-cache-bust.ts";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import {
+  artifactPreviewUrlsMatch,
   attachmentFilenameFromUrl,
   downloadAttachmentUrl,
   publicAttachmentUrl,
@@ -398,7 +399,7 @@ function findArtifactDialogItemForUrl(
 ): ArtifactDialogItem | undefined {
   for (const run of runs) {
     const file = run.files.find((candidate) => {
-      return candidate.url === url;
+      return artifactPreviewUrlsMatch(candidate.url, url);
     });
     if (file) {
       return { runId: run.runId, file };

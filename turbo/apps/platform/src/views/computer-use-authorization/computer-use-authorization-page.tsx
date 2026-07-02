@@ -122,37 +122,29 @@ function EmptyHosts() {
         </p>
       </div>
       {showIntelDownload ? (
-        <div className="flex w-full max-w-sm flex-col gap-2">
+        <div className="flex w-full max-w-sm flex-col items-center gap-3">
           <a
             href={ZERO_DESKTOP_DOWNLOAD_URL}
             aria-label="Download for Mac Apple Silicon"
             target="_blank"
             rel="noreferrer"
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             <IconDownload size={16} />
-            <span className="flex flex-col items-start gap-0.5">
-              <span>Download for Mac</span>
-              <span className="text-xs font-normal text-muted-foreground">
-                Apple Silicon
-              </span>
-            </span>
+            Download for Mac (Apple Silicon)
           </a>
-          <a
-            href={ZERO_DESKTOP_INTEL_DOWNLOAD_URL}
-            aria-label="Download for Mac Intel"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-          >
-            <IconDownload size={16} />
-            <span className="flex flex-col items-start gap-0.5">
-              <span>Download for Mac</span>
-              <span className="text-xs font-normal text-muted-foreground">
-                Intel
-              </span>
-            </span>
-          </a>
+          <p className="text-sm text-muted-foreground">
+            On an Intel Mac?{" "}
+            <a
+              href={ZERO_DESKTOP_INTEL_DOWNLOAD_URL}
+              aria-label="Download for Mac Intel"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-primary hover:underline"
+            >
+              Download here
+            </a>
+          </p>
         </div>
       ) : downloadSupportStatus === "unsupported-intel-mac" ? (
         <Button type="button" variant="outline" disabled className="h-9">

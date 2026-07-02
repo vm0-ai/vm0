@@ -38,6 +38,8 @@ struct SandboxOp {
     success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    encoding: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -69,12 +71,37 @@ impl JobTelemetry {
         success: bool,
         error: Option<&str>,
     ) {
+        self.record_inner(action_type, duration, success, error, None);
+    }
+
+    /// Record a timed operation with a low-cardinality session-history
+    /// transport encoding dimension.
+    pub fn record_with_encoding(
+        &mut self,
+        action_type: &str,
+        duration: Duration,
+        success: bool,
+        error: Option<&str>,
+        encoding: Option<&'static str>,
+    ) {
+        self.record_inner(action_type, duration, success, error, encoding);
+    }
+
+    fn record_inner(
+        &mut self,
+        action_type: &str,
+        duration: Duration,
+        success: bool,
+        error: Option<&str>,
+        encoding: Option<&'static str>,
+    ) {
         self.pending_ops.push(SandboxOp {
             ts: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             action_type: action_type.to_string(),
             duration_ms: duration_ms(duration),
             success,
             error: error.map(String::from),
+            encoding: encoding.map(String::from),
         });
         if self.oldest_pending.is_none() {
             self.oldest_pending = Some(Instant::now());
@@ -126,6 +153,23 @@ impl JobTelemetry {
                     op.duration_ms,
                     op.success,
                     op.error.clone(),
+                )
+            })
+            .collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pending_ops_with_encoding_snapshot(
+        &self,
+    ) -> Vec<(String, bool, Option<String>, Option<String>)> {
+        self.pending_ops
+            .iter()
+            .map(|op| {
+                (
+                    op.action_type.clone(),
+                    op.success,
+                    op.error.clone(),
+                    op.encoding.clone(),
                 )
             })
             .collect()
@@ -265,6 +309,7 @@ mod tests {
             duration_ms: 1500,
             success: true,
             error: None,
+            encoding: None,
         };
         let json = serde_json::to_value(&op).unwrap();
         assert_eq!(json["ts"], "2026-01-15T10:00:00+00:00");
@@ -284,11 +329,13 @@ mod tests {
                 duration_ms: 100,
                 success: true,
                 error: None,
+                encoding: Some("gzip".to_string()),
             }],
         };
         let json = serde_json::to_value(&payload).unwrap();
         assert!(json.get("runId").is_some());
         assert!(json.get("sandboxOperations").is_some());
+        assert_eq!(json["sandboxOperations"][0]["encoding"], "gzip");
     }
 
     #[test]
@@ -322,6 +369,30 @@ mod tests {
         assert!(!telemetry.pending_ops[1].success);
         assert_eq!(telemetry.pending_ops[1].error.as_deref(), Some("timeout"));
         assert!(telemetry.oldest_pending.is_some());
+    }
+
+    #[test]
+    fn record_with_encoding_buffers_low_cardinality_encoding() {
+        let http = http_client();
+        let mut telemetry = JobTelemetry::new(http, RunId::nil(), "tok".to_string());
+
+        telemetry.record_with_encoding(
+            "session_history_download",
+            Duration::from_millis(500),
+            true,
+            None,
+            Some("gzip"),
+        );
+
+        assert_eq!(
+            telemetry.pending_ops_with_encoding_snapshot(),
+            vec![(
+                "session_history_download".to_string(),
+                true,
+                None,
+                Some("gzip".to_string())
+            )]
+        );
     }
 
     #[test]

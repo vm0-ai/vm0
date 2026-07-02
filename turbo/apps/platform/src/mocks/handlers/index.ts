@@ -63,6 +63,7 @@ import {
   apiAgentsHandlers,
   resetMockComposesList,
   resetMockTeam,
+  resetMockUserConnectors,
 } from "./api-agents.ts";
 import { apiWorkflowsHandlers, resetMockWorkflows } from "./api-workflows.ts";
 import { apiMemoryHandlers, resetMockMemory } from "./api-memory.ts";
@@ -172,6 +173,7 @@ export function resetAllMockHandlers(): void {
   resetMockAutomations();
   resetMockAutomationTriggers();
   resetMockTeam();
+  resetMockUserConnectors();
   resetMockWorkflows();
   resetMockMemory();
   resetMockMemoryActivity();

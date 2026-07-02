@@ -25,7 +25,7 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const result = await set(
     deleteChatThread$,
-    { threadId: params.id, userId: auth.userId },
+    { threadId: params.id, userId: auth.userId, orgId: auth.orgId },
     signal,
   );
   signal.throwIfAborted();

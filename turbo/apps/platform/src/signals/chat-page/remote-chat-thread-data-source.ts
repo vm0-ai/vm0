@@ -72,7 +72,7 @@ const patchDraft$ = command(
         body: { draftContent: content, draftAttachments: attachments },
         fetchOptions: { signal },
       }),
-      [204],
+      [200, 204],
     );
     signal.throwIfAborted();
     set(reloadSidebarDraftThreads$);
