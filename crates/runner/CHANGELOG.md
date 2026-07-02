@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.131.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.15...runner-rs-v0.131.16) (2026-07-02)
+
+
+### Refactoring
+
+* **mitm-addon:** separate body decode policies ([#19818](https://github.com/vm0-ai/vm0/issues/19818)) ([2cceb77](https://github.com/vm0-ai/vm0/commit/2cceb77c50ae250bdce23e6ff652d51a43789ea5))
+
+
+### Performance Improvements
+
+* **mitm-addon:** adapt zstd stream input chunks ([#19856](https://github.com/vm0-ai/vm0/issues/19856)) ([7be6db8](https://github.com/vm0-ai/vm0/commit/7be6db8324af2bae96ac78c10d73317a59271edb))
+
 ## [0.131.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.14...runner-rs-v0.131.15) (2026-07-02)
 
 

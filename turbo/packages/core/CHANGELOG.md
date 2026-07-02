@@ -1,5 +1,34 @@
 # Changelog
 
+## [8.389.0](https://github.com/vm0-ai/vm0/compare/core-v8.388.0...core-v8.389.0) (2026-07-02)
+
+
+### Features
+
+* add in-canvas image editing ([#19873](https://github.com/vm0-ai/vm0/issues/19873)) ([758557b](https://github.com/vm0-ai/vm0/commit/758557ba1d7963d7eee86ae7362e31f081840f39))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.2
+    * @vm0/connectors bumped to 1.128.0
+
+## [8.388.0](https://github.com/vm0-ai/vm0/compare/core-v8.387.0...core-v8.388.0) (2026-07-02)
+
+
+### Features
+
+* enable data export for everyone ([#19871](https://github.com/vm0-ai/vm0/issues/19871)) ([dd6f8fe](https://github.com/vm0-ai/vm0/commit/dd6f8feebc11a3a07161affd2a9ed271487b194f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.1
+
 ## [8.387.0](https://github.com/vm0-ai/vm0/compare/core-v8.386.2...core-v8.387.0) (2026-07-02)
 
 

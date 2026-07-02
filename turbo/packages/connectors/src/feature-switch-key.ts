@@ -60,4 +60,5 @@ export enum FeatureSwitchKey {
   ChatInitialThinkingIndicator = "chatInitialThinkingIndicator",
   TeamsIntegration = "teamsIntegration",
   BytePlusVoiceInputStt = "bytePlusVoiceInputStt",
+  ImageEditing = "imageEditing",
 }

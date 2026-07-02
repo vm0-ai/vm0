@@ -653,6 +653,23 @@ function toClientResult(
   return result;
 }
 
+function scalarRecordForAudit(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const scalars: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (
+      typeof entry === "string" ||
+      typeof entry === "number" ||
+      typeof entry === "boolean"
+    ) {
+      scalars[key] = entry;
+    }
+  }
+  return Object.keys(scalars).length > 0 ? scalars : null;
+}
+
 function redactedResultForAudit(
   result: ComputerUseCommandResult | null | undefined,
 ): Record<string, unknown> | null {
@@ -690,27 +707,27 @@ function redactedResultForAudit(
   if (typeof result.appState === "string") {
     redacted.appStateLength = result.appState.length;
   }
+  if (typeof result.truncated === "boolean") {
+    redacted.truncated = result.truncated;
+  }
+  if (Array.isArray(result.truncationReasons)) {
+    redacted.truncationReasons = result.truncationReasons.filter((reason) => {
+      return typeof reason === "string";
+    });
+  }
+  const metrics = scalarRecordForAudit(result.metrics);
+  if (metrics) {
+    redacted.metrics = metrics;
+  }
   if (
     typeof result.screenshot === "string" ||
     (typeof result.screenshot === "object" && result.screenshot !== null)
   ) {
     redacted.screenshot = "[redacted]";
   }
-  const action = result.action;
-  if (action && typeof action === "object" && !Array.isArray(action)) {
-    const redactedAction: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(action)) {
-      if (
-        typeof value === "string" ||
-        typeof value === "number" ||
-        typeof value === "boolean"
-      ) {
-        redactedAction[key] = value;
-      }
-    }
-    if (Object.keys(redactedAction).length > 0) {
-      redacted.action = redactedAction;
-    }
+  const action = scalarRecordForAudit(result.action);
+  if (action) {
+    redacted.action = action;
   }
   if (Object.keys(redacted).length > 0) {
     return redacted;
@@ -1753,6 +1770,73 @@ async function computerUseHostCommandCompletionState(
   return { status: "running", host };
 }
 
+/**
+ * Structured per-command state metrics logged on every successful completion.
+ * Covers all command kinds (including high-frequency `app.state` reads, which
+ * never reach the user-facing audit-event table) so state-size and trimming
+ * changes can be evaluated from log analytics.
+ */
+function computerUseCommandStateMetrics(
+  row: ComputerUseCommandRow,
+): Record<string, unknown> {
+  const result = row.result ?? {};
+  const metrics: Record<string, unknown> = {
+    commandId: row.id,
+    orgId: row.orgId,
+    hostId: row.hostId,
+    kind: row.kind,
+    app: typeof row.payload.app === "string" ? row.payload.app : null,
+    durationMs: row.completedAt
+      ? row.completedAt.getTime() - row.createdAt.getTime()
+      : null,
+  };
+  if (typeof result.appState === "string") {
+    metrics.appStateChars = result.appState.length;
+  }
+  if (result.elements !== undefined) {
+    metrics.elementsJsonBytes = JSON.stringify(result.elements).length;
+  }
+  if (typeof result.visibleText === "string") {
+    metrics.visibleTextChars = result.visibleText.length;
+  }
+  if (Array.isArray(result.visibleElements)) {
+    metrics.visibleElementCount = result.visibleElements.length;
+  }
+  const screenshot = result.screenshot;
+  if (isStoredScreenshotPointer(screenshot)) {
+    metrics.screenshotBytes = screenshot.sizeBytes;
+  } else if (typeof screenshot === "string") {
+    metrics.screenshotBytes = screenshot.length;
+  }
+  if (typeof result.truncated === "boolean") {
+    metrics.truncated = result.truncated;
+  }
+  if (Array.isArray(result.truncationReasons)) {
+    metrics.truncationReasons = result.truncationReasons.filter((reason) => {
+      return typeof reason === "string";
+    });
+  }
+  const hostMetrics = scalarRecordForAudit(result.metrics);
+  if (hostMetrics) {
+    metrics.hostMetrics = hostMetrics;
+  }
+  return metrics;
+}
+
+function logComputerUseCommandStateMetrics(
+  row: ComputerUseCommandRow | null,
+): void {
+  if (row?.status !== "succeeded") {
+    return;
+  }
+  // debug level: the Axiom transport receives every level unconditionally,
+  // so these metrics stay queryable while skipping routine console output.
+  L.debug(
+    "Computer-use command state metrics",
+    computerUseCommandStateMetrics(row),
+  );
+}
+
 export const completeComputerUseHostCommand$ = command(
   async (
     { get, set },
@@ -1816,6 +1900,7 @@ export const completeComputerUseHostCommand$ = command(
     }
     const storageError = commandErrorFromResult(storedResult);
     const completedAt = nowDate();
+    let completedCommand: ComputerUseCommandRow | null = null;
     const result = await db.transaction(async (tx) => {
       const currentState = await computerUseHostCommandCompletionState(
         tx,
@@ -1853,6 +1938,7 @@ export const completeComputerUseHostCommand$ = command(
       if (!updated) {
         throw new Error("Failed to complete computer-use command");
       }
+      completedCommand = updated;
 
       await insertComputerUseCommandAuditEvent(tx, {
         command: updated,
@@ -1876,6 +1962,7 @@ export const completeComputerUseHostCommand$ = command(
       return { status: "completed" as const };
     });
     signal.throwIfAborted();
+    logComputerUseCommandStateMetrics(completedCommand);
     return result;
   },
 );
