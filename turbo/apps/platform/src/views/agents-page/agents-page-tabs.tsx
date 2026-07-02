@@ -627,7 +627,7 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="block w-fit max-w-full truncate text-sm font-medium text-foreground underline decoration-dashed decoration-[hsl(var(--gray-400))] underline-offset-4">
+                    <span className="block w-fit max-w-full truncate text-sm font-medium text-foreground underline decoration-dotted decoration-foreground/40 decoration-[1px] underline-offset-2">
                       {displayName}
                     </span>
                   </TooltipTrigger>
