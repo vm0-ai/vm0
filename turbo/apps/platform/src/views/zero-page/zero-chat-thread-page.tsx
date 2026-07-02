@@ -5400,14 +5400,16 @@ function getThinkingIndicatorState(args: {
     !lastAssistantHasRenderableMessage;
   const lastAssistantCancelled =
     isCancelledAssistantMessage(lastAssistantMessage);
-  const lastThinkingMessage = args.initialThinkingEnabled
-    ? rawLastThinkingMessage
-    : undefined;
   const isQueued = args.messageRunIndicatorState === "queued";
+  const lastThinkingMessage =
+    args.initialThinkingEnabled && !isQueued
+      ? rawLastThinkingMessage
+      : undefined;
   const runActive =
-    args.messageRunIndicatorState === "running" && !lastAssistantCancelled;
+    (args.messageRunIndicatorState === "running" || isQueued) &&
+    !lastAssistantCancelled;
   const waitingForAssistant =
-    args.messageRunIndicatorState === "running" &&
+    runActive &&
     lastGroup?.role === "user" &&
     lastGroup.messages.length > 0 &&
     lastGroup.messages.some((message) => {
