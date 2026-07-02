@@ -1,8 +1,8 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 
 import {
@@ -22,7 +22,10 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import type { ZeroClientFactory } from "../../../signals/api-client.ts";
+import { syncArtifactFileToGoogleDrive } from "../../../signals/chat-page/artifact-google-drive-sync.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { resetSignal } from "../../../signals/utils.ts";
 import {
   artifactPanelWidth$,
   saveCapturedHtmlEditSnapshotDraft$,
@@ -365,8 +368,10 @@ function setupPresentationArtifactThread(
 function setupHostedSiteArtifactThread(
   siteUrl: string,
   html = "<!doctype html><html><body><h1>Original site</h1></body></html>",
+  artifactUrl = siteUrl,
 ): void {
-  const filename = new URL(siteUrl).pathname.split("/").pop() || "site.html";
+  const filename =
+    new URL(artifactUrl).pathname.split("/").pop() || "site.html";
   context.mocks.http.get(siteUrl, () => {
     return new Response(html, {
       headers: { "Content-Type": "text/html" },
@@ -374,7 +379,7 @@ function setupHostedSiteArtifactThread(
   });
   setupChatThread({
     artifactFiles: [
-      artifactFile(siteUrl, {
+      artifactFile(artifactUrl, {
         id: "artifact-hosted-site",
         filename,
         contentType: "text/html",
@@ -606,6 +611,18 @@ describe("zero artifact sidebar", () => {
     await user.click(screen.getByLabelText("Close artifact"));
     await waitFor(() => {
       expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows hosted-site edit action when the sidebar URL has a root trailing slash", async () => {
+    const artifactUrl = "https://root-launch-site.sites.vm7.io";
+    const siteUrl = `${artifactUrl}/`;
+    setupHostedSiteArtifactThread(siteUrl, undefined, artifactUrl);
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    await waitFor(() => {
+      expect(within(sidebar).getByLabelText("Edit page")).toBeInTheDocument();
+      expect(within(sidebar).queryByLabelText("Edit presentation")).toBeNull();
     });
   });
 
@@ -1392,6 +1409,43 @@ describe("zero artifact sidebar", () => {
     await waitFor(() => {
       expect(menuItemByText("Synced to Google Drive")).toBeInTheDocument();
     });
+  });
+
+  it("does not finish a Google Drive upload after the page signal is aborted", async () => {
+    const resetUploadSignal$ = resetSignal();
+    const uploadSignal = context.store.set(resetUploadSignal$, context.signal);
+    const dismissToast = vi.spyOn(toast, "dismiss");
+    const createClient = (() => {
+      return {
+        syncGoogleDrive: () => {
+          context.store.set(resetUploadSignal$, context.signal);
+          return Promise.resolve({
+            status: 200 as const,
+            body: {
+              id: "drive-file-release-notes",
+              name: "drive-release-notes.md",
+              webViewLink: null,
+            },
+          });
+        },
+      };
+    }) as ZeroClientFactory;
+
+    try {
+      await expect(
+        syncArtifactFileToGoogleDrive({
+          createClient,
+          threadId: THREAD_ID,
+          runId: "run-artifact",
+          fileId: "artifact-drive-release-notes",
+          filename: "drive-release-notes.md",
+          signal: uploadSignal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      expect(dismissToast).toHaveBeenCalledTimes(1);
+    } finally {
+      dismissToast.mockRestore();
+    }
   });
 
   it("downloads a presentation artifact as PPTX from the sidebar", async () => {

@@ -16,6 +16,14 @@ export type AgentCustomConnectorEnabledIds = z.infer<
   typeof agentCustomConnectorEnabledIdsSchema
 >;
 
+export const agentCustomConnectorUpdateSchema =
+  agentCustomConnectorEnabledIdsSchema.extend({
+    operation: z.enum(["replace", "add", "remove"]).optional(),
+  });
+export type AgentCustomConnectorUpdate = z.infer<
+  typeof agentCustomConnectorUpdateSchema
+>;
+
 /**
  * Contract for GET/PUT /api/zero/agents/:id/custom-connectors
  *
@@ -43,7 +51,7 @@ export const zeroAgentCustomConnectorsContract = c.router({
     path: "/api/zero/agents/:id/custom-connectors",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
-    body: agentCustomConnectorEnabledIdsSchema,
+    body: agentCustomConnectorUpdateSchema,
     responses: {
       200: agentCustomConnectorEnabledIdsSchema,
       400: apiErrorSchema,
@@ -51,7 +59,7 @@ export const zeroAgentCustomConnectorsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Replace enabled custom connector ids for user on agent",
+    summary: "Update enabled custom connector ids for user on agent",
   },
 });
 export type ZeroAgentCustomConnectorsContract =

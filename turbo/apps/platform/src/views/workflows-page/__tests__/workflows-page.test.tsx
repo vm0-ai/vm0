@@ -1055,7 +1055,7 @@ describe("workflow detail page", () => {
     expect(screen.getAllByText("Last run").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Next run").length).toBeGreaterThan(0);
     expect(buttonByText("Run now")).toBeInTheDocument();
-    click(buttonByText("Info"));
+    click(buttonByText("Settings"));
     await waitFor(() => {
       expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
     });
@@ -1464,7 +1464,7 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
     });
-    click(buttonByText("Info"));
+    click(buttonByText("Settings"));
 
     await waitFor(() => {
       expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);

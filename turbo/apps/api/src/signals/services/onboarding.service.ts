@@ -10,7 +10,6 @@ import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
@@ -25,6 +24,7 @@ import {
   unavailableUserConnectorTypes,
   userConnectorAvailability,
 } from "./connector-availability.service";
+import { updateUserConnectors } from "./user-connectors.service";
 import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
 
 const L = logger("onboarding.service");
@@ -431,27 +431,16 @@ async function replaceSelectedConnectors(
     return;
   }
 
-  await db.transaction(async (tx) => {
-    await tx
-      .delete(userConnectors)
-      .where(
-        and(
-          eq(userConnectors.orgId, args.orgId),
-          eq(userConnectors.userId, args.userId),
-          eq(userConnectors.agentId, args.agentId),
-        ),
-      );
-    await tx.insert(userConnectors).values(
-      args.selectedConnectors.map((connectorType) => {
-        return {
-          orgId: args.orgId,
-          userId: args.userId,
-          agentId: args.agentId,
-          connectorType,
-        };
-      }),
-    );
+  const updated = await updateUserConnectors(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    agentId: args.agentId,
+    enabledTypes: args.selectedConnectors,
+    allowMissingZeroAgentForEmptyReplace: false,
   });
+  if (updated.status === "agentNotFound") {
+    throw new Error(`Default agent not found: ${args.agentId}`);
+  }
 }
 
 async function updateOnboardingPaymentPending(

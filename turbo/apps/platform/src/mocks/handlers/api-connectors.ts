@@ -1,5 +1,6 @@
 import {
   CONNECTOR_TYPE_KEYS,
+  type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
   type ConnectorType,
   CONNECTOR_TYPES,
@@ -12,6 +13,7 @@ import type {
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   zeroConnectorCatalogContract,
+  type PublicConnectorCatalogAuthMethodDetail,
   type PublicConnectorCatalogConnection,
   type PublicConnectorCatalogConnectionStatus,
   type PublicConnectorCatalogPermissionSummary,
@@ -229,6 +231,43 @@ function mockConnectorAuthMethodSupportsRefresh(
   );
 }
 
+function mockManualFieldsForCatalog(
+  method: ConnectorAuthMethodConfig,
+): PublicConnectorCatalogAuthMethodDetail["manualFields"] {
+  if (method.grant.kind !== "manual") {
+    return [];
+  }
+  return Object.values(method.grant.fields).map((field) => {
+    return {
+      id: field.publicId,
+      label: field.label,
+      required: field.required,
+      placeholder: field.placeholder ?? null,
+      inputType: field.storage === "variable" ? "text" : "password",
+    };
+  });
+}
+
+function mockStartOptionsForCatalog(
+  method: ConnectorAuthMethodConfig,
+): PublicConnectorCatalogAuthMethodDetail["startOptions"] {
+  if (method.grant.kind !== "device-auth") {
+    return [];
+  }
+  return Object.values(method.grant.startOptions ?? {}).map((option) => {
+    return {
+      id: option.publicId,
+      kind: option.kind,
+      label: option.label,
+      required: option.required,
+      defaultValue: option.defaultValue ?? null,
+      options: option.options.map((choice) => {
+        return { value: choice.value, label: choice.label };
+      }),
+    };
+  });
+}
+
 function mockConnectorCatalogStatusItem(
   type: ConnectorType,
   authMethods: readonly ConnectorAuthMethodId[],
@@ -269,8 +308,8 @@ function mockConnectorCatalogStatusItem(
               label: method.label,
               description: method.helpText ?? null,
               grantKind: method.grant.kind,
-              manualFields: [],
-              startOptions: [],
+              manualFields: mockManualFieldsForCatalog(method),
+              startOptions: mockStartOptionsForCatalog(method),
             },
           ]
         : [];

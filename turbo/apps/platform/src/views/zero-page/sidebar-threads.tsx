@@ -64,6 +64,7 @@ import {
   loadRightThread$,
   unloadRightThread$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
+import { focusChatThreadContainer$ } from "../../signals/chat-page/chat-keyboard.ts";
 import {
   createNewChatThreadOptimistically$,
   optimisticChatThread$,
@@ -571,20 +572,6 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
   );
 }
 
-function chatThreadContainer(threadId: string) {
-  return (
-    Array.from(
-      document.querySelectorAll<HTMLElement>("[data-chat-thread-container-id]"),
-    ).find((candidate) => {
-      return candidate.dataset.chatThreadContainerId === threadId;
-    }) ?? null
-  );
-}
-
-function focusChatThreadContainer(threadId: string) {
-  chatThreadContainer(threadId)?.focus({ preventScroll: true });
-}
-
 function ChatThreadRenameDialog() {
   const renameDialogThreadId = useGet(renameDialogThreadId$);
   const renameDialogInput = useGet(renameDialogInput$);
@@ -592,6 +579,7 @@ function ChatThreadRenameDialog() {
   const setRenameDialogThreadId = useSet(setRenameDialogThreadId$);
   const renameChatThread = useSet(renameChatThread$);
   const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
+  const focusChatThreadContainer = useSet(focusChatThreadContainer$);
   const pageSignal = useGet(pageSignal$);
 
   function closeRenameDialog() {
@@ -632,12 +620,11 @@ function ChatThreadRenameDialog() {
     >
       <DialogContent
         onCloseAutoFocus={(event) => {
-          const threadContainer = renameDialogThreadId
-            ? chatThreadContainer(renameDialogThreadId)
-            : null;
-          if (threadContainer) {
+          if (
+            renameDialogThreadId &&
+            focusChatThreadContainer(renameDialogThreadId)
+          ) {
             event.preventDefault();
-            threadContainer.focus({ preventScroll: true });
           }
         }}
       >

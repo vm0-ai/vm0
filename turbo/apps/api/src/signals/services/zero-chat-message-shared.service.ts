@@ -21,6 +21,7 @@ import {
 } from "../external/realtime";
 import { listS3Objects } from "../external/s3";
 import { assistantMessageIdForRunEvent } from "./assistant-message-id";
+import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 
 const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
   png: "image/png",
@@ -70,15 +71,31 @@ export function inferMimetype(filename: string): string {
 }
 
 export async function touchChatThreadLastMessageAt(
-  tx: Pick<Db, "update">,
+  tx: Pick<Db, "insert" | "select" | "update">,
   threadId: string,
 ): Promise<void> {
-  await tx
+  const [thread] = await tx
     .update(chatThreads)
     .set({
       lastMessageAt: sql`GREATEST(${chatThreads.lastMessageAt}, NOW())`,
     })
-    .where(eq(chatThreads.id, threadId));
+    .where(eq(chatThreads.id, threadId))
+    .returning({
+      id: chatThreads.id,
+      userId: chatThreads.userId,
+      agentComposeId: chatThreads.agentComposeId,
+      lastMessageAt: chatThreads.lastMessageAt,
+    });
+  if (!thread) {
+    return;
+  }
+  await appendChatThreadEvent(tx, {
+    kind: "sort_touched",
+    userId: thread.userId,
+    chatThreadId: thread.id,
+    agentComposeId: thread.agentComposeId,
+    createdAt: thread.lastMessageAt,
+  });
 }
 
 export function visibleChatMessageCondition() {

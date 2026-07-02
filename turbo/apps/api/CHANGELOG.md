@@ -1,5 +1,53 @@
 # Changelog
 
+## [1.207.1](https://github.com/vm0-ai/vm0/compare/api-v1.207.0...api-v1.207.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* preserve agent connector add semantics ([#19815](https://github.com/vm0-ai/vm0/issues/19815)) ([1dbc317](https://github.com/vm0-ai/vm0/commit/1dbc317f5b5aebe9dff79353accac2e3f8878d18))
+
+
+### Performance Improvements
+
+* add session history encoding telemetry ([#19812](https://github.com/vm0-ai/vm0/issues/19812)) ([7c0814a](https://github.com/vm0-ai/vm0/commit/7c0814af703af9ad89cd34dc0fd131db0916fec7))
+* cache system storage presigned urls ([#19777](https://github.com/vm0-ai/vm0/issues/19777)) ([62f66b9](https://github.com/vm0-ai/vm0/commit/62f66b9474c1bfbf19155790f1d2a839d332b331))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.2
+    * @vm0/core bumped to 8.386.2
+    * @vm0/db bumped to 1.84.5
+
+## [1.207.0](https://github.com/vm0-ai/vm0/compare/api-v1.206.0...api-v1.207.0) (2026-07-02)
+
+
+### Features
+
+* add birefnet and clarity-upscaler transform image models ([#19704](https://github.com/vm0-ai/vm0/issues/19704)) ([e62b2e0](https://github.com/vm0-ai/vm0/commit/e62b2e0a242af4e522cda1f440ee6a5e4ebdbbc5))
+
+
+### Bug Fixes
+
+* make generation templates one-shot instead of thread-sticky ([#19765](https://github.com/vm0-ai/vm0/issues/19765)) ([29c9633](https://github.com/vm0-ai/vm0/commit/29c9633272045d932aef71f80cae2d91008bf415))
+
+
+### Refactoring
+
+* use public connector catalog in platform ui ([#19663](https://github.com/vm0-ai/vm0/issues/19663)) ([85ca45f](https://github.com/vm0-ai/vm0/commit/85ca45f3a136a40245e9dd16a8e6eeffc06d9477))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.1
+    * @vm0/core bumped to 8.386.1
+    * @vm0/db bumped to 1.84.4
+
 ## [1.206.0](https://github.com/vm0-ai/vm0/compare/api-v1.205.0...api-v1.206.0) (2026-07-02)
 
 

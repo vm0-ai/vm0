@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { agents$ } from "../agent.ts";
 
@@ -23,19 +24,45 @@ export const directedConnectAgentId$ = computed((get): string | null => {
 export const directedConnectAgentName$ = computed(async (get) => {
   const agentId = get(directedConnectAgentId$);
   if (!agentId) {
-    return null;
+    return { agentId: null, displayName: null };
   }
   const agents = await get(agents$);
   const agent = agents.find((a) => {
     return a.id === agentId;
   });
-  return agent?.displayName ?? null;
+  return { agentId, displayName: agent?.displayName ?? null };
 });
 
-const internalManualGrantDialogOpen$ = state(false);
-export const manualGrantDialogOpen$ = computed((get) => {
-  return get(internalManualGrantDialogOpen$);
+export type DirectedConnectManualGrantDialogKey = {
+  readonly connectorType: ConnectorType;
+  readonly agentId: string | null;
+  readonly signal: AbortSignal;
+};
+
+export type DirectedConnectModalKey = {
+  readonly connectorType: ConnectorType;
+  readonly agentId: string | null;
+  readonly signal: AbortSignal;
+};
+
+const internalManualGrantDialogKey$ =
+  state<DirectedConnectManualGrantDialogKey | null>(null);
+const internalDirectedConnectModalKey$ = state<DirectedConnectModalKey | null>(
+  null,
+);
+export const manualGrantDialogKey$ = computed((get) => {
+  return get(internalManualGrantDialogKey$);
 });
-export const setManualGrantDialogOpen$ = command(({ set }, open: boolean) => {
-  set(internalManualGrantDialogOpen$, open);
+export const directedConnectModalKey$ = computed((get) => {
+  return get(internalDirectedConnectModalKey$);
 });
+export const setManualGrantDialogKey$ = command(
+  ({ set }, key: DirectedConnectManualGrantDialogKey | null) => {
+    set(internalManualGrantDialogKey$, key);
+  },
+);
+export const setDirectedConnectModalKey$ = command(
+  ({ set }, key: DirectedConnectModalKey | null) => {
+    set(internalDirectedConnectModalKey$, key);
+  },
+);

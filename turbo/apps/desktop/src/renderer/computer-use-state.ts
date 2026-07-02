@@ -160,6 +160,27 @@ export const setKeepAwakeEnabled$ = command(
   },
 );
 
+export const setFilesystemPluginEnabled$ = command(
+  async ({ set }, enabled: boolean) => {
+    await desktopComputerUseApi().setFilesystemPluginEnabled(enabled);
+    set(reloadComputerUse$);
+  },
+);
+
+export const addFilesystemPluginAllowedDirectory$ = command(async ({ set }) => {
+  await desktopComputerUseApi().addFilesystemPluginAllowedDirectory();
+  set(reloadComputerUse$);
+});
+
+export const removeFilesystemPluginAllowedDirectory$ = command(
+  async ({ set }, directory: string) => {
+    await desktopComputerUseApi().removeFilesystemPluginAllowedDirectory(
+      directory,
+    );
+    set(reloadComputerUse$);
+  },
+);
+
 export const openAccessibilitySettings$ = command(async () => {
   await desktopComputerUseApi().openAccessibilitySettings();
 });

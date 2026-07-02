@@ -466,7 +466,7 @@ function WorkflowTabNav({
           <SelectContent>
             <SelectItem value="automations">Automations</SelectItem>
             <SelectItem value="instructions">Instructions</SelectItem>
-            <SelectItem value="info">Info</SelectItem>
+            <SelectItem value="info">Settings</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -484,7 +484,7 @@ function WorkflowTabNav({
         </TabsTrigger>
         <TabsTrigger value="info" className={WORKFLOW_TAB_TRIGGER_CLASS}>
           <IconInfoCircle size={14} stroke={1.5} />
-          Info
+          Settings
         </TabsTrigger>
       </TabsList>
     </Tabs>

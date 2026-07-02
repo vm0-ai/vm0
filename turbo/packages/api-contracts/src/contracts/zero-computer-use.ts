@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import {
+  COMPUTER_USE_PLUGIN_CALL_KIND,
+  computerUsePluginCallBodySchema,
+} from "./zero-computer-use-plugins";
 
 const c = initContract();
 
@@ -21,9 +25,14 @@ export const computerUseWriteCommandKindSchema = z.enum([
   "keyboard.press_key",
 ]);
 
+export const computerUsePluginCommandKindSchema = z.literal(
+  COMPUTER_USE_PLUGIN_CALL_KIND,
+);
+
 export const computerUseCommandKindSchema = z.enum([
   ...computerUseReadCommandKindSchema.options,
   ...computerUseWriteCommandKindSchema.options,
+  COMPUTER_USE_PLUGIN_CALL_KIND,
 ]);
 
 export const computerUseCommandStatusSchema = z.enum([
@@ -46,6 +55,18 @@ export const computerUseCommandErrorCodeSchema = z.enum([
   "element_not_editable",
   "unsupported_command",
   "timeout",
+  "command_timeout",
+  "feature_disabled",
+  "plugin_disabled",
+  "plugin_unavailable",
+  "plugin_restarting",
+  "unknown_plugin",
+  "unknown_tool",
+  "invalid_arguments",
+  "path_denied",
+  "result_too_large",
+  "input_too_large",
+  "mcp_error",
 ]);
 
 const hostNameSchema = z.string().trim().min(1).max(253);
@@ -335,6 +356,22 @@ export interface ClientScreenshotPointer {
   readonly height?: number;
 }
 
+export interface StoredPluginContentPointer {
+  readonly type: "s3";
+  readonly bucket: string;
+  readonly key: string;
+  readonly mimeType: string;
+  readonly sizeBytes: number;
+  readonly fileName: string;
+}
+
+export interface ClientPluginContentPointer {
+  readonly type: "s3" | "expired";
+  readonly mimeType?: string;
+  readonly sizeBytes?: number;
+  readonly fileName?: string;
+}
+
 export function isStoredScreenshotPointer(
   value: unknown,
 ): value is StoredScreenshotPointer {
@@ -347,6 +384,30 @@ export function isStoredScreenshotPointer(
 }
 
 export function isExpiredScreenshotPointer(
+  value: unknown,
+): value is { readonly type: "expired" } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { readonly type?: unknown }).type === "expired"
+  );
+}
+
+export function isStoredPluginContentPointer(
+  value: unknown,
+): value is StoredPluginContentPointer {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { readonly type?: unknown }).type === "s3" &&
+    typeof (value as { readonly bucket?: unknown }).bucket === "string" &&
+    typeof (value as { readonly key?: unknown }).key === "string" &&
+    typeof (value as { readonly mimeType?: unknown }).mimeType === "string" &&
+    typeof (value as { readonly fileName?: unknown }).fileName === "string"
+  );
+}
+
+export function isExpiredPluginContentPointer(
   value: unknown,
 ): value is { readonly type: "expired" } {
   return (
@@ -480,7 +541,7 @@ export const computerUseAuditEventSchema = z.object({
   commandId: z.string(),
   runId: z.string().nullable(),
   hostId: z.string().nullable(),
-  kind: computerUseWriteCommandKindSchema,
+  kind: computerUseCommandKindSchema,
   app: z.string().nullable(),
   event: z.literal("completed"),
   redactedResult: z.record(z.string(), z.unknown()).nullable(),
@@ -649,6 +710,19 @@ export const zeroComputerUseCommandContract = c.router({
     },
     summary: "Download a desktop computer-use command screenshot",
   },
+  getPluginContent: {
+    method: "GET",
+    path: "/api/zero/computer-use/commands/:commandId/plugin-content",
+    headers: authHeadersSchema,
+    pathParams: commandIdPathParamsSchema,
+    responses: {
+      200: c.type<Blob>(),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Download offloaded desktop computer-use plugin content",
+  },
 });
 
 export const zeroComputerUseWriteCommandContract = c.router({
@@ -666,6 +740,24 @@ export const zeroComputerUseWriteCommandContract = c.router({
       409: apiErrorSchema,
     },
     summary: "Create a desktop computer-use write command",
+  },
+});
+
+export const zeroComputerUsePluginCommandContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/computer-use/plugin-commands",
+    headers: authHeadersSchema,
+    body: computerUsePluginCallBodySchema,
+    responses: {
+      200: computerUseCommandCreateResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Create a desktop computer-use plugin command",
   },
 });
 
@@ -765,6 +857,9 @@ export type ComputerUseReadCommandKind = z.infer<
 export type ComputerUseWriteCommandKind = z.infer<
   typeof computerUseWriteCommandKindSchema
 >;
+export type ComputerUsePluginCommandKind = z.infer<
+  typeof computerUsePluginCommandKindSchema
+>;
 export type ZeroComputerUseAuditEventsContract =
   typeof zeroComputerUseAuditEventsContract;
 export type ZeroComputerUseCommandContract =
@@ -778,3 +873,5 @@ export type ZeroComputerUseHostCommandsContract =
 export type ZeroComputerUseHostsContract = typeof zeroComputerUseHostsContract;
 export type ZeroComputerUseWriteCommandContract =
   typeof zeroComputerUseWriteCommandContract;
+export type ZeroComputerUsePluginCommandContract =
+  typeof zeroComputerUsePluginCommandContract;

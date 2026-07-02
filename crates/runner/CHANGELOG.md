@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.131.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.14...runner-rs-v0.131.15) (2026-07-02)
+
+
+### Refactoring
+
+* **mitm-addon:** factor sigv4 firewall auth tests ([#19822](https://github.com/vm0-ai/vm0/issues/19822)) ([ff28409](https://github.com/vm0-ai/vm0/commit/ff28409deb61751273b5a6f207234d159ddc8519))
+
+
+### Performance Improvements
+
+* add session history encoding telemetry ([#19812](https://github.com/vm0-ai/vm0/issues/19812)) ([7c0814a](https://github.com/vm0-ai/vm0/commit/7c0814af703af9ad89cd34dc0fd131db0916fec7))
+
+## [0.131.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.13...runner-rs-v0.131.14) (2026-07-02)
+
+
+### Refactoring
+
+* **mitm-addon:** separate body decode policies ([#19783](https://github.com/vm0-ai/vm0/issues/19783)) ([ba4480a](https://github.com/vm0-ai/vm0/commit/ba4480aa0483bcfde78c9b7dc74cafe8353e48a9))
+
 ## [0.131.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.12...runner-rs-v0.131.13) (2026-07-02)
 
 

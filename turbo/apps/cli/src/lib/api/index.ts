@@ -233,8 +233,10 @@ export {
 // Domain modules - Zero Computer Use
 export {
   createComputerUseAuthorizationRequest,
+  createComputerUsePluginCommand,
   createComputerUseReadCommand,
   createComputerUseWriteCommand,
+  fetchComputerUsePluginContent,
   fetchComputerUseScreenshot,
   getComputerUseCommand,
 } from "./domains/zero-computer-use";

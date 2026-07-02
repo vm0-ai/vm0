@@ -8,6 +8,7 @@ const compactSwitchClassName =
 interface LoadingSwitchProps {
   checked: boolean;
   loading?: boolean;
+  disabled?: boolean;
   onCheckedChange: (checked: boolean) => void;
   ariaLabel?: string;
   size?: "default" | "sm";
@@ -16,6 +17,7 @@ interface LoadingSwitchProps {
 export function LoadingSwitch({
   checked,
   loading = false,
+  disabled = false,
   onCheckedChange,
   ariaLabel,
   size = "default",
@@ -29,7 +31,7 @@ export function LoadingSwitch({
     >
       <Switch
         checked={checked}
-        disabled={loading}
+        disabled={loading || disabled}
         onCheckedChange={onCheckedChange}
         aria-label={ariaLabel}
         size={size}

@@ -68,6 +68,8 @@ export interface ChatThreadSignals {
   scrollToTop$: Command<void, []>;
   scrollBy$: Command<boolean, [ScrollStepDirection]>;
   prepareKeyboardScroll$: Command<boolean, []>;
+  containerEl$: Computed<HTMLElement | null>;
+  setContainerRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   // True when the message list is scrolled away from the bottom - drives the
   // feature-gated scroll-to-bottom button. Read-only outside scroll signals.
   awayFromBottom$: Computed<boolean>;

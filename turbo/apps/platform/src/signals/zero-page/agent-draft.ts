@@ -58,7 +58,7 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
           },
           fetchOptions: { signal },
         }),
-        [204],
+        [200, 204],
       );
     },
   );

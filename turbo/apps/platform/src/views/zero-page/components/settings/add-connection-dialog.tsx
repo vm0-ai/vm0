@@ -16,17 +16,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorAuthMethodConfig,
-  type ConnectorAuthMethodId,
-  type ConnectorDeviceAuthStartOptions,
-  type ConnectorDeviceAuthStartOptionsConfig,
-  type ConnectorManualGrantConfig,
-  type ConnectorType,
+import type {
+  ConnectorAuthMethodId,
+  ConnectorDeviceAuthStartOptions,
+  ConnectorType,
 } from "@vm0/connectors/connectors";
 import type { FormEvent, ReactElement } from "react";
-import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
+import type { PublicConnectorCatalogStartOption } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
   allConnectorTypes$,
   connectFlowType$,
@@ -53,6 +49,10 @@ import {
   isStandaloneMode,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
+  getConnectorStatusAuthMethod,
+  hasConnectorStatusAuthCodeGrant,
+  manualGrantInputValuesForMethod,
+  type ConnectorStatusAuthMethodDetail,
   type ConnectorExternalCodeState,
   type ConnectorOAuthDeviceAuthState,
   type ConnectorTypeWithStatus,
@@ -61,7 +61,6 @@ import { hasTokenInputValue } from "../../../../signals/zero-page/settings/token
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
-import { shouldShowGoogleSecurityWarningNotice } from "../../../../lib/google-security-warning.ts";
 import { GoogleSecurityWarningNotice } from "../../zero-directed-shared.tsx";
 import { ConnectorHelpText } from "./connector-help-text.tsx";
 
@@ -92,6 +91,7 @@ function connectedStatusText(item: ConnectorTypeWithStatus): string {
 
 type PostConnectOptions = {
   readonly showPermissionDialog?: boolean;
+  readonly connectorLabel?: string;
 };
 
 type SubmitManualGrantFn = (
@@ -100,7 +100,7 @@ type SubmitManualGrantFn = (
   inputValues: Record<string, string>,
   options: PostConnectOptions,
   signal: AbortSignal,
-) => Promise<void>;
+) => Promise<boolean>;
 
 type ConnectOAuthAuthCodeAndSettleFn = (
   type: ConnectorType,
@@ -147,7 +147,7 @@ type ConnectModalContentProps = {
 
 type ConnectMethodContentProps = ConnectModalContentProps & {
   authMethod: ConnectorAuthMethodId;
-  method: ConnectorAuthMethodConfig;
+  method: ConnectorStatusAuthMethodDetail;
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   connectOAuthDeviceAuthAndSettle: ConnectOAuthDeviceAuthAndSettleFn;
   connectExternalCode: ConnectExternalCodeFn;
@@ -168,7 +168,7 @@ type ConnectMethodContentComponent = (
 
 type ConnectMethodContentEntry = {
   authMethod: ConnectorAuthMethodId;
-  method: ConnectorAuthMethodConfig;
+  method: ConnectorStatusAuthMethodDetail;
   Content: ConnectMethodContentComponent;
 };
 
@@ -224,18 +224,18 @@ function connectorExternalCodeStateForMethod(
 
 function ManualGrantForm({
   type,
+  connectorLabel,
   authMethod,
   method,
-  grant,
   onSuccess,
   showPermissionDialogOnConnect,
   submit,
   submitting,
 }: {
   type: ConnectorType;
+  connectorLabel: string;
   authMethod: ConnectorAuthMethodId;
-  method: ConnectorAuthMethodConfig;
-  grant: ConnectorManualGrantConfig;
+  method: ConnectorStatusAuthMethodDetail;
   onSuccess: () => void | Promise<void>;
   showPermissionDialogOnConnect: boolean;
   submit: SubmitManualGrantFn;
@@ -246,9 +246,8 @@ function ManualGrantForm({
   const pageSignal = useGet(pageSignal$);
   const fieldValues = useGet(manualGrantFormValuesFor$(type));
 
-  const fieldEntries = Object.entries(grant.fields);
-  const allFilled = fieldEntries.every(([name, cfg]) => {
-    return !cfg.required || hasTokenInputValue(fieldValues[name]);
+  const allFilled = method.manualFields.every((field) => {
+    return !field.required || hasTokenInputValue(fieldValues[field.id]);
   });
 
   const handleSubmit = onDomEventFn(
@@ -257,15 +256,19 @@ function ManualGrantForm({
       if (!allFilled || submitting) {
         return;
       }
-      await submit(
+      const connected = await submit(
         type,
         authMethod,
-        fieldValues,
+        manualGrantInputValuesForMethod(method, fieldValues),
         {
           showPermissionDialog: showPermissionDialogOnConnect,
+          connectorLabel,
         },
         pageSignal,
       );
+      if (!connected) {
+        return;
+      }
       clearForm(type);
       await onSuccess();
     },
@@ -273,19 +276,19 @@ function ManualGrantForm({
 
   return (
     <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
-      {method.helpText && <ConnectorHelpText text={method.helpText} />}
-      {fieldEntries.map(([name, fieldConfig]) => {
+      {method.description && <ConnectorHelpText text={method.description} />}
+      {method.manualFields.map((fieldConfig) => {
         return (
-          <div key={name} className="flex flex-col gap-1.5">
+          <div key={fieldConfig.id} className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-foreground">
               {fieldConfig.label}
             </label>
             <Input
-              type="password"
-              placeholder={fieldConfig.placeholder}
-              value={fieldValues[name] ?? ""}
+              type={fieldConfig.inputType}
+              placeholder={fieldConfig.placeholder ?? undefined}
+              value={fieldValues[fieldConfig.id] ?? ""}
               onChange={(e) => {
-                return setFormValue(type, name, e.target.value);
+                return setFormValue(type, fieldConfig.id, e.target.value);
               }}
             />
           </div>
@@ -365,6 +368,7 @@ function OAuthAuthCodeConnectButton({
             onSuccess,
             {
               showPermissionDialog: showPermissionDialogOnConnect,
+              connectorLabel: item.label,
             },
             signal,
           ),
@@ -462,16 +466,13 @@ function OAuthDeviceAuthCodePanel({
 }
 
 function defaultDeviceAuthStartOptionValues(
-  startOptions: ConnectorDeviceAuthStartOptionsConfig | undefined,
+  startOptions: readonly PublicConnectorCatalogStartOption[],
 ): Record<string, string> {
-  if (!startOptions) {
-    return {};
-  }
   return Object.fromEntries(
-    Object.entries(startOptions).flatMap(([name, config]) => {
-      return config.defaultValue === undefined
+    startOptions.flatMap((option) => {
+      return option.defaultValue === null
         ? []
-        : ([[name, config.defaultValue]] as const);
+        : ([[option.id, option.defaultValue]] as const);
     }),
   );
 }
@@ -484,35 +485,34 @@ function deviceAuthStartOptionValue(
 }
 
 function selectedDeviceAuthStartOptions(
-  startOptions: ConnectorDeviceAuthStartOptionsConfig | undefined,
+  startOptions: readonly PublicConnectorCatalogStartOption[],
   values: Record<string, string>,
 ): ConnectorDeviceAuthStartOptions | undefined {
-  if (!startOptions) {
+  if (startOptions.length === 0) {
     return undefined;
   }
-  const selectedEntries = Object.entries(startOptions).flatMap(
-    ([name, config]) => {
-      const value =
-        deviceAuthStartOptionValue(values, name) ?? config.defaultValue;
-      return value === undefined ? [] : ([[name, value]] as const);
-    },
-  );
+  const selectedEntries = startOptions.flatMap((option) => {
+    const value =
+      deviceAuthStartOptionValue(values, option.id) ??
+      option.defaultValue ??
+      undefined;
+    return value === undefined ? [] : ([[option.id, value]] as const);
+  });
   return selectedEntries.length === 0
     ? undefined
     : Object.fromEntries(selectedEntries);
 }
 
 function deviceAuthStartOptionsFilled(
-  startOptions: ConnectorDeviceAuthStartOptionsConfig | undefined,
+  startOptions: readonly PublicConnectorCatalogStartOption[],
   values: Record<string, string>,
 ): boolean {
-  if (!startOptions) {
-    return true;
-  }
-  return Object.entries(startOptions).every(([name, config]) => {
+  return startOptions.every((option) => {
     return (
-      !config.required ||
-      Boolean(deviceAuthStartOptionValue(values, name) ?? config.defaultValue)
+      !option.required ||
+      Boolean(
+        deviceAuthStartOptionValue(values, option.id) ?? option.defaultValue,
+      )
     );
   });
 }
@@ -526,42 +526,44 @@ function OAuthDeviceAuthStartOptionsForm({
 }: {
   type: ConnectorType;
   authMethod: ConnectorAuthMethodId;
-  startOptions: ConnectorDeviceAuthStartOptionsConfig | undefined;
+  startOptions: readonly PublicConnectorCatalogStartOption[];
   values: Record<string, string>;
   setValue: (name: string, value: string) => void;
 }) {
-  if (!startOptions) {
+  if (startOptions.length === 0) {
     return null;
   }
 
   return (
     <>
-      {Object.entries(startOptions).map(([name, config]) => {
-        const inputId = `connector-device-auth-option-${type}-${authMethod}-${name}`;
+      {startOptions.map((option) => {
+        const inputId = `connector-device-auth-option-${type}-${authMethod}-${option.id}`;
         return (
-          <div key={name} className="flex flex-col gap-1.5">
+          <div key={option.id} className="flex flex-col gap-1.5">
             <label
               htmlFor={inputId}
               className="text-sm font-medium text-foreground"
             >
-              {config.label}
+              {option.label}
             </label>
             <Select
               value={
-                deviceAuthStartOptionValue(values, name) ?? config.defaultValue
+                deviceAuthStartOptionValue(values, option.id) ??
+                option.defaultValue ??
+                undefined
               }
               onValueChange={(value) => {
-                setValue(name, value);
+                setValue(option.id, value);
               }}
             >
               <SelectTrigger id={inputId} className="h-9">
-                <SelectValue placeholder={`Select ${config.label}`} />
+                <SelectValue placeholder={`Select ${option.label}`} />
               </SelectTrigger>
               <SelectContent>
-                {config.options.map((option) => {
+                {option.options.map((choice) => {
                   return (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
+                    <SelectItem key={choice.value} value={choice.value}>
+                      {choice.label}
                     </SelectItem>
                   );
                 })}
@@ -583,9 +585,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
     setConnectorOAuthDeviceAuthStartOptionValue$,
   );
   const startOptions =
-    props.method.grant.kind === "device-auth"
-      ? props.method.grant.startOptions
-      : undefined;
+    props.method.grantKind === "device-auth" ? props.method.startOptions : [];
   const startOptionValues = useGet(
     connectorOAuthDeviceAuthStartOptionValuesFor$(
       props.item.type,
@@ -623,6 +623,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
         onSuccess: props.onSuccess,
         options: {
           showPermissionDialog: props.showPermissionDialogOnConnect,
+          connectorLabel: props.item.label,
         },
         startOptions: selectedDeviceAuthStartOptions(
           startOptions,
@@ -700,9 +701,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
         disabled={starting || !startOptionsFilled}
         className="w-full"
       >
-        {starting
-          ? "Starting..."
-          : `Connect ${CONNECTOR_TYPES[props.item.type].label}`}
+        {starting ? "Starting..." : `Connect ${props.item.label}`}
       </Button>
     </div>
   );
@@ -716,14 +715,14 @@ type ExternalCodeButtonHandler = (event: unknown) => void;
 type ExternalCodeSubmitHandler = (event: FormEvent<HTMLFormElement>) => void;
 
 function ExternalCodeStartContent({
-  type,
+  connectorLabel,
   method,
   current,
   starting,
   onStart,
 }: {
-  type: ConnectorType;
-  method: ConnectorAuthMethodConfig;
+  connectorLabel: string;
+  method: ConnectorStatusAuthMethodDetail;
   current: ConnectorExternalCodeState | null;
   starting: boolean;
   onStart: ExternalCodeButtonHandler;
@@ -734,7 +733,7 @@ function ExternalCodeStartContent({
       : null;
   return (
     <div className="flex flex-col gap-3">
-      {method.helpText && <ConnectorHelpText text={method.helpText} />}
+      {method.description && <ConnectorHelpText text={method.description} />}
       {terminalMessage ? (
         <p className="text-sm text-destructive" role="alert">
           {terminalMessage}
@@ -747,34 +746,31 @@ function ExternalCodeStartContent({
         disabled={starting}
         className="w-full"
       >
-        {starting
-          ? "Starting..."
-          : `Start ${CONNECTOR_TYPES[type].label} sign-in`}
+        {starting ? "Starting..." : `Start ${connectorLabel} sign-in`}
       </Button>
     </div>
   );
 }
 
 function ExternalCodePendingContent({
-  type,
+  connectorLabel,
   method,
   current,
   onOpen,
   onCodeChange,
   onComplete,
 }: {
-  type: ConnectorType;
-  method: ConnectorAuthMethodConfig;
+  connectorLabel: string;
+  method: ConnectorStatusAuthMethodDetail;
   current: PendingConnectorExternalCodeState;
   onOpen: ExternalCodeButtonHandler;
   onCodeChange: (code: string) => void;
   onComplete: ExternalCodeSubmitHandler;
 }) {
   const completing = current.status === "completing";
-  const connectorLabel = CONNECTOR_TYPES[type].label;
   return (
     <form className="flex flex-col gap-3" onSubmit={onComplete}>
-      {method.helpText && <ConnectorHelpText text={method.helpText} />}
+      {method.description && <ConnectorHelpText text={method.description} />}
       <p className="text-sm text-muted-foreground">
         Open {connectorLabel} sign-in, then paste the authorization code
         displayed by {connectorLabel}.
@@ -852,6 +848,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
         onSuccess: props.onSuccess,
         options: {
           showPermissionDialog: props.showPermissionDialogOnConnect,
+          connectorLabel: props.item.label,
         },
       },
       props.signal,
@@ -867,7 +864,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
   if (current?.status === "pending" || current?.status === "completing") {
     return (
       <ExternalCodePendingContent
-        type={props.item.type}
+        connectorLabel={props.item.label}
         method={props.method}
         current={current}
         onOpen={() => {
@@ -887,7 +884,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
 
   return (
     <ExternalCodeStartContent
-      type={props.item.type}
+      connectorLabel={props.item.label}
       method={props.method}
       current={current}
       starting={starting}
@@ -897,15 +894,15 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
 }
 
 function ManualGrantConnectMethodContent(props: ConnectMethodContentProps) {
-  if (props.method.grant.kind !== "manual") {
+  if (props.method.grantKind !== "manual") {
     return null;
   }
   return (
     <ManualGrantForm
       type={props.item.type}
+      connectorLabel={props.item.label}
       authMethod={props.authMethod}
       method={props.method}
-      grant={props.method.grant}
       onSuccess={props.onSuccess}
       showPermissionDialogOnConnect={props.showPermissionDialogOnConnect}
       submit={props.submitManualGrant}
@@ -915,9 +912,9 @@ function ManualGrantConnectMethodContent(props: ConnectMethodContentProps) {
 }
 
 function getConnectMethodContentComponent(
-  method: ConnectorAuthMethodConfig,
+  method: ConnectorStatusAuthMethodDetail,
 ): ConnectMethodContentComponent | null {
-  switch (method.grant.kind) {
+  switch (method.grantKind) {
     case "auth-code": {
       return OAuthAuthCodeConnectMethodContent;
     }
@@ -940,21 +937,12 @@ function getConnectMethodContentEntries(
   item: ConnectorTypeWithStatus,
 ): ConnectMethodContentEntry[] {
   return item.availableAuthMethods.flatMap((authMethod) => {
-    const method = getConnectorAuthMethod(item.type, authMethod);
+    const method = getConnectorStatusAuthMethod(item, authMethod);
     if (!method) {
       return [];
     }
     const Content = getConnectMethodContentComponent(method);
     return Content ? [{ authMethod, method, Content }] : [];
-  });
-}
-
-function hasAuthCodeGrant(
-  type: ConnectorType,
-  authMethods: readonly ConnectorAuthMethodId[],
-): boolean {
-  return authMethods.some((authMethod) => {
-    return getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code";
   });
 }
 
@@ -975,7 +963,7 @@ function ConnectMethodHeading({
   method,
   show,
 }: {
-  method: ConnectorAuthMethodConfig;
+  method: ConnectorStatusAuthMethodDetail;
   show: boolean;
 }) {
   if (!show) {
@@ -1050,12 +1038,8 @@ function StandardConnectMethodsContent({
   entries: readonly ConnectMethodContentEntry[];
 }) {
   const showGoogleSecurityWarningNotice =
-    hasAuthCodeGrant(
-      item.type,
-      entries.map((entry) => {
-        return entry.authMethod;
-      }),
-    ) && shouldShowGoogleSecurityWarningNotice(item.type);
+    hasConnectorStatusAuthCodeGrant(item) &&
+    item.connectNotice === "google-security-warning";
 
   return (
     <div className="flex flex-col gap-4">
@@ -1107,7 +1091,7 @@ function ConnectModalContent({
     options,
     signal,
   ) => {
-    await submitManualGrantCommand(
+    return await submitManualGrantCommand(
       { type, authMethod, inputValues, options },
       signal,
     );
@@ -1157,7 +1141,7 @@ function ConnectModalContent({
     await completeExternalCodeAndSettleCommand(args, signal);
   };
 
-  const progressContent = hasAuthCodeGrant(item.type, item.availableAuthMethods)
+  const progressContent = hasConnectorStatusAuthCodeGrant(item)
     ? getOAuthAuthCodeProgressContent({
         isPolling,
         settling,
@@ -1192,12 +1176,18 @@ export function ConnectModal({
   onClose,
   onSuccess,
   showPermissionDialogOnConnect = false,
+  selectedType: selectedTypeOverride,
 }: {
   onClose: () => void;
   onSuccess?: () => void | Promise<void>;
   showPermissionDialogOnConnect?: boolean;
+  selectedType?: ConnectorType | null;
 }) {
-  const selectedType = useGet(selectedConnectorType$);
+  const globalSelectedType = useGet(selectedConnectorType$);
+  const selectedType =
+    selectedTypeOverride === undefined
+      ? globalSelectedType
+      : selectedTypeOverride;
   const connectorTypes = useLastResolved(allConnectorTypes$);
   const clearConnectorOAuthDeviceAuth = useSet(clearConnectorOAuthDeviceAuth$);
   const clearConnectorExternalCode = useSet(clearConnectorExternalCode$);
@@ -1214,7 +1204,6 @@ export function ConnectModal({
     return null;
   }
 
-  const config = CONNECTOR_TYPES[selectedType];
   const connectFlowActive =
     connectFlowType === selectedType ||
     pollingType === selectedType ||
@@ -1249,7 +1238,7 @@ export function ConnectModal({
             <div className="flex h-5 w-5 shrink-0 items-center justify-center">
               <ConnectorIcon type={selectedType} size={20} />
             </div>
-            <DialogTitle>{config.label}</DialogTitle>
+            <DialogTitle>{item.label}</DialogTitle>
           </div>
         </DialogHeader>
 

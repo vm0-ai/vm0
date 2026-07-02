@@ -57,7 +57,11 @@ export const reloadChatThreadDataForId$ = command(
 export const setChatThreadEmojiFromThreadData$ = command(
   async (
     { get, set },
-    { threadId, emoji }: { threadId: string; emoji: string },
+    {
+      threadId,
+      emoji,
+      title,
+    }: { threadId: string; emoji: string; title?: string | null },
     signal: AbortSignal,
   ) => {
     const thread = paneThreadForId(
@@ -67,9 +71,10 @@ export const setChatThreadEmojiFromThreadData$ = command(
     );
     const threadData = thread ? await get(thread.threadData$) : null;
     signal.throwIfAborted();
+    const currentTitle = title !== undefined ? title : threadData?.title;
     await set(
       renameChatThread$,
-      { threadId, title: applyChatThreadEmoji(threadData?.title, emoji) },
+      { threadId, title: applyChatThreadEmoji(currentTitle, emoji) },
       signal,
     );
     set(reloadChatThreadDataForId$, threadId);
@@ -77,7 +82,11 @@ export const setChatThreadEmojiFromThreadData$ = command(
 );
 
 export const clearChatThreadEmojiFromThreadData$ = command(
-  async ({ get, set }, threadId: string, signal: AbortSignal) => {
+  async (
+    { get, set },
+    { threadId, title }: { threadId: string; title?: string | null },
+    signal: AbortSignal,
+  ) => {
     const thread = paneThreadForId(
       threadId,
       get(currentLeftThread$),
@@ -85,11 +94,12 @@ export const clearChatThreadEmojiFromThreadData$ = command(
     );
     const threadData = thread ? await get(thread.threadData$) : null;
     signal.throwIfAborted();
-    const title = removeChatThreadEmoji(threadData?.title);
-    if (!title) {
+    const currentTitle = title !== undefined ? title : threadData?.title;
+    const nextTitle = removeChatThreadEmoji(currentTitle);
+    if (!nextTitle) {
       return;
     }
-    await set(renameChatThread$, { threadId, title }, signal);
+    await set(renameChatThread$, { threadId, title: nextTitle }, signal);
     set(reloadChatThreadDataForId$, threadId);
   },
 );
