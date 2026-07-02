@@ -2164,6 +2164,7 @@ const prepareNormalSend$ = command(
       explicit: args.body.generationTemplate,
       replaySuppressed: priorContext.length === 0 && !thread.isNewThread,
     });
+    signal.throwIfAborted();
     const generationTemplatePrompt = [
       liveGenerationTemplatePrompt,
       fallbackNote,
