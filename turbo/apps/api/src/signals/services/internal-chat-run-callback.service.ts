@@ -1129,6 +1129,7 @@ async function runCompletedChatCallbackSideEffects(args: {
     db: args.db,
     threadId: args.chatThread.chatThreadId,
     userId: args.chatThread.userId,
+    orgId: args.chatThread.orgId,
     runId: args.runId,
     prompt: args.run.prompt,
     currentAssistantReply: args.lastResultText ?? undefined,

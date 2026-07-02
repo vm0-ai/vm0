@@ -20,6 +20,7 @@ import {
   hiddenGoalStateEvent,
 } from "./zero-chat-goal-marker.service";
 import { generateGoalObjectiveBrief } from "./zero-goal-objective-brief.service";
+import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 
 export interface GoalBootstrap {
   readonly goalId: string;
@@ -203,9 +204,10 @@ async function insertGoal(
 }
 
 async function createGoalThread(
-  tx: Pick<Db, "insert">,
+  tx: Pick<Db, "insert" | "select">,
   args: {
     readonly userId: string;
+    readonly orgId: string;
     readonly agentId: string;
     readonly objective: string;
     readonly createdAt: Date;
@@ -221,10 +223,19 @@ async function createGoalThread(
       createdAt: args.createdAt,
       updatedAt: args.createdAt,
     })
-    .returning({ id: chatThreads.id });
+    .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
   if (!thread) {
     throw new Error("Failed to create goal chat thread");
   }
+  await appendChatThreadEvent(tx, {
+    kind: "created",
+    userId: args.userId,
+    orgId: args.orgId,
+    chatThreadId: thread.id,
+    agentComposeId: args.agentId,
+    title: args.objective,
+    createdAt: thread.createdAt,
+  });
   return thread.id;
 }
 
@@ -295,6 +306,7 @@ export async function createGoalForCurrentThread(
       context.threadId ??
       (await createGoalThread(tx, {
         userId: args.userId,
+        orgId: args.orgId,
         agentId: context.agentId,
         objective: args.objective,
         createdAt,

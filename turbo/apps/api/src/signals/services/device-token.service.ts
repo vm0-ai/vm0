@@ -11,6 +11,7 @@ import { command } from "ccstate";
 import { generateCliToken } from "../auth/tokens";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
+import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 
 const DEVICE_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const BB0_DEVICE_PURPOSE = "bb0";
@@ -161,6 +162,15 @@ export const confirmBb0Device$ = command(
         title: "bb0",
         createdAt,
         updatedAt: createdAt,
+      });
+      await appendChatThreadEvent(tx, {
+        kind: "created",
+        userId: args.userId,
+        orgId: args.orgId,
+        chatThreadId: threadId,
+        agentComposeId,
+        title: "bb0",
+        createdAt,
       });
 
       return {
