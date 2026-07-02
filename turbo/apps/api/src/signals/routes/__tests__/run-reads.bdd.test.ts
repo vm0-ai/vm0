@@ -158,22 +158,34 @@ function s3BytesBody(bytes: Buffer): AsyncIterable<Buffer> {
   };
 }
 
+function heldCliAgentSession(sessionId: string) {
+  return {
+    heldSessionStates: [
+      {
+        sessionId,
+        lastCompletedAt: new Date(now()).toISOString(),
+      },
+    ],
+  };
+}
+
 async function createHashBackedResumeRun(
   actor: ApiTestUser,
   composeId: string,
   historyHash: string,
   prefix: string,
-): Promise<{ readonly runId: string }> {
+): Promise<{ readonly runId: string; readonly cliAgentSessionId: string }> {
   const first = await api.createDirectRun(actor, {
     agentComposeId: composeId,
     prompt: `${prefix} first run`,
   });
   const firstClaim = await api.claimRunnerJob(first.runId);
+  const cliAgentSessionId = `bdd-cli-${first.runId}`;
   const checkpoint = await webhooks.requestAgentCheckpoint(
     {
       runId: first.runId,
       cliAgentType: "claude-code",
-      cliAgentSessionId: `bdd-cli-${first.runId}`,
+      cliAgentSessionId,
       cliAgentSessionHistoryHash: historyHash,
     },
     sandboxHeaders(firstClaim.sandboxToken),
@@ -186,10 +198,14 @@ async function createHashBackedResumeRun(
     [200],
   );
 
-  return await api.createDirectRun(actor, {
+  const resumed = await api.createDirectRun(actor, {
     checkpointId: checkpoint.body.checkpointId,
     prompt: `${prefix} resume run`,
   });
+  return {
+    runId: resumed.runId,
+    cliAgentSessionId,
+  };
 }
 
 /**
@@ -1351,12 +1367,13 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       hasManifestPresign(presignedUrlKeysSince(presignCallsBeforeRun)),
     ).toBeFalsy();
 
+    const cliAgentSessionId = `bdd-cli-${r1.runId}`;
     const headers1 = sandboxHeaders(claim1.sandboxToken);
     const checkpointed = await webhooks.requestAgentCheckpoint(
       {
         runId: r1.runId,
         cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-cli-${r1.runId}`,
+        cliAgentSessionId,
         cliAgentSessionHistoryHash: historyHash,
         artifactSnapshots: [
           {
@@ -1391,12 +1408,13 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     );
     const refClaim = await api.claimRunnerJob(refResumed.runId, {
       capabilities: ["resumeSessionHistoryRef"],
+      ...heldCliAgentSession(cliAgentSessionId),
     });
     expect(countSessionHistoryBlobReads(historyHash)).toBe(
       readsBeforeRefResumeCreate,
     );
     expect(refClaim.resumeSession).toStrictEqual({
-      sessionId: `bdd-cli-${r1.runId}`,
+      sessionId: cliAgentSessionId,
       historyRef: {
         kind: "blob",
         hash: historyHash,
@@ -1417,14 +1435,17 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     expect(countSessionHistoryBlobReads(historyHash)).toBe(
       readsBeforeInlineResumeCreate,
     );
-    const claim2 = await api.claimRunnerJob(resumed.runId);
+    const claim2 = await api.claimRunnerJob(
+      resumed.runId,
+      heldCliAgentSession(cliAgentSessionId),
+    );
     expect(countSessionHistoryBlobReads(historyHash)).toBe(
       readsBeforeInlineResumeCreate + 1,
     );
     expect(claim2.checkpointId).toBe(checkpointId);
     expect(claim2.vars).toStrictEqual({ VOL_VERSION: versionPrefix });
     expect(claim2.resumeSession).toStrictEqual({
-      sessionId: `bdd-cli-${r1.runId}`,
+      sessionId: cliAgentSessionId,
       sessionHistory: history,
     });
     expect(claim2.storageManifest?.storages).toMatchObject([
@@ -1548,9 +1569,12 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       prompt: "continue the checkpointed session",
     });
     expect(continued.sessionId).toBe(r1.sessionId);
-    const continuedClaim = await api.claimRunnerJob(continued.runId);
+    const continuedClaim = await api.claimRunnerJob(
+      continued.runId,
+      heldCliAgentSession(cliAgentSessionId),
+    );
     expect(continuedClaim.resumeSession).toStrictEqual({
-      sessionId: `bdd-cli-${r1.runId}`,
+      sessionId: cliAgentSessionId,
       sessionHistory: history,
     });
     const continuedMemory = continuedClaim.storageManifest?.artifacts.find(
@@ -1589,6 +1613,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       true,
       resumed.runId,
       [400],
+      heldCliAgentSession(resumed.cliAgentSessionId),
     );
     expectApiError(failedClaim.body);
     expect(failedClaim.body.error.message).toBe(
@@ -1621,7 +1646,12 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       historyHash,
       "transient history",
     );
-    await api.requestClaimRunnerJob(true, resumed.runId, [500]);
+    await api.requestClaimRunnerJob(
+      true,
+      resumed.runId,
+      [500],
+      heldCliAgentSession(resumed.cliAgentSessionId),
+    );
 
     const pendingRun = await api.readRun(actor, resumed.runId);
     expect(pendingRun.status).toBe("pending");
@@ -1655,6 +1685,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       true,
       resumed.runId,
       [400],
+      heldCliAgentSession(resumed.cliAgentSessionId),
     );
     expectApiError(failedClaim.body);
     expect(failedClaim.body.error.message).toBe(
@@ -1696,6 +1727,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       true,
       resumed.runId,
       [400],
+      heldCliAgentSession(resumed.cliAgentSessionId),
     );
     expectApiError(failedClaim.body);
     expect(failedClaim.body.error.message).toBe(

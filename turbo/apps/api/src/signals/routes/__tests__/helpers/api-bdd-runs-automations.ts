@@ -1081,12 +1081,13 @@ export function createRunsAutomationsApi(context: TestContext) {
       validAuth: boolean,
       runId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+      body: RunnerJobClaimRequest = {},
     ) {
       return await accept(
         runsAutomationApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(validAuth),
           params: { id: runId },
-          body: {},
+          body,
         }),
         statuses,
       );

@@ -178,12 +178,25 @@ async function sendChatRun(
 async function claimChatRun(
   runnerGroup: string,
   runId: string,
+  heldCliAgentSessionId?: string,
 ): Promise<{
   readonly claim: RunnerClaim;
   readonly sandboxHeaders: { readonly authorization: string };
 }> {
   await api.heartbeatRunner(runnerGroup);
-  const claim = await api.claimRunnerJob(runId);
+  const claim = await api.claimRunnerJob(
+    runId,
+    heldCliAgentSessionId
+      ? {
+          heldSessionStates: [
+            {
+              sessionId: heldCliAgentSessionId,
+              lastCompletedAt: new Date(now()).toISOString(),
+            },
+          ],
+        }
+      : {},
+  );
   return {
     claim,
     sandboxHeaders: { authorization: `Bearer ${claim.sandboxToken}` },
@@ -1981,7 +1994,11 @@ describe("CHAT-02: server-side model switches", () => {
       threadId: first.threadId,
       prompt: "continue on sonnet",
     });
-    const thirdClaim = await claimChatRun(runnerGroup, third.runId);
+    const thirdClaim = await claimChatRun(
+      runnerGroup,
+      third.runId,
+      `bdd-cli-${second.runId}`,
+    );
     expect(thirdClaim.claim.resumeSession?.sessionId).toBe(
       `bdd-cli-${second.runId}`,
     );
@@ -2033,7 +2050,11 @@ describe("CHAT-02: server-side model switches", () => {
       threadId: first.threadId,
       prompt: "follow up after the provider rotation",
     });
-    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    const secondClaim = await claimChatRun(
+      runnerGroup,
+      second.runId,
+      `bdd-cli-${first.runId}`,
+    );
     const environment = claimEnvironment(secondClaim.claim);
     expect(environment.ANTHROPIC_API_KEY).toBe(
       modelProviderSecretPlaceholder("anthropic-api-key", "ANTHROPIC_API_KEY"),
