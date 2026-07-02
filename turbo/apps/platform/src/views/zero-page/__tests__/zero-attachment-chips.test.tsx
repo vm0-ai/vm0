@@ -1295,6 +1295,85 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("navigates human-uploaded images that are not run artifacts", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/user-image-navigation/first.png";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/user-image-navigation/second.png";
+    // The images the user attached are NOT part of the thread's run artifacts;
+    // they resolve from the user artifacts bucket. Navigation must still work.
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, { runs: [] });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-user-image-navigation",
+          role: "user",
+          content: "Here are my photos",
+          attachFiles: [
+            {
+              id: "user-first-image",
+              filename: "first.png",
+              contentType: "image/png",
+              size: 128,
+              url: firstImageUrl,
+            },
+            {
+              id: "user-second-image",
+              filename: "second.png",
+              contentType: "image/png",
+              size: 256,
+              url: secondImageUrl,
+            },
+          ],
+          runId: "run-user-image-navigation",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
+      },
+    });
+
+    click(await screen.findByLabelText("Preview first.png"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+    expect(screen.queryByLabelText("Previous image artifact")).toBeNull();
+    expect(screen.getByLabelText("Next image artifact")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Next image artifact"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "second.png",
+      );
+    });
+    expect(
+      screen.getByLabelText("Previous image artifact"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Next image artifact")).toBeNull();
+
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+  });
+
   it("keeps the modal fullscreen state while navigating images", async () => {
     const user = userEvent.setup({ delay: null });
     const firstImageUrl =
