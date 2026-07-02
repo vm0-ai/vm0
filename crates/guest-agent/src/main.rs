@@ -1996,6 +1996,35 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_reason_classifies_claude_result_stalled_mid_stream_diagnostic() {
+        let message =
+            "API Error: Response stalled mid-stream. The response above may be incomplete.";
+        let msg = cli_failure_message(
+            1,
+            &["background stderr noise".to_string()],
+            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
+        );
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(msg.source);
+        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
+
+        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::ProviderStreamTimeout)
+        );
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::ClaudeResult)
+        );
+    }
+
+    #[test]
     fn cli_failure_reason_ignores_stream_idle_timeout_from_stderr() {
         for message in [
             "API Error: Stream idle timeout - partial response received",
