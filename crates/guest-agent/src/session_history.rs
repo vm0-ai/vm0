@@ -83,6 +83,10 @@ pub(crate) fn read_session_history_from_payload(payload: &str) -> Result<Vec<u8>
     read_session_history_from_payload_impl(payload, None)
 }
 
+/// Read decoded session history bytes without returning more than `max_bytes`.
+///
+/// The implementation reads one extra decoded byte to detect over-limit
+/// histories without consuming an unbounded stream.
 pub(crate) fn read_session_history_from_payload_bounded(
     payload: &str,
     max_bytes: u64,
