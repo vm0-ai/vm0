@@ -320,6 +320,7 @@ export async function generateAndPersistChatThreadTitleFromCallback(args: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string | null;
   readonly runId: string;
   readonly prompt: string;
   readonly currentAssistantReply: string | undefined;
@@ -341,7 +342,13 @@ export async function generateAndPersistChatThreadTitleFromCallback(args: {
         priorRounds: priorRounds.length > 0 ? priorRounds : undefined,
       });
       if (title) {
-        await updateChatThreadTitle(args.db, args.threadId, args.userId, title);
+        await updateChatThreadTitle(
+          args.db,
+          args.threadId,
+          args.userId,
+          args.orgId,
+          title,
+        );
       }
     })(),
   );
