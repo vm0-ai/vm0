@@ -1923,7 +1923,11 @@ fn concurrent_resume_writes_preserve_all_turns() -> std::io::Result<()> {
                 ));
             }
             Ok(Err(err)) => {
-                error_kind.get_or_insert(err.kind());
+                if err.kind() == std::io::ErrorKind::TimedOut {
+                    error_kind = Some(std::io::ErrorKind::TimedOut);
+                } else {
+                    error_kind.get_or_insert(err.kind());
+                }
                 io_failures.push(format!("{prompt}: {err}"));
             }
             Err(_) => {
