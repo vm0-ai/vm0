@@ -254,6 +254,15 @@
       }
     },
     {
+      "name": "root literal path",
+      "path": "/",
+      "pattern": "/",
+      "expected": {
+        "kind": "match",
+        "params": {}
+      }
+    },
+    {
       "name": "plain path parameters",
       "path": "/repos/myorg/myrepo/pulls",
       "pattern": "/repos/{owner}/{repo}/pulls",
@@ -269,6 +278,14 @@
       "name": "plain path parameter rejects empty segment",
       "path": "/repos//pulls",
       "pattern": "/repos/{owner}/pulls",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "path matcher requires full path consumption",
+      "path": "/repos/myorg/myrepo/pulls/123",
+      "pattern": "/repos/{owner}/{repo}/pulls",
       "expected": {
         "kind": "no-match"
       }
@@ -564,6 +581,15 @@
       }
     },
     {
+      "name": "static base normalizes trailing dot and default port",
+      "url": "HTTPS://API.GitHub.com.:443/repos",
+      "base": "https://api.github.com.",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/repos"
+      }
+    },
+    {
       "name": "scheme mismatch fails closed",
       "url": "http://api.github.com/repos",
       "base": "https://api.github.com",
@@ -638,6 +664,14 @@
       "expected": {
         "kind": "match",
         "relativePath": "/users"
+      }
+    },
+    {
+      "name": "runtime URL with userinfo fails closed",
+      "url": "https://user:pass@api.github.com/repos",
+      "base": "https://api.github.com",
+      "expected": {
+        "kind": "no-match"
       }
     },
     {
