@@ -62,6 +62,29 @@ async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() 
         !expected_seed.exists(),
         "failed cache hit should invalidate the unusable baseline"
     );
+
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_workspace_image_prepare",
+        true,
+        None,
+    );
+    assert_telemetry_action(&telemetry, "workspace_image_cache_hit", true, None);
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_retry_without_workspace_image",
+        true,
+        None,
+    );
+    let factory_create_outcomes =
+        telemetry_action_outcomes(&telemetry, "runner_fresh_sandbox_factory_create");
+    assert_eq!(
+        factory_create_outcomes,
+        vec![
+            (false, Some("sandbox_factory_create_failed".into())),
+            (true, None)
+        ]
+    );
 }
 
 #[tokio::test]
@@ -112,6 +135,95 @@ async fn execute_inner_uses_workspace_cache_when_configured() {
             seed_image: Some(sandbox::WorkspaceDriveSeedImage::Move(seeded_cache)),
         })
     );
+
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_workspace_image_prepare",
+        true,
+        None,
+    );
+    assert_telemetry_action(&telemetry, "workspace_image_cache_hit", true, None);
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_factory_create",
+        true,
+        None,
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_proxy_register",
+        true,
+        None,
+    );
+    assert_telemetry_action(&telemetry, "runner_fresh_sandbox_start", true, None);
+}
+
+#[tokio::test]
+async fn execute_inner_records_workspace_cache_lock_busy_prepare_telemetry() {
+    let dir = tempfile::tempdir().unwrap();
+    let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let mut config = test_executor_config(dir.path()).await;
+    config.workspace_cache = Some(cache);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let mut ctx = minimal_context();
+    let session_id = "sess-cache-lock-busy-prepare";
+    ctx.resume_session = Some(ResumeSession::inline(
+        session_id.into(),
+        r#"{"type":"init"}"#.into(),
+    ));
+    let params = JobParams {
+        workspace_disk_mb: 16,
+        ..default_params()
+    };
+    let cache_key = scoped_session_workspace_cache_key(
+        "",
+        &params.profile_name,
+        session_id,
+        CANONICAL_WORKING_DIR,
+        u64::from(params.workspace_disk_mb) * 1024 * 1024,
+    );
+    let _held_lock = crate::lock::acquire(crate::paths::workspace_image_cache_lock_path(
+        &runner_paths.base_dir().join("locks"),
+        &cache_key,
+    ))
+    .await
+    .unwrap();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &params,
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.exit_code(), 0);
+    let configs = overrides.create_configs();
+    assert_eq!(configs.len(), 1);
+    assert_eq!(
+        configs[0].workspace_drive,
+        Some(sandbox::WorkspaceDriveConfig {
+            size_mb: 16,
+            seed_image: None,
+        })
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_workspace_image_prepare",
+        false,
+        Some("workspace_image_prepare_lock_busy"),
+    );
+    assert_telemetry_action(&telemetry, "workspace_image_cache_lock_busy", true, None);
 }
 
 #[tokio::test]
@@ -175,6 +287,22 @@ async fn execute_inner_does_not_retry_workspace_cache_hit_after_proxy_register_f
     assert!(
         expected_seed.exists(),
         "proxy registration failure must not invalidate the unrelated workspace cache hit"
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_factory_create",
+        true,
+        None,
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_proxy_register",
+        false,
+        Some("sandbox_proxy_register_failed"),
+    );
+    assert_no_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_retry_without_workspace_image",
     );
 }
 
