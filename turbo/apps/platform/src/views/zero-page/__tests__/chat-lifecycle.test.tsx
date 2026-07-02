@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
@@ -869,6 +870,16 @@ function linkByText(text: string): HTMLElement {
   return link;
 }
 
+function linkByLabel(label: string): HTMLElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!link) {
+    throw new Error(`${label} link not found`);
+  }
+  return link;
+}
+
 function queryLinkByText(text: string): HTMLElement | null {
   return (
     queryAllByRoleFast("link").find((candidate) => {
@@ -924,11 +935,15 @@ function mockThinkingTypewriterLayout({
   labelWidth,
   parentWidth,
   graphemeWidth,
+  measureTextWidth = (value) => {
+    return Array.from(value).length * graphemeWidth;
+  },
 }: {
   readonly text: string;
   readonly labelWidth: number;
   readonly parentWidth: number;
   readonly graphemeWidth: number;
+  readonly measureTextWidth?: (value: string) => number;
 }): void {
   const getContextDescriptor = Object.getOwnPropertyDescriptor(
     HTMLCanvasElement.prototype,
@@ -981,7 +996,7 @@ function mockThinkingTypewriterLayout({
       return {
         measureText: (value: string) => {
           return {
-            width: Array.from(value).length * graphemeWidth,
+            width: measureTextWidth(value),
           } as TextMetrics;
         },
       } as CanvasRenderingContext2D;
@@ -3023,6 +3038,14 @@ describe("chat lifecycle", () => {
       scrollHeight: 1500,
       clientHeight: 300,
     });
+    fireEvent.keyDown(composer, { key: "ArrowUp", ctrlKey: true });
+    expect(scrollContainer.scrollTop).toBe(0);
+
+    scrollContainer.scrollTop = 420;
+    fireEvent.scroll(scrollContainer);
+    fireEvent.keyDown(composer, { key: "ArrowDown", ctrlKey: true });
+    expect(scrollContainer.scrollTop).toBe(1500);
+
     threadRegion.focus();
     fireEvent.keyDown(threadRegion, { key: "ArrowDown", ctrlKey: true });
     expect(scrollContainer.scrollTop).toBe(1500);
@@ -3251,9 +3274,77 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Previous thread")).toBeInTheDocument();
       expect(screen.getByText("Next thread")).toBeInTheDocument();
       expect(screen.getByText("Rename chat")).toBeInTheDocument();
-      expect(screen.getByText("Change emoji")).toBeInTheDocument();
+      expect(screen.getByText("Change icon")).toBeInTheDocument();
       expect(screen.getAllByText("F2")).toHaveLength(2);
       expect(screen.getAllByText("Shift").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("keeps shifted slash editable in the chat composer", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+    });
+
+    const composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, { key: "?", shiftKey: true });
+
+    expect(screen.queryByText("Keyboard Shortcuts")).not.toBeInTheDocument();
+  });
+
+  it("moves between chat threads with page shortcuts from the composer", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Previous keyboard thread")).toBeInTheDocument();
+      expect(screen.getByText("Next keyboard thread")).toBeInTheDocument();
+    });
+
+    let composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, {
+      key: "ArrowUp",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Previous thread launch note"),
+      ).toBeInTheDocument();
+    });
+
+    composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, {
+      key: "ArrowDown",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
     });
   });
 
@@ -3275,7 +3366,7 @@ describe("chat lifecycle", () => {
       ).toBeGreaterThan(0);
     });
 
-    expect(screen.queryByLabelText("Change emoji")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Change icon")).not.toBeInTheDocument();
 
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
@@ -3304,7 +3395,7 @@ describe("chat lifecycle", () => {
         screen.getAllByText("Current keyboard thread").length,
       ).toBeGreaterThan(0);
     });
-    const emojiButton = screen.getByLabelText("Change emoji");
+    const emojiButton = screen.getByLabelText("Change icon");
     expect(emojiButton).toHaveTextContent("");
     expect(emojiButton.querySelector("svg")).not.toBeInTheDocument();
     expect(emojiButton).toHaveClass("h-7", "w-7");
@@ -3409,7 +3500,7 @@ describe("chat lifecycle", () => {
     expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue("");
   });
 
-  it("renames the main chat with F2 when a side chat is focused", async () => {
+  it("renames the focused side chat with F2", async () => {
     const user = userEvent.setup({ delay: null });
     mockResizeObserver();
     mockKeyboardNavigationThreads();
@@ -3434,8 +3525,93 @@ describe("chat lifecycle", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
     expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
-      "Current keyboard thread",
+      "Next keyboard thread",
     );
+  });
+
+  it("moves the focused side chat with page keyboard shortcuts", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread?sidebar=keyboard-next-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
+    });
+
+    const threadRegions = screen.getAllByLabelText("Chat thread");
+    expect(threadRegions).toHaveLength(2);
+    const sideThreadRegion = threadRegions[1];
+    if (!sideThreadRegion) {
+      throw new Error("Side chat thread not found");
+    }
+    sideThreadRegion.focus();
+    fireEvent.keyDown(sideThreadRegion, {
+      key: "ArrowUp",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Previous thread launch note"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("adds an emoji to the focused side chat directly with Shift+1", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({ currentDetailTitle: null });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread?sidebar=keyboard-next-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
+    });
+
+    const threadRegions = screen.getAllByLabelText("Chat thread");
+    expect(threadRegions).toHaveLength(2);
+    const sideThreadRegion = threadRegions[1];
+    if (!sideThreadRegion) {
+      throw new Error("Side chat thread not found");
+    }
+    sideThreadRegion.focus();
+    fireEvent.keyDown(sideThreadRegion, {
+      key: "!",
+      code: "Digit1",
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        "keyboard-next-thread",
+        "✅ Next keyboard thread",
+      );
+    });
   });
 
   it("adds an emoji to the current chat with Shift+F2", async () => {
@@ -3465,18 +3641,23 @@ describe("chat lifecycle", () => {
       ).toBeGreaterThan(0);
     });
 
-    const threadRegion = screen.getByLabelText("Chat thread");
-    threadRegion.focus();
-    fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
+    const composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, { key: "F2", shiftKey: true });
 
     const menu = await screen.findByRole("menu");
     expect(queryAllByRoleFast("menuitem", menu)).toHaveLength(10);
-    click(menuItemByLabel("Done ✅", menu));
+    expect(within(menu).queryByText("Done")).not.toBeInTheDocument();
+    expect(within(menu).getByText("Clear icon")).toBeInTheDocument();
+    expect(within(menu).getAllByText("Shift").length).toBeGreaterThan(0);
+    expect(within(menu).getByText("1")).toBeInTheDocument();
+    expect(within(menu).getByText("0")).toBeInTheDocument();
+    click(menuItemByLabel("Done icon Shift 1", menu));
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
         "keyboard-current-thread",
-        "✅",
+        "✅ Current keyboard thread",
       );
     });
   });
@@ -3508,7 +3689,7 @@ describe("chat lifecycle", () => {
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
     fireEvent.keyDown(threadRegion, {
-      key: "1",
+      key: "!",
       code: "Digit1",
       shiftKey: true,
     });
@@ -3516,7 +3697,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
         "keyboard-current-thread",
-        "✅",
+        "✅ Current keyboard thread",
       );
     });
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
@@ -3572,10 +3753,10 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+      expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
     });
 
-    const emojiButton = screen.getByLabelText("Change emoji");
+    const emojiButton = screen.getByLabelText("Change icon");
     function visibleChatThreadIconTooltip(): HTMLElement | undefined {
       return screen.queryAllByText("Chat thread icon").find((element) => {
         try {
@@ -3608,7 +3789,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("replaces the current chat emoji from the Shift+F2 picker", async () => {
+  it("replaces the current chat emoji from the Shift+F2 picker item", async () => {
     const renameRequest = vi.fn();
     mockResizeObserver();
     mockKeyboardNavigationThreads({
@@ -3633,7 +3814,7 @@ describe("chat lifecycle", () => {
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
       expect(document.title).toBe("🔥   Current keyboard thread | VM0");
-      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+      expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
       expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
     });
 
@@ -3647,7 +3828,13 @@ describe("chat lifecycle", () => {
         return item.getAttribute("aria-label") === "Important 📌";
       }),
     ).toBeFalsy();
-    fireEvent.keyDown(menu, { key: "1", code: "Digit1", shiftKey: true });
+    const doneItem = queryAllByRoleFast("menuitem", menu).find((item) => {
+      return item.getAttribute("aria-label") === "Done icon Shift 1";
+    });
+    if (!doneItem) {
+      throw new Error("Done icon menu item not found");
+    }
+    click(doneItem);
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
@@ -3678,13 +3865,13 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+      expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
     });
 
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
     fireEvent.keyDown(threadRegion, {
-      key: "0",
+      key: ")",
       code: "Digit0",
       shiftKey: true,
     });
@@ -3716,13 +3903,13 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+      expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
     });
 
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
     fireEvent.keyDown(threadRegion, {
-      key: "0",
+      key: ")",
       code: "Digit0",
       shiftKey: true,
     });
@@ -3816,7 +4003,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("starts a workflow prompt from an assistant message when the composer is empty", async () => {
+  it("starts a workflow prompt from the composer when the composer is empty", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "assistant-message-create-workflow-empty";
     const assistantReply = "We can turn this into a workflow.";
@@ -3855,11 +4042,13 @@ describe("chat lifecycle", () => {
     if (!(assistantGroup instanceof HTMLElement)) {
       throw new Error("assistant message group not found");
     }
-    const copyButton = within(assistantGroup).getByLabelText("Copy message");
-    const workflowButton =
-      within(assistantGroup).getByLabelText("Create workflow");
     expect(
-      copyButton.compareDocumentPosition(workflowButton) &
+      within(assistantGroup).queryByLabelText("Create workflow"),
+    ).not.toBeInTheDocument();
+    const templateButton = buttonByLabel("Template");
+    const workflowButton = buttonByLabel("Create workflow");
+    expect(
+      templateButton.compareDocumentPosition(workflowButton) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
@@ -3923,13 +4112,8 @@ describe("chat lifecycle", () => {
       expect(editor).toHaveTextContent(draft);
     });
 
-    const assistantMessage = await screen.findByText(assistantReply);
-    const assistantGroup = assistantMessage.closest('[data-role="assistant"]');
-    if (!(assistantGroup instanceof HTMLElement)) {
-      throw new Error("assistant message group not found");
-    }
-    const workflowButton =
-      within(assistantGroup).getByLabelText("Create workflow");
+    await screen.findByText(assistantReply);
+    const workflowButton = buttonByLabel("Create workflow");
 
     click(workflowButton);
 
@@ -3994,14 +4178,8 @@ describe("chat lifecycle", () => {
       },
     });
 
-    const assistantMessage = await screen.findByText(assistantReply);
-    const assistantGroup = assistantMessage.closest('[data-role="assistant"]');
-    if (!(assistantGroup instanceof HTMLElement)) {
-      throw new Error("assistant message group not found");
-    }
-    expect(
-      within(assistantGroup).queryByLabelText("Create workflow"),
-    ).not.toBeInTheDocument();
+    await screen.findByText(assistantReply);
+    expect(screen.queryByLabelText("Create workflow")).not.toBeInTheDocument();
   });
 
   it("shows linked automations from the chat header sidebar", async () => {
@@ -5794,6 +5972,7 @@ describe("chat lifecycle", () => {
         "So Zero can work in your browser and apps for you, even ones with no connector like LinkedIn or Reddit.",
       ),
     ).toBeInTheDocument();
+    expect(screen.getByText("Requires macOS 14 or newer.")).toBeInTheDocument();
     const downloadLink = await waitFor(() => {
       return linkByText("Download for macOS");
     });
@@ -5826,6 +6005,7 @@ describe("chat lifecycle", () => {
       return buttonByText("Requires Apple Silicon Mac");
     });
     expect(requiredButton).toBeDisabled();
+    expect(screen.getByText("Requires macOS 14 or newer.")).toBeInTheDocument();
     expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
   });
 
@@ -5848,7 +6028,7 @@ describe("chat lifecycle", () => {
     await user.click(await screen.findByText("Connect my computer"));
 
     const appleSiliconDownload = await waitFor(() => {
-      return linkByText("Download for Apple Silicon");
+      return linkByLabel("Download for Mac Apple Silicon");
     });
     expect(appleSiliconDownload).toHaveAttribute(
       "href",
@@ -5856,7 +6036,7 @@ describe("chat lifecycle", () => {
         "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
       ),
     );
-    expect(linkByText("Download for Intel Mac")).toHaveAttribute(
+    expect(linkByLabel("Download for Mac Intel")).toHaveAttribute(
       "href",
       expect.stringContaining(
         "/api/zero/desktop/updates/stable/darwin/x64/dmg",
@@ -6193,10 +6373,135 @@ describe("chat lifecycle", () => {
   it("transcribes voice input into the composer", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "voice-input-thread";
-    context.mocks.browser.voiceInput();
+    const draftPatches: unknown[] = [];
+    const toastError = vi.spyOn(toast, "error");
+    context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
+    context.mocks.http.patch(
+      "*/api/zero/chat-threads/:id",
+      async ({ request }) => {
+        draftPatches.push(await request.json());
+        return new Response(null, { status: 200 });
+      },
+    );
     context.mocks.http.post("*/api/zero/voice-io/stt", () => {
       return new Response(JSON.stringify({ text: "Summarize the standup" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+      const textarea = await waitFor(() => {
+        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+      });
+
+      await user.click(await screen.findByLabelText("Voice input"));
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByLabelText("Stop recording"));
+
+      await waitFor(() => {
+        expect(textarea).toHaveValue("Summarize the standup");
+      });
+      await waitFor(() => {
+        expect(draftPatches).toContainEqual({
+          draftContent: "Summarize the standup",
+          draftAttachments: null,
+        });
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
+    } finally {
+      toastError.mockRestore();
+    }
+  });
+
+  it("shows voice input starting state while the browser opens the microphone", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "voice-input-starting-thread";
+    const micReady = context.mocks.deferred<void>();
+    context.mocks.browser.voiceInput({
+      getUserMediaReady: micReady.promise,
+      rms: 0.1,
+    });
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Starting voice input")).toBeDisabled();
+    });
+    expect(screen.queryByLabelText("Stop recording")).not.toBeInTheDocument();
+
+    micReady.resolve(undefined);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+  });
+
+  it("starts recording before the voice activity monitor is ready", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "voice-input-monitor-pending-thread";
+    const audioReady = context.mocks.deferred<void>();
+    context.mocks.browser.voiceInput({
+      audioContextReady: audioReady.promise,
+      rms: 0.1,
+    });
+    mockChatLifecycle(context, { threadId });
+    let transcriptionCalled = false;
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      transcriptionCalled = true;
+      return new Response(JSON.stringify({ text: "first words" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByLabelText("Starting voice input"),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Stop recording"));
+    audioReady.resolve(undefined);
+
+    await waitFor(() => {
+      expect(transcriptionCalled).toBeTruthy();
+      expect(textarea).toHaveValue("first words");
+    });
+  });
+
+  it("cancels silent voice input without calling transcription", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "silent-voice-input-thread";
+    context.mocks.browser.voiceInput({ rms: 0 });
+    mockChatLifecycle(context, { threadId });
+    let transcriptionCalled = false;
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      transcriptionCalled = true;
+      return new Response(JSON.stringify({ text: "unexpected" }), {
         headers: { "Content-Type": "application/json" },
       });
     });
@@ -6216,14 +6521,16 @@ describe("chat lifecycle", () => {
     await user.click(screen.getByLabelText("Stop recording"));
 
     await waitFor(() => {
-      expect(textarea).toHaveValue("Summarize the standup");
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
     });
+    expect(transcriptionCalled).toBeFalsy();
+    expect(textarea).toHaveValue("");
   });
 
   it("opens billing recovery when voice input quota is depleted", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "voice-input-quota-thread";
-    context.mocks.browser.voiceInput();
+    context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
     context.mocks.http.post("*/api/zero/voice-io/stt", () => {
       return new Response(
@@ -6769,9 +7076,6 @@ describe("initial thinking indicator", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
-      },
     });
 
     await waitFor(() => {
@@ -6781,27 +7085,53 @@ describe("initial thinking indicator", () => {
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 
-  it("slides the thinking marker after it exceeds the label width", async () => {
-    const threadId = "thread-initial-thinking-sliding";
+  it("restarts on every follow-up line instead of sliding a short tail", async () => {
+    const threadId = "thread-initial-thinking-rollover";
     const thinking = "ABCDEFG";
     mockThinkingTypewriterLayout({
       text: thinking,
-      labelWidth: 68,
+      labelWidth: 38,
       parentWidth: 160,
       graphemeWidth: 10,
+      measureTextWidth: (value) => {
+        return (
+          Array.from(value).filter((grapheme) => {
+            return grapheme !== ".";
+          }).length * 10
+        );
+      },
     });
+    const displayedLabels = new Set<string>();
+    const labelObserver = new MutationObserver(() => {
+      const label = document.querySelector(`[aria-label="${thinking}"]`);
+      if (label?.textContent) {
+        displayedLabels.add(label.textContent);
+      }
+    });
+    labelObserver.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        labelObserver.disconnect();
+      },
+      { once: true },
+    );
     mockChatLifecycle(context, {
       threadId,
       chatMessages: [
         {
-          id: "msg-thinking-sliding-user",
+          id: "msg-thinking-rollover-user",
           role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
-          id: "msg-thinking-sliding-marker",
+          id: "msg-thinking-rollover-marker",
           role: "assistant",
           content: null,
           thinking,
@@ -6822,8 +7152,14 @@ describe("initial thinking indicator", () => {
 
     const label = await screen.findByLabelText(thinking);
     await waitFor(() => {
-      expect(label).toHaveTextContent("...EFG");
+      expect(label).toHaveTextContent(/^G$/);
     });
+    expect(
+      Array.from(displayedLabels).some((value) => {
+        return value === "D" || value === "DE" || value === "DEF";
+      }),
+    ).toBeTruthy();
+    expect(displayedLabels.has("...EFG")).toBeFalsy();
     expect(label).not.toHaveTextContent(thinking);
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });

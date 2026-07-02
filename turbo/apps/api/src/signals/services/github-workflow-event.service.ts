@@ -25,6 +25,7 @@ import {
   runWorkflowTriggerNow$,
   type TriggerRow,
 } from "./zero-workflow-trigger-run.service";
+import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
 import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
 
 const log = logger("api:github-workflow-event");
@@ -306,6 +307,15 @@ async function loadGithubLabelEventTriggers(args: {
       row.trigger.eventConfig,
     );
     if (!config.success) {
+      continue;
+    }
+    const canFire = await workflowTriggerCanFire(args.db, {
+      trigger: row.trigger,
+      agentId: row.agentId,
+      signal: args.signal,
+    });
+    args.signal.throwIfAborted();
+    if (!canFire) {
       continue;
     }
     const chatThreadId =

@@ -52,6 +52,7 @@ interface ComputerUseHostRuntimeOptions {
   readonly sessionFetch: ComputerUseHostFetch;
   readonly hostFetch: ComputerUseHostFetch;
   readonly getPermissions: () => MaybePromise<ComputerUsePermissionState>;
+  readonly getSupportedCapabilities?: () => readonly string[];
   readonly executeCommand: (
     command: ComputerUseCommand,
     permissions: ComputerUsePermissionState,
@@ -207,13 +208,16 @@ export function buildComputerUseRuntimeBody(args: {
   readonly hostName: string;
   readonly appVersion: string;
   readonly permissions: ComputerUsePermissionState;
+  readonly supportedCapabilities?: readonly string[];
 }): Record<string, unknown> {
   return {
     installationId: args.installationId,
     hostName: args.hostName,
     appVersion: args.appVersion,
     osVersion: `${os.type()} ${os.release()}`,
-    supportedCapabilities: [...SUPPORTED_COMPUTER_USE_CAPABILITIES],
+    supportedCapabilities: [
+      ...(args.supportedCapabilities ?? SUPPORTED_COMPUTER_USE_CAPABILITIES),
+    ],
     permissions: args.permissions,
   };
 }
@@ -231,6 +235,7 @@ export class ComputerUseHostRuntime {
   private readonly sessionFetch: ComputerUseHostFetch;
   private readonly hostFetchRequest: ComputerUseHostFetch;
   private readonly getPermissions: ComputerUseHostRuntimeOptions["getPermissions"];
+  private readonly getSupportedCapabilities: () => readonly string[];
   private readonly executeCommand: ComputerUseHostRuntimeOptions["executeCommand"];
   private readonly onCommandFailure: NonNullable<
     ComputerUseHostRuntimeOptions["onCommandFailure"]
@@ -264,6 +269,11 @@ export class ComputerUseHostRuntime {
     this.sessionFetch = options.sessionFetch;
     this.hostFetchRequest = options.hostFetch;
     this.getPermissions = options.getPermissions;
+    this.getSupportedCapabilities =
+      options.getSupportedCapabilities ??
+      (() => {
+        return SUPPORTED_COMPUTER_USE_CAPABILITIES;
+      });
     this.executeCommand = options.executeCommand;
     this.onCommandFailure = options.onCommandFailure ?? (() => {});
     this.onChange = options.onChange ?? (() => {});
@@ -322,6 +332,7 @@ export class ComputerUseHostRuntime {
       hostName: this.hostName,
       appVersion: this.appVersion,
       permissions: await this.getPermissions(),
+      supportedCapabilities: this.getSupportedCapabilities(),
     });
   }
 
@@ -809,7 +820,7 @@ export class ComputerUseHostRuntime {
           {
             method: "POST",
             body: JSON.stringify({
-              supportedCapabilities: [...SUPPORTED_COMPUTER_USE_CAPABILITIES],
+              supportedCapabilities: [...this.getSupportedCapabilities()],
             }),
             signal,
           },

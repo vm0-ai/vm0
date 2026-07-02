@@ -7,7 +7,6 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   chatMessagesContract,
   type AttachFile,
@@ -44,7 +43,6 @@ import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testChatMessagesStateRoutes } from "../test-chat-messages-state";
 
@@ -628,6 +626,69 @@ describe("CHAT-02: chat thread message pagination", () => {
       [404],
     );
     expect(crossThreadRead.status).toBe(404);
+  });
+
+  it("filters historical raw JSON syntax follow-up prompts when reading messages", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const threadId = randomUUID();
+    await chat.createThread(actor, {
+      agentId,
+      title: "Historical follow-up cleanup",
+      clientThreadId: threadId,
+    });
+
+    const markerId = randomUUID();
+    await seedThreadMessages(threadId, [
+      {
+        id: markerId,
+        role: "assistant",
+        content: null,
+        created_at: "2026-06-09T10:00:00.000Z",
+        sequence_number: null,
+        run_lifecycle_event: "completed",
+        recommended_followups: [
+          { prompt: "[", kind: "talk" },
+          { prompt: "{", kind: "talk" },
+          { prompt: '"prompt": "Investigate this",', kind: "talk" },
+          {
+            prompt: '{"prompt": "Investigate this", "kind": "talk"},',
+            kind: "talk",
+          },
+          {
+            prompt: '[{"prompt": "Investigate this", "kind": "talk"}',
+            kind: "talk",
+          },
+          { prompt: "}]", kind: "talk" },
+          { prompt: "}, {", kind: "talk" },
+          {
+            prompt: '}, {"prompt": "Investigate this", "kind": "talk"}',
+            kind: "talk",
+          },
+          { prompt: "Review the valid suggestion", kind: "talk" },
+          {
+            prompt: "Generate a follow-up website",
+            kind: "generate",
+            generationType: "website",
+          },
+        ],
+      },
+    ]);
+
+    const marker = await chat.getThreadMessage(actor, threadId, markerId);
+    expect(marker).toMatchObject({
+      id: markerId,
+      role: "assistant",
+      content: null,
+      runLifecycleEvent: "completed",
+      recommendedFollowups: [
+        { prompt: "Review the valid suggestion", kind: "talk" },
+        {
+          prompt: "Generate a follow-up website",
+          kind: "generate",
+          generationType: "website",
+        },
+      ],
+    });
   });
 });
 
@@ -2119,19 +2180,6 @@ describe("CHAT-02: initial thinking indicator", () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
-    if (!actor.orgId) {
-      throw new Error("Expected entitled chat actor to belong to an org");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: actor.userId,
-        orgId: actor.orgId,
-      },
-      {
-        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
-      },
-    );
 
     let upstreamAuthorization: string | null = null;
     let promptPayload = "";
@@ -2209,11 +2257,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
           upstreamAuthorization = request.headers.get("authorization");
           const payload = openRouterBodySchema.parse(await request.json());
           const systemContent = payload.messages[0]?.content ?? "";
-          if (
-            systemContent.includes(
-              "Generate up to three concise follow-up prompts",
-            )
-          ) {
+          if (systemContent.includes("concise follow-up prompts")) {
             return HttpResponse.json({
               choices: [
                 {
@@ -2404,7 +2448,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, video.runId);
   }, 90_000);
 
-  it("keeps an attached illustration style sticky across follow-ups and clears it for new threads", async () => {
+  it("is one-shot: a follow-up without re-attaching the style relies on the replayed marker, not a live block", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
@@ -2412,7 +2456,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       throw new Error("Expected a registered illustration style");
     }
 
-    // Turn 1: the user explicitly attaches the style.
+    // Turn 1: the user explicitly attaches the style — the live block is present.
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "draw a fox",
@@ -2440,8 +2484,10 @@ describe("CHAT-02: generation templates and attachments", () => {
       });
     });
 
-    // Turn 2: a follow-up in the same thread without re-attaching the style
-    // still gets it — inherited from thread-sticky state (vm0-ai/vm0#17525).
+    // Turn 2: a follow-up without re-attaching the style gets no live block —
+    // there is no thread-sticky DB default (see resolveThreadGenerationTemplatePrompt).
+    // It only sees the selection via the marker replayed inside "# Web Chat Run
+    // Context" for turn 1's message.
     const second = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
@@ -2449,12 +2495,14 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const secondPrompt = (await api.readRun(actor, second.runId))
       .appendSystemPrompt;
-    expect(secondPrompt).toContain("# Artifact Template Context");
+    expect(secondPrompt).not.toContain("# Artifact Template Context");
+    expect(secondPrompt).toContain("# Web Chat Run Context");
+    expect(secondPrompt).toContain("Selected a template");
     expect(secondPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, second.runId);
 
-    // Turn 3: attaching a video preset in the same thread keeps it alongside the
-    // illustration style — multiple template types coexist per thread.
+    // Turn 3: attaching a video preset now only resolves the video template live
+    // — templates no longer merge across types via thread-sticky DB state.
     const videoTemplate = VIDEO_TEMPLATE_ITEMS.find((item) => {
       return item.id === "video-template:epic-grandeur";
     });
@@ -2472,21 +2520,27 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const thirdPrompt = (await api.readRun(actor, third.runId))
       .appendSystemPrompt;
-    // Both template types coexist in the thread, so the combined prompt carries
-    // each type's distinguishing command and facts.
     expect(thirdPrompt).toContain(
       `Template: ${videoTemplate.title} (${videoTemplate.id})`,
     );
     expect(thirdPrompt).toContain(
       `zero generate video --provider built-in --template ${videoTemplate.id}`,
     );
-    expect(thirdPrompt).toContain(
+    // The illustration style is gone entirely for this turn: it's not live
+    // (explicit selection this turn is video, not illustration), and turn 2's
+    // cancellation put an incomplete round in the thread, which suppresses the
+    // general "# Web Chat Run Context" replay (turn 1's marker included) in
+    // favor of resuming the existing session. An explicit selection this turn
+    // means there's nothing to fall back to either — see the "no explicit
+    // selection" case covered by the workflow test below.
+    expect(thirdPrompt).not.toContain(
       `zero generate image --provider built-in --style ${style.illustrationStyleId}`,
     );
-    expect(thirdPrompt).toContain(style.illustrationStyleId);
+    expect(thirdPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, third.runId);
 
-    // A brand-new thread starts clean: neither template carries over.
+    // A brand-new thread starts clean: neither template carries over — there is
+    // no DB-backed cross-thread state and no prior turns to replay a marker from.
     const fresh = await sendChatRun(actor, { agentId, prompt: "draw a cat" });
     const freshPrompt = (await api.readRun(actor, fresh.runId))
       .appendSystemPrompt;
@@ -2500,7 +2554,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, fresh.runId);
   }, 120_000);
 
-  it("injects workflow templates as one-shot context without merging sticky artifact templates", async () => {
+  it("injects workflow templates as one-shot context, independent of illustration template markers", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
@@ -2544,7 +2598,13 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(workflowPrompt).toContain("Use the workflow-setup skill");
     expect(workflowPrompt).toContain("Gmail label-applied automation");
     expect(workflowPrompt).not.toContain("# Artifact Template Context");
-    expect(workflowPrompt).not.toContain(style.illustrationStyleId);
+    // The "sticky" run was cancelled, so it's now an incomplete round replayed
+    // via "# Incomplete Rounds Context" — its illustration marker legitimately
+    // shows up there. That's independent of (and doesn't contaminate) the live
+    // workflow block asserted above: workflow selections never get their own
+    // replay marker (checked below), so nothing here merges the two types.
+    expect(workflowPrompt).toContain("# Incomplete Rounds Context");
+    expect(workflowPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, workflow.runId);
 
     const followUp = await sendChatRun(actor, {
@@ -2554,9 +2614,19 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const followUpPrompt = (await api.readRun(actor, followUp.runId))
       .appendSystemPrompt;
+    // No explicit selection this turn, so there is no live block for either
+    // type. Both "sticky" and "workflow" were cancelled, so the general
+    // "# Web Chat Run Context" replay is suppressed in favor of resuming the
+    // existing session (see prepareRecentChatContext) — the illustration
+    // selection surfaces instead via the incomplete round replay's own
+    // marker. Workflow selections never get a marker at all (one-shot by
+    // design), so nothing carries the workflow template forward.
     expect(followUpPrompt).not.toContain("# Workflow Template Context");
     expect(followUpPrompt).not.toContain(workflowTemplate.id);
-    expect(followUpPrompt).toContain("# Artifact Template Context");
+    expect(followUpPrompt).not.toContain("# Artifact Template Context");
+    expect(followUpPrompt).not.toContain("# Web Chat Run Context");
+    expect(followUpPrompt).toContain("# Incomplete Rounds Context");
+    expect(followUpPrompt).toContain("Selected a template");
     expect(followUpPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, followUp.runId);
   }, 120_000);

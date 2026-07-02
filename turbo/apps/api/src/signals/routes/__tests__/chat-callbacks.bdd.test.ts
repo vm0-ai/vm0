@@ -587,9 +587,7 @@ describe("CHAT-02: completed chat callback", () => {
         titlePrompts.push(body.messages[1]?.content ?? "");
         return "Debugging Node Apps";
       }
-      if (
-        systemContent.includes("Generate up to three concise follow-up prompts")
-      ) {
+      if (systemContent.includes("concise follow-up prompts")) {
         followupPrompts.push(body.messages[1]?.content ?? "");
         return JSON.stringify([
           { prompt: "Turn this into a checklist", kind: "talk" },
@@ -830,6 +828,51 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
+  it("suppresses malformed recommended follow-up JSON instead of storing raw syntax lines", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    let followupRequests = 0;
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("concise follow-up prompts")) {
+        followupRequests += 1;
+        return [
+          "[",
+          "{",
+          '"prompt": "Investigate this malformed follow-up",',
+          '"kind": "talk"',
+        ].join("\n");
+      }
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        return "Malformed Follow-ups";
+      }
+      return "Generated summary";
+    });
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "Explain how to debug malformed follow-ups",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "The final assistant answer"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    expect(followupRequests).toBe(1);
+    const after = await chat.listThreadMessages(actor, run.threadId);
+    const marker = lifecycleMarkers(after.messages, run.runId, "completed")[0];
+    if (!marker) {
+      throw new Error("Expected a completed lifecycle marker");
+    }
+    expect(marker.recommendedFollowups).toBeUndefined();
+  });
+
   it("auto-sends the queued message before completed-run LLM side effects finish", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -863,9 +906,7 @@ describe("CHAT-02: completed chat callback", () => {
     chatCallbacks.mockOpenRouterCompletions(async (body) => {
       await openRouterGate.wait();
       const systemContent = body.messages[0]?.content ?? "";
-      if (
-        systemContent.includes("Generate up to three concise follow-up prompts")
-      ) {
+      if (systemContent.includes("concise follow-up prompts")) {
         return JSON.stringify([
           { prompt: "Review the queued result", kind: "talk" },
         ]);
@@ -2244,6 +2285,7 @@ describe("CHAT-02: push notification gating", () => {
     expect(
       lifecycleMarkers(messages.messages, first.runId, "completed"),
     ).toHaveLength(1);
+    await flushWaitUntilForTest();
     expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
 
     chatCallbacks.enableVapid();
@@ -2270,6 +2312,7 @@ describe("CHAT-02: push notification gating", () => {
       body: "Your task is complete",
       url: `/chats/${first.threadId}`,
     });
+    await flushWaitUntilForTest();
 
     const third = await startChatRun(actor, {
       agentId,

@@ -50,6 +50,16 @@ function linkByText(text: string): HTMLElement {
   return link;
 }
 
+function linkByLabel(label: string): HTMLElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!link) {
+    throw new Error(`${label} link not found`);
+  }
+  return link;
+}
+
 function queryLinkByText(text: string): HTMLElement | null {
   return (
     queryAllByRoleFast("link").find((candidate) => {
@@ -223,6 +233,7 @@ describe("computer use authorization page", () => {
         "Open Zero Computer Use on your Mac and refresh this page when it comes online.",
       ),
     ).toBeInTheDocument();
+    expect(screen.getByText("Requires macOS 14 or newer.")).toBeInTheDocument();
     const downloadLink = await waitFor(() => {
       return linkByText("Download for macOS");
     });
@@ -262,6 +273,7 @@ describe("computer use authorization page", () => {
       return buttonByText("Requires Apple Silicon Mac");
     });
     expect(requiredButton).toBeDisabled();
+    expect(screen.getByText("Requires macOS 14 or newer.")).toBeInTheDocument();
     expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
   });
 
@@ -291,7 +303,7 @@ describe("computer use authorization page", () => {
     ).resolves.toBeInTheDocument();
 
     const appleSiliconDownload = await waitFor(() => {
-      return linkByText("Download for Apple Silicon");
+      return linkByLabel("Download for Mac Apple Silicon");
     });
     expect(appleSiliconDownload).toHaveAttribute(
       "href",
@@ -299,7 +311,7 @@ describe("computer use authorization page", () => {
         "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
       ),
     );
-    expect(linkByText("Download for Intel Mac")).toHaveAttribute(
+    expect(linkByLabel("Download for Mac Intel")).toHaveAttribute(
       "href",
       expect.stringContaining(
         "/api/zero/desktop/updates/stable/darwin/x64/dmg",

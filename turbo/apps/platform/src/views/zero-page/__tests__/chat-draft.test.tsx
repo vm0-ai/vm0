@@ -1,7 +1,8 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadsContract,
@@ -192,6 +193,7 @@ describe("chat drafts", () => {
   it("persists typed agent drafts through the agent draft endpoint", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000102";
     const draftPatches: Record<string, unknown>[] = [];
+    const toastError = vi.spyOn(toast, "error");
     mockAgentChatPage(agentId);
     context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
       return respond(200, {
@@ -199,27 +201,37 @@ describe("chat drafts", () => {
         draftAttachments: null,
       });
     });
-    context.mocks.api(zeroAgentDraftContract.patch, ({ body, respond }) => {
-      draftPatches.push(body as Record<string, unknown>);
-      return respond(204);
-    });
+    context.mocks.http.patch(
+      "*/api/zero/agents/:id/draft",
+      async ({ request }) => {
+        draftPatches.push((await request.json()) as Record<string, unknown>);
+        return new Response(null, { status: 200 });
+      },
+    );
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${agentId}/chat`,
-    });
-
-    await waitFor(() => {
-      expect(textarea()).toBeInTheDocument();
-    });
-    await fill(textarea(), "agent-level draft");
-
-    await waitFor(() => {
-      expect(draftPatches).toContainEqual({
-        draftContent: "agent-level draft",
-        draftAttachments: null,
+    try {
+      detachedSetupPage({
+        context,
+        path: `/agents/${agentId}/chat`,
       });
-    });
+
+      await waitFor(() => {
+        expect(textarea()).toBeInTheDocument();
+      });
+      await fill(textarea(), "agent-level draft");
+
+      await waitFor(() => {
+        expect(draftPatches).toContainEqual({
+          draftContent: "agent-level draft",
+          draftAttachments: null,
+        });
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
+    } finally {
+      toastError.mockRestore();
+    }
   });
 
   it("preserves per-thread text drafts while navigating", async () => {

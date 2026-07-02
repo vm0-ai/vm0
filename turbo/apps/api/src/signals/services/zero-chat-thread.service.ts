@@ -22,7 +22,6 @@ import {
   type ChatMessageUsagePayload,
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
-  type ChatMessageRecommendedFollowupGenerationType,
   type ChatMessageRecommendedFollowups,
   type ChatMessageAutomationSnapshot,
   type ChatMessageGoalEvent,
@@ -58,6 +57,8 @@ import {
   resolveAttachFileUrls,
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
+import { normalizeRecommendedFollowups } from "./zero-chat-recommended-followups.service";
+import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
@@ -513,55 +514,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isRecommendedFollowupGenerationType(
-  value: unknown,
-): value is ChatMessageRecommendedFollowupGenerationType {
-  return (
-    value === "image" ||
-    value === "video" ||
-    value === "presentation" ||
-    value === "website"
-  );
-}
-
-function normalizeRecommendedFollowups(
-  value: unknown,
-): ChatMessageRecommendedFollowups | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-
-  const seen = new Set<string>();
-  const followups: ChatMessageRecommendedFollowups = [];
-  for (const item of value) {
-    const prompt =
-      typeof item === "string"
-        ? item.trim()
-        : isRecord(item) && typeof item.prompt === "string"
-          ? item.prompt.trim()
-          : "";
-    if (prompt.length === 0 || seen.has(prompt)) {
-      continue;
-    }
-    seen.add(prompt);
-
-    if (!isRecord(item) || item.kind !== "generate") {
-      followups.push({ prompt, kind: "talk" });
-      continue;
-    }
-
-    followups.push({
-      prompt,
-      kind: "generate",
-      ...(isRecommendedFollowupGenerationType(item.generationType)
-        ? { generationType: item.generationType }
-        : {}),
-    });
-  }
-
-  return followups.length > 0 ? followups : undefined;
-}
-
 function normalizeUsagePayload(
   value: ChatMessageUsagePayload | null,
 ): PagedChatMessage["usage"] {
@@ -658,14 +610,16 @@ function toPagedMessage(
         automationSnapshot: row.automationSnapshot ?? undefined,
       };
     }
+    const recommendedFollowups = normalizeRecommendedFollowups(
+      row.recommendedFollowups,
+    );
     return {
       ...message,
       role: "assistant" as const,
       thinking: row.thinking ?? undefined,
       runLifecycleEvent: lifecycleEventOrUndefined(row.runLifecycleEvent),
-      recommendedFollowups: normalizeRecommendedFollowups(
-        row.recommendedFollowups,
-      ),
+      recommendedFollowups:
+        recommendedFollowups.length > 0 ? recommendedFollowups : undefined,
     };
   });
 }
@@ -1489,6 +1443,7 @@ export const createChatThread$ = command(
     { set },
     args: {
       readonly userId: string;
+      readonly orgId?: string | null;
       readonly agentComposeId: string;
       readonly title: string | undefined;
       readonly clientThreadId: string | undefined;
@@ -1496,18 +1451,33 @@ export const createChatThread$ = command(
     signal: AbortSignal,
   ): Promise<{ id: string; createdAt: Date }> => {
     const writeDb = set(writeDb$);
-    const [thread] = await writeDb
-      .insert(chatThreads)
-      .values({
-        ...(args.clientThreadId !== undefined
-          ? { id: args.clientThreadId }
-          : {}),
+    const thread = await writeDb.transaction(async (tx) => {
+      const [createdThread] = await tx
+        .insert(chatThreads)
+        .values({
+          ...(args.clientThreadId !== undefined
+            ? { id: args.clientThreadId }
+            : {}),
+          userId: args.userId,
+          agentComposeId: args.agentComposeId,
+          title: args.title ?? null,
+          lastReadAt: sql`NOW()`,
+        })
+        .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
+      if (!createdThread) {
+        return undefined;
+      }
+      await appendChatThreadEvent(tx, {
+        kind: "created",
         userId: args.userId,
+        orgId: args.orgId,
+        chatThreadId: createdThread.id,
         agentComposeId: args.agentComposeId,
         title: args.title ?? null,
-        lastReadAt: sql`NOW()`,
-      })
-      .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
+        createdAt: createdThread.createdAt,
+      });
+      return createdThread;
+    });
     signal.throwIfAborted();
 
     if (!thread) {
@@ -1567,7 +1537,11 @@ interface ThreadRunToCancel {
 export const deleteChatThread$ = command(
   async (
     { set },
-    args: { readonly threadId: string; readonly userId: string },
+    args: {
+      readonly threadId: string;
+      readonly userId: string;
+      readonly orgId?: string | null;
+    },
     signal: AbortSignal,
   ): Promise<{
     readonly deleted: boolean;
@@ -1576,8 +1550,13 @@ export const deleteChatThread$ = command(
     const writeDb = set(writeDb$);
 
     const deletion = await writeDb.transaction(async (tx) => {
-      const lockedRows = await tx.execute<{ readonly id: string }>(sql`
-        SELECT ${chatThreads.id} AS "id"
+      const lockedRows = await tx.execute<{
+        readonly id: string;
+        readonly agentComposeId: string;
+      }>(sql`
+        SELECT
+          ${chatThreads.id} AS "id",
+          ${chatThreads.agentComposeId} AS "agentComposeId"
         FROM ${chatThreads}
         WHERE ${chatThreads.id} = ${args.threadId}
           AND ${chatThreads.userId} = ${args.userId}
@@ -1590,6 +1569,14 @@ export const deleteChatThread$ = command(
           activeRuns: [] as readonly ThreadRunToCancel[],
         };
       }
+
+      await appendChatThreadEvent(tx, {
+        kind: "deleted",
+        userId: args.userId,
+        orgId: args.orgId,
+        chatThreadId: ownedThread.id,
+        agentComposeId: ownedThread.agentComposeId,
+      });
 
       // Stop related automations first so none of them can spawn a fresh run
       // while we are cancelling the in-flight ones (their triggers cascade).

@@ -5,6 +5,7 @@ import { localStorageSignals } from "../external/local-storage.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
+import { setChatShortcutHelpOpen$ } from "../chat-page/chat-shortcut-help.ts";
 import { openAgentListDialog$ } from "./zero-sidebar-state.ts";
 
 export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
@@ -48,14 +49,28 @@ export const setupGlobalKeyboardShortcuts$ = command(
   ({ set }, signal: AbortSignal) => {
     setupGlobalShortcut(
       {
-        "mod+b": () => {
-          set(toggleSidebarOff$);
+        "mod+b": {
+          allowInEditableTarget: true,
+          run: () => {
+            set(toggleSidebarOff$);
+          },
         },
-        "mod+shift+o": async () => {
-          await set(navigateToNewChat$, signal);
+        "mod+shift+o": {
+          allowInEditableTarget: true,
+          run: async () => {
+            await set(navigateToNewChat$, signal);
+          },
         },
-        "mod+shift+a": () => {
-          set(openAgentListDialog$);
+        "mod+shift+a": {
+          allowInEditableTarget: true,
+          run: () => {
+            set(openAgentListDialog$);
+          },
+        },
+        "shift+/": {
+          run: () => {
+            set(setChatShortcutHelpOpen$, true);
+          },
         },
       },
       signal,

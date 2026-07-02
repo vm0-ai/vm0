@@ -10,6 +10,7 @@ import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
+import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import type { RouteEntry } from "../route-entry";
 
 const renameBody$ = bodyResultOf(chatThreadRenameContract.rename);
@@ -25,16 +26,33 @@ const renameInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const writeDb = set(writeDb$);
 
-  const updated = await writeDb
-    .update(chatThreads)
-    .set({ title: body.data.title, renamedAt: nowDate() })
-    .where(
-      and(eq(chatThreads.id, params.id), eq(chatThreads.userId, auth.userId)),
-    )
-    .returning({ id: chatThreads.id });
+  const updated = await writeDb.transaction(async (tx) => {
+    const [thread] = await tx
+      .update(chatThreads)
+      .set({ title: body.data.title, renamedAt: nowDate() })
+      .where(
+        and(eq(chatThreads.id, params.id), eq(chatThreads.userId, auth.userId)),
+      )
+      .returning({
+        id: chatThreads.id,
+        agentComposeId: chatThreads.agentComposeId,
+      });
+    if (!thread) {
+      return false;
+    }
+    await appendChatThreadEvent(tx, {
+      kind: "renamed",
+      userId: auth.userId,
+      orgId: auth.orgId,
+      chatThreadId: thread.id,
+      agentComposeId: thread.agentComposeId,
+      title: body.data.title,
+    });
+    return true;
+  });
   signal.throwIfAborted();
 
-  if (updated.length === 0) {
+  if (!updated) {
     return notFound("Chat thread not found");
   }
 

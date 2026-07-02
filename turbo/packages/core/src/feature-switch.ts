@@ -277,6 +277,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ComputerUseDesktopPlugins]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable Zero Desktop Computer Use plugins for local resources, starting with the bundled filesystem plugin gateway.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.DesktopX64Download]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -290,6 +297,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Generate presentations from a selected template via its self-contained runbook package: the agent pulls one R2 archive, follows AGENT_RUNBOOK.md, and selects a color system at runtime. When off, presentation generation uses the legacy multi-resource selection flow.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PresentationImageUnsplashPreferred]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Prefer Unsplash for presentation image resolution, falling back to Pexels when Unsplash has no result or is unconfigured. When off, presentation images are resolved directly from Pexels.",
+    enabled: false,
   },
   [FeatureSwitchKey.AgentUnreadIndicators]: {
     maintainer: "ethan@vm0.ai",
@@ -321,13 +334,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show fast generated status text in the web chat thinking indicator.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.TeamsIntegration]: {
     maintainer: "linghan@vm0.ai",
     description:
       "Show standalone Microsoft Teams integration settings, connect flows, and Works page entry points.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.BytePlusVoiceInputStt]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Route voice input speech-to-text requests through BytePlus Seed ASR flash mode instead of OpenAI.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

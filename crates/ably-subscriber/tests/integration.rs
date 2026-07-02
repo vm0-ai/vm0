@@ -4,16 +4,20 @@ use ably_subscriber::protocol::{
     AblyMessage, ConnectionDetails, ErrorInfo, ProtocolMessage, action, decode_msg, encode_msg,
     error_code, flags,
 };
-use ably_subscriber::{Event, SubscribeConfig, TimingConfig, subscribe};
+use ably_subscriber::{Event, SubscribeConfig, Subscription, TimingConfig, subscribe};
 use futures_util::{SinkExt, StreamExt};
 use httpmock::prelude::*;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
+use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const TEST_IO_TIMEOUT: Duration = Duration::from_secs(5);
+const RECONNECT_EVENT_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
@@ -95,7 +99,7 @@ impl MockAblyServer {
             .await?;
 
         // Read ATTACH
-        let msg = read_protocol_msg(&mut ws).await?;
+        let msg = expect_protocol_msg(&mut ws, "client ATTACH after CONNECTED").await?;
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some(channel));
 
@@ -136,8 +140,66 @@ async fn read_protocol_msg(
     }
 }
 
+async fn expect_protocol_msg(
+    ws: &mut WsStream,
+    context: &str,
+) -> Result<ProtocolMessage, Box<dyn std::error::Error>> {
+    tokio::time::timeout(TEST_IO_TIMEOUT, read_protocol_msg(ws))
+        .await
+        .map_err(|_| std::io::Error::other(format!("timed out waiting for {context}")))?
+}
+
+async fn expect_event_with_timeout(
+    sub: &mut Subscription,
+    timeout: Duration,
+    context: &str,
+) -> Result<Event, String> {
+    match tokio::time::timeout(timeout, sub.next()).await {
+        Ok(Some(event)) => Ok(event),
+        Ok(None) => Err(format!("subscription ended while waiting for {context}")),
+        Err(_) => Err(format!("timed out waiting for {context}")),
+    }
+}
+
+async fn expect_event(sub: &mut Subscription, context: &str) -> Result<Event, String> {
+    expect_event_with_timeout(sub, TEST_IO_TIMEOUT, context).await
+}
+
+async fn expect_connected(sub: &mut Subscription, context: &str) -> Result<(), String> {
+    let event = expect_event(sub, context).await?;
+    if matches!(event, Event::Connected) {
+        Ok(())
+    } else {
+        Err(format!("expected Connected for {context}, got {event:?}"))
+    }
+}
+
+async fn expect_subscription_closed(sub: &mut Subscription, context: &str) -> Result<(), String> {
+    match tokio::time::timeout(TEST_IO_TIMEOUT, sub.next()).await {
+        Ok(None) => Ok(()),
+        Ok(Some(event)) => Err(format!(
+            "expected subscription to close for {context}, got {event:?}"
+        )),
+        Err(_) => Err(format!(
+            "timed out waiting for subscription close for {context}"
+        )),
+    }
+}
+
+async fn join_server_task(mut task: JoinHandle<()>, context: &str) -> Result<(), String> {
+    match tokio::time::timeout(TEST_IO_TIMEOUT, &mut task).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(error)) => Err(format!("{context} task panicked: {error}")),
+        Err(_) => {
+            task.abort();
+            let _ = task.await;
+            Err(format!("timed out waiting for {context} task"))
+        }
+    }
+}
+
 async fn expect_websocket_close_frame(ws: &mut WsStream) -> Result<(), Box<dyn std::error::Error>> {
-    let frame = tokio::time::timeout(Duration::from_secs(5), ws.next())
+    let frame = tokio::time::timeout(TEST_IO_TIMEOUT, ws.next())
         .await
         .map_err(|_| std::io::Error::other("timed out waiting for websocket close frame"))?
         .ok_or_else(|| std::io::Error::other("websocket closed before close frame"))??;
@@ -153,7 +215,7 @@ async fn expect_websocket_close_frame(ws: &mut WsStream) -> Result<(), Box<dyn s
 async fn expect_websocket_close_frame_while_ignoring_attach(
     ws: &mut WsStream,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(TEST_IO_TIMEOUT, async {
         loop {
             let frame = ws
                 .next()
@@ -185,7 +247,7 @@ async fn expect_websocket_close_frame_while_ignoring_attach(
 }
 
 async fn expect_websocket_closed(ws: &mut WsStream) -> Result<(), Box<dyn std::error::Error>> {
-    let frame = tokio::time::timeout(Duration::from_secs(5), ws.next())
+    let frame = tokio::time::timeout(TEST_IO_TIMEOUT, ws.next())
         .await
         .map_err(|_| std::io::Error::other("timed out waiting for websocket to close"))?;
     match frame {
@@ -231,7 +293,7 @@ async fn send_message_with_channel_serial(
 }
 
 async fn wait_for_test_observation(rx: tokio::sync::oneshot::Receiver<()>, context: &'static str) {
-    let observed = tokio::time::timeout(Duration::from_secs(5), rx).await;
+    let observed = tokio::time::timeout(TEST_IO_TIMEOUT, rx).await;
     assert!(
         matches!(observed, Ok(Ok(()))),
         "timed out or dropped observation signal for {context}: {observed:?}",
@@ -392,10 +454,10 @@ async fn connect_and_receive_message() {
         .await
         .unwrap();
 
-    let event = sub.next().await.unwrap();
+    let event = expect_event(&mut sub, "initial Connected").await.unwrap();
     assert!(matches!(event, Event::Connected));
 
-    let event = sub.next().await.unwrap();
+    let event = expect_event(&mut sub, "greeting message").await.unwrap();
     match event {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("greeting"));
@@ -404,7 +466,7 @@ async fn connect_and_receive_message() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -435,9 +497,8 @@ async fn initial_attach_is_clean_without_resume_or_serial() {
         .await
         .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+        let msg = expect_protocol_msg(&mut conn, "initial ATTACH")
             .await
-            .expect("timed out waiting for initial ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -462,10 +523,10 @@ async fn initial_attach_is_clean_without_resume_or_serial() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
     connected_seen_tx.send(()).unwrap();
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -545,9 +606,8 @@ async fn non_target_channel_events_do_not_pollute_resume_serial() {
         .await
         .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+        let msg = expect_protocol_msg(&mut conn, "ATTACH after ignored message")
             .await
-            .expect("timed out waiting for ATTACH after ignored message")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -575,17 +635,16 @@ async fn non_target_channel_events_do_not_pollute_resume_serial() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    expect_connected(&mut sub, "Connected event").await.unwrap();
+    let event = expect_event(&mut sub, "matching-channel message")
         .await
-        .expect("timed out waiting for matching-channel message")
         .unwrap();
     match event {
         Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("expected")),
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -610,11 +669,8 @@ async fn zero_event_channel_capacity_uses_minimum_capacity() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for message")
-        .unwrap();
+    expect_connected(&mut sub, "Connected event").await.unwrap();
+    let event = expect_event(&mut sub, "message").await.unwrap();
     match event {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("after-connect"));
@@ -623,7 +679,7 @@ async fn zero_event_channel_capacity_uses_minimum_capacity() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -650,9 +706,9 @@ async fn multiple_messages() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
     for i in 0..3 {
-        match sub.next().await.unwrap() {
+        match expect_event(&mut sub, "message in sequence").await.unwrap() {
             Event::Message(msg) => {
                 assert_eq!(msg.name.as_deref(), Some(format!("evt-{i}").as_str()));
             }
@@ -660,7 +716,7 @@ async fn multiple_messages() {
         }
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -710,21 +766,19 @@ async fn batched_messages_in_single_frame() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let names: Vec<String> = futures_util::stream::unfold(&mut sub, |sub| async {
-        match sub.next().await {
-            Some(Event::Message(m)) => Some((m.name.unwrap_or_default(), sub)),
-            _ => None,
+    let mut names = Vec::new();
+    for _ in 0..3 {
+        match expect_event(&mut sub, "batched message").await.unwrap() {
+            Event::Message(m) => names.push(m.name.unwrap_or_default()),
+            other => panic!("expected Message, got {other:?}"),
         }
-    })
-    .take(3)
-    .collect()
-    .await;
+    }
 
     assert_eq!(names, vec!["a", "b", "c"]);
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -763,9 +817,12 @@ async fn message_with_json_encoding() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    match sub.next().await.unwrap() {
+    match expect_event(&mut sub, "JSON-encoded message")
+        .await
+        .unwrap()
+    {
         Event::Message(msg) => {
             assert_eq!(msg.data, serde_json::json!({"runId": "uuid-123"}));
         }
@@ -884,10 +941,10 @@ async fn token_exchange_encodes_key_name_as_path_segment() {
     .await
     .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
     assert_eq!(token_mock.calls(), 1);
     sub.close();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -1009,10 +1066,7 @@ async fn token_renewal() {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
 
         // Wait for AUTH message from client
-        let auth_msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
-            .await
-            .expect("timed out waiting for AUTH")
-            .unwrap();
+        let auth_msg = expect_protocol_msg(&mut conn, "AUTH").await.unwrap();
         assert_eq!(auth_msg.action, action::AUTH);
 
         // Send a message after renewal
@@ -1025,13 +1079,13 @@ async fn token_renewal() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
     // Should receive the message sent after token renewal
-    let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
-        .await
-        .expect("timed out waiting for message after renewal")
-        .unwrap();
+    let event =
+        expect_event_with_timeout(&mut sub, RECONNECT_EVENT_TIMEOUT, "message after renewal")
+            .await
+            .unwrap();
 
     match event {
         Event::Message(msg) => {
@@ -1073,9 +1127,8 @@ async fn close_during_pending_token_renewal_sends_close() {
     let (close_tx, close_rx) = tokio::sync::oneshot::channel::<()>();
     let server_task = tokio::spawn(async move {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+        let msg = expect_protocol_msg(&mut conn, "CLOSE during renewal")
             .await
-            .expect("timed out waiting for CLOSE during renewal")
             .unwrap();
         assert_eq!(msg.action, action::CLOSE);
         close_tx.send(()).unwrap();
@@ -1090,7 +1143,7 @@ async fn close_during_pending_token_renewal_sends_close() {
     .await
     .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
     tokio::time::timeout(Duration::from_secs(5), renewal_started_rx)
         .await
         .expect("timed out waiting for token renewal to start")
@@ -1102,7 +1155,7 @@ async fn close_during_pending_token_renewal_sends_close() {
         .await
         .expect("timed out waiting for CLOSE during pending renewal")
         .unwrap();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -1139,10 +1192,10 @@ async fn reconnect_after_server_drop() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
     // First message
-    match sub.next().await.unwrap() {
+    match expect_event(&mut sub, "message before drop").await.unwrap() {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("before-drop"));
             before_drop_seen_tx.send(()).unwrap();
@@ -1151,10 +1204,7 @@ async fn reconnect_after_server_drop() {
     }
 
     // Disconnected event
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     match event {
         Event::Disconnected { reason } => {
             let reason = reason.expect("dropped stream should include a disconnect reason");
@@ -1168,9 +1218,8 @@ async fn reconnect_after_server_drop() {
     }
 
     // Reconnected
-    let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
+    let event = expect_event_with_timeout(&mut sub, RECONNECT_EVENT_TIMEOUT, "Connected")
         .await
-        .expect("timed out waiting for Connected")
         .unwrap();
     assert!(
         matches!(event, Event::Connected),
@@ -1178,9 +1227,8 @@ async fn reconnect_after_server_drop() {
     );
 
     // Message after reconnect
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after reconnect")
         .await
-        .expect("timed out waiting for message after reconnect")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -1190,7 +1238,7 @@ async fn reconnect_after_server_drop() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -1233,9 +1281,12 @@ async fn reconnect_immediately_after_close_frame() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    match sub.next().await.unwrap() {
+    match expect_event(&mut sub, "message before close")
+        .await
+        .unwrap()
+    {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("before-close"));
             before_close_seen_tx.send(()).unwrap();
@@ -1244,10 +1295,7 @@ async fn reconnect_immediately_after_close_frame() {
     }
 
     // Disconnected event
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     match event {
         Event::Disconnected { reason } => {
             let reason = reason.expect("close frame should include a disconnect reason");
@@ -1268,9 +1316,8 @@ async fn reconnect_immediately_after_close_frame() {
     );
 
     // Message after reconnect
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after reconnect")
         .await
-        .expect("timed out waiting for message after reconnect")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -1280,7 +1327,7 @@ async fn reconnect_immediately_after_close_frame() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -1317,9 +1364,12 @@ async fn reconnect_immediately_after_close_frame_no_reason() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    match sub.next().await.unwrap() {
+    match expect_event(&mut sub, "message before close")
+        .await
+        .unwrap()
+    {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("before-close"));
             before_close_seen_tx.send(()).unwrap();
@@ -1327,10 +1377,7 @@ async fn reconnect_immediately_after_close_frame_no_reason() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     match event {
         Event::Disconnected { reason } => {
             assert_eq!(
@@ -1351,9 +1398,8 @@ async fn reconnect_immediately_after_close_frame_no_reason() {
         "expected Connected, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after reconnect")
         .await
-        .expect("timed out waiting for message after reconnect")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -1363,7 +1409,7 @@ async fn reconnect_immediately_after_close_frame_no_reason() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -1399,12 +1445,9 @@ async fn reconnect_after_close_frame_empty_reason_reports_code_only() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     match event {
         Event::Disconnected { reason } => {
             assert_eq!(reason.as_deref(), Some("websocket closed code=1000"));
@@ -1421,9 +1464,8 @@ async fn reconnect_after_close_frame_empty_reason_reports_code_only() {
         "expected Connected, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after reconnect")
         .await
-        .expect("timed out waiting for message after reconnect")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -1433,7 +1475,7 @@ async fn reconnect_after_close_frame_empty_reason_reports_code_only() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -1495,35 +1537,36 @@ async fn repeated_clean_close_reconnect_is_rate_limited() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
     assert!(matches!(
-        sub.next().await.unwrap(),
+        expect_event(&mut sub, "Disconnected after clean close")
+            .await
+            .unwrap(),
         Event::Disconnected { .. }
     ));
     assert!(matches!(
-        tokio::time::timeout(Duration::from_secs(1), sub.next())
+        expect_event_with_timeout(&mut sub, Duration::from_secs(1), "first reconnect")
             .await
-            .expect("first reconnect should not be rate-limited")
             .unwrap(),
         Event::Connected
     ));
     assert!(matches!(
-        sub.next().await.unwrap(),
+        expect_event(&mut sub, "Disconnected after second clean close")
+            .await
+            .unwrap(),
         Event::Disconnected { .. }
     ));
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "rate-limited reconnect")
         .await
-        .expect("timed out waiting for rate-limited reconnect")
         .unwrap();
     assert!(
         matches!(event, Event::Connected),
         "expected Connected, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "post-reconnect message")
         .await
-        .expect("timed out waiting for post-reconnect message")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -1533,7 +1576,7 @@ async fn repeated_clean_close_reconnect_is_rate_limited() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -1587,13 +1630,10 @@ async fn server_sends_disconnected() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
     // Disconnected
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     match event {
         Event::Disconnected { reason } => {
             assert_eq!(reason.as_deref(), Some("server going away"));
@@ -1602,9 +1642,8 @@ async fn server_sends_disconnected() {
     }
 
     // Reconnected
-    let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
+    let event = expect_event_with_timeout(&mut sub, RECONNECT_EVENT_TIMEOUT, "Connected")
         .await
-        .expect("timed out")
         .unwrap();
     assert!(
         matches!(event, Event::Connected),
@@ -1612,16 +1651,13 @@ async fn server_sends_disconnected() {
     );
 
     // Message
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out")
-        .unwrap();
+    let event = expect_event(&mut sub, "reconnected message").await.unwrap();
     match event {
         Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("reconnected")),
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -1677,11 +1713,10 @@ async fn server_sends_disconnected_without_message_reports_reason() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "Disconnected without error details")
         .await
-        .expect("timed out")
         .unwrap();
     match event {
         Event::Disconnected { reason } => {
@@ -1693,18 +1728,16 @@ async fn server_sends_disconnected_without_message_reports_reason() {
         other => panic!("expected Disconnected, got {other:?}"),
     }
 
-    let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
+    let event = expect_event_with_timeout(&mut sub, RECONNECT_EVENT_TIMEOUT, "Connected")
         .await
-        .expect("timed out")
         .unwrap();
     assert!(
         matches!(event, Event::Connected),
         "expected Connected, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "Disconnected with empty message")
         .await
-        .expect("timed out")
         .unwrap();
     match event {
         Event::Disconnected { reason } => {
@@ -1716,19 +1749,15 @@ async fn server_sends_disconnected_without_message_reports_reason() {
         other => panic!("expected Disconnected, got {other:?}"),
     }
 
-    let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
+    let event = expect_event_with_timeout(&mut sub, RECONNECT_EVENT_TIMEOUT, "Connected")
         .await
-        .expect("timed out")
         .unwrap();
     assert!(
         matches!(event, Event::Connected),
         "expected Connected, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out")
-        .unwrap();
+    let event = expect_event(&mut sub, "reconnected message").await.unwrap();
     match event {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("reconnected"));
@@ -1737,7 +1766,7 @@ async fn server_sends_disconnected_without_message_reports_reason() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -1775,7 +1804,7 @@ async fn disconnected_event_is_not_delayed_by_transport_close() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
     let event = tokio::time::timeout(Duration::from_millis(250), sub.next())
         .await
         .expect("Disconnected should not wait for transport close")
@@ -1786,7 +1815,7 @@ async fn disconnected_event_is_not_delayed_by_transport_close() {
     );
     event_seen_tx.send(()).unwrap();
     sub.close();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -1822,10 +1851,7 @@ async fn server_sends_detached_reattach() {
         .unwrap();
 
         // Expect re-ATTACH from client
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
-            .await
-            .expect("timed out waiting for ATTACH")
-            .unwrap();
+        let msg = expect_protocol_msg(&mut conn, "ATTACH").await.unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
 
@@ -1853,12 +1879,11 @@ async fn server_sends_detached_reattach() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
     // Message after reattach
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after reattach")
         .await
-        .expect("timed out waiting for message after reattach")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -1868,7 +1893,7 @@ async fn server_sends_detached_reattach() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -1908,10 +1933,7 @@ async fn reattach_after_attached_without_serial_keeps_resume_intent() {
         .await
         .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
-            .await
-            .expect("timed out waiting for ATTACH")
-            .unwrap();
+        let msg = expect_protocol_msg(&mut conn, "ATTACH").await.unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
         assert!(msg.channel_serial.is_none());
@@ -1938,11 +1960,10 @@ async fn reattach_after_attached_without_serial_keeps_resume_intent() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after reattach")
         .await
-        .expect("timed out waiting for message after reattach")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -1952,7 +1973,7 @@ async fn reattach_after_attached_without_serial_keeps_resume_intent() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -1994,10 +2015,7 @@ async fn message_without_serial_preserves_resume_serial_for_reattach() {
         .await
         .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
-            .await
-            .expect("timed out waiting for ATTACH")
-            .unwrap();
+        let msg = expect_protocol_msg(&mut conn, "ATTACH").await.unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
         assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
@@ -2030,11 +2048,10 @@ async fn message_without_serial_preserves_resume_serial_for_reattach() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message without serial")
         .await
-        .expect("timed out waiting for message without serial")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -2044,9 +2061,8 @@ async fn message_without_serial_preserves_resume_serial_for_reattach() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after reattach")
         .await
-        .expect("timed out waiting for message after reattach")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -2056,7 +2072,7 @@ async fn message_without_serial_preserves_resume_serial_for_reattach() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -2087,9 +2103,8 @@ async fn attached_without_serial_preserves_resume_serial_for_next_reattach() {
         .await
         .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+        let msg = expect_protocol_msg(&mut conn, "first reattach")
             .await
-            .expect("timed out waiting for first reattach")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -2113,9 +2128,8 @@ async fn attached_without_serial_preserves_resume_serial_for_next_reattach() {
         .await
         .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+        let msg = expect_protocol_msg(&mut conn, "second reattach")
             .await
-            .expect("timed out waiting for second reattach")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -2153,11 +2167,10 @@ async fn attached_without_serial_preserves_resume_serial_for_next_reattach() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after attached without serial")
         .await
-        .expect("timed out waiting for message after attached without serial")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -2167,7 +2180,7 @@ async fn attached_without_serial_preserves_resume_serial_for_next_reattach() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -2197,9 +2210,8 @@ async fn huge_realtime_request_timeout_allows_detached_reattach() {
         .await
         .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+        let msg = expect_protocol_msg(&mut conn, "ATTACH after DETACHED")
             .await
-            .expect("timed out waiting for ATTACH after DETACHED")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -2237,11 +2249,10 @@ async fn huge_realtime_request_timeout_allows_detached_reattach() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after huge-timeout reattach")
         .await
-        .expect("timed out waiting for message after huge-timeout reattach")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -2251,7 +2262,7 @@ async fn huge_realtime_request_timeout_allows_detached_reattach() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -2271,10 +2282,7 @@ async fn close_subscription() {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
 
         // Wait for Ably protocol CLOSE from client.
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
-            .await
-            .expect("timed out waiting for CLOSE")
-            .unwrap();
+        let msg = expect_protocol_msg(&mut conn, "CLOSE").await.unwrap();
         assert_eq!(msg.action, action::CLOSE);
 
         // Then the websocket itself should be closed instead of relying on task
@@ -2295,7 +2303,7 @@ async fn close_subscription() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
     sub.close();
 
@@ -2304,7 +2312,7 @@ async fn close_subscription() {
         .await
         .expect("timed out waiting for server to confirm CLOSE")
         .unwrap();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -2319,9 +2327,8 @@ async fn drop_subscription_sends_close() {
     let server_task = tokio::spawn(async move {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+        let msg = expect_protocol_msg(&mut conn, "CLOSE after drop")
             .await
-            .expect("timed out waiting for CLOSE after drop")
             .unwrap();
         assert_eq!(msg.action, action::CLOSE);
 
@@ -2341,14 +2348,14 @@ async fn drop_subscription_sends_close() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
     drop(sub);
 
     tokio::time::timeout(Duration::from_secs(5), close_rx)
         .await
         .expect("timed out waiting for server to confirm drop close")
         .unwrap();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -2409,13 +2416,10 @@ async fn non_retriable_disconnected_triggers_reconnect() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
     // Should get Disconnected (not Error)
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     match event {
         Event::Disconnected { reason } => {
             assert_eq!(reason.as_deref(), Some("Token expired"));
@@ -2424,9 +2428,8 @@ async fn non_retriable_disconnected_triggers_reconnect() {
     }
 
     // Should reconnect
-    let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
+    let event = expect_event_with_timeout(&mut sub, RECONNECT_EVENT_TIMEOUT, "Connected")
         .await
-        .expect("timed out waiting for Connected")
         .unwrap();
     assert!(
         matches!(event, Event::Connected),
@@ -2434,10 +2437,7 @@ async fn non_retriable_disconnected_triggers_reconnect() {
     );
 
     // Message after reconnect proves subscription is alive
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for message")
-        .unwrap();
+    let event = expect_event(&mut sub, "message").await.unwrap();
     match event {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("after-non-retriable-disconnect"));
@@ -2446,7 +2446,7 @@ async fn non_retriable_disconnected_triggers_reconnect() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -2484,19 +2484,18 @@ async fn error_during_event_loop() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out")
-        .unwrap();
+    let event = expect_event(&mut sub, "Error").await.unwrap();
     match event {
         Event::Error { code, .. } => assert_eq!(code, 40000),
         other => panic!("expected Error, got {other:?}"),
     }
 
-    assert!(sub.next().await.is_none());
-    server_task.await.unwrap();
+    expect_subscription_closed(&mut sub, "subscription end")
+        .await
+        .unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -2532,9 +2531,8 @@ async fn detached_with_client_error_reattaches() {
         .await
         .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+        let msg = expect_protocol_msg(&mut conn, "ATTACH after DETACHED")
             .await
-            .expect("timed out waiting for ATTACH after DETACHED")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -2565,11 +2563,10 @@ async fn detached_with_client_error_reattaches() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after client DETACHED")
         .await
-        .expect("timed out")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -2579,7 +2576,7 @@ async fn detached_with_client_error_reattaches() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -2619,9 +2616,8 @@ async fn superseded_error_after_attached_without_serial_keeps_resume_intent() {
         .await
         .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+        let msg = expect_protocol_msg(&mut conn, "ATTACH after 80016")
             .await
-            .expect("timed out waiting for ATTACH after 80016")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -2649,11 +2645,10 @@ async fn superseded_error_after_attached_without_serial_keeps_resume_intent() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after 80016 reattach")
         .await
-        .expect("timed out waiting for message after 80016 reattach")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -2663,7 +2658,7 @@ async fn superseded_error_after_attached_without_serial_keeps_resume_intent() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -2696,14 +2691,13 @@ async fn server_sends_closed() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
     // Stream should end (CLOSED → LoopAction::Stop)
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    expect_subscription_closed(&mut sub, "CLOSED")
         .await
-        .expect("timed out");
-    assert!(event.is_none(), "expected None after CLOSED, got {event:?}");
-    server_task.await.unwrap();
+        .unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -2733,9 +2727,8 @@ async fn server_initiated_auth() {
         .unwrap();
 
         // Client should respond with AUTH containing new token
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+        let msg = expect_protocol_msg(&mut conn, "client AUTH response")
             .await
-            .expect("timed out waiting for client AUTH response")
             .unwrap();
         assert_eq!(msg.action, action::AUTH);
         assert!(
@@ -2759,11 +2752,10 @@ async fn server_initiated_auth() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after server AUTH")
         .await
-        .expect("timed out waiting for message after server AUTH")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -2773,7 +2765,7 @@ async fn server_initiated_auth() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -2798,9 +2790,8 @@ async fn close_during_server_requested_pending_token_renewal_sends_close() {
         .await
         .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+        let msg = expect_protocol_msg(&mut conn, "CLOSE during server-requested renewal")
             .await
-            .expect("timed out waiting for CLOSE during server-requested renewal")
             .unwrap();
         assert_eq!(msg.action, action::CLOSE);
         close_tx.send(()).unwrap();
@@ -2815,7 +2806,7 @@ async fn close_during_server_requested_pending_token_renewal_sends_close() {
     .await
     .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
     tokio::time::timeout(Duration::from_secs(5), renewal_started_rx)
         .await
         .expect("timed out waiting for server-requested token renewal to start")
@@ -2827,7 +2818,7 @@ async fn close_during_server_requested_pending_token_renewal_sends_close() {
         .await
         .expect("timed out waiting for CLOSE during pending server-requested renewal")
         .unwrap();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -2906,39 +2897,30 @@ async fn heartbeat_timeout_triggers_reconnect() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
     // Disconnected from heartbeat timeout
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
         "expected Disconnected, got {event:?}"
     );
 
     // Reconnected
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Connected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Connected").await.unwrap();
     assert!(
         matches!(event, Event::Connected),
         "expected Connected, got {event:?}"
     );
 
     // Message after reconnect
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for message")
-        .unwrap();
+    let event = expect_event(&mut sub, "message").await.unwrap();
     match event {
         Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-hb-timeout")),
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -2978,20 +2960,19 @@ async fn zero_max_idle_interval_disables_heartbeat_timeout() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
     tokio::time::pause();
     let _ = advance_tx.send(());
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after zero idle interval")
         .await
-        .expect("timed out waiting for message after zero idle interval")
         .unwrap();
     match event {
         Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-zero-idle")),
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -3031,13 +3012,10 @@ async fn retry_enters_suspended_after_connection_state_ttl() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
     // Disconnected
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
         "expected Disconnected, got {event:?}"
@@ -3046,9 +3024,8 @@ async fn retry_enters_suspended_after_connection_state_ttl() {
     // ably-js does not exhaust reconnect attempts. Once the connection state
     // TTL expires, it moves to suspended retry and keeps trying fresh connects.
     loop {
-        let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        let event = expect_event(&mut sub, "suspended transition")
             .await
-            .expect("timed out waiting for suspended transition")
             .unwrap();
         match event {
             Event::Disconnected { reason }
@@ -3132,9 +3109,8 @@ async fn suspended_retry_reconnect_attach_uses_resume_without_serial() {
             .await
             .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "suspended retry ATTACH")
             .await
-            .expect("timed out waiting for suspended retry ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -3171,12 +3147,11 @@ async fn suspended_retry_reconnect_attach_uses_resume_without_serial() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
     loop {
-        let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        let event = expect_event(&mut sub, "suspended retry transition")
             .await
-            .expect("timed out waiting for suspended retry transition")
             .unwrap();
         match event {
             Event::Disconnected { reason }
@@ -3192,18 +3167,16 @@ async fn suspended_retry_reconnect_attach_uses_resume_without_serial() {
         }
     }
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "Connected after suspended retry")
         .await
-        .expect("timed out waiting for Connected after suspended retry")
         .unwrap();
     assert!(
         matches!(event, Event::Connected),
         "expected Connected after suspended retry, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after suspended retry")
         .await
-        .expect("timed out waiting for message after suspended retry")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -3213,7 +3186,7 @@ async fn suspended_retry_reconnect_attach_uses_resume_without_serial() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -3285,12 +3258,11 @@ async fn token_renewal_failures_fatal() {
     });
     let mut sub = subscribe(config).await.unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
     // Should eventually get a fatal error after 3 consecutive renewal failures
-    let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
+    let event = expect_event_with_timeout(&mut sub, RECONNECT_EVENT_TIMEOUT, "Error")
         .await
-        .expect("timed out waiting for Error")
         .unwrap();
     match event {
         Event::Error { message, .. } => {
@@ -3302,7 +3274,9 @@ async fn token_renewal_failures_fatal() {
         other => panic!("expected Error, got {other:?}"),
     }
 
-    assert!(sub.next().await.is_none());
+    expect_subscription_closed(&mut sub, "subscription end")
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -3373,7 +3347,7 @@ async fn token_renewal_error_backpressure_closes_socket_before_subscription_clos
         .expect("timed out waiting for socket close before subscription close")
         .unwrap();
     sub.close();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -3472,7 +3446,7 @@ async fn backpressure_drops_messages() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
     batch_gate_tx
         .send(())
         .expect("subscription closed before burst");
@@ -3534,10 +3508,7 @@ async fn detached_while_attaching_suspends_and_retries_attach() {
         .unwrap();
 
         // Wait for re-ATTACH
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
-            .await
-            .expect("timed out waiting for ATTACH")
-            .unwrap();
+        let msg = expect_protocol_msg(&mut conn, "ATTACH").await.unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
         assert_attach_resume(&msg, true);
@@ -3551,9 +3522,8 @@ async fn detached_while_attaching_suspends_and_retries_attach() {
         .await
         .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+        let msg = expect_protocol_msg(&mut conn, "retry ATTACH")
             .await
-            .expect("timed out waiting for retry ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -3587,20 +3557,17 @@ async fn detached_while_attaching_suspends_and_retries_attach() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
     // Message after the channel retry proves the websocket stayed active and
     // no full reconnect was required.
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for message")
-        .unwrap();
+    let event = expect_event(&mut sub, "message").await.unwrap();
     match event {
         Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-channel-retry")),
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -3640,10 +3607,7 @@ async fn channel_retry_timers_do_not_extend_heartbeat_deadline() {
         .await
         .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
-            .await
-            .expect("timed out waiting for reattach")
-            .unwrap();
+        let msg = expect_protocol_msg(&mut conn, "reattach").await.unwrap();
         assert_eq!(msg.action, action::ATTACH);
 
         conn.send(tungstenite::Message::Binary(
@@ -3652,9 +3616,8 @@ async fn channel_retry_timers_do_not_extend_heartbeat_deadline() {
         .await
         .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+        let msg = expect_protocol_msg(&mut conn, "retry attach")
             .await
-            .expect("timed out waiting for retry attach")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
 
@@ -3682,29 +3645,24 @@ async fn channel_retry_timers_do_not_extend_heartbeat_deadline() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
         "expected Disconnected, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "Connected after heartbeat reconnect")
         .await
-        .expect("timed out waiting for Connected after heartbeat reconnect")
         .unwrap();
     assert!(
         matches!(event, Event::Connected),
         "expected Connected after heartbeat reconnect, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after heartbeat reconnect")
         .await
-        .expect("timed out waiting for message after heartbeat reconnect")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -3713,7 +3671,7 @@ async fn channel_retry_timers_do_not_extend_heartbeat_deadline() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -3796,13 +3754,10 @@ async fn reconnect_timeout_retries_until_suspended() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
     // Disconnected
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
         "expected Disconnected, got {event:?}"
@@ -3812,9 +3767,8 @@ async fn reconnect_timeout_retries_until_suspended() {
     // ably-js, retries do not exhaust; once connection_state_ttl expires, the
     // connection enters suspended retry.
     loop {
-        let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        let event = expect_event(&mut sub, "suspended transition")
             .await
-            .expect("timed out waiting for suspended transition")
             .unwrap();
         match event {
             Event::Disconnected { reason }
@@ -3858,11 +3812,8 @@ async fn close_during_hanging_reconnect_attempt_closes_socket() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    expect_connected(&mut sub, "Connected event").await.unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
         "expected Disconnected, got {event:?}"
@@ -3880,7 +3831,7 @@ async fn close_during_hanging_reconnect_attempt_closes_socket() {
         .expect("hanging reconnect socket was not closed after subscription close")
         .unwrap();
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -3938,10 +3889,9 @@ async fn close_during_protocol_disconnected_reconnect_attempt_closes_sockets() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    expect_connected(&mut sub, "Connected event").await.unwrap();
+    let event = expect_event(&mut sub, "protocol DISCONNECTED")
         .await
-        .expect("timed out waiting for protocol DISCONNECTED")
         .unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
@@ -3959,7 +3909,7 @@ async fn close_during_protocol_disconnected_reconnect_attempt_closes_sockets() {
         .await
         .expect("timed out waiting for reconnect-attempt close check")
         .unwrap();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -3989,11 +3939,8 @@ async fn close_during_reconnect_backoff_stops_before_next_attempt() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    expect_connected(&mut sub, "Connected event").await.unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
         "expected Disconnected, got {event:?}"
@@ -4005,7 +3952,7 @@ async fn close_during_reconnect_backoff_stops_before_next_attempt() {
         .await
         .expect("timed out waiting for reconnect suppression check")
         .unwrap();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -4058,10 +4005,9 @@ async fn close_during_protocol_disconnected_reconnect_backoff_closes_socket() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    expect_connected(&mut sub, "Connected event").await.unwrap();
+    let event = expect_event(&mut sub, "protocol DISCONNECTED")
         .await
-        .expect("timed out waiting for protocol DISCONNECTED")
         .unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
@@ -4074,7 +4020,7 @@ async fn close_during_protocol_disconnected_reconnect_backoff_closes_socket() {
         .await
         .expect("timed out waiting for protocol DISCONNECTED backoff close check")
         .unwrap();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -4134,7 +4080,7 @@ async fn close_while_disconnected_event_send_is_backpressured_stops_without_reco
         .await
         .expect("timed out waiting for reconnect suppression after close")
         .unwrap();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -4205,7 +4151,7 @@ async fn close_while_protocol_disconnected_backpressure_closes_socket() {
         .await
         .expect("timed out waiting for protocol DISCONNECTED close check")
         .unwrap();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -4276,7 +4222,7 @@ async fn drop_while_protocol_disconnected_backpressure_closes_socket() {
         .await
         .expect("timed out waiting for protocol DISCONNECTED drop check")
         .unwrap();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -4318,7 +4264,7 @@ async fn heartbeat_backpressure_closes_socket_before_subscription_close() {
         .expect("timed out waiting for heartbeat socket close")
         .unwrap();
     sub.close();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -4350,9 +4296,8 @@ async fn close_while_connected_event_send_is_backpressured_closes_reconnected_so
         blocked_tx.send(()).unwrap();
         close_sent_rx.await.unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "CLOSE after connected-event backpressure")
             .await
-            .expect("timed out waiting for CLOSE after connected-event backpressure")
             .unwrap();
         assert_eq!(msg.action, action::CLOSE);
 
@@ -4375,7 +4320,7 @@ async fn close_while_connected_event_send_is_backpressured_closes_reconnected_so
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
     tokio::time::timeout(Duration::from_secs(5), reconnected_rx)
         .await
         .expect("timed out waiting for reconnect")
@@ -4392,7 +4337,7 @@ async fn close_while_connected_event_send_is_backpressured_closes_reconnected_so
         .await
         .expect("timed out waiting for reconnected socket close")
         .unwrap();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -4437,7 +4382,7 @@ async fn error_event_backpressure_closes_socket_before_subscription_close() {
         .expect("timed out waiting for socket close before subscription close")
         .unwrap();
     sub.close();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -4483,7 +4428,7 @@ async fn channel_error_backpressure_closes_socket_before_subscription_close() {
         .expect("timed out waiting for channel error socket close")
         .unwrap();
     sub.close();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -4547,19 +4492,15 @@ async fn non_positive_ttl_keeps_default_resume_window() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
     // Wait for reconnection
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(matches!(event, Event::Disconnected { .. }));
 
     loop {
-        let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
+        let event = expect_event_with_timeout(&mut sub, RECONNECT_EVENT_TIMEOUT, "Connected")
             .await
-            .expect("timed out waiting for Connected")
             .unwrap();
         match event {
             Event::Connected => break,
@@ -4569,10 +4510,7 @@ async fn non_positive_ttl_keeps_default_resume_window() {
     }
 
     // Message after reconnect proves the subscription is still alive.
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for message")
-        .unwrap();
+    let event = expect_event(&mut sub, "message").await.unwrap();
     match event {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("after-default-ttl-resume"));
@@ -4582,7 +4520,7 @@ async fn non_positive_ttl_keeps_default_resume_window() {
     }
 
     token_mock.assert_calls(1);
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -4636,7 +4574,9 @@ async fn resumed_connection_reattaches_channel() {
             .unwrap();
 
         // Client should send ATTACH even though connection was resumed.
-        let msg = read_protocol_msg(&mut ws_stream).await.unwrap();
+        let msg = expect_protocol_msg(&mut ws_stream, "ATTACH after resumed CONNECTED")
+            .await
+            .unwrap();
         assert_eq!(
             msg.action,
             action::ATTACH,
@@ -4679,26 +4619,21 @@ async fn resumed_connection_reattaches_channel() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
     connected_seen_tx.send(()).unwrap();
 
     // Wait for disconnect → reconnect cycle
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(matches!(event, Event::Disconnected { .. }));
 
-    let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
+    let event = expect_event_with_timeout(&mut sub, RECONNECT_EVENT_TIMEOUT, "Connected")
         .await
-        .expect("timed out waiting for Connected")
         .unwrap();
     assert!(matches!(event, Event::Connected));
 
     // Message after resumed reconnect proves subscription is alive
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after resume")
         .await
-        .expect("timed out waiting for message after resume")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -4714,7 +4649,7 @@ async fn resumed_connection_reattaches_channel() {
         did_attach,
         "client must send ATTACH even on resumed connection"
     );
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -4751,9 +4686,8 @@ async fn reconnect_attached_without_serial_preserves_resume_serial_for_next_reat
         .await
         .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+        let msg = expect_protocol_msg(&mut conn, "reconnect ATTACH")
             .await
-            .expect("timed out waiting for reconnect ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -4787,10 +4721,12 @@ async fn reconnect_attached_without_serial_preserves_resume_serial_for_next_reat
         .await
         .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
-            .await
-            .expect("timed out waiting for reattach after reconnect ATTACHED without serial")
-            .unwrap();
+        let msg = expect_protocol_msg(
+            &mut conn,
+            "reattach after reconnect ATTACHED without serial",
+        )
+        .await
+        .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
         assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
@@ -4829,24 +4765,19 @@ async fn reconnect_attached_without_serial_preserves_resume_serial_for_next_reat
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
     connected_seen_tx.send(()).unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(matches!(event, Event::Disconnected { .. }));
 
-    let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
+    let event = expect_event_with_timeout(&mut sub, RECONNECT_EVENT_TIMEOUT, "Connected")
         .await
-        .expect("timed out waiting for Connected")
         .unwrap();
     assert!(matches!(event, Event::Connected));
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after reconnect attached without serial")
         .await
-        .expect("timed out waiting for message after reconnect attached without serial")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -4859,7 +4790,7 @@ async fn reconnect_attached_without_serial_preserves_resume_serial_for_next_reat
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -4895,9 +4826,8 @@ async fn detached_during_reconnect_attach_retries_channel_on_same_transport() {
             .await
             .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "reconnect ATTACH")
             .await
-            .expect("timed out waiting for reconnect ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -4921,9 +4851,8 @@ async fn detached_during_reconnect_attach_retries_channel_on_same_transport() {
             .await
             .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "channel retry ATTACH")
             .await
-            .expect("timed out waiting for channel retry ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -4960,29 +4889,24 @@ async fn detached_during_reconnect_attach_retries_channel_on_same_transport() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
         "expected Disconnected, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "Connected after channel retry")
         .await
-        .expect("timed out waiting for Connected after channel retry")
         .unwrap();
     assert!(
         matches!(event, Event::Connected),
         "expected Connected after channel retry, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after channel retry")
         .await
-        .expect("timed out waiting for message after channel retry")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -4992,7 +4916,7 @@ async fn detached_during_reconnect_attach_retries_channel_on_same_transport() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -5028,9 +4952,8 @@ async fn superseded_error_during_reconnect_attach_retries_on_same_transport() {
             .await
             .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "reconnect ATTACH")
             .await
-            .expect("timed out waiting for reconnect ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -5054,9 +4977,8 @@ async fn superseded_error_during_reconnect_attach_retries_on_same_transport() {
             .await
             .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "retry ATTACH after 80016")
             .await
-            .expect("timed out waiting for retry ATTACH after 80016")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -5092,29 +5014,24 @@ async fn superseded_error_during_reconnect_attach_retries_on_same_transport() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
         "expected Disconnected, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "Connected after retry ATTACH")
         .await
-        .expect("timed out waiting for Connected after retry ATTACH")
         .unwrap();
     assert!(
         matches!(event, Event::Connected),
         "expected Connected after retry ATTACH, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after retry ATTACH")
         .await
-        .expect("timed out waiting for message after retry ATTACH")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -5124,7 +5041,7 @@ async fn superseded_error_during_reconnect_attach_retries_on_same_transport() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -5160,9 +5077,8 @@ async fn other_channel_error_during_reconnect_attach_is_ignored() {
             .await
             .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "reconnect ATTACH")
             .await
-            .expect("timed out waiting for reconnect ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -5222,30 +5138,21 @@ async fn other_channel_error_during_reconnect_attach_is_ignored() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
         "expected Disconnected, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Connected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Connected").await.unwrap();
     assert!(
         matches!(event, Event::Connected),
         "expected Connected, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for message")
-        .unwrap();
+    let event = expect_event(&mut sub, "message").await.unwrap();
     match event {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("after-other-channel-error"));
@@ -5254,7 +5161,7 @@ async fn other_channel_error_during_reconnect_attach_is_ignored() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -5295,9 +5202,8 @@ async fn other_channel_attach_outcomes_during_reconnect_attach_are_ignored() {
             .await
             .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "reconnect ATTACH")
             .await
-            .expect("timed out waiting for reconnect ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -5369,13 +5275,10 @@ async fn other_channel_attach_outcomes_during_reconnect_attach_are_ignored() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
     connected_seen_tx.send(()).unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(matches!(event, Event::Disconnected { .. }));
 
     wait_for_test_observation(
@@ -5391,15 +5294,11 @@ async fn other_channel_attach_outcomes_during_reconnect_attach_are_ignored() {
     );
     noise_checked_tx.send(()).unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Connected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Connected").await.unwrap();
     assert!(matches!(event, Event::Connected));
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after other-channel attach outcomes")
         .await
-        .expect("timed out waiting for message after other-channel attach outcomes")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -5412,7 +5311,7 @@ async fn other_channel_attach_outcomes_during_reconnect_attach_are_ignored() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -5447,9 +5346,8 @@ async fn disconnected_during_reconnect_attach_retries_with_new_connection() {
             .await
             .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "reconnect ATTACH")
             .await
-            .expect("timed out waiting for reconnect ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -5496,29 +5394,24 @@ async fn disconnected_during_reconnect_attach_retries_with_new_connection() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
         "expected Disconnected, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "Connected after reconnect attach DISCONNECTED")
         .await
-        .expect("timed out waiting for Connected after reconnect attach DISCONNECTED")
         .unwrap();
     assert!(
         matches!(event, Event::Connected),
         "expected Connected after reconnect attach DISCONNECTED, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after reconnect attach DISCONNECTED")
         .await
-        .expect("timed out waiting for message after reconnect attach DISCONNECTED")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -5530,7 +5423,7 @@ async fn disconnected_during_reconnect_attach_retries_with_new_connection() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -5565,9 +5458,8 @@ async fn closed_during_reconnect_attach_stops_subscription() {
             .await
             .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "reconnect ATTACH")
             .await
-            .expect("timed out waiting for reconnect ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -5594,26 +5486,19 @@ async fn closed_during_reconnect_attach_stops_subscription() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
         "expected Disconnected, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    expect_subscription_closed(&mut sub, "CLOSED during attach")
         .await
-        .expect("timed out waiting for subscription to end after CLOSED during attach");
-    assert!(
-        event.is_none(),
-        "expected stream end after CLOSED, got {event:?}"
-    );
+        .unwrap();
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -5649,9 +5534,8 @@ async fn superseded_reconnect_attach_timeout_retries_channel_on_same_transport()
             .await
             .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "reconnect ATTACH")
             .await
-            .expect("timed out waiting for reconnect ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -5675,18 +5559,16 @@ async fn superseded_reconnect_attach_timeout_retries_channel_on_same_transport()
             .await
             .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "retry ATTACH after 80016")
             .await
-            .expect("timed out waiting for retry ATTACH after 80016")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
         assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
         assert_attach_resume(&msg, true);
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "channel retry ATTACH")
             .await
-            .expect("timed out waiting for channel retry ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -5724,29 +5606,24 @@ async fn superseded_reconnect_attach_timeout_retries_channel_on_same_transport()
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
         "expected Disconnected, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "Connected after channel retry")
         .await
-        .expect("timed out waiting for Connected after channel retry")
         .unwrap();
     assert!(
         matches!(event, Event::Connected),
         "expected Connected after channel retry, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after channel retry")
         .await
-        .expect("timed out waiting for message after channel retry")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -5756,7 +5633,7 @@ async fn superseded_reconnect_attach_timeout_retries_channel_on_same_transport()
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -5793,9 +5670,8 @@ async fn close_during_reconnect_attach_wait_closes_temporary_socket() {
             .await
             .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "reconnect ATTACH")
             .await
-            .expect("timed out waiting for reconnect ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -5814,12 +5690,9 @@ async fn close_during_reconnect_attach_wait_closes_temporary_socket() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
         "expected Disconnected, got {event:?}"
@@ -5836,7 +5709,7 @@ async fn close_during_reconnect_attach_wait_closes_temporary_socket() {
         .await
         .expect("timed out waiting for reconnect attach socket close")
         .unwrap();
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]
@@ -5872,9 +5745,8 @@ async fn reconnect_attach_timeout_retries_channel_on_same_transport() {
             .await
             .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "reconnect ATTACH")
             .await
-            .expect("timed out waiting for reconnect ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -5884,9 +5756,8 @@ async fn reconnect_attach_timeout_retries_channel_on_same_transport() {
         // Do not answer the first ATTACH. The client should treat this as a
         // channel attach timeout, keep conn-2 connected, and retry ATTACH on
         // the same websocket instead of opening conn-3.
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "channel retry ATTACH")
             .await
-            .expect("timed out waiting for channel retry ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
@@ -5924,29 +5795,24 @@ async fn reconnect_attach_timeout_retries_channel_on_same_transport() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for Disconnected")
-        .unwrap();
+    let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
         "expected Disconnected, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "Connected after channel retry")
         .await
-        .expect("timed out waiting for Connected after channel retry")
         .unwrap();
     assert!(
         matches!(event, Event::Connected),
         "expected Connected after channel retry, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let event = expect_event(&mut sub, "message after channel retry")
         .await
-        .expect("timed out waiting for message after channel retry")
         .unwrap();
     match event {
         Event::Message(msg) => {
@@ -5956,7 +5822,7 @@ async fn reconnect_attach_timeout_retries_channel_on_same_transport() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -5995,9 +5861,8 @@ async fn detach_after_reconnect_reattaches_not_full_reconnect() {
             .await
             .unwrap();
 
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn1))
+        let msg = expect_protocol_msg(&mut conn1, "ATTACH on conn-1")
             .await
-            .expect("timed out waiting for ATTACH on conn-1")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
 
@@ -6017,9 +5882,8 @@ async fn detach_after_reconnect_reattaches_not_full_reconnect() {
             .unwrap();
 
         // Client should send ATTACH (re-attach), NOT open a third connection
-        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+        let msg = expect_protocol_msg(&mut conn2, "ATTACH on conn-2 (got full reconnect instead?)")
             .await
-            .expect("timed out waiting for ATTACH on conn-2 (got full reconnect instead?)")
             .unwrap();
         assert_eq!(
             msg.action,
@@ -6053,21 +5917,19 @@ async fn detach_after_reconnect_reattaches_not_full_reconnect() {
         .await
         .unwrap();
 
-    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    expect_connected(&mut sub, "Connected event").await.unwrap();
 
     // Disconnected → reconnect → Connected
-    let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
+    let event = expect_event_with_timeout(&mut sub, RECONNECT_EVENT_TIMEOUT, "Disconnected")
         .await
-        .expect("timed out waiting for Disconnected")
         .unwrap();
     assert!(
         matches!(event, Event::Disconnected { .. }),
         "expected Disconnected, got {event:?}"
     );
 
-    let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
+    let event = expect_event_with_timeout(&mut sub, RECONNECT_EVENT_TIMEOUT, "Connected")
         .await
-        .expect("timed out waiting for Connected")
         .unwrap();
     assert!(
         matches!(event, Event::Connected),
@@ -6075,10 +5937,7 @@ async fn detach_after_reconnect_reattaches_not_full_reconnect() {
     );
 
     // Message after re-attach on conn-2 proves we didn't do a full reconnect
-    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timed out waiting for message")
-        .unwrap();
+    let event = expect_event(&mut sub, "message").await.unwrap();
     match event {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("after-reattach"));
@@ -6087,5 +5946,5 @@ async fn detach_after_reconnect_reattaches_not_full_reconnect() {
         other => panic!("expected Message, got {other:?}"),
     }
 
-    server_task.await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }

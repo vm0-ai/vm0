@@ -95,6 +95,7 @@
     "OPENAI_API_KEY",
     "FAL_KEY",
     "BYTEPLUS_API_KEY",
+    "BYTEPLUS_STT_API_KEY",
     "OPENROUTER_API_KEY",
     "VAPID_PUBLIC_KEY",
     "VAPID_PRIVATE_KEY",
@@ -271,6 +272,10 @@
     },
     "lint": {
       "dependsOn": ["^lint"]
+    },
+    "lint-runtime-api-compat": {
+      "cache": false,
+      "outputs": []
     },
     "check-types": {
       "dependsOn": ["^check-types", "^build"]

@@ -1348,7 +1348,7 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
 
     const mismatchedHistoryPrepare =
       await api.requestAgentCheckpointPrepareHistory(
-        { runId, hash, size: 128 },
+        { runId, hash, rawSize: 128, encodedSize: 128 },
         mismatchedHeaders,
         [401],
       );
@@ -1357,7 +1357,7 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
 
     const malformedHistoryPrepare =
       await api.requestAgentCheckpointPrepareHistoryUnchecked(
-        { runId, hash, size: 0 },
+        { runId, hash, rawSize: 0, encodedSize: 0 },
         headers,
         [400],
       );
@@ -1366,7 +1366,7 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
 
     const uppercaseHistoryPrepare =
       await api.requestAgentCheckpointPrepareHistoryUnchecked(
-        { runId, hash: "A".repeat(64), size: 128 },
+        { runId, hash: "A".repeat(64), rawSize: 128, encodedSize: 128 },
         headers,
         [400],
       );
@@ -1375,7 +1375,12 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
 
     const oversizedHistoryPrepare =
       await api.requestAgentCheckpointPrepareHistoryUnchecked(
-        { runId, hash, size: RESUME_SESSION_HISTORY_MAX_BYTES + 1 },
+        {
+          runId,
+          hash,
+          rawSize: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+          encodedSize: 128,
+        },
         headers,
         [400],
       );
@@ -1470,7 +1475,7 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
       .update(`bdd history blob ${run.runId}`)
       .digest("hex");
     const firstHistory = await api.requestAgentCheckpointPrepareHistory(
-      { runId: run.runId, hash: historyHash, size: 456 },
+      { runId: run.runId, hash: historyHash, rawSize: 456, encodedSize: 456 },
       headers,
       [200],
     );
@@ -1481,18 +1486,21 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     expect(firstHistory.body.presignedUrl).toMatch(/^https/);
 
     const repeatedHistory = await api.requestAgentCheckpointPrepareHistory(
-      { runId: run.runId, hash: historyHash, size: 456 },
+      { runId: run.runId, hash: historyHash, rawSize: 456, encodedSize: 456 },
       headers,
       [200],
     );
     if (repeatedHistory.status !== 200) {
       throw new Error("Expected the repeated history prepare to succeed");
     }
-    expect(repeatedHistory.body).toStrictEqual({ existing: true });
+    expect(repeatedHistory.body).toStrictEqual({
+      existing: true,
+      encoding: "identity",
+    });
 
     const ghostRunId = randomUUID();
     const missingHistoryRun = await api.requestAgentCheckpointPrepareHistory(
-      { runId: ghostRunId, hash: historyHash, size: 456 },
+      { runId: ghostRunId, hash: historyHash, rawSize: 456, encodedSize: 456 },
       {
         authorization: `Bearer ${runs.sandboxTokenForRun(actor, ghostRunId)}`,
       },

@@ -9,7 +9,6 @@ use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
-use crate::paths::diagnostic_session_fingerprint;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::{HeldSessionState, MAX_HELD_SESSION_STATES};
 
@@ -1162,12 +1161,11 @@ impl WorkspaceImagePromotionContext {
             ..
         } = self;
         let Some(_entry_lock) = entry_lock else {
-            let session_fingerprint = diagnostic_session_fingerprint(&cli_agent_session_id);
             info!(
                 run_id = %run_id,
                 sandbox_id = %sandbox_id,
                 profile_name,
-                session_fingerprint = %session_fingerprint,
+                session_id = %cli_agent_session_id,
                 cache_key,
                 reason,
                 "workspace image cache promotion context abandoned without entry lock"

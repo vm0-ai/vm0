@@ -190,7 +190,7 @@ async fn parked_workspace_promotion_unpark_error_abandons_consumed_cache_hit() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn parked_workspace_promotion_warning_uses_session_fingerprint() {
+async fn parked_workspace_promotion_warning_uses_session_id() {
     let raw_session_id = "sess-sensitive-promotion-17975";
     let fixture = WorkspacePromotionFixture::new(raw_session_id).await;
     let overrides = Arc::new(MockSandboxOverrides::new());
@@ -208,18 +208,13 @@ async fn parked_workspace_promotion_warning_uses_session_fingerprint() {
     .await;
 
     assert!(!promoted);
-    assert_captured_events_do_not_contain(&events, raw_session_id);
     let event = captured_event(
         &events,
         "workspace image cache promotion skipped because idle sandbox unpark failed",
     );
     assert_eq!(
-        event.fields.get("session_fingerprint").map(String::as_str),
-        Some(crate::paths::diagnostic_session_fingerprint(raw_session_id).as_str())
-    );
-    assert!(
-        !event.fields.contains_key("session_id"),
-        "promotion diagnostic must not include raw session_id field: {event:#?}"
+        event.fields.get("session_id").map(String::as_str),
+        Some(raw_session_id)
     );
 }
 
@@ -304,15 +299,4 @@ fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a Capture
                 .is_some_and(|actual| actual == message)
         })
         .unwrap_or_else(|| panic!("missing event {message:?}; captured={events:#?}"))
-}
-
-fn assert_captured_events_do_not_contain(events: &[CapturedEvent], raw: &str) {
-    for event in events {
-        for (field, value) in &event.fields {
-            assert!(
-                !value.contains(raw),
-                "captured field {field} leaked raw session id {raw:?}: {event:#?}"
-            );
-        }
-    }
 }

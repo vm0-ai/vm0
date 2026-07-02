@@ -1,13 +1,14 @@
 import { command, computed } from "ccstate";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { accept } from "../../lib/accept.ts";
+import { withCleanup } from "../utils.ts";
 import {
-  agentConnectorAuthorizationsReload$,
+  agentConnectorAuthorizations,
   reloadAgentConnectorAuthorizations$,
 } from "./agent-connector-authorizations.ts";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 
 // ---------------------------------------------------------------------------
 // Authorized connectors: User↔Agent↔Connector (per-agent grant)
@@ -18,14 +19,12 @@ import {
 
 /** Connectors the current user has authorized for the current agent. */
 const authorizedConnectors$ = computed(async (get) => {
-  get(agentConnectorAuthorizationsReload$);
   const agentId = await get(currentChatAgentRecordId$);
   if (!agentId) {
     return [];
   }
-  const client = get(zeroClient$)(zeroUserConnectorsContract);
-  const result = await accept(client.get({ params: { id: agentId } }), [200]);
-  return result.body.enabledTypes;
+  const authorizations = await get(agentConnectorAuthorizations({ agentId }));
+  return [...authorizations.enabledTypes];
 });
 
 export const zeroAuthorizedConnectors$ = computed(async (get) => {
@@ -34,34 +33,26 @@ export const zeroAuthorizedConnectors$ = computed(async (get) => {
 
 /** Grant the current agent access to a connector. */
 export const authorizeConnector$ = command(
-  async ({ get, set }, name: string, signal: AbortSignal) => {
-    const current = await get(authorizedConnectors$);
-    signal.throwIfAborted();
-    if (current.includes(name)) {
-      return;
-    }
-    await set(syncAuthorizedConnectors$, [...current, name], signal);
+  async ({ set }, name: string, signal: AbortSignal) => {
+    await set(updateAuthorizedConnectors$, "add", name, signal);
   },
 );
 
 /** Revoke the current agent's access to a connector. */
 export const deauthorizeConnector$ = command(
-  async ({ get, set }, name: string, signal: AbortSignal) => {
-    const current = await get(authorizedConnectors$);
-    signal.throwIfAborted();
-    await set(
-      syncAuthorizedConnectors$,
-      current.filter((n) => {
-        return n !== name;
-      }),
-      signal,
-    );
+  async ({ set }, name: string, signal: AbortSignal) => {
+    await set(updateAuthorizedConnectors$, "remove", name, signal);
   },
 );
 
-/** Persist the authorized connectors list to the server. */
-const syncAuthorizedConnectors$ = command(
-  async ({ get, set }, connectorValues: string[], signal: AbortSignal) => {
+/** Atomically add/remove an authorized connector on the server. */
+const updateAuthorizedConnectors$ = command(
+  async (
+    { get, set },
+    operation: "add" | "remove",
+    connectorValue: string,
+    signal: AbortSignal,
+  ) => {
     const agentId = await get(currentChatAgentRecordId$);
     signal.throwIfAborted();
     if (!agentId) {
@@ -69,17 +60,22 @@ const syncAuthorizedConnectors$ = command(
     }
 
     const client = get(zeroClient$)(zeroUserConnectorsContract);
-    await accept(
-      client.update({
-        params: { id: agentId },
-        body: { enabledTypes: connectorValues },
-      }),
-      [200],
+    await withCleanup(
+      accept(
+        client.update({
+          params: { id: agentId },
+          body: { enabledTypes: [connectorValue], operation },
+          fetchOptions: { signal },
+        }),
+        [200],
+      ),
+      () => {
+        set(reloadAgentConnectorAuthorizations$);
+      },
     );
     signal.throwIfAborted();
 
     await set(reloadOnboardingStatus$);
     signal.throwIfAborted();
-    set(reloadAgentConnectorAuthorizations$);
   },
 );

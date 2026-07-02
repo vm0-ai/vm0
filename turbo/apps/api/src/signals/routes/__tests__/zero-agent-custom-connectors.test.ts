@@ -63,7 +63,10 @@ function zeroTokenFor(
   });
 }
 
-async function createCustomConnector(actor: ApiTestUser, slug: string) {
+async function createUnconfiguredCustomConnector(
+  actor: ApiTestUser,
+  slug: string,
+) {
   return await connectors.createCustomConnector(actor, {
     displayName: `Connector ${slug}`,
     slug,
@@ -71,6 +74,80 @@ async function createCustomConnector(actor: ApiTestUser, slug: string) {
     headerName: "Authorization",
     headerTemplate: "Bearer {{secret}}",
   });
+}
+
+async function createCustomConnector(actor: ApiTestUser, slug: string) {
+  const connector = await createUnconfiguredCustomConnector(actor, slug);
+  await connectors.setCustomConnectorSecret(
+    actor,
+    connector.id,
+    `${slug}-secret`,
+  );
+  return connector;
+}
+
+async function createOptionalOnlyCustomConnector(
+  actor: ApiTestUser,
+  slug: string,
+) {
+  return await connectors.createCustomConnector(actor, {
+    displayName: `Connector ${slug}`,
+    slug,
+    prefixTemplates: [`https://${slug}.example.test`],
+    fields: [
+      {
+        key: "api_key",
+        label: "API key",
+        kind: "secret",
+        required: false,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.api_key}}",
+      },
+    ],
+    queryInjections: [],
+  });
+}
+
+async function createCustomConnectorWithOptionalPrefixVariable(
+  actor: ApiTestUser,
+  slug: string,
+) {
+  const connector = await connectors.createCustomConnector(actor, {
+    displayName: `Connector ${slug}`,
+    slug,
+    prefixTemplates: [`https://{{variables.subdomain}}.${slug}.example.test`],
+    fields: [
+      {
+        key: "secret",
+        label: "API key",
+        kind: "secret",
+        required: true,
+      },
+      {
+        key: "subdomain",
+        label: "Subdomain",
+        kind: "variable",
+        required: false,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+  });
+  await connectors.setCustomConnectorSecret(
+    actor,
+    connector.id,
+    `${slug}-secret`,
+  );
+  return connector;
 }
 
 describe("GET /api/zero/agents/:id/custom-connectors", () => {
@@ -234,9 +311,116 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     );
 
     expect(new Set(response)).toStrictEqual(new Set([c1.id, c2.id]));
+    const readBack = await connectors.readAgentCustomConnectors(
+      actor,
+      agent.agentId,
+    );
+    expect([...readBack].sort()).toStrictEqual([...response].sort());
+  });
+
+  it("rejects enabling custom connectors without required user values", async () => {
+    const actor = bdd.user();
+    const agent = await createAgent(actor, { displayName: "Test Agent" });
+    const connector = await createUnconfiguredCustomConnector(
+      actor,
+      "missing-secret",
+    );
+
+    const response = await connectors.requestUpdateAgentCustomConnectors(
+      actor,
+      agent.agentId,
+      [connector.id],
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: `Custom connector ids are not configured for this user: ${connector.id}`,
+        code: "VALIDATION_ERROR",
+      },
+    });
     await expect(
       connectors.readAgentCustomConnectors(actor, agent.agentId),
-    ).resolves.toStrictEqual(response);
+    ).resolves.toStrictEqual([]);
+  });
+
+  it("returns agent not found before connector configuration errors", async () => {
+    const owner = bdd.user();
+    const requester = bdd.user({ orgId: owner.orgId });
+    const agent = await createAgent(owner, {
+      displayName: "Private Agent",
+      visibility: "private",
+    });
+    const connector = await createUnconfiguredCustomConnector(
+      requester,
+      "hidden-agent-order",
+    );
+
+    const response = await connectors.requestUpdateAgentCustomConnectors(
+      requester,
+      agent.agentId,
+      [connector.id],
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: `Agent not found: ${agent.agentId}`,
+        code: "NOT_FOUND",
+      },
+    });
+  });
+
+  it("rejects enabling custom connectors without any configured auth entries", async () => {
+    const actor = bdd.user();
+    const agent = await createAgent(actor, { displayName: "Test Agent" });
+    const connector = await createOptionalOnlyCustomConnector(
+      actor,
+      "missing-optional-auth",
+    );
+
+    const response = await connectors.requestUpdateAgentCustomConnectors(
+      actor,
+      agent.agentId,
+      [connector.id],
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: `Custom connector ids are not configured for this user: ${connector.id}`,
+        code: "VALIDATION_ERROR",
+      },
+    });
+    await expect(
+      connectors.readAgentCustomConnectors(actor, agent.agentId),
+    ).resolves.toStrictEqual([]);
+  });
+
+  it("rejects enabling custom connectors without any configured base urls", async () => {
+    const actor = bdd.user();
+    const agent = await createAgent(actor, { displayName: "Test Agent" });
+    const connector = await createCustomConnectorWithOptionalPrefixVariable(
+      actor,
+      "missing-prefix-variable",
+    );
+
+    const response = await connectors.requestUpdateAgentCustomConnectors(
+      actor,
+      agent.agentId,
+      [connector.id],
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: `Custom connector ids are not configured for this user: ${connector.id}`,
+        code: "VALIDATION_ERROR",
+      },
+    });
+    await expect(
+      connectors.readAgentCustomConnectors(actor, agent.agentId),
+    ).resolves.toStrictEqual([]);
   });
 
   it("replaces the list atomically", async () => {
@@ -258,6 +442,84 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     ).resolves.toStrictEqual([c2.id]);
   });
 
+  it("serializes concurrent custom connector replaces for the same agent", async () => {
+    const actor = bdd.user();
+    const agent = await createAgent(actor, { displayName: "Concurrent Agent" });
+    const c1 = await createCustomConnector(actor, "conc-1");
+    const c2 = await createCustomConnector(actor, "conc-2");
+
+    const sameSetUpdates = await Promise.all([
+      connectors.updateAgentCustomConnectors(actor, agent.agentId, [
+        c1.id,
+        c2.id,
+      ]),
+      connectors.updateAgentCustomConnectors(actor, agent.agentId, [
+        c1.id,
+        c2.id,
+      ]),
+    ]);
+    for (const update of sameSetUpdates) {
+      expect(new Set(update)).toStrictEqual(new Set([c1.id, c2.id]));
+    }
+
+    await Promise.all([
+      connectors.updateAgentCustomConnectors(actor, agent.agentId, [c1.id]),
+      connectors.updateAgentCustomConnectors(actor, agent.agentId, [c2.id]),
+    ]);
+    const readBack = await connectors.readAgentCustomConnectors(
+      actor,
+      agent.agentId,
+    );
+    expect(readBack).toHaveLength(1);
+    expect([c1.id, c2.id]).toContain(readBack[0]);
+
+    await connectors.updateAgentCustomConnectors(
+      actor,
+      agent.agentId,
+      [],
+      "replace",
+    );
+    await Promise.all([
+      connectors.updateAgentCustomConnectors(
+        actor,
+        agent.agentId,
+        [c1.id],
+        "add",
+      ),
+      connectors.updateAgentCustomConnectors(
+        actor,
+        agent.agentId,
+        [c2.id],
+        "add",
+      ),
+    ]);
+    const readAfterAdds = await connectors.readAgentCustomConnectors(
+      actor,
+      agent.agentId,
+    );
+    expect(new Set(readAfterAdds)).toStrictEqual(new Set([c1.id, c2.id]));
+
+    await Promise.all([
+      connectors.updateAgentCustomConnectors(
+        actor,
+        agent.agentId,
+        [c1.id],
+        "remove",
+      ),
+      connectors.updateAgentCustomConnectors(
+        actor,
+        agent.agentId,
+        [c2.id],
+        "add",
+      ),
+    ]);
+    const readAfterRemoveAdd = await connectors.readAgentCustomConnectors(
+      actor,
+      agent.agentId,
+    );
+    expect(readAfterRemoveAdd).toStrictEqual([c2.id]);
+  });
+
   it("clears authorizations with empty array", async () => {
     const actor = bdd.user();
     const agent = await createAgent(actor, { displayName: "Test Agent" });
@@ -273,6 +535,29 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     );
 
     expect(cleared).toStrictEqual([]);
+    await expect(
+      connectors.readAgentCustomConnectors(actor, agent.agentId),
+    ).resolves.toStrictEqual([]);
+  });
+
+  it("allows removing an enabled custom connector after its secret is deleted", async () => {
+    const actor = bdd.user();
+    const agent = await createAgent(actor, { displayName: "Test Agent" });
+    const connector = await createCustomConnector(actor, "remove-unconfigured");
+
+    await connectors.updateAgentCustomConnectors(actor, agent.agentId, [
+      connector.id,
+    ]);
+    await connectors.deleteCustomConnectorSecret(actor, connector.id);
+
+    const updated = await connectors.updateAgentCustomConnectors(
+      actor,
+      agent.agentId,
+      [connector.id],
+      "remove",
+    );
+
+    expect(updated).toStrictEqual([]);
     await expect(
       connectors.readAgentCustomConnectors(actor, agent.agentId),
     ).resolves.toStrictEqual([]);

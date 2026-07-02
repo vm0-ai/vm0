@@ -1731,13 +1731,18 @@ export function createConnectorBddApi(context: TestContext) {
       agentId: string,
       enabledIds: readonly string[],
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+      operation?: "replace" | "add" | "remove",
     ) {
       const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
+      const body =
+        operation === undefined
+          ? { enabledIds: [...enabledIds] }
+          : { enabledIds: [...enabledIds], operation };
       return await accept(
         client.update({
           params: { id: agentId },
           headers: authenticate(actor),
-          body: { enabledIds: [...enabledIds] },
+          body,
         }),
         statuses,
       );
@@ -1747,12 +1752,14 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser,
       agentId: string,
       enabledIds: readonly string[],
+      operation?: "replace" | "add" | "remove",
     ): Promise<readonly string[]> {
       const response = await api.requestUpdateAgentCustomConnectors(
         actor,
         agentId,
         enabledIds,
         [200],
+        operation,
       );
       expectStatus(response, 200);
       return response.body.enabledIds;

@@ -2000,6 +2000,22 @@ function createSkeletonSignals() {
   return { skeletonVisible$, showSkeleton$, hideSkeleton$ };
 }
 
+function createContainerRef() {
+  const internalContainerEl$ = state<HTMLElement | null>(null);
+  const containerEl$ = computed((get) => {
+    return get(internalContainerEl$);
+  });
+  const setContainerRef$ = onRef(
+    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener("abort", () => {
+        set(internalContainerEl$, null);
+      });
+      set(internalContainerEl$, el);
+    }),
+  );
+  return { containerEl$, setContainerRef$ };
+}
+
 function createInputRef() {
   const internalInputRef$ = state<HTMLElement | null>(null);
   const setInputRef$ = onRef(
@@ -2975,14 +2991,28 @@ function createCancelRunWithQueuedRecall({
 // ---------------------------------------------------------------------------
 
 const THINKING_TYPEWRITER_INTERVAL_MS = 28;
+const THINKING_TYPEWRITER_LINE_PAUSE_MS = 3000;
+const THINKING_TYPEWRITER_LINE_PAUSE_TICKS = IN_VITEST
+  ? 1
+  : Math.ceil(
+      THINKING_TYPEWRITER_LINE_PAUSE_MS / THINKING_TYPEWRITER_INTERVAL_MS,
+    );
 const THINKING_TYPEWRITER_WIDTH_GUARD_PX = 8;
 const THINKING_TYPEWRITER_OVERFLOW_PREFIX = "...";
+
+interface ThinkingTypewriterLine {
+  readonly startIndex: number;
+  readonly endIndex: number;
+  readonly text: string;
+}
 
 interface ThinkingTypewriterFrame {
   readonly messageId: string | undefined;
   readonly text: string;
   readonly width: number;
+  readonly lineIndex: number;
   readonly charIndex: number;
+  readonly pauseTicksRemaining: number;
   readonly displayedText: string;
   readonly complete: boolean;
 }
@@ -2992,7 +3022,9 @@ function emptyThinkingTypewriterFrame(): ThinkingTypewriterFrame {
     messageId: undefined,
     text: "",
     width: 0,
+    lineIndex: 0,
     charIndex: 0,
+    pauseTicksRemaining: 0,
     displayedText: "",
     complete: false,
   };
@@ -3118,13 +3150,80 @@ function thinkingLabelWidth(el: HTMLElement): number {
   );
 }
 
+function wrapThinkingTextForWidth(args: {
+  readonly graphemes: readonly string[];
+  readonly width: number;
+  readonly measureText: (value: string) => number | undefined;
+}): ThinkingTypewriterLine[] {
+  if (args.graphemes.length === 0) {
+    return [];
+  }
+  if (!Number.isFinite(args.width) || args.width <= 0) {
+    return [
+      {
+        startIndex: 0,
+        endIndex: args.graphemes.length,
+        text: args.graphemes.join(""),
+      },
+    ];
+  }
+
+  const maxWidth = Math.max(1, args.width - THINKING_TYPEWRITER_WIDTH_GUARD_PX);
+  const lines: ThinkingTypewriterLine[] = [];
+  let startIndex = 0;
+  let current: string[] = [];
+
+  for (let index = 0; index < args.graphemes.length; index++) {
+    const grapheme = args.graphemes[index]!;
+    const candidate = [...current, grapheme];
+    const candidateText = candidate.join("");
+    const measured = args.measureText(candidateText);
+    if (measured === undefined) {
+      return [
+        {
+          startIndex: 0,
+          endIndex: args.graphemes.length,
+          text: args.graphemes.join(""),
+        },
+      ];
+    }
+
+    if (measured <= maxWidth || current.length === 0) {
+      current = candidate;
+      continue;
+    }
+
+    lines.push({
+      startIndex,
+      endIndex: index,
+      text: current.join(""),
+    });
+    startIndex = index;
+    current = [grapheme];
+  }
+
+  if (current.length > 0) {
+    lines.push({
+      startIndex,
+      endIndex: args.graphemes.length,
+      text: current.join(""),
+    });
+  }
+
+  return lines;
+}
+
 function displayedSlidingThinkingText(args: {
   readonly graphemes: readonly string[];
+  readonly startIndex: number;
   readonly charIndex: number;
   readonly width: number;
   readonly measureText: (value: string) => number | undefined;
 }): string {
-  const visibleGraphemes = args.graphemes.slice(0, args.charIndex);
+  const visibleGraphemes = args.graphemes.slice(
+    args.startIndex,
+    args.charIndex,
+  );
   const visibleText = visibleGraphemes.join("");
   if (visibleText.length === 0) {
     return "";
@@ -3172,6 +3271,14 @@ function nextThinkingTypewriterFrame(args: {
   if (graphemes.length === 0) {
     return emptyThinkingTypewriterFrame();
   }
+  const lines = wrapThinkingTextForWidth({
+    graphemes,
+    width,
+    measureText: args.measureText,
+  });
+  if (lines.length === 0) {
+    return emptyThinkingTypewriterFrame();
+  }
 
   const currentFrame =
     args.currentFrame.messageId === args.messageId &&
@@ -3184,16 +3291,67 @@ function nextThinkingTypewriterFrame(args: {
           text: args.text,
           width,
         };
+  const lineIndex = Math.min(currentFrame.lineIndex, lines.length - 1);
+  const currentLine = lines[lineIndex]!;
+  const nextLine = lines[lineIndex + 1];
+
+  if (currentFrame.pauseTicksRemaining > 0) {
+    return {
+      ...currentFrame,
+      lineIndex,
+      pauseTicksRemaining: currentFrame.pauseTicksRemaining - 1,
+      displayedText: currentLine.text,
+      complete: false,
+    };
+  }
+
+  if (currentFrame.charIndex >= currentLine.endIndex) {
+    if (!nextLine) {
+      return {
+        ...currentFrame,
+        lineIndex,
+        displayedText: currentLine.text,
+        complete: true,
+      };
+    }
+
+    const nextCharIndex = Math.min(
+      nextLine.endIndex,
+      nextLine.startIndex + thinkingTypewriterStep(width),
+    );
+    return {
+      ...currentFrame,
+      lineIndex: lineIndex + 1,
+      charIndex: nextCharIndex,
+      pauseTicksRemaining: 0,
+      displayedText: displayedSlidingThinkingText({
+        graphemes,
+        startIndex: nextLine.startIndex,
+        charIndex: nextCharIndex,
+        width,
+        measureText: args.measureText,
+      }),
+      complete:
+        lineIndex + 1 >= lines.length - 1 && nextCharIndex >= graphemes.length,
+    };
+  }
+
   const nextCharIndex = Math.min(
-    graphemes.length,
+    currentLine.endIndex,
     currentFrame.charIndex + thinkingTypewriterStep(width),
   );
 
   return {
     ...currentFrame,
+    lineIndex,
     charIndex: nextCharIndex,
+    pauseTicksRemaining:
+      nextCharIndex >= currentLine.endIndex && nextLine !== undefined
+        ? THINKING_TYPEWRITER_LINE_PAUSE_TICKS
+        : 0,
     displayedText: displayedSlidingThinkingText({
       graphemes,
+      startIndex: currentLine.startIndex,
       charIndex: nextCharIndex,
       width,
       measureText: args.measureText,
@@ -3353,6 +3511,7 @@ export function createChatThreadSignals(
   } = createScrollSignals(threadId);
   const { skeletonVisible$, showSkeleton$, hideSkeleton$ } =
     createSkeletonSignals();
+  const { containerEl$, setContainerRef$ } = createContainerRef();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
   const { agentId$, agentDisplayName$, defaultModelSelection$, agentPinned$ } =
@@ -3418,6 +3577,8 @@ export function createChatThreadSignals(
     ...computerUseHostSelection,
     ...messageActions,
     ...scrollSignals,
+    containerEl$,
+    setContainerRef$,
     awayFromBottom$,
     skeletonVisible$,
     showSkeleton$,

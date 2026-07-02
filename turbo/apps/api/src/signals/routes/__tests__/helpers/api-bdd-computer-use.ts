@@ -9,6 +9,7 @@ import {
   zeroComputerUseHeartbeatContract,
   zeroComputerUseHostCommandsContract,
   zeroComputerUseHostsContract,
+  zeroComputerUsePluginCommandContract,
   zeroComputerUseWriteCommandContract,
   type ComputerUseAuthorizationRequestApplyResponse,
   type ComputerUseAuthorizationRequestCreateResponse,
@@ -22,6 +23,7 @@ import {
   type ComputerUseReadCommandKind,
   type ComputerUseWriteCommandKind,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
+import type { ComputerUsePluginCallBody } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
 
 import { now } from "../../../../lib/time";
 import {
@@ -70,6 +72,13 @@ interface ComputerUseWriteCommandBody {
   readonly clickCount?: number;
 }
 
+type ComputerUsePluginCommandBody = Omit<
+  ComputerUsePluginCallBody,
+  "timeoutMs"
+> & {
+  readonly timeoutMs?: number;
+};
+
 type ComputerUseCompleteBody =
   | {
       readonly status: "succeeded";
@@ -85,6 +94,107 @@ interface RecordedComputerUseS3Put {
   readonly key: string;
   readonly body: Buffer;
   readonly contentType: string;
+}
+
+function bufferFromBinaryChunk(chunk: unknown): Buffer {
+  if (Buffer.isBuffer(chunk)) {
+    return chunk;
+  }
+  if (chunk instanceof Uint8Array) {
+    return Buffer.from(chunk);
+  }
+  if (ArrayBuffer.isView(chunk)) {
+    return Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+  }
+  if (chunk instanceof ArrayBuffer) {
+    return Buffer.from(chunk);
+  }
+  if (typeof chunk === "string") {
+    return Buffer.from(chunk);
+  }
+  throw new Error("Expected a binary computer-use plugin content chunk");
+}
+
+function hasArrayBufferMethod(
+  body: unknown,
+): body is { readonly arrayBuffer: () => Promise<ArrayBuffer> } {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    "arrayBuffer" in body &&
+    typeof body.arrayBuffer === "function"
+  );
+}
+
+function hasWebStreamReader(body: unknown): body is {
+  readonly getReader: () => {
+    readonly read: () => Promise<{
+      readonly done?: boolean;
+      readonly value?: unknown;
+    }>;
+    readonly releaseLock?: () => void;
+  };
+} {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    "getReader" in body &&
+    typeof body.getReader === "function"
+  );
+}
+
+function isAsyncIterable(body: unknown): body is AsyncIterable<unknown> {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    Symbol.asyncIterator in body &&
+    typeof body[Symbol.asyncIterator] === "function"
+  );
+}
+
+async function binaryResponseBodyToBuffer(body: unknown): Promise<Buffer> {
+  if (body instanceof Blob) {
+    return Buffer.from(await body.arrayBuffer());
+  }
+  if (Buffer.isBuffer(body)) {
+    return body;
+  }
+  if (typeof body === "string") {
+    return Buffer.from(body);
+  }
+  if (body instanceof Uint8Array) {
+    return Buffer.from(body);
+  }
+  if (ArrayBuffer.isView(body)) {
+    return Buffer.from(body.buffer, body.byteOffset, body.byteLength);
+  }
+  if (body instanceof ArrayBuffer) {
+    return Buffer.from(body);
+  }
+  if (hasArrayBufferMethod(body)) {
+    return Buffer.from(await body.arrayBuffer());
+  }
+  if (hasWebStreamReader(body)) {
+    const reader = body.getReader();
+    const chunks: Buffer[] = [];
+    while (true) {
+      const result = await reader.read();
+      if (result.done) {
+        break;
+      }
+      chunks.push(bufferFromBinaryChunk(result.value));
+    }
+    reader.releaseLock?.();
+    return Buffer.concat(chunks);
+  }
+  if (isAsyncIterable(body)) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of body) {
+      chunks.push(bufferFromBinaryChunk(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+  throw new Error("Expected a binary computer-use plugin content body");
 }
 
 interface ComputerUseS3Fake {
@@ -252,6 +362,10 @@ export function createComputerUseBddApi(context: TestContext) {
 
   function writeCommandClient() {
     return setupApp({ context })(zeroComputerUseWriteCommandContract);
+  }
+
+  function pluginCommandClient() {
+    return setupApp({ context })(zeroComputerUsePluginCommandContract);
   }
 
   function hostCommandsClient() {
@@ -505,6 +619,34 @@ export function createComputerUseBddApi(context: TestContext) {
       );
     },
 
+    async createComputerUsePluginCommand(
+      auth: ComputerUseAuth,
+      body: ComputerUsePluginCommandBody,
+    ): Promise<ComputerUseCommandCreateResponse> {
+      const response = await accept(
+        pluginCommandClient().create({
+          headers: authenticate(auth),
+          body: { ...body, timeoutMs: body.timeoutMs ?? 60_000 },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestCreateComputerUsePluginCommand(
+      auth: ComputerUseAuth,
+      body: ComputerUsePluginCommandBody,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409)[],
+    ) {
+      return await accept(
+        pluginCommandClient().create({
+          headers: authenticate(auth),
+          body: { ...body, timeoutMs: body.timeoutMs ?? 60_000 },
+        }),
+        statuses,
+      );
+    },
+
     async readComputerUseCommand(
       auth: ComputerUseAuth,
       commandId: string,
@@ -547,6 +689,47 @@ export function createComputerUseBddApi(context: TestContext) {
       );
     },
 
+    async requestComputerUsePluginContent(
+      auth: ComputerUseAuth,
+      commandId: string,
+      statuses: readonly (200 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        commandClient().getPluginContent({
+          headers: authenticate(auth),
+          params: { commandId },
+        }),
+        statuses,
+      );
+    },
+
+    async downloadComputerUsePluginContent(
+      auth: ComputerUseAuth,
+      commandId: string,
+    ): Promise<{
+      readonly contentType: string | null;
+      readonly fileName: string | null;
+      readonly bytes: Buffer;
+    }> {
+      const response = await accept(
+        commandClient().getPluginContent({
+          headers: authenticate(auth),
+          params: { commandId },
+        }),
+        [200],
+      );
+      const body: unknown = response.body;
+      const bytes = await binaryResponseBodyToBuffer(body);
+      const contentDisposition = response.headers.get("content-disposition");
+      return {
+        contentType: response.headers.get("content-type"),
+        fileName: contentDisposition
+          ? (/filename="([^"]+)"/.exec(contentDisposition)?.[1] ?? null)
+          : null,
+        bytes,
+      };
+    },
+
     async downloadComputerUseScreenshot(
       auth: ComputerUseAuth,
       commandId: string,
@@ -571,7 +754,12 @@ export function createComputerUseBddApi(context: TestContext) {
       };
     },
 
-    async claimNextComputerUseCommand(hostToken: string): Promise<
+    async claimNextComputerUseCommand(
+      hostToken: string,
+      supportedCapabilities: readonly string[] = [
+        ...DEFAULT_SUPPORTED_COMPUTER_USE_CAPABILITIES,
+      ],
+    ): Promise<
       | { readonly status: "idle" }
       | {
           readonly status: "command";
@@ -582,9 +770,7 @@ export function createComputerUseBddApi(context: TestContext) {
         hostCommandsClient().next({
           headers: hostHeaders(hostToken),
           body: {
-            supportedCapabilities: [
-              ...DEFAULT_SUPPORTED_COMPUTER_USE_CAPABILITIES,
-            ],
+            supportedCapabilities: [...supportedCapabilities],
           },
         }),
         [200],

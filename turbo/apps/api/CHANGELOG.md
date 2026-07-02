@@ -1,5 +1,101 @@
 # Changelog
 
+## [1.208.0](https://github.com/vm0-ai/vm0/compare/api-v1.207.1...api-v1.208.0) (2026-07-02)
+
+
+### Features
+
+* add Desktop Computer Use filesystem plugins ([#19814](https://github.com/vm0-ai/vm0/issues/19814)) ([062a44c](https://github.com/vm0-ai/vm0/commit/062a44c181536df868bc6b081bae0dd7a2d9d9d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.0
+    * @vm0/connectors bumped to 1.127.0
+    * @vm0/core bumped to 8.387.0
+    * @vm0/db bumped to 1.84.6
+
+## [1.207.1](https://github.com/vm0-ai/vm0/compare/api-v1.207.0...api-v1.207.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* preserve agent connector add semantics ([#19815](https://github.com/vm0-ai/vm0/issues/19815)) ([1dbc317](https://github.com/vm0-ai/vm0/commit/1dbc317f5b5aebe9dff79353accac2e3f8878d18))
+
+
+### Performance Improvements
+
+* add session history encoding telemetry ([#19812](https://github.com/vm0-ai/vm0/issues/19812)) ([7c0814a](https://github.com/vm0-ai/vm0/commit/7c0814af703af9ad89cd34dc0fd131db0916fec7))
+* cache system storage presigned urls ([#19777](https://github.com/vm0-ai/vm0/issues/19777)) ([62f66b9](https://github.com/vm0-ai/vm0/commit/62f66b9474c1bfbf19155790f1d2a839d332b331))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.2
+    * @vm0/core bumped to 8.386.2
+    * @vm0/db bumped to 1.84.5
+
+## [1.207.0](https://github.com/vm0-ai/vm0/compare/api-v1.206.0...api-v1.207.0) (2026-07-02)
+
+
+### Features
+
+* add birefnet and clarity-upscaler transform image models ([#19704](https://github.com/vm0-ai/vm0/issues/19704)) ([e62b2e0](https://github.com/vm0-ai/vm0/commit/e62b2e0a242af4e522cda1f440ee6a5e4ebdbbc5))
+
+
+### Bug Fixes
+
+* make generation templates one-shot instead of thread-sticky ([#19765](https://github.com/vm0-ai/vm0/issues/19765)) ([29c9633](https://github.com/vm0-ai/vm0/commit/29c9633272045d932aef71f80cae2d91008bf415))
+
+
+### Refactoring
+
+* use public connector catalog in platform ui ([#19663](https://github.com/vm0-ai/vm0/issues/19663)) ([85ca45f](https://github.com/vm0-ai/vm0/commit/85ca45f3a136a40245e9dd16a8e6eeffc06d9477))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.1
+    * @vm0/core bumped to 8.386.1
+    * @vm0/db bumped to 1.84.4
+
+## [1.206.0](https://github.com/vm0-ai/vm0/compare/api-v1.205.0...api-v1.206.0) (2026-07-02)
+
+
+### Features
+
+* add byteplus voice input stt ([#19510](https://github.com/vm0-ai/vm0/issues/19510)) ([42665c5](https://github.com/vm0-ai/vm0/commit/42665c5054ab243593122ab999f98829f301f6b7))
+* add Pexels as presentation image provider with Unsplash-preferred switch ([#19756](https://github.com/vm0-ai/vm0/issues/19756)) ([9222ea2](https://github.com/vm0-ai/vm0/commit/9222ea207ba7a4224eb6809d46ccac2b02ece38b))
+
+
+### Bug Fixes
+
+* **api:** suppress malformed follow-up suggestions ([#19762](https://github.com/vm0-ai/vm0/issues/19762)) ([70208d8](https://github.com/vm0-ai/vm0/commit/70208d8fe9d594ecfb07dc841041d5738b9fd2c3))
+* fire Google Ads signup conversion ([#19775](https://github.com/vm0-ai/vm0/issues/19775)) ([c1092a7](https://github.com/vm0-ai/vm0/commit/c1092a70ba713db885cb89475bb57b3d1883db95))
+* gate workflow trigger firing by fireability ([#19768](https://github.com/vm0-ai/vm0/issues/19768)) ([cfb7c81](https://github.com/vm0-ai/vm0/commit/cfb7c81110271d2f79db668a933c5546318e34c9))
+* restart full thinking typewriter lines ([#19771](https://github.com/vm0-ai/vm0/issues/19771)) ([063aac1](https://github.com/vm0-ai/vm0/commit/063aac15a9cf3c7ac5d48963583db987e980899d))
+
+
+### Performance Improvements
+
+* add compressed resume session history transport ([#19667](https://github.com/vm0-ai/vm0/issues/19667)) ([ee23c32](https://github.com/vm0-ai/vm0/commit/ee23c326ccf794228d2c4f9dd6d8844cd032fc49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.0
+    * @vm0/connectors bumped to 1.126.0
+    * @vm0/core bumped to 8.386.0
+    * @vm0/db bumped to 1.84.3
+
 ## [1.205.0](https://github.com/vm0-ai/vm0/compare/api-v1.204.2...api-v1.205.0) (2026-07-02)
 
 

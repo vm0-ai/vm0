@@ -78,11 +78,6 @@ import {
 } from "../../signals/utils.ts";
 import { sendMode$ } from "../../signals/send-mode.ts";
 import {
-  navigateToNewChat$,
-  toggleSidebarOff$,
-} from "../../signals/zero-page/zero-nav.ts";
-import { openAgentListDialog$ } from "../../signals/zero-page/zero-sidebar-state.ts";
-import {
   activeGoalDialogGoal$,
   activeGoalDialogThreadId$,
   closeChatThreadGoalDialog$,
@@ -156,6 +151,7 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   zeroDesktopDownloadSupportStatus$,
   ZERO_DESKTOP_INTEL_DOWNLOAD_URL,
+  ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL,
   ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import {
@@ -215,7 +211,9 @@ import {
   audioInputAvailable$,
   audioInputQuota$,
   sttRecording$,
+  sttStarting$,
   sttTranscribing$,
+  sttVoiceLevel$,
   startRecording$,
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
@@ -324,6 +322,7 @@ interface ZeroChatComposerProps {
     value: GenerationTemplateRequest | undefined;
     onChange: (value: GenerationTemplateRequest | undefined) => void;
   };
+  onCreateWorkflowPrompt?: () => void;
   computerUse?: {
     hosts: readonly ComposerComputerUseHost[];
     loading: boolean;
@@ -5395,6 +5394,49 @@ function ComposerTemplatePickerSlot({
   );
 }
 
+function CreateWorkflowPromptButton({
+  onCreateWorkflowPrompt,
+}: {
+  onCreateWorkflowPrompt: () => void;
+}) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9"
+            aria-label="Create workflow"
+            onClick={onCreateWorkflowPrompt}
+          >
+            <IconRoute size={18} stroke={1.5} aria-hidden="true" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          Create workflow
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ComposerWorkflowPromptSlot({
+  workflowAutomationEnabled,
+  onCreateWorkflowPrompt,
+}: {
+  workflowAutomationEnabled: boolean;
+  onCreateWorkflowPrompt: (() => void) | undefined;
+}) {
+  if (!workflowAutomationEnabled || !onCreateWorkflowPrompt) {
+    return null;
+  }
+  return (
+    <CreateWorkflowPromptButton
+      onCreateWorkflowPrompt={onCreateWorkflowPrompt}
+    />
+  );
+}
+
 function ConnectorTriggerIcons({
   connectors,
   hasComputerUse,
@@ -5852,13 +5894,17 @@ function ComputerUseDownloadDialog({
             So Zero can work in your browser and apps for you, even ones with no
             connector like LinkedIn or Reddit.
           </DialogDescription>
+          <p className="text-sm leading-5 text-muted-foreground">
+            {ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL}
+          </p>
         </DialogHeader>
         <div className="px-6 pb-6 pt-4">
           {showIntelDownload ? (
-            <div className="flex flex-col gap-2">
-              <Button asChild size="lg" className="w-full justify-start">
+            <div className="flex flex-col items-center gap-3">
+              <Button asChild size="lg" className="w-full">
                 <a
                   href={downloadUrl}
+                  aria-label="Download for Mac Apple Silicon"
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => {
@@ -5866,27 +5912,24 @@ function ComputerUseDownloadDialog({
                   }}
                 >
                   <IconDownload size={16} stroke={1.5} />
-                  Download for Apple Silicon
+                  Download for Mac (Apple Silicon)
                 </a>
               </Button>
-              <Button
-                asChild
-                size="lg"
-                variant="outline"
-                className="w-full justify-start"
-              >
+              <p className="text-sm text-muted-foreground">
+                On an Intel Mac?{" "}
                 <a
                   href={ZERO_DESKTOP_INTEL_DOWNLOAD_URL}
+                  aria-label="Download for Mac Intel"
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => {
                     onOpenChange(false);
                   }}
+                  className="font-medium text-primary hover:underline"
                 >
-                  <IconDownload size={16} stroke={1.5} />
-                  Download for Intel Mac
+                  Download here
                 </a>
-              </Button>
+              </p>
             </div>
           ) : downloadSupportStatus === "unsupported-intel-mac" ? (
             <Button type="button" size="lg" className="w-full" disabled>
@@ -5930,7 +5973,10 @@ function MicButton({
   const available = useLastResolved(audioInputAvailable$) ?? false;
   const quota = useLastResolved(audioInputQuota$) ?? null;
   const recording = useGet(sttRecording$);
+  const starting = useGet(sttStarting$);
   const transcribing = useGet(sttTranscribing$);
+  const voiceLevel = useGet(sttVoiceLevel$);
+  const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
   const startRec = useSet(startRecording$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
   const setTab = useSet(setActiveOrgManageTab$);
@@ -5943,7 +5989,7 @@ function MicButton({
   }
 
   const handleClick = () => {
-    if (transcribing) {
+    if (starting || transcribing) {
       return;
     }
     if (recording) {
@@ -5974,34 +6020,37 @@ function MicButton({
           <button
             type="button"
             className={cn(
-              "inline-flex shrink-0 items-center justify-center rounded-lg transition-colors",
-              recording || transcribing
-                ? "gap-[3px] h-9 w-[52px] bg-[#2E9E9F] text-white hover:bg-[#279394]"
-                : "h-9 w-9 text-muted-foreground hover:bg-accent hover:text-foreground",
+              "relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
+              recording || starting || transcribing
+                ? "bg-[#2E9E9F] text-white hover:bg-[#279394]"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             onClick={handleClick}
-            disabled={transcribing}
+            disabled={starting || transcribing}
             aria-label={
               recording
                 ? "Stop recording"
-                : transcribing
-                  ? "Transcribing"
-                  : "Voice input"
+                : starting
+                  ? "Starting voice input"
+                  : transcribing
+                    ? "Transcribing"
+                    : "Voice input"
             }
           >
-            {transcribing ? (
-              <>
-                <span className="mic-eq-dot" />
-                <span className="mic-eq-dot" />
-                <span className="mic-eq-dot" />
-              </>
+            {starting || transcribing ? (
+              <span className="mic-starting-spinner" aria-hidden="true" />
             ) : recording ? (
               <>
-                <span className="mic-eq-bar" />
-                <span className="mic-eq-bar" />
-                <IconMicrophone size={16} stroke={1.5} />
-                <span className="mic-eq-bar" />
-                <span className="mic-eq-bar" />
+                <span
+                  className="mic-volume-icon-meter"
+                  aria-hidden="true"
+                  style={
+                    {
+                      "--mic-volume-fill": voiceLevelFill,
+                    } as CSSProperties
+                  }
+                />
+                <IconMicrophone size={17} stroke={1.8} className="relative" />
               </>
             ) : (
               <IconMicrophone size={18} stroke={1.5} />
@@ -6011,9 +6060,11 @@ function MicButton({
         <TooltipContent side="top" className="text-xs">
           {recording
             ? "Stop recording"
-            : transcribing
-              ? "Transcribing..."
-              : "Voice input"}
+            : starting
+              ? "Opening microphone..."
+              : transcribing
+                ? "Transcribing..."
+                : "Voice input"}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -6438,6 +6489,7 @@ export function ZeroChatComposer({
   actionsLoading = false,
   modelPicker,
   templatePicker,
+  onCreateWorkflowPrompt,
   computerUse,
   modelPickerLoading = false,
   submitBlocker,
@@ -6744,9 +6796,6 @@ export function ZeroChatComposer({
   const sendModeLoadable = useLastLoadable(sendMode$);
   const sendMode =
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
-  const toggleSidebar = useSet(toggleSidebarOff$);
-  const newChat = useSet(navigateToNewChat$);
-  const openAgentListDialog = useSet(openAgentListDialog$);
 
   const handleKeyDown = (e: KeyboardEventLike) => {
     if (window.matchMedia("(pointer: coarse)").matches) {
@@ -6760,15 +6809,6 @@ export function ZeroChatComposer({
         ...(sendMode === "enter" ? { enter: send } : { "mod+enter": send }),
         escape: () => {
           (e.target as HTMLElement).blur();
-        },
-        "mod+b": () => {
-          toggleSidebar();
-        },
-        "mod+shift+o": () => {
-          detach(newChat(pageSignal), Reason.DomCallback);
-        },
-        "mod+shift+a": () => {
-          openAgentListDialog();
         },
       },
       e,
@@ -6911,6 +6951,10 @@ export function ZeroChatComposer({
                   <ComposerTemplatePickerSlot
                     picker={templatePicker}
                     workflowAutomationEnabled={workflowAutomationEnabled}
+                  />
+                  <ComposerWorkflowPromptSlot
+                    workflowAutomationEnabled={workflowAutomationEnabled}
+                    onCreateWorkflowPrompt={onCreateWorkflowPrompt}
                   />
                   <ConnectorsPopoverButton
                     agentConnectors={agentConnectors}

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.45.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.45.0...guest-agent-v0.45.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* expose runner session ids in diagnostics ([#19755](https://github.com/vm0-ai/vm0/issues/19755)) ([e4c62e1](https://github.com/vm0-ai/vm0/commit/e4c62e17ed7de8743f89dacf9edc62f7042307d6))
+
+
+### Performance Improvements
+
+* add compressed resume session history transport ([#19667](https://github.com/vm0-ai/vm0/issues/19667)) ([ee23c32](https://github.com/vm0-ai/vm0/commit/ee23c326ccf794228d2c4f9dd6d8844cd032fc49))
+
 ## [0.45.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.44.2...guest-agent-v0.45.0) (2026-07-02)
 
 

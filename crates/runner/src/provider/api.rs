@@ -34,13 +34,15 @@ use sandbox::SandboxId;
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody {
     telemetry: ClaimRequestTelemetry,
-    capabilities: [ClaimCapability; 1],
+    capabilities: [ClaimCapability; 2],
 }
 
 #[derive(Serialize)]
 enum ClaimCapability {
     #[serde(rename = "resumeSessionHistoryRef")]
     ResumeSessionHistoryRef,
+    #[serde(rename = "resumeSessionHistoryCompressedRef")]
+    ResumeSessionHistoryCompressedRef,
 }
 
 #[derive(Serialize)]
@@ -600,7 +602,10 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
                 .map(claim_telemetry_duration_ms),
             poll_reason: candidate.poll_reason().map(String::from),
         },
-        capabilities: [ClaimCapability::ResumeSessionHistoryRef],
+        capabilities: [
+            ClaimCapability::ResumeSessionHistoryRef,
+            ClaimCapability::ResumeSessionHistoryCompressedRef,
+        ],
     }
 }
 
@@ -780,6 +785,8 @@ fn is_static_json_field(field: &str) -> bool {
             | "deny"
             | "description"
             | "disallowedTools"
+            | "encodedSize"
+            | "encoding"
             | "encryptedSecrets"
             | "environment"
             | "experimentalProfile"
@@ -805,6 +812,7 @@ fn is_static_json_field(field: &str) -> bool {
             | "permissions"
             | "prompt"
             | "query"
+            | "rawSize"
             | "resumeSession"
             | "rules"
             | "runId"
@@ -1100,7 +1108,10 @@ mod tests {
         assert_eq!(body["telemetry"]["pollReason"], "deferred");
         assert_eq!(
             body["capabilities"],
-            serde_json::json!(["resumeSessionHistoryRef"])
+            serde_json::json!([
+                "resumeSessionHistoryRef",
+                "resumeSessionHistoryCompressedRef"
+            ])
         );
     }
 

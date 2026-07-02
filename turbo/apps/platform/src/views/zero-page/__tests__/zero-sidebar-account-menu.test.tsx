@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import {
@@ -356,6 +357,72 @@ describe("zero sidebar account menu", () => {
     await waitFor(() => {
       expect(within(panel).getByText("64%")).toBeInTheDocument();
       expect(within(panel).getByText("30%")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps loaded subscription usage visible while a menu refresh is pending", async () => {
+    mockAdminAccountSidebar();
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
+    });
+
+    let menu = await openAccountMenu();
+    let panel = await within(menu).findByTestId("account-menu-subscriptions");
+    expect(
+      within(panel).getByRole("heading", { name: "Codex" }),
+    ).toBeInTheDocument();
+    expect(within(panel).getByText("82%")).toBeInTheDocument();
+    expect(
+      within(panel).queryByRole("heading", { name: "Claude Code" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    const refreshReady = context.mocks.deferred<void>();
+    let refreshRequested = false;
+    context.mocks.api(
+      zeroPersonalModelProvidersMainContract.list,
+      async ({ respond }) => {
+        refreshRequested = true;
+        await refreshReady.promise;
+        return respond(200, { modelProviders: [] });
+      },
+    );
+
+    menu = await openAccountMenu();
+    panel = await within(menu).findByTestId("account-menu-subscriptions");
+
+    await waitFor(() => {
+      expect(refreshRequested).toBeTruthy();
+    });
+    expect(
+      within(panel).getByRole("heading", { name: "Codex" }),
+    ).toBeInTheDocument();
+    expect(within(panel).getByText("82%")).toBeInTheDocument();
+    expect(
+      within(panel).queryByRole("heading", { name: "Claude Code" }),
+    ).not.toBeInTheDocument();
+
+    refreshReady.resolve();
+
+    await waitFor(() => {
+      expect(
+        within(menu).queryByTestId("account-menu-subscriptions"),
+      ).not.toBeInTheDocument();
     });
   });
 

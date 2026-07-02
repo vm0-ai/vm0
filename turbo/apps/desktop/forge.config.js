@@ -5,6 +5,7 @@ const packageMetadata = require("./package.json");
 const desktopIdentities = require("./src/desktop-identities.json");
 
 const PRODUCTION_PLATFORM_HOSTNAME = "app.vm0.ai";
+const MINIMUM_MACOS_VERSION = "14.0";
 const DEFAULT_NOTARIZE_KEYCHAIN_PROFILE = "vm0-desktop-notary";
 const DEFAULT_NOTARIZE_KEYCHAIN = path.join(
   os.homedir(),
@@ -117,9 +118,13 @@ module.exports = {
     icon: path.join(__dirname, "assets", "icon"),
     extendInfo: {
       CFBundleIconFile: "icon.icns",
+      LSMinimumSystemVersion: MINIMUM_MACOS_VERSION,
     },
     asar: false,
-    extraResource: [path.join(__dirname, "native", "dist", "native")],
+    extraResource: [
+      path.join(__dirname, "native", "dist", "native"),
+      path.join(__dirname, "dist", "mcp"),
+    ],
     protocols: [
       {
         name: desktopIdentity.authProtocolName,
@@ -137,6 +142,7 @@ module.exports = {
       /^\/forge\.config\.js$/,
       /^\/tsconfig\.json$/,
       /^\/tsup\.electron\.config\.js$/,
+      /^\/tsup\.mcp-filesystem\.config\.js$/,
       /^\/vite\.renderer\.config\.ts$/,
       /^\/vitest\.config\.ts$/,
     ],

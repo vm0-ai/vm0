@@ -1,7 +1,6 @@
 import type {
   CSSProperties,
   FormEvent,
-  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   ReactNode,
@@ -57,11 +56,9 @@ import {
 } from "@tabler/icons-react";
 import {
   cn,
-  isEditableTarget,
-  matchShortcut,
-  getShortcutParts,
   Button,
   Skeleton,
+  getShortcutParts,
   DropdownMenu as UiDropdownMenu,
   DropdownMenuContent as UiDropdownMenuContent,
   DropdownMenuItem as UiDropdownMenuItem,
@@ -116,7 +113,7 @@ import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { Markdown } from "../components/markdown.tsx";
-import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import {
   captureRecommendedFollowupSelected,
   captureRecommendedFollowupsShown,
@@ -271,14 +268,9 @@ import {
   type PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
 import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
-import {
-  openRenameChatThreadDialogFromThreadData$,
-  reloadChatThreadDataForId$,
-} from "../../signals/chat-page/chat-thread-rename.ts";
+import { reloadChatThreadDataForId$ } from "../../signals/chat-page/chat-thread-rename.ts";
 import {
   applyChatThreadEmoji,
-  chatThreadEmojiShortcutIndex,
-  isChatThreadEmojiClearShortcut,
   removeChatThreadEmoji,
   CHAT_THREAD_EMOJI_OPTIONS,
 } from "../../signals/chat-page/chat-thread-title.ts";
@@ -343,12 +335,10 @@ import {
   currentRightThread$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
 import {
-  navigateToAdjacentThread$,
-  scrollCurrentThread$,
+  focusChatThreadContainer$,
   setChatKeyboardScrollRoot$,
   setMainChatThreadKeyboardFocusRef$,
 } from "../../signals/chat-page/chat-keyboard.ts";
-import { sidebarChatThreads$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 
@@ -365,9 +355,9 @@ const CHAT_SHORTCUT_SECTIONS = [
       { key: "mod+shift+o", label: "New chat" },
       { key: "mod+shift+a", label: "Open agent list" },
       { key: "f2", label: "Rename chat" },
-      { key: "shift+f2", label: "Change emoji" },
-      { key: "shift+1", label: "Set emoji (shift+1-9)" },
-      { key: "shift+0", label: "Clear emoji" },
+      { key: "shift+f2", label: "Change icon" },
+      { key: "shift+1", label: "Set icon (shift+1-9)" },
+      { key: "shift+0", label: "Clear icon" },
     ],
   },
   {
@@ -1109,15 +1099,6 @@ function GithubPrTrackingDock({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function focusChatThreadContainer(threadId: string) {
-  const threadContainer = Array.from(
-    document.querySelectorAll<HTMLElement>("[data-chat-thread-container-id]"),
-  ).find((candidate) => {
-    return candidate.dataset.chatThreadContainerId === threadId;
-  });
-  threadContainer?.focus({ preventScroll: true });
-}
-
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const threadDataLoadable = useLastLoadable(thread.threadData$);
   const threadTitleEmoji = useLastResolved(thread.threadTitleEmoji$);
@@ -1183,6 +1164,7 @@ function useChatThreadEmojiMenuActions({
   const closeChatThreadEmojiMenu = useSet(closeChatThreadEmojiMenu$);
   const renameChatThread = useSet(renameChatThread$);
   const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
+  const focusChatThreadContainer = useSet(focusChatThreadContainer$);
   const pageSignal = useGet(pageSignal$);
   const open = emojiMenuThreadId === threadId;
 
@@ -1272,7 +1254,7 @@ function ChatThreadEmojiMenuButton({
             <UiDropdownMenuTrigger asChild>
               <button
                 type="button"
-                aria-label="Change emoji"
+                aria-label="Change icon"
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 {emoji && (
@@ -1287,64 +1269,60 @@ function ChatThreadEmojiMenuButton({
         </Tooltip>
         <UiDropdownMenuContent
           align="start"
-          className="w-40"
+          className="w-48"
           onCloseAutoFocus={(event) => {
             event.preventDefault();
           }}
-          onKeyDown={(event) => {
-            const index = chatThreadEmojiShortcutIndex(event);
-            if (index !== null) {
-              event.preventDefault();
-              const option = CHAT_THREAD_EMOJI_OPTIONS[index];
-              if (option) {
-                selectEmoji(option.emoji);
-              }
-              return;
-            }
-            if (isChatThreadEmojiClearShortcut(event)) {
-              event.preventDefault();
-              clearEmoji();
-            }
-          }}
         >
           {CHAT_THREAD_EMOJI_OPTIONS.map((option, index) => {
+            const shortcut = `shift+${index + 1}`;
             return (
               <UiDropdownMenuItem
                 key={option.emoji}
-                aria-label={`${option.label} ${option.emoji}`}
+                aria-label={`${option.label} icon Shift ${index + 1}`}
+                className="justify-between gap-4"
                 onSelect={() => {
                   selectEmoji(option.emoji);
                 }}
               >
-                <span className="mr-2 text-base leading-none" aria-hidden>
+                <span className="text-base leading-none" aria-hidden>
                   {option.emoji}
                 </span>
-                <span>{option.label}</span>
-                <span className="ml-auto flex items-center gap-0.5 text-xs text-muted-foreground">
-                  {getShortcutParts(`shift+${index + 1}`).map((part) => {
-                    return <span key={part}>{part}</span>;
-                  })}
-                </span>
+                <ChatThreadIconShortcutHint shortcut={shortcut} />
               </UiDropdownMenuItem>
             );
           })}
           <UiDropdownMenuSeparator />
           <UiDropdownMenuItem
-            aria-label="Clear emoji"
+            aria-label="Clear icon Shift 0"
+            className="justify-between gap-4"
             onSelect={() => {
               clearEmoji();
             }}
           >
-            <span>Clear emoji</span>
-            <span className="ml-auto flex items-center gap-0.5 text-xs text-muted-foreground">
-              {getShortcutParts("shift+0").map((part) => {
-                return <span key={part}>{part}</span>;
-              })}
-            </span>
+            <span className="whitespace-nowrap">Clear icon</span>
+            <ChatThreadIconShortcutHint shortcut="shift+0" />
           </UiDropdownMenuItem>
         </UiDropdownMenuContent>
       </UiDropdownMenu>
     </TooltipProvider>
+  );
+}
+
+function ChatThreadIconShortcutHint({ shortcut }: { shortcut: string }) {
+  return (
+    <span aria-hidden="true" className="ml-4 flex shrink-0 items-center gap-1">
+      {getShortcutParts(shortcut).map((part) => {
+        return (
+          <kbd
+            key={part}
+            className='inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-md bg-background px-1.5 text-[11px] font-medium text-foreground shadow-[inset_0_-1px_0_hsl(var(--border)),0_0_0_1px_hsl(var(--border))] font-["-apple-system",BlinkMacSystemFont,"Segoe_UI",system-ui,sans-serif]'
+          >
+            {part}
+          </kbd>
+        );
+      })}
+    </span>
   );
 }
 
@@ -3055,145 +3033,31 @@ function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
 
 function ChatThread({
   thread,
-  onKeyDown,
   onFocusFallbackRef,
 }: {
   thread: ChatThreadSignals;
-  onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
-  onFocusFallbackRef?: (el: HTMLElement | null) => void;
+  onFocusFallbackRef?: (el: HTMLElement | null) => (() => void) | undefined;
 }) {
-  const openRenameDialog = useOpenCurrentChatThreadRenameDialog(thread);
-  const openEmojiMenu = useOpenCurrentChatThreadEmojiMenu(thread);
-  const setThreadEmoji = useSetCurrentChatThreadEmoji(thread);
-  const clearThreadEmoji = useClearCurrentChatThreadEmoji(thread);
-  const features = useLastResolved(featureSwitch$);
-  const chatThreadEmojiEnabled =
-    features?.[FeatureSwitchKey.ChatThreadEmoji] ?? false;
-  const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (event.defaultPrevented) {
-      return;
-    }
-    if (chatThreadEmojiEnabled && !isEditableTarget(event.target)) {
-      const emojiOptionIndex = chatThreadEmojiShortcutIndex(event);
-      if (emojiOptionIndex !== null) {
-        const option = CHAT_THREAD_EMOJI_OPTIONS[emojiOptionIndex];
-        if (option) {
-          event.preventDefault();
-          setThreadEmoji(option.emoji);
-          return;
-        }
-      }
-      if (isChatThreadEmojiClearShortcut(event)) {
-        event.preventDefault();
-        clearThreadEmoji();
-        return;
-      }
-    }
-    if (
-      chatThreadEmojiEnabled &&
-      !isEditableTarget(event.target) &&
-      matchShortcut("shift+f2", event)
-    ) {
-      event.preventDefault();
-      openEmojiMenu();
-      return;
-    }
-    if (matchShortcut("f2", event)) {
-      event.preventDefault();
-      openRenameDialog();
-      return;
-    }
-    onKeyDown(event);
-  };
+  const setContainerRef = useSet(thread.setContainerRef$);
 
   return (
     <section
       aria-label="Chat thread"
       className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
       data-chat-thread-container-id={thread.threadId}
-      onKeyDown={handleKeyDown}
-      ref={onFocusFallbackRef}
+      ref={(el) => {
+        const cleanupContainerRef = setContainerRef(el);
+        const cleanupFocusFallbackRef = onFocusFallbackRef?.(el);
+        return () => {
+          cleanupFocusFallbackRef?.();
+          cleanupContainerRef?.();
+        };
+      }}
       tabIndex={-1}
     >
       <ChatThreadContent thread={thread} />
     </section>
   );
-}
-
-function useOpenCurrentChatThreadRenameDialog(thread: ChatThreadSignals) {
-  const openRenameChatThreadDialog = useSet(
-    openRenameChatThreadDialogFromThreadData$,
-  );
-  const pageSignal = useGet(pageSignal$);
-  return () => {
-    detach(
-      openRenameChatThreadDialog(thread.threadId, pageSignal),
-      Reason.DomCallback,
-    );
-  };
-}
-
-function useOpenCurrentChatThreadEmojiMenu(thread: ChatThreadSignals) {
-  const openChatThreadEmojiMenu = useSet(openChatThreadEmojiMenu$);
-  const title = useCurrentChatThreadDialogTitle(thread);
-  return () => {
-    openChatThreadEmojiMenu({
-      threadId: thread.threadId,
-      title,
-    });
-  };
-}
-
-function useSetCurrentChatThreadEmoji(thread: ChatThreadSignals) {
-  const renameChatThread = useSet(renameChatThread$);
-  const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
-  const title = useCurrentChatThreadDialogTitle(thread);
-  const pageSignal = useGet(pageSignal$);
-  return (emoji: string) => {
-    detach(
-      (async () => {
-        await renameChatThread(
-          {
-            threadId: thread.threadId,
-            title: applyChatThreadEmoji(title, emoji),
-          },
-          pageSignal,
-        );
-        reloadChatThreadDataForId(thread.threadId);
-      })(),
-      Reason.DomCallback,
-    );
-  };
-}
-
-function useClearCurrentChatThreadEmoji(thread: ChatThreadSignals) {
-  const renameChatThread = useSet(renameChatThread$);
-  const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
-  const title = useCurrentChatThreadDialogTitle(thread);
-  const pageSignal = useGet(pageSignal$);
-  return () => {
-    const nextTitle = removeChatThreadEmoji(title);
-    if (!nextTitle) {
-      return;
-    }
-    detach(
-      (async () => {
-        await renameChatThread(
-          { threadId: thread.threadId, title: nextTitle },
-          pageSignal,
-        );
-        reloadChatThreadDataForId(thread.threadId);
-      })(),
-      Reason.DomCallback,
-    );
-  };
-}
-
-function useCurrentChatThreadDialogTitle(
-  thread: ChatThreadSignals,
-): string | null | undefined {
-  const threadData = useLastResolved(thread.threadData$);
-  return threadData?.title;
 }
 
 // Drag the divider to resize the artifact preview against the chat thread.
@@ -3295,12 +3159,6 @@ function ChatThreadArea({
   const setMainThreadKeyboardFocusRef = useSet(
     setMainChatThreadKeyboardFocusRef$,
   );
-  // Lifted from ChatThread so the keyboard handler's sidebarChatThreads$
-  // snapshot survives keyed ChatThread remounts during thread navigation.
-  // Otherwise a second mod+shift+arrow press lands on a freshly mounted
-  // ChatThread whose useLastResolved has no cached value yet, leading to an
-  // empty threads list and a silently dropped keypress.
-  const makeChatThreadKeyDown = useChatThreadKeyDownFactory();
 
   return (
     <div
@@ -3317,18 +3175,13 @@ function ChatThreadArea({
             <ChatThread
               key={leftThread.threadId}
               thread={leftThread}
-              onKeyDown={makeChatThreadKeyDown(leftThread)}
               onFocusFallbackRef={setMainThreadKeyboardFocusRef}
             />
           )}
           {rightThread && (
             <>
               <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-              <ChatThread
-                key={rightThread.threadId}
-                thread={rightThread}
-                onKeyDown={makeChatThreadKeyDown(rightThread)}
-              />
+              <ChatThread key={rightThread.threadId} thread={rightThread} />
             </>
           )}
         </>
@@ -4345,67 +4198,6 @@ function ChatThreadSkeletonOverlay({
   );
 }
 
-// Lifted to ZeroChatThreadPage so the useLastResolved(sidebarChatThreads$)
-// snapshot survives keyed ChatThread remounts during thread navigation.
-function useChatThreadKeyDownFactory() {
-  const pageSignal = useGet(pageSignal$);
-  const scrollCurrentThread = useSet(scrollCurrentThread$);
-  const navigateToAdjacentThread = useSet(navigateToAdjacentThread$);
-  const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
-  // Snapshot the sidebar list on the read side so the keyboard command stays
-  // sync — awaiting `sidebarChatThreads$` inside the command would block the
-  // keypress on whatever async work that signal is currently doing
-  // (e.g. an IDB miss + remote refetch).
-  const sidebarThreads = useLastResolved(sidebarChatThreads$) ?? [];
-
-  return (thread: ChatThreadSignals) => {
-    return onDomEventFn(async (event: ReactKeyboardEvent<HTMLElement>) => {
-      if (event.defaultPrevented) {
-        return;
-      }
-      if (matchShortcut("mod+arrowup", event)) {
-        event.preventDefault();
-        scrollCurrentThread(thread, "top");
-        return;
-      }
-      if (matchShortcut("mod+arrowdown", event)) {
-        event.preventDefault();
-        scrollCurrentThread(thread, "bottom");
-        return;
-      }
-      if (matchShortcut("mod+shift+arrowup", event)) {
-        event.preventDefault();
-        await navigateToAdjacentThread(
-          {
-            currentThreadId: thread.threadId,
-            direction: "prev",
-            threads: sidebarThreads,
-          },
-          pageSignal,
-        );
-        return;
-      }
-      if (matchShortcut("mod+shift+arrowdown", event)) {
-        event.preventDefault();
-        await navigateToAdjacentThread(
-          {
-            currentThreadId: thread.threadId,
-            direction: "next",
-            threads: sidebarThreads,
-          },
-          pageSignal,
-        );
-        return;
-      }
-
-      if (matchShortcut("shift+/", event) && !isEditableTarget(event.target)) {
-        event.preventDefault();
-        setShortcutHelpOpen(true);
-      }
-    });
-  };
-}
-
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
   const renderedGroupsLoadable = useLastLoadable(
@@ -5058,6 +4850,96 @@ function useChatThreadComposerFeedback(
   };
 }
 
+function useChatThreadComposerWorkflowPrompt({
+  thread,
+  input,
+  pageSignal,
+}: {
+  thread: ChatThreadSignals;
+  input: string;
+  pageSignal: AbortSignal;
+}): {
+  onCreateWorkflowPrompt: (() => void) | undefined;
+  replaceDraftDialogOpen: boolean;
+  onConfirmReplaceDraft: () => void;
+  onReplaceDialogOpenChange: (open: boolean) => void;
+} {
+  const attachments = useGet(thread.draft.attachments$);
+  const setInput = useSet(thread.draft.setInput$);
+  const clearDraft = useSet(thread.draft.clear$);
+  const queueDraftSync = useSet(thread.queueDraftSync$);
+  const focusComposer = useSet(thread.focusInput$);
+  const features = useGet(featureSwitch$);
+  const replaceDraftTarget = useGet(replaceWorkflowPromptDraftTarget$);
+  const setReplaceDraftTarget = useSet(setReplaceWorkflowPromptDraftTarget$);
+  const workflowAutomationEnabled =
+    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
+  const workflowPromptDraftTarget = `composer:${thread.threadId}`;
+  const hasComposerDraft = input.trim().length > 0 || attachments.length > 0;
+  const replaceDraftDialogOpen =
+    replaceDraftTarget === workflowPromptDraftTarget;
+
+  const applyWorkflowPrompt = () => {
+    clearDraft();
+    setInput(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
+    detach(queueDraftSync(pageSignal), Reason.DomCallback);
+    focusComposer();
+  };
+
+  const handleCreateWorkflowPrompt = () => {
+    if (hasComposerDraft) {
+      setReplaceDraftTarget(workflowPromptDraftTarget);
+      return;
+    }
+    applyWorkflowPrompt();
+  };
+
+  const handleConfirmReplaceDraft = () => {
+    setReplaceDraftTarget(null);
+    applyWorkflowPrompt();
+  };
+
+  const handleReplaceDialogOpenChange = (open: boolean) => {
+    setReplaceDraftTarget(open ? workflowPromptDraftTarget : null);
+  };
+
+  return {
+    onCreateWorkflowPrompt: workflowAutomationEnabled
+      ? handleCreateWorkflowPrompt
+      : undefined,
+    replaceDraftDialogOpen,
+    onConfirmReplaceDraft: handleConfirmReplaceDraft,
+    onReplaceDialogOpenChange: handleReplaceDialogOpenChange,
+  };
+}
+
+function resolveChatThreadComposerActivity({
+  groups,
+  sending,
+}: {
+  groups: readonly GroupedChatMessageGroup[];
+  sending: boolean;
+}): {
+  composerSending: boolean;
+  queueWhileSending: boolean;
+} {
+  const lastGroup = groups[groups.length - 1];
+  const lastIsAssistant = lastGroup?.role === "assistant";
+  const lastAssistantMessage =
+    lastIsAssistant && lastGroup
+      ? lastGroup.messages[lastGroup.messages.length - 1]
+      : undefined;
+  const lastAssistantCancelled =
+    isCancelledAssistantMessage(lastAssistantMessage);
+  const composerSending = sending && !lastAssistantCancelled;
+  return {
+    composerSending,
+    queueWhileSending: canQueueMessage({
+      sending: composerSending,
+    }),
+  };
+}
+
 function ChatThreadComposer({
   thread,
   autoFocus: autoFocusProp = true,
@@ -5113,18 +4995,11 @@ function ChatThreadComposer({
     });
   const sending = (allFinishedResolved && !allFinished) || sendLoading;
   const skeletonVisible = useGet(thread.skeletonVisible$);
-  const lastGroup = groups[groups.length - 1];
-  const lastIsAssistant = lastGroup?.role === "assistant";
-  const lastAssistantMessage =
-    lastIsAssistant && lastGroup
-      ? lastGroup.messages[lastGroup.messages.length - 1]
-      : undefined;
-  const lastAssistantCancelled =
-    isCancelledAssistantMessage(lastAssistantMessage);
-  const composerSending = sending && !lastAssistantCancelled;
-  const queueWhileSending = canQueueMessage({
-    sending: composerSending,
-  });
+  const { composerSending, queueWhileSending } =
+    resolveChatThreadComposerActivity({
+      groups,
+      sending,
+    });
 
   const handleInputChange = (text: string) => {
     setInput(text);
@@ -5136,6 +5011,11 @@ function ChatThreadComposer({
   };
 
   const feedback = useChatThreadComposerFeedback(thread, modelSelection);
+  const workflowPrompt = useChatThreadComposerWorkflowPrompt({
+    thread,
+    input,
+    pageSignal,
+  });
 
   return (
     <footer
@@ -5176,6 +5056,7 @@ function ChatThreadComposer({
             actionsLoading={skeletonVisible}
             modelPicker={modelPicker}
             templatePicker={templatePicker}
+            onCreateWorkflowPrompt={workflowPrompt.onCreateWorkflowPrompt}
             computerUse={computerUse}
             modelPickerLoading={modelPickerLoading}
             submitBlocker={submitBlockerProps}
@@ -5184,6 +5065,11 @@ function ChatThreadComposer({
             activeGoal={activeGoal}
             onCancelActiveGoal={onCancelActiveGoal}
             feedback={feedback}
+          />
+          <ReplaceComposerDraftDialog
+            open={workflowPrompt.replaceDraftDialogOpen}
+            onOpenChange={workflowPrompt.onReplaceDialogOpenChange}
+            onConfirm={workflowPrompt.onConfirmReplaceDraft}
           />
           <PersonalClaudeCodeDeviceAuthDialog />
           <PersonalCodexDeviceAuthDialog />
@@ -7809,16 +7695,12 @@ function PagedGroupPrimaryActions({
   usage,
   copied,
   onCopy,
-  workflowAutomationEnabled,
-  onCreateWorkflow,
 }: {
   firstRunId: string | undefined;
   hasContent: boolean;
   usage: ChatMessageUsagePayload | undefined;
   copied: boolean;
   onCopy: () => void;
-  workflowAutomationEnabled: boolean;
-  onCreateWorkflow: () => void;
 }) {
   return (
     <div className="flex items-center gap-1" data-testid="chat-message-actions">
@@ -7861,23 +7743,6 @@ function PagedGroupPrimaryActions({
             <TooltipContent side="bottom">
               {copied ? "Copied!" : "Copy message"}
             </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
-      {workflowAutomationEnabled && (
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={onCreateWorkflow}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                aria-label="Create workflow"
-              >
-                <IconRoute size={18} stroke={1.5} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Create workflow</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       )}
@@ -7937,26 +7802,12 @@ function PagedGroupActions({
   const copiedId = useGet(thread.copiedMessageId$);
   const copied = copiedId === group.beginMessageId;
   const copyMessage = useSet(thread.copyMessage$);
-  const composerInput = useGet(thread.draft.input$);
-  const composerAttachments = useGet(thread.draft.attachments$);
-  const setComposerInput = useSet(thread.draft.setInput$);
-  const clearComposerDraft = useSet(thread.draft.clear$);
-  const queueDraftSync = useSet(thread.queueDraftSync$);
-  const focusComposer = useSet(thread.focusInput$);
-  const features = useGet(featureSwitch$);
-  const replaceDraftTarget = useGet(replaceWorkflowPromptDraftTarget$);
-  const setReplaceDraftTarget = useSet(setReplaceWorkflowPromptDraftTarget$);
 
   const firstRunId = group.messages.find((m) => {
     return m.runId;
   })?.runId;
   const usage = group.usage;
   const hasContent = content.length > 0;
-  const workflowAutomationEnabled =
-    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
-  const hasComposerDraft =
-    composerInput.trim().length > 0 || composerAttachments.length > 0;
-  const replaceDraftDialogOpen = replaceDraftTarget === group.beginMessageId;
 
   if (group.role === "user") {
     return null;
@@ -7976,51 +7827,18 @@ function PagedGroupActions({
     );
   };
 
-  const applyWorkflowPrompt = () => {
-    clearComposerDraft();
-    setComposerInput(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
-    detach(queueDraftSync(pageSignal), Reason.DomCallback);
-    focusComposer();
-  };
-
-  const handleCreateWorkflow = () => {
-    if (hasComposerDraft) {
-      setReplaceDraftTarget(group.beginMessageId);
-      return;
-    }
-    applyWorkflowPrompt();
-  };
-
-  const handleConfirmReplaceDraft = () => {
-    setReplaceDraftTarget(null);
-    applyWorkflowPrompt();
-  };
-
-  const handleReplaceDialogOpenChange = (open: boolean) => {
-    setReplaceDraftTarget(open ? group.beginMessageId : null);
-  };
-
   return (
-    <>
-      <div className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
-        <div className="hidden @[900px]:block" />
-        <div className="flex items-center justify-between pt-2 pb-1 gap-2 -ml-1">
-          <PagedGroupPrimaryActions
-            firstRunId={firstRunId}
-            hasContent={hasContent}
-            usage={usage}
-            copied={copied}
-            onCopy={handleCopy}
-            workflowAutomationEnabled={workflowAutomationEnabled}
-            onCreateWorkflow={handleCreateWorkflow}
-          />
-        </div>
+    <div className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
+      <div className="hidden @[900px]:block" />
+      <div className="flex items-center justify-between pt-2 pb-1 gap-2 -ml-1">
+        <PagedGroupPrimaryActions
+          firstRunId={firstRunId}
+          hasContent={hasContent}
+          usage={usage}
+          copied={copied}
+          onCopy={handleCopy}
+        />
       </div>
-      <ReplaceComposerDraftDialog
-        open={replaceDraftDialogOpen}
-        onOpenChange={handleReplaceDialogOpenChange}
-        onConfirm={handleConfirmReplaceDraft}
-      />
-    </>
+    </div>
   );
 }

@@ -97,6 +97,7 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { blobs } from "@vm0/db/schema/blob";
 import { conversations } from "@vm0/db/schema/conversation";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -179,6 +180,10 @@ import {
   loadAgentConnectorScope,
   loadZeroBackedComposeAgent,
 } from "./agent-connector-scope.service";
+import {
+  normalizeSessionHistoryBlobEncoding,
+  SESSION_HISTORY_ENCODING_GZIP,
+} from "./session-history-blobs";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
@@ -2991,6 +2996,31 @@ async function buildCustomConnectorRuntimeContext(args: {
       featureSwitchContext: args.featureSwitchContext,
     });
     const apis: ExpandedFirewallConfig["apis"] = [];
+    const headers = Object.fromEntries(
+      row.connector.headerInjections.flatMap((header) => {
+        const rendered = renderTemplateForRuntime({
+          template: header.valueTemplate,
+          connectorId: row.connector.id,
+          fields: row.connector.fields,
+          configuredValueMarkers: valueMarkers,
+        });
+        return rendered === null ? [] : [[header.name, rendered]];
+      }),
+    );
+    const query = Object.fromEntries(
+      row.connector.queryInjections.flatMap((queryInjection) => {
+        const rendered = renderTemplateForRuntime({
+          template: queryInjection.valueTemplate,
+          connectorId: row.connector.id,
+          fields: row.connector.fields,
+          configuredValueMarkers: valueMarkers,
+        });
+        return rendered === null ? [] : [[queryInjection.name, rendered]];
+      }),
+    );
+    if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {
+      continue;
+    }
     for (const prefixTemplate of row.connector.prefixTemplates) {
       const renderedPrefix = renderCustomConnectorRuntimePrefix({
         template: prefixTemplate,
@@ -3002,30 +3032,8 @@ async function buildCustomConnectorRuntimeContext(args: {
       apis.push({
         base: renderedPrefix,
         auth: {
-          headers: Object.fromEntries(
-            row.connector.headerInjections.map((header) => {
-              return [
-                header.name,
-                renderTemplateForRuntime({
-                  template: header.valueTemplate,
-                  connectorId: row.connector.id,
-                  fields: row.connector.fields,
-                }),
-              ];
-            }),
-          ),
-          query: Object.fromEntries(
-            row.connector.queryInjections.map((query) => {
-              return [
-                query.name,
-                renderTemplateForRuntime({
-                  template: query.valueTemplate,
-                  connectorId: row.connector.id,
-                  fields: row.connector.fields,
-                }),
-              ];
-            }),
-          ),
+          headers,
+          query,
         },
       });
     }
@@ -3983,8 +3991,13 @@ function loadResumeSession(
           cliAgentSessionId: conversations.cliAgentSessionId,
           cliAgentSessionHistory: conversations.cliAgentSessionHistory,
           cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
+          sessionHistoryBlobEncoding: blobs.encoding,
         })
         .from(conversations)
+        .leftJoin(
+          blobs,
+          eq(conversations.cliAgentSessionHistoryHash, blobs.hash),
+        )
         .where(eq(conversations.id, conversationId))
         .limit(1);
 
@@ -3999,12 +4012,22 @@ function loadResumeSession(
         (): Promise<StoredExecutionContext["resumeSession"] | null> => {
           const cliAgentSessionId = conversation.cliAgentSessionId;
           const hash = conversation.cliAgentSessionHistoryHash;
+          let encoding: typeof SESSION_HISTORY_ENCODING_GZIP | undefined;
+          if (conversation.sessionHistoryBlobEncoding !== null) {
+            const parsedEncoding = normalizeSessionHistoryBlobEncoding(
+              conversation.sessionHistoryBlobEncoding,
+            );
+            if (parsedEncoding === SESSION_HISTORY_ENCODING_GZIP) {
+              encoding = parsedEncoding;
+            }
+          }
           if (hash) {
             return Promise.resolve({
               sessionId: cliAgentSessionId,
               historyRef: {
                 kind: "blob",
                 hash,
+                ...(encoding ? { encoding } : {}),
               },
             });
           }

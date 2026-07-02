@@ -1,15 +1,13 @@
 import { command } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  zeroUserConnectorsContract,
-  type UserConnectorEnabledTypes,
-} from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { connectors$, reloadConnectors$ } from "../external/connectors.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { settle } from "../utils.ts";
+import { reloadAgentConnectorAuthorizations$ } from "../zero-page/agent-connector-authorizations.ts";
+import { settle, withCleanup } from "../utils.ts";
 
 type ArtifactGoogleDriveSyncParams = {
   readonly agentId?: string;
@@ -66,57 +64,68 @@ async function syncArtifactFilesToGoogleDrive(
     readonly signal?: AbortSignal;
   },
 ): Promise<boolean> {
+  params.signal?.throwIfAborted();
   if (params.files.length === 0) {
     toast.error("No artifacts to sync");
     return false;
   }
 
   const toastId = toast.loading(googleDriveSyncLoadingMessage(params.files));
-  const client = params.createClient(chatThreadArtifactsContract);
-  const results: ArtifactGoogleDriveSyncResult[] = [];
-  for (const file of params.files) {
+  const sync = async (): Promise<boolean> => {
+    const client = params.createClient(chatThreadArtifactsContract);
+    const results: ArtifactGoogleDriveSyncResult[] = [];
+    for (const file of params.files) {
+      params.signal?.throwIfAborted();
+      const settled = await settle(
+        accept(
+          client.syncGoogleDrive({
+            params: { threadId: params.threadId },
+            body: {
+              runId: file.runId,
+              fileId: file.fileId,
+            },
+            fetchOptions: params.signal ? { signal: params.signal } : undefined,
+          }),
+          [200],
+          { toast: false },
+        ),
+        params.signal,
+      );
+      const result: ArtifactGoogleDriveSyncResult = settled.ok
+        ? { ok: true }
+        : {
+            ok: false,
+            message: googleDriveSyncErrorMessage(settled.error),
+          };
+      results.push(result);
+    }
     params.signal?.throwIfAborted();
-    const settled = await settle(
-      accept(
-        client.syncGoogleDrive({
-          params: { threadId: params.threadId },
-          body: {
-            runId: file.runId,
-            fileId: file.fileId,
-          },
-          fetchOptions: params.signal ? { signal: params.signal } : undefined,
-        }),
-        [200],
-        { toast: false },
-      ),
+    const syncedCount = results.filter((result) => {
+      return result.ok;
+    }).length;
+
+    if (syncedCount === params.files.length) {
+      toast.success(googleDriveSyncSuccessMessage(params.files.length), {
+        id: toastId,
+      });
+      return true;
+    }
+
+    const firstFailure = results.find(isArtifactGoogleDriveSyncFailure);
+    toast.error(
+      syncedCount > 0
+        ? `Synced ${syncedCount} of ${params.files.length} files to Google Drive`
+        : (firstFailure?.message ?? "Failed to sync to Google Drive"),
+      { id: toastId },
     );
-    const result: ArtifactGoogleDriveSyncResult = settled.ok
-      ? { ok: true }
-      : {
-          ok: false,
-          message: googleDriveSyncErrorMessage(settled.error),
-        };
-    results.push(result);
-  }
-  const syncedCount = results.filter((result) => {
-    return result.ok;
-  }).length;
+    return syncedCount > 0;
+  };
 
-  if (syncedCount === params.files.length) {
-    toast.success(googleDriveSyncSuccessMessage(params.files.length), {
-      id: toastId,
-    });
-    return true;
-  }
-
-  const firstFailure = results.find(isArtifactGoogleDriveSyncFailure);
-  toast.error(
-    syncedCount > 0
-      ? `Synced ${syncedCount} of ${params.files.length} files to Google Drive`
-      : (firstFailure?.message ?? "Failed to sync to Google Drive"),
-    { id: toastId },
-  );
-  return syncedCount > 0;
+  return await withCleanup(sync(), () => {
+    if (params.signal?.aborted) {
+      toast.dismiss(toastId);
+    }
+  });
 }
 
 export async function syncArtifactFileToGoogleDrive(
@@ -145,23 +154,10 @@ async function authorizeGoogleDriveForAgent(params: {
   readonly signal: AbortSignal;
 }): Promise<void> {
   const client = params.createClient(zeroUserConnectorsContract);
-  const current = (await accept(
-    client.get({
-      params: { id: params.agentId },
-      fetchOptions: { signal: params.signal },
-    }),
-    [200],
-  )) as { body: UserConnectorEnabledTypes };
-  params.signal.throwIfAborted();
-
-  if (current.body.enabledTypes.includes("google-drive")) {
-    return;
-  }
-
   await accept(
     client.update({
       params: { id: params.agentId },
-      body: { enabledTypes: [...current.body.enabledTypes, "google-drive"] },
+      body: { enabledTypes: ["google-drive"], operation: "add" },
       fetchOptions: { signal: params.signal },
     }),
     [200],
@@ -191,11 +187,16 @@ export const waitForGoogleDriveAndSyncArtifacts$ = command(
         }
 
         const createClient = get(zeroClient$);
-        await authorizeGoogleDriveForAgent({
-          agentId: params.agentId,
-          createClient,
-          signal: sig,
-        });
+        await withCleanup(
+          authorizeGoogleDriveForAgent({
+            agentId: params.agentId,
+            createClient,
+            signal: sig,
+          }),
+          () => {
+            set(reloadAgentConnectorAuthorizations$);
+          },
+        );
         sig.throwIfAborted();
 
         await syncArtifactFilesToGoogleDrive({

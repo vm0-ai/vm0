@@ -19,6 +19,7 @@ import {
   visibleComputerUseHosts,
   ZERO_DESKTOP_DOWNLOAD_URL,
   ZERO_DESKTOP_INTEL_DOWNLOAD_URL,
+  ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL,
   ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -116,27 +117,34 @@ function EmptyHosts() {
           Open Zero Computer Use on your Mac and refresh this page when it comes
           online.
         </p>
+        <p className="text-sm leading-5 text-muted-foreground">
+          {ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL}
+        </p>
       </div>
       {showIntelDownload ? (
-        <div className="flex w-full max-w-sm flex-col gap-2">
+        <div className="flex w-full max-w-sm flex-col items-center gap-3">
           <a
             href={ZERO_DESKTOP_DOWNLOAD_URL}
+            aria-label="Download for Mac Apple Silicon"
             target="_blank"
             rel="noreferrer"
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             <IconDownload size={16} />
-            Download for Apple Silicon
+            Download for Mac (Apple Silicon)
           </a>
-          <a
-            href={ZERO_DESKTOP_INTEL_DOWNLOAD_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-          >
-            <IconDownload size={16} />
-            Download for Intel Mac
-          </a>
+          <p className="text-sm text-muted-foreground">
+            On an Intel Mac?{" "}
+            <a
+              href={ZERO_DESKTOP_INTEL_DOWNLOAD_URL}
+              aria-label="Download for Mac Intel"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-primary hover:underline"
+            >
+              Download here
+            </a>
+          </p>
         </div>
       ) : downloadSupportStatus === "unsupported-intel-mac" ? (
         <Button type="button" variant="outline" disabled className="h-9">

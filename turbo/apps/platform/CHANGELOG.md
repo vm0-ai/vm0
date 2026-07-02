@@ -1,5 +1,96 @@
 # Changelog
 
+## [0.530.0](https://github.com/vm0-ai/vm0/compare/app-v0.529.3...app-v0.530.0) (2026-07-02)
+
+
+### Features
+
+* add Desktop Computer Use filesystem plugins ([#19814](https://github.com/vm0-ai/vm0/issues/19814)) ([062a44c](https://github.com/vm0-ai/vm0/commit/062a44c181536df868bc6b081bae0dd7a2d9d9d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.0
+    * @vm0/connectors bumped to 1.127.0
+    * @vm0/core bumped to 8.387.0
+
+## [0.529.3](https://github.com/vm0-ai/vm0/compare/app-v0.529.2...app-v0.529.3) (2026-07-02)
+
+
+### Bug Fixes
+
+* preserve agent connector add semantics ([#19815](https://github.com/vm0-ai/vm0/issues/19815)) ([1dbc317](https://github.com/vm0-ai/vm0/commit/1dbc317f5b5aebe9dff79353accac2e3f8878d18))
+* simplify computer use download buttons to one CTA ([#19785](https://github.com/vm0-ai/vm0/issues/19785)) ([abd82a8](https://github.com/vm0-ai/vm0/commit/abd82a8d729d989cb899aae46cb646f8564b1a35))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.2
+    * @vm0/core bumped to 8.386.2
+
+## [0.529.2](https://github.com/vm0-ai/vm0/compare/app-v0.529.1...app-v0.529.2) (2026-07-02)
+
+
+### Bug Fixes
+
+* animate initial thinking lines independently ([#19806](https://github.com/vm0-ai/vm0/issues/19806)) ([8fa9603](https://github.com/vm0-ai/vm0/commit/8fa96039cd1259d2dae2fa5ff55ad4974c1304f0))
+* fire Signup Google Ads conversion for recent signups ([#19794](https://github.com/vm0-ai/vm0/issues/19794)) ([442fe0b](https://github.com/vm0-ai/vm0/commit/442fe0b23ed514d6072c4a22f3b557ec7aba04b4))
+* refine html artifact edit controls ([#19787](https://github.com/vm0-ai/vm0/issues/19787)) ([98a2040](https://github.com/vm0-ai/vm0/commit/98a20404c3e41c96b356ddd7f017a965948f9969))
+* show chat thread icon shortcut hints ([#19804](https://github.com/vm0-ai/vm0/issues/19804)) ([b34cbfe](https://github.com/vm0-ai/vm0/commit/b34cbfe2a93886c574a5818ba893a83ec8036c86))
+* show edit action for hosted site root URLs ([#19808](https://github.com/vm0-ai/vm0/issues/19808)) ([7fa7f17](https://github.com/vm0-ai/vm0/commit/7fa7f17ad84b1bff8d21861ccf53d828ec3247ec))
+
+## [0.529.1](https://github.com/vm0-ai/vm0/compare/app-v0.529.0...app-v0.529.1) (2026-07-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.1
+    * @vm0/core bumped to 8.386.1
+
+## [0.529.0](https://github.com/vm0-ai/vm0/compare/app-v0.528.0...app-v0.529.0) (2026-07-02)
+
+
+### Features
+
+* explain agent creator and role in a white card on name hover ([#19780](https://github.com/vm0-ai/vm0/issues/19780)) ([ec620ae](https://github.com/vm0-ai/vm0/commit/ec620aec3d38098174501bf58db443d012de056b))
+
+
+### Bug Fixes
+
+* consolidate chat shortcut bindings ([#19751](https://github.com/vm0-ai/vm0/issues/19751)) ([6c4e96d](https://github.com/vm0-ai/vm0/commit/6c4e96d3c2063ab788119ea8ea7912dce82f3eea))
+
+## [0.528.0](https://github.com/vm0-ai/vm0/compare/app-v0.527.0...app-v0.528.0) (2026-07-02)
+
+
+### Features
+
+* add byteplus voice input stt ([#19510](https://github.com/vm0-ai/vm0/issues/19510)) ([42665c5](https://github.com/vm0-ai/vm0/commit/42665c5054ab243593122ab999f98829f301f6b7))
+* navigate human-uploaded images, not only agent artifacts ([#19746](https://github.com/vm0-ai/vm0/issues/19746)) ([b1168a3](https://github.com/vm0-ai/vm0/commit/b1168a31918615507dd61ca8d924692e2a823060)), closes [#19739](https://github.com/vm0-ai/vm0/issues/19739)
+
+
+### Bug Fixes
+
+* bump chat idb schema version ([#19773](https://github.com/vm0-ai/vm0/issues/19773)) ([06c18ad](https://github.com/vm0-ai/vm0/commit/06c18ad7fc3d496af22b50fdf45a20707f080098))
+* clarify mac desktop download labels ([#19774](https://github.com/vm0-ai/vm0/issues/19774)) ([714f775](https://github.com/vm0-ai/vm0/commit/714f77560460dd636f99c34384a42d996090de56))
+* fail open chat indexeddb cache ([#19782](https://github.com/vm0-ai/vm0/issues/19782)) ([1b55562](https://github.com/vm0-ai/vm0/commit/1b55562f6cacc21f9e692ea97cbb7d883d21ec91))
+* fire Google Ads signup conversion ([#19775](https://github.com/vm0-ai/vm0/issues/19775)) ([c1092a7](https://github.com/vm0-ai/vm0/commit/c1092a70ba713db885cb89475bb57b3d1883db95))
+* restart full thinking typewriter lines ([#19771](https://github.com/vm0-ai/vm0/issues/19771)) ([063aac1](https://github.com/vm0-ai/vm0/commit/063aac15a9cf3c7ac5d48963583db987e980899d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.0
+    * @vm0/connectors bumped to 1.126.0
+    * @vm0/core bumped to 8.386.0
+
 ## [0.527.0](https://github.com/vm0-ai/vm0/compare/app-v0.526.1...app-v0.527.0) (2026-07-02)
 
 

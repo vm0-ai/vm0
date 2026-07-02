@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { command, computed } from "ccstate";
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
@@ -14,9 +14,6 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { userConnectors } from "@vm0/db/schema/user-connector";
-import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -49,6 +46,10 @@ import {
   unavailableUserConnectorTypes,
   userConnectorAvailability,
 } from "../services/connector-availability.service";
+import {
+  updateUserConnectors,
+  updateUserCustomConnectors,
+} from "../services/user-connectors.service";
 import type { RouteEntry } from "../route-entry";
 
 const PUBLIC_AGENT_LIMIT = 7;
@@ -740,69 +741,40 @@ const updateAgentCustomConnectorsInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const enabledIds = body.data.enabledIds;
+    const enabledIds = Array.from(new Set(body.data.enabledIds));
+    const operation = body.data.operation ?? "replace";
 
-    if (enabledIds.length > 0) {
-      const found = await writeDb
-        .select({ id: orgCustomConnectors.id })
-        .from(orgCustomConnectors)
-        .where(
-          and(
-            eq(orgCustomConnectors.orgId, auth.orgId),
-            inArray(orgCustomConnectors.id, enabledIds),
-          ),
-        );
-      signal.throwIfAborted();
-      const foundSet = new Set(
-        found.map((row) => {
-          return row.id;
-        }),
-      );
-      const missing = enabledIds.filter((id) => {
-        return !foundSet.has(id);
-      });
-      if (missing.length > 0) {
-        return {
-          status: 400 as const,
-          body: {
-            error: {
-              message: `Unknown custom connector ids: ${missing.join(", ")}`,
-              code: "VALIDATION_ERROR",
-            },
-          },
-        };
-      }
-    }
-
-    await writeDb.transaction(async (tx) => {
-      await tx
-        .delete(userCustomConnectors)
-        .where(
-          and(
-            eq(userCustomConnectors.orgId, auth.orgId),
-            eq(userCustomConnectors.userId, auth.userId),
-            eq(userCustomConnectors.agentId, params.id),
-          ),
-        );
-
-      if (enabledIds.length > 0) {
-        await tx.insert(userCustomConnectors).values(
-          enabledIds.map((customConnectorId) => {
-            return {
-              orgId: auth.orgId,
-              userId: auth.userId,
-              agentId: params.id,
-              customConnectorId,
-            };
-          }),
-        );
-      }
+    const updated = await updateUserCustomConnectors(writeDb, {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      agentId: params.id,
+      enabledIds,
+      operation,
     });
     signal.throwIfAborted();
+    if (updated.status === "agentNotFound") {
+      return agentNotFound(params.id);
+    }
+    if (updated.status === "customConnectorsNotFound") {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: `Unknown custom connector ids: ${updated.missingIds.join(", ")}`,
+            code: "VALIDATION_ERROR",
+          },
+        },
+      };
+    }
+    if (updated.status === "customConnectorsNotConfigured") {
+      return validationError(
+        `Custom connector ids are not configured for this user: ${updated.unconfiguredIds.join(", ")}`,
+      );
+    }
 
     return {
       status: 200 as const,
-      body: { enabledIds: [...enabledIds] },
+      body: { enabledIds: [...updated.enabledIds] },
     };
   },
 );
@@ -827,6 +799,7 @@ const updateAgentUserConnectorsInner$ = command(
         id: agentComposes.id,
         name: agentComposes.name,
         headVersionId: agentComposes.headVersionId,
+        zeroAgentId: zeroAgents.id,
       })
       .from(agentComposes)
       .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
@@ -861,47 +834,40 @@ const updateAgentUserConnectorsInner$ = command(
       );
     }
 
-    const availability = await get(
-      userConnectorAvailability(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    const unavailableTypes = unavailableUserConnectorTypes(
-      availability,
-      parsedTypes,
-    );
-    if (unavailableTypes.length > 0) {
-      return validationError(
-        `Connector types are not available: ${unavailableTypes.join(", ")}`,
+    const operation = body.data.operation ?? "replace";
+    if (operation !== "remove") {
+      const availability = await get(
+        userConnectorAvailability(auth.orgId, auth.userId),
       );
-    }
-
-    await writeDb.transaction(async (tx) => {
-      await tx
-        .delete(userConnectors)
-        .where(
-          and(
-            eq(userConnectors.orgId, auth.orgId),
-            eq(userConnectors.userId, auth.userId),
-            eq(userConnectors.agentId, params.id),
-          ),
-        );
-
-      if (parsedTypes.length > 0) {
-        await tx.insert(userConnectors).values(
-          parsedTypes.map((connectorType) => {
-            return {
-              orgId: auth.orgId,
-              userId: auth.userId,
-              agentId: params.id,
-              connectorType,
-            };
-          }),
+      signal.throwIfAborted();
+      const unavailableTypes = unavailableUserConnectorTypes(
+        availability,
+        parsedTypes,
+      );
+      if (unavailableTypes.length > 0) {
+        return validationError(
+          `Connector types are not available: ${unavailableTypes.join(", ")}`,
         );
       }
+    }
+
+    const updated = await updateUserConnectors(writeDb, {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      agentId: params.id,
+      enabledTypes: parsedTypes,
+      operation,
+      allowMissingZeroAgentForEmptyReplace:
+        operation === "replace" &&
+        agent.zeroAgentId === null &&
+        parsedTypes.length === 0,
     });
     signal.throwIfAborted();
+    if (updated.status === "agentNotFound") {
+      return agentNotFound(params.id);
+    }
 
-    await set(
+    const recomposed = await set(
       recomposeAgentIfStale$,
       {
         userId: auth.userId,
@@ -911,10 +877,13 @@ const updateAgentUserConnectorsInner$ = command(
       },
       signal,
     );
+    if (recomposed.status === "missing") {
+      return agentNotFound(params.id);
+    }
 
     return {
       status: 200 as const,
-      body: { enabledTypes: parsedTypes },
+      body: { enabledTypes: [...updated.enabledTypes] },
     };
   },
 );

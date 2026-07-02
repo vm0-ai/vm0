@@ -361,6 +361,11 @@ jobs:
             exit 1
           fi
 
+          minimum_system_version=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$plist" 2>/dev/null || true)
+          if [ "$minimum_system_version" != "14.0" ]; then
+            echo "::error::Expected LSMinimumSystemVersion 14.0, found ${minimum_system_version:-missing}"
+            exit 1
+          fi
           /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero Computer Use"
           /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero Computer Use"
           /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero Computer Use"
@@ -387,6 +392,12 @@ jobs:
           if [ ! -d "$dmg_mount/Zero Computer Use.app" ]; then
             echo "DMG should contain Zero Computer Use.app"
             find "$dmg_mount" -maxdepth 2 -print || true
+            exit 1
+          fi
+          mounted_plist="$dmg_mount/Zero Computer Use.app/Contents/Info.plist"
+          mounted_minimum_system_version=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$mounted_plist" 2>/dev/null || true)
+          if [ "$mounted_minimum_system_version" != "14.0" ]; then
+            echo "::error::Expected mounted app LSMinimumSystemVersion 14.0, found ${mounted_minimum_system_version:-missing}"
             exit 1
           fi
           if [ ! -L "$dmg_mount/Applications" ]; then
@@ -773,6 +784,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
+
+      - name: Build Runtime API Schema
+        working-directory: turbo
+        run: pnpm --filter @vm0/api-contracts run build:runtime-api-schema -- --out runtime-api-schema.json
+
+      - name: Upload Runtime API Schema Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: runtime-api-schema
+          path: turbo/runtime-api-schema.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Install neonctl
         run: npm install -g neonctl@2.15.0
@@ -1215,6 +1238,69 @@ jobs:
                 text:
                   type: mrkdwn
                   text: "*API* ❌ Promote failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  deploy-api-schema:
+    needs: [release-please, build-api-production, promote-api-production]
+    if: >-
+      always() &&
+      needs.release-please.outputs.api_deploy_required == 'true' &&
+      needs.promote-api-production.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Runtime API Schema Artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: runtime-api-schema
+          path: /tmp/runtime-api-schema
+
+      - name: Publish Runtime API Schema
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SCHEMA_RELEASE_TAG: runtime-api-schema-prod
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          API_VERSION: ${{ needs.release-please.outputs.api_version }}
+        run: |
+          set -euo pipefail
+
+          schema_path="/tmp/runtime-api-schema/runtime-api-schema.json"
+          if [ ! -f "$schema_path" ]; then
+            echo "::error::Runtime API schema artifact is missing: $schema_path"
+            exit 1
+          fi
+
+          if ! gh release view "$SCHEMA_RELEASE_TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release create "$SCHEMA_RELEASE_TAG" \
+              --repo "$REPO" \
+              --target "$RELEASE_SHA" \
+              --title "Runtime API Schema (Production)" \
+              --notes "Mutable pointer to the runtime API schema currently deployed to production."
+          fi
+
+          cp "$schema_path" /tmp/runtime-api-schema/current.json
+          cp "$schema_path" "/tmp/runtime-api-schema/runtime-api-schema-${RELEASE_SHA}.json"
+
+          cat > /tmp/runtime-api-schema/release-notes.md <<EOF
+          Mutable pointer to the runtime API schema currently deployed to production.
+
+          Last updated by release-please workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          API version: ${API_VERSION:-unknown}
+          Commit: ${RELEASE_SHA}
+          EOF
+
+          gh release upload "$SCHEMA_RELEASE_TAG" \
+            /tmp/runtime-api-schema/current.json \
+            "/tmp/runtime-api-schema/runtime-api-schema-${RELEASE_SHA}.json" \
+            --repo "$REPO" \
+            --clobber
+
+          gh release edit "$SCHEMA_RELEASE_TAG" \
+            --repo "$REPO" \
+            --notes-file /tmp/runtime-api-schema/release-notes.md
+
+          echo "Published runtime API schema for $RELEASE_SHA"
 
   # Build app (Vite SPA) production deployment (Staged)
   build-app-production:

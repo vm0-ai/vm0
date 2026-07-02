@@ -71,6 +71,7 @@ import {
 } from "../../signals/zero-page/presentation-html-cache-bust.ts";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import {
+  artifactPreviewUrlsMatch,
   attachmentFilenameFromUrl,
   downloadAttachmentUrl,
   publicAttachmentUrl,
@@ -415,7 +416,7 @@ function findArtifactDialogItemForUrl(
 ): ArtifactDialogItem | undefined {
   for (const run of runs) {
     const file = run.files.find((candidate) => {
-      return candidate.url === url;
+      return artifactPreviewUrlsMatch(candidate.url, url);
     });
     if (file) {
       return { runId: run.runId, file };
@@ -977,16 +978,18 @@ function ArtifactPreviewDialogThreadResolver({
     navigationItem: ImageArtifactNavigationItem,
   ) => {
     navigateImageLightbox({
-      artifact: artifactDialogMetadataFromItem({
-        agentId,
-        item: navigationItem,
-        onSyncSuccess: () => {
-          reloadArtifacts();
-        },
-        threadId: thread.threadId,
-      }),
-      filename: navigationItem.file.filename,
-      url: navigationItem.file.url,
+      artifact: navigationItem.artifact
+        ? artifactDialogMetadataFromItem({
+            agentId,
+            item: navigationItem.artifact,
+            onSyncSuccess: () => {
+              reloadArtifacts();
+            },
+            threadId: thread.threadId,
+          })
+        : undefined,
+      filename: navigationItem.filename,
+      url: navigationItem.url,
     });
   };
   const imageNavigationAction = (
@@ -1029,9 +1032,16 @@ function ArtifactPreviewDialogThreadResolver({
     );
   }
 
+  // The previewed image is not a run artifact (e.g. a human-uploaded image that
+  // resolves from the user artifacts bucket). It still navigates among the other
+  // images in its message.
   return (
     <ArtifactPreviewDialogContent
       artifact={preview.artifact}
+      imageNavigation={{
+        onNext: imageNavigationAction(imageNavigation.next),
+        onPrevious: imageNavigationAction(imageNavigation.previous),
+      }}
       preview={preview}
     />
   );

@@ -93,8 +93,14 @@ FAL_KEY=op://Development/fal/FAL_KEY
 # Optional: BytePlus ModelArk video generation
 BYTEPLUS_API_KEY=op://Development/byteplus/BYTEPLUS_API_KEY
 
+# Optional: BytePlus voice input STT
+BYTEPLUS_STT_API_KEY=op://Development/byteplus/BYTEPLUS_STT_API_KEY
+
 # Optional: Unsplash presentation image resolution
 UNSPLASH_ACCESS_KEY=op://Development/unsplash/UNSPLASH_ACCESS_KEY
+
+# Optional: Pexels presentation image resolution
+PEXELS_API_KEY=op://Development/pexels/PEXELS_API_KEY
 
 # Optional: Airtable OAuth Connector
 AIRTABLE_OAUTH_CLIENT_ID=op://Development/airtable/AIRTABLE_OAUTH_CLIENT_ID

@@ -6,7 +6,6 @@ import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import {
   CONNECTOR_DISPLAY_CATEGORY_ORDER,
-  CONNECTOR_TYPES,
   connectorAuthMethodIdSchema,
   connectorTypeSchema,
   type ConnectorAuthMethodId,
@@ -14,11 +13,6 @@ import {
   type ConnectorType,
   type ConnectorDisplayCategory,
 } from "@vm0/connectors/connectors";
-import {
-  getConnectorAuthMethod,
-  hasConnectorDeviceAuthGrant,
-  hasConnectorExternalCodeGrant,
-} from "@vm0/connectors/connector-utils";
 import {
   zeroConnectorScopeDiffContract,
   zeroConnectorExternalCodeSessionContract,
@@ -69,6 +63,7 @@ const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
   localStorageSignals(HIDDEN_CONNECTIONS_STORAGE_KEY);
 type PostConnectOptions = {
   readonly showPermissionDialog?: boolean;
+  readonly connectorLabel?: string;
 };
 export type ConnectorConnectionStatus =
   | "not-connected"
@@ -118,16 +113,106 @@ const DAY_MS = 24 * HOUR_MS;
 
 type ConnectorConnectLaunchMode = "oauth-auth-code" | "modal";
 
+export type ConnectorStatusAuthMethodDetail = Omit<
+  PublicConnectorCatalogAuthMethodDetail,
+  "id"
+> & {
+  readonly id: ConnectorAuthMethodId;
+};
+
+export function manualGrantInputValuesForMethod(
+  method: Pick<ConnectorStatusAuthMethodDetail, "manualFields">,
+  values: Readonly<Record<string, string>>,
+): Record<string, string> {
+  return Object.fromEntries(
+    method.manualFields.flatMap((field) => {
+      const value = values[field.id];
+      return value === undefined ? [] : ([[field.id, value]] as const);
+    }),
+  );
+}
+
+type ConnectorStatusGrantKind =
+  PublicConnectorCatalogAuthMethodDetail["grantKind"];
+
+function parseConnectorStatusAuthMethodDetail(
+  connector: ConnectorTypeWithStatus,
+  method: PublicConnectorCatalogAuthMethodDetail,
+): ConnectorStatusAuthMethodDetail | null {
+  const id = parseConnectorAuthMethodId(method.id);
+  if (!id || !connector.availableAuthMethods.includes(id)) {
+    return null;
+  }
+  return { ...method, id };
+}
+
+export function getConnectorStatusAuthMethod(
+  connector: ConnectorTypeWithStatus,
+  authMethod: ConnectorAuthMethodId,
+): ConnectorStatusAuthMethodDetail | null {
+  for (const method of connector.authMethods) {
+    if (method.id !== authMethod) {
+      continue;
+    }
+    return parseConnectorStatusAuthMethodDetail(connector, method);
+  }
+  return null;
+}
+
+export function getConnectorStatusAuthMethodsByGrantKind(
+  connector: ConnectorTypeWithStatus,
+  grantKind: ConnectorStatusGrantKind,
+): ConnectorStatusAuthMethodDetail[] {
+  return connector.authMethods.flatMap((method) => {
+    if (method.grantKind !== grantKind) {
+      return [];
+    }
+    const parsed = parseConnectorStatusAuthMethodDetail(connector, method);
+    return parsed ? [parsed] : [];
+  });
+}
+
+export function getOnlyManualConnectorStatusAuthMethod(
+  connector: ConnectorTypeWithStatus,
+): ConnectorStatusAuthMethodDetail | null {
+  const methods = getConnectorStatusAuthMethodsByGrantKind(connector, "manual");
+  return methods.length === 1 ? (methods[0] ?? null) : null;
+}
+
+export function hasConnectorStatusProviderDrivenConnectMethod(
+  connector: ConnectorTypeWithStatus,
+): boolean {
+  return connector.authMethods.some((method) => {
+    const parsed = parseConnectorStatusAuthMethodDetail(connector, method);
+    if (!parsed) {
+      return false;
+    }
+    return (
+      parsed.grantKind === "auth-code" ||
+      parsed.grantKind === "device-auth" ||
+      parsed.grantKind === "external-code" ||
+      parsed.grantKind === "managed"
+    );
+  });
+}
+
+export function hasConnectorStatusAuthCodeGrant(
+  connector: ConnectorTypeWithStatus,
+): boolean {
+  return getConnectorStatusAuthMethodsByGrantKind(connector, "auth-code").some(
+    () => {
+      return true;
+    },
+  );
+}
+
 export function getConnectorStatusConnectLaunchMode(
   connector: ConnectorTypeWithStatus,
   {
     preferModalForConnectorNotice = false,
   }: { readonly preferModalForConnectorNotice?: boolean } = {},
 ): ConnectorConnectLaunchMode {
-  if (
-    connector.availableAuthMethods.length !== 1 ||
-    !connector.singleAuthCodeAuthMethodId
-  ) {
+  if (!getOnlyAvailableStatusAuthCodeAuthMethod(connector)) {
     return "modal";
   }
   if (preferModalForConnectorNotice && connector.connectNotice) {
@@ -144,14 +229,8 @@ export function getAvailableStatusAuthCodeAuthMethod(
   if (!parsed.success) {
     return null;
   }
-  if (!connector.availableAuthMethods.includes(parsed.data)) {
-    return null;
-  }
-  if (
-    !connector.authMethods.some((method) => {
-      return method.id === parsed.data && method.grantKind === "auth-code";
-    })
-  ) {
+  const method = getConnectorStatusAuthMethod(connector, parsed.data);
+  if (method?.grantKind !== "auth-code") {
     return null;
   }
   return parsed.data;
@@ -160,8 +239,12 @@ export function getAvailableStatusAuthCodeAuthMethod(
 export function getOnlyAvailableStatusAuthCodeAuthMethod(
   connector: ConnectorTypeWithStatus,
 ): ConnectorAuthMethodId | null {
-  const [authMethod] = connector.availableAuthMethods;
-  if (connector.availableAuthMethods.length !== 1 || !authMethod) {
+  const authMethod = connector.singleAuthCodeAuthMethodId;
+  if (
+    connector.availableAuthMethods.length !== 1 ||
+    !authMethod ||
+    connector.availableAuthMethods[0] !== authMethod
+  ) {
     return null;
   }
   return getAvailableStatusAuthCodeAuthMethod(connector, authMethod);
@@ -589,6 +672,45 @@ export const connectorExternalCodeState$ = computed((get) => {
   return get(internalConnectorExternalCodeState$);
 });
 
+function connectorOAuthDeviceAuthStateIsActive(
+  state: ConnectorOAuthDeviceAuthState,
+): boolean {
+  return (
+    state.status === "starting" ||
+    state.status === "pending" ||
+    state.status === "polling"
+  );
+}
+
+function connectorExternalCodeStateIsActive(
+  state: ConnectorExternalCodeState,
+): boolean {
+  return (
+    state.status === "starting" ||
+    state.status === "pending" ||
+    state.status === "completing"
+  );
+}
+
+function connectorConnectOperationIsActive({
+  authCodeConnectorType,
+  connectFlow,
+  deviceAuthState,
+  externalCodeState,
+}: {
+  readonly authCodeConnectorType: ConnectorType | null;
+  readonly connectFlow: ConnectorConnectFlowState | null;
+  readonly deviceAuthState: ConnectorOAuthDeviceAuthState;
+  readonly externalCodeState: ConnectorExternalCodeState;
+}): boolean {
+  return (
+    authCodeConnectorType !== null ||
+    connectFlow !== null ||
+    connectorOAuthDeviceAuthStateIsActive(deviceAuthState) ||
+    connectorExternalCodeStateIsActive(externalCodeState)
+  );
+}
+
 function connectorOAuthDeviceAuthStartOptionsKey(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
@@ -726,14 +848,18 @@ const finishConnectorConnection$ = command(
 
     if (options.toastMessage !== null) {
       toast.success(
-        options.toastMessage ?? `${CONNECTOR_TYPES[type].label} connected`,
+        options.toastMessage ?? `${options.connectorLabel ?? type} connected`,
         {
           id: `connector-connected-${type}`,
         },
       );
     }
     if (options.showPermissionDialog) {
-      set(internalPermissionDialogType$, type);
+      set(resetPermissionDialog$);
+      set(internalPermissionDialog$, {
+        type,
+        label: options.connectorLabel ?? type,
+      });
     }
     if (options.clearSelectedConnector) {
       set(internalSelectedConnectorType$, null);
@@ -758,7 +884,18 @@ export const submitManualGrant$ = command(
     { get, set },
     { type, authMethod, inputValues, options }: SubmitManualGrantParams,
     signal: AbortSignal,
-  ) => {
+  ): Promise<boolean> => {
+    if (
+      connectorConnectOperationIsActive({
+        authCodeConnectorType: get(internalPollingOAuthAuthCodeConnectorType$),
+        connectFlow: get(internalConnectFlowState$),
+        deviceAuthState: get(internalConnectorOAuthDeviceAuthState$),
+        externalCodeState: get(internalConnectorExternalCodeState$),
+      })
+    ) {
+      return false;
+    }
+
     const flow = createConnectorConnectFlowState(type);
     set(internalConnectFlowState$, flow);
     return await withCleanup(
@@ -779,8 +916,9 @@ export const submitManualGrant$ = command(
         signal.throwIfAborted();
         set(finishConnectorConnection$, type, {
           ...options,
-          toastMessage: `${CONNECTOR_TYPES[type].label} connected successfully`,
+          toastMessage: `${options.connectorLabel ?? type} connected successfully`,
         });
+        return true;
       })(),
       () => {
         set(internalConnectFlowState$, (current) => {
@@ -860,7 +998,12 @@ export const justConnectedTypes$ = computed((get) => {
  * `connected = false` from the API (regression #10272).
  */
 export const disconnectConnector$ = command(
-  async ({ set }, type: ConnectorType, signal: AbortSignal): Promise<void> => {
+  async (
+    { set },
+    type: ConnectorType,
+    connectorLabel: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
     await set(deleteConnector$, type, signal);
     signal.throwIfAborted();
     set(internalJustConnectedTypes$, (prev) => {
@@ -871,7 +1014,7 @@ export const disconnectConnector$ = command(
       next.delete(type);
       return next;
     });
-    toast.success(`${CONNECTOR_TYPES[type].label} disconnected`, {
+    toast.success(`${connectorLabel} disconnected`, {
       id: `connector-disconnected-${type}`,
     });
   },
@@ -881,21 +1024,22 @@ export const disconnectConnector$ = command(
 // Post-connect permission dialog state
 // ---------------------------------------------------------------------------
 
-const internalPermissionDialogType$ = state<ConnectorType | null>(null);
+interface PermissionDialogState {
+  readonly type: ConnectorType;
+  readonly label: string;
+}
 
-/** Connector type to show the permission dialog for (null = hidden). */
-export const permissionDialogType$ = computed((get) => {
-  return get(internalPermissionDialogType$);
+const internalPermissionDialog$ = state<PermissionDialogState | null>(null);
+
+/** Connector permission dialog to show after a successful connection. */
+export const permissionDialog$ = computed((get) => {
+  return get(internalPermissionDialog$);
 });
 
-export const setPermissionDialogType$ = command(
-  ({ set }, type: ConnectorType | null) => {
-    if (type !== null) {
-      set(resetPermissionDialog$);
-    }
-    set(internalPermissionDialogType$, type);
-  },
-);
+export const closePermissionDialog$ = command(({ set }) => {
+  set(resetPermissionDialog$);
+  set(internalPermissionDialog$, null);
+});
 
 function createConnectorConnectFlowState(
   type: ConnectorType,
@@ -1165,10 +1309,16 @@ const connectConnectorOAuthDeviceAuth$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const { type, authMethod, options, startOptions } = args;
-    if (!hasConnectorDeviceAuthGrant(type)) {
-      throw new Error(`${type} does not use device authorization OAuth`);
+    if (
+      connectorConnectOperationIsActive({
+        authCodeConnectorType: get(internalPollingOAuthAuthCodeConnectorType$),
+        connectFlow: get(internalConnectFlowState$),
+        deviceAuthState: get(internalConnectorOAuthDeviceAuthState$),
+        externalCodeState: get(internalConnectorExternalCodeState$),
+      })
+    ) {
+      return false;
     }
-    assertConnectorUsesDeviceAuthMethod(type, authMethod);
 
     const flow = createConnectorConnectFlowState(type);
     set(internalConnectFlowState$, flow);
@@ -1305,6 +1455,7 @@ export const connectConnectorOAuthDeviceAuthAndSettle$ = command(
       signal,
     );
     if (connected) {
+      signal.throwIfAborted();
       await args.onSuccess();
     }
   },
@@ -1422,10 +1573,16 @@ export const connectConnectorExternalCode$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const { type, authMethod } = args;
-    if (!hasConnectorExternalCodeGrant(type)) {
-      throw new Error(`${type} does not use external-code authorization`);
+    if (
+      connectorConnectOperationIsActive({
+        authCodeConnectorType: get(internalPollingOAuthAuthCodeConnectorType$),
+        connectFlow: get(internalConnectFlowState$),
+        deviceAuthState: get(internalConnectorOAuthDeviceAuthState$),
+        externalCodeState: get(internalConnectorExternalCodeState$),
+      })
+    ) {
+      return false;
     }
-    assertConnectorUsesExternalCodeMethod(type, authMethod);
 
     const flow = createConnectorConnectFlowState(type);
     set(internalConnectFlowState$, flow);
@@ -1518,8 +1675,6 @@ const completeConnectorExternalCode$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const { type, authMethod, options } = args;
-    assertConnectorUsesExternalCodeMethod(type, authMethod);
-
     const current = get(internalConnectorExternalCodeState$);
     if (
       current.status !== "pending" ||
@@ -1540,10 +1695,9 @@ const completeConnectorExternalCode$ = command(
 
     const code = current.code.trim();
     if (!code) {
-      const connectorLabel = CONNECTOR_TYPES[type].label;
       set(internalConnectorExternalCodeState$, {
         ...current,
-        errorMessage: `Enter the authorization code from ${connectorLabel}.`,
+        errorMessage: `Enter the authorization code from ${options.connectorLabel ?? type}.`,
       });
       return false;
     }
@@ -1631,6 +1785,7 @@ export const completeConnectorExternalCodeAndSettle$ = command(
       signal,
     );
     if (connected) {
+      signal.throwIfAborted();
       await args.onSuccess();
     }
   },
@@ -1648,7 +1803,7 @@ export function isStandaloneMode(): boolean {
   return window.matchMedia("(display-mode: standalone)").matches;
 }
 
-const OAUTH_AUTH_CODE_POPUP_CLOSED_POLL_MS = 250;
+const OAUTH_AUTH_CODE_POPUP_CLOSED_POLL_MS = IN_VITEST ? 10 : 250;
 
 function waitForOAuthAuthCodePopupClosed(
   authWindow: Pick<Window, "closed">,
@@ -1713,53 +1868,51 @@ const resetOAuthAuthCodeConnectorPopupSignal$ = resetSignal();
 // Connect command
 // ---------------------------------------------------------------------------
 
-function assertConnectorUsesAuthCodeMethod(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-): void {
-  const method = getConnectorAuthMethod(type, authMethod);
-  if (!method) {
-    throw new Error(`${type} does not have ${authMethod} auth method`);
-  }
-  if (method.grant.kind !== "auth-code") {
-    throw new Error(`${type} ${authMethod} does not use an auth-code grant`);
-  }
-}
-
-function assertConnectorUsesDeviceAuthMethod(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-): void {
-  const method = getConnectorAuthMethod(type, authMethod);
-  if (!method) {
-    throw new Error(`${type} does not have ${authMethod} auth method`);
-  }
-  if (method.grant.kind !== "device-auth") {
-    throw new Error(`${type} ${authMethod} does not use a device-auth grant`);
-  }
-}
-
-function assertConnectorUsesExternalCodeMethod(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-): void {
-  const method = getConnectorAuthMethod(type, authMethod);
-  if (!method) {
-    throw new Error(`${type} does not have ${authMethod} auth method`);
-  }
-  if (method.grant.kind !== "external-code") {
-    throw new Error(
-      `${type} ${authMethod} does not use an external-code grant`,
-    );
-  }
-}
-
 function connectorMatchesAuthMethod(
   connector: ConnectorResponse,
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
 ): boolean {
   return connector.type === type && connector.authMethod === authMethod;
+}
+
+function createConnectorOAuthAuthCodeChangedCommand(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+) {
+  // Snapshot taken on the first body invocation: `null` marks "no connector
+  // yet" and an `updatedAt` value marks "reconnect scenario — wait for it to
+  // change". The snapshot must happen inside the loop body so we start from the
+  // freshest server state, not a cached signal value.
+  let initialUpdatedAt: string | null | undefined;
+
+  return command(async ({ get }, sig: AbortSignal): Promise<boolean> => {
+    const client = get(zeroClient$)(zeroConnectorsMainContract);
+    const result = await accept(
+      client.list({ fetchOptions: { signal: sig } }),
+      [200],
+    );
+    const polled = (result.body as ConnectorListResponse).connectors;
+    const current = polled.find((c) => {
+      return connectorMatchesAuthMethod(c, type, authMethod);
+    });
+
+    if (initialUpdatedAt === undefined) {
+      initialUpdatedAt = current?.updatedAt ?? null;
+      return false;
+    }
+    if (current) {
+      // initialUpdatedAt === null means the connector didn't exist on the first
+      // fetch; any subsequent appearance signals completion.
+      if (initialUpdatedAt === null) {
+        return true;
+      }
+      if (current.updatedAt !== initialUpdatedAt) {
+        return true;
+      }
+    }
+    return false;
+  });
 }
 
 const openConnectorOAuthAuthCodeWindow$ = command(
@@ -1769,8 +1922,6 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     authMethod: ConnectorAuthMethodId,
     signal: AbortSignal,
   ) => {
-    assertConnectorUsesAuthCodeMethod(type, authMethod);
-
     const standalone = isStandaloneMode();
 
     // In standalone (PWA) mode, omit popup features so iOS Safari opens the
@@ -1781,25 +1932,40 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     if (!authWindow && !standalone) {
       throw new Error("Failed to open authorization window");
     }
+    if (authWindow) {
+      authWindow.opener = null;
+    }
 
-    const startClient = get(zeroClient$)(zeroConnectorOauthStartContract, {
-      apiBase: OAUTH_WEB_API_BASE,
-    });
-    const startResult = await accept(
-      startClient.start({
-        params: { type },
-        body: { authMethod },
-        fetchOptions: { signal },
-      }),
-      [200],
+    let navigated = false;
+    await withCleanup(
+      (async () => {
+        const startClient = get(zeroClient$)(zeroConnectorOauthStartContract, {
+          apiBase: OAUTH_WEB_API_BASE,
+        });
+        const startResult = await accept(
+          startClient.start({
+            params: { type },
+            body: { authMethod },
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        signal.throwIfAborted();
+
+        if (authWindow) {
+          authWindow.location.href = startResult.body.authorizationUrl;
+          navigated = true;
+        } else if (standalone) {
+          window.location.href = startResult.body.authorizationUrl;
+        }
+      })(),
+      () => {
+        if (authWindow && !navigated) {
+          authWindow.close();
+        }
+      },
     );
     signal.throwIfAborted();
-
-    if (authWindow) {
-      authWindow.location.href = startResult.body.authorizationUrl;
-    } else if (standalone) {
-      window.location.href = startResult.body.authorizationUrl;
-    }
 
     return authWindow;
   },
@@ -1813,7 +1979,17 @@ export const connectConnectorOAuthAuthCode$ = command(
     options: PostConnectOptions,
     signal: AbortSignal,
   ) => {
-    assertConnectorUsesAuthCodeMethod(type, authMethod);
+    signal.throwIfAborted();
+    if (
+      connectorConnectOperationIsActive({
+        authCodeConnectorType: get(internalPollingOAuthAuthCodeConnectorType$),
+        connectFlow: get(internalConnectFlowState$),
+        deviceAuthState: get(internalConnectorOAuthDeviceAuthState$),
+        externalCodeState: get(internalConnectorExternalCodeState$),
+      })
+    ) {
+      return false;
+    }
 
     const flow = createConnectorConnectFlowState(type);
     set(internalConnectFlowState$, flow);
@@ -1831,41 +2007,9 @@ export const connectConnectorOAuthAuthCode$ = command(
 
         // Wait for the auth-code OAuth flow to complete. The callback publishes
         // `connector:changed`, and the subscription rechecks the server state.
-        // Snapshot taken on the first body invocation: `null` marks "no
-        // connector yet" and an `updatedAt` value marks "reconnect scenario —
-        // wait for it to change". The snapshot must happen *inside* the loop
-        // body so we start from the freshest server state, not a cached signal
-        // value.
-        let initialUpdatedAt: string | null | undefined;
-
-        const onConnectorChanged$ = command(
-          async ({ get }, sig: AbortSignal): Promise<boolean> => {
-            const client = get(zeroClient$)(zeroConnectorsMainContract);
-            const result = await accept(
-              client.list({ fetchOptions: { signal: sig } }),
-              [200],
-            );
-            const polled = (result.body as ConnectorListResponse).connectors;
-            const current = polled.find((c) => {
-              return connectorMatchesAuthMethod(c, type, authMethod);
-            });
-
-            if (initialUpdatedAt === undefined) {
-              initialUpdatedAt = current?.updatedAt ?? null;
-              return false;
-            }
-            if (current) {
-              // initialUpdatedAt === null means the connector didn't exist on
-              // the first fetch; any subsequent appearance signals completion.
-              if (initialUpdatedAt === null) {
-                return true;
-              }
-              if (current.updatedAt !== initialUpdatedAt) {
-                return true;
-              }
-            }
-            return false;
-          },
+        const onConnectorChanged$ = createConnectorOAuthAuthCodeChangedCommand(
+          type,
+          authMethod,
         );
 
         // Prime once so `initialUpdatedAt` snapshots the current server state.
@@ -1981,6 +2125,7 @@ export const connectConnectorOAuthAuthCodeAndSettle$ = command(
       signal,
     );
     if (connected) {
+      signal.throwIfAborted();
       await args.onSuccess();
     }
   },

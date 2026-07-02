@@ -35,6 +35,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     createChatThread$,
     {
       userId: auth.userId,
+      orgId: auth.orgId,
       agentComposeId: body.data.agentId,
       title: body.data.title,
       clientThreadId: body.data.clientThreadId,

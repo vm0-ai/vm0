@@ -10,6 +10,7 @@ import { writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
+import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import type { RouteEntry } from "../route-entry";
 
 const pinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -18,16 +19,32 @@ const pinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   const writeDb = set(writeDb$);
-  const updated = await writeDb
-    .update(chatThreads)
-    .set({ pinnedAt: nowDate() })
-    .where(
-      and(eq(chatThreads.id, params.id), eq(chatThreads.userId, auth.userId)),
-    )
-    .returning({ id: chatThreads.id });
+  const updated = await writeDb.transaction(async (tx) => {
+    const [thread] = await tx
+      .update(chatThreads)
+      .set({ pinnedAt: nowDate() })
+      .where(
+        and(eq(chatThreads.id, params.id), eq(chatThreads.userId, auth.userId)),
+      )
+      .returning({
+        id: chatThreads.id,
+        agentComposeId: chatThreads.agentComposeId,
+      });
+    if (!thread) {
+      return false;
+    }
+    await appendChatThreadEvent(tx, {
+      kind: "pinned",
+      userId: auth.userId,
+      orgId: auth.orgId,
+      chatThreadId: thread.id,
+      agentComposeId: thread.agentComposeId,
+    });
+    return true;
+  });
   signal.throwIfAborted();
 
-  if (updated.length === 0) {
+  if (!updated) {
     return notFound("Chat thread not found");
   }
 

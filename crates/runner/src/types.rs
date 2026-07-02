@@ -310,13 +310,25 @@ pub struct ResumeSessionHistoryRef {
     pub hash: String,
     pub url: String,
     #[serde(default)]
-    pub size: Option<u64>,
+    pub encoding: Option<ResumeSessionHistoryEncoding>,
+    #[serde(rename = "rawSize")]
+    pub raw_size: u64,
+    #[serde(rename = "encodedSize")]
+    pub encoded_size: u64,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 pub enum ResumeSessionHistoryRefKind {
     #[serde(rename = "blob")]
     Blob,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+pub enum ResumeSessionHistoryEncoding {
+    #[serde(rename = "identity")]
+    Identity,
+    #[serde(rename = "gzip")]
+    Gzip,
 }
 
 impl ResumeSession {
@@ -826,7 +838,8 @@ mod tests {
                     "kind": "blob",
                     "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                     "url": "https://r2.example.com/blobs/a.blob?sig=secret",
-                    "size": 42
+                    "rawSize": 42,
+                    "encodedSize": 42
                 }
             },
             "billableFirewalls": []
@@ -837,7 +850,42 @@ mod tests {
         assert_eq!(ctx.cli_agent_session_id(), Some("sess-ref-123"));
         assert!(session.session_history().is_none());
         assert_eq!(history_ref.kind, ResumeSessionHistoryRefKind::Blob);
-        assert_eq!(history_ref.size, Some(42));
+        assert_eq!(history_ref.raw_size, 42);
+        assert_eq!(history_ref.encoded_size, 42);
+    }
+
+    #[test]
+    fn cli_agent_session_id_returns_id_from_gzip_resume_session_history_ref() {
+        let json = json!({
+            "runId": "550e8400-e29b-41d4-a716-446655440000",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "claude_code",
+            "resumeSession": {
+                "sessionId": "sess-ref-123",
+                "historyRef": {
+                    "kind": "blob",
+                    "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "url": "https://r2.example.com/blobs/a.blob.gz?sig=secret",
+                    "encoding": "gzip",
+                    "rawSize": 42,
+                    "encodedSize": 24
+                }
+            },
+            "billableFirewalls": []
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        let session = ctx.resume_session.as_ref().unwrap();
+        let history_ref = session.history_ref().unwrap();
+        assert_eq!(ctx.cli_agent_session_id(), Some("sess-ref-123"));
+        assert!(session.session_history().is_none());
+        assert_eq!(history_ref.kind, ResumeSessionHistoryRefKind::Blob);
+        assert_eq!(
+            history_ref.encoding,
+            Some(ResumeSessionHistoryEncoding::Gzip)
+        );
+        assert_eq!(history_ref.raw_size, 42);
+        assert_eq!(history_ref.encoded_size, 24);
     }
 
     #[test]

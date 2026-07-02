@@ -1,4 +1,4 @@
-import { openDB, type IDBPDatabase } from "idb";
+import type { IDBPDatabase } from "idb";
 import {
   pagedChatMessageSchema,
   type PagedChatMessage,
@@ -7,10 +7,16 @@ import { chatMessageOrderSequence } from "../chat-message-order.ts";
 import { logger } from "../log.ts";
 import {
   CHAT_MESSAGES_ORDER_INDEX,
-  CHAT_IDB_VERSION,
   CHAT_MESSAGES_STORE,
-  upgradeChatIdb,
 } from "./chat-idb-schema.ts";
+import {
+  chatIdbReadOr,
+  chatIdbWriteBestEffort,
+  disabledChatIdbError,
+  logChatIdbDisabled,
+  withChatIdbTimeout,
+} from "./chat-idb-safe.ts";
+import { openChatIdb } from "./chat-idb-store.ts";
 
 const L = logger("ChatIdbCache");
 
@@ -99,128 +105,186 @@ function storedOrderSequence(raw: unknown, message: PagedChatMessage): number {
   return chatMessageOrderSequence(message);
 }
 
+type GetDb = () => Promise<IDBPDatabase>;
+
+function createMessageReadStore(
+  storeName: string,
+  getDb: GetDb,
+): ChatMessageReadStore {
+  return {
+    async readLatest(threadId, limit, signal) {
+      return await chatIdbReadOr(
+        "messages:readLatest",
+        async () => {
+          L.debug("readLatest:start", { threadId, limit });
+          const db = await getDb();
+          signal?.throwIfAborted();
+          const tx = db.transaction(storeName, "readonly");
+          const index = tx.store.index(CHAT_MESSAGES_ORDER_INDEX);
+          const range = threadOrderRange(threadId);
+          const messages: PagedChatMessage[] = [];
+          let cursor = await index.openCursor(range, "prev");
+          while (cursor && (limit === undefined || messages.length < limit)) {
+            signal?.throwIfAborted();
+            messages.push(validateMessage(cursor.value));
+            cursor = await cursor.continue();
+          }
+          L.debug("readLatest:done", { threadId, count: messages.length });
+          return messages.reverse();
+        },
+        [],
+        signal,
+      );
+    },
+
+    async messageExists(threadId, messageId, signal) {
+      return await chatIdbReadOr(
+        "messages:messageExists",
+        async () => {
+          const db = await getDb();
+          signal?.throwIfAborted();
+          const tx = db.transaction(storeName, "readonly");
+          const msg = await tx.store.get(messageId);
+          return (
+            msg !== undefined &&
+            (msg as { threadId?: string }).threadId === threadId
+          );
+        },
+        false,
+        signal,
+      );
+    },
+
+    async readBefore(threadId, beforeId, limit, signal) {
+      return await chatIdbReadOr(
+        "messages:readBefore",
+        async () => {
+          L.debug("readBefore:start", { threadId, beforeId, limit });
+          const db = await getDb();
+          signal?.throwIfAborted();
+          const tx = db.transaction(storeName, "readonly");
+          const anchor = await tx.store.get(beforeId);
+          if (!anchor) {
+            L.debug("readBefore:anchorMiss", { threadId, beforeId });
+            return [];
+          }
+          if ((anchor as { threadId?: string }).threadId !== threadId) {
+            L.debug("readBefore:anchorThreadMismatch", { threadId, beforeId });
+            return [];
+          }
+          const anchorMsg = validateMessage(anchor);
+          signal?.throwIfAborted();
+
+          const index = tx.store.index(CHAT_MESSAGES_ORDER_INDEX);
+          const range = IDBKeyRange.bound(
+            [threadId],
+            [
+              threadId,
+              anchorMsg.createdAt,
+              storedOrderSequence(anchor, anchorMsg),
+              beforeId,
+            ],
+          );
+          const messages: PagedChatMessage[] = [];
+          let cursor = await index.openCursor(range, "prev");
+          if (cursor?.primaryKey === beforeId) {
+            cursor = await cursor.continue();
+          }
+          while (cursor && messages.length < limit) {
+            signal?.throwIfAborted();
+            messages.push(validateMessage(cursor.value));
+            cursor = await cursor.continue();
+          }
+          L.debug("readBefore:done", {
+            threadId,
+            beforeId,
+            count: messages.length,
+          });
+          return messages.reverse();
+        },
+        [],
+        signal,
+      );
+    },
+  };
+}
+
+function createMessageWriteStore(
+  storeName: string,
+  getDb: GetDb,
+): ChatMessageWriteStore {
+  return {
+    async upsertMessages(threadId, messages, signal) {
+      await chatIdbWriteBestEffort(
+        "messages:upsertMessages",
+        async () => {
+          L.debug("upsertMessages:start", {
+            threadId,
+            count: messages.length,
+          });
+          const db = await getDb();
+          signal?.throwIfAborted();
+          const tx = db.transaction(storeName, "readwrite");
+          for (const msg of messages) {
+            signal?.throwIfAborted();
+            // Stitch local ordering fields onto the stored value. PagedChatMessage
+            // from the API has no threadId and keeps sequenceNumber optional.
+            await tx.store.put(storedMessage(threadId, msg));
+          }
+          await tx.done;
+          L.debug("upsertMessages:done", { threadId, count: messages.length });
+        },
+        signal,
+      );
+    },
+  };
+}
+
 function createIdbMessageStores(userId: string, orgId: string) {
   const dbName = `vm0-chat-${userId}-${orgId}`;
   const storeName = CHAT_MESSAGES_STORE;
 
   let dbPromise: Promise<IDBPDatabase> | null = null;
+  let disabled = false;
 
-  function getDb(): Promise<IDBPDatabase> {
-    if (!dbPromise) {
-      L.debug("openDB", { dbName, storeName });
-      // Schema is shared with idb-thread-meta-store.ts: both modules open
-      // the same DB at the same version. The upgrade callback creates every store
-      // the schema currently defines, idempotently, so whichever module
-      // triggers the version bump leaves a complete schema for the other.
-      dbPromise = openDB(dbName, CHAT_IDB_VERSION, {
-        upgrade(db, oldVersion) {
-          L.debug("openDB:upgrade", { dbName, storeName });
-          upgradeChatIdb(db, oldVersion);
-        },
-      });
+  function disableForSession(reason: unknown): void {
+    if (disabled) {
+      return;
     }
-    return dbPromise;
+    disabled = true;
+    logChatIdbDisabled(dbName, reason);
   }
 
-  const readStore: ChatMessageReadStore = {
-    async readLatest(threadId, limit, signal) {
-      L.debug("readLatest:start", { threadId, limit });
-      const db = await getDb();
-      signal?.throwIfAborted();
-      const tx = db.transaction(storeName, "readonly");
-      const index = tx.store.index(CHAT_MESSAGES_ORDER_INDEX);
-      const range = threadOrderRange(threadId);
-      const messages: PagedChatMessage[] = [];
-      let cursor = await index.openCursor(range, "prev");
-      while (cursor && (limit === undefined || messages.length < limit)) {
-        signal?.throwIfAborted();
-        messages.push(validateMessage(cursor.value));
-        cursor = await cursor.continue();
-      }
-      L.debug("readLatest:done", { threadId, count: messages.length });
-      return messages.reverse();
-    },
+  async function getDb(): Promise<IDBPDatabase> {
+    if (disabled) {
+      throw disabledChatIdbError(dbName);
+    }
 
-    async messageExists(threadId, messageId, signal) {
-      const db = await getDb();
-      signal?.throwIfAborted();
-      const tx = db.transaction(storeName, "readonly");
-      const msg = await tx.store.get(messageId);
-      return (
-        msg !== undefined &&
-        (msg as { threadId?: string }).threadId === threadId
-      );
-    },
+    if (!dbPromise) {
+      L.debug("openDB", { dbName, storeName });
+      const openPromise = openChatIdb(userId, orgId);
+      dbPromise = openPromise;
+    }
 
-    async readBefore(threadId, beforeId, limit, signal) {
-      L.debug("readBefore:start", { threadId, beforeId, limit });
-      const db = await getDb();
-      signal?.throwIfAborted();
-      const tx = db.transaction(storeName, "readonly");
-      const anchor = await tx.store.get(beforeId);
-      if (!anchor) {
-        L.debug("readBefore:anchorMiss", { threadId, beforeId });
-        return [];
-      }
-      if ((anchor as { threadId?: string }).threadId !== threadId) {
-        L.debug("readBefore:anchorThreadMismatch", { threadId, beforeId });
-        return [];
-      }
-      const anchorMsg = validateMessage(anchor);
-      signal?.throwIfAborted();
-
-      const index = tx.store.index(CHAT_MESSAGES_ORDER_INDEX);
-      const range = IDBKeyRange.bound(
-        [threadId],
-        [
-          threadId,
-          anchorMsg.createdAt,
-          storedOrderSequence(anchor, anchorMsg),
-          beforeId,
-        ],
-      );
-      const messages: PagedChatMessage[] = [];
-      let cursor = await index.openCursor(range, "prev");
-      if (cursor?.primaryKey === beforeId) {
-        cursor = await cursor.continue();
-      }
-      while (cursor && messages.length < limit) {
-        signal?.throwIfAborted();
-        messages.push(validateMessage(cursor.value));
-        cursor = await cursor.continue();
-      }
-      L.debug("readBefore:done", {
-        threadId,
-        beforeId,
-        count: messages.length,
+    const pending = dbPromise;
+    // IDB open is a cache fast path; timeout/rejection disables it for this tab.
+    // eslint-disable-next-line no-restricted-syntax
+    try {
+      return await withChatIdbTimeout("messages:openDB", () => {
+        return pending;
       });
-      return messages.reverse();
-    },
-  };
-
-  const writeStore: ChatMessageWriteStore = {
-    async upsertMessages(threadId, messages, signal) {
-      L.debug("upsertMessages:start", {
-        threadId,
-        count: messages.length,
-      });
-      const db = await getDb();
-      signal?.throwIfAborted();
-      const tx = db.transaction(storeName, "readwrite");
-      for (const msg of messages) {
-        signal?.throwIfAborted();
-        // Stitch local ordering fields onto the stored value. PagedChatMessage
-        // from the API has no threadId and keeps sequenceNumber optional.
-        await tx.store.put(storedMessage(threadId, msg));
+    } catch (error) {
+      if (dbPromise === pending) {
+        dbPromise = null;
       }
-      await tx.done;
-      L.debug("upsertMessages:done", { threadId, count: messages.length });
-    },
-  };
+      disableForSession(error);
+      throw error;
+    }
+  }
 
   return Object.freeze({
-    readStore,
-    writeStore,
+    readStore: createMessageReadStore(storeName, getDb),
+    writeStore: createMessageWriteStore(storeName, getDb),
   });
 }
 

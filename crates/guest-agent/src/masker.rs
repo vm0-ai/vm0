@@ -1,31 +1,25 @@
-//! Sensitive value masking for event payloads and CLI diagnostics.
+//! Secret value masking for event payloads and CLI diagnostics.
 //!
 //! Reads `VM0_SECRET_VALUES` (comma-separated base64 values), pre-computes
 //! plain / base64 / URL-encoded variants for normal payload masking, and derives
-//! diagnostic-only multiline variants for bounded CLI stderr tails. Runtime
-//! metadata such as CLI session identifiers can be registered after startup and
-//! uses the same matcher set.
+//! diagnostic-only multiline variants for bounded CLI stderr tails.
 
 use crate::env;
 use aho_corasick::{AhoCorasick, MatchKind};
 use base64::Engine;
 use serde_json::Value;
-use std::{
-    collections::HashSet,
-    ops::Range,
-    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
-};
+use std::{collections::HashSet, ops::Range};
 
 /// Minimum secret length to avoid false-positive masking.
 const MIN_SECRET_LEN: usize = 5;
 
-/// Holds pre-computed sensitive value patterns for efficient masking.
+/// Holds pre-computed secret value patterns for efficient masking.
 ///
 /// Uses Aho-Corasick with leftmost-longest match semantics so that when one
 /// configured value is a substring of another, the longer match wins and no
 /// partial sensitive value survives. See issue #9778.
 pub struct SecretMasker {
-    state: RwLock<MaskerState>,
+    state: MaskerState,
 }
 
 struct MaskerState {
@@ -37,7 +31,6 @@ struct MaskerState {
     diagnostic_patterns: Vec<String>,
     url_encoded_patterns: Vec<String>,
     diagnostic_url_encoded_patterns: Vec<String>,
-    registered_values: HashSet<String>,
 }
 
 struct Matcher {
@@ -48,9 +41,7 @@ struct Matcher {
 impl SecretMasker {
     /// Build a masker from an owned guest-agent config.
     pub fn from_config(config: &env::GuestConfig) -> Self {
-        let masker = Self::from_raw(&config.secret_values);
-        masker.add_sensitive_value(&config.resume_session_id);
-        masker
+        Self::from_raw(&config.secret_values)
     }
 
     /// Build a masker from a raw comma-separated base64-encoded secret string.
@@ -65,34 +56,25 @@ impl SecretMasker {
 
         // Parse comma-separated base64 values
         let engine = base64::engine::general_purpose::STANDARD;
-        let secrets: Vec<String> = raw
-            .split(',')
-            .filter_map(|part| {
-                let trimmed = part.trim();
-                if trimmed.is_empty() {
-                    return None;
-                }
-                engine
-                    .decode(trimmed)
-                    .ok()
-                    .and_then(|bytes| String::from_utf8(bytes).ok())
-            })
-            .filter(|s| !s.is_empty())
-            .collect();
-
         let mut state = MaskerState::empty();
-        for secret in &secrets {
-            state.add_sensitive_value_patterns(secret);
+        let mut seen_secrets = HashSet::new();
+        for secret in raw.split(',').filter_map(|part| {
+            let trimmed = part.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            engine
+                .decode(trimmed)
+                .ok()
+                .and_then(|bytes| String::from_utf8(bytes).ok())
+                .filter(|value| !value.is_empty())
+        }) {
+            if seen_secrets.insert(secret.clone()) {
+                state.add_secret_value_patterns(&secret);
+            }
         }
         state.rebuild_matchers();
         Self::from_state(state)
-    }
-
-    pub(crate) fn add_sensitive_value(&self, value: &str) {
-        let mut state = self.write_state();
-        if state.add_sensitive_value_patterns(value) {
-            state.rebuild_matchers();
-        }
     }
 
     fn empty() -> Self {
@@ -146,22 +128,12 @@ impl SecretMasker {
     }
 
     fn from_state(state: MaskerState) -> Self {
-        Self {
-            state: RwLock::new(state),
-        }
-    }
-
-    fn read_state(&self) -> RwLockReadGuard<'_, MaskerState> {
-        self.state.read().unwrap_or_else(|e| e.into_inner())
-    }
-
-    fn write_state(&self) -> RwLockWriteGuard<'_, MaskerState> {
-        self.state.write().unwrap_or_else(|e| e.into_inner())
+        Self { state }
     }
 
     /// Recursively mask secrets in a JSON value tree (in-place).
     pub fn mask_value(&self, val: &mut Value) {
-        self.read_state().mask_value(val);
+        self.state.mask_value(val);
     }
 
     /// Replace all secret patterns in a string with `***`.
@@ -179,16 +151,16 @@ impl SecretMasker {
 
     /// Mask diagnostic text while preserving the caller's line boundaries.
     pub(crate) fn mask_diagnostic_lines(&self, lines: Vec<String>) -> Vec<String> {
-        self.read_state().mask_diagnostic_lines(lines)
+        self.state.mask_diagnostic_lines(lines)
     }
 
     #[cfg(test)]
     fn mask_string_in_place(&self, s: &mut String) -> bool {
-        self.read_state().mask_string_in_place(s)
+        self.state.mask_string_in_place(s)
     }
 
     fn masked_string(&self, s: &str) -> Option<String> {
-        self.read_state().masked_string(s)
+        self.state.masked_string(s)
     }
 }
 
@@ -203,7 +175,6 @@ impl MaskerState {
             diagnostic_patterns: Vec::new(),
             url_encoded_patterns: Vec::new(),
             diagnostic_url_encoded_patterns: Vec::new(),
-            registered_values: HashSet::new(),
         }
     }
 
@@ -223,15 +194,14 @@ impl MaskerState {
             diagnostic_patterns,
             url_encoded_patterns,
             diagnostic_url_encoded_patterns,
-            registered_values: HashSet::new(),
         };
         state.rebuild_matchers();
         state
     }
 
-    fn add_sensitive_value_patterns(&mut self, value: &str) -> bool {
-        if value.len() < MIN_SECRET_LEN || !self.registered_values.insert(value.to_string()) {
-            return false;
+    fn add_secret_value_patterns(&mut self, value: &str) {
+        if value.len() < MIN_SECRET_LEN {
+            return;
         }
 
         push_secret_patterns(value, &mut self.patterns);
@@ -239,7 +209,6 @@ impl MaskerState {
         push_url_encoded_secret_pattern(value, &mut self.url_encoded_patterns);
         push_url_encoded_secret_pattern(value, &mut self.diagnostic_url_encoded_patterns);
         push_diagnostic_multiline_patterns(value, &mut self.diagnostic_patterns);
-        true
     }
 
     fn rebuild_matchers(&mut self) {
@@ -631,43 +600,6 @@ mod tests {
         masker.mask_value(&mut val);
         assert_eq!(val["outer"]["inner"], "has *** inside");
         assert_eq!(val["list"][1], "***");
-    }
-
-    #[test]
-    fn runtime_sensitive_value_masks_existing_paths() {
-        let masker = SecretMasker::from_raw("");
-        let value = "session/value";
-        let encoded = base64::engine::general_purpose::STANDARD.encode(value);
-
-        masker.add_sensitive_value(value);
-
-        let mut val = json!({
-            "plain": "contains session/value",
-            "encoded": encoded,
-            "url": "contains session%2fvalue",
-        });
-        masker.mask_value(&mut val);
-        assert_eq!(val["plain"], "contains ***");
-        assert_eq!(val["encoded"], "***");
-        assert_eq!(val["url"], "contains ***");
-        assert_eq!(masker.mask_string("session/value"), "***");
-        assert_eq!(
-            masker.mask_owned_string("system log session/value".to_string()),
-            "system log ***"
-        );
-        assert_eq!(
-            masker.mask_diagnostic_lines(vec!["stderr session/value".to_string()]),
-            vec!["stderr ***".to_string()]
-        );
-    }
-
-    #[test]
-    fn runtime_sensitive_value_skips_short_values() {
-        let masker = SecretMasker::from_raw("");
-
-        masker.add_sensitive_value("abcd");
-
-        assert_eq!(masker.mask_string("abcd"), "abcd");
     }
 
     #[test]

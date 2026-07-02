@@ -304,3 +304,47 @@ function buildIllustrationGenerationTemplatePrompt(
     ].join("\n"),
   };
 }
+
+/**
+ * Short, non-instructional label for a generation template selection, meant to be
+ * embedded into replayed prior-turn text (see buildWebChatPriorRunsContext) so a
+ * later turn can see *when* the selection changed without repeating the full
+ * "# Artifact Template Context" instructions for every past turn. There is no
+ * thread-sticky persistence for these templates, so this replayed marker is the
+ * only way a future turn learns a selection happened here.
+ */
+export function describeGenerationTemplateSelection(
+  generationTemplate: GenerationTemplateInput | null | undefined,
+): string | null {
+  if (!generationTemplate) {
+    return null;
+  }
+  if (generationTemplate.type === "illustration") {
+    const style = findImageStyle(
+      generationTemplate.selection.illustrationStyleId,
+    );
+    return style
+      ? `using illustration style "${style.name}" (${style.id})`
+      : null;
+  }
+  if (generationTemplate.type === "video") {
+    const template = findVideoTemplate(
+      generationTemplate.selection.stylePresetId,
+    );
+    return template
+      ? `using video template "${template.name}" (${template.id})`
+      : null;
+  }
+  if (generationTemplate.type === "presentation") {
+    const template = findTemplate(generationTemplate.selection.templateId);
+    return template
+      ? `using presentation template "${template.name}" (${template.id})`
+      : null;
+  }
+  const template = findWorkflowTemplateItem(
+    generationTemplate.selection.workflowTemplateId,
+  );
+  return template
+    ? `using workflow template "${template.title}" (${template.id})`
+    : null;
+}

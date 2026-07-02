@@ -83,6 +83,13 @@ pub(crate) fn read_session_history_from_payload(payload: &str) -> Result<Vec<u8>
     read_session_history_from_payload_impl(payload, None)
 }
 
+pub(crate) fn read_session_history_from_payload_bounded(
+    payload: &str,
+    max_bytes: u64,
+) -> Result<Vec<u8>, AgentError> {
+    read_session_history_from_payload_impl(payload, Some(max_bytes))
+}
+
 pub(crate) struct SessionHistoryDigest {
     pub(crate) size_bytes: u64,
     pub(crate) sha256_hex: String,
