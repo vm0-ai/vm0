@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
@@ -8,8 +9,9 @@ import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
 import { teamsOrgThreadSessions } from "@vm0/db/schema/teams-org-thread-session";
 import { teamsUserAgentPreferences } from "@vm0/db/schema/teams-user-agent-preference";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import type { TeamsInboundActivity } from "@vm0/api-contracts/contracts/zero-teams-bot";
-import { and, eq, or } from "drizzle-orm";
+import { and, desc, eq, or } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
@@ -33,6 +35,13 @@ type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
 type BoundTeamsInstallation = TeamsInstallation & { readonly orgId: string };
 type TeamsConnection = typeof teamsOrgConnections.$inferSelect;
 type TeamsMessageActivity = Extract<TeamsInboundActivity, { kind: "message" }>;
+
+interface TeamsThreadContextMessage {
+  readonly text: string;
+  readonly senderId: string;
+  readonly senderName: string | null;
+  readonly senderPrincipalName: string | null;
+}
 
 interface TeamsAgent {
   readonly id: string;
@@ -289,9 +298,94 @@ async function resolveCompatibleTeamsThreadSession(args: {
   return threadSession.agentSessionId;
 }
 
+function formatTeamsSenderBlock(message: TeamsThreadContextMessage): string {
+  const parts = [`id: ${message.senderId}`];
+  if (message.senderName) {
+    parts.push(`name: ${message.senderName}`);
+  }
+  if (message.senderPrincipalName) {
+    parts.push(`email: ${message.senderPrincipalName}`);
+  }
+  return `- SENDER: {${parts.join(", ")}}`;
+}
+
+function formatTeamsContextMessage(
+  message: TeamsThreadContextMessage,
+  relativeIndex: number,
+): string {
+  return [
+    "---",
+    "",
+    `- RELATIVE_INDEX: ${relativeIndex}`,
+    formatTeamsSenderBlock(message),
+    "",
+    message.text,
+  ].join("\n");
+}
+
+const TEAMS_CONTEXT_PREAMBLE = [
+  "The messages below are from a Microsoft Teams conversation. When responding:",
+  "- Messages closer to RELATIVE_INDEX 0 are more recent; prioritize them.",
+  "- Match the tone of the conversation; casual messages deserve casual replies.",
+  "- Only provide technical analysis when explicitly asked a technical question.",
+  "- Keep responses proportional to the message length and complexity.",
+].join("\n");
+
+function formatTeamsThreadContext(
+  messages: readonly TeamsThreadContextMessage[],
+): string {
+  if (messages.length === 0) {
+    return "";
+  }
+
+  const totalMessages = messages.length;
+  const formattedMessages = messages.map((message, index) => {
+    return formatTeamsContextMessage(message, index - totalMessages);
+  });
+  return `# Microsoft Teams Thread Context\n\n${TEAMS_CONTEXT_PREAMBLE}\n\n${formattedMessages.join(
+    "\n\n",
+  )}\n\n---`;
+}
+
+async function fetchTeamsThreadContext(args: {
+  readonly db: Db;
+  readonly sessionId: string | undefined;
+  readonly connection: TeamsConnection;
+}): Promise<string> {
+  if (!args.sessionId) {
+    return "";
+  }
+
+  const rows = await args.db
+    .select({
+      prompt: agentRuns.prompt,
+    })
+    .from(agentRuns)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(
+      and(
+        eq(agentRuns.sessionId, args.sessionId),
+        eq(zeroRuns.triggerSource, "teams"),
+      ),
+    )
+    .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
+    .limit(10);
+  return formatTeamsThreadContext(
+    [...rows].reverse().map((row) => {
+      return {
+        text: row.prompt,
+        senderId: args.connection.teamsUserId,
+        senderName: args.connection.teamsUserDisplayName,
+        senderPrincipalName: args.connection.teamsUserPrincipalName,
+      };
+    }),
+  );
+}
+
 function buildTeamsPrompt(args: {
   readonly activity: TeamsMessageActivity;
   readonly installation: TeamsInstallation;
+  readonly threadContext: string;
 }): string {
   const recipient = args.activity.recipient;
   return [
@@ -309,7 +403,12 @@ function buildTeamsPrompt(args: {
     ...optionalLine("Teams app ID", args.activity.teamsAppId),
     ...optionalLine("Bot ID", recipient?.id ?? args.installation.botId),
     ...optionalLine("Bot name", recipient?.name ?? args.installation.botName),
-  ].join("\n");
+    args.threadContext,
+  ]
+    .filter((line): line is string => {
+      return line.length > 0;
+    })
+    .join("\n");
 }
 
 function callbackPayload(args: {
@@ -350,6 +449,7 @@ const runAgentForTeams$ = command(
       readonly connection: TeamsConnection;
       readonly composeId: string;
       readonly sessionId: string | undefined;
+      readonly threadContext: string;
       readonly apiStartTime: number;
       readonly modelRoute: IntegrationModelRoutePin | undefined;
     },
@@ -377,6 +477,7 @@ const runAgentForTeams$ = command(
         appendSystemPrompt: buildTeamsPrompt({
           activity: args.activity,
           installation: args.installation,
+          threadContext: args.threadContext,
         }),
         userInfoExtras: {
           teamsUserDisplayName: args.activity.sender.name ?? undefined,
@@ -551,6 +652,13 @@ export const dispatchTeamsMessageToAgent$ = command(
     });
     signal.throwIfAborted();
 
+    const threadContext = await fetchTeamsThreadContext({
+      db,
+      sessionId: existingSessionId,
+      connection,
+    });
+    signal.throwIfAborted();
+
     const result = await set(
       runAgentForTeams$,
       {
@@ -559,6 +667,7 @@ export const dispatchTeamsMessageToAgent$ = command(
         connection,
         composeId: effectiveCompose.composeId,
         sessionId: existingSessionId,
+        threadContext,
         apiStartTime: args.apiStartTime,
         modelRoute,
       },

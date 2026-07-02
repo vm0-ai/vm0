@@ -1,4 +1,9 @@
-import { createSign, generateKeyPairSync, type KeyObject } from "node:crypto";
+import {
+  createHash,
+  createSign,
+  generateKeyPairSync,
+  type KeyObject,
+} from "node:crypto";
 
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import { HttpResponse, http } from "msw";
@@ -9,9 +14,11 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { zeroTeamsBotRoutes } from "../zero-teams-bot";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   removeTeamsForTest,
   setupTeamsConnectTestEnv,
@@ -27,6 +34,7 @@ const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
 const runsApi = createRunsAutomationsApi(context);
+const webhooksApi = createWebhookCallbackApi(context);
 const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
   async (fixture) => {
     await removeTeamsForTest(context.signal, fixture);
@@ -34,10 +42,13 @@ const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
 );
 const TEAMS_BOT_PATH = "http://api.test/api/zero/teams/bot";
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
+const BOT_APP_PASSWORD = "teams-test-password";
 const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const APP_ORIGIN = "https://app.vm0.test";
 const KEY_ID = "teams-test-key";
+const BOT_FRAMEWORK_TOKEN_URL =
+  "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token";
 const BOT_FRAMEWORK_METADATA_URL =
   "https://login.botframework.com/v1/.well-known/openidconfiguration";
 const BOT_FRAMEWORK_KEYS_URL =
@@ -88,6 +99,35 @@ function botFrameworkHandlers(): void {
         ],
       });
     }),
+  );
+}
+
+function teamsServiceBaseUrl(serviceUrl: string): string {
+  return serviceUrl.replace(/\/+$/u, "");
+}
+
+function teamsOutboundHandlers(serviceUrl: string): void {
+  const serviceBaseUrl = teamsServiceBaseUrl(serviceUrl);
+  server.use(
+    http.post(BOT_FRAMEWORK_TOKEN_URL, () => {
+      return HttpResponse.json({
+        access_token: "teams-access-token",
+        token_type: "Bearer",
+        expires_in: 3600,
+      });
+    }),
+    http.post(
+      `${serviceBaseUrl}/v3/conversations/:conversationId/activities`,
+      () => {
+        return HttpResponse.json({ id: "teams-activity-1" });
+      },
+    ),
+    http.post(
+      `${serviceBaseUrl}/v3/conversations/:conversationId/activities/:activityId`,
+      () => {
+        return HttpResponse.json({ id: "teams-activity-1" });
+      },
+    ),
   );
 }
 
@@ -267,12 +307,39 @@ function dispatchRunId(dispatch: unknown): string {
   return runId;
 }
 
+async function completeTeamsRun(args: {
+  readonly runId: string;
+  readonly sandboxToken: string;
+}): Promise<void> {
+  const sandboxHeaders = { authorization: `Bearer ${args.sandboxToken}` };
+  await webhooksApi.requestAgentCheckpoint(
+    {
+      runId: args.runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: `bdd-teams-bot-cli-${args.runId}`,
+      cliAgentSessionHistoryHash: createHash("sha256")
+        .update(`bdd teams bot history ${args.runId}`)
+        .digest("hex"),
+    },
+    sandboxHeaders,
+    [200],
+  );
+  await webhooksApi.requestAgentComplete(
+    { runId: args.runId, exitCode: 0 },
+    sandboxHeaders,
+    [200],
+  );
+  await flushWaitUntilForTest();
+}
+
 describe("POST /api/zero/teams/bot", () => {
   beforeEach(() => {
     setupTeamsConnectTestEnv(APP_ORIGIN);
+    mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", BOT_APP_PASSWORD);
     mockEnv("VM0_WEB_URL", "https://www.vm0.test");
     mockEnv("VM0_API_URL", "https://api.vm0.test");
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    context.mocks.axiom.query.mockResolvedValue([]);
   });
 
   afterEach(async () => {
@@ -407,7 +474,10 @@ describe("POST /api/zero/teams/bot", () => {
       orgRole: "org:admin",
     });
     const runnerGroup = runsApi.configureRunnerGroup();
+    context.mocks.ably.publish.mockResolvedValue(undefined);
     authOrgApi.acceptAgentStorageWrites();
+    runsApi.acceptStorageDownloads();
+    runsApi.acceptTelemetryIngest();
     const agent = await authOrgApi.createAgent(actor, {
       displayName: "Teams default agent",
       visibility: "public",
@@ -423,6 +493,25 @@ describe("POST /api/zero/teams/bot", () => {
     });
     expect(installResponse.status).toBe(200);
     await connectTeamsFixture(fixture);
+
+    teamsOutboundHandlers(fixture.serviceUrl);
+    const firstResponse = await postTeamsActivity({
+      activity: teamsMessageActivity(fixture, {
+        id: "activity-context-1",
+        replyToId: "root-dispatch",
+        text: "<at>Zero</at> remember the deployment target",
+      }),
+      token: teamsToken(),
+    });
+    expect(firstResponse.status).toBe(200);
+    const firstBody = await firstResponse.json();
+    const firstRunId = dispatchRunId(firstBody.dispatch);
+    await runsApi.heartbeatRunner(runnerGroup);
+    const firstClaim = await runsApi.claimRunnerJob(firstRunId);
+    await completeTeamsRun({
+      runId: firstRunId,
+      sandboxToken: firstClaim.sandboxToken,
+    });
 
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(fixture, {
@@ -442,7 +531,9 @@ describe("POST /api/zero/teams/bot", () => {
 
     const runId = dispatchRunId(body.dispatch);
     await runsApi.heartbeatRunner(runnerGroup);
-    const claim = await runsApi.claimRunnerJob(runId);
+    const claim = await runsApi.claimRunnerJob(runId, {
+      capabilities: ["resumeSessionHistoryRef"],
+    });
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
     const currentUserPrompt = promptSection(
       appendSystemPrompt,
@@ -452,6 +543,11 @@ describe("POST /api/zero/teams/bot", () => {
     const currentIntegrationPrompt = promptSection(
       appendSystemPrompt,
       "# Current Integration",
+      "# Microsoft Teams Thread Context",
+    );
+    const teamsThreadContext = promptSection(
+      appendSystemPrompt,
+      "# Microsoft Teams Thread Context",
     );
     expect(claim.prompt).toBe("ship the Teams dispatch");
     expect(currentIntegrationPrompt).toContain(
@@ -480,6 +576,15 @@ describe("POST /api/zero/teams/bot", () => {
       "Teams user principal name: ada@example.com",
     );
     expect(currentUserPrompt).toContain("Teams display name: Ada Lovelace");
+    expect(teamsThreadContext).toContain(
+      "The messages below are from a Microsoft Teams conversation",
+    );
+    expect(teamsThreadContext).toContain("- RELATIVE_INDEX: -1");
+    expect(teamsThreadContext).toContain(
+      `- SENDER: {id: ${fixture.teamsUserId}, name: Ada Lovelace, email: ada@example.com}`,
+    );
+    expect(teamsThreadContext).toContain("remember the deployment target");
+    expect(teamsThreadContext).not.toContain("ship the Teams dispatch");
   });
 
   it("asks connected Teams users to configure a default agent", async () => {
