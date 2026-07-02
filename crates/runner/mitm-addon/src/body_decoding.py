@@ -4,8 +4,7 @@ Exports:
 
 - Bounded streaming usage decoding for gzip, deflate, zstd; one-shot
   decompression for gzip, deflate, br, zstd.
-- Request network-log capture decoding that suppresses unsupported or failed
-  encoded request bodies.
+- Request network-log capture decoding that hides opaque encoded bodies.
 - JSON usage decompression with diagnostic error classification.
 """
 
@@ -380,9 +379,10 @@ def decode_request_body_for_network_log_capture(
 ) -> bytes | None:
     """Decode a request body for persistent network-log capture.
 
-    Request capture hides unsupported or invalid encoded bodies instead of
-    keeping best-effort fallback bytes. This helper is intentionally separate
-    from billing inspection, which has a stricter fail-closed policy.
+    Request capture hides unsupported encodings and supported-codec decode
+    failures instead of keeping best-effort fallback bytes. This helper is
+    intentionally separate from billing inspection, which has a stricter
+    fail-closed policy.
     """
     encoding = headers.get("content-encoding", "").strip().lower()
     if encoding and encoding != "identity" and encoding not in _SUPPORTED_ONE_SHOT_BODY_ENCODINGS:
