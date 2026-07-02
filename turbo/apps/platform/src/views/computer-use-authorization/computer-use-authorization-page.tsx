@@ -121,21 +121,33 @@ function EmptyHosts() {
         <div className="flex w-full max-w-sm flex-col gap-2">
           <a
             href={ZERO_DESKTOP_DOWNLOAD_URL}
+            aria-label="Download for Mac Apple Silicon"
             target="_blank"
             rel="noreferrer"
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             <IconDownload size={16} />
-            Download for Apple Silicon
+            <span className="flex flex-col items-start gap-0.5">
+              <span>Download for Mac</span>
+              <span className="text-xs font-normal text-muted-foreground">
+                Apple Silicon
+              </span>
+            </span>
           </a>
           <a
             href={ZERO_DESKTOP_INTEL_DOWNLOAD_URL}
+            aria-label="Download for Mac Intel"
             target="_blank"
             rel="noreferrer"
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             <IconDownload size={16} />
-            Download for Intel Mac
+            <span className="flex flex-col items-start gap-0.5">
+              <span>Download for Mac</span>
+              <span className="text-xs font-normal text-muted-foreground">
+                Intel
+              </span>
+            </span>
           </a>
         </div>
       ) : downloadSupportStatus === "unsupported-intel-mac" ? (
