@@ -6,6 +6,13 @@ import {
   CHAT_THREAD_META_STORE,
   upgradeChatIdb,
 } from "./chat-idb-schema.ts";
+import {
+  chatIdbReadOr,
+  chatIdbWriteBestEffort,
+  disabledChatIdbError,
+  logChatIdbDisabled,
+  withChatIdbTimeout,
+} from "./chat-idb-safe.ts";
 
 const L = logger("ChatIdbThreadMeta");
 
@@ -50,11 +57,35 @@ const STORE = CHAT_THREAD_META_STORE;
 
 const getDb = (() => {
   const cache: Record<string, Promise<IDBPDatabase>> = {};
-  return (userId: string, orgId: string): Promise<IDBPDatabase> => {
+  const disabled: Record<string, true> = {};
+
+  function disableForSession(dbName: string, reason: unknown): void {
+    if (disabled[dbName]) {
+      return;
+    }
+    disabled[dbName] = true;
+    logChatIdbDisabled(dbName, reason);
+  }
+
+  return async (userId: string, orgId: string): Promise<IDBPDatabase> => {
     const dbName = `vm0-chat-${userId}-${orgId}`;
+    if (disabled[dbName]) {
+      throw disabledChatIdbError(dbName);
+    }
+
     const existing = cache[dbName];
     if (existing !== undefined) {
-      return existing;
+      // IDB open is a cache fast path; timeout/rejection disables it for this tab.
+      // eslint-disable-next-line no-restricted-syntax
+      try {
+        return await withChatIdbTimeout("threadMeta:openDB", () => {
+          return existing;
+        });
+      } catch (error) {
+        delete cache[dbName];
+        disableForSession(dbName, error);
+        throw error;
+      }
     }
     L.debug("openDB", { dbName });
     const promise = openDB(dbName, CHAT_IDB_VERSION, {
@@ -64,7 +95,20 @@ const getDb = (() => {
       },
     });
     cache[dbName] = promise;
-    return promise;
+
+    // IDB open is a cache fast path; timeout/rejection disables it for this tab.
+    // eslint-disable-next-line no-restricted-syntax
+    try {
+      return await withChatIdbTimeout("threadMeta:openDB", () => {
+        return promise;
+      });
+    } catch (error) {
+      if (cache[dbName] === promise) {
+        delete cache[dbName];
+      }
+      disableForSession(dbName, error);
+      throw error;
+    }
   };
 })();
 
@@ -74,22 +118,29 @@ export async function readThreadMeta$(
   threadId: string,
   signal?: AbortSignal,
 ): Promise<ThreadMeta | null> {
-  const db = await getDb(userId, orgId);
-  signal?.throwIfAborted();
-  const raw = await db.get(STORE, threadId);
-  if (!raw) {
-    return null;
-  }
-  if (!isThreadMetaRow(raw)) {
-    L.debug("read:corruptRow", { threadId });
-    return null;
-  }
-  return {
-    threadId: raw.threadId,
-    agentId: raw.agentId ?? null,
-    startMessageId: raw.startMessageId ?? null,
-    updatedAt: raw.updatedAt,
-  };
+  return await chatIdbReadOr(
+    "threadMeta:read",
+    async () => {
+      const db = await getDb(userId, orgId);
+      signal?.throwIfAborted();
+      const raw = await db.get(STORE, threadId);
+      if (!raw) {
+        return null;
+      }
+      if (!isThreadMetaRow(raw)) {
+        L.debug("read:corruptRow", { threadId });
+        return null;
+      }
+      return {
+        threadId: raw.threadId,
+        agentId: raw.agentId ?? null,
+        startMessageId: raw.startMessageId ?? null,
+        updatedAt: raw.updatedAt,
+      };
+    },
+    null,
+    signal,
+  );
 }
 
 interface ThreadMetaPatch {
@@ -109,19 +160,25 @@ export async function patchThreadMeta$(
   patch: ThreadMetaPatch,
   signal?: AbortSignal,
 ): Promise<void> {
-  const db = await getDb(userId, orgId);
-  signal?.throwIfAborted();
-  const tx = db.transaction(STORE, "readwrite");
-  const existing = await tx.store.get(threadId);
-  signal?.throwIfAborted();
-  const current = isThreadMetaRow(existing) ? existing : null;
-  const next: ThreadMetaRow = {
-    threadId,
-    agentId: patch.agentId ?? current?.agentId,
-    startMessageId: patch.startMessageId ?? current?.startMessageId,
-    updatedAt: nowDate().toISOString(),
-  };
-  await tx.store.put(next);
-  await tx.done;
-  L.debug("patch:done", { threadId, patch });
+  await chatIdbWriteBestEffort(
+    "threadMeta:patch",
+    async () => {
+      const db = await getDb(userId, orgId);
+      signal?.throwIfAborted();
+      const tx = db.transaction(STORE, "readwrite");
+      const existing = await tx.store.get(threadId);
+      signal?.throwIfAborted();
+      const current = isThreadMetaRow(existing) ? existing : null;
+      const next: ThreadMetaRow = {
+        threadId,
+        agentId: patch.agentId ?? current?.agentId,
+        startMessageId: patch.startMessageId ?? current?.startMessageId,
+        updatedAt: nowDate().toISOString(),
+      };
+      await tx.store.put(next);
+      await tx.done;
+      L.debug("patch:done", { threadId, patch });
+    },
+    signal,
+  );
 }
