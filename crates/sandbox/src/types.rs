@@ -851,6 +851,24 @@ mod tests {
             ),
             (
                 serde_json::json!({
+                    "kind": "exited",
+                    "exit_code": i32::MIN,
+                }),
+                ExecTermination::Exited {
+                    exit_code: i32::MIN,
+                },
+            ),
+            (
+                serde_json::json!({
+                    "kind": "exited",
+                    "exit_code": i32::MAX,
+                }),
+                ExecTermination::Exited {
+                    exit_code: i32::MAX,
+                },
+            ),
+            (
+                serde_json::json!({
                     "kind": "timed_out",
                 }),
                 ExecTermination::TimedOut,
@@ -908,6 +926,22 @@ mod tests {
                 "kind": "exited",
                 "exit_code": 0,
                 "signal": 9,
+            }),
+        ] {
+            assert!(serde_json::from_value::<ExecTermination>(value).is_err());
+        }
+    }
+
+    #[test]
+    fn exec_termination_rejects_out_of_range_exit_code() {
+        for value in [
+            serde_json::json!({
+                "kind": "exited",
+                "exit_code": 2_147_483_648_i64,
+            }),
+            serde_json::json!({
+                "kind": "exited",
+                "exit_code": -2_147_483_649_i64,
             }),
         ] {
             assert!(serde_json::from_value::<ExecTermination>(value).is_err());
