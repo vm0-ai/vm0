@@ -527,6 +527,58 @@ export function downloadManifest(
   });
 }
 
+export function s3ObjectContentLength(
+  bucket: string,
+  key: string,
+  maxBytes?: number,
+): Computed<Promise<number | undefined>> {
+  return s3ObjectContentLengthWithClient(
+    s3ClientForBucket(bucket),
+    bucket,
+    key,
+    maxBytes,
+  );
+}
+
+function isS3NotFoundError(error: unknown): boolean {
+  const candidate = error as {
+    readonly name?: string;
+    readonly $metadata?: { readonly httpStatusCode?: number };
+  };
+  return (
+    candidate.name === "NotFound" || candidate.$metadata?.httpStatusCode === 404
+  );
+}
+
+function s3ObjectContentLengthWithClient(
+  client$: Computed<S3Client>,
+  bucket: string,
+  key: string,
+  maxBytes: number | undefined,
+): Computed<Promise<number | undefined>> {
+  return computed(async (get): Promise<number | undefined> => {
+    const client = get(client$);
+    const result = await settle(
+      client.send(new HeadObjectCommand({ Bucket: bucket, Key: key })),
+    );
+    if (!result.ok) {
+      if (isS3NotFoundError(result.error)) {
+        return undefined;
+      }
+      throw result.error;
+    }
+
+    const contentLength = result.value.ContentLength;
+    if (contentLength === undefined) {
+      return undefined;
+    }
+    if (maxBytes !== undefined && contentLength > maxBytes) {
+      throw new S3ObjectSizeLimitError(key, contentLength, maxBytes);
+    }
+    return contentLength;
+  });
+}
+
 export function s3ObjectExists(
   bucket: string,
   key: string,
@@ -550,14 +602,7 @@ function s3ObjectExistsWithClient(
       return true;
     }
 
-    const candidate = result.error as {
-      readonly name?: string;
-      readonly $metadata?: { readonly httpStatusCode?: number };
-    };
-    if (
-      candidate.name === "NotFound" ||
-      candidate.$metadata?.httpStatusCode === 404
-    ) {
+    if (isS3NotFoundError(result.error)) {
       return false;
     }
     throw result.error;

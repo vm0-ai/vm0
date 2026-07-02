@@ -31,6 +31,7 @@ import {
   downloadS3BufferWithMaxBytes,
   generatePresignedGetUrl,
   S3ObjectSizeLimitError,
+  s3ObjectContentLength,
 } from "../external/s3";
 import {
   createRunnerGroupRealtimeToken,
@@ -1095,7 +1096,7 @@ const loadResumeSessionHistory$ = command(
 
 const loadIdentityResumeSessionHistoryRepresentation$ = command(
   async (
-    _,
+    { get },
     args: {
       readonly db: Db;
       readonly hash: string;
@@ -1123,22 +1124,61 @@ const loadIdentityResumeSessionHistoryRepresentation$ = command(
     if (encoding !== SESSION_HISTORY_ENCODING_IDENTITY) {
       return undefined;
     }
-    if (blob.rawSize <= 0 || blob.encodedSize <= 0) {
-      return undefined;
+
+    let rawSize = blob.rawSize;
+    let encodedSize = blob.encodedSize;
+    if (rawSize <= 0 || encodedSize <= 0) {
+      const objectKey = resumeSessionHistoryRawBlobKey(args.hash);
+      const contentLengthResult = await settle(
+        get(
+          s3ObjectContentLength(
+            env("R2_USER_STORAGES_BUCKET_NAME"),
+            objectKey,
+            RESUME_SESSION_HISTORY_MAX_BYTES,
+          ),
+        ),
+      );
+      if (!contentLengthResult.ok) {
+        if (contentLengthResult.error instanceof S3ObjectSizeLimitError) {
+          throw invalidResumeSessionHistoryError(
+            args.hash,
+            contentLengthResult.error,
+          );
+        }
+        throw contentLengthResult.error;
+      }
+      const contentLength = contentLengthResult.value;
+      if (contentLength === undefined || contentLength <= 0) {
+        return undefined;
+      }
+      const [updatedBlob] = await args.db
+        .update(blobs)
+        .set({
+          rawSize: contentLength,
+          encoding: SESSION_HISTORY_ENCODING_IDENTITY,
+          encodedSize: contentLength,
+        })
+        .where(and(eq(blobs.hash, args.hash), eq(blobs.rawSize, 0)))
+        .returning({
+          rawSize: blobs.rawSize,
+          encodedSize: blobs.encodedSize,
+        });
+      rawSize = updatedBlob?.rawSize ?? contentLength;
+      encodedSize = updatedBlob?.encodedSize ?? contentLength;
     }
-    if (blob.rawSize !== blob.encodedSize) {
+    if (rawSize !== encodedSize) {
       throw invalidResumeSessionHistoryError(
         args.hash,
         new Error(
-          `identity session history rawSize must match encodedSize: rawSize=${blob.rawSize}, encodedSize=${blob.encodedSize}`,
+          `identity session history rawSize must match encodedSize: rawSize=${rawSize}, encodedSize=${encodedSize}`,
         ),
       );
     }
 
     return {
       encoding: SESSION_HISTORY_ENCODING_IDENTITY,
-      rawSize: blob.rawSize,
-      encodedSize: blob.encodedSize,
+      rawSize,
+      encodedSize,
     };
   },
 );

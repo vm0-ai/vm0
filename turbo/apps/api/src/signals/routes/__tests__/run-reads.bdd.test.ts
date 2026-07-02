@@ -98,6 +98,11 @@ function s3CommandKey(command: unknown): string | undefined {
   return (command as { readonly input?: { readonly Key?: string } }).input?.Key;
 }
 
+function s3CommandName(command: unknown): string | undefined {
+  return (command as { readonly constructor?: { readonly name?: string } })
+    .constructor?.name;
+}
+
 interface S3NotFoundError extends Error {
   Code: string;
   $metadata: { httpStatusCode: number };
@@ -114,7 +119,10 @@ function s3ObjectNotFoundError(): S3NotFoundError {
 function countSessionHistoryBlobReads(hash: string): number {
   const blobKey = `blobs/${hash}.blob`;
   return context.mocks.s3.send.mock.calls.filter(([command]) => {
-    return s3CommandKey(command) === blobKey;
+    return (
+      s3CommandName(command) === "GetObjectCommand" &&
+      s3CommandKey(command) === blobKey
+    );
   }).length;
 }
 
@@ -1294,6 +1302,11 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       const input = (command as { readonly input?: { readonly Key?: string } })
         .input;
       if (input?.Key === `blobs/${historyHash}.blob`) {
+        if (s3CommandName(command) === "HeadObjectCommand") {
+          return Promise.resolve({
+            ContentLength: Buffer.byteLength(history, "utf8"),
+          });
+        }
         return Promise.resolve({
           Body: {
             async *[Symbol.asyncIterator]() {
