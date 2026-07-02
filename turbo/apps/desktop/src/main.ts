@@ -104,6 +104,7 @@ import {
   showDockForVisibleMainWindow,
 } from "./desktop-window-lifecycle";
 import { buildDesktopWindowChromeOptions } from "./desktop-window-chrome";
+import { latestWinsSingleFlight } from "./desktop-async-control";
 import {
   desktopRendererFilePath,
   desktopRendererUrl,
@@ -151,8 +152,6 @@ let keepAwakeController: DesktopKeepAwakeController | null = null;
 let filesystemPluginManager: DesktopFilesystemPluginManager | null = null;
 let developerToolsAvailable = false;
 let developerToolsEnabled = false;
-let developerToolsRefresh: Promise<void> | null = null;
-let developerToolsRefreshRequested = false;
 let desktopAutoUpdatesInstalled = false;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 let computerUseRuntime: ComputerUseHostRuntime | null = null;
@@ -300,24 +299,15 @@ async function refreshDeveloperToolsAvailability(): Promise<void> {
   );
 }
 
-function refreshDeveloperToolsAvailabilityForState(): void {
-  if (developerToolsRefresh) {
-    developerToolsRefreshRequested = true;
-    return;
-  }
-  developerToolsRefresh = refreshDeveloperToolsAvailability()
-    .catch((error) => {
+const refreshDeveloperToolsAvailabilityForState = latestWinsSingleFlight(
+  refreshDeveloperToolsAvailability,
+  {
+    onError: (error) => {
       console.warn("Unable to refresh desktop developer tools state", error);
       setDeveloperToolsAvailability(false);
-    })
-    .finally(() => {
-      developerToolsRefresh = null;
-      if (developerToolsRefreshRequested) {
-        developerToolsRefreshRequested = false;
-        refreshDeveloperToolsAvailabilityForState();
-      }
-    });
-}
+    },
+  },
+);
 
 async function runAuthWindow(request: {
   readonly url: string;
