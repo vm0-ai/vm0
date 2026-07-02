@@ -110,6 +110,33 @@ function connectorNames(
     .join(", ");
 }
 
+function connectorPillClassName({
+  interactive = false,
+  muted = false,
+}: {
+  readonly interactive?: boolean;
+  readonly muted?: boolean;
+}) {
+  return cn(
+    "inline-flex h-8 shrink-0 items-center gap-2 rounded-full border border-border/70 bg-background px-2.5 py-1 text-xs font-medium shadow-[0_1px_0_rgba(0,0,0,0.03)]",
+    muted ? "text-muted-foreground" : "text-foreground/80",
+    interactive &&
+      "transition-colors hover:border-border hover:bg-gray-50 hover:text-foreground",
+  );
+}
+
+function ConnectorPillMarker({
+  dotClassName,
+}: {
+  readonly dotClassName: string;
+}) {
+  return (
+    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border/70 bg-gray-50">
+      <span className={cn("h-1.5 w-1.5 rounded-full", dotClassName)} />
+    </span>
+  );
+}
+
 /** The agent that runs the workflow, drawn as its real avatar. */
 function AgentAvatar({ workflow }: { readonly workflow: ZeroWorkflowSummary }) {
   const label = agentLabel(workflow);
@@ -189,13 +216,8 @@ function ConnectorPopoverList({
             key={entry.trigger.id}
             className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50"
           >
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-gray-50 px-2 py-0.5 text-xs font-medium text-muted-foreground">
-              <span
-                className={cn(
-                  "h-1.5 w-1.5 rounded-full",
-                  triggerDotClass(entry),
-                )}
-              />
+            <span className={connectorPillClassName({})}>
+              <ConnectorPillMarker dotClassName={triggerDotClass(entry)} />
               {triggerTypeLabel(entry.trigger)}
             </span>
             <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
@@ -218,8 +240,8 @@ function ConnectorCell({
 }) {
   if (entries.length === 0) {
     return (
-      <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-gray-50 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-        <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+      <span className={connectorPillClassName({ muted: true })}>
+        <ConnectorPillMarker dotClassName="bg-muted-foreground/40" />
         Manual
       </span>
     );
@@ -232,12 +254,10 @@ function ConnectorCell({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="inline-flex shrink-0 items-center gap-2 rounded-full bg-gray-50 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-100"
+          className={connectorPillClassName({ interactive: true })}
         >
           {lead ? (
-            <span
-              className={cn("h-1.5 w-1.5 rounded-full", triggerDotClass(lead))}
-            />
+            <ConnectorPillMarker dotClassName={triggerDotClass(lead)} />
           ) : null}
           <span>{connectorNames(entries)}</span>
           {remaining > 0 ? (
@@ -312,7 +332,7 @@ function WorkflowRow({
 }) {
   const title = workflowTitle(workflow);
   return (
-    <article className="zero-card flex items-center gap-3 px-5 py-4 text-left text-foreground transition-colors hover:bg-gray-50">
+    <article className="flex items-center gap-3 px-5 py-3.5 text-left text-foreground transition-colors hover:bg-gray-50">
       <TooltipProvider delayDuration={200}>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -430,7 +450,7 @@ function WorkflowSectionHeader({
   readonly count: number;
 }) {
   return (
-    <div className="flex items-center gap-2 px-0.5">
+    <div className="flex items-center gap-2 px-5 pb-1.5 pt-4">
       <span className="text-xs font-semibold text-foreground/80">{label}</span>
       <span className="text-xs text-muted-foreground/70">{count}</span>
       <span className="h-px flex-1 bg-border/70" />
@@ -438,29 +458,41 @@ function WorkflowSectionHeader({
   );
 }
 
+function WorkflowRowDivider() {
+  return <div className="mx-5 h-px bg-border/50" />;
+}
+
 function WorkflowRowList({
   workflows,
   entriesByWorkflowId,
   displayTimezone,
+  framed = true,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[];
   readonly entriesByWorkflowId: WorkflowTriggerEntryMap;
   readonly displayTimezone: string;
+  readonly framed?: boolean;
 }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      {workflows.map((workflow) => {
+  const rows = (
+    <>
+      {workflows.map((workflow, index) => {
         return (
-          <WorkflowRow
-            key={workflow.id}
-            workflow={workflow}
-            entries={entriesByWorkflowId.get(workflow.id) ?? []}
-            displayTimezone={displayTimezone}
-          />
+          <div key={workflow.id}>
+            {index > 0 ? <WorkflowRowDivider /> : null}
+            <WorkflowRow
+              workflow={workflow}
+              entries={entriesByWorkflowId.get(workflow.id) ?? []}
+              displayTimezone={displayTimezone}
+            />
+          </div>
         );
       })}
-    </div>
+    </>
   );
+  if (!framed) {
+    return <div>{rows}</div>;
+  }
+  return <div className="zero-card overflow-hidden">{rows}</div>;
 }
 
 function WorkflowNextRunGroups({
@@ -481,16 +513,20 @@ function WorkflowNextRunGroups({
     list.push(workflow);
     buckets.set(bucket, list);
   }
+  const visibleSections = NEXT_RUN_SECTIONS.flatMap((section) => {
+    const sectionWorkflows = buckets.get(section.key);
+    if (!sectionWorkflows || sectionWorkflows.length === 0) {
+      return [];
+    }
+    return [{ section, sectionWorkflows }];
+  });
 
   return (
-    <div className="flex flex-col gap-5">
-      {NEXT_RUN_SECTIONS.map((section) => {
-        const sectionWorkflows = buckets.get(section.key);
-        if (!sectionWorkflows || sectionWorkflows.length === 0) {
-          return null;
-        }
+    <div className="zero-card overflow-hidden">
+      {visibleSections.map(({ section, sectionWorkflows }, index) => {
         return (
-          <section key={section.key} className="flex flex-col gap-2">
+          <section key={section.key}>
+            {index > 0 ? <WorkflowRowDivider /> : null}
             <WorkflowSectionHeader
               label={section.label}
               count={sectionWorkflows.length}
@@ -499,6 +535,7 @@ function WorkflowNextRunGroups({
               workflows={sectionWorkflows}
               entriesByWorkflowId={entriesByWorkflowId}
               displayTimezone={displayTimezone}
+              framed={false}
             />
           </section>
         );
@@ -818,17 +855,17 @@ export function WorkflowsPage() {
 
 function WorkflowIndexSkeleton() {
   return (
-    <div className="flex flex-col gap-1.5" data-testid="workflows-loading">
+    <div className="zero-card overflow-hidden" data-testid="workflows-loading">
       {[0, 1, 2, 3].map((rowIndex) => {
         return (
-          <div
-            key={rowIndex}
-            className="zero-card flex items-center gap-3 px-4 py-3"
-          >
-            <div className="h-8 w-8 shrink-0 rounded-lg bg-muted/40" />
-            <div className="h-4 w-40 rounded bg-muted/50" />
-            <div className="ml-auto h-6 w-28 rounded-full bg-muted/40" />
-            <div className="h-5 w-5 rounded-full bg-muted/40" />
+          <div key={rowIndex}>
+            {rowIndex > 0 ? <WorkflowRowDivider /> : null}
+            <div className="flex items-center gap-3 px-5 py-3.5">
+              <div className="h-8 w-8 shrink-0 rounded-lg bg-muted/40" />
+              <div className="h-4 w-40 rounded bg-muted/50" />
+              <div className="ml-auto h-8 w-32 rounded-full bg-muted/40" />
+              <div className="h-5 w-5 rounded-full bg-muted/40" />
+            </div>
           </div>
         );
       })}
