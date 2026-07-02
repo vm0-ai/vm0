@@ -880,6 +880,14 @@ mod tests {
     }
 
     #[test]
+    fn exec_termination_deserializes_exited_fields_in_any_order() {
+        let decoded =
+            serde_json::from_str::<ExecTermination>(r#"{"exit_code":0,"kind":"exited"}"#).unwrap();
+
+        assert_eq!(decoded, ExecTermination::Exited { exit_code: 0 });
+    }
+
+    #[test]
     fn exec_termination_rejects_invalid_shapes() {
         for value in [
             serde_json::json!({
@@ -901,6 +909,18 @@ mod tests {
                 "exit_code": 0,
                 "signal": 9,
             }),
+        ] {
+            assert!(serde_json::from_value::<ExecTermination>(value).is_err());
+        }
+    }
+
+    #[test]
+    fn exec_termination_rejects_non_object_shapes() {
+        for value in [
+            serde_json::Value::Null,
+            serde_json::json!("exited"),
+            serde_json::json!(0),
+            serde_json::json!(["exited"]),
         ] {
             assert!(serde_json::from_value::<ExecTermination>(value).is_err());
         }
