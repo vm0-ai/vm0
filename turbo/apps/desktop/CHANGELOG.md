@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.22.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.21.0...desktop-v0.22.0) (2026-07-02)
+
+
+### Features
+
+* add Desktop Computer Use filesystem plugins ([#19814](https://github.com/vm0-ai/vm0/issues/19814)) ([062a44c](https://github.com/vm0-ai/vm0/commit/062a44c181536df868bc6b081bae0dd7a2d9d9d6))
+
+
+### Bug Fixes
+
+* harden vm0-computer daemon socket ([#19846](https://github.com/vm0-ai/vm0/issues/19846)) ([6972537](https://github.com/vm0-ai/vm0/commit/69725375677430121ffea19e7723b1b0b119df49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.0
+
 ## [0.21.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.20.5...desktop-v0.21.0) (2026-07-02)
 
 
