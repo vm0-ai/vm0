@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.385.0](https://github.com/vm0-ai/vm0/compare/core-v8.384.4...core-v8.385.0) (2026-07-02)
+
+
+### Features
+
+* support darwin x64 desktop builds ([#19766](https://github.com/vm0-ai/vm0/issues/19766)) ([d58dd67](https://github.com/vm0-ai/vm0/commit/d58dd6729078d9bf6556ed5a75c4a66e08b87373))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.141.0
+    * @vm0/connectors bumped to 1.125.0
+
 ## [8.384.4](https://github.com/vm0-ai/vm0/compare/core-v8.384.3...core-v8.384.4) (2026-07-02)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.205.0](https://github.com/vm0-ai/vm0/compare/api-v1.204.2...api-v1.205.0) (2026-07-02)
+
+
+### Features
+
+* support darwin x64 desktop builds ([#19766](https://github.com/vm0-ai/vm0/issues/19766)) ([d58dd67](https://github.com/vm0-ai/vm0/commit/d58dd6729078d9bf6556ed5a75c4a66e08b87373))
+
+
+### Bug Fixes
+
+* remove workflow publish approval flow ([#19767](https://github.com/vm0-ai/vm0/issues/19767)) ([19d0fa7](https://github.com/vm0-ai/vm0/commit/19d0fa765fe2fb9a15d64e2a04616b41b8546a17))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.141.0
+    * @vm0/connectors bumped to 1.125.0
+    * @vm0/core bumped to 8.385.0
+    * @vm0/db bumped to 1.84.2
+
 ## [1.204.2](https://github.com/vm0-ai/vm0/compare/api-v1.204.1...api-v1.204.2) (2026-07-02)
 
 
