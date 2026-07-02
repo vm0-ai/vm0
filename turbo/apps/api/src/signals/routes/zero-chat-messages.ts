@@ -217,6 +217,12 @@ interface PreparedNormalSend {
   readonly codexFastModeEnabled: boolean;
 }
 
+interface NormalSendFeatureSwitches {
+  readonly codexFastModeEnabled: boolean;
+  readonly presentationRunbookEnabled: boolean;
+  readonly initialThinkingEnabled: boolean;
+}
+
 interface ResolvedComputerUseHostGrant {
   readonly hostId: string;
   readonly displayName: string;
@@ -1352,6 +1358,30 @@ async function validateCodexServiceTierBeforeThread(params: {
   return codexServiceTierError ?? providerAdmission.error ?? undefined;
 }
 
+async function resolveNormalSendFeatureSwitches(
+  db: Db,
+  orgId: string,
+  userId: string,
+  zeroPreCreateSource: ZeroPreCreateSource | undefined,
+): Promise<NormalSendFeatureSwitches> {
+  const context = await loadUserFeatureSwitchContext(db, orgId, userId);
+  return {
+    codexFastModeEnabled: isFeatureEnabled(
+      FeatureSwitchKey.CodexFastMode,
+      context,
+    ),
+    presentationRunbookEnabled: isFeatureEnabled(
+      FeatureSwitchKey.PresentationTemplateRunbook,
+      context,
+    ),
+    initialThinkingEnabled:
+      isFeatureEnabled(
+        FeatureSwitchKey.ChatInitialThinkingIndicator,
+        context,
+      ) && zeroPreCreateSource === undefined,
+  };
+}
+
 async function updateUserModelPreference(
   db: Db,
   orgId: string,
@@ -2206,22 +2236,19 @@ const prepareNormalSend$ = command(
     if (modelError) {
       return modelError;
     }
-    const featureSwitchContext = await loadUserFeatureSwitchContext(
+    const featureSwitches = await resolveNormalSendFeatureSwitches(
       db,
       args.orgId,
       args.userId,
+      args.zeroPreCreateSource,
     );
     signal.throwIfAborted();
-    const codexFastModeEnabled = isFeatureEnabled(
-      FeatureSwitchKey.CodexFastMode,
-      featureSwitchContext,
-    );
     const codexServiceTierError = await validateCodexServiceTierBeforeThread({
       db,
       orgId: args.orgId,
       userId: args.userId,
       body: args.body,
-      codexFastModeEnabled,
+      codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
     });
     signal.throwIfAborted();
     if (codexServiceTierError) {
@@ -2258,18 +2285,9 @@ const prepareNormalSend$ = command(
       thread.incompleteContext,
     );
     signal.throwIfAborted();
-    const presentationRunbookEnabled = isFeatureEnabled(
-      FeatureSwitchKey.PresentationTemplateRunbook,
-      featureSwitchContext,
-    );
-    const initialThinkingEnabled =
-      isFeatureEnabled(
-        FeatureSwitchKey.ChatInitialThinkingIndicator,
-        featureSwitchContext,
-      ) && args.zeroPreCreateSource === undefined;
     const liveGenerationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
       explicit: args.body.generationTemplate,
-      presentationRunbookEnabled,
+      presentationRunbookEnabled: featureSwitches.presentationRunbookEnabled,
     });
     const fallbackNote = await fallbackGenerationTemplateNote({
       db,
@@ -2315,8 +2333,8 @@ const prepareNormalSend$ = command(
       generationTemplatePrompt,
       computerUseHostGrant,
       persistedExplicitSelection,
-      initialThinkingEnabled,
-      codexFastModeEnabled,
+      initialThinkingEnabled: featureSwitches.initialThinkingEnabled,
+      codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
     };
   },
 );
