@@ -382,8 +382,10 @@ type AssistantPagedChatMessage = Extract<
 
 interface RunIndicatorScanContext {
   readonly terminatedRunIds: Set<string>;
+  readonly activeRunIds: Set<string>;
   readonly queuedRunIds: Set<string>;
   sawQueued: boolean;
+  sawInactiveRunActivity: boolean;
 }
 
 function inactiveRunIndicatorState(
@@ -408,13 +410,18 @@ function rememberQueuedRun(
 function runActivityIndicatorState(
   scan: RunIndicatorScanContext,
   runId: string,
-): RunIndicatorState {
+): RunIndicatorState | undefined {
   if (scan.queuedRunIds.has(runId)) {
     return "queued";
   }
-  return scan.terminatedRunIds.has(runId)
-    ? inactiveRunIndicatorState(scan)
-    : "running";
+  if (scan.terminatedRunIds.has(runId)) {
+    scan.sawInactiveRunActivity = true;
+    return undefined;
+  }
+  if (scan.sawInactiveRunActivity && !scan.activeRunIds.has(runId)) {
+    return undefined;
+  }
+  return "running";
 }
 
 function assistantRunIndicatorState(
@@ -423,9 +430,10 @@ function assistantRunIndicatorState(
 ): RunIndicatorState | undefined {
   const runId = message.runId;
   if (runId !== undefined && message.runLifecycleEvent !== undefined) {
-    return message.content !== null || message.error !== undefined
-      ? inactiveRunIndicatorState(scan)
-      : undefined;
+    if (message.content !== null || message.error !== undefined) {
+      scan.sawInactiveRunActivity = true;
+    }
+    return undefined;
   }
   if (isQueueMarkerMessage(message)) {
     rememberQueuedRun(scan, runId);
@@ -455,12 +463,20 @@ function nonAssistantRunIndicatorState(
 
 function deriveRunIndicatorStateFromRawMessages(
   raw: readonly ChatMessageProjectionEntry[],
+  activeRunIds: readonly string[],
 ): RunIndicatorState {
   const revokedMessageIds = revokedMessageIdsFromRawMessages(raw);
+  const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
   const scan: RunIndicatorScanContext = {
-    terminatedRunIds: terminatedRunIdsFromRawMessages(raw),
+    terminatedRunIds,
+    activeRunIds: new Set(
+      activeRunIds.filter((runId) => {
+        return !terminatedRunIds.has(runId);
+      }),
+    ),
     queuedRunIds: new Set<string>(),
     sawQueued: false,
+    sawInactiveRunActivity: false,
   };
 
   for (let index = raw.length - 1; index >= 0; index--) {
@@ -484,7 +500,9 @@ function deriveRunIndicatorStateFromRawMessages(
       return state;
     }
   }
-  return inactiveRunIndicatorState(scan);
+  return scan.activeRunIds.size > 0
+    ? "running"
+    : inactiveRunIndicatorState(scan);
 }
 
 function liveRunIdsFromRawMessages(
@@ -1659,7 +1677,7 @@ function createPagedMessages(
     serverMessages$,
     optimisticMessages$,
   });
-  const latestRunStatus$ = createLatestRunStatus(rawMessages$);
+  const latestRunStatus$ = createLatestRunStatus(rawMessages$, threadData$);
 
   // The thread's active goal, folded from the (goal-marker) message stream so
   // the composer reads it without polling /api/automations. Reads rawMessages$
@@ -1991,10 +2009,16 @@ function createInputRef() {
 
 function createLatestRunStatus(
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
+  threadData$: Computed<Promise<ChatThread | null>>,
 ) {
   return computed(async (get): Promise<string | null> => {
-    const raw = await get(rawMessages$);
-    return deriveRunIndicatorStateFromRawMessages(raw);
+    const rawPromise = get(rawMessages$);
+    const threadPromise = get(threadData$);
+    const [raw, thread] = await Promise.all([rawPromise, threadPromise]);
+    return deriveRunIndicatorStateFromRawMessages(
+      raw,
+      thread?.activeRunIds ?? [],
+    );
   });
 }
 

@@ -1475,6 +1475,68 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("keeps thinking for an older active run when a newer run completes", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-concurrent-run-completed-later",
+      activeRunIds: ["run-concurrent-active"],
+      chatMessages: [
+        {
+          id: "msg-concurrent-active-user",
+          role: "user",
+          content: "Keep monitoring deployment",
+          runId: "run-concurrent-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-concurrent-active-assistant",
+          role: "assistant",
+          content: "Monitoring is still running.",
+          runId: "run-concurrent-active",
+          runEventId: "event-concurrent-active-assistant-text",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-concurrent-completed-user",
+          role: "user",
+          content: "Summarize current status",
+          runId: "run-concurrent-completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-concurrent-completed-assistant",
+          role: "assistant",
+          content: "The current status summary is ready.",
+          runId: "run-concurrent-completed",
+          runEventId: "event-concurrent-completed-assistant-text",
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+        {
+          id: "msg-concurrent-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-concurrent-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-concurrent-run-completed-later",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The current status summary is ready."),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+  });
+
   it("keeps interleaved run messages grouped by run turn", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-interleaved-run-turns",
