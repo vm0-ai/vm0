@@ -14,6 +14,7 @@ import {
   cronRenewGoogleCalendarWatchesContract,
   cronRenewGmailWatchesContract,
   cronReconcileBillingEntitlementsContract,
+  cronRefreshSystemStoragePresignedUrlsContract,
   cronSummarizeMemoryContract,
   cronSyncSkillsContract,
   cronTelegramCleanupContract,
@@ -90,6 +91,10 @@ const expectedVercelCrons = [
   {
     path: cronReconcileBillingEntitlementsContract.reconcile.path,
     schedule: "0 0,12 * * *",
+  },
+  {
+    path: cronRefreshSystemStoragePresignedUrlsContract.refresh.path,
+    schedule: "* * * * *",
   },
   {
     path: cronComputerUseScreenshotCleanupContract.cleanup.path,

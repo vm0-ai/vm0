@@ -3697,6 +3697,13 @@
       "when": 1782974827218,
       "tag": "0527_sturdy_colonel_america",
       "breakpoints": true
+    },
+    {
+      "idx": 528,
+      "version": "7",
+      "when": 1782976948642,
+      "tag": "0528_chief_madripoor",
+      "breakpoints": true
     }
   ]
 }
