@@ -864,6 +864,25 @@ mod tests {
     }
 
     #[test]
+    fn bounded_read_rejects_truncated_zstd_history_at_decoded_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let max_bytes = 1024;
+        let history = vec![b'a'; max_bytes as usize];
+        let mut compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
+        compressed.pop().expect("encoded fixture must not be empty");
+        let path = write_history_file(&dir, "history.jsonl.zst", &compressed);
+
+        let err = read_session_history_from_payload_bounded(path.to_str().unwrap(), max_bytes)
+            .expect_err("bounded zstd read must reject truncated history at the decoded cap");
+
+        let message = err.to_string();
+        assert!(
+            message.contains("Failed to decompress zstd session history"),
+            "expected decompression error for truncated zstd history, got: {message}"
+        );
+    }
+
+    #[test]
     fn bounded_read_rejects_zstd_history_over_decoded_limit() {
         let dir = tempfile::tempdir().unwrap();
         let max_bytes = 1024;
