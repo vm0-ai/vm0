@@ -4,8 +4,7 @@ Exports:
 
 - Bounded streaming usage decoding for gzip, deflate, zstd; one-shot
   decompression for gzip, deflate, br, zstd.
-- Request network-log capture decoding that suppresses unsupported or failed
-  encoded request bodies.
+- Request network-log capture decoding that hides opaque encoded bodies.
 - JSON usage decompression with diagnostic error classification.
 """
 
@@ -36,20 +35,16 @@ _ZSTD_STREAM_DECODE_INPUT_CHUNK_SIZE = 4
 INVALID_COMPRESSED_BODY = "invalid compressed body"
 INCOMPLETE_COMPRESSED_BODY = "incomplete compressed body"
 DECODED_BODY_LIMIT_EXCEEDED = "decoded body limit exceeded"
+_SUPPORTED_ONE_SHOT_BODY_ENCODINGS = frozenset({"gzip", "deflate", "br", "zstd"})
 
 
 class _BodyDecodeResult(NamedTuple):
-    """Internal bounded decode result before a caller policy is applied.
+    """Internal low-level bounded decode result.
 
-    ``body`` is the bytes produced by the primitive. Depending on codec state
-    and caller policy, it may be fully decoded output, partial decoded output,
-    the original wire bytes, or ``b""`` from a valid empty compressed frame.
-
-    ``failed`` means the primitive could not safely satisfy the requested
-    policy. It is not a universal "body is unusable" verdict: best-effort
-    response capture may still keep ``body``, while request capture suppresses
-    body text on failure. ``error`` is populated only when a codec raised while
-    decoding; unsupported encodings can fail without an exception.
+    ``body`` may be original wire bytes, decoded bytes, partial decoded bytes,
+    or ``b""`` depending on codec state and output limits. ``failed`` is only a
+    primitive decode signal, not a general "body unusable" policy verdict.
+    ``error`` is populated when a supported codec raises while decoding.
     """
 
     body: bytes
@@ -345,24 +340,17 @@ def _decode_body_bounded(
     headers: http.Headers,
     *,
     max_output: int,
-    fail_on_unsupported_encoding: bool = False,
 ) -> _BodyDecodeResult:
-    """Decode a body with bounded output before applying public caller policy.
+    """Decode supported content encodings with a bounded best-effort contract.
 
-    Missing or ``identity`` encodings return the input unchanged. Supported
-    encodings decode up to ``max_output`` bytes; hitting that cap returns the
-    decoded prefix and does not set ``failed``. Valid compressed empty frames
-    return ``b""``.
-
-    For gzip and deflate, an invalid first member returns the original bytes
-    with ``failed=True``. Once at least one member completes, invalid trailing
-    garbage is ignored and the decoded prefix is returned with ``failed=False``.
-    Truncated gzip/deflate input may return partial decoded output without
-    failure if zlib emitted bytes before the stream ended.
-
-    Unsupported encodings pass through by default for best-effort callers. Set
-    ``fail_on_unsupported_encoding`` only for policies that must suppress
-    opaque encoded bodies, such as request network-log capture.
+    Missing and ``identity`` encodings return original bytes. Unsupported
+    encodings also pass through original bytes because unsupported encoding is a
+    caller policy decision, not a codec failure. Supported invalid compressed
+    bodies return ``failed=True`` with original bytes when no compressed member
+    completed. Gzip/deflate trailing garbage after a completed member keeps the
+    decoded prefix. Truncated gzip/deflate may return partial decoded output.
+    Valid empty compressed frames return ``b""``. ``max_output`` caps decoded
+    output and may return a truncated decoded prefix without marking failure.
     """
     encoding = headers.get("content-encoding", "").strip().lower()
     if not encoding or encoding == "identity":
@@ -380,39 +368,7 @@ def _decode_body_bounded(
                 return _BodyDecodeResult(reader.read(max_output), False)
     except (zlib.error, brotli.error, zstandard.ZstdError) as exc:
         return _BodyDecodeResult(data, True, exc)
-    if fail_on_unsupported_encoding:
-        return _BodyDecodeResult(b"", True)
     return _BodyDecodeResult(data, False)
-
-
-def decode_request_body_for_network_log_capture(
-    data: bytes,
-    headers: http.Headers,
-    *,
-    max_output: int = DEFAULT_BODY_DECODE_LIMIT,
-) -> bytes | None:
-    """Decode a request body for network-log capture.
-
-    Request capture hides unsupported encodings and bodies that the bounded
-    primitive reports as decode failures instead of preserving opaque request
-    bytes in logs. Gzip/deflate input that yields partial decoded output still
-    follows the primitive's best-effort success semantics. Returns ``None`` when
-    callers should omit request body text and mark the body as binary. Returns
-    decoded bytes on success, including ``b""`` for a valid empty compressed
-    body.
-
-    This is distinct from ``billing_body.decode_request_body_for_billing``,
-    which has stricter billing-inspection policy.
-    """
-    result = _decode_body_bounded(
-        data,
-        headers,
-        max_output=max_output,
-        fail_on_unsupported_encoding=True,
-    )
-    if result.failed:
-        return None
-    return result.body
 
 
 def _decompress_brotli_bounded_with_status(
@@ -527,18 +483,9 @@ def _decompress_zstd_json_usage_body(data: bytes, max_output: int) -> tuple[byte
     return body, _validate_complete_zstd_frames(data)
 
 
-def decompress_json_usage_body(
-    data: bytes, headers: http.Headers, max_output: int = LARGE_RESPONSE_DECOMPRESS_LIMIT
+def _decode_supported_body_with_complete_status(
+    data: bytes, encoding: str, max_output: int
 ) -> tuple[bytes, str | None]:
-    """Decompress a JSON usage response body with an observable empty-prefix error.
-
-    ``decompress_body`` intentionally treats truncated compressed prefixes as an
-    empty body because body capture can still mark those responses truncated
-    from stream metadata. JSON usage fallback only has the final buffer, so it
-    needs to distinguish a valid compressed empty response from an incomplete
-    compressed frame that produced no JSON bytes.
-    """
-    encoding = headers.get("content-encoding", "").strip().lower()
     if encoding in ("gzip", "deflate"):
         return _decompress_zlib_json_usage_body(data, encoding, max_output)
     if encoding == "br":
@@ -556,6 +503,48 @@ def decompress_json_usage_body(
         return body, None
     if encoding == "zstd":
         return _decompress_zstd_json_usage_body(data, max_output)
+    raise ValueError(f"unsupported content encoding: {encoding}")
+
+
+def decode_request_body_for_network_log_capture(
+    data: bytes,
+    headers: http.Headers,
+    *,
+    max_output: int = DEFAULT_BODY_DECODE_LIMIT,
+) -> bytes | None:
+    """Decode a request body for persistent network-log capture.
+
+    Request capture hides unsupported encodings and supported-codec decode
+    failures instead of keeping best-effort fallback bytes. This helper is
+    intentionally separate from billing inspection, which has a stricter
+    fail-closed policy.
+    """
+    encoding = headers.get("content-encoding", "").strip().lower()
+    if not encoding or encoding == "identity":
+        return data
+    if encoding not in _SUPPORTED_ONE_SHOT_BODY_ENCODINGS:
+        return None
+
+    body, error = _decode_supported_body_with_complete_status(data, encoding, max_output)
+    if error is not None and error != DECODED_BODY_LIMIT_EXCEEDED:
+        return None
+    return body
+
+
+def decompress_json_usage_body(
+    data: bytes, headers: http.Headers, max_output: int = LARGE_RESPONSE_DECOMPRESS_LIMIT
+) -> tuple[bytes, str | None]:
+    """Decompress a JSON usage response body with an observable empty-prefix error.
+
+    ``decompress_body`` intentionally treats truncated compressed prefixes as an
+    empty body because body capture can still mark those responses truncated
+    from stream metadata. JSON usage fallback only has the final buffer, so it
+    needs to distinguish a valid compressed empty response from an incomplete
+    compressed frame that produced no JSON bytes.
+    """
+    encoding = headers.get("content-encoding", "").strip().lower()
+    if encoding in _SUPPORTED_ONE_SHOT_BODY_ENCODINGS:
+        return _decode_supported_body_with_complete_status(data, encoding, max_output)
     if encoding and encoding != "identity" and data:
         return b"", "unsupported content encoding"
     return decompress_body(data, headers, max_output=max_output), None
