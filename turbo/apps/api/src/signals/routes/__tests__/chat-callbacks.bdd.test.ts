@@ -2244,6 +2244,7 @@ describe("CHAT-02: push notification gating", () => {
     expect(
       lifecycleMarkers(messages.messages, first.runId, "completed"),
     ).toHaveLength(1);
+    await flushWaitUntilForTest();
     expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
 
     chatCallbacks.enableVapid();
@@ -2270,6 +2271,7 @@ describe("CHAT-02: push notification gating", () => {
       body: "Your task is complete",
       url: `/chats/${first.threadId}`,
     });
+    await flushWaitUntilForTest();
 
     const third = await startChatRun(actor, {
       agentId,
