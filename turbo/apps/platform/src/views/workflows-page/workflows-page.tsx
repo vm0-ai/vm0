@@ -8,6 +8,7 @@ import {
 } from "ccstate-react";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
+  IconArrowsSort,
   IconChevronDown,
   IconLock,
   IconPlus,
@@ -545,7 +546,7 @@ export function WorkflowListPanel({
   workflows,
   loading,
   emptyDescription,
-  sortMode = "alphabetical",
+  sortMode = "next-run",
   triggerEntriesByWorkflowId,
   displayTimezone = new Intl.DateTimeFormat().resolvedOptions().timeZone,
 }: {
@@ -664,8 +665,12 @@ function SortDropdown({
           size="sm"
           className="zero-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
         >
-          <span className="text-muted-foreground">Sort:</span>
-          {current?.label ?? "Alphabetical"}
+          <IconArrowsSort
+            size={15}
+            stroke={1.8}
+            className="text-muted-foreground"
+          />
+          {current?.label ?? "Next run"}
           <IconChevronDown size={14} stroke={1.8} />
         </Button>
       </DropdownMenuTrigger>

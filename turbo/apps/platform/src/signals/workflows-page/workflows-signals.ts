@@ -247,7 +247,7 @@ export const workflowSortMode$ = computed((get): WorkflowSortMode => {
     get(searchParams$),
     SORT_MODE_PARAM,
     ["next-run", "alphabetical", "created"],
-    "alphabetical",
+    "next-run",
   );
 });
 
@@ -298,12 +298,7 @@ export const setWorkflowSortMode$ = command(
   ({ get, set }, value: WorkflowSortMode) => {
     set(
       replaceSearchParams$,
-      nextSearchParams(
-        get(searchParams$),
-        SORT_MODE_PARAM,
-        value,
-        "alphabetical",
-      ),
+      nextSearchParams(get(searchParams$), SORT_MODE_PARAM, value, "next-run"),
     );
   },
 );
