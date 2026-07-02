@@ -1,9 +1,5 @@
-import {
-  CONNECTOR_TYPES,
-  type ConnectorConfig,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
-import { getConnectorGenerationTypes } from "@vm0/connectors/connector-utils";
+import type { PublicConnectorCatalogItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { listZeroConnectorCatalog } from "../../../../lib/api";
 import type { GenerationType } from "./lister";
 
 function toConnectorGenerationType(
@@ -17,47 +13,70 @@ function toConnectorGenerationType(
     case "docs-design":
     case "mobile-app-design":
     case "poster":
+    case "presentation":
     case "report":
+    case "sprite":
+    case "website":
       return null;
-    default:
+    case "audio":
+    case "code":
+    case "document":
+    case "image":
+    case "text":
+    case "video":
       return generationType;
   }
 }
 
-function isConnectorType(value: string): value is ConnectorType {
-  return value in CONNECTOR_TYPES;
+function findConnector(
+  connectors: readonly PublicConnectorCatalogItem[],
+  provider: string,
+): PublicConnectorCatalogItem | null {
+  const exact = connectors.find((connector) => {
+    return connector.connectorRef === provider;
+  });
+  if (exact) return exact;
+
+  const lower = provider.toLowerCase();
+  return (
+    connectors.find((connector) => {
+      return connector.connectorRef.toLowerCase() === lower;
+    }) ?? null
+  );
 }
 
 interface ConnectorGuidance {
-  readonly type: ConnectorType;
+  readonly type: string;
   readonly label: string;
   readonly supportsGenerationType: boolean;
 }
 
-function resolveConnector(
+async function resolveConnector(
   provider: string,
   generationType: GenerationType,
-): ConnectorGuidance | null {
-  if (!isConnectorType(provider)) return null;
-  const config: ConnectorConfig = CONNECTOR_TYPES[provider];
+): Promise<ConnectorGuidance | null> {
+  const catalog = await listZeroConnectorCatalog();
+  const connector = findConnector(catalog.connectors, provider);
+  if (!connector) return null;
+
   const connectorGenerationType = toConnectorGenerationType(generationType);
   const supports =
     connectorGenerationType !== null &&
-    getConnectorGenerationTypes(provider).some((entry) => {
+    connector.generation.some((entry) => {
       return entry === connectorGenerationType;
     });
   return {
-    type: provider,
-    label: config.label,
+    type: connector.connectorRef,
+    label: connector.label,
     supportsGenerationType: supports,
   };
 }
 
-export function printConnectorGuidance(
+export async function printConnectorGuidance(
   generationType: GenerationType,
   provider: string,
-): void {
-  const guidance = resolveConnector(provider, generationType);
+): Promise<void> {
+  const guidance = await resolveConnector(provider, generationType);
 
   if (!guidance) {
     console.log(`Provider "${provider}" is not a known connector.`);
