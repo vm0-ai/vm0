@@ -10,7 +10,10 @@ import { nowDate } from "../external/time";
 const ORG_SENTINEL_USER_ID = "__org__";
 
 function isOrgScopedFeatureSwitchKey(key: string): boolean {
-  return key === FeatureSwitchKey.DataExport;
+  return (
+    key === FeatureSwitchKey.DataExport ||
+    key === FeatureSwitchKey.AgentUnreadIndicators
+  );
 }
 
 function splitFeatureSwitchesByScope(switches: Record<string, boolean>): {
@@ -249,6 +252,7 @@ async function removeOrgScopedFeatureSwitches(
 
   const next = { ...existingRow.switches };
   delete next[FeatureSwitchKey.DataExport];
+  delete next[FeatureSwitchKey.AgentUnreadIndicators];
 
   if (Object.keys(next).length === 0) {
     await writeDb

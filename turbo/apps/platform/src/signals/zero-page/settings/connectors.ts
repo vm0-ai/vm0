@@ -14,7 +14,6 @@ import {
   type ConnectorType,
   type ConnectorDisplayCategory,
 } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   getConnectorAuthMethod,
   hasConnectorDeviceAuthGrant,
@@ -39,7 +38,6 @@ import type {
   PublicConnectorCatalogConnection,
   PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { featureSwitch$ } from "../../external/feature-switch.ts";
 import {
   connectorCatalogStatus$,
   connectors$,
@@ -396,14 +394,7 @@ export const connectorsSearch$ = computed((get) => {
 
 export const filteredConnectorTypes$ = computed(async (get) => {
   const keyword = get(connectorsSearch$);
-  const filter = get(connectorsConnectionFilter$);
-  const features = get(featureSwitch$);
-  const accessManagementEnabled =
-    features[FeatureSwitchKey.ConnectorAccessManagement] ?? false;
-  // The status/agent filter only applies when access management is enabled.
-  const effectiveFilter: ConnectorsConnectionFilter = accessManagementEnabled
-    ? filter
-    : { kind: "all" };
+  const effectiveFilter = get(connectorsConnectionFilter$);
 
   const agentEnabledTypes =
     effectiveFilter.kind === "agent"

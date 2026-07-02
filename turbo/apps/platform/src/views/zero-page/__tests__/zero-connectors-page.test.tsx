@@ -287,9 +287,6 @@ function setupConnectorStatusFilterPage(path = "/connectors"): void {
   detachedSetupPage({
     context,
     path,
-    featureSwitches: {
-      [FeatureSwitchKey.ConnectorAccessManagement]: true,
-    },
   });
 }
 
@@ -584,7 +581,7 @@ describe("connectors page", () => {
     expect(params.has("connection")).toBeFalsy();
   });
 
-  it("filters connectors by agent when access management is enabled", async () => {
+  it("filters connectors by agent", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000010";
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
     context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
@@ -597,9 +594,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorAccessManagement]: true,
-      },
     });
 
     await waitFor(() => {
@@ -698,37 +692,7 @@ describe("connectors page", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("hides connector access management when its switch is disabled", async () => {
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
-
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorAccessManagement]: false,
-      },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByLabelText("Filter connectors"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Manage GitHub access"),
-    ).not.toBeInTheDocument();
-    click(
-      within(connectorCardByLabel("GitHub")).getByLabelText("More options"),
-    );
-
-    await waitFor(() => {
-      expect(menuItemByText("Disconnect")).toBeInTheDocument();
-    });
-    expect(queryMenuItemByText("Manage")).not.toBeInTheDocument();
-  });
-
-  it("manages connector access for agents when its switch is enabled", async () => {
+  it("manages connector access for agents", async () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000001";
     const supportAgentId = "c0000000-0000-4000-a000-000000000002";
     const enabledByAgent = new Map<string, string[]>([
@@ -759,9 +723,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorAccessManagement]: true,
-      },
     });
 
     await waitFor(() => {
@@ -825,9 +786,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorAccessManagement]: true,
-      },
     });
 
     await waitFor(() => {
@@ -862,9 +820,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorAccessManagement]: true,
-      },
     });
 
     await waitFor(() => {
@@ -907,9 +862,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorAccessManagement]: true,
-      },
     });
 
     await waitFor(() => {
