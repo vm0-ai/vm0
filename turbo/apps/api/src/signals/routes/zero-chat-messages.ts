@@ -197,7 +197,6 @@ interface PreparedNormalSend {
   readonly priorContext: string;
   readonly generationTemplatePrompt: string;
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
-  readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
 }
 
@@ -1235,7 +1234,7 @@ async function resolveRunModelPin(params: {
     if ("status" in pin) {
       return pin;
     }
-    return persistThreadPinIfUnset(params.db, params.threadId, pin);
+    return pin;
   }
 
   const pin = params.modelSelection
@@ -1249,9 +1248,7 @@ async function resolveRunModelPin(params: {
   if ("status" in pin) {
     return pin;
   }
-  return params.modelSelection === undefined
-    ? persistThreadPinIfUnset(params.db, params.threadId, pin)
-    : persistThreadPinForExplicitSelection(params.db, params.threadId, pin);
+  return pin;
 }
 
 async function validateModelSelection(params: {
@@ -1300,27 +1297,42 @@ async function updateUserModelPreference(
     });
 }
 
-async function maybePersistExplicitModelFirstSelection(params: {
+function isExplicitModelFirstSelection(
+  modelSelection: IncomingModelSelection,
+): modelSelection is NonNullable<IncomingModelSelection> {
+  return (
+    modelSelection !== undefined &&
+    modelSelection !== null &&
+    modelSelection.modelProviderId === MODEL_FIRST_SELECTION_PROVIDER_ID
+  );
+}
+
+async function persistAcceptedRunModelPin(params: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
+  readonly threadId: string;
   readonly modelSelection: IncomingModelSelection;
-}): Promise<boolean> {
-  if (!params.modelSelection) {
-    return false;
+  readonly pin: ThreadModelPin;
+}): Promise<void> {
+  if (params.modelSelection === undefined) {
+    await persistThreadPinIfUnset(params.db, params.threadId, params.pin);
+  } else {
+    await persistThreadPinForExplicitSelection(
+      params.db,
+      params.threadId,
+      params.pin,
+    );
   }
-  if (
-    params.modelSelection.modelProviderId !== MODEL_FIRST_SELECTION_PROVIDER_ID
-  ) {
-    return false;
+
+  if (isExplicitModelFirstSelection(params.modelSelection)) {
+    await updateUserModelPreference(
+      params.db,
+      params.orgId,
+      params.userId,
+      params.modelSelection.selectedModel,
+    );
   }
-  await updateUserModelPreference(
-    params.db,
-    params.orgId,
-    params.userId,
-    params.modelSelection.selectedModel,
-  );
-  return true;
 }
 
 function hasComputerUseHostSelection(body: NormalSendBody): boolean {
@@ -2103,14 +2115,6 @@ const prepareNormalSend$ = command(
         presentationRunbookEnabled,
       });
     signal.throwIfAborted();
-    const persistedExplicitSelection =
-      await maybePersistExplicitModelFirstSelection({
-        db,
-        orgId: args.orgId,
-        userId: args.userId,
-        modelSelection: args.body.modelSelection,
-      });
-    signal.throwIfAborted();
     const computerUseHostGrant = await resolveComputerUseHostGrant({
       db,
       orgId: args.orgId,
@@ -2130,7 +2134,6 @@ const prepareNormalSend$ = command(
       priorContext,
       generationTemplatePrompt,
       computerUseHostGrant,
-      persistedExplicitSelection,
       initialThinkingEnabled,
     };
   },
@@ -2139,6 +2142,7 @@ const prepareNormalSend$ = command(
 async function queueUnassociatedNormalMessage(params: {
   readonly prepared: PreparedNormalSend;
   readonly body: NormalSendBody;
+  readonly orgId: string;
   readonly userId: string;
   readonly modelPin: ThreadModelPin;
 }): Promise<QueueUnassociatedNormalMessageResult> {
@@ -2156,6 +2160,14 @@ async function queueUnassociatedNormalMessage(params: {
     return message;
   }
   if (message.kind === "queued" && message.inserted) {
+    await persistAcceptedRunModelPin({
+      db: params.prepared.db,
+      orgId: params.orgId,
+      userId: params.userId,
+      threadId: params.prepared.thread.threadId,
+      modelSelection: params.body.modelSelection,
+      pin: params.modelPin,
+    });
     await publishChatMessageCreated(
       params.userId,
       params.prepared.thread.threadId,
@@ -2274,6 +2286,7 @@ async function appendInsufficientCreditsMessages(params: {
   readonly body: NormalSendBody;
   readonly userId: string;
   readonly orgId: string;
+  readonly modelPin: ThreadModelPin;
 }): Promise<
   | CreatedChatMessageResponse
   | ReturnType<typeof duplicateClientMessageIdResponse>
@@ -2353,6 +2366,15 @@ async function appendInsufficientCreditsMessages(params: {
     }
     return response;
   }
+
+  await persistAcceptedRunModelPin({
+    db: params.prepared.db,
+    orgId: params.orgId,
+    userId: params.userId,
+    threadId: params.prepared.thread.threadId,
+    modelSelection: params.body.modelSelection,
+    pin: params.modelPin,
+  });
 
   await publishChatMessageCreated(
     params.userId,
@@ -2542,6 +2564,7 @@ const createNormalChatRun$ = command(
         body: args.body,
         userId: args.userId,
         orgId: args.orgId,
+        modelPin,
       });
     }
 
@@ -2593,10 +2616,21 @@ const createNormalChatRun$ = command(
       return await queueUnassociatedNormalMessage({
         prepared,
         body: args.body,
+        orgId: args.orgId,
         userId: args.userId,
         modelPin,
       });
     }
+
+    await persistAcceptedRunModelPin({
+      db: prepared.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      threadId: prepared.thread.threadId,
+      modelSelection: args.body.modelSelection,
+      pin: modelPin,
+    });
+    signal.throwIfAborted();
 
     scheduleCreatedChatRunSideEffects({
       db: prepared.db,
@@ -2607,16 +2641,6 @@ const createNormalChatRun$ = command(
       runStatus: runResult.body.status,
       initialThinkingEnabled: prepared.initialThinkingEnabled,
     });
-
-    if (prepared.persistedExplicitSelection && modelPin.selectedModel) {
-      await updateUserModelPreference(
-        prepared.db,
-        args.orgId,
-        args.userId,
-        modelPin.selectedModel,
-      );
-      signal.throwIfAborted();
-    }
 
     return {
       status: 201 as const,
@@ -2717,6 +2741,7 @@ export const sendNormalMessage$ = command(
         const response = await queueUnassociatedNormalMessage({
           prepared,
           body: args.body,
+          orgId: args.orgId,
           userId: args.userId,
           modelPin,
         });

@@ -1789,6 +1789,89 @@ describe("CHAT-02: explicit provider pins", () => {
 });
 
 describe("CHAT-02: server-side model switches", () => {
+  it("keeps duplicate client-message model persistence tied to the accepted send", async () => {
+    const { actor, agentId, providerId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await chatCallbacks.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: false,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    const thread = await chat.createThread(actor, {
+      agentId,
+      title: "Duplicate model race",
+    });
+    const clientMessageId = randomUUID();
+    const [opus, sonnet] = await Promise.all([
+      chat.requestSendMessage(
+        actor,
+        {
+          agentId,
+          threadId: thread.id,
+          prompt: "duplicate model race opus",
+          clientMessageId,
+          modelSelection: {
+            modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+            selectedModel: "claude-opus-4-6",
+          },
+        },
+        [201],
+      ),
+      chat.requestSendMessage(
+        actor,
+        {
+          agentId,
+          threadId: thread.id,
+          prompt: "duplicate model race sonnet",
+          clientMessageId,
+          modelSelection: {
+            modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+            selectedModel: "claude-sonnet-4-6",
+          },
+        },
+        [201],
+      ),
+    ]);
+    if (opus.status !== 201 || sonnet.status !== 201) {
+      throw new Error("Expected duplicate sends to be accepted");
+    }
+    expect(opus.body).toStrictEqual(sonnet.body);
+    if (opus.body.runId === null) {
+      throw new Error("Expected the duplicate send to create one run");
+    }
+
+    const metadata = await postChatMessagesStateAction({
+      action: "read-run-model-metadata",
+      run_id: opus.body.runId,
+    });
+    const acceptedModel = metadata.run_selected_model;
+    expect(["claude-opus-4-6", "claude-sonnet-4-6"]).toContain(acceptedModel);
+    expect((await chat.readThread(actor, thread.id)).selectedModel).toBe(
+      acceptedModel,
+    );
+    await cancelChatRun(actor, opus.body.runId);
+
+    const fresh = await sendChatRun(actor, {
+      agentId,
+      prompt: "fresh thread after duplicate model race",
+    });
+    expect((await chat.readThread(actor, fresh.threadId)).selectedModel).toBe(
+      acceptedModel,
+    );
+    await cancelChatRun(actor, fresh.runId);
+  }, 90_000);
+
   it("switches models server-side and starts a fresh session with prior web context", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
