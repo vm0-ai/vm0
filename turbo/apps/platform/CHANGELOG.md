@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.534.1](https://github.com/vm0-ai/vm0/compare/app-v0.534.0...app-v0.534.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* sample voice activity before silent detection ([#19914](https://github.com/vm0-ai/vm0/issues/19914)) ([977ddc4](https://github.com/vm0-ai/vm0/commit/977ddc4dd79b4e620d824deb541744cab32f7d27))
+
 ## [0.534.0](https://github.com/vm0-ai/vm0/compare/app-v0.533.0...app-v0.534.0) (2026-07-02)
 
 
