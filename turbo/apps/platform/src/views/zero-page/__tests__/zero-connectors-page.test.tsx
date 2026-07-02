@@ -1849,6 +1849,111 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("skips stale agents when confirming the post-connect permission dialog", async () => {
+    const researchAgentId = "c0000000-0000-4000-a000-000000000001";
+    const staleAgentId = "c0000000-0000-4000-a000-000000000002";
+    mockConnectors([]);
+    context.mocks.data.team([
+      teamAgent(researchAgentId, "Research Agent"),
+      teamAgent(staleAgentId, "Deleted Agent"),
+    ]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "axiom",
+        label: "Public Axiom",
+        authMethods: [
+          {
+            id: "api-token",
+            label: "Public API Token",
+            description: null,
+            grantKind: "manual",
+            manualFields: [
+              {
+                id: "apiToken",
+                label: "Public API token",
+                required: true,
+                placeholder: "public-xaat",
+                inputType: "password",
+              },
+            ],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+    context.mocks.api(
+      zeroConnectorManualGrantContract.connect,
+      ({ body, params, respond }) => {
+        return respond(200, {
+          id: crypto.randomUUID(),
+          type: params.type,
+          authMethod: body.authMethod,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        });
+      },
+    );
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: [] });
+    });
+    const authorizedAgentIds: string[] = [];
+    context.mocks.api(
+      zeroUserConnectorsContract.update,
+      ({ params, respond }) => {
+        if (params.id === staleAgentId) {
+          return respond(404, {
+            error: {
+              code: "NOT_FOUND",
+              message: "Agent not found",
+            },
+          });
+        }
+        authorizedAgentIds.push(params.id);
+        return respond(200, { enabledTypes: ["axiom"] });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await fill(await screen.findByPlaceholderText("Find connectors"), "axiom");
+    click(await screen.findByLabelText("Connect Public Axiom"));
+    const axiomDialog = await screen.findByRole("dialog", {
+      name: "Public Axiom",
+    });
+    await fill(
+      within(axiomDialog).getByPlaceholderText("public-xaat"),
+      "xaat-test",
+    );
+    click(buttonByText("Save", axiomDialog));
+
+    const permissionDialog = dialogForElement(
+      await screen.findByText(
+        "You've successfully connected with Public Axiom!",
+      ),
+    );
+    click(buttonByText("Research Agent", permissionDialog));
+    click(buttonByText("Deleted Agent", permissionDialog));
+    click(buttonByText("Confirm", permissionDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("You've successfully connected with Public Axiom!"),
+      ).not.toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Public Axiom enabled for 1 agent"),
+    ).toBeInTheDocument();
+    expect(authorizedAgentIds).toStrictEqual([researchAgentId]);
+    expect(screen.queryByText("Agent not found")).not.toBeInTheDocument();
+  });
+
   it("connects AWS with an authorization code and authorizes an agent", async () => {
     mockConnectors([]);
     context.mocks.data.team([

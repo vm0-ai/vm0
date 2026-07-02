@@ -61,14 +61,15 @@ export const confirmPermissionDialog$ = command(
     const results = await Promise.allSettled(
       [...selected].map(async (agentId) => {
         signal.throwIfAborted();
-        await accept(
+        const result = await accept(
           client.update({
             params: { id: agentId },
             body: { enabledTypes: [connectorType], operation: "add" },
             fetchOptions: { signal },
           }),
-          [200],
+          [200, 404],
         );
+        return result.status === 200;
       }),
     );
     signal.throwIfAborted();
@@ -78,9 +79,14 @@ export const confirmPermissionDialog$ = command(
     if (failed) {
       throw failed.reason;
     }
-    toast.success(
-      `${connectorLabel} enabled for ${selected.size} agent${selected.size > 1 ? "s" : ""}`,
-    );
+    const enabledCount = results.filter((result) => {
+      return result.status === "fulfilled" && result.value;
+    }).length;
+    if (enabledCount > 0) {
+      toast.success(
+        `${connectorLabel} enabled for ${enabledCount} agent${enabledCount > 1 ? "s" : ""}`,
+      );
+    }
     set(reloadAgentConnectorAuthorizations$);
     onClose();
   },
