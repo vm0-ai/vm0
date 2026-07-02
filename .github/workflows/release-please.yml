@@ -789,7 +789,7 @@ jobs:
 
       - name: Build Runtime API Schema
         working-directory: turbo
-        run: pnpm --filter @vm0/api-contracts run build:runtime-api-schema -- --out runtime-api-schema.json
+        run: pnpm --filter @vm0/api-contracts run build:runtime-api-schema -- --out "$GITHUB_WORKSPACE/turbo/runtime-api-schema.json"
 
       - name: Upload Runtime API Schema Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
