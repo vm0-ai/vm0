@@ -806,7 +806,7 @@ mod tests {
     #[test]
     fn bounded_read_rejects_zstd_history_over_decoded_limit() {
         let dir = tempfile::tempdir().unwrap();
-        let max_bytes = 64;
+        let max_bytes = 1024;
         let history = vec![b'a'; max_bytes as usize + 1];
         let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
         assert!(
