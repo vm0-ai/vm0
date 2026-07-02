@@ -1742,9 +1742,17 @@ describe("CHAT-02: explicit provider pins", () => {
     );
     await chat.requestReadThread(actor, disabledThreadId, [404]);
 
-    await updateFeatureSwitchesForUser(context, actor, {
-      [FeatureSwitchKey.CodexFastMode]: true,
-    });
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      {
+        [FeatureSwitchKey.CodexFastMode]: true,
+      },
+    );
 
     const fast = await sendChatRun(actor, {
       agentId,

@@ -297,6 +297,13 @@ function selectionWithCodexServiceTier(
   return selection;
 }
 
+function codexServiceTierForTrigger(
+  available: boolean,
+  value: ModelProviderSelection | null,
+): CodexServiceTier | undefined {
+  return available ? value?.codexServiceTier : undefined;
+}
+
 function ModelFirstTriggerLabel({
   selectedModel,
   codexServiceTier,
@@ -554,6 +561,55 @@ function CodexFastModeSelectControl({
   );
 }
 
+function ModelFirstModelPickerContent({
+  selectValue,
+  placeholder,
+  policies,
+  selectableValue,
+  limitedFree1,
+  codexFastModeAvailable,
+  selectedModel,
+  codexServiceTier,
+  onChange,
+}: {
+  selectValue: string;
+  placeholder: string;
+  policies: OrgModelPolicy[];
+  selectableValue: ModelProviderSelection | null;
+  limitedFree1: boolean;
+  codexFastModeAvailable: boolean;
+  selectedModel: string | null;
+  codexServiceTier: CodexServiceTier | undefined;
+  onChange: (value: ModelProviderSelection | null) => void;
+}) {
+  return (
+    <SelectContent className="max-h-[280px] min-w-[260px]">
+      {selectValue === INHERIT_SENTINEL && (
+        <SelectItem
+          value={INHERIT_SENTINEL}
+          className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
+          disabled
+          aria-hidden="true"
+        >
+          {placeholder}
+        </SelectItem>
+      )}
+      <ModelFirstPolicyItems
+        policies={policies}
+        explicitSelectedModel={selectableValue?.selectedModel ?? null}
+        limitedFree1={limitedFree1}
+        showSeparator={false}
+      />
+      <CodexFastModeSelectControl
+        available={codexFastModeAvailable}
+        selectedModel={selectedModel}
+        codexServiceTier={codexServiceTier}
+        onChange={onChange}
+      />
+    </SelectContent>
+  );
+}
+
 function ModelFirstModelPicker({
   value,
   onChange,
@@ -594,9 +650,10 @@ function ModelFirstModelPicker({
   const codexFastModeAvailable =
     codexFastModeEnabled &&
     codexFastModeAvailableForModel(selectablePolicies, selectedModel);
-  const codexServiceTier = codexFastModeAvailable
-    ? value?.codexServiceTier
-    : undefined;
+  const codexServiceTier = codexServiceTierForTrigger(
+    codexFastModeAvailable,
+    value,
+  );
   const selectValue =
     selectableValue?.selectedModel ?? selectedModel ?? INHERIT_SENTINEL;
   const triggerAriaLabel = selectedModel
@@ -659,30 +716,17 @@ function ModelFirstModelPicker({
           />
         </SelectValue>
       </SelectTrigger>
-      <SelectContent className="max-h-[280px] min-w-[260px]">
-        {selectValue === INHERIT_SENTINEL && (
-          <SelectItem
-            value={INHERIT_SENTINEL}
-            className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
-            disabled
-            aria-hidden="true"
-          >
-            {placeholder}
-          </SelectItem>
-        )}
-        <ModelFirstPolicyItems
-          policies={policies}
-          explicitSelectedModel={selectableValue?.selectedModel ?? null}
-          limitedFree1={limitedFree1}
-          showSeparator={false}
-        />
-        <CodexFastModeSelectControl
-          available={codexFastModeAvailable}
-          selectedModel={selectedModel}
-          codexServiceTier={codexServiceTier}
-          onChange={onChange}
-        />
-      </SelectContent>
+      <ModelFirstModelPickerContent
+        selectValue={selectValue}
+        placeholder={placeholder}
+        policies={policies}
+        selectableValue={selectableValue}
+        limitedFree1={limitedFree1}
+        codexFastModeAvailable={codexFastModeAvailable}
+        selectedModel={selectedModel}
+        codexServiceTier={codexServiceTier}
+        onChange={onChange}
+      />
     </Select>
   );
 }

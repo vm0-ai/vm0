@@ -655,7 +655,6 @@ const sendNewThreadMessage$ = command(
     }
     const threadId = crypto.randomUUID();
     const clientMessageId = crypto.randomUUID();
-    const messageCreatedAt = nowDate().toISOString();
     set(appendOptimisticChatMessage$, {
       threadId,
       optimisticUserMessageAssociation: "run",
@@ -665,7 +664,7 @@ const sendNewThreadMessage$ = command(
         content: prepared.prompt,
         attachFiles: prepared.attachments,
         generationTemplate,
-        createdAt: messageCreatedAt,
+        createdAt: nowDate().toISOString(),
       },
     });
     const { createdAt, pendingThread } = await set(
@@ -681,9 +680,6 @@ const sendNewThreadMessage$ = command(
     set(draft.clear$);
     const clearDraftResult = set(clearAgentDraftById$, agentId, signal);
     const createClient = get(zeroClient$);
-    const client = createClient(chatMessagesContract);
-    const codexFastModeEnabled =
-      get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
     const queuedOptimisticMessages$ =
       createQueuedOptimisticUserMessagesForThread(threadId);
     L.debug("sendNewThreadMessage$ POST chat/messages start", {
@@ -694,7 +690,7 @@ const sendNewThreadMessage$ = command(
       const [, result] = await Promise.all([
         clearDraftResult,
         accept(
-          client.send({
+          createClient(chatMessagesContract).send({
             body: newThreadSendBody({
               agentId,
               threadId,
@@ -703,7 +699,8 @@ const sendNewThreadMessage$ = command(
               modelSelection,
               generationTemplate,
               computerUseHostId,
-              codexFastModeEnabled,
+              codexFastModeEnabled:
+                get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false,
             }),
             fetchOptions: { signal },
           }),
