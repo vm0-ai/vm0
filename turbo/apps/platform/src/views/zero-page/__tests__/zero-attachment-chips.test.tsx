@@ -155,20 +155,19 @@ function expectHostedSiteEditingHeader({
   expect(
     within(sidebar).getByTestId("artifact-sidebar-html-edit-status"),
   ).toHaveTextContent("Editing");
-  expect(
-    within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
-  ).toHaveTextContent("Exit");
+  const exitEdit = within(sidebar).getByTestId(
+    "artifact-sidebar-exit-html-edit",
+  );
+  expect(exitEdit).toHaveAttribute("aria-label", "Exit editing");
   expect(
     within(sidebar)
       .getByTestId("artifact-sidebar-html-edit-status")
-      .compareDocumentPosition(
-        within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
-      ),
+      .compareDocumentPosition(within(sidebar).getByLabelText(fullscreenLabel)),
   ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   expect(
     within(sidebar)
-      .getByTestId("artifact-sidebar-exit-html-edit")
-      .compareDocumentPosition(within(sidebar).getByLabelText(fullscreenLabel)),
+      .getByLabelText(fullscreenLabel)
+      .compareDocumentPosition(exitEdit),
   ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   expect(within(sidebar).queryByLabelText("Edit page")).toBeNull();
   expect(within(sidebar).queryByLabelText("Open in new tab")).toBeNull();
@@ -1733,25 +1732,21 @@ describe("zero attachment chips", () => {
       expect(
         within(sidebar).getByTestId("artifact-sidebar-html-edit-status"),
       ).toHaveTextContent("Editing");
-      expect(
-        within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
-      ).toHaveTextContent("Exit");
-      expect(
-        within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
-      ).toHaveClass("border");
+      const exitEdit = within(sidebar).getByTestId(
+        "artifact-sidebar-exit-html-edit",
+      );
+      expect(exitEdit).toHaveAttribute("aria-label", "Exit editing");
       expect(
         within(sidebar)
           .getByTestId("artifact-sidebar-html-edit-status")
           .compareDocumentPosition(
-            within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
+            within(sidebar).getByLabelText("Enter fullscreen"),
           ),
       ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
       expect(
         within(sidebar)
-          .getByTestId("artifact-sidebar-exit-html-edit")
-          .compareDocumentPosition(
-            within(sidebar).getByLabelText("Enter fullscreen"),
-          ),
+          .getByLabelText("Enter fullscreen")
+          .compareDocumentPosition(exitEdit),
       ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
       expect(within(sidebar).queryByLabelText("Edit page")).toBeNull();
       expect(within(sidebar).queryByLabelText("Open in new tab")).toBeNull();
@@ -1806,47 +1801,64 @@ describe("zero attachment chips", () => {
     });
 
     await waitFor(() => {
-      const marker = frame.contentDocument?.querySelector<HTMLElement>(
-        "[data-testid='html-dom-comment-marker']",
-      );
-      const tag = marker?.querySelector<HTMLElement>(
-        "[data-testid='html-dom-comment-tag']",
-      );
-      const tagText = tag?.querySelector<HTMLElement>(
-        "[data-testid='html-dom-comment-tag-text']",
-      );
-      const deleteButton = marker?.querySelector<HTMLElement>(
-        "[data-testid='html-dom-comment-delete']",
-      );
-      expect(marker).not.toBeNull();
-      expect(marker).toHaveAttribute(HTML_DOM_EDIT_OVERLAY_ATTR);
-      expect(marker).not.toHaveAttribute("title");
-      expect(marker).toHaveAttribute(
-        "data-vm0-html-comment-placement",
-        "right",
-      );
       expect(
-        marker?.querySelector("[data-testid='html-dom-comment-anchor']"),
+        frame.contentDocument?.querySelector(
+          "[data-testid='html-dom-comment-marker']",
+        ),
       ).not.toBeNull();
-      expect(
-        marker?.querySelector("[data-testid='html-dom-comment-leader']"),
-      ).not.toBeNull();
-      expect(deleteButton).not.toBeNull();
-      expect(deleteButton?.style.opacity).toBe("0");
-      expect(deleteButton?.style.pointerEvents).toBe("none");
-      expect(frame.contentDocument?.head.textContent).toContain(
-        "[data-vm0-html-comment-target-node-id]:hover [data-vm0-html-comment-delete-id]",
-      );
-      expect(frame.contentDocument?.head.textContent).toContain(":hover");
-      expect(tag).toHaveTextContent("Make the headline shorter");
-      expect(tagText).toHaveTextContent("Make the headline shorter");
-      expect(tag?.style.maxWidth).toBe("136px");
-      expect(tag?.style.height).toBe("56px");
-      expect(tag?.style.overflow).toBe("hidden");
-      expect(tagText?.style.whiteSpace).toBe("normal");
-      expect(tagText?.style.overflowWrap).toBe("anywhere");
-      expect(tagText?.style.getPropertyValue("-webkit-line-clamp")).toBe("2");
     });
+    const marker = frame.contentDocument!.querySelector<HTMLElement>(
+      "[data-testid='html-dom-comment-marker']",
+    )!;
+    const tag = marker.querySelector<HTMLElement>(
+      "[data-testid='html-dom-comment-tag']",
+    )!;
+    const tagText = tag.querySelector<HTMLElement>(
+      "[data-testid='html-dom-comment-tag-text']",
+    )!;
+    const deleteButton = marker.querySelector<HTMLElement>(
+      "[data-testid='html-dom-comment-delete']",
+    )!;
+    const deleteIcon = deleteButton.querySelector<SVGSVGElement>("svg")!;
+    expect(marker).toHaveAttribute(HTML_DOM_EDIT_OVERLAY_ATTR);
+    expect(marker).not.toHaveAttribute("title");
+    expect(marker).toHaveAttribute("data-vm0-html-comment-placement", "right");
+    expect(
+      marker.querySelector("[data-testid='html-dom-comment-anchor']"),
+    ).not.toBeNull();
+    expect(
+      marker.querySelector("[data-testid='html-dom-comment-leader']"),
+    ).not.toBeNull();
+    expect(deleteButton.parentElement).toBe(marker);
+    expect(deleteButton.style.left).toBe("140px");
+    expect(deleteButton.style.top).toBe("28px");
+    expect(deleteButton.style.width).toBe("24px");
+    expect(deleteButton.style.height).toBe("24px");
+    expect(deleteButton.style.alignItems).toBe("center");
+    expect(deleteButton.style.justifyContent).toBe("center");
+    expect(deleteButton.style.transform).toBe("translateY(-50%)");
+    expect(deleteButton.style.opacity).toBe("0");
+    expect(deleteButton.style.pointerEvents).toBe("none");
+    expect(deleteIcon).not.toBeNull();
+    expect(deleteIcon.getAttribute("viewBox")).toBe("0 0 24 24");
+    expect(deleteIcon.style.width).toBe("14px");
+    expect(deleteIcon.style.height).toBe("14px");
+    expect(frame.contentDocument?.head.textContent).toContain(
+      "[data-vm0-html-comment-target-node-id]:hover [data-vm0-html-comment-delete-id]",
+    );
+    expect(frame.contentDocument?.head.textContent).toContain(":hover");
+    expect(tag).toHaveTextContent("Make the headline shorter");
+    expect(tagText).toHaveTextContent("Make the headline shorter");
+    expect(tag.style.maxWidth).toBe("136px");
+    expect(tag.style.height).toBe("56px");
+    expect(tag.style.overflow).toBe("hidden");
+    expect(tag.style.justifyContent).toBe("center");
+    expect(tag.style.textAlign).toBe("center");
+    expect(tagText.style.whiteSpace).toBe("normal");
+    expect(tagText.style.overflowWrap).toBe("anywhere");
+    expect(tagText.style.padding).toBe("0px 22px");
+    expect(tagText.style.textAlign).toBe("center");
+    expect(tagText.style.getPropertyValue("-webkit-line-clamp")).toBe("2");
     expect(screen.getByTestId("html-dom-comment-toolbar")).toBeInTheDocument();
     expect(screen.getByTestId("html-dom-toolbar-send")).toBeEnabled();
     expect(
@@ -2260,7 +2272,7 @@ describe("zero attachment chips", () => {
       ).toHaveTextContent("Editing");
       expect(
         within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
-      ).toHaveTextContent("Exit");
+      ).toHaveAttribute("aria-label", "Exit editing");
       expect(within(sidebar).queryByLabelText("Open in new tab")).toBeNull();
       expect(within(sidebar).queryByLabelText("Share artifact")).toBeNull();
       expect(within(sidebar).queryByLabelText("Download artifact")).toBeNull();
@@ -3456,7 +3468,9 @@ describe("zero attachment chips", () => {
       expect(within(sidebar).queryByLabelText("Open in new tab")).toBeNull();
       expect(within(sidebar).queryByLabelText("Share artifact")).toBeNull();
       expect(within(sidebar).queryByLabelText("Download artifact")).toBeNull();
-      expect(within(sidebar).queryByLabelText("Close artifact")).toBeNull();
+      expect(
+        within(sidebar).getByLabelText("Close artifact"),
+      ).toBeInTheDocument();
       expect(
         within(sidebar).queryByTestId("artifact-sidebar-exit-html-edit"),
       ).toBeNull();

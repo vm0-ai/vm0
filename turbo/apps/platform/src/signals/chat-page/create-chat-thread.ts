@@ -2997,7 +2997,7 @@ function createCancelRunWithQueuedRecall({
 // ---------------------------------------------------------------------------
 
 const THINKING_TYPEWRITER_INTERVAL_MS = 28;
-const THINKING_TYPEWRITER_LINE_PAUSE_MS = 1000;
+const THINKING_TYPEWRITER_LINE_PAUSE_MS = 3000;
 const THINKING_TYPEWRITER_LINE_PAUSE_TICKS = IN_VITEST
   ? 1
   : Math.ceil(
@@ -3005,14 +3005,11 @@ const THINKING_TYPEWRITER_LINE_PAUSE_TICKS = IN_VITEST
     );
 const THINKING_TYPEWRITER_WIDTH_GUARD_PX = 8;
 const THINKING_TYPEWRITER_OVERFLOW_PREFIX = "...";
-// Short tails should roll from the previous line instead of restarting alone.
-const THINKING_TYPEWRITER_FULL_LINE_RATIO = 0.8;
 
 interface ThinkingTypewriterLine {
   readonly startIndex: number;
   readonly endIndex: number;
   readonly text: string;
-  readonly fillsWidth: boolean;
 }
 
 interface ThinkingTypewriterFrame {
@@ -3159,14 +3156,6 @@ function thinkingLabelWidth(el: HTMLElement): number {
   );
 }
 
-function fullThinkingLineThreshold(width: number): number {
-  return Math.max(
-    1,
-    (width - THINKING_TYPEWRITER_WIDTH_GUARD_PX) *
-      THINKING_TYPEWRITER_FULL_LINE_RATIO,
-  );
-}
-
 function wrapThinkingTextForWidth(args: {
   readonly graphemes: readonly string[];
   readonly width: number;
@@ -3181,17 +3170,14 @@ function wrapThinkingTextForWidth(args: {
         startIndex: 0,
         endIndex: args.graphemes.length,
         text: args.graphemes.join(""),
-        fillsWidth: false,
       },
     ];
   }
 
   const maxWidth = Math.max(1, args.width - THINKING_TYPEWRITER_WIDTH_GUARD_PX);
-  const fullLineThreshold = fullThinkingLineThreshold(args.width);
   const lines: ThinkingTypewriterLine[] = [];
   let startIndex = 0;
   let current: string[] = [];
-  let currentWidth = 0;
 
   for (let index = 0; index < args.graphemes.length; index++) {
     const grapheme = args.graphemes[index]!;
@@ -3204,14 +3190,12 @@ function wrapThinkingTextForWidth(args: {
           startIndex: 0,
           endIndex: args.graphemes.length,
           text: args.graphemes.join(""),
-          fillsWidth: false,
         },
       ];
     }
 
     if (measured <= maxWidth || current.length === 0) {
       current = candidate;
-      currentWidth = measured;
       continue;
     }
 
@@ -3219,11 +3203,9 @@ function wrapThinkingTextForWidth(args: {
       startIndex,
       endIndex: index,
       text: current.join(""),
-      fillsWidth: true,
     });
     startIndex = index;
     current = [grapheme];
-    currentWidth = args.measureText(grapheme) ?? measured;
   }
 
   if (current.length > 0) {
@@ -3231,7 +3213,6 @@ function wrapThinkingTextForWidth(args: {
       startIndex,
       endIndex: args.graphemes.length,
       text: current.join(""),
-      fillsWidth: currentWidth >= fullLineThreshold,
     });
   }
 
@@ -3331,46 +3312,33 @@ function nextThinkingTypewriterFrame(args: {
   }
 
   if (currentFrame.charIndex >= currentLine.endIndex) {
-    if (nextLine?.fillsWidth) {
-      const nextCharIndex = Math.min(
-        nextLine.endIndex,
-        nextLine.startIndex + thinkingTypewriterStep(width),
-      );
+    if (!nextLine) {
       return {
         ...currentFrame,
-        lineIndex: lineIndex + 1,
-        charIndex: nextCharIndex,
-        pauseTicksRemaining: 0,
-        displayedText: displayedSlidingThinkingText({
-          graphemes,
-          startIndex: nextLine.startIndex,
-          charIndex: nextCharIndex,
-          width,
-          measureText: args.measureText,
-        }),
-        complete:
-          lineIndex + 1 >= lines.length - 1 &&
-          nextCharIndex >= graphemes.length,
+        lineIndex,
+        displayedText: currentLine.text,
+        complete: true,
       };
     }
 
     const nextCharIndex = Math.min(
-      graphemes.length,
-      currentFrame.charIndex + thinkingTypewriterStep(width),
+      nextLine.endIndex,
+      nextLine.startIndex + thinkingTypewriterStep(width),
     );
     return {
       ...currentFrame,
-      lineIndex,
+      lineIndex: lineIndex + 1,
       charIndex: nextCharIndex,
       pauseTicksRemaining: 0,
       displayedText: displayedSlidingThinkingText({
         graphemes,
-        startIndex: currentLine.startIndex,
+        startIndex: nextLine.startIndex,
         charIndex: nextCharIndex,
         width,
         measureText: args.measureText,
       }),
-      complete: nextCharIndex >= graphemes.length,
+      complete:
+        lineIndex + 1 >= lines.length - 1 && nextCharIndex >= graphemes.length,
     };
   }
 
@@ -3384,7 +3352,7 @@ function nextThinkingTypewriterFrame(args: {
     lineIndex,
     charIndex: nextCharIndex,
     pauseTicksRemaining:
-      nextCharIndex >= currentLine.endIndex && nextLine?.fillsWidth
+      nextCharIndex >= currentLine.endIndex && nextLine !== undefined
         ? THINKING_TYPEWRITER_LINE_PAUSE_TICKS
         : 0,
     displayedText: displayedSlidingThinkingText({

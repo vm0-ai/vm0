@@ -17,7 +17,6 @@ import {
   IconLink,
   IconMail,
   IconMessageCircle,
-  IconPlus,
   IconRepeat,
   IconTag,
 } from "@tabler/icons-react";
@@ -47,7 +46,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import {
-  allWorkflowTriggerEntries$,
   allVisibleWorkflows$,
   setWorkflowTriggerEnabled$,
   type WorkflowTriggerAutomationEntry,
@@ -56,10 +54,8 @@ import {
   atTimeInTimezone,
   cronWallTimeInTimezone,
 } from "../../signals/zero-page/cron.ts";
-import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { pinnedAgentIds$ } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { Link } from "../router/link.tsx";
 import {
   AgentDialogAgentButton,
   agentDialogMatchesQuery,
@@ -214,32 +210,6 @@ export function triggerTypeLabel(trigger: ZeroWorkflowTriggerSummary): string {
   return "Trigger";
 }
 
-function TriggerListSkeleton() {
-  return (
-    <div
-      className="flex flex-col gap-2.5"
-      data-testid="workflow-trigger-list-skeleton"
-    >
-      {["a", "b", "c"].map((key) => {
-        return (
-          <div
-            key={key}
-            className="zero-card grid min-h-[5.5rem] grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-4 px-5 py-4"
-          >
-            <Skeleton className="row-span-2 h-11 w-11 rounded-xl" />
-            <Skeleton className="h-4 w-48 max-w-full rounded-md" />
-            <Skeleton className="row-span-2 h-5 w-9 rounded-full" />
-            <div className="flex min-w-0 items-center gap-2">
-              <Skeleton className="h-5 w-5 rounded-full" />
-              <Skeleton className="h-3 w-64 max-w-full rounded-md" />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function agentInitials(label: string): string {
   const words = label.trim().split(/\s+/).filter(Boolean);
   if (words.length >= 2) {
@@ -345,82 +315,6 @@ export function WorkflowTriggerEnabledSwitch({
         );
       }}
     />
-  );
-}
-
-function WorkflowTriggerIndexCard({
-  entry,
-  displayTimezone,
-  agents,
-}: {
-  readonly entry: WorkflowTriggerAutomationEntry;
-  readonly displayTimezone: string;
-  readonly agents: readonly TeamComposeItem[];
-}) {
-  const title = workflowTitle(entry.workflow);
-  const label = agentLabel(entry.workflow);
-  const agent = agents.find((item) => {
-    return item.id === entry.workflow.agentId;
-  });
-
-  return (
-    <article
-      className={cn(
-        "zero-card relative flex min-w-0 items-center gap-4 px-5 py-5 transition-colors hover:bg-gray-50",
-        !entry.trigger.enabled && "opacity-75",
-      )}
-    >
-      <Link
-        pathname={ROUTES.workflowDetailAutomations}
-        options={{ pathParams: { workflowId: entry.workflow.id } }}
-        aria-label={`Open ${title} automations`}
-        className="absolute inset-0 z-0 rounded-[inherit] focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
-      >
-        <span className="sr-only">{title}</span>
-      </Link>
-      <div className="pointer-events-none relative z-10 shrink-0">
-        <TriggerListIcon trigger={entry.trigger} />
-      </div>
-      <div className="pointer-events-none relative z-10 min-w-0 flex-1">
-        <p className="min-w-0 truncate text-base font-semibold leading-6 text-foreground">
-          {title}
-        </p>
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-sm leading-5 text-muted-foreground">
-          <WorkflowAgentAvatar agent={agent} label={label} />
-          <span className="max-w-[10rem] truncate">{label}</span>
-          <span className="select-none text-muted-foreground/50">·</span>
-          <span>{triggerTypeLabel(entry.trigger)}</span>
-          <span className="select-none text-muted-foreground/50">·</span>
-          <span className="min-w-0 font-medium text-foreground/85">
-            {humanReadableTriggerRuleLabel(entry.trigger, displayTimezone)}
-          </span>
-        </div>
-      </div>
-      <div className="relative z-20 ml-auto shrink-0 pl-3">
-        <WorkflowTriggerEnabledSwitch entry={entry} />
-      </div>
-    </article>
-  );
-}
-
-function EmptyTriggers({ onAdd }: { readonly onAdd: () => void }) {
-  return (
-    <div className="zero-card flex min-h-56 flex-col items-center justify-center px-6 py-10 text-center">
-      <p className="text-sm font-medium text-foreground">No triggers yet</p>
-      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-        Create a triggered workflow and it will show up here.
-      </p>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="zero-btn-morandi mt-4 h-9 gap-2 rounded-lg border"
-        onClick={onAdd}
-      >
-        <IconPlus size={14} stroke={2} />
-        Add automation
-      </Button>
-    </div>
   );
 }
 
@@ -739,102 +633,5 @@ export function CreateWorkflowAutomationDialog() {
         />
       </DialogContent>
     </Dialog>
-  );
-}
-
-function WorkflowTriggerAutomationIndexList({
-  entries,
-  displayTimezone,
-  agents,
-  loading,
-  onAdd,
-}: {
-  readonly entries: readonly WorkflowTriggerAutomationEntry[];
-  readonly displayTimezone: string;
-  readonly agents: readonly TeamComposeItem[];
-  readonly loading: boolean;
-  readonly onAdd: () => void;
-}) {
-  if (loading) {
-    return <TriggerListSkeleton />;
-  }
-
-  if (entries.length === 0) {
-    return <EmptyTriggers onAdd={onAdd} />;
-  }
-
-  return (
-    <div className="flex flex-col gap-2.5">
-      {entries.map((entry) => {
-        return (
-          <WorkflowTriggerIndexCard
-            key={entry.trigger.id}
-            entry={entry}
-            displayTimezone={displayTimezone}
-            agents={agents}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-export function WorkflowTriggerAutomationsPage() {
-  const entriesLoadable = useLastLoadable(allWorkflowTriggerEntries$);
-  const prefsLoadable = useLastLoadable(userPreferences$);
-  const agentsLoadable = useLastLoadable(agents$);
-  const setCreateOpen = useSet(setWorkflowAutomationDialogOpen$);
-  const entries =
-    entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
-  const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
-  const displayTimezone =
-    prefsLoadable.state === "hasData" && prefsLoadable.data?.timezone
-      ? prefsLoadable.data.timezone
-      : new Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const loading = entriesLoadable.state === "loading";
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="shrink-0 bg-transparent px-4 pb-0 pt-3 sm:px-6 md:pb-3 md:pt-10">
-        <div className="mx-auto flex max-w-[900px] flex-wrap items-end justify-between gap-4">
-          <div className="hidden min-w-0 md:block">
-            <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              Automations
-            </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Workflow triggers running across your workspace.
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border"
-            onClick={() => {
-              setCreateOpen(true);
-            }}
-          >
-            <IconPlus size={14} stroke={2} />
-            Add automation
-          </Button>
-        </div>
-      </header>
-
-      <main className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6">
-        <div className="mx-auto max-w-[900px]">
-          <WorkflowTriggerAutomationIndexList
-            entries={entries}
-            displayTimezone={displayTimezone}
-            agents={agents}
-            loading={loading}
-            onAdd={() => {
-              setCreateOpen(true);
-            }}
-          />
-        </div>
-      </main>
-
-      <CreateWorkflowAutomationDialog />
-    </div>
   );
 }

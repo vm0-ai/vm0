@@ -58,6 +58,7 @@ import {
   cn,
   Button,
   Skeleton,
+  getShortcutParts,
   DropdownMenu as UiDropdownMenu,
   DropdownMenuContent as UiDropdownMenuContent,
   DropdownMenuItem as UiDropdownMenuItem,
@@ -354,9 +355,9 @@ const CHAT_SHORTCUT_SECTIONS = [
       { key: "mod+shift+o", label: "New chat" },
       { key: "mod+shift+a", label: "Open agent list" },
       { key: "f2", label: "Rename chat" },
-      { key: "shift+f2", label: "Change emoji" },
-      { key: "shift+1", label: "Set emoji (shift+1-9)" },
-      { key: "shift+0", label: "Clear emoji" },
+      { key: "shift+f2", label: "Change icon" },
+      { key: "shift+1", label: "Set icon (shift+1-9)" },
+      { key: "shift+0", label: "Clear icon" },
     ],
   },
   {
@@ -1253,7 +1254,7 @@ function ChatThreadEmojiMenuButton({
             <UiDropdownMenuTrigger asChild>
               <button
                 type="button"
-                aria-label="Change emoji"
+                aria-label="Change icon"
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 {emoji && (
@@ -1268,39 +1269,60 @@ function ChatThreadEmojiMenuButton({
         </Tooltip>
         <UiDropdownMenuContent
           align="start"
-          className="w-40"
+          className="w-48"
           onCloseAutoFocus={(event) => {
             event.preventDefault();
           }}
         >
-          {CHAT_THREAD_EMOJI_OPTIONS.map((option) => {
+          {CHAT_THREAD_EMOJI_OPTIONS.map((option, index) => {
+            const shortcut = `shift+${index + 1}`;
             return (
               <UiDropdownMenuItem
                 key={option.emoji}
-                aria-label={`${option.label} ${option.emoji}`}
+                aria-label={`${option.label} icon Shift ${index + 1}`}
+                className="justify-between gap-4"
                 onSelect={() => {
                   selectEmoji(option.emoji);
                 }}
               >
-                <span className="mr-2 text-base leading-none" aria-hidden>
+                <span className="text-base leading-none" aria-hidden>
                   {option.emoji}
                 </span>
-                <span>{option.label}</span>
+                <ChatThreadIconShortcutHint shortcut={shortcut} />
               </UiDropdownMenuItem>
             );
           })}
           <UiDropdownMenuSeparator />
           <UiDropdownMenuItem
-            aria-label="Clear emoji"
+            aria-label="Clear icon Shift 0"
+            className="justify-between gap-4"
             onSelect={() => {
               clearEmoji();
             }}
           >
-            <span>Clear emoji</span>
+            <span className="whitespace-nowrap">Clear icon</span>
+            <ChatThreadIconShortcutHint shortcut="shift+0" />
           </UiDropdownMenuItem>
         </UiDropdownMenuContent>
       </UiDropdownMenu>
     </TooltipProvider>
+  );
+}
+
+function ChatThreadIconShortcutHint({ shortcut }: { shortcut: string }) {
+  return (
+    <span aria-hidden="true" className="ml-4 flex shrink-0 items-center gap-1">
+      {getShortcutParts(shortcut).map((part) => {
+        return (
+          <kbd
+            key={part}
+            className='inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-md bg-background px-1.5 text-[11px] font-medium text-foreground shadow-[inset_0_-1px_0_hsl(var(--border)),0_0_0_1px_hsl(var(--border))] font-["-apple-system",BlinkMacSystemFont,"Segoe_UI",system-ui,sans-serif]'
+          >
+            {part}
+          </kbd>
+        );
+      })}
+    </span>
   );
 }
 

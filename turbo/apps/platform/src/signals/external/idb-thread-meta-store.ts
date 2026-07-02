@@ -1,11 +1,7 @@
-import { openDB, type IDBPDatabase } from "idb";
+import type { IDBPDatabase } from "idb";
 import { nowDate } from "../../lib/time.ts";
 import { logger } from "../log.ts";
-import {
-  CHAT_IDB_VERSION,
-  CHAT_THREAD_META_STORE,
-  upgradeChatIdb,
-} from "./chat-idb-schema.ts";
+import { CHAT_THREAD_META_STORE } from "./chat-idb-schema.ts";
 import {
   chatIdbReadOr,
   chatIdbWriteBestEffort,
@@ -13,6 +9,7 @@ import {
   logChatIdbDisabled,
   withChatIdbTimeout,
 } from "./chat-idb-safe.ts";
+import { openChatIdb } from "./chat-idb-store.ts";
 
 const L = logger("ChatIdbThreadMeta");
 
@@ -88,12 +85,7 @@ const getDb = (() => {
       }
     }
     L.debug("openDB", { dbName });
-    const promise = openDB(dbName, CHAT_IDB_VERSION, {
-      upgrade(db, oldVersion) {
-        L.debug("openDB:upgrade", { dbName });
-        upgradeChatIdb(db, oldVersion);
-      },
-    });
+    const promise = openChatIdb(userId, orgId);
     cache[dbName] = promise;
 
     // IDB open is a cache fast path; timeout/rejection disables it for this tab.
