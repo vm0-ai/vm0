@@ -488,3 +488,15 @@ class TestDecodeRequestBodyForNetworkLogCapture:
     def test_invalid_compressed_body_returns_none(self, headers):
         hdrs = headers(("Content-Encoding", "gzip"))
         assert decode_request_body_for_network_log_capture(b"not gzip", hdrs) is None
+
+    def test_truncated_gzip_partial_decode_returns_decoded_bytes(self, headers):
+        data = b"x" * 100_000
+        compressed = gzip.compress(data)
+        truncated = compressed[: len(compressed) // 2]
+        hdrs = headers(("Content-Encoding", "gzip"))
+
+        result = decode_request_body_for_network_log_capture(truncated, hdrs)
+
+        assert result is not None
+        assert len(result) > 1024
+        assert set(result) == {ord("x")}

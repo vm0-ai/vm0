@@ -4,6 +4,8 @@ Exports:
 
 - Bounded streaming usage decoding for gzip, deflate, zstd; one-shot
   decompression for gzip, deflate, br, zstd.
+- Request network-log capture decoding that suppresses unsupported or failed
+  encoded request bodies.
 - JSON usage decompression with diagnostic error classification.
 """
 
