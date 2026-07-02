@@ -4,7 +4,15 @@ import { initContract } from "./base";
 
 const c = initContract();
 
-export const testTelegramDispatchProbeBodySchema = z.unknown().optional();
+export const testTelegramDispatchProbeBodySchema = z.object({
+  bot_id: z.string(),
+  chat_id: z.string(),
+  telegram_user_id: z.string(),
+  message_text: z.string(),
+  message_id: z.number().optional(),
+  chat_type: z.enum(["private", "group", "supergroup"]).optional(),
+  bot_username: z.string().optional(),
+});
 
 export const testTelegramDispatchProbeSuccessSchema = z.object({
   ok: z.literal(true),
@@ -44,3 +52,6 @@ export const testTelegramDispatchProbeContract = c.router({
 
 export type TestTelegramDispatchProbeContract =
   typeof testTelegramDispatchProbeContract;
+export type TestTelegramDispatchProbeBody = z.infer<
+  typeof testTelegramDispatchProbeBodySchema
+>;

@@ -20,7 +20,7 @@ const memoryActivityDiffHunkSchema = z.object({
   lines: z.array(memoryActivityDiffLineSchema),
 });
 
-const memoryActivityDiffSchema = z.object({
+export const memoryActivityDiffSchema = z.object({
   format: z.literal("line"),
   beforeExists: z.boolean(),
   afterExists: z.boolean(),
