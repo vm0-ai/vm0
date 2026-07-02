@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.131.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.19...runner-rs-v0.131.20) (2026-07-02)
+
+
+### Bug Fixes
+
+* prioritize direct workspace holder cleanup ([#19881](https://github.com/vm0-ai/vm0/issues/19881)) ([a381f6c](https://github.com/vm0-ai/vm0/commit/a381f6c787f395339ca9d6abdb9f655182cb2713))
+
+
+### Performance Improvements
+
+* split fresh sandbox preparation telemetry ([#19898](https://github.com/vm0-ai/vm0/issues/19898)) ([c55b78d](https://github.com/vm0-ai/vm0/commit/c55b78dceeb2c7671fb8f30906f0ab9f9010a442))
+
 ## [0.131.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.18...runner-rs-v0.131.19) (2026-07-02)
 
 ## [0.131.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.17...runner-rs-v0.131.18) (2026-07-02)
