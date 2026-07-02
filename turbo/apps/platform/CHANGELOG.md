@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.525.0](https://github.com/vm0-ai/vm0/compare/app-v0.524.1...app-v0.525.0) (2026-07-02)
+
+
+### Features
+
+* hide creator attribution on private agents tab ([#19724](https://github.com/vm0-ai/vm0/issues/19724)) ([ec6ca7f](https://github.com/vm0-ai/vm0/commit/ec6ca7f8c3303d4a1e05c1db83eaa98e28734096)), closes [#19723](https://github.com/vm0-ai/vm0/issues/19723)
+
+
+### Bug Fixes
+
+* clear agent list dialog search query on open instead of on select ([#19738](https://github.com/vm0-ai/vm0/issues/19738)) ([3895af6](https://github.com/vm0-ai/vm0/commit/3895af6c5c90b0908a89f14a860ae9125d131abe))
+* materialize presentation theme applied via setPalette/setFont calls ([#19675](https://github.com/vm0-ai/vm0/issues/19675)) ([7122b72](https://github.com/vm0-ai/vm0/commit/7122b72e8124815802fd6a2034f0cb8cc303e410))
+
 ## [0.524.1](https://github.com/vm0-ai/vm0/compare/app-v0.524.0...app-v0.524.1) (2026-07-02)
 
 
