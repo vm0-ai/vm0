@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.45.1...guest-agent-v0.45.2) (2026-07-02)
+
+
+### Bug Fixes
+
+* **guest-agent:** classify claude stalled streams ([#19865](https://github.com/vm0-ai/vm0/issues/19865)) ([6799682](https://github.com/vm0-ai/vm0/commit/679968254cadde4774a1082b533ccec1ca26ac74))
+
 ## [0.45.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.45.0...guest-agent-v0.45.1) (2026-07-02)
 
 
