@@ -3,6 +3,7 @@ import { workflowUserTriggerThreads } from "@vm0/db/schema/zero-workflow";
 import { and, eq } from "drizzle-orm";
 
 import type { Db, ReadonlyDb } from "../external/db";
+import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 
 export async function loadWorkflowUserTriggerThreadId(
   db: ReadonlyDb,
@@ -30,6 +31,7 @@ async function createTriggerChatThread(
   db: Db,
   args: {
     readonly userId: string;
+    readonly orgId: string;
     readonly agentId: string;
     readonly title: string;
     readonly currentTime: Date;
@@ -45,10 +47,19 @@ async function createTriggerChatThread(
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
     })
-    .returning({ id: chatThreads.id });
+    .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
   if (!thread) {
     throw new Error("Failed to create workflow trigger chat thread");
   }
+  await appendChatThreadEvent(db, {
+    kind: "created",
+    userId: args.userId,
+    orgId: args.orgId,
+    chatThreadId: thread.id,
+    agentComposeId: args.agentId,
+    title: args.title,
+    createdAt: thread.createdAt,
+  });
   return thread.id;
 }
 
@@ -118,6 +129,7 @@ export async function ensureWorkflowUserTriggerThread(
 
   const chatThreadId = await createTriggerChatThread(db, {
     userId: args.userId,
+    orgId: args.orgId,
     agentId: args.agentId,
     title: args.workflowTitle,
     currentTime: args.currentTime,

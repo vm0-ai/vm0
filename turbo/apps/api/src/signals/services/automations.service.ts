@@ -28,6 +28,7 @@ import {
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { generateAutomationDescription } from "./automations/describe";
+import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 
 /**
  * Interpreter key persisted for natively-created automations (D1 on
@@ -329,10 +330,19 @@ async function insertAutomationWithTrigger(
           createdAt: currentTime,
           updatedAt: currentTime,
         })
-        .returning({ id: chatThreads.id });
+        .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
       if (!thread) {
         throw new Error("Failed to create chat thread");
       }
+      await appendChatThreadEvent(tx, {
+        kind: "created",
+        userId: args.userId,
+        orgId: args.orgId,
+        chatThreadId: thread.id,
+        agentComposeId: body.agentId,
+        title: body.description ?? body.name,
+        createdAt: thread.createdAt,
+      });
       chatThreadId = thread.id;
     }
 
