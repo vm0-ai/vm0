@@ -1624,6 +1624,7 @@ function appendUnassociatedUserMessage(params: {
         modelProviderCredentialScope:
           params.modelPin.modelProviderCredentialScope,
         selectedModel: params.modelPin.selectedModel,
+        modelPinCaptured: true,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });

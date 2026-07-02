@@ -1639,8 +1639,8 @@ async function nextQueuedUserMessage(
       modelProviderCredentialScope: sql<ModelProviderCredentialScope | null>`${chatMessages.modelProviderCredentialScope}`,
       selectedModel: sql<
         string | null
-      >`COALESCE(${chatMessages.selectedModel}, ${chatThreads.selectedModel})`,
-      modelPinCaptured: sql<boolean>`(${chatMessages.modelProviderId} IS NOT NULL OR ${chatMessages.modelProviderType} IS NOT NULL OR ${chatMessages.modelProviderCredentialScope} IS NOT NULL OR ${chatMessages.selectedModel} IS NOT NULL)`,
+      >`CASE WHEN ${chatMessages.modelPinCaptured} THEN ${chatMessages.selectedModel} ELSE COALESCE(${chatMessages.selectedModel}, ${chatThreads.selectedModel}) END`,
+      modelPinCaptured: chatMessages.modelPinCaptured,
     })
     .from(chatMessages)
     .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))

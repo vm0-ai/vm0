@@ -1,0 +1,1 @@
+ALTER TABLE "chat_messages" ADD COLUMN "model_pin_captured" boolean DEFAULT false NOT NULL;

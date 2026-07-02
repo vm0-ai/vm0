@@ -9,6 +9,7 @@ import {
   uniqueIndex,
   jsonb,
   varchar,
+  boolean,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
@@ -186,6 +187,7 @@ export const chatMessages = pgTable(
       length: 20,
     }),
     selectedModel: varchar("selected_model", { length: 255 }),
+    modelPinCaptured: boolean("model_pin_captured").notNull().default(false),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
     thinking: text("thinking"),
