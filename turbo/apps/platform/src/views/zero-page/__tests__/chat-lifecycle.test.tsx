@@ -68,6 +68,34 @@ const FOLLOWUP_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
 const HISTORY_THREAD_ID = "b0000000-0000-4000-a000-000000000705";
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
+function replaceNavigatorProperty(property: string, value: unknown): void {
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, property);
+  Object.defineProperty(navigator, property, {
+    configurable: true,
+    value,
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      if (descriptor) {
+        Object.defineProperty(navigator, property, descriptor);
+        return;
+      }
+      Reflect.deleteProperty(navigator, property);
+    },
+    { once: true },
+  );
+}
+
+function mockMacUserAgentData(architecture: string): void {
+  replaceNavigatorProperty("userAgentData", {
+    platform: "macOS",
+    getHighEntropyValues: () => {
+      return Promise.resolve({ architecture, platform: "macOS" });
+    },
+  });
+}
+
 function computerUsePermissions() {
   return {
     accessibility: true,
@@ -841,6 +869,14 @@ function linkByText(text: string): HTMLElement {
   return link;
 }
 
+function queryLinkByText(text: string): HTMLElement | null {
+  return (
+    queryAllByRoleFast("link").find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+    }) ?? null
+  );
+}
+
 function queryButtonByText(text: string): HTMLElement | null {
   return (
     queryAllByRoleFast("button").find((candidate) => {
@@ -888,11 +924,15 @@ function mockThinkingTypewriterLayout({
   labelWidth,
   parentWidth,
   graphemeWidth,
+  measureTextWidth = (value) => {
+    return Array.from(value).length * graphemeWidth;
+  },
 }: {
   readonly text: string;
   readonly labelWidth: number;
   readonly parentWidth: number;
   readonly graphemeWidth: number;
+  readonly measureTextWidth?: (value: string) => number;
 }): void {
   const getContextDescriptor = Object.getOwnPropertyDescriptor(
     HTMLCanvasElement.prototype,
@@ -945,7 +985,7 @@ function mockThinkingTypewriterLayout({
       return {
         measureText: (value: string) => {
           return {
-            width: Array.from(value).length * graphemeWidth,
+            width: measureTextWidth(value),
           } as TextMetrics;
         },
       } as CanvasRenderingContext2D;
@@ -1343,10 +1383,70 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("clears thinking for a completed latest run with an older unterminated run", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-stale-run-before-completed-latest-run",
+      activeRunIds: [],
+      chatMessages: [
+        {
+          id: "msg-stale-run-user",
+          role: "user",
+          content: "Start the stale run",
+          runId: "run-stale-without-marker",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-stale-run-assistant",
+          role: "assistant",
+          content: "This old run never received a terminal marker.",
+          runId: "run-stale-without-marker",
+          runEventId: "event-stale-run-assistant-text",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-latest-run-user",
+          role: "user",
+          content: "Run the current task",
+          runId: "run-latest-completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-latest-run-assistant",
+          role: "assistant",
+          content: "The current task is complete.",
+          runId: "run-latest-completed",
+          runEventId: "event-latest-run-assistant-text",
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+        {
+          id: "msg-latest-run-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-latest-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-stale-run-before-completed-latest-run",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The current task is complete."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
   it("keeps thinking when a different run completes while another run is open", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-stale-lifecycle-thinking",
-      activeRunIds: [],
+      activeRunIds: ["run-r2"],
       chatMessages: [
         {
           id: "msg-stale-usage-r1",
@@ -1408,6 +1508,142 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText("Continue the plan")).toBeInTheDocument();
       expect(screen.getByText("The next step is ready.")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+  });
+
+  it("clears thinking when only the latest completed marker is loaded after an older unterminated run", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-completed-marker-only-after-stale-run",
+      activeRunIds: [],
+      chatMessages: [
+        {
+          id: "msg-marker-only-stale-user",
+          role: "user",
+          content: "Start an older run",
+          runId: "run-marker-only-stale",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-marker-only-stale-assistant",
+          role: "assistant",
+          content: "This older run is missing its terminal marker.",
+          runId: "run-marker-only-stale",
+          runEventId: "event-marker-only-stale-assistant-text",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-marker-only-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-marker-only-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-completed-marker-only-after-stale-run",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("This older run is missing its terminal marker."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("keeps thinking for an older active run when a newer run completes", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-concurrent-run-completed-later",
+      activeRunIds: ["run-concurrent-active"],
+      chatMessages: [
+        {
+          id: "msg-concurrent-active-user",
+          role: "user",
+          content: "Keep monitoring deployment",
+          runId: "run-concurrent-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-concurrent-active-assistant",
+          role: "assistant",
+          content: "Monitoring is still running.",
+          runId: "run-concurrent-active",
+          runEventId: "event-concurrent-active-assistant-text",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-concurrent-completed-user",
+          role: "user",
+          content: "Summarize current status",
+          runId: "run-concurrent-completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-concurrent-completed-assistant",
+          role: "assistant",
+          content: "The current status summary is ready.",
+          runId: "run-concurrent-completed",
+          runEventId: "event-concurrent-completed-assistant-text",
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+        {
+          id: "msg-concurrent-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-concurrent-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-concurrent-run-completed-later",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The current status summary is ready."),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+  });
+
+  it("keeps thinking when an older active run is outside the loaded message window", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-active-run-outside-loaded-window",
+      activeRunIds: ["run-active-outside-window"],
+      chatMessages: [
+        {
+          id: "msg-window-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-window-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-active-run-outside-loaded-window",
+    });
+
+    await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
       expect(
         document.querySelector("[data-thinking-indicator]"),
@@ -5199,7 +5435,8 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: assistantReply,
           runId: "run-followup",
-          createdAt: "2026-06-09T10:01:00Z",
+          sequenceNumber: 2,
+          createdAt: "2026-06-09T10:01:01Z",
         },
         completedMarker,
       ],
@@ -5232,6 +5469,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(fetchedMessageIds).toContain(completedMarker.id);
       expect(buttonByText(followupPrompt)).toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });
   });
 
@@ -5560,12 +5798,80 @@ describe("chat lifecycle", () => {
         "So Zero can work in your browser and apps for you, even ones with no connector like LinkedIn or Reddit.",
       ),
     ).toBeInTheDocument();
-    expect(linkByText("Download for macOS")).toHaveAttribute(
+    expect(screen.getByText("Requires macOS 14 or newer.")).toBeInTheDocument();
+    const downloadLink = await waitFor(() => {
+      return linkByText("Download for macOS");
+    });
+    expect(downloadLink).toHaveAttribute(
       "href",
       expect.stringContaining(
         "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
       ),
     );
+  });
+
+  it("blocks the Computer Use download dialog on Intel Macs", async () => {
+    mockMacUserAgentData("x86");
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-download-intel";
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await screen.findByText("Connect my computer"));
+
+    const requiredButton = await waitFor(() => {
+      return buttonByText("Requires Apple Silicon Mac");
+    });
+    expect(requiredButton).toBeDisabled();
+    expect(screen.getByText("Requires macOS 14 or newer.")).toBeInTheDocument();
+    expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
+  });
+
+  it("shows Apple Silicon and Intel download links when x64 downloads are enabled", async () => {
+    mockMacUserAgentData("x86");
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-download-x64";
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.DesktopX64Download]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await screen.findByText("Connect my computer"));
+
+    const appleSiliconDownload = await waitFor(() => {
+      return linkByText("Download for Apple Silicon");
+    });
+    expect(appleSiliconDownload).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
+      ),
+    );
+    expect(linkByText("Download for Intel Mac")).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "/api/zero/desktop/updates/stable/darwin/x64/dmg",
+      ),
+    );
+    expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Requires Apple Silicon Mac"),
+    ).not.toBeInTheDocument();
   });
 
   it("does not auto-select the only online Computer Use host", async () => {
@@ -6469,9 +6775,6 @@ describe("initial thinking indicator", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
-      },
     });
 
     await waitFor(() => {
@@ -6481,27 +6784,53 @@ describe("initial thinking indicator", () => {
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 
-  it("splits the thinking marker by the label width and restarts from the next segment", async () => {
-    const threadId = "thread-initial-thinking-segmented";
-    const thinking = "ABCDE";
+  it("restarts on full follow-up lines before sliding a short tail", async () => {
+    const threadId = "thread-initial-thinking-rollover";
+    const thinking = "ABCDEFG";
     mockThinkingTypewriterLayout({
       text: thinking,
-      labelWidth: 32,
-      parentWidth: 96,
+      labelWidth: 38,
+      parentWidth: 160,
       graphemeWidth: 10,
+      measureTextWidth: (value) => {
+        return (
+          Array.from(value).filter((grapheme) => {
+            return grapheme !== ".";
+          }).length * 10
+        );
+      },
     });
+    const displayedLabels = new Set<string>();
+    const labelObserver = new MutationObserver(() => {
+      const label = document.querySelector(`[aria-label="${thinking}"]`);
+      if (label?.textContent) {
+        displayedLabels.add(label.textContent);
+      }
+    });
+    labelObserver.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        labelObserver.disconnect();
+      },
+      { once: true },
+    );
     mockChatLifecycle(context, {
       threadId,
       chatMessages: [
         {
-          id: "msg-thinking-segmented-user",
+          id: "msg-thinking-rollover-user",
           role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
-          id: "msg-thinking-segmented-marker",
+          id: "msg-thinking-rollover-marker",
           role: "assistant",
           content: null,
           thinking,
@@ -6522,8 +6851,13 @@ describe("initial thinking indicator", () => {
 
     const label = await screen.findByLabelText(thinking);
     await waitFor(() => {
-      expect(label).toHaveTextContent("E");
+      expect(label).toHaveTextContent("...EFG");
     });
+    expect(
+      Array.from(displayedLabels).some((value) => {
+        return value === "D" || value === "DE" || value === "DEF";
+      }),
+    ).toBeTruthy();
     expect(label).not.toHaveTextContent(thinking);
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });

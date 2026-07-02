@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.527.0](https://github.com/vm0-ai/vm0/compare/app-v0.526.1...app-v0.527.0) (2026-07-02)
+
+
+### Features
+
+* support darwin x64 desktop builds ([#19766](https://github.com/vm0-ai/vm0/issues/19766)) ([d58dd67](https://github.com/vm0-ai/vm0/commit/d58dd6729078d9bf6556ed5a75c4a66e08b87373))
+
+
+### Bug Fixes
+
+* remove workflow publish approval flow ([#19767](https://github.com/vm0-ai/vm0/issues/19767)) ([19d0fa7](https://github.com/vm0-ai/vm0/commit/19d0fa765fe2fb9a15d64e2a04616b41b8546a17))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.141.0
+    * @vm0/connectors bumped to 1.125.0
+    * @vm0/core bumped to 8.385.0
+
+## [0.526.1](https://github.com/vm0-ai/vm0/compare/app-v0.526.0...app-v0.526.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* block Intel Mac Computer Use downloads ([#19750](https://github.com/vm0-ai/vm0/issues/19750)) ([0042056](https://github.com/vm0-ai/vm0/commit/00420566128b67ee47f11d01e8c654993f2c9958))
+* keep chat draft until local send starts ([#19757](https://github.com/vm0-ai/vm0/issues/19757)) ([60e43de](https://github.com/vm0-ai/vm0/commit/60e43de387960bd97978ef2593286eb0a8b8194b))
+* keep follow-up markers after assistant content ([#19737](https://github.com/vm0-ai/vm0/issues/19737)) ([d135270](https://github.com/vm0-ai/vm0/commit/d135270c327e2aece0a9a014128928e1e230107b))
+
+## [0.526.0](https://github.com/vm0-ai/vm0/compare/app-v0.525.0...app-v0.526.0) (2026-07-02)
+
+
+### Features
+
+* **platform:** resume publishable HTML artifact edit drafts ([#19744](https://github.com/vm0-ai/vm0/issues/19744)) ([159189b](https://github.com/vm0-ai/vm0/commit/159189bb6ea6c097cf28b8a73e2cf4ae0357d763))
+
+
+### Bug Fixes
+
+* slide thinking typewriter overflow ([#19745](https://github.com/vm0-ai/vm0/issues/19745)) ([d3b9dcf](https://github.com/vm0-ai/vm0/commit/d3b9dcf4ab15116cc8202beb496391ac57f5f9b0))
+
+## [0.525.0](https://github.com/vm0-ai/vm0/compare/app-v0.524.1...app-v0.525.0) (2026-07-02)
+
+
+### Features
+
+* hide creator attribution on private agents tab ([#19724](https://github.com/vm0-ai/vm0/issues/19724)) ([ec6ca7f](https://github.com/vm0-ai/vm0/commit/ec6ca7f8c3303d4a1e05c1db83eaa98e28734096)), closes [#19723](https://github.com/vm0-ai/vm0/issues/19723)
+
+
+### Bug Fixes
+
+* clear agent list dialog search query on open instead of on select ([#19738](https://github.com/vm0-ai/vm0/issues/19738)) ([3895af6](https://github.com/vm0-ai/vm0/commit/3895af6c5c90b0908a89f14a860ae9125d131abe))
+* materialize presentation theme applied via setPalette/setFont calls ([#19675](https://github.com/vm0-ai/vm0/issues/19675)) ([7122b72](https://github.com/vm0-ai/vm0/commit/7122b72e8124815802fd6a2034f0cb8cc303e410))
+
 ## [0.524.1](https://github.com/vm0-ai/vm0/compare/app-v0.524.0...app-v0.524.1) (2026-07-02)
 
 

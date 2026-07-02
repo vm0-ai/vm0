@@ -56,6 +56,7 @@ import { nowDate } from "../../lib/time.ts";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
+import { chatMessageOrderSequence } from "../chat-message-order.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
@@ -208,18 +209,6 @@ function completedRunIdsFromMessages(
     }
   }
   return Array.from(ids);
-}
-
-function isUnterminatedAssistantRunMessage(
-  message: PagedChatMessage,
-  terminatedRunIds: Set<string>,
-): boolean {
-  return (
-    message.role === "assistant" &&
-    message.runId !== undefined &&
-    message.runLifecycleEvent === undefined &&
-    !terminatedRunIds.has(message.runId)
-  );
 }
 
 function createInterruptedAssistantMessage(
@@ -384,109 +373,145 @@ function terminatedRunIdsFromRawMessages(
   return terminatedRunIds;
 }
 
-function deriveRunIndicatorStateFromRawMessages(
-  raw: readonly ChatMessageProjectionEntry[],
-): string | null {
-  if (hasUnresolvedQueueMarker(raw)) {
+type RunIndicatorState = "running" | "queued" | null;
+
+type AssistantPagedChatMessage = Extract<
+  PagedChatMessage,
+  { role: "assistant" }
+>;
+
+interface RunIndicatorScanContext {
+  readonly terminatedRunIds: Set<string>;
+  readonly activeRunIds: Set<string>;
+  readonly queuedRunIds: Set<string>;
+  sawQueued: boolean;
+  sawInactiveRunActivity: boolean;
+}
+
+function inactiveRunIndicatorState(
+  scan: RunIndicatorScanContext,
+): RunIndicatorState {
+  return scan.sawQueued ? "queued" : null;
+}
+
+function unresolvedActiveRunIndicatorState(
+  scan: RunIndicatorScanContext,
+): RunIndicatorState {
+  for (const runId of scan.activeRunIds) {
+    if (!scan.queuedRunIds.has(runId)) {
+      return "running";
+    }
+  }
+  return inactiveRunIndicatorState(scan);
+}
+
+function rememberQueuedRun(
+  scan: RunIndicatorScanContext,
+  runId: string | undefined,
+): void {
+  if (runId !== undefined && scan.terminatedRunIds.has(runId)) {
+    return;
+  }
+  scan.sawQueued = true;
+  if (runId !== undefined) {
+    scan.queuedRunIds.add(runId);
+  }
+}
+
+function runActivityIndicatorState(
+  scan: RunIndicatorScanContext,
+  runId: string,
+): RunIndicatorState | undefined {
+  if (scan.queuedRunIds.has(runId)) {
     return "queued";
   }
+  if (scan.terminatedRunIds.has(runId)) {
+    scan.sawInactiveRunActivity = true;
+    return undefined;
+  }
+  if (scan.sawInactiveRunActivity && !scan.activeRunIds.has(runId)) {
+    return undefined;
+  }
+  return "running";
+}
 
-  const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
+function assistantRunIndicatorState(
+  scan: RunIndicatorScanContext,
+  message: AssistantPagedChatMessage,
+): RunIndicatorState | undefined {
+  const runId = message.runId;
+  if (runId !== undefined && message.runLifecycleEvent !== undefined) {
+    scan.sawInactiveRunActivity = true;
+    return undefined;
+  }
+  if (isQueueMarkerMessage(message)) {
+    rememberQueuedRun(scan, runId);
+    return undefined;
+  }
+  return runId === undefined
+    ? inactiveRunIndicatorState(scan)
+    : runActivityIndicatorState(scan, runId);
+}
+
+function nonAssistantRunIndicatorState(
+  scan: RunIndicatorScanContext,
+  entry: ChatMessageProjectionEntry,
+): RunIndicatorState | undefined {
+  if (isRawOptimisticRunMessage(entry)) {
+    return "running";
+  }
+  if (isRawQueuedUserMessage(entry)) {
+    scan.sawQueued = true;
+    return undefined;
+  }
+  const { runId } = entry.message;
+  return runId === undefined
+    ? undefined
+    : runActivityIndicatorState(scan, runId);
+}
+
+function deriveRunIndicatorStateFromRawMessages(
+  raw: readonly ChatMessageProjectionEntry[],
+  activeRunIds: readonly string[],
+): RunIndicatorState {
   const revokedMessageIds = revokedMessageIdsFromRawMessages(raw);
+  const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
+  const scan: RunIndicatorScanContext = {
+    terminatedRunIds,
+    activeRunIds: new Set(
+      activeRunIds.filter((runId) => {
+        return !terminatedRunIds.has(runId);
+      }),
+    ),
+    queuedRunIds: new Set<string>(),
+    sawQueued: false,
+    sawInactiveRunActivity: false,
+  };
 
-  let hasQueued = false;
-  for (const entry of raw) {
+  for (let index = raw.length - 1; index >= 0; index--) {
+    const entry = raw[index]!;
     const { message } = entry;
     if (revokedMessageIds.has(message.id)) {
       continue;
     }
-    if (
-      isUsageMessage(message) ||
-      isQueueMarkerMessage(message) ||
-      isGoalMarkerMessage(message)
-    ) {
+    if (isUsageMessage(message) || isGoalMarkerMessage(message)) {
       continue;
     }
     if (message.role === "assistant") {
-      if (isUnterminatedAssistantRunMessage(message, terminatedRunIds)) {
-        return "running";
+      const state = assistantRunIndicatorState(scan, message);
+      if (state !== undefined) {
+        return state;
       }
-      hasQueued = false;
       continue;
     }
-    if (isRawOptimisticRunMessage(entry)) {
-      return "running";
-    }
-    if (isRawQueuedUserMessage(entry)) {
-      hasQueued = true;
-      continue;
-    }
-    if (message.runId !== undefined && !terminatedRunIds.has(message.runId)) {
-      return "running";
+    const state = nonAssistantRunIndicatorState(scan, entry);
+    if (state !== undefined) {
+      return state;
     }
   }
-  return hasQueued ? "queued" : null;
-}
-
-function hasUnresolvedQueueMarker(
-  raw: readonly ChatMessageProjectionEntry[],
-): boolean {
-  const queueMarkers = new Map<
-    string,
-    { readonly runId: string; readonly index: number }
-  >();
-  const revokedIds = new Set(
-    raw.flatMap((entry) => {
-      return entry.message.revokesMessageId
-        ? [entry.message.revokesMessageId]
-        : [];
-    }),
-  );
-  const lastAssistantOutputIndexByRunId = new Map<string, number>();
-  const lastTerminalIndexByRunId = new Map<string, number>();
-  const lastInterruptIndexByRunId = new Map<string, number>();
-
-  for (const [index, entry] of raw.entries()) {
-    const { message } = entry;
-    if (isQueueMarkerMessage(message) && message.runId !== undefined) {
-      queueMarkers.set(message.id, { runId: message.runId, index });
-      continue;
-    }
-    if (message.interruptsRunId !== undefined) {
-      lastInterruptIndexByRunId.set(message.interruptsRunId, index);
-    }
-    if (message.role !== "assistant" || message.runId === undefined) {
-      continue;
-    }
-    if (message.runLifecycleEvent !== undefined) {
-      lastTerminalIndexByRunId.set(message.runId, index);
-      continue;
-    }
-    if (message.content !== null) {
-      lastAssistantOutputIndexByRunId.set(message.runId, index);
-    }
-  }
-
-  for (const [markerId, marker] of queueMarkers) {
-    if (revokedIds.has(markerId)) {
-      continue;
-    }
-    const laterAssistantOutputIndex =
-      lastAssistantOutputIndexByRunId.get(marker.runId) ?? -1;
-    const laterTerminalIndex = lastTerminalIndexByRunId.get(marker.runId) ?? -1;
-    const laterInterruptIndex =
-      lastInterruptIndexByRunId.get(marker.runId) ?? -1;
-    if (
-      Math.max(
-        laterAssistantOutputIndex,
-        laterTerminalIndex,
-        laterInterruptIndex,
-      ) <= marker.index
-    ) {
-      return true;
-    }
-  }
-  return false;
+  return scan.activeRunIds.size > 0
+    ? unresolvedActiveRunIndicatorState(scan)
+    : inactiveRunIndicatorState(scan);
 }
 
 function liveRunIdsFromRawMessages(
@@ -1202,8 +1227,8 @@ function compareServerMessageOrder(
     return createdAtOrder;
   }
 
-  const leftSequence = left.sequenceNumber ?? -1;
-  const rightSequence = right.sequenceNumber ?? -1;
+  const leftSequence = chatMessageOrderSequence(left);
+  const rightSequence = chatMessageOrderSequence(right);
   if (leftSequence !== rightSequence) {
     return leftSequence - rightSequence;
   }
@@ -1661,7 +1686,7 @@ function createPagedMessages(
     serverMessages$,
     optimisticMessages$,
   });
-  const latestRunStatus$ = createLatestRunStatus(rawMessages$);
+  const latestRunStatus$ = createLatestRunStatus(rawMessages$, threadData$);
 
   // The thread's active goal, folded from the (goal-marker) message stream so
   // the composer reads it without polling /api/automations. Reads rawMessages$
@@ -1993,10 +2018,16 @@ function createInputRef() {
 
 function createLatestRunStatus(
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
+  threadData$: Computed<Promise<ChatThread | null>>,
 ) {
   return computed(async (get): Promise<string | null> => {
-    const raw = await get(rawMessages$);
-    return deriveRunIndicatorStateFromRawMessages(raw);
+    const rawPromise = get(rawMessages$);
+    const threadPromise = get(threadData$);
+    const [raw, thread] = await Promise.all([rawPromise, threadPromise]);
+    return deriveRunIndicatorStateFromRawMessages(
+      raw,
+      thread?.activeRunIds ?? [],
+    );
   });
 }
 
@@ -2454,11 +2485,13 @@ function createSendOptimisticMessageEntry({
   threadId,
   clientMessageId,
   result,
+  generationTemplate,
   options,
 }: {
   threadId: string;
   clientMessageId: string;
   result: PreparedSendMessageResult;
+  generationTemplate: GenerationTemplateRequest | undefined;
   options: SendMessageOptions | undefined;
 }): OptimisticChatMessageEntry {
   return {
@@ -2469,7 +2502,7 @@ function createSendOptimisticMessageEntry({
       role: "user",
       content: result.prompt,
       attachFiles: result.attachments,
-      generationTemplate: options?.generationTemplate,
+      generationTemplate,
       ...sendMessageRevocationPatch(options),
       createdAt: nowDate().toISOString(),
     },
@@ -2530,6 +2563,7 @@ function createSendMessage(deps: SendMessageDeps) {
         L.debug("sendMessage$ no agentId, abort", { threadId });
         return;
       }
+      const generationTemplate = get(draft.generationTemplate$);
       const hasVisualAttachments = hasVisualDraftAttachments(
         get(draft.attachments$),
       );
@@ -2574,6 +2608,7 @@ function createSendMessage(deps: SendMessageDeps) {
           threadId,
           clientMessageId,
           result,
+          generationTemplate,
           options,
         }),
       );
@@ -2598,7 +2633,7 @@ function createSendMessage(deps: SendMessageDeps) {
               hasTextContent: result.hasTextContent,
               clientMessageId,
               modelSelection,
-              generationTemplate: options?.generationTemplate,
+              generationTemplate,
               ...(options && "computerUseHostId" in options
                 ? { computerUseHostId: options.computerUseHostId ?? null }
                 : {}),
@@ -2662,7 +2697,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
     async (
       { get, set },
       prompt: string,
-      generationTemplate: GenerationTemplateRequest | undefined,
       computerUseHostId: string | null | undefined,
       signal: AbortSignal,
     ) => {
@@ -2673,6 +2707,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         L.debug("queueMessage$ no thread data, abort", { threadId });
         return;
       }
+      const generationTemplate = get(draft.generationTemplate$);
 
       const modelSelection = await get(modelSelection$);
       signal.throwIfAborted();
@@ -2947,10 +2982,15 @@ const THINKING_TYPEWRITER_LINE_PAUSE_TICKS = IN_VITEST
       THINKING_TYPEWRITER_LINE_PAUSE_MS / THINKING_TYPEWRITER_INTERVAL_MS,
     );
 const THINKING_TYPEWRITER_WIDTH_GUARD_PX = 8;
+const THINKING_TYPEWRITER_OVERFLOW_PREFIX = "...";
+// Short tails should roll from the previous line instead of restarting alone.
+const THINKING_TYPEWRITER_FULL_LINE_RATIO = 0.8;
 
 interface ThinkingTypewriterLine {
-  readonly graphemes: string[];
+  readonly startIndex: number;
+  readonly endIndex: number;
   readonly text: string;
+  readonly fillsWidth: boolean;
 }
 
 interface ThinkingTypewriterFrame {
@@ -3029,16 +3069,6 @@ function lastRunThinkingMessageForIndicator(
   return runHasAssistantText ? undefined : lastMessage;
 }
 
-function thinkingLineText(
-  line: ThinkingTypewriterLine | undefined,
-  charIndex: number,
-): string {
-  if (!line || charIndex <= 0) {
-    return "";
-  }
-  return line.graphemes.slice(0, charIndex).join("");
-}
-
 function thinkingTypewriterStep(width: number): number {
   if (width >= 520) {
     return 3;
@@ -3107,47 +3137,129 @@ function thinkingLabelWidth(el: HTMLElement): number {
   );
 }
 
+function fullThinkingLineThreshold(width: number): number {
+  return Math.max(
+    1,
+    (width - THINKING_TYPEWRITER_WIDTH_GUARD_PX) *
+      THINKING_TYPEWRITER_FULL_LINE_RATIO,
+  );
+}
+
 function wrapThinkingTextForWidth(args: {
-  readonly text: string;
+  readonly graphemes: readonly string[];
   readonly width: number;
   readonly measureText: (value: string) => number | undefined;
 }): ThinkingTypewriterLine[] {
-  const graphemes = thinkingTextGraphemes(args.text);
-  if (graphemes.length === 0) {
+  if (args.graphemes.length === 0) {
     return [];
   }
-
   if (!Number.isFinite(args.width) || args.width <= 0) {
-    return [{ graphemes, text: args.text }];
+    return [
+      {
+        startIndex: 0,
+        endIndex: args.graphemes.length,
+        text: args.graphemes.join(""),
+        fillsWidth: false,
+      },
+    ];
   }
 
   const maxWidth = Math.max(1, args.width - THINKING_TYPEWRITER_WIDTH_GUARD_PX);
+  const fullLineThreshold = fullThinkingLineThreshold(args.width);
   const lines: ThinkingTypewriterLine[] = [];
+  let startIndex = 0;
   let current: string[] = [];
+  let currentWidth = 0;
 
-  for (const grapheme of graphemes) {
+  for (let index = 0; index < args.graphemes.length; index++) {
+    const grapheme = args.graphemes[index]!;
     const candidate = [...current, grapheme];
     const candidateText = candidate.join("");
     const measured = args.measureText(candidateText);
-
     if (measured === undefined) {
-      return [{ graphemes, text: args.text }];
+      return [
+        {
+          startIndex: 0,
+          endIndex: args.graphemes.length,
+          text: args.graphemes.join(""),
+          fillsWidth: false,
+        },
+      ];
     }
 
     if (measured <= maxWidth || current.length === 0) {
       current = candidate;
+      currentWidth = measured;
       continue;
     }
 
-    lines.push({ graphemes: current, text: current.join("") });
-    current = grapheme.trim().length === 0 ? [] : [grapheme];
+    lines.push({
+      startIndex,
+      endIndex: index,
+      text: current.join(""),
+      fillsWidth: true,
+    });
+    startIndex = index;
+    current = [grapheme];
+    currentWidth = args.measureText(grapheme) ?? measured;
   }
 
   if (current.length > 0) {
-    lines.push({ graphemes: current, text: current.join("") });
+    lines.push({
+      startIndex,
+      endIndex: args.graphemes.length,
+      text: current.join(""),
+      fillsWidth: currentWidth >= fullLineThreshold,
+    });
   }
 
   return lines;
+}
+
+function displayedSlidingThinkingText(args: {
+  readonly graphemes: readonly string[];
+  readonly startIndex: number;
+  readonly charIndex: number;
+  readonly width: number;
+  readonly measureText: (value: string) => number | undefined;
+}): string {
+  const visibleGraphemes = args.graphemes.slice(
+    args.startIndex,
+    args.charIndex,
+  );
+  const visibleText = visibleGraphemes.join("");
+  if (visibleText.length === 0) {
+    return "";
+  }
+  if (!Number.isFinite(args.width) || args.width <= 0) {
+    return visibleText;
+  }
+
+  const maxWidth = Math.max(1, args.width - THINKING_TYPEWRITER_WIDTH_GUARD_PX);
+  const visibleWidth = args.measureText(visibleText);
+  if (visibleWidth === undefined || visibleWidth <= maxWidth) {
+    return visibleText;
+  }
+
+  let displayedText: string | undefined;
+  for (let start = visibleGraphemes.length - 1; start >= 0; start--) {
+    const candidate = `${THINKING_TYPEWRITER_OVERFLOW_PREFIX}${visibleGraphemes
+      .slice(start)
+      .join("")}`;
+    const measured = args.measureText(candidate);
+    if (measured === undefined) {
+      return visibleText;
+    }
+    if (measured <= maxWidth) {
+      displayedText = candidate;
+      continue;
+    }
+    if (displayedText) {
+      break;
+    }
+  }
+
+  return displayedText ?? visibleGraphemes[visibleGraphemes.length - 1] ?? "";
 }
 
 function nextThinkingTypewriterFrame(args: {
@@ -3158,12 +3270,15 @@ function nextThinkingTypewriterFrame(args: {
   readonly measureText: (value: string) => number | undefined;
 }): ThinkingTypewriterFrame {
   const width = Math.max(0, Math.floor(args.width));
+  const graphemes = thinkingTextGraphemes(args.text);
+  if (graphemes.length === 0) {
+    return emptyThinkingTypewriterFrame();
+  }
   const lines = wrapThinkingTextForWidth({
-    text: args.text,
+    graphemes,
     width,
     measureText: args.measureText,
   });
-
   if (lines.length === 0) {
     return emptyThinkingTypewriterFrame();
   }
@@ -3181,6 +3296,7 @@ function nextThinkingTypewriterFrame(args: {
         };
   const lineIndex = Math.min(currentFrame.lineIndex, lines.length - 1);
   const currentLine = lines[lineIndex]!;
+  const nextLine = lines[lineIndex + 1];
 
   if (currentFrame.pauseTicksRemaining > 0) {
     return {
@@ -3192,36 +3308,52 @@ function nextThinkingTypewriterFrame(args: {
     };
   }
 
-  if (currentFrame.charIndex >= currentLine.graphemes.length) {
-    const nextLineIndex = lineIndex + 1;
-    if (nextLineIndex >= lines.length) {
+  if (currentFrame.charIndex >= currentLine.endIndex) {
+    if (nextLine?.fillsWidth) {
+      const nextCharIndex = Math.min(
+        nextLine.endIndex,
+        nextLine.startIndex + thinkingTypewriterStep(width),
+      );
       return {
         ...currentFrame,
-        lineIndex,
-        charIndex: currentLine.graphemes.length,
-        displayedText: currentLine.text,
-        complete: true,
+        lineIndex: lineIndex + 1,
+        charIndex: nextCharIndex,
+        pauseTicksRemaining: 0,
+        displayedText: displayedSlidingThinkingText({
+          graphemes,
+          startIndex: nextLine.startIndex,
+          charIndex: nextCharIndex,
+          width,
+          measureText: args.measureText,
+        }),
+        complete:
+          lineIndex + 1 >= lines.length - 1 &&
+          nextCharIndex >= graphemes.length,
       };
     }
 
-    const nextLine = lines[nextLineIndex]!;
     const nextCharIndex = Math.min(
-      nextLine.graphemes.length,
-      thinkingTypewriterStep(width),
+      graphemes.length,
+      currentFrame.charIndex + thinkingTypewriterStep(width),
     );
     return {
       ...currentFrame,
-      lineIndex: nextLineIndex,
+      lineIndex,
       charIndex: nextCharIndex,
-      displayedText: thinkingLineText(nextLine, nextCharIndex),
-      complete:
-        nextLineIndex >= lines.length - 1 &&
-        nextCharIndex >= nextLine.graphemes.length,
+      pauseTicksRemaining: 0,
+      displayedText: displayedSlidingThinkingText({
+        graphemes,
+        startIndex: currentLine.startIndex,
+        charIndex: nextCharIndex,
+        width,
+        measureText: args.measureText,
+      }),
+      complete: nextCharIndex >= graphemes.length,
     };
   }
 
   const nextCharIndex = Math.min(
-    currentLine.graphemes.length,
+    currentLine.endIndex,
     currentFrame.charIndex + thinkingTypewriterStep(width),
   );
 
@@ -3230,14 +3362,17 @@ function nextThinkingTypewriterFrame(args: {
     lineIndex,
     charIndex: nextCharIndex,
     pauseTicksRemaining:
-      nextCharIndex >= currentLine.graphemes.length &&
-      lineIndex < lines.length - 1
+      nextCharIndex >= currentLine.endIndex && nextLine?.fillsWidth
         ? THINKING_TYPEWRITER_LINE_PAUSE_TICKS
         : 0,
-    displayedText: thinkingLineText(currentLine, nextCharIndex),
-    complete:
-      lineIndex >= lines.length - 1 &&
-      nextCharIndex >= currentLine.graphemes.length,
+    displayedText: displayedSlidingThinkingText({
+      graphemes,
+      startIndex: currentLine.startIndex,
+      charIndex: nextCharIndex,
+      width,
+      measureText: args.measureText,
+    }),
+    complete: nextCharIndex >= graphemes.length,
   };
 }
 

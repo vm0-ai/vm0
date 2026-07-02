@@ -56,7 +56,7 @@ import type {
 
 interface HtmlDomCommentEditorProps {
   readonly filename: string;
-  readonly onApplyEditDraft?: (draft: HtmlDomEditDraft) => Promise<void>;
+  readonly onApplyEditDraft?: (draft: HtmlDomEditDraft) => void | Promise<void>;
   readonly onApplyStyleEdits?: (html: string) => Promise<void>;
   readonly onClose: () => void;
   readonly onEditRequestFailed?: () => void;
@@ -81,7 +81,7 @@ function HtmlDomCommentStage({
 }: {
   readonly filename: string;
   readonly model: HtmlDomCommentEditorModel;
-  readonly onApplyEditDraft?: (draft: HtmlDomEditDraft) => Promise<void>;
+  readonly onApplyEditDraft?: (draft: HtmlDomEditDraft) => void | Promise<void>;
   readonly onApplyStyleEdits?: (html: string) => Promise<void>;
   readonly onEditRequestFailed?: () => void;
   readonly onEditRequestStarted?: () => void;
@@ -229,7 +229,7 @@ function HtmlDomCommentToolbar({
 }: {
   readonly disabled: boolean;
   readonly model: HtmlDomCommentEditorModel;
-  readonly onApplyEditDraft?: (draft: HtmlDomEditDraft) => Promise<void>;
+  readonly onApplyEditDraft?: (draft: HtmlDomEditDraft) => void | Promise<void>;
   readonly onApplyStyleEdits?: (html: string) => Promise<void>;
   readonly onEditRequestFailed?: () => void;
   readonly onEditRequestStarted?: () => void;

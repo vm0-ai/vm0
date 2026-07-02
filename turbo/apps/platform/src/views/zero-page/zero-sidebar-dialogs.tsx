@@ -237,7 +237,7 @@ function AgentCommandAgentContent({
 }) {
   const label = agentDialogLabel(agent);
   return (
-    <>
+    <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
       {avatar ?? (
         <AgentAvatarImg
           name={agent.id}
@@ -245,7 +245,7 @@ function AgentCommandAgentContent({
           className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
         />
       )}
-      <span className="min-w-0 flex-1 text-left">
+      <span className="min-w-0 flex-1">
         <span className="block truncate text-sm text-foreground">{label}</span>
         {subtitle ? (
           <span className="block truncate text-xs text-muted-foreground">
@@ -253,7 +253,7 @@ function AgentCommandAgentContent({
           </span>
         ) : null}
       </span>
-    </>
+    </span>
   );
 }
 
@@ -271,6 +271,7 @@ function AgentCommandSideActions({
       onPointerDown={stopCommandItemEvent}
       onMouseDown={stopCommandItemEvent}
       onClick={stopCommandItemEvent}
+      className="ml-auto shrink-0"
     >
       {children}
     </div>
@@ -305,7 +306,7 @@ function SortablePinnedAgent({
       value={agent.id}
       onSelect={onChat}
       style={style}
-      className="group gap-2 px-1 py-2"
+      className="group w-full gap-2 px-1 py-2"
     >
       <AgentCommandAgentContent agent={agent} />
       <div className="flex shrink-0 items-center gap-0.5">
@@ -456,7 +457,7 @@ export function AgentListDialog({
               onSelect={() => {
                 return handleChat(null);
               }}
-              className="group gap-2 px-1 py-2"
+              className="group w-full gap-2 px-1 py-2"
             >
               <AgentCommandAgentContent
                 agent={{ id: "lead", displayName }}
@@ -533,7 +534,7 @@ export function AgentListDialog({
                   onSelect={() => {
                     return handleChat(agent.id);
                   }}
-                  className="group gap-2 px-1 py-2"
+                  className="group w-full gap-2 px-1 py-2"
                 >
                   <AgentCommandAgentContent agent={agent} />
                   <AgentCommandSideActions>

@@ -7,7 +7,6 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   chatMessagesContract,
   type AttachFile,
@@ -44,7 +43,6 @@ import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testChatMessagesStateRoutes } from "../test-chat-messages-state";
 
@@ -2119,19 +2117,6 @@ describe("CHAT-02: initial thinking indicator", () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
-    if (!actor.orgId) {
-      throw new Error("Expected entitled chat actor to belong to an org");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: actor.userId,
-        orgId: actor.orgId,
-      },
-      {
-        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
-      },
-    );
 
     let upstreamAuthorization: string | null = null;
     let promptPayload = "";

@@ -23,7 +23,12 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { artifactPanelWidth$ } from "../../../signals/zero-page/zero-artifact-sidebar.ts";
+import {
+  artifactPanelWidth$,
+  saveCapturedHtmlEditSnapshotDraft$,
+} from "../../../signals/zero-page/zero-artifact-sidebar.ts";
+import { ARTIFACT_HTML_EDIT_PARAM } from "../../../signals/zero-page/right-sidebar-search-params.ts";
+import { searchParams$ } from "../../../signals/route.ts";
 
 const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
@@ -357,6 +362,34 @@ function setupPresentationArtifactThread(
   });
 }
 
+function setupHostedSiteArtifactThread(
+  siteUrl: string,
+  html = "<!doctype html><html><body><h1>Original site</h1></body></html>",
+): void {
+  const filename = new URL(siteUrl).pathname.split("/").pop() || "site.html";
+  context.mocks.http.get(siteUrl, () => {
+    return new Response(html, {
+      headers: { "Content-Type": "text/html" },
+    });
+  });
+  setupChatThread({
+    artifactFiles: [
+      artifactFile(siteUrl, {
+        id: "artifact-hosted-site",
+        filename,
+        contentType: "text/html",
+        artifactKind: "hosted-site",
+        size: html.length,
+      }),
+    ],
+    content: `[Hosted site](${siteUrl})`,
+    featureSwitches: {
+      [FeatureSwitchKey.HtmlArtifactCommentEditing]: true,
+    },
+    path: `${THREAD_PATH}?artifact=${encodeURIComponent(siteUrl)}`,
+  });
+}
+
 function assetBackedPresentationHtml(assetUrl: string): string {
   return `<!doctype html>
 <html>
@@ -574,6 +607,285 @@ describe("zero artifact sidebar", () => {
     await waitFor(() => {
       expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     });
+  });
+
+  it("offers to resume a saved HTML edit snapshot", async () => {
+    const user = userEvent.setup({ delay: null });
+    const siteUrl = "https://resume-draft.sites.vm7.io/index.html";
+    const snapshotUrl =
+      "https://cdn.vm7.io/artifacts/html-edit-drafts/resume-draft.html?v=1";
+    const restoredHtml =
+      "<!doctype html><html><body><h1>Saved draft</h1></body></html>";
+    const deletedUrls: string[] = [];
+    const savedBodies: string[] = [];
+    let contentFetches = 0;
+
+    context.mocks.api(
+      chatThreadArtifactsContract.getHtmlEditSnapshot,
+      ({ query, respond }) => {
+        expect(query.url).toBe(siteUrl);
+        return respond(200, {
+          snapshot: {
+            artifactUrl: siteUrl,
+            snapshotUrl,
+            updatedAt: "2026-03-10T00:05:00Z",
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      chatThreadArtifactsContract.deleteHtmlEditSnapshot,
+      ({ query, respond }) => {
+        deletedUrls.push(query.url);
+        return respond(204);
+      },
+    );
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
+      expect(new URL(request.url).searchParams.get("url")).toBe(snapshotUrl);
+      contentFetches += 1;
+      return new Response(restoredHtml, {
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    context.mocks.api(
+      chatThreadArtifactsContract.upsertHtmlEditSnapshot,
+      ({ body, respond }) => {
+        savedBodies.push(body.html);
+        return respond(200, {
+          artifactUrl: body.url,
+          snapshotUrl,
+          updatedAt: "2026-03-10T00:06:00Z",
+        });
+      },
+    );
+    setupHostedSiteArtifactThread(siteUrl);
+
+    // Content is prefetched once when the draft is detected, before Resume.
+    await waitFor(() => {
+      expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
+      expect(contentFetches).toBe(1);
+    });
+    await user.click(screen.getByText("Resume"));
+
+    await waitFor(() => {
+      // Resume applies the draft as a publishable preview, not the comment editor.
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "srcdoc",
+        expect.stringContaining("Saved draft"),
+      );
+      expect(screen.getByTestId("html-dom-draft-toolbar")).toBeInTheDocument();
+      expect(deletedUrls).toStrictEqual([siteUrl]);
+    });
+    // Resume reused the prefetched content instead of fetching again.
+    expect(contentFetches).toBe(1);
+    expect(
+      screen.queryByTestId("html-dom-comment-editor"),
+    ).not.toBeInTheDocument();
+    expect(
+      context.store.get(searchParams$).get(ARTIFACT_HTML_EDIT_PARAM),
+    ).toBeNull();
+    expect(savedBodies).toStrictEqual([]);
+  });
+
+  it("applies the resumed draft as a publishable preview state", async () => {
+    const user = userEvent.setup({ delay: null });
+    const siteUrl = "https://resume-apply.sites.vm7.io/index.html";
+    const snapshotUrl =
+      "https://cdn.vm7.io/artifacts/html-edit-drafts/resume-apply.html?v=1";
+    const restoredHtml =
+      "<!doctype html><html><body><h1>Saved draft</h1></body></html>";
+    let redeployedHtml: string | null = null;
+
+    context.mocks.api(
+      chatThreadArtifactsContract.getHtmlEditSnapshot,
+      ({ respond }) => {
+        return respond(200, {
+          snapshot: {
+            artifactUrl: siteUrl,
+            snapshotUrl,
+            updatedAt: "2026-03-10T00:05:00Z",
+          },
+        });
+      },
+    );
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(restoredHtml, {
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    context.mocks.api(
+      chatThreadArtifactsContract.deleteHtmlEditSnapshot,
+      ({ respond }) => {
+        return respond(204);
+      },
+    );
+    context.mocks.api(zeroHostContract.redeployHtml, ({ body, respond }) => {
+      redeployedHtml = body.html;
+      return respond(200, {
+        siteId: "7c82da29-6280-4d65-b078-e233c8ad14bf",
+        deploymentId: "dc8b4d42-5dc1-4769-ad8b-17bdf1ad035a",
+        publicSlug: "resume-apply",
+        url: body.url,
+        status: "ready",
+      });
+    });
+    setupHostedSiteArtifactThread(siteUrl);
+
+    await waitFor(() => {
+      expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Resume"));
+
+    await waitFor(() => {
+      // Resume lands directly on the publishable draft preview.
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "srcdoc",
+        expect.stringContaining("Saved draft"),
+      );
+      expect(screen.getByTestId("html-dom-draft-toolbar")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId("html-dom-draft-publish"));
+
+    await waitFor(() => {
+      expect(redeployedHtml).toBe(restoredHtml);
+    });
+  });
+
+  it("persists the generated HTML draft even without an active edit target", async () => {
+    const siteUrl = "https://send-draft.sites.vm7.io/index.html";
+    const generatedHtml =
+      "<!doctype html><html><body><h1>Generated draft</h1></body></html>";
+    const savedBodies: string[] = [];
+
+    context.mocks.api(
+      chatThreadArtifactsContract.upsertHtmlEditSnapshot,
+      ({ body, params, respond }) => {
+        expect(params.threadId).toBe(THREAD_ID);
+        expect(body.url).toBe(siteUrl);
+        savedBodies.push(body.html);
+        return respond(200, {
+          artifactUrl: body.url,
+          snapshotUrl:
+            "https://cdn.vm7.io/artifacts/html-edit-drafts/send-draft.html?v=1",
+          updatedAt: "2026-03-10T00:06:00Z",
+        });
+      },
+    );
+
+    // No active target is set (mimics the agent returning after the user has
+    // switched away): the save must still persist using the captured values.
+    context.store.set(saveCapturedHtmlEditSnapshotDraft$, {
+      html: generatedHtml,
+      threadId: THREAD_ID,
+      url: siteUrl,
+    });
+    await waitFor(() => {
+      expect(savedBodies).toStrictEqual([generatedHtml]);
+    });
+  });
+
+  it("discards a saved HTML edit snapshot from the restore dialog", async () => {
+    const user = userEvent.setup({ delay: null });
+    const siteUrl = "https://discard-draft.sites.vm7.io/index.html";
+    const snapshotUrl =
+      "https://cdn.vm7.io/artifacts/html-edit-drafts/discard-draft.html?v=1";
+    const deletedUrls: string[] = [];
+
+    context.mocks.api(
+      chatThreadArtifactsContract.getHtmlEditSnapshot,
+      ({ respond }) => {
+        return respond(200, {
+          snapshot: {
+            artifactUrl: siteUrl,
+            snapshotUrl,
+            updatedAt: "2026-03-10T00:05:00Z",
+          },
+        });
+      },
+    );
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(
+        "<!doctype html><html><body><h1>Discarded</h1></body></html>",
+        { headers: { "Content-Type": "text/html" } },
+      );
+    });
+    context.mocks.api(
+      chatThreadArtifactsContract.deleteHtmlEditSnapshot,
+      ({ query, respond }) => {
+        deletedUrls.push(query.url);
+        return respond(204);
+      },
+    );
+    setupHostedSiteArtifactThread(siteUrl);
+
+    await waitFor(() => {
+      expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Discard"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
+      expect(deletedUrls).toStrictEqual([siteUrl]);
+    });
+    expect(
+      screen.queryByTestId("html-dom-draft-toolbar"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("artifact-sidebar-body-html"),
+    ).not.toHaveAttribute("srcdoc");
+  });
+
+  it("dismisses the restore dialog with Escape without deleting the draft", async () => {
+    const user = userEvent.setup({ delay: null });
+    const siteUrl = "https://dismiss-draft.sites.vm7.io/index.html";
+    const snapshotUrl =
+      "https://cdn.vm7.io/artifacts/html-edit-drafts/dismiss-draft.html?v=1";
+    const deletedUrls: string[] = [];
+
+    context.mocks.api(
+      chatThreadArtifactsContract.getHtmlEditSnapshot,
+      ({ respond }) => {
+        return respond(200, {
+          snapshot: {
+            artifactUrl: siteUrl,
+            snapshotUrl,
+            updatedAt: "2026-03-10T00:05:00Z",
+          },
+        });
+      },
+    );
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(
+        "<!doctype html><html><body><h1>Dismissed</h1></body></html>",
+        { headers: { "Content-Type": "text/html" } },
+      );
+    });
+    context.mocks.api(
+      chatThreadArtifactsContract.deleteHtmlEditSnapshot,
+      ({ query, respond }) => {
+        deletedUrls.push(query.url);
+        return respond(204);
+      },
+    );
+    setupHostedSiteArtifactThread(siteUrl);
+
+    await waitFor(() => {
+      expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
+    });
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
+    });
+    // Dismiss keeps the draft in the DB (no delete) and shows the original.
+    expect(deletedUrls).toStrictEqual([]);
+    expect(
+      screen.queryByTestId("html-dom-draft-toolbar"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("artifact-sidebar-body-html"),
+    ).not.toHaveAttribute("srcdoc");
   });
 
   it("resizes the artifact preview pane and persists the width", async () => {

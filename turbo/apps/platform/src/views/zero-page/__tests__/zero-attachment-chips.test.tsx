@@ -1295,6 +1295,85 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("navigates human-uploaded images that are not run artifacts", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/user-image-navigation/first.png";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/user-image-navigation/second.png";
+    // The images the user attached are NOT part of the thread's run artifacts;
+    // they resolve from the user artifacts bucket. Navigation must still work.
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, { runs: [] });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-user-image-navigation",
+          role: "user",
+          content: "Here are my photos",
+          attachFiles: [
+            {
+              id: "user-first-image",
+              filename: "first.png",
+              contentType: "image/png",
+              size: 128,
+              url: firstImageUrl,
+            },
+            {
+              id: "user-second-image",
+              filename: "second.png",
+              contentType: "image/png",
+              size: 256,
+              url: secondImageUrl,
+            },
+          ],
+          runId: "run-user-image-navigation",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
+      },
+    });
+
+    click(await screen.findByLabelText("Preview first.png"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+    expect(screen.queryByLabelText("Previous image artifact")).toBeNull();
+    expect(screen.getByLabelText("Next image artifact")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Next image artifact"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "second.png",
+      );
+    });
+    expect(
+      screen.getByLabelText("Previous image artifact"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Next image artifact")).toBeNull();
+
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+  });
+
   it("keeps the modal fullscreen state while navigating images", async () => {
     const user = userEvent.setup({ delay: null });
     const firstImageUrl =
@@ -2197,6 +2276,111 @@ describe("zero attachment chips", () => {
       expect(restoredEditFrame.contentDocument?.body.textContent).not.toContain(
         "Launch sooner",
       );
+    });
+  });
+
+  it("saves an HTML edit snapshot when a comment draft is generated", async () => {
+    const htmlUrl = "https://save-on-send.sites.vm7.io";
+    const draftHtml =
+      "<!doctype html><html><body><main><h1>Launch sooner</h1></main></body></html>";
+    const savedBodies: string[] = [];
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(
+        `<!doctype html><html><head><title>Save on send</title></head><body><main><h1>Launch faster</h1></main></body></html>`,
+        { headers: { "Content-Type": "text/html" } },
+      );
+    });
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-save-on-send",
+            files: [
+              artifactFile(htmlUrl, {
+                artifactKind: "hosted-site",
+                filename: "save-on-send.html",
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    context.mocks.api(zeroHostContract.createHtmlEditDraft, ({ respond }) => {
+      return respond(200, {
+        kind: "html-edit-draft",
+        version: 1,
+        html: draftHtml,
+      });
+    });
+    context.mocks.api(
+      chatThreadArtifactsContract.upsertHtmlEditSnapshot,
+      ({ body, params, respond }) => {
+        expect(params.threadId).toBe(THREAD_ID);
+        expect(body.url).toBe(htmlUrl);
+        savedBodies.push(body.html);
+        return respond(200, {
+          artifactUrl: body.url,
+          snapshotUrl:
+            "https://cdn.vm7.io/artifacts/html-edit-drafts/save-on-send.html?v=1",
+          updatedAt: "2026-03-10T00:06:00Z",
+        });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-save-on-send",
+          role: "assistant",
+          content: `[Save on send](${htmlUrl})`,
+          runId: "run-save-on-send",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.HtmlArtifactCommentEditing]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(await screen.findByLabelText("Open html preview for Save on send"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit page")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit page"));
+
+    const frame = (await screen.findByTestId(
+      "html-dom-comment-frame",
+    )) as HTMLIFrameElement;
+    await waitFor(() => {
+      expect(
+        frame.contentDocument
+          ?.querySelector("h1")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+    });
+    fireEvent.click(frame.contentDocument!.querySelector("h1")!);
+
+    const user = userEvent.setup({ delay: null });
+    await user.type(
+      await screen.findByTestId("html-dom-comment-textarea"),
+      "Make the headline shorter",
+    );
+    fireEvent.keyDown(screen.getByTestId("html-dom-comment-textarea"), {
+      key: "Enter",
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-toolbar-send")).toBeEnabled();
+    });
+
+    click(screen.getByTestId("html-dom-toolbar-send"));
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-draft-toolbar")).toBeInTheDocument();
+      expect(savedBodies).toStrictEqual([draftHtml]);
     });
   });
 
