@@ -171,7 +171,89 @@ function appSnapshot(
   };
 }
 
+function seedSnapshotStore(
+  snapshotStore: ComputerUseSnapshotStore,
+  options: {
+    readonly app?: string;
+    readonly snapshotId?: string;
+    readonly elementIdsByIndex?: readonly string[];
+  } = {},
+): void {
+  snapshotStore.set({
+    app: options.app ?? "Safari",
+    snapshotId: options.snapshotId ?? "snap_1",
+    elementIdsByIndex: options.elementIdsByIndex ?? ["w0", "w0.input"],
+    screenshotWidth: 800,
+    screenshotHeight: 600,
+    screenshotSource: "window",
+    screenshotSourceName: "Example",
+    sourceBounds: { x: 100, y: 200, width: 800, height: 600 },
+    windowId: 123,
+    windowFrame: { x: 100, y: 200, width: 800, height: 600 },
+  });
+}
+
 describe("executeComputerUseCommand", () => {
+  it("lists native apps with stable app-name and bundle-id sorting", async () => {
+    const listApps = vi.fn<ComputerUseNativeBackend["listApps"]>(async () => {
+      return [
+        {
+          name: "TextEdit",
+          bundleId: "com.apple.TextEdit",
+          appPath: "/System/Applications/TextEdit.app",
+          running: true,
+          pid: 42,
+        },
+        {
+          name: "Safari",
+          bundleId: "com.apple.Safari",
+          appPath: "/Applications/Safari.app",
+          running: false,
+        },
+        {
+          name: "safari",
+          bundleId: "com.apple.WebKit",
+          appPath: "/Applications/WebKit.app",
+          running: false,
+        },
+      ];
+    });
+
+    const result = await executeComputerUseCommand(
+      { id: "cmd_1", kind: "apps.list", payload: {} },
+      permissions,
+      { platform: "darwin", nativeBackend: createNativeBackend({ listApps }) },
+    );
+
+    expect(listApps).toHaveBeenCalledOnce();
+    expect(result).toStrictEqual({
+      status: "succeeded",
+      result: {
+        apps: [
+          {
+            name: "Safari",
+            bundleId: "com.apple.Safari",
+            appPath: "/Applications/Safari.app",
+            running: false,
+          },
+          {
+            name: "safari",
+            bundleId: "com.apple.WebKit",
+            appPath: "/Applications/WebKit.app",
+            running: false,
+          },
+          {
+            name: "TextEdit",
+            bundleId: "com.apple.TextEdit",
+            appPath: "/System/Applications/TextEdit.app",
+            running: true,
+            pid: 42,
+          },
+        ],
+      },
+    });
+  });
+
   it("indexes native snapshots and renders model-readable app state", async () => {
     const snapshotStore = new ComputerUseSnapshotStore();
     const getAppState = vi.fn<ComputerUseNativeBackend["getAppState"]>(
@@ -462,17 +544,291 @@ describe("executeComputerUseCommand", () => {
     });
   });
 
+  it("dispatches app and keyboard write commands and captures post-action snapshots", async () => {
+    const openApp = vi.fn<ComputerUseNativeBackend["openApp"]>(async () => {
+      return nativeDispatchResult(
+        "background_app_open",
+        "target_app",
+        "background_app_launch",
+      );
+    });
+    const typeText = vi.fn<ComputerUseNativeBackend["typeText"]>(async () => {
+      return {
+        ...nativeDispatchResult(
+          "accessibility_value",
+          "focused_editable_element",
+          "targeted_app_text",
+        ),
+        role: "AXTextArea",
+        description: "Message composer",
+      };
+    });
+    const pressKey = vi.fn<ComputerUseNativeBackend["pressKey"]>(
+      async (args) => {
+        return {
+          ...nativeDispatchResult(
+            "background_keyboard_event",
+            "app_process",
+            "background_app_shortcut",
+          ),
+          normalizedKey: args.key.toUpperCase(),
+        };
+      },
+    );
+    const getAppState = vi.fn<ComputerUseNativeBackend["getAppState"]>(
+      async (app, snapshotId) => {
+        return appSnapshot(app, snapshotId, { windowTitle: "Post action" });
+      },
+    );
+    const nativeBackend = createNativeBackend({
+      openApp,
+      typeText,
+      pressKey,
+      getAppState,
+    });
+
+    const open = await executeComputerUseCommand(
+      { id: "cmd_1", kind: "app.open", payload: { app: "Notes" } },
+      permissions,
+      { platform: "darwin", nativeBackend },
+    );
+    const type = await executeComputerUseCommand(
+      {
+        id: "cmd_2",
+        kind: "keyboard.type_text",
+        payload: {
+          app: "Notes",
+          snapshotId: "snap_current",
+          text: "hello",
+          foregroundRecovery: "always",
+        },
+      },
+      permissions,
+      { platform: "darwin", nativeBackend },
+    );
+    const press = await executeComputerUseCommand(
+      {
+        id: "cmd_3",
+        kind: "keyboard.press_key",
+        payload: {
+          app: "Notes",
+          snapshotId: "snap_current",
+          key: "enter",
+          foregroundRecovery: "never",
+        },
+      },
+      permissions,
+      { platform: "darwin", nativeBackend },
+    );
+
+    expect(openApp).toHaveBeenCalledWith("Notes");
+    expect(typeText).toHaveBeenCalledWith({
+      app: "Notes",
+      snapshotId: "snap_current",
+      text: "hello",
+      foregroundRecovery: "always",
+    });
+    expect(pressKey).toHaveBeenCalledWith({
+      app: "Notes",
+      snapshotId: "snap_current",
+      key: "enter",
+      foregroundRecovery: "never",
+    });
+    expect(getAppState).toHaveBeenCalledTimes(3);
+    expect(getAppState).toHaveBeenNthCalledWith(
+      1,
+      "Notes",
+      expect.stringMatching(/^desktop_/),
+      true,
+    );
+    expect(getAppState).toHaveBeenNthCalledWith(
+      2,
+      "Notes",
+      expect.stringMatching(/^desktop_/),
+      true,
+    );
+    expect(getAppState).toHaveBeenNthCalledWith(
+      3,
+      "Notes",
+      expect.stringMatching(/^desktop_/),
+      true,
+    );
+    expect(open).toMatchObject({
+      status: "succeeded",
+      result: {
+        windowTitle: "Post action",
+        action: {
+          app: "Notes",
+          dispatchMode: "background_app_open",
+          summary: "Opened Notes",
+        },
+      },
+    });
+    expect(type).toMatchObject({
+      status: "succeeded",
+      result: {
+        windowTitle: "Post action",
+        action: {
+          app: "Notes",
+          role: "AXTextArea",
+          description: "Message composer",
+          summary: "Typed text",
+        },
+      },
+    });
+    expect(press).toMatchObject({
+      status: "succeeded",
+      result: {
+        windowTitle: "Post action",
+        action: {
+          app: "Notes",
+          key: "ENTER",
+          dispatchMode: "background_keyboard_event",
+          summary: "Pressed ENTER",
+        },
+      },
+    });
+  });
+
+  it("dispatches element mutation commands through element indexes", async () => {
+    const snapshotStore = new ComputerUseSnapshotStore();
+    seedSnapshotStore(snapshotStore, { app: "Safari", snapshotId: "snap_1" });
+    const scrollElement = vi.fn<ComputerUseNativeBackend["scrollElement"]>(
+      async () => {
+        return nativeDispatchResult(
+          "accessibility_action",
+          "element",
+          "targeted_app_action",
+        );
+      },
+    );
+    const setElementValue = vi.fn<ComputerUseNativeBackend["setElementValue"]>(
+      async () => {
+        return nativeDispatchResult(
+          "accessibility_value",
+          "element",
+          "targeted_app_text",
+        );
+      },
+    );
+    const performElementAction = vi.fn<
+      ComputerUseNativeBackend["performElementAction"]
+    >(async () => {
+      return nativeDispatchResult(
+        "accessibility_action",
+        "element",
+        "targeted_app_action",
+      );
+    });
+    const getAppState = vi.fn<ComputerUseNativeBackend["getAppState"]>(
+      async (app, snapshotId) => {
+        return appSnapshot(app, snapshotId, { windowTitle: "Post mutation" });
+      },
+    );
+    const nativeBackend = createNativeBackend({
+      scrollElement,
+      setElementValue,
+      performElementAction,
+      getAppState,
+    });
+
+    const scroll = await executeComputerUseCommand(
+      {
+        id: "cmd_1",
+        kind: "element.scroll",
+        payload: {
+          app: "Safari",
+          snapshotId: "snap_1",
+          elementIndex: 1,
+          direction: "down",
+          pages: 2,
+        },
+      },
+      permissions,
+      { platform: "darwin", snapshotStore, nativeBackend },
+    );
+    const setValue = await executeComputerUseCommand(
+      {
+        id: "cmd_2",
+        kind: "element.set_value",
+        payload: {
+          app: "Safari",
+          snapshotId: "snap_1",
+          elementIndex: 1,
+          value: "hello",
+        },
+      },
+      permissions,
+      { platform: "darwin", snapshotStore, nativeBackend },
+    );
+    const performAction = await executeComputerUseCommand(
+      {
+        id: "cmd_3",
+        kind: "element.perform_action",
+        payload: {
+          app: "Safari",
+          snapshotId: "snap_1",
+          elementIndex: 1,
+          action: "AXConfirm",
+        },
+      },
+      permissions,
+      { platform: "darwin", snapshotStore, nativeBackend },
+    );
+
+    expect(scrollElement).toHaveBeenCalledWith({
+      app: "Safari",
+      elementId: "w0.input",
+      elementIndex: 1,
+      snapshotId: "snap_1",
+      direction: "down",
+      pages: 2,
+    });
+    expect(setElementValue).toHaveBeenCalledWith({
+      app: "Safari",
+      elementId: "w0.input",
+      elementIndex: 1,
+      snapshotId: "snap_1",
+      value: "hello",
+    });
+    expect(performElementAction).toHaveBeenCalledWith({
+      app: "Safari",
+      elementId: "w0.input",
+      elementIndex: 1,
+      snapshotId: "snap_1",
+      action: "AXConfirm",
+    });
+    expect(getAppState).toHaveBeenCalledTimes(3);
+    expect(scroll).toMatchObject({
+      status: "succeeded",
+      result: {
+        windowTitle: "Post mutation",
+        action: { summary: "Scrolled elementIndex=1" },
+      },
+    });
+    expect(setValue).toMatchObject({
+      status: "succeeded",
+      result: {
+        windowTitle: "Post mutation",
+        action: { summary: "Set elementIndex=1" },
+      },
+    });
+    expect(performAction).toMatchObject({
+      status: "succeeded",
+      result: {
+        windowTitle: "Post mutation",
+        action: { summary: "Performed AXConfirm" },
+      },
+    });
+  });
+
   it("fails before native dispatch when an element index is absent from the snapshot", async () => {
     const snapshotStore = new ComputerUseSnapshotStore();
     const clickElement = vi.fn<ComputerUseNativeBackend["clickElement"]>();
-    snapshotStore.set({
+    seedSnapshotStore(snapshotStore, {
       app: "Safari",
       snapshotId: "snap_1",
       elementIdsByIndex: ["w0"],
-      screenshotWidth: 800,
-      screenshotHeight: 600,
-      screenshotSource: "window",
-      screenshotSourceName: "Example",
     });
 
     const result = await executeComputerUseCommand(
@@ -497,6 +853,102 @@ describe("executeComputerUseCommand", () => {
       },
     });
     expect(clickElement).not.toHaveBeenCalled();
+  });
+
+  it("returns permission and payload failures before native dispatch", async () => {
+    const getAppState = vi.fn<ComputerUseNativeBackend["getAppState"]>();
+    const clickElement = vi.fn<ComputerUseNativeBackend["clickElement"]>();
+    const scrollElement = vi.fn<ComputerUseNativeBackend["scrollElement"]>();
+    const nativeBackend = createNativeBackend({
+      getAppState,
+      clickElement,
+      scrollElement,
+    });
+
+    const noAccessibility = await executeComputerUseCommand(
+      { id: "cmd_1", kind: "app.state", payload: { app: "Safari" } },
+      { accessibility: false, screenRecording: true },
+      { platform: "darwin", nativeBackend },
+    );
+    const noScreenRecording = await executeComputerUseCommand(
+      { id: "cmd_2", kind: "app.state", payload: { app: "Safari" } },
+      { accessibility: true, screenRecording: false },
+      { platform: "darwin", nativeBackend },
+    );
+    const missingApp = await executeComputerUseCommand(
+      { id: "cmd_3", kind: "element.click", payload: { elementId: "w0" } },
+      permissions,
+      { platform: "darwin", nativeBackend },
+    );
+    const missingDirection = await executeComputerUseCommand(
+      {
+        id: "cmd_4",
+        kind: "element.scroll",
+        payload: { app: "Safari", elementId: "w0" },
+      },
+      permissions,
+      { platform: "darwin", nativeBackend },
+    );
+    const invalidElementIndex = await executeComputerUseCommand(
+      {
+        id: "cmd_5",
+        kind: "element.click",
+        payload: { app: "Safari", elementIndex: 1.5 },
+      },
+      permissions,
+      { platform: "darwin", nativeBackend },
+    );
+    const unsupported = await executeComputerUseCommand(
+      { id: "cmd_6", kind: "window.close", payload: { app: "Safari" } },
+      permissions,
+      { platform: "darwin", nativeBackend },
+    );
+
+    expect(noAccessibility).toStrictEqual({
+      status: "failed",
+      error: {
+        code: "permission_denied",
+        message: "macOS Accessibility permission is required",
+      },
+    });
+    expect(noScreenRecording).toStrictEqual({
+      status: "failed",
+      error: {
+        code: "screen_recording_unavailable",
+        message: "macOS Screen Recording permission is required",
+      },
+    });
+    expect(missingApp).toStrictEqual({
+      status: "failed",
+      error: {
+        code: "unsupported_command",
+        message: "Missing required payload field: app",
+      },
+    });
+    expect(missingDirection).toStrictEqual({
+      status: "failed",
+      error: {
+        code: "unsupported_command",
+        message: "Missing required payload field: direction",
+      },
+    });
+    expect(invalidElementIndex).toStrictEqual({
+      status: "failed",
+      error: {
+        code: "unsupported_command",
+        message: "elementIndex must be a non-negative integer",
+      },
+    });
+    expect(unsupported).toStrictEqual({
+      status: "failed",
+      error: {
+        code: "unsupported_command",
+        message: "Unsupported command: window.close",
+      },
+    });
+    expect(getAppState).not.toHaveBeenCalled();
+    expect(clickElement).not.toHaveBeenCalled();
+    expect(scrollElement).not.toHaveBeenCalled();
   });
 
   it("maps native helper failures into command failures", async () => {
