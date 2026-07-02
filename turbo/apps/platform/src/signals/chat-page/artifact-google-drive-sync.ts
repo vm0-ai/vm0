@@ -6,6 +6,7 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { connectors$, reloadConnectors$ } from "../external/connectors.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { reloadAgentConnectorAuthorizations$ } from "../zero-page/agent-connector-authorizations.ts";
 import { settle, withCleanup } from "../utils.ts";
 
 type ArtifactGoogleDriveSyncParams = {
@@ -186,11 +187,16 @@ export const waitForGoogleDriveAndSyncArtifacts$ = command(
         }
 
         const createClient = get(zeroClient$);
-        await authorizeGoogleDriveForAgent({
-          agentId: params.agentId,
-          createClient,
-          signal: sig,
-        });
+        await withCleanup(
+          authorizeGoogleDriveForAgent({
+            agentId: params.agentId,
+            createClient,
+            signal: sig,
+          }),
+          () => {
+            set(reloadAgentConnectorAuthorizations$);
+          },
+        );
         sig.throwIfAborted();
 
         await syncArtifactFilesToGoogleDrive({
