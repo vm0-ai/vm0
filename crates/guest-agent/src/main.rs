@@ -672,8 +672,18 @@ fn is_claude_result_simple_provider_overloaded_error(
 fn is_claude_result_provider_stream_timeout(source: FailureDetailSource, normalized: &str) -> bool {
     let trimmed = normalized.trim();
     source == FailureDetailSource::ClaudeResult
-        && trimmed.starts_with("api error: stream idle timeout")
+        && (is_claude_result_stream_idle_timeout(trimmed)
+            || is_claude_result_stalled_mid_stream(trimmed))
+}
+
+fn is_claude_result_stream_idle_timeout(trimmed: &str) -> bool {
+    trimmed.starts_with("api error: stream idle timeout")
         && trimmed.contains("partial response received")
+}
+
+fn is_claude_result_stalled_mid_stream(trimmed: &str) -> bool {
+    trimmed.starts_with("api error: response stalled mid-stream")
+        && trimmed.contains("response above may be incomplete")
 }
 
 fn is_claude_provider_server_error(source: FailureDetailSource, normalized: &str) -> bool {
@@ -1975,25 +1985,75 @@ mod tests {
     }
 
     #[test]
-    fn cli_failure_reason_ignores_stream_idle_timeout_from_stderr() {
+    fn cli_failure_reason_classifies_claude_result_stalled_mid_stream() {
         let reason = super::classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
-            FailureDetailSource::Stderr,
-            "API Error: Stream idle timeout - partial response received",
+            FailureDetailSource::ClaudeResult,
+            "API Error: Response stalled mid-stream. The response above may be incomplete.",
         );
 
-        assert_eq!(reason, None);
+        assert_eq!(reason, Some(FailureReason::ProviderStreamTimeout));
     }
 
     #[test]
-    fn cli_failure_reason_ignores_codex_stream_idle_timeout() {
-        let reason = super::classify_cli_failure_reason(
-            AgentFramework::Codex,
-            FailureDetailSource::ClaudeResult,
-            "API Error: Stream idle timeout - partial response received",
+    fn cli_failure_reason_classifies_claude_result_stalled_mid_stream_diagnostic() {
+        let message =
+            "API Error: Response stalled mid-stream. The response above may be incomplete.";
+        let msg = cli_failure_message(
+            1,
+            &["background stderr noise".to_string()],
+            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
         );
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(msg.source);
+        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
 
-        assert_eq!(reason, None);
+        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::ProviderStreamTimeout)
+        );
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::ClaudeResult)
+        );
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_claude_result_stream_timeout_messages_from_stderr() {
+        for message in [
+            "API Error: Stream idle timeout - partial response received",
+            "API Error: Response stalled mid-stream. The response above may be incomplete.",
+        ] {
+            let reason = super::classify_cli_failure_reason(
+                AgentFramework::ClaudeCode,
+                FailureDetailSource::Stderr,
+                message,
+            );
+
+            assert_eq!(reason, None, "message: {message}");
+        }
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_non_claude_stream_timeout_messages() {
+        for message in [
+            "API Error: Stream idle timeout - partial response received",
+            "API Error: Response stalled mid-stream. The response above may be incomplete.",
+        ] {
+            let reason = super::classify_cli_failure_reason(
+                AgentFramework::Codex,
+                FailureDetailSource::ClaudeResult,
+                message,
+            );
+
+            assert_eq!(reason, None, "message: {message}");
+        }
     }
 
     #[test]
@@ -2008,14 +2068,19 @@ mod tests {
     }
 
     #[test]
-    fn cli_failure_reason_ignores_explanatory_stream_idle_timeout_text() {
-        let reason = super::classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            FailureDetailSource::ClaudeResult,
+    fn cli_failure_reason_ignores_explanatory_stream_timeout_text() {
+        for message in [
             "Observed API Error: Stream idle timeout - partial response received in an earlier run",
-        );
+            "Observed API Error: Response stalled mid-stream. The response above may be incomplete in an earlier run",
+        ] {
+            let reason = super::classify_cli_failure_reason(
+                AgentFramework::ClaudeCode,
+                FailureDetailSource::ClaudeResult,
+                message,
+            );
 
-        assert_eq!(reason, None);
+            assert_eq!(reason, None, "message: {message}");
+        }
     }
 
     #[test]
