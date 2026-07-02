@@ -124,6 +124,18 @@ interface AccountDisplay {
   imageUrl: string | undefined;
 }
 
+function subscriptionRowsCacheKeyFrom({
+  clerk,
+  current,
+  user,
+}: {
+  clerk: { session?: { id?: string } | null } | null;
+  current: SessionAccount | undefined;
+  user: { id: string } | undefined;
+}): AccountMenuSubscriptionUsageRowsCacheKey {
+  return clerk?.session?.id ?? current?.sessionId ?? user?.id ?? null;
+}
+
 function accountDisplayFrom(
   user:
     | {
@@ -555,7 +567,11 @@ export function AccountDropdown({
   const current = accounts.find((a) => {
     return a.isActive;
   });
-  const subscriptionRowsCacheKey = user?.id ?? current?.sessionId ?? null;
+  const subscriptionRowsCacheKey = subscriptionRowsCacheKeyFrom({
+    clerk,
+    current,
+    user,
+  });
   const accountDisplay = accountDisplayFrom(user, current);
   const others = accounts.filter((a) => {
     return !a.isActive;
