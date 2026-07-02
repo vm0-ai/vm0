@@ -6,7 +6,7 @@ const RESULT_SUMMARY_KEYS_TO_SKIP = new Set([
 ]);
 const RESULT_APP_STATE_PREVIEW_LABEL = "[shown in App State]";
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
