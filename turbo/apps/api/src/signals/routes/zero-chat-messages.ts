@@ -78,6 +78,7 @@ import {
 } from "../services/zero-model-selection.service";
 import { visibleChatMessageCondition } from "../services/zero-chat-message-shared.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
+import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { bestEffort } from "../utils";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -1393,16 +1394,61 @@ async function createChatThread(
   db: Db,
   args: {
     readonly userId: string;
+    readonly orgId: string;
     readonly agentId: string;
     readonly clientThreadId: string | undefined;
     readonly pin: ThreadModelPin;
   },
 ): Promise<CreateChatThreadResult> {
-  if (args.clientThreadId) {
-    const [thread] = await db
+  return await db.transaction(async (tx) => {
+    if (args.clientThreadId) {
+      const [thread] = await tx
+        .insert(chatThreads)
+        .values({
+          id: args.clientThreadId,
+          userId: args.userId,
+          agentComposeId: args.agentId,
+          title: null,
+          modelProviderId: null,
+          modelProviderType: null,
+          modelProviderCredentialScope: null,
+          selectedModel: args.pin.selectedModel,
+        })
+        .onConflictDoNothing({ target: chatThreads.id })
+        .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
+      if (thread) {
+        await appendChatThreadEvent(tx, {
+          kind: "created",
+          userId: args.userId,
+          orgId: args.orgId,
+          chatThreadId: thread.id,
+          agentComposeId: args.agentId,
+          title: null,
+          createdAt: thread.createdAt,
+        });
+        return { id: thread.id, clientThreadAlreadyExisted: false };
+      }
+
+      const [existingThread] = await tx
+        .select({ id: chatThreads.id })
+        .from(chatThreads)
+        .where(
+          and(
+            eq(chatThreads.id, args.clientThreadId),
+            eq(chatThreads.userId, args.userId),
+            eq(chatThreads.agentComposeId, args.agentId),
+          ),
+        )
+        .limit(1);
+      if (!existingThread) {
+        return notFound("Chat thread not found");
+      }
+      return { id: existingThread.id, clientThreadAlreadyExisted: true };
+    }
+
+    const [thread] = await tx
       .insert(chatThreads)
       .values({
-        id: args.clientThreadId,
         userId: args.userId,
         agentComposeId: args.agentId,
         title: null,
@@ -1411,45 +1457,21 @@ async function createChatThread(
         modelProviderCredentialScope: null,
         selectedModel: args.pin.selectedModel,
       })
-      .onConflictDoNothing({ target: chatThreads.id })
-      .returning({ id: chatThreads.id });
-    if (thread) {
-      return { id: thread.id, clientThreadAlreadyExisted: false };
+      .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
+    if (!thread) {
+      throw new Error("Failed to create chat thread");
     }
-
-    const [existingThread] = await db
-      .select({ id: chatThreads.id })
-      .from(chatThreads)
-      .where(
-        and(
-          eq(chatThreads.id, args.clientThreadId),
-          eq(chatThreads.userId, args.userId),
-          eq(chatThreads.agentComposeId, args.agentId),
-        ),
-      )
-      .limit(1);
-    if (!existingThread) {
-      return notFound("Chat thread not found");
-    }
-    return { id: existingThread.id, clientThreadAlreadyExisted: true };
-  }
-
-  const [thread] = await db
-    .insert(chatThreads)
-    .values({
+    await appendChatThreadEvent(tx, {
+      kind: "created",
       userId: args.userId,
+      orgId: args.orgId,
+      chatThreadId: thread.id,
       agentComposeId: args.agentId,
       title: null,
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: args.pin.selectedModel,
-    })
-    .returning({ id: chatThreads.id });
-  if (!thread) {
-    throw new Error("Failed to create chat thread");
-  }
-  return { id: thread.id, clientThreadAlreadyExisted: false };
+      createdAt: thread.createdAt,
+    });
+    return { id: thread.id, clientThreadAlreadyExisted: false };
+  });
 }
 
 async function resolveThread(params: {
@@ -1465,6 +1487,7 @@ async function resolveThread(params: {
   if (!params.existingThreadId) {
     const thread = await createChatThread(params.db, {
       userId: params.userId,
+      orgId: params.orgId,
       agentId: params.agentId,
       clientThreadId: params.clientThreadId,
       pin: params.initialPin,
@@ -2192,6 +2215,7 @@ function scheduleChatTitleGeneration(params: {
   readonly body: NormalSendBody;
   readonly thread: ResolvedThread;
   readonly userId: string;
+  readonly orgId: string;
 }): void {
   if (
     params.body.hasTextContent === false ||
@@ -2205,6 +2229,7 @@ function scheduleChatTitleGeneration(params: {
       db: params.db,
       threadId: params.thread.threadId,
       userId: params.userId,
+      orgId: params.orgId,
       prompt: params.body.prompt,
       includePriorRounds: !params.thread.isNewThread,
     }),
@@ -2266,6 +2291,7 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly body: NormalSendBody;
   readonly thread: ResolvedThread;
   readonly userId: string;
+  readonly orgId: string;
   readonly runId: string;
   readonly runStatus: string;
   readonly initialThinkingEnabled: boolean;
@@ -2275,6 +2301,7 @@ function scheduleCreatedChatRunSideEffects(params: {
     body: params.body,
     thread: params.thread,
     userId: params.userId,
+    orgId: params.orgId,
   });
   scheduleAssociatedUserMessage({
     db: params.db,
@@ -2584,6 +2611,7 @@ const createNormalChatRun$ = command(
       body: args.body,
       thread: prepared.thread,
       userId: args.userId,
+      orgId: args.orgId,
       runId: runResult.body.runId,
       runStatus: runResult.body.status,
       initialThinkingEnabled: prepared.initialThinkingEnabled,

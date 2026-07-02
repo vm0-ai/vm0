@@ -16,6 +16,7 @@ import {
   RECOMMENDED_FOLLOWUP_LIMIT,
   normalizeRecommendedFollowups,
 } from "./zero-chat-recommended-followups.service";
+import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 
 const log = logger("api:zero:chat-title");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
@@ -223,21 +224,39 @@ async function updateChatThreadTitle(
   db: Db,
   threadId: string,
   userId: string,
+  orgId: string | null,
   title: string,
 ): Promise<void> {
-  const updated = await db
-    .update(chatThreads)
-    .set({ title })
-    .where(
-      and(
-        eq(chatThreads.id, threadId),
-        isNull(chatThreads.title),
-        isNull(chatThreads.renamedAt),
-      ),
-    )
-    .returning({ id: chatThreads.id });
+  const updated = await db.transaction(async (tx) => {
+    const [thread] = await tx
+      .update(chatThreads)
+      .set({ title })
+      .where(
+        and(
+          eq(chatThreads.id, threadId),
+          isNull(chatThreads.title),
+          isNull(chatThreads.renamedAt),
+        ),
+      )
+      .returning({
+        id: chatThreads.id,
+        agentComposeId: chatThreads.agentComposeId,
+      });
+    if (!thread) {
+      return false;
+    }
+    await appendChatThreadEvent(tx, {
+      kind: "renamed",
+      userId,
+      orgId,
+      chatThreadId: thread.id,
+      agentComposeId: thread.agentComposeId,
+      title,
+    });
+    return true;
+  });
 
-  if (updated.length === 0) {
+  if (!updated) {
     return;
   }
 
@@ -261,6 +280,7 @@ export async function generateAndPersistChatThreadTitle(args: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string | null;
   readonly prompt: string;
   readonly includePriorRounds: boolean;
 }): Promise<void> {
@@ -278,7 +298,13 @@ export async function generateAndPersistChatThreadTitle(args: {
         priorRounds: priorRounds.length > 0 ? priorRounds : undefined,
       });
       if (title) {
-        await updateChatThreadTitle(args.db, args.threadId, args.userId, title);
+        await updateChatThreadTitle(
+          args.db,
+          args.threadId,
+          args.userId,
+          args.orgId,
+          title,
+        );
       }
     })(),
   );
