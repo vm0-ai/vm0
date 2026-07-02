@@ -1,9 +1,12 @@
-import type { ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import {
   IconArrowLeft,
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
   IconBackground,
+  IconBrandInstagram,
+  IconBrandSlack,
+  IconBrandX,
   IconChevronLeft,
   IconChevronRight,
   IconDownload,
@@ -11,8 +14,11 @@ import {
   IconEye,
   IconExternalLink,
   IconLoader2,
+  IconPalette,
   IconPencil,
+  IconShare,
   IconSparkles,
+  IconTrash,
   IconUpload,
   IconZoomReset,
   IconX,
@@ -36,7 +42,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Popover,
+  PopoverClose,
+  PopoverContent,
+  PopoverTrigger,
 } from "@vm0/ui";
 import {
   artifactHtmlEditMode$,
@@ -1826,6 +1837,121 @@ function ArtifactImageBody({
   );
 }
 
+const IMAGE_STYLE_TRANSFER_TEMPLATES = [
+  {
+    id: "warm-film",
+    label: "Warm film",
+    description: "Soft grain and golden-hour color.",
+    prompt:
+      "Warm analog film look with soft grain, golden-hour color, gentle contrast and natural skin tones.",
+    swatch: "bg-[linear-gradient(135deg,#f97316,#facc15,#7c2d12)]",
+  },
+  {
+    id: "ink-wash",
+    label: "Ink wash",
+    description: "Monochrome brush texture.",
+    prompt:
+      "Elegant black ink wash illustration with subtle paper texture, expressive brush edges and preserved subject detail.",
+    swatch: "bg-[linear-gradient(135deg,#111827,#6b7280,#f8fafc)]",
+  },
+  {
+    id: "clay",
+    label: "Clay",
+    description: "Matte 3D hand-crafted form.",
+    prompt:
+      "Matte clay 3D render style with soft studio lighting, rounded hand-crafted forms and tactile surface detail.",
+    swatch: "bg-[linear-gradient(135deg,#dc2626,#f59e0b,#fed7aa)]",
+  },
+  {
+    id: "watercolor",
+    label: "Watercolor",
+    description: "Light pigment and paper bloom.",
+    prompt:
+      "Delicate watercolor painting with translucent pigment, clean paper texture, soft edges and airy highlights.",
+    swatch: "bg-[linear-gradient(135deg,#38bdf8,#a7f3d0,#fdf2f8)]",
+  },
+  {
+    id: "editorial",
+    label: "Editorial",
+    description: "Crisp lighting and polished finish.",
+    prompt:
+      "Premium editorial campaign style with crisp lighting, restrained contrast, clean color grading and polished detail.",
+    swatch: "bg-[linear-gradient(135deg,#0f172a,#e2e8f0,#ef4444)]",
+  },
+] as const;
+
+type ImageStyleTransferTemplateId =
+  (typeof IMAGE_STYLE_TRANSFER_TEMPLATES)[number]["id"];
+
+function ImageStyleTemplateOption({
+  defaultChecked,
+  template,
+}: {
+  defaultChecked: boolean;
+  template: (typeof IMAGE_STYLE_TRANSFER_TEMPLATES)[number];
+}) {
+  return (
+    <label
+      className="flex min-h-14 cursor-pointer items-center gap-3 rounded-lg border border-border/70 px-3 py-2 text-left transition-colors hover:bg-muted/50"
+      data-testid={`image-edit-style-template-${template.id}`}
+    >
+      <input
+        type="radio"
+        name="styleTemplate"
+        value={template.id}
+        defaultChecked={defaultChecked}
+        className="h-3.5 w-3.5 shrink-0 accent-foreground"
+      />
+      <span
+        className={cn(
+          "h-8 w-8 shrink-0 rounded-md border border-border/60",
+          template.swatch,
+        )}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs font-medium text-foreground">
+          {template.label}
+        </span>
+        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+          {template.description}
+        </span>
+      </span>
+    </label>
+  );
+}
+
+function ImageStyleTemplateList() {
+  return (
+    <div className="mt-3 grid gap-2">
+      {IMAGE_STYLE_TRANSFER_TEMPLATES.map((template, index) => {
+        return (
+          <ImageStyleTemplateOption
+            key={template.id}
+            defaultChecked={index === 0}
+            template={template}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function imageStylePromptFromForm(form: HTMLFormElement): string {
+  const data = new FormData(form);
+  const customStyle = String(data.get("customStyle") ?? "").trim();
+  if (customStyle) {
+    return customStyle;
+  }
+  const templateId = String(
+    data.get("styleTemplate") ?? "warm-film",
+  ) as ImageStyleTransferTemplateId;
+  const template =
+    IMAGE_STYLE_TRANSFER_TEMPLATES.find((item) => {
+      return item.id === templateId;
+    }) ?? IMAGE_STYLE_TRANSFER_TEMPLATES[0];
+  return template.prompt;
+}
+
 function ArtifactImageEditToolbarButton({
   activeOperation,
   icon,
@@ -1864,18 +1990,154 @@ function ArtifactImageEditToolbarButton({
   );
 }
 
+function ArtifactImageStyleTransferPopover({
+  activeOperation,
+  item,
+  onApply,
+}: {
+  activeOperation: ImageEditOperation | null;
+  item: EditableImageCanvasItem;
+  onApply: (stylePrompt: string, item: EditableImageCanvasItem) => void;
+}) {
+  const processing = activeOperation !== null;
+  const active = activeOperation === "styleTransfer";
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onApply(imageStylePromptFromForm(event.currentTarget), item);
+  };
+
+  return (
+    <Popover modal={false}>
+      <ArtifactActionTooltip label="Style transfer" side="top">
+        <span className="inline-flex">
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground data-[state=open]:bg-gray-100 data-[state=open]:text-foreground"
+              disabled={processing}
+              data-testid="image-edit-style-transfer"
+              aria-label="Style transfer"
+              title="Style transfer"
+            >
+              {active ? (
+                <IconLoader2 size={17} className="animate-spin" />
+              ) : (
+                <IconPalette size={18} stroke={1.8} />
+              )}
+            </Button>
+          </PopoverTrigger>
+        </span>
+      </ArtifactActionTooltip>
+      <PopoverContent
+        side="top"
+        align="center"
+        sideOffset={10}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+        }}
+        className="z-[10000] w-[360px] rounded-xl border-border/70 p-3 shadow-xl"
+        data-testid="image-edit-style-popover"
+      >
+        <form onSubmit={handleSubmit}>
+          <p className="text-sm font-medium text-foreground">Style transfer</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Choose a template or describe a look.
+          </p>
+          <p className="mt-3 text-xs font-medium text-muted-foreground">
+            Templates
+          </p>
+          <ImageStyleTemplateList />
+          <p className="mt-3 text-xs font-medium text-muted-foreground">
+            Or describe a style
+          </p>
+          <textarea
+            className="mt-3 min-h-24 w-full resize-none rounded-lg border border-border/70 bg-background px-3 py-2 text-sm leading-5 text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-foreground/30"
+            name="customStyle"
+            placeholder="Example: cinematic neon lighting with glossy product-photography contrast"
+            data-testid="image-edit-style-custom-input"
+          />
+          <label className="mt-3 flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked
+              readOnly
+              className="h-3.5 w-3.5 accent-foreground"
+            />
+            Keep subject and composition
+          </label>
+          <PopoverClose asChild>
+            <Button
+              type="submit"
+              className="mt-3 h-9 w-full rounded-lg text-sm font-medium"
+              disabled={processing}
+              data-testid="image-edit-apply-style"
+            >
+              Apply style
+            </Button>
+          </PopoverClose>
+        </form>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function ArtifactImageEditShareMenu({ disabled }: { disabled: boolean }) {
+  return (
+    <DropdownMenu>
+      <ArtifactActionTooltip label="Share" side="top">
+        <span className="inline-flex">
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground data-[state=open]:bg-gray-100 data-[state=open]:text-foreground"
+              aria-label="Share image"
+              disabled={disabled}
+              data-testid="image-edit-share"
+            >
+              <IconShare size={18} stroke={1.8} />
+            </Button>
+          </DropdownMenuTrigger>
+        </span>
+      </ArtifactActionTooltip>
+      <DropdownMenuContent align="center" className="w-44">
+        <DropdownMenuItem data-testid="image-edit-share-x">
+          <IconBrandX size={14} stroke={1.6} />
+          Share to X
+        </DropdownMenuItem>
+        <DropdownMenuItem data-testid="image-edit-share-instagram">
+          <IconBrandInstagram size={14} stroke={1.6} />
+          Share to Instagram
+        </DropdownMenuItem>
+        <DropdownMenuItem data-testid="image-edit-share-slack">
+          <IconBrandSlack size={14} stroke={1.6} />
+          Share to Slack
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem disabled>Coming soon</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function ArtifactImageEditSelectionToolbar({
   activeOperation,
   item,
+  onDelete,
   onDownload,
   onOperation,
 }: {
   activeOperation: ImageEditOperation | null;
   item: EditableImageCanvasItem;
+  onDelete: (item: EditableImageCanvasItem) => void;
   onDownload: (item: EditableImageCanvasItem) => void;
   onOperation: (
     operation: ImageEditOperation,
     item: EditableImageCanvasItem,
+    stylePrompt?: string,
   ) => void;
 }) {
   return (
@@ -1906,6 +2168,33 @@ function ArtifactImageEditSelectionToolbar({
         operation="enhance"
         testId="image-edit-enhance"
       />
+      <ArtifactImageStyleTransferPopover
+        activeOperation={activeOperation}
+        item={item}
+        onApply={(stylePrompt, selectedItem) => {
+          onOperation("styleTransfer", selectedItem, stylePrompt);
+        }}
+      />
+      <ArtifactActionTooltip label="Delete" side="top">
+        <span className="inline-flex">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground"
+            disabled={activeOperation !== null}
+            data-testid="image-edit-delete"
+            aria-label="Delete image"
+            title="Delete"
+            onClick={() => {
+              onDelete(item);
+            }}
+          >
+            <IconTrash size={18} stroke={1.8} />
+          </Button>
+        </span>
+      </ArtifactActionTooltip>
+      <ArtifactImageEditShareMenu disabled={activeOperation !== null} />
       <ArtifactActionTooltip label="Download" side="top">
         <span className="inline-flex">
           <Button
@@ -1944,12 +2233,14 @@ function ArtifactImageEditBody({
   const modalOpen = useGet(lightboxDialogVisible$);
   const activeOperation = useGet(imageEditProcessing$);
   const runImageEdit = useSet(runImageEdit$);
+  const closeArtifact = useSet(closeArtifact$);
   const canvasSrc = publicAttachmentUrl(url);
   const canvasKey = editableImageArtifactCanvasKey(url);
 
   const onOperation = (
     operation: ImageEditOperation,
     item: EditableImageCanvasItem,
+    stylePrompt?: string,
   ) => {
     detach(
       runImageEdit(
@@ -1958,6 +2249,7 @@ function ArtifactImageEditBody({
           canvasSrc,
           operation,
           sourceItemId: item.id,
+          stylePrompt,
           url: item.src,
         },
         pageSignal,
@@ -1972,6 +2264,9 @@ function ArtifactImageEditBody({
       Reason.DomCallback,
       "downloadEditableImageCanvasItem",
     );
+  };
+  const onDelete = (_item: EditableImageCanvasItem) => {
+    closeArtifact();
   };
 
   return (
@@ -1995,6 +2290,7 @@ function ArtifactImageEditBody({
                 <ArtifactImageEditSelectionToolbar
                   activeOperation={activeOperation}
                   item={item}
+                  onDelete={onDelete}
                   onDownload={onDownload}
                   onOperation={onOperation}
                 />

@@ -25,7 +25,10 @@ import {
   resetEditableImageCanvas$,
 } from "./zero-editable-image-canvas.ts";
 
-export type ImageEditOperation = "removeBackground" | "enhance";
+export type ImageEditOperation =
+  | "removeBackground"
+  | "enhance"
+  | "styleTransfer";
 
 const IMAGE_EDIT_MODEL = "nano-banana-2";
 const POLL_INTERVAL_MS = 1500;
@@ -36,11 +39,15 @@ const IMAGE_EDIT_PROMPTS = {
     "Remove the background completely. Keep only the main subject on a plain solid white background. Do not alter the subject.",
   enhance:
     "Enhance this image to high definition. Increase sharpness, clarity and fine detail while faithfully preserving the original content, composition and colors.",
-} as const satisfies Record<ImageEditOperation, string>;
+} as const satisfies Record<
+  Exclude<ImageEditOperation, "styleTransfer">,
+  string
+>;
 
 const IMAGE_EDIT_SUCCESS_TOAST = {
   removeBackground: "Background removed",
   enhance: "Image enhanced",
+  styleTransfer: "Style transferred",
 } as const satisfies Record<ImageEditOperation, string>;
 
 const internalImageEditProcessing$ = state<null | ImageEditOperation>(null);
@@ -66,6 +73,7 @@ type RunImageEditArgs = {
   canvasSrc: string;
   operation: ImageEditOperation;
   sourceItemId: string;
+  stylePrompt?: string;
   url: string;
 };
 
@@ -103,6 +111,35 @@ function readResultImageUrl(
   return url;
 }
 
+function styleTransferPrompt(stylePrompt: string | undefined): string {
+  const style = stylePrompt?.trim();
+  return [
+    "Apply a visual style transfer to this image.",
+    "Preserve the main subject, composition, proportions and important details.",
+    "Do not add extra text, logos, watermarks or unrelated objects.",
+    style
+      ? `Style direction: ${style}`
+      : "Style direction: refined editorial artwork with natural lighting.",
+  ].join(" ");
+}
+
+function imageEditPrompt(args: {
+  operation: ImageEditOperation;
+  stylePrompt?: string;
+}): string {
+  switch (args.operation) {
+    case "removeBackground": {
+      return IMAGE_EDIT_PROMPTS.removeBackground;
+    }
+    case "enhance": {
+      return IMAGE_EDIT_PROMPTS.enhance;
+    }
+    case "styleTransfer": {
+      return styleTransferPrompt(args.stylePrompt);
+    }
+  }
+}
+
 function readPollResultUrl(
   generation: ZeroBuiltInGenerationResponse,
 ): string | null | undefined {
@@ -119,11 +156,13 @@ async function startImageEditGeneration({
   createClient,
   operation,
   signal,
+  stylePrompt,
   url,
 }: {
   createClient: ZeroClientFactory;
   operation: ImageEditOperation;
   signal: AbortSignal;
+  stylePrompt?: string;
   url: string;
 }) {
   const generateClient = createClient(zeroImageIoGenerateContract, {
@@ -133,7 +172,7 @@ async function startImageEditGeneration({
     generateClient.post({
       body: {
         model: IMAGE_EDIT_MODEL,
-        prompt: IMAGE_EDIT_PROMPTS[operation],
+        prompt: imageEditPrompt({ operation, stylePrompt }),
         sourceImageUrls: [publicAttachmentUrl(url)],
       },
       fetchOptions: { signal },
@@ -214,6 +253,7 @@ export const runImageEdit$ = command(
         createClient,
         operation: args.operation,
         signal,
+        stylePrompt: args.stylePrompt,
         url: args.url,
       });
       const resultUrl = await waitForImageEditResultUrl({

@@ -103,8 +103,11 @@ function setupChatThread({
   });
 }
 
-function mockImageEditGeneration(): void {
-  context.mocks.api(zeroImageIoGenerateContract.post, ({ respond }) => {
+function mockImageEditGeneration(
+  onGenerate?: (body: { prompt?: string }) => void,
+): void {
+  context.mocks.api(zeroImageIoGenerateContract.post, ({ body, respond }) => {
+    onGenerate?.(body);
     return respond(202, {
       generationId: GENERATION_ID,
       type: "image",
@@ -135,6 +138,41 @@ function mockImageEditGeneration(): void {
   });
 }
 
+async function openSelectedImageEditToolbar(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<void> {
+  await waitFor(() => {
+    expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+      "alt",
+      "source.png",
+    );
+  });
+
+  await user.click(screen.getByLabelText("Preview source.png"));
+  await waitFor(() => {
+    expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+      "alt",
+      "source.png",
+    );
+  });
+
+  await user.click(screen.getByTestId("image-edit-open"));
+
+  await waitFor(() => {
+    expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+      "alt",
+      "source.png",
+    );
+  });
+  expect(screen.queryByTestId("image-edit-toolbar")).toBeNull();
+
+  await user.click(screen.getByTestId("artifact-sidebar-body-image"));
+
+  await waitFor(() => {
+    expect(screen.getByTestId("image-edit-toolbar")).toBeInTheDocument();
+  });
+}
+
 describe("image editing", () => {
   it("adds a remove-background result for the selected canvas image", async () => {
     const user = userEvent.setup({ delay: null });
@@ -143,36 +181,7 @@ describe("image editing", () => {
       featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
     });
 
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
-        "alt",
-        "source.png",
-      );
-    });
-
-    await user.click(screen.getByLabelText("Preview source.png"));
-    await waitFor(() => {
-      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
-        "alt",
-        "source.png",
-      );
-    });
-
-    await user.click(screen.getByTestId("image-edit-open"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
-        "alt",
-        "source.png",
-      );
-    });
-    expect(screen.queryByTestId("image-edit-toolbar")).toBeNull();
-
-    await user.click(screen.getByTestId("artifact-sidebar-body-image"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("image-edit-toolbar")).toBeInTheDocument();
-    });
+    await openSelectedImageEditToolbar(user);
     expect(screen.getByTestId("image-edit-remove-background")).toHaveAttribute(
       "aria-label",
       "Remove background",
@@ -185,6 +194,10 @@ describe("image editing", () => {
       "aria-label",
       "Download",
     );
+    expect(screen.getByTestId("image-edit-style-transfer")).toHaveAttribute(
+      "aria-label",
+      "Style transfer",
+    );
 
     await user.click(screen.getByTestId("image-edit-remove-background"));
 
@@ -196,6 +209,65 @@ describe("image editing", () => {
       expect(
         screen.getByTestId("artifact-sidebar-body-image-copy"),
       ).toHaveAttribute("src", EDITED_IMAGE_URL);
+    });
+  });
+
+  it("applies template and described style transfer prompts", async () => {
+    const user = userEvent.setup({ delay: null });
+    const prompts: string[] = [];
+    mockImageEditGeneration((body) => {
+      prompts.push(body.prompt ?? "");
+    });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+
+    await user.click(screen.getByTestId("image-edit-style-transfer"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("image-edit-style-popover"),
+      ).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId("image-edit-style-template-clay"));
+    await user.click(screen.getByTestId("image-edit-apply-style"));
+
+    await waitFor(() => {
+      expect(prompts[0]).toContain("Matte clay 3D render style");
+    });
+
+    await user.click(screen.getByTestId("image-edit-style-transfer"));
+    await user.type(
+      screen.getByTestId("image-edit-style-custom-input"),
+      "Neon cyberpunk lighting",
+    );
+    await user.click(screen.getByTestId("image-edit-apply-style"));
+
+    await waitFor(() => {
+      expect(prompts[1]).toContain("Neon cyberpunk lighting");
+    });
+  });
+
+  it("exposes share targets and delete from the image edit toolbar", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+
+    await user.click(screen.getByTestId("image-edit-share"));
+    await waitFor(() => {
+      expect(screen.getByText("Share to X")).toBeInTheDocument();
+      expect(screen.getByText("Share to Instagram")).toBeInTheDocument();
+      expect(screen.getByText("Share to Slack")).toBeInTheDocument();
+    });
+
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByTestId("image-edit-delete"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("image-edit-toolbar")).toBeNull();
     });
   });
 
