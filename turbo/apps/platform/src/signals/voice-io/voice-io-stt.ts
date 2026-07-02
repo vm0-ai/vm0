@@ -297,7 +297,7 @@ async function startAudioActivityMonitor(
     monitor.frameId = requestFrame(update);
   };
 
-  monitor.frameId = requestFrame(update);
+  update();
   return monitor;
 }
 
