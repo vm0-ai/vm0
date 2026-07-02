@@ -10,6 +10,7 @@ import zstandard
 from body_decoding import (
     create_stream_decode_feed,
     create_stream_decode_session,
+    decode_request_body_for_network_log_capture,
     decompress_body,
 )
 from body_limits import DEFAULT_BODY_DECODE_LIMIT, STREAM_DECODE_CHUNK_LIMIT
@@ -446,3 +447,44 @@ class TestDecompressBody:
         compressed = zstandard.ZstdCompressor().compress(b"")
         hdrs = headers(("Content-Encoding", "zstd"))
         assert decompress_body(compressed, hdrs, max_output=64 * 1024) == b""
+
+
+class TestDecodeRequestBodyForNetworkLogCapture:
+    """Direct tests for request network-log capture decode policy."""
+
+    def test_no_encoding_returns_original_bytes(self, headers):
+        data = b'{"hello":"world"}'
+        assert decode_request_body_for_network_log_capture(data, headers()) == data
+
+    def test_identity_returns_original_bytes(self, headers):
+        data = b'{"hello":"world"}'
+        hdrs = headers(("Content-Encoding", "identity"))
+        assert decode_request_body_for_network_log_capture(data, hdrs) == data
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_zlib_valid_body_returns_decoded_bytes(self, headers, encoding):
+        data = b'{"hello":"world"}'
+        compressed = gzip.compress(data) if encoding == "gzip" else zlib.compress(data)
+        hdrs = headers(("Content-Encoding", encoding))
+        assert decode_request_body_for_network_log_capture(compressed, hdrs) == data
+
+    @pytest.mark.parametrize(
+        ("encoding", "compressed"),
+        [
+            ("gzip", gzip.compress(b"")),
+            ("deflate", zlib.compress(b"")),
+            ("br", brotli.compress(b"")),
+            ("zstd", zstandard.ZstdCompressor().compress(b"")),
+        ],
+    )
+    def test_valid_empty_compressed_body_returns_empty_bytes(self, headers, encoding, compressed):
+        hdrs = headers(("Content-Encoding", encoding))
+        assert decode_request_body_for_network_log_capture(compressed, hdrs) == b""
+
+    def test_unsupported_encoding_returns_none(self, headers):
+        hdrs = headers(("Content-Encoding", "x-custom"))
+        assert decode_request_body_for_network_log_capture(b"opaque", hdrs) is None
+
+    def test_invalid_compressed_body_returns_none(self, headers):
+        hdrs = headers(("Content-Encoding", "gzip"))
+        assert decode_request_body_for_network_log_capture(b"not gzip", hdrs) is None
