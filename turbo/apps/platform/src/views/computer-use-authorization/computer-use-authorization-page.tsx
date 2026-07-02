@@ -17,6 +17,7 @@ import {
   zeroDesktopDownloadSupportStatus$,
   visibleComputerUseHosts,
   ZERO_DESKTOP_DOWNLOAD_URL,
+  ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL,
   ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -109,6 +110,9 @@ function EmptyHosts() {
         <p className="text-sm leading-5 text-muted-foreground">
           Open Zero Computer Use on your Mac and refresh this page when it comes
           online.
+        </p>
+        <p className="text-sm leading-5 text-muted-foreground">
+          {ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL}
         </p>
       </div>
       {downloadSupportStatus === "unsupported-intel-mac" ? (

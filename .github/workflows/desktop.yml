@@ -151,6 +151,11 @@ jobs:
             exit 1
           fi
 
+          minimum_system_version=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$plist" 2>/dev/null || true)
+          if [ "$minimum_system_version" != "14.0" ]; then
+            echo "::error::Expected LSMinimumSystemVersion 14.0, found ${minimum_system_version:-missing}"
+            exit 1
+          fi
           /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero Computer Use"
           /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero Computer Use"
           /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero Computer Use"
@@ -284,6 +289,11 @@ jobs:
           }
           NODE
 
+          minimum_system_version=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$plist" 2>/dev/null || true)
+          if [ "$minimum_system_version" != "14.0" ]; then
+            echo "::error::Expected LSMinimumSystemVersion 14.0, found ${minimum_system_version:-missing}"
+            exit 1
+          fi
           /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero CU Dev"
           /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero CU Dev"
           /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero CU Dev"

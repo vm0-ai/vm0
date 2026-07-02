@@ -7,6 +7,10 @@ auto-update are intentionally out of scope. Computer Use setup lives in the
 hosted Platform UI, while this app exposes the Desktop bridge and native macOS
 host runtime that page uses.
 
+Zero Computer Use supports macOS 14+ (macOS 14 or newer). Packaged app
+metadata, native helper builds, and release verification all use the same
+minimum for Apple Silicon artifacts and future Intel artifacts.
+
 When the user is signed in and the feature switch is enabled, the main process
 registers a Desktop Computer Use host through the Zero API command queue. It
 uses the Electron session for auth, polls queued commands, executes them with a

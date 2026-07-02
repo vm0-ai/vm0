@@ -155,6 +155,7 @@ import { rootSignal$ } from "../../signals/root-signal.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   zeroDesktopDownloadSupportStatus$,
+  ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL,
   ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import {
@@ -5848,6 +5849,9 @@ function ComputerUseDownloadDialog({
             So Zero can work in your browser and apps for you, even ones with no
             connector like LinkedIn or Reddit.
           </DialogDescription>
+          <p className="text-sm leading-5 text-muted-foreground">
+            {ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL}
+          </p>
         </DialogHeader>
         <div className="px-6 pb-6 pt-4">
           {downloadSupportStatus === "unsupported-intel-mac" ? (

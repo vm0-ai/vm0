@@ -17,6 +17,9 @@ export const ZERO_DESKTOP_DOWNLOAD_URL = new URL(
   resolveApiBaseForNavigation("api"),
 ).toString();
 
+export const ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL =
+  "Requires macOS 14 or newer.";
+
 export const ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL =
   "Requires Apple Silicon Mac";
 
