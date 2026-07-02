@@ -29,13 +29,17 @@ function readGlobalCss(): string {
 }
 
 describe("platform entrypoint safe area behavior", () => {
-  it("keeps the viewport hints needed for iOS keyboard resizing", () => {
-    expect(getViewportDirectives()).toStrictEqual(
-      expect.arrayContaining([
-        "viewport-fit=cover",
-        "interactive-widget=resizes-content",
-      ]),
+  it("keeps supported viewport hints without unsupported keyboard directives", () => {
+    const viewportDirectives = getViewportDirectives();
+
+    expect(viewportDirectives).toStrictEqual(
+      expect.arrayContaining(["viewport-fit=cover"]),
     );
+    expect(
+      viewportDirectives.some((directive) => {
+        return directive.startsWith("interactive-widget=");
+      }),
+    ).toBe(false);
 
     expect(indexHtml).toMatch(/--zero-viewport-height:\s*100dvh;/);
     expect(indexHtml).toMatch(/--zero-viewport-height:\s*100lvh;/);
