@@ -40,6 +40,7 @@ import {
   runWorkflowTriggerNow$,
   type TriggerRow,
 } from "./zero-workflow-trigger-run.service";
+import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
 import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
 
 const log = logger("api:google-calendar-workflow-event");
@@ -1355,6 +1356,15 @@ async function loadGoogleCalendarEventTriggers(args: {
   for (const row of triggerRows) {
     const config = parseGoogleCalendarEventTriggerConfig(row.trigger);
     if (!config || config.calendarId !== args.state.calendarId) {
+      continue;
+    }
+    const canFire = await workflowTriggerCanFire(args.db, {
+      trigger: row.trigger,
+      agentId: row.agentId,
+      signal: args.signal,
+    });
+    args.signal.throwIfAborted();
+    if (!canFire) {
       continue;
     }
     const chatThreadId =
