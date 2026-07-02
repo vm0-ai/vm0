@@ -96,6 +96,59 @@ interface RecordedComputerUseS3Put {
   readonly contentType: string;
 }
 
+function bufferFromBinaryChunk(chunk: unknown): Buffer {
+  if (Buffer.isBuffer(chunk)) {
+    return chunk;
+  }
+  if (chunk instanceof Uint8Array) {
+    return Buffer.from(chunk);
+  }
+  if (chunk instanceof ArrayBuffer) {
+    return Buffer.from(chunk);
+  }
+  if (typeof chunk === "string") {
+    return Buffer.from(chunk);
+  }
+  throw new Error("Expected a binary computer-use plugin content chunk");
+}
+
+function hasArrayBufferMethod(
+  body: unknown,
+): body is { readonly arrayBuffer: () => Promise<ArrayBuffer> } {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    "arrayBuffer" in body &&
+    typeof body.arrayBuffer === "function"
+  );
+}
+
+function hasWebStreamReader(body: unknown): body is {
+  readonly getReader: () => {
+    readonly read: () => Promise<{
+      readonly done?: boolean;
+      readonly value?: unknown;
+    }>;
+    readonly releaseLock?: () => void;
+  };
+} {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    "getReader" in body &&
+    typeof body.getReader === "function"
+  );
+}
+
+function isAsyncIterable(body: unknown): body is AsyncIterable<unknown> {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    Symbol.asyncIterator in body &&
+    typeof body[Symbol.asyncIterator] === "function"
+  );
+}
+
 async function binaryResponseBodyToBuffer(body: unknown): Promise<Buffer> {
   if (body instanceof Blob) {
     return Buffer.from(await body.arrayBuffer());
@@ -108,6 +161,32 @@ async function binaryResponseBodyToBuffer(body: unknown): Promise<Buffer> {
   }
   if (body instanceof ArrayBuffer) {
     return Buffer.from(body);
+  }
+  if (hasArrayBufferMethod(body)) {
+    return Buffer.from(await body.arrayBuffer());
+  }
+  if (hasWebStreamReader(body)) {
+    const reader = body.getReader();
+    const chunks: Buffer[] = [];
+    try {
+      while (true) {
+        const result = await reader.read();
+        if (result.done) {
+          break;
+        }
+        chunks.push(bufferFromBinaryChunk(result.value));
+      }
+    } finally {
+      reader.releaseLock?.();
+    }
+    return Buffer.concat(chunks);
+  }
+  if (isAsyncIterable(body)) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of body) {
+      chunks.push(bufferFromBinaryChunk(chunk));
+    }
+    return Buffer.concat(chunks);
   }
   throw new Error("Expected a binary computer-use plugin content body");
 }
