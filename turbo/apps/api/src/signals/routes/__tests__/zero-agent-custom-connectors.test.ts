@@ -112,6 +112,44 @@ async function createOptionalOnlyCustomConnector(
   });
 }
 
+async function createCustomConnectorWithOptionalPrefixVariable(
+  actor: ApiTestUser,
+  slug: string,
+) {
+  const connector = await connectors.createCustomConnector(actor, {
+    displayName: `Connector ${slug}`,
+    slug,
+    prefixTemplates: [`https://{{variables.subdomain}}.${slug}.example.test`],
+    fields: [
+      {
+        key: "secret",
+        label: "API key",
+        kind: "secret",
+        required: true,
+      },
+      {
+        key: "subdomain",
+        label: "Subdomain",
+        kind: "variable",
+        required: false,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+  });
+  await connectors.setCustomConnectorSecret(
+    actor,
+    connector.id,
+    `${slug}-secret`,
+  );
+  return connector;
+}
+
 describe("GET /api/zero/agents/:id/custom-connectors", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await connectors.requestAgentCustomConnectors(
@@ -339,6 +377,32 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     const connector = await createOptionalOnlyCustomConnector(
       actor,
       "missing-optional-auth",
+    );
+
+    const response = await connectors.requestUpdateAgentCustomConnectors(
+      actor,
+      agent.agentId,
+      [connector.id],
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: `Custom connector ids are not configured for this user: ${connector.id}`,
+        code: "VALIDATION_ERROR",
+      },
+    });
+    await expect(
+      connectors.readAgentCustomConnectors(actor, agent.agentId),
+    ).resolves.toStrictEqual([]);
+  });
+
+  it("rejects enabling custom connectors without any configured base urls", async () => {
+    const actor = bdd.user();
+    const agent = await createAgent(actor, { displayName: "Test Agent" });
+    const connector = await createCustomConnectorWithOptionalPrefixVariable(
+      actor,
+      "missing-prefix-variable",
     );
 
     const response = await connectors.requestUpdateAgentCustomConnectors(

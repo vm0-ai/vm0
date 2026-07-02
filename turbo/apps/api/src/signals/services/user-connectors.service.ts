@@ -168,6 +168,57 @@ function customConnectorAuthTemplates(row: {
   ];
 }
 
+function customConnectorPrefixTemplates(row: {
+  readonly prefixes: readonly string[];
+  readonly prefixTemplates: readonly string[];
+}): readonly string[] {
+  return row.prefixTemplates.length > 0 ? row.prefixTemplates : row.prefixes;
+}
+
+function customConnectorPrefixTemplateConfigured(args: {
+  readonly connectorId: string;
+  readonly fields: readonly OrgCustomConnectorField[];
+  readonly configuredMarkers: ReadonlySet<string>;
+  readonly template: string;
+}): boolean {
+  const variableFieldByKey = new Map(
+    args.fields
+      .filter((field) => {
+        return field.kind === "variable";
+      })
+      .map((field) => {
+        return [field.key, field] as const;
+      }),
+  );
+
+  for (const match of args.template.matchAll(
+    CUSTOM_CONNECTOR_TEMPLATE_REFERENCE_REGEX,
+  )) {
+    const namespace = match[1];
+    const key = match[2];
+    if (!namespace || !key) {
+      continue;
+    }
+    if (namespace !== "variables") {
+      return false;
+    }
+    const field = variableFieldByKey.get(key);
+    if (!field) {
+      return false;
+    }
+    if (
+      !customConnectorFieldConfigured({
+        connectorId: args.connectorId,
+        field,
+        configuredMarkers: args.configuredMarkers,
+      })
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 async function loadCustomConnectorGrantValueMarkers(
   db: Pick<Db, "select">,
   args: {
@@ -293,6 +344,8 @@ async function lockCustomConnectorsForReplace(
   const sortedIds = [...args.enabledIds].sort();
   const lockedRows: {
     readonly id: string;
+    readonly prefixes: readonly string[];
+    readonly prefixTemplates: readonly string[];
     readonly headerTemplate: string;
     readonly fields: readonly OrgCustomConnectorField[];
     readonly headerInjections: readonly OrgCustomConnectorHeaderInjection[];
@@ -302,6 +355,8 @@ async function lockCustomConnectorsForReplace(
     const [locked] = await db
       .select({
         id: orgCustomConnectors.id,
+        prefixes: orgCustomConnectors.prefixes,
+        prefixTemplates: orgCustomConnectors.prefixTemplates,
         headerTemplate: orgCustomConnectors.headerTemplate,
         fields: orgCustomConnectors.fields,
         headerInjections: orgCustomConnectors.headerInjections,
@@ -360,7 +415,19 @@ async function lockCustomConnectorsForReplace(
         });
       },
     );
-    return missingRequired || !hasConfiguredAuth ? [row.id] : [];
+    const hasConfiguredPrefix = customConnectorPrefixTemplates(row).some(
+      (template) => {
+        return customConnectorPrefixTemplateConfigured({
+          connectorId: row.id,
+          fields,
+          configuredMarkers,
+          template,
+        });
+      },
+    );
+    return missingRequired || !hasConfiguredAuth || !hasConfiguredPrefix
+      ? [row.id]
+      : [];
   });
   return { missingIds: [], unconfiguredIds };
 }
