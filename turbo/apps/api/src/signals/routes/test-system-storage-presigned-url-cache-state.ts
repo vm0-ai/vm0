@@ -154,6 +154,16 @@ async function seedStorageVersionForAction(
     throw new Error("Failed to seed storage");
   }
 
+  const [existingVersion] = await db
+    .select({ storageId: storageVersions.storageId })
+    .from(storageVersions)
+    .where(eq(storageVersions.id, body.version_id))
+    .limit(1);
+  signal.throwIfAborted();
+  if (existingVersion && existingVersion.storageId !== storage.id) {
+    throw new Error("Storage version id belongs to another storage");
+  }
+
   await db
     .insert(storageVersions)
     .values({
