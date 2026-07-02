@@ -1803,7 +1803,7 @@ export function isStandaloneMode(): boolean {
   return window.matchMedia("(display-mode: standalone)").matches;
 }
 
-const OAUTH_AUTH_CODE_POPUP_CLOSED_POLL_MS = 250;
+const OAUTH_AUTH_CODE_POPUP_CLOSED_POLL_MS = IN_VITEST ? 10 : 250;
 
 function waitForOAuthAuthCodePopupClosed(
   authWindow: Pick<Window, "closed">,
