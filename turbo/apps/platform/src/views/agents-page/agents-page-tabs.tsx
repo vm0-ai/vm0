@@ -695,9 +695,38 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
                 {displayName}
               </span>
             )}
-            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-              {description}
-            </p>
+            {description ? (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1 w-fit max-w-full">
+                      {description}
+                    </p>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="bottom"
+                    align="start"
+                    className="w-64 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] p-3 text-left font-normal"
+                    style={{
+                      backgroundColor: "hsl(var(--popover))",
+                      color: "hsl(var(--popover-foreground))",
+                      whiteSpace: "normal",
+                    }}
+                  >
+                    <span className="block text-xs font-medium text-foreground">
+                      {displayName}
+                    </span>
+                    <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                      {description}
+                    </span>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                {description}
+              </p>
+            )}
           </div>
         </div>
       </CardContent>
