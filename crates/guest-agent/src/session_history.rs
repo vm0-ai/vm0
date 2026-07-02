@@ -42,6 +42,7 @@ use std::path::{Path, PathBuf};
 use std::fs::File;
 
 const CODEX_MARKER_PREFIX: &str = "CODEX_SEARCH:";
+pub(crate) const SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES: usize = 64 * 1024;
 // Checkpoint must resolve Codex history from user-controlled guest-home state.
 // Keep the budget comfortably above normal date-partitioned histories while
 // preventing layout-shaped trees from turning session lookup into an
@@ -69,10 +70,26 @@ pub(crate) fn is_codex_marker(payload: &str) -> bool {
 /// codex marker. Returns the file contents, decompressed if the resolved path
 /// ends in `.zst`.
 pub fn read_session_history(path_file: &str) -> Result<Vec<u8>, AgentError> {
-    let raw = std::fs::read_to_string(path_file).map_err(|e| {
+    let raw = read_history_marker_payload_file(path_file).map_err(|e| {
         AgentError::Checkpoint(format!("Failed to read history-path file {path_file}: {e}"))
     })?;
     read_session_history_from_payload(raw.trim())
+}
+
+pub(crate) fn read_history_marker_payload_file(path_file: &str) -> io::Result<String> {
+    let file = std::fs::File::open(path_file)?;
+    let mut bytes = Vec::new();
+    file.take((SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "session history marker exceeds maximum size of {SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES} bytes"
+            ),
+        ));
+    }
+    String::from_utf8(bytes).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
 /// Read session history bytes from an already-resolved marker payload.
@@ -836,6 +853,22 @@ mod tests {
             .expect_err("bounded literal read must reject over-limit history");
 
         assert_over_limit(err, 4);
+    }
+
+    #[test]
+    fn read_session_history_rejects_oversized_marker_payload_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let payload = vec![b'a'; SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES + 1];
+        let path = write_history_file(&dir, "session-history-marker", &payload);
+
+        let err = read_session_history(path.to_str().unwrap())
+            .expect_err("session history marker file read must reject oversized payloads");
+
+        let message = err.to_string();
+        assert!(
+            message.contains("session history marker exceeds maximum size"),
+            "expected oversized marker error, got: {message}"
+        );
     }
 
     #[test]

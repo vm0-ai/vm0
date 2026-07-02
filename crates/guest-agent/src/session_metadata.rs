@@ -9,11 +9,10 @@ use crate::paths;
 use crate::session_history;
 use guest_common::{log_error, log_info};
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
-use std::io::{self, Read};
+use std::io;
 use std::path::{Component, Path, PathBuf};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-const SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES: usize = 64 * 1024;
 
 pub(crate) fn history_marker_payload_for_session_id_with_home(
     framework: Framework,
@@ -87,7 +86,7 @@ pub(crate) fn session_history_marker_kind(history_path_payload: &str) -> &'stati
 pub(crate) fn read_existing_history_marker_payload_from(
     session_history_path_file: &str,
 ) -> io::Result<Option<String>> {
-    match read_existing_history_marker_file(session_history_path_file) {
+    match session_history::read_history_marker_payload_file(session_history_path_file) {
         Ok(existing) => {
             let existing = existing.trim();
             if existing.is_empty() {
@@ -99,22 +98,6 @@ pub(crate) fn read_existing_history_marker_payload_from(
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e),
     }
-}
-
-fn read_existing_history_marker_file(session_history_path_file: &str) -> io::Result<String> {
-    let file = std::fs::File::open(session_history_path_file)?;
-    let mut bytes = Vec::new();
-    file.take((SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES + 1) as u64)
-        .read_to_end(&mut bytes)?;
-    if bytes.len() > SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "session history marker exceeds maximum size of {SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES} bytes"
-            ),
-        ));
-    }
-    String::from_utf8(bytes).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
 pub(crate) fn ensure_history_marker_payload_at(
@@ -242,7 +225,7 @@ mod tests {
     fn read_existing_history_marker_payload_allows_payload_at_limit() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("session-history-marker");
-        let payload = "a".repeat(SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES);
+        let payload = "a".repeat(session_history::SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES);
         std::fs::write(&path, &payload).unwrap();
 
         let existing = read_existing_history_marker_payload_from(path.to_str().unwrap())
@@ -257,7 +240,7 @@ mod tests {
         let path = dir.path().join("session-history-marker");
         std::fs::write(
             &path,
-            vec![b'a'; SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES + 1],
+            vec![b'a'; session_history::SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES + 1],
         )
         .unwrap();
 
