@@ -47,11 +47,8 @@ fn local_completed_at() -> String {
 fn mark_session_affinity_refresh(
     completion_ready: CompletionReady,
     session_affinity_changed: bool,
-    session_affinity_refresh_sent: bool,
 ) -> CompletionReady {
-    if session_affinity_refresh_sent {
-        completion_ready.with_session_affinity_refresh_sent()
-    } else if session_affinity_changed {
+    if session_affinity_changed {
         completion_ready.with_session_affinity_changed()
     } else {
         completion_ready
@@ -154,7 +151,6 @@ pub(super) async fn finalize_sandbox_for_completion(
     });
 
     let mut session_affinity_changed = false;
-    let mut session_affinity_refresh_sent = false;
     let budget = if let Some(cli_agent_session_id) = parkable_cli_agent_session_id {
         // Inflate the guest balloon BEFORE acquiring the pool lock —
         // the HTTP call to Firecracker can take milliseconds, and we
@@ -218,7 +214,6 @@ pub(super) async fn finalize_sandbox_for_completion(
                         )),
                     ),
                     workspace_cache_promoted,
-                    false,
                 );
             }
         };
@@ -270,7 +265,6 @@ pub(super) async fn finalize_sandbox_for_completion(
                         return mark_session_affinity_refresh(
                             CompletionReady::new(completion_payload, destroy_result.budget),
                             destroy_result.workspace_cache_promoted,
-                            false,
                         );
                     }
                     drop(transfer_guard);
@@ -295,7 +289,6 @@ pub(super) async fn finalize_sandbox_for_completion(
                     return mark_session_affinity_refresh(
                         CompletionReady::new(completion_payload, destroy_result.budget),
                         destroy_result.workspace_cache_promoted,
-                        false,
                     );
                 }
                 let candidate = candidate.with_last_completed_at(completed_at.clone());
@@ -327,7 +320,6 @@ pub(super) async fn finalize_sandbox_for_completion(
                             .publish_idle_status_after_pool_transfer(snapshot)
                             .await;
                         session_affinity_changed = true;
-                        session_affinity_refresh_sent = true;
                         park_notify.notify_one();
                         BudgetOwnership::idle_owned()
                     }
@@ -348,7 +340,6 @@ pub(super) async fn finalize_sandbox_for_completion(
                             .publish_idle_status_after_pool_transfer(snapshot)
                             .await;
                         session_affinity_changed = true;
-                        session_affinity_refresh_sent = true;
                         park_notify.notify_one();
                         // The replaced VM was park()ed when it entered the
                         // pool; destroying a parked sandbox is safe — Drop
@@ -421,7 +412,6 @@ pub(super) async fn finalize_sandbox_for_completion(
     mark_session_affinity_refresh(
         CompletionReady::new(completion_payload, budget),
         session_affinity_changed,
-        session_affinity_refresh_sent,
     )
 }
 
