@@ -1829,7 +1829,9 @@ function logComputerUseCommandStateMetrics(
   if (row?.status !== "succeeded") {
     return;
   }
-  L.info(
+  // debug level: the Axiom transport receives every level unconditionally,
+  // so these metrics stay queryable while skipping routine console output.
+  L.debug(
     "Computer-use command state metrics",
     computerUseCommandStateMetrics(row),
   );
