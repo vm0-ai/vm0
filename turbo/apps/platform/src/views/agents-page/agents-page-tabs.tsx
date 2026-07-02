@@ -680,30 +680,6 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
                     </span>
                   </TooltipTrigger>
                   <TooltipContent
-                    side="top"
-                    className="flex items-center gap-2"
-                  >
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full">
-                      <CreatorAvatar creator={creator} />
-                    </span>
-                    <span className="text-xs">Created by {creator.name}</span>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : (
-              <span className="block truncate text-sm font-medium text-foreground">
-                {displayName}
-              </span>
-            )}
-            {description ? (
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1 w-fit max-w-full">
-                      {description}
-                    </p>
-                  </TooltipTrigger>
-                  <TooltipContent
                     side="bottom"
                     align="start"
                     className="w-64 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] p-3 text-left font-normal"
@@ -713,20 +689,30 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
                       whiteSpace: "normal",
                     }}
                   >
-                    <span className="block text-xs font-medium text-foreground">
-                      {displayName}
+                    <span className="flex items-center gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full">
+                        <CreatorAvatar creator={creator} />
+                      </span>
+                      <span className="text-xs font-medium text-foreground">
+                        Created by {creator.name}
+                      </span>
                     </span>
-                    <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
-                      {description}
-                    </span>
+                    {description && (
+                      <span className="mt-2 block text-xs leading-relaxed text-muted-foreground">
+                        {description}
+                      </span>
+                    )}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             ) : (
-              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-                {description}
-              </p>
+              <span className="block truncate text-sm font-medium text-foreground">
+                {displayName}
+              </span>
             )}
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+              {description}
+            </p>
           </div>
         </div>
       </CardContent>
