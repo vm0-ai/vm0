@@ -30,6 +30,7 @@ import {
 import { reloadUserModelPreference$ } from "../external/user-model-preference.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { checkUnifiedSettingsParam$ } from "./settings/settings-dialog.ts";
+import { setupAgentChatKeyboardShortcuts$ } from "./agent-chat-keyboard.ts";
 
 export const setupAgentChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -82,6 +83,7 @@ export const setupAgentChatPage$ = command(
 
     set(rememberLastUsedAgentId$, agentId);
     set(updateDocumentTitle$, agent.displayName ?? "Chat");
+    set(setupAgentChatKeyboardShortcuts$, signal);
 
     await set(checkUnifiedSettingsParam$, signal);
 
