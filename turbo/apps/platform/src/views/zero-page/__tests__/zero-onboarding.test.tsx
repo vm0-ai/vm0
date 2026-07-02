@@ -8,6 +8,10 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
+function setBrowserUrl(url: string): void {
+  window.location.href = url;
+}
+
 function mockOnboardingNeeded(): void {
   context.mocks.api(onboardingStatusContract.getStatus, ({ respond }) => {
     return respond(200, {
@@ -24,6 +28,7 @@ function mockOnboardingNeeded(): void {
 describe("zero onboarding", () => {
   it("redirects admins who need onboarding to paid onboarding with query params", async () => {
     mockOnboardingNeeded();
+    setBrowserUrl("https://app.vm7.ai:8443/");
 
     detachedSetupPage({
       context,
@@ -37,11 +42,12 @@ describe("zero onboarding", () => {
       expect(url.searchParams.get("prompt")).toBe("hello world");
       expect(url.searchParams.get("connector")).toBe("github");
       expect(url.searchParams.get("vm0_source")).toBe("presentation");
-      expect(url.searchParams.get("domain")).toBe("api.vm7.ai:8443");
+      expect(url.searchParams.has("domain")).toBeFalsy();
     });
   });
 
   it("redirects direct onboarding visits to paid onboarding", async () => {
+    setBrowserUrl("https://app.vm7.ai:8443/");
     detachedSetupPage({
       context,
       path: "/onboarding?prompt=hello%20world&connector=github&vm0_source=presentation",
@@ -54,7 +60,7 @@ describe("zero onboarding", () => {
       expect(url.searchParams.get("prompt")).toBe("hello world");
       expect(url.searchParams.get("connector")).toBe("github");
       expect(url.searchParams.get("vm0_source")).toBe("presentation");
-      expect(url.searchParams.get("domain")).toBe("api.vm7.ai:8443");
+      expect(url.searchParams.has("domain")).toBeFalsy();
     });
   });
 
@@ -67,6 +73,7 @@ describe("zero onboarding", () => {
         },
       });
     });
+    setBrowserUrl("https://app.vm7.ai:8443/");
 
     detachedSetupPage({
       context,
@@ -80,7 +87,7 @@ describe("zero onboarding", () => {
       expect(url.searchParams.get("prompt")).toBe("hello world");
       expect(url.searchParams.get("connector")).toBe("github");
       expect(url.searchParams.get("vm0_source")).toBe("presentation");
-      expect(url.searchParams.get("domain")).toBe("api.vm7.ai:8443");
+      expect(url.searchParams.has("domain")).toBeFalsy();
     });
   });
 });
