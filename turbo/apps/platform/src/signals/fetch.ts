@@ -1,6 +1,10 @@
 import { computed } from "ccstate";
 import { clerk$ } from "./auth.ts";
-import { fetchFreshToken, handleUnauthorizedRedirect } from "./auth-retry.ts";
+import {
+  fetchFreshToken,
+  handleUnauthorizedRedirect,
+  unauthorizedRedirectSuppressionUntil$,
+} from "./auth-retry.ts";
 import { resolveApiBase, resolveApiBaseForNavigation } from "./api-base.ts";
 
 const OAUTH_WEB_NAVIGATION_TARGET = "www";
@@ -177,7 +181,10 @@ export const fetch$ = computed((get) => {
         response = await performFetch(freshToken);
       }
       if (response.status === 401) {
-        handleUnauthorizedRedirect(clerk);
+        handleUnauthorizedRedirect(
+          clerk,
+          get(unauthorizedRedirectSuppressionUntil$),
+        );
       }
     }
 

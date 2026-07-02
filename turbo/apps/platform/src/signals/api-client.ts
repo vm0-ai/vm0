@@ -13,6 +13,7 @@ import type {
 import { clerk$ } from "./auth.ts";
 import { resolveApiBase, resolveApiBaseForTarget } from "./api-base.ts";
 import { createAuthedContractClient } from "./api-client-base.ts";
+import { unauthorizedRedirectSuppressionUntil$ } from "./auth-retry.ts";
 
 /**
  * Type alias for the factory function returned by `get(zeroClient$)`.
@@ -69,6 +70,9 @@ export const zeroClient$ = computed((get) => {
       baseUrl: resolveApiBase(),
       getClerk: () => {
         return get(clerk$);
+      },
+      getUnauthorizedRedirectSuppressionUntil: () => {
+        return get(unauthorizedRedirectSuppressionUntil$);
       },
       resolvePath: (path) => {
         if (options?.apiBase === "api") {

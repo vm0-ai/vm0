@@ -600,7 +600,10 @@ describe("zero sidebar account menu", () => {
 
     click(screen.getByText("Add account"));
     await waitFor(() => {
-      expect(mockedClerk.openSignIn).toHaveBeenCalledWith();
+      expect(mockedClerk.openSignIn).toHaveBeenCalledWith({
+        fallbackRedirectUrl: "/",
+        forceRedirectUrl: "/",
+      });
     });
 
     menu = await openAccountMenu();
