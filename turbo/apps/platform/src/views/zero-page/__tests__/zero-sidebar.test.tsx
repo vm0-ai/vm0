@@ -1224,15 +1224,7 @@ describe("zero sidebar", () => {
       expect(within(sidebar).getByText("Research Agent")).toBeInTheDocument();
     });
 
-    const researchAgentButton = queryAllByRoleFast("button", dialog).find(
-      (element) => {
-        return element.textContent?.trim() === "Research Agent";
-      },
-    );
-    if (!researchAgentButton) {
-      throw new Error("Research Agent button not found");
-    }
-    click(researchAgentButton);
+    click(within(dialog).getByRole("option", { name: /Research Agent/ }));
 
     await waitFor(() => {
       expect(
@@ -1269,6 +1261,49 @@ describe("zero sidebar", () => {
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
     expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
+  });
+
+  it("selects an agent from the picker with arrow keys and enter", async () => {
+    prepareAgentTeam();
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      expect(sidebar()).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, {
+      key: "a",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    const search = within(dialog).getByPlaceholderText("Search agents...");
+
+    await fill(search, "support");
+
+    await waitFor(() => {
+      expect(
+        within(dialog).queryByText("Research Agent"),
+      ).not.toBeInTheDocument();
+      expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Talk to" }),
+      ).not.toBeInTheDocument();
+      expect(
+        within(sidebar()).getByText("Chats with Support Agent"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("shows agent unread indicators and dropdown actions behind the feature switch", async () => {
