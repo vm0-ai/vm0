@@ -63,6 +63,19 @@ function tab(label: "Public" | "Private"): HTMLElement {
   return found;
 }
 
+async function expectVisibleTooltip(text: string): Promise<void> {
+  const matches = await screen.findAllByText(text);
+  const visibleMatch = matches.find((element) => {
+    try {
+      expect(element).toBeVisible();
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  expect(visibleMatch).toBeDefined();
+}
+
 describe("agents page (redesign)", () => {
   it("filters agents by tab and shows creator only on public cards", async () => {
     const user = userEvent.setup();
@@ -100,7 +113,7 @@ describe("agents page (redesign)", () => {
       expect(tab("Private")).toBeInTheDocument();
     });
 
-    // Private tab: only private agents, no creator footer.
+    // Private tab: only private agents, no creator tooltip.
     await user.click(tab("Private"));
     await waitFor(() => {
       expect(agentCard("Private Ops")).toBeInTheDocument();
@@ -110,15 +123,20 @@ describe("agents page (redesign)", () => {
       within(agentCard("Private Ops")).queryByText("Created by Bob Builder"),
     ).not.toBeInTheDocument();
 
-    // Public tab: only public agents, each with a creator footer.
+    // Public tab: only public agents, each surfacing the creator on hover.
     await user.click(tab("Public"));
     await waitFor(() => {
       expect(agentCard("Research Agent")).toBeInTheDocument();
     });
     expect(findAgentCard("Private Ops")).toBeNull();
     expect(
-      within(agentCard("Research Agent")).getByText("Created by Alice Admin"),
-    ).toBeInTheDocument();
+      screen.queryByText("Created by Alice Admin"),
+    ).not.toBeInTheDocument();
+
+    await user.hover(
+      within(agentCard("Research Agent")).getByText("Research Agent"),
+    );
+    await expectVisibleTooltip("Created by Alice Admin");
   });
 
   it("shows the private empty state when there are no private agents", async () => {

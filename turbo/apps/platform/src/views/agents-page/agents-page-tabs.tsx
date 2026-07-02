@@ -671,24 +671,35 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
             {hasUnread && <AgentUnreadIndicator />}
           </span>
           <div className="flex-1 min-w-0">
-            <span className="block truncate text-sm font-medium text-foreground">
-              {displayName}
-            </span>
+            {showCreator ? (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="block w-fit max-w-full truncate text-sm font-medium text-foreground">
+                      {displayName}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="top"
+                    className="flex items-center gap-2"
+                  >
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full">
+                      <CreatorAvatar creator={creator} />
+                    </span>
+                    <span className="text-xs">Created by {creator.name}</span>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <span className="block truncate text-sm font-medium text-foreground">
+                {displayName}
+              </span>
+            )}
             <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
               {description}
             </p>
           </div>
         </div>
-        {showCreator && (
-          <div className="mt-auto flex items-center gap-2 border-t border-border/60 pt-3">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full">
-              <CreatorAvatar creator={creator} />
-            </span>
-            <span className="truncate text-xs text-muted-foreground">
-              Created by {creator.name}
-            </span>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
