@@ -5400,10 +5400,11 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         sandboxOperations: [
           {
             ts: nowDate().toISOString(),
-            action_type: "volume_mount",
+            action_type: "session_history_download",
             duration_ms: 8,
             success: false,
-            error: "mount timed out",
+            error: "download timed out",
+            encoding: "gzip",
           },
         ],
       },
@@ -5434,10 +5435,11 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       "vm0-sandbox-op-log-dev",
       [
         expect.objectContaining({
-          op_type: "volume_mount",
+          op_type: "session_history_download",
           run_id: created.runId,
           success: false,
-          error: "mount timed out",
+          error: "download timed out",
+          encoding: "gzip",
           source: "sandbox",
         }),
       ],

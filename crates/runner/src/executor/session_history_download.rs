@@ -70,6 +70,7 @@ struct SessionHistoryDownloadTaskResult {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct SessionHistoryDownloadTimings {
+    encoding: Option<ResumeSessionHistoryEncoding>,
     request_status: Option<SessionHistoryDownloadPhaseTiming>,
     body_read: Option<SessionHistoryDownloadPhaseTiming>,
     validation: Option<SessionHistoryDownloadPhaseTiming>,
@@ -83,6 +84,11 @@ pub(super) struct SessionHistoryDownloadPhaseTiming {
 }
 
 impl SessionHistoryDownloadTimings {
+    pub(super) fn encoding(&self) -> Option<&'static str> {
+        self.encoding
+            .map(ResumeSessionHistoryEncoding::telemetry_value)
+    }
+
     pub(super) fn request_status(&self) -> Option<SessionHistoryDownloadPhaseTiming> {
         self.request_status
     }
@@ -101,6 +107,10 @@ impl SessionHistoryDownloadTimings {
 
     fn record_request_status(&mut self, elapsed: Duration, success: bool) {
         self.request_status = Some(SessionHistoryDownloadPhaseTiming { elapsed, success });
+    }
+
+    fn record_encoding(&mut self, encoding: ResumeSessionHistoryEncoding) {
+        self.encoding = Some(encoding);
     }
 
     fn record_body_read(&mut self, elapsed: Duration, success: bool) {
@@ -123,6 +133,15 @@ impl SessionHistoryDownloadPhaseTiming {
 
     pub(super) fn success(self) -> bool {
         self.success
+    }
+}
+
+impl ResumeSessionHistoryEncoding {
+    const fn telemetry_value(self) -> &'static str {
+        match self {
+            Self::Identity => "identity",
+            Self::Gzip => "gzip",
+        }
     }
 }
 
@@ -330,10 +349,12 @@ async fn download_resume_session_history(
         ResumeSessionHistoryRefKind::Blob => {}
     }
 
-    let bytes = match history_ref
+    let encoding = history_ref
         .encoding
-        .unwrap_or(ResumeSessionHistoryEncoding::Identity)
-    {
+        .unwrap_or(ResumeSessionHistoryEncoding::Identity);
+    timings.record_encoding(encoding);
+
+    let bytes = match encoding {
         ResumeSessionHistoryEncoding::Identity => {
             validate_identity_ref(&history_ref, timings)?;
             let bytes = download_body(
