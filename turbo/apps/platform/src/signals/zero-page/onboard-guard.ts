@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { clerk$, resolveAppAuthUrl } from "../auth.ts";
+import { clerk$, resolveAppAuthUrl, resolveWebOrigin } from "../auth.ts";
 import { searchParams$ } from "../route.ts";
 import {
   zeroOnboardingStatus$,
@@ -9,23 +9,13 @@ import {
 const ONBOARDING_PATH = "/onboarding/2afcf6";
 
 function onboardingUrl(searchParams: URLSearchParams): string {
-  const configuredUrl = import.meta.env.VITE_ONBOARDING_URL as
-    | string
-    | undefined;
-  const configuredDomain = import.meta.env.VITE_ONBOARDING_DOMAIN as
-    | string
-    | undefined;
-  if (!configuredUrl) {
-    throw new Error("Missing VITE_ONBOARDING_URL environment variable");
-  }
-
-  const url = new URL(ONBOARDING_PATH, configuredUrl);
+  // Onboarding lives on the www sibling of the current host; the onboarding
+  // surface derives its app/api URLs from its own host the same way, so no
+  // environment configuration or domain hint is needed.
+  const url = new URL(ONBOARDING_PATH, resolveWebOrigin());
   const search = searchParams.toString();
   if (search) {
     url.search = search;
-  }
-  if (configuredDomain) {
-    url.searchParams.set("domain", configuredDomain);
   }
   return url.toString();
 }
