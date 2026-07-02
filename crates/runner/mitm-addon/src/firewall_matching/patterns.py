@@ -93,9 +93,10 @@ def parse_segment(seg: str) -> dict:
     Grammar mirrors turbo/packages/connectors/src/segment-parser.ts -
     keep both implementations in lockstep. Any change to accepted or
     rejected forms must land in both languages and the shared contract fixture
-    at once: testdata/firewall-semantics-contract.json. Parameter names are
-    opaque non-empty segment text; callers validate the surrounding URL/rule
-    syntax before parsing.
+    at once:
+    turbo/packages/connectors/src/__tests__/firewall-semantics-contract.json.
+    Parameter names are opaque non-empty segment text; callers validate the
+    surrounding URL/rule syntax before parsing.
 
     Returns one of:
       {"kind": "literal", "value": seg}

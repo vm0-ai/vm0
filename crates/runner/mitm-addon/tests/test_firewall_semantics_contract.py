@@ -9,7 +9,13 @@ import matching
 from firewall_matching.patterns import _split_path_segments
 
 _CONTRACT_PATH = (
-    Path(__file__).resolve().parents[4] / "testdata" / "firewall-semantics-contract.json"
+    Path(__file__).resolve().parents[4]
+    / "turbo"
+    / "packages"
+    / "connectors"
+    / "src"
+    / "__tests__"
+    / "firewall-semantics-contract.json"
 )
 
 

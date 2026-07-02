@@ -45,10 +45,7 @@ type SegmentExpected = z.infer<typeof segmentExpectedSchema>;
 function loadContract(): z.infer<typeof contractSchema> {
   const rawContract: unknown = JSON.parse(
     fs.readFileSync(
-      path.resolve(
-        import.meta.dirname,
-        "../../../../../testdata/firewall-semantics-contract.json",
-      ),
+      path.resolve(import.meta.dirname, "firewall-semantics-contract.json"),
       "utf-8",
     ),
   );
