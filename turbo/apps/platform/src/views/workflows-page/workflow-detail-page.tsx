@@ -26,6 +26,7 @@ import {
   IconClock,
   IconCopy,
   IconFileText,
+  IconHistory,
   IconInfoCircle,
   IconLink,
   IconLoader2,
@@ -34,10 +35,12 @@ import {
   IconPlayerPause,
   IconPlayerPlay,
   IconPlus,
+  IconPencil,
   IconRepeat,
   IconRoute,
   IconTrash,
   IconUpload,
+  IconDotsVertical,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -147,6 +150,7 @@ import {
   DetailPageMain,
   DetailPageShell,
 } from "../components/detail-page-layout.tsx";
+import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { TiptapInstructionsEditor } from "../zero-page/tiptap-instructions-editor.tsx";
 import { ZeroUnsavedBar } from "../zero-page/zero-unsaved-bar.tsx";
 import { InlineSettingsRow } from "../zero-page/components/zero-inline-settings-row.tsx";
@@ -156,12 +160,9 @@ import {
   formatWorkflowIntervalSeconds,
   getWorkflowIntervalSecondOptions,
   isMarkdownPath,
+  triggerKindLabel,
   workflowTitle,
 } from "./workflow-shared.tsx";
-import {
-  WorkflowTriggerCard,
-  type WorkflowTriggerCardRow,
-} from "./workflow-trigger-card.tsx";
 
 const FIELD_CLASS =
   "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none focus:border-primary";
@@ -406,22 +407,24 @@ function DetailHeader({
     <DetailPageHeader>
       {detail ? (
         <>
-          <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h1 className="truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
-                {workflowTitle(detail)}
-              </h1>
-              <span className="inline-flex max-w-full shrink-0 items-center rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                /{detail.name}
-              </span>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h1 className="truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+                  {workflowTitle(detail)}
+                </h1>
+                <span className="inline-flex max-w-full shrink-0 items-center rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                  /{detail.name}
+                </span>
+              </div>
+              <p className="mt-1.5 line-clamp-2 text-sm leading-tight text-muted-foreground">
+                {detail.description || "No description yet"}
+              </p>
             </div>
-            <p className="mt-1.5 line-clamp-2 text-sm leading-tight text-muted-foreground">
-              {detail.description || "No description yet"}
-            </p>
+            <WorkflowChatButton detail={detail} />
           </div>
           <div className="mt-4 flex items-center gap-2 sm:mt-6">
             <WorkflowTabNav activeTab={activeTab} onTabChange={onTabChange} />
-            <WorkflowChatButton detail={detail} />
           </div>
         </>
       ) : (
@@ -2671,27 +2674,22 @@ function TriggersSection({
 }) {
   const createDialog = useGet(workflowTriggerCreateDialog$);
   const setCreateDialog = useSet(setWorkflowTriggerCreateDialog$);
-  const features = useGet(featureSwitch$);
   const userLoadable = useLoadable(user$);
   const preferences = useLastResolved(userPreferences$);
   const currentUserId =
     userLoadable.state === "hasData" ? (userLoadable.data?.id ?? "") : "";
   const displayTimezone = preferences?.timezone ?? browserTimezone();
   const triggers = detail.triggers;
+  const features = useGet(featureSwitch$);
   const workflowAutomationEnabled =
     features[FeatureSwitchKey.WorkflowAutomation] ?? false;
 
   return (
     <section className="mx-auto flex max-w-[900px] flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="text-sm font-medium text-foreground">
-            Automations
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {triggers.length}
-          </span>
-        </div>
+        <p className="min-w-0 text-sm text-muted-foreground">
+          Automations run this workflow whenever their trigger fires
+        </p>
         <TriggerCreateMenu
           onSelect={setCreateDialog}
           githubLabelTriggersEnabled={workflowAutomationEnabled}
@@ -2701,16 +2699,19 @@ function TriggersSection({
       </div>
       <div className="flex flex-col gap-2">
         {triggers.length > 0 ? (
-          triggers.map((trigger) => {
-            return (
-              <TriggerRow
-                key={trigger.id}
-                trigger={trigger}
-                canManage={trigger.ownerUserId === currentUserId}
-                displayTimezone={displayTimezone}
-              />
-            );
-          })
+          <div className="zero-card overflow-visible">
+            {triggers.map((trigger, index) => {
+              return (
+                <TriggerRow
+                  key={trigger.id}
+                  trigger={trigger}
+                  canManage={trigger.ownerUserId === currentUserId}
+                  displayTimezone={displayTimezone}
+                  showDivider={index < triggers.length - 1}
+                />
+              );
+            })}
+          </div>
         ) : (
           <div className="zero-card px-5 py-4">
             <p className="text-sm text-muted-foreground">No automations.</p>
@@ -4178,30 +4179,94 @@ function TriggerRow({
   trigger,
   canManage,
   displayTimezone,
+  showDivider,
 }: {
   readonly trigger: ZeroWorkflowTriggerSummary;
   readonly canManage: boolean;
   readonly displayTimezone: string;
+  readonly showDivider: boolean;
 }) {
   const editingTriggerId = useGet(editingWorkflowTriggerId$);
   const setEditingTriggerId = useSet(setEditingWorkflowTriggerId$);
   const editing = editingTriggerId === trigger.id;
-  const rows = triggerCardRows(trigger, displayTimezone);
+  const title = workflowScheduleTitle(trigger, displayTimezone);
+  const subtitle = workflowTriggerSubtitle(trigger);
 
   return (
     <>
-      <WorkflowTriggerCard
-        rows={rows}
-        dimmed={!trigger.enabled}
-        actions={
-          canManage ? (
-            <TriggerControls
-              trigger={trigger}
-              displayTimezone={displayTimezone}
-            />
-          ) : null
-        }
-      />
+      <div
+        className={cn(
+          "group grid min-w-0 grid-cols-1 gap-3 px-5 py-4 transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-gray-50 sm:grid-cols-[minmax(0,1.2fr)_minmax(9rem,0.9fr)_minmax(13.5rem,1.1fr)_auto_7.75rem] sm:items-center sm:gap-4",
+          showDivider && "border-b border-border/50",
+          !trigger.enabled && "opacity-75",
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-gray-50 text-muted-foreground group-hover:bg-background"
+            aria-hidden="true"
+          >
+            <IconRepeat size={15} stroke={1.5} />
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-foreground">
+              {title}
+            </div>
+            {subtitle ? (
+              <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                {subtitle}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div
+          className="flex min-w-0 items-center gap-1.5"
+          aria-label={`Last run ${formatWorkflowTriggerRun(
+            trigger.lastRunAt,
+            displayTimezone,
+          )}`}
+        >
+          <IconHistory
+            size={14}
+            stroke={1.5}
+            className="shrink-0 text-muted-foreground"
+          />
+          <span className="shrink-0 text-sm text-muted-foreground">Last</span>
+          <span className="min-w-0 truncate text-sm font-medium text-foreground">
+            {formatWorkflowTriggerRun(trigger.lastRunAt, displayTimezone)}
+          </span>
+        </div>
+        <div
+          className="flex min-w-0 items-center gap-1.5"
+          aria-label={`Next run ${formatWorkflowTriggerNextRun(
+            trigger.nextRunAt,
+            displayTimezone,
+          )}`}
+        >
+          <IconClock
+            size={14}
+            stroke={1.5}
+            className="shrink-0 text-muted-foreground"
+          />
+          <span className="shrink-0 text-sm text-muted-foreground">Next</span>
+          <span className="min-w-0 truncate text-sm font-medium text-foreground">
+            {formatWorkflowTriggerNextRun(trigger.nextRunAt, displayTimezone)}
+          </span>
+        </div>
+        <TriggerStatusSwitch
+          trigger={trigger}
+          title={title}
+          canManage={canManage}
+        />
+        {canManage ? (
+          <TriggerControls
+            trigger={trigger}
+            displayTimezone={displayTimezone}
+          />
+        ) : (
+          <div aria-hidden="true" />
+        )}
+      </div>
       {canManage ? (
         <EditWorkflowTriggerDialog
           trigger={trigger}
@@ -4218,38 +4283,17 @@ function TriggerRow({
   );
 }
 
-function triggerCardRows(
+function workflowTriggerSubtitle(
   trigger: ZeroWorkflowTriggerSummary,
-  displayTimezone: string,
-): readonly WorkflowTriggerCardRow[] {
-  const rows: WorkflowTriggerCardRow[] = [
-    {
-      label: trigger.kind === "schedule" ? "Schedule" : "Automation",
-      value: workflowScheduleTitle(trigger, displayTimezone),
-    },
-    {
-      label: "Last run",
-      value: formatWorkflowTriggerRun(trigger.lastRunAt, displayTimezone),
-    },
-    {
-      label: "Next run",
-      value: formatWorkflowTriggerNextRun(trigger.nextRunAt, displayTimezone),
-    },
-  ];
-
+): string | null {
   const matchSummary = workflowTriggerSummary(trigger);
   if (matchSummary) {
-    rows.splice(1, 0, { label: "Match", value: matchSummary });
+    return matchSummary;
   }
-
   if (isWebhookWorkflowTrigger(trigger)) {
-    rows.splice(1, 0, {
-      label: "Webhook",
-      value: trigger.webhookUrl,
-    });
+    return trigger.webhookUrl;
   }
-
-  return rows;
+  return triggerKindLabel(trigger);
 }
 
 function formatWorkflowTriggerRun(
@@ -4283,11 +4327,36 @@ function formatWorkflowTriggerNextRun(
   return formatWorkflowTriggerRun(value, displayTimezone);
 }
 
-function TriggerToggleIcon({ enabled }: { readonly enabled: boolean }) {
-  return enabled ? (
-    <IconPlayerPause size={13} stroke={1.5} />
-  ) : (
-    <IconPlayerPlay size={13} stroke={1.5} />
+function TriggerStatusSwitch({
+  trigger,
+  title,
+  canManage,
+}: {
+  readonly trigger: ZeroWorkflowTriggerSummary;
+  readonly title: string;
+  readonly canManage: boolean;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [enabledLoadable, setEnabled] = useLoadableSet(
+    setWorkflowTriggerEnabled$,
+  );
+  const toggling = enabledLoadable.state === "loading";
+
+  return (
+    <div className="flex items-center justify-start sm:justify-center">
+      <LoadingSwitch
+        checked={trigger.enabled}
+        loading={toggling}
+        disabled={!canManage}
+        ariaLabel={`${trigger.enabled ? "Disable" : "Enable"} ${title}`}
+        onCheckedChange={(enabled) => {
+          detach(
+            setEnabled({ triggerId: trigger.id, enabled }, pageSignal),
+            Reason.DomCallback,
+          );
+        }}
+      />
+    </div>
   );
 }
 
@@ -4302,49 +4371,25 @@ function TriggerControls({
   const navigate = useSet(detachedNavigateTo$);
   const setEditingTriggerId = useSet(setEditingWorkflowTriggerId$);
   const setEditingScheduleCronFields = useSet(setEditingScheduleCronFields$);
-  const [enabledLoadable, setEnabled] = useLoadableSet(
-    setWorkflowTriggerEnabled$,
-  );
   const [deleteLoadable, deleteTrigger] = useLoadableSet(
     deleteWorkflowTrigger$,
   );
   const [runNowLoadable, runNow] = useLoadableSet(runWorkflowTriggerNow$);
   const busy =
-    enabledLoadable.state === "loading" ||
-    deleteLoadable.state === "loading" ||
-    runNowLoadable.state === "loading";
+    deleteLoadable.state === "loading" || runNowLoadable.state === "loading";
   const running = runNowLoadable.state === "loading";
   const canEdit = canEditWorkflowTrigger(trigger);
 
   return (
-    <>
-      {canEdit ? (
-        <button
-          type="button"
-          disabled={busy}
-          className="rounded-md px-1 py-1 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline disabled:opacity-60"
-          onClick={() => {
-            if (
-              trigger.kind === "schedule" &&
-              trigger.schedule.type === "cron"
-            ) {
-              setEditingScheduleCronFields(
-                parseWorkflowCronFields(trigger.schedule, displayTimezone),
-              );
-            }
-            setEditingTriggerId(trigger.id);
-          }}
-        >
-          Edit
-        </button>
-      ) : null}
-      <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+    <div className="flex min-w-0 items-center justify-end">
+      <div className="flex items-center justify-end gap-1 opacity-100 transition-opacity pointer-events-auto [@media(hover:hover)]:pointer-events-none [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:pointer-events-auto [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:pointer-events-auto [@media(hover:hover)]:group-focus-within:opacity-100">
         <Button
           type="button"
-          variant="outline"
-          size="sm"
+          variant="ghost"
+          size="icon"
           disabled={busy}
-          className="zero-btn-morandi h-8 gap-1.5 rounded-lg px-3 text-xs font-medium"
+          aria-label="Run now"
+          className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-50 hover:text-foreground"
           onClick={() => {
             detach(
               (async () => {
@@ -4359,46 +4404,69 @@ function TriggerControls({
           }}
         >
           {running ? (
-            <IconLoader2 size={13} className="animate-spin" />
+            <IconLoader2 size={14} className="animate-spin" />
           ) : (
-            <IconPlayerPlay size={13} stroke={1.5} />
+            <IconPlayerPlay size={14} stroke={1.5} />
           )}
-          <span>{running ? "Starting..." : "Run now"}</span>
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={busy}
-          className="zero-btn-morandi h-8 gap-1.5 rounded-lg px-3 text-xs font-medium"
-          onClick={() => {
-            detach(
-              setEnabled(
-                { triggerId: trigger.id, enabled: !trigger.enabled },
-                pageSignal,
-              ),
-              Reason.DomCallback,
-            );
-          }}
-        >
-          <TriggerToggleIcon enabled={trigger.enabled} />
-          <span>{trigger.enabled ? "Pause" : "Resume"}</span>
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={busy}
-          className="h-8 gap-1.5 rounded-lg px-3 text-xs font-medium text-destructive/80 hover:bg-destructive/10 hover:text-destructive"
-          onClick={() => {
-            detach(deleteTrigger(trigger.id, pageSignal), Reason.DomCallback);
-          }}
-        >
-          <IconTrash size={13} stroke={1.5} />
-          <span>Delete</span>
-        </Button>
+        {canEdit ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            disabled={busy}
+            aria-label="Edit automation"
+            className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-50 hover:text-foreground"
+            onClick={() => {
+              if (
+                trigger.kind === "schedule" &&
+                trigger.schedule.type === "cron"
+              ) {
+                setEditingScheduleCronFields(
+                  parseWorkflowCronFields(trigger.schedule, displayTimezone),
+                );
+              }
+              setEditingTriggerId(trigger.id);
+            }}
+          >
+            <IconPencil size={14} stroke={1.5} />
+          </Button>
+        ) : null}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              disabled={busy}
+              aria-label="More actions"
+              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-50 hover:text-foreground data-[state=open]:bg-gray-50 data-[state=open]:text-foreground"
+            >
+              <IconDotsVertical size={14} stroke={1.5} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem
+              disabled={deleteLoadable.state === "loading"}
+              className="gap-2 text-destructive focus:text-destructive"
+              onClick={() => {
+                detach(
+                  deleteTrigger(trigger.id, pageSignal),
+                  Reason.DomCallback,
+                );
+              }}
+            >
+              {deleteLoadable.state === "loading" ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : (
+                <IconTrash size={14} stroke={1.5} />
+              )}
+              Delete automation
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-    </>
+    </div>
   );
 }
 

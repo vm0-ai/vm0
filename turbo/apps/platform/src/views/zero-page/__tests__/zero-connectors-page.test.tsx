@@ -37,10 +37,13 @@ import { search } from "../../../signals/location.ts";
 import { setFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
+import { resetSignalScope } from "../../../signals/utils.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../../../signals/zero-page/agent-connector-authorizations.ts";
+import { submitManualGrant$ } from "../../../signals/zero-page/settings/connectors.ts";
 
 const context = testContext();
+const abortAfterManualGrantConnectSignalScope$ = resetSignalScope();
 
 function createMockAuthWindow(): Window {
   const authWindow = context.mocks.browser.authWindow();
@@ -1481,6 +1484,120 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(submittedValues).toStrictEqual({ apiToken: "xaat-test" });
       expect(submitCount).toBe(1);
+      expect(
+        within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("reloads manual connector status after success if post-success signal aborts", async () => {
+    mockConnectors([]);
+    const disconnectedAxiom = publicStatusItem({
+      connectorRef: "axiom",
+      label: "Public Axiom",
+      description: "Public Axiom description",
+      authMethods: [
+        {
+          id: "api-token",
+          label: "Public API Token",
+          description: null,
+          grantKind: "manual",
+          manualFields: [
+            {
+              id: "apiToken",
+              label: "Public API token",
+              required: true,
+              placeholder: "public-xaat",
+              inputType: "password",
+            },
+          ],
+          startOptions: [],
+        },
+      ],
+    });
+    let catalogStatusItems: readonly PublicConnectorCatalogStatusItem[] = [
+      disconnectedAxiom,
+    ];
+    let catalogStatusRequestCount = 0;
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      catalogStatusRequestCount += 1;
+      return respond(200, { connectors: [...catalogStatusItems] });
+    });
+    context.mocks.api(
+      zeroConnectorManualGrantContract.connect,
+      ({ body, params, respond }) => {
+        expect(params.type).toBe("axiom");
+        expect(body.values).toStrictEqual({ apiToken: "xaat-test" });
+        catalogStatusItems = [
+          {
+            ...disconnectedAxiom,
+            connection: {
+              authMethod: body.authMethod,
+              externalUsername: null,
+              externalEmail: null,
+              reconnectReason: null,
+            },
+            connected: true,
+            connectionStatus: "connected",
+          },
+        ];
+        return respond(200, {
+          id: crypto.randomUUID(),
+          type: "axiom",
+          authMethod: body.authMethod,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect Public Axiom")).toBeInTheDocument();
+    });
+    expect(
+      within(connectorCardByLabel("Public Axiom")).queryByText("Connected"),
+    ).not.toBeInTheDocument();
+
+    const abortScope = context.store.set(
+      abortAfterManualGrantConnectSignalScope$,
+      context.signal,
+    );
+    const originalThrowIfAborted = abortScope.signal.throwIfAborted.bind(
+      abortScope.signal,
+    );
+    Object.defineProperty(abortScope.signal, "throwIfAborted", {
+      value: () => {
+        abortScope.abort(
+          new DOMException("Aborted after connector connect", "AbortError"),
+        );
+        originalThrowIfAborted();
+      },
+    });
+
+    await expect(
+      context.store.set(
+        submitManualGrant$,
+        {
+          type: "axiom",
+          authMethod: "api-token",
+          inputValues: { apiToken: "xaat-test" },
+          options: { connectorLabel: "Public Axiom" },
+        },
+        abortScope.signal,
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    await waitFor(() => {
+      expect(catalogStatusRequestCount).toBeGreaterThan(1);
       expect(
         within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
       ).toBeInTheDocument();

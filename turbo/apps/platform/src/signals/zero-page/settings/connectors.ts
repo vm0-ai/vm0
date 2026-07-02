@@ -22,6 +22,10 @@ import {
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import type {
+  InitClientArgs,
+  InitClientReturn,
+} from "@vm0/api-contracts/contracts/trpc-contract";
+import type {
   ConnectorOauthDeviceAuthSessionPollResponse,
   ConnectorListResponse,
   ConnectorReconnectReason,
@@ -898,6 +902,7 @@ export const submitManualGrant$ = command(
 
     const flow = createConnectorConnectFlowState(type);
     set(internalConnectFlowState$, flow);
+    let connectorStateChanged = false;
     return await withCleanup(
       (async () => {
         const createClient = get(zeroClient$);
@@ -913,9 +918,11 @@ export const submitManualGrant$ = command(
           }),
           [200],
         );
+        connectorStateChanged = true;
         signal.throwIfAborted();
         set(finishConnectorConnection$, type, {
           ...options,
+          reloadConnectors: false,
           toastMessage: `${options.connectorLabel ?? type} connected successfully`,
         });
         return true;
@@ -924,6 +931,9 @@ export const submitManualGrant$ = command(
         set(internalConnectFlowState$, (current) => {
           return current?.id === flow.id ? null : current;
         });
+        if (connectorStateChanged) {
+          set(reloadConnectors$);
+        }
       },
     );
   },
@@ -1075,6 +1085,24 @@ type ConnectConnectorOAuthDeviceAuthParams = {
   readonly startOptions?: ConnectorDeviceAuthStartOptions;
 };
 
+type ConnectorOAuthDeviceAuthSessionClient = InitClientReturn<
+  typeof zeroConnectorOauthDeviceAuthSessionContract,
+  InitClientArgs
+>;
+
+type PollConnectorOAuthDeviceAuthIterationArgs = Omit<
+  PollConnectorOAuthDeviceAuthArgs,
+  "createClient"
+> & {
+  readonly client: ConnectorOAuthDeviceAuthSessionClient;
+};
+
+type PollConnectorOAuthDeviceAuthIterationOutcome = {
+  readonly stop: boolean;
+  readonly completed?: true;
+  readonly expired?: true;
+};
+
 function createConnectorOAuthDeviceAuthRequestId(type: ConnectorType): string {
   return `${type}-oauth-device-${now()}-${Math.random().toString(36).slice(2)}`;
 }
@@ -1166,6 +1194,140 @@ export const openConnectorOAuthDeviceAuthVerificationPage$ = command(
   },
 );
 
+const pollConnectorOAuthDeviceAuthOnce$ = command(
+  async (
+    { get, set },
+    {
+      client,
+      type,
+      authMethod,
+      requestId,
+      options,
+    }: PollConnectorOAuthDeviceAuthIterationArgs,
+    signal: AbortSignal,
+  ): Promise<PollConnectorOAuthDeviceAuthIterationOutcome> => {
+    let connectorStateChanged = false;
+    return await withCleanup(
+      (async () => {
+        const current = get(internalConnectorOAuthDeviceAuthState$);
+        if (
+          !isCurrentConnectorOAuthDeviceAuthRequest(
+            current,
+            type,
+            authMethod,
+            requestId,
+          )
+        ) {
+          return { stop: true };
+        }
+
+        const remainingMs = current.expiresAtMs - now();
+        if (remainingMs <= 0) {
+          return { stop: true, expired: true };
+        }
+
+        if (!current.approvalOpened) {
+          await delay(
+            Math.min(OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS, remainingMs),
+            { signal },
+          );
+          signal.throwIfAborted();
+          return { stop: false };
+        }
+
+        set(internalConnectorOAuthDeviceAuthState$, {
+          ...current,
+          status: "polling",
+        });
+
+        const acceptPoll = async () => {
+          const response = await accept(
+            client.poll({
+              params: { type, sessionId: current.sessionId },
+              body: { sessionToken: current.sessionToken },
+              fetchOptions: { signal },
+            }),
+            [200],
+          );
+          if (response.body.status === "complete") {
+            connectorStateChanged = true;
+          }
+          return response;
+        };
+        const pollSettled = await settle(acceptPoll(), signal);
+        const pollResult = pollSettled.ok
+          ? pollSettled.value.body
+          : {
+              status: "error" as const,
+              errorMessage: oauthDeviceAuthErrorMessage(pollSettled.error),
+            };
+
+        const latest = get(internalConnectorOAuthDeviceAuthState$);
+        if (
+          !isCurrentConnectorOAuthDeviceAuthRequest(
+            latest,
+            type,
+            authMethod,
+            requestId,
+          )
+        ) {
+          return { stop: true };
+        }
+
+        if (pollResult.status === "complete") {
+          signal.throwIfAborted();
+          set(finishConnectorConnection$, type, {
+            ...options,
+            clearSelectedConnector: true,
+            reloadConnectors: false,
+          });
+          set(
+            internalConnectorOAuthDeviceAuthState$,
+            createIdleConnectorOAuthDeviceAuthState(),
+          );
+          return { stop: true, completed: true };
+        }
+
+        signal.throwIfAborted();
+
+        if (pollResult.status !== "pending") {
+          set(internalConnectorOAuthDeviceAuthState$, {
+            status: pollResult.status,
+            connectorType: type,
+            authMethod,
+            message: getOAuthDeviceAuthTerminalMessage(pollResult),
+          });
+          return { stop: true };
+        }
+
+        const pollIntervalMs = Math.max(
+          secondsToMilliseconds(pollResult.interval),
+          OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS,
+        );
+        set(internalConnectorOAuthDeviceAuthState$, {
+          ...latest,
+          status: "pending",
+          pollIntervalMs,
+          errorMessage: null,
+        });
+
+        const nextRemainingMs = latest.expiresAtMs - now();
+        if (nextRemainingMs <= 0) {
+          return { stop: true, expired: true };
+        }
+        await delay(Math.min(pollIntervalMs, nextRemainingMs), { signal });
+        signal.throwIfAborted();
+        return { stop: false };
+      })(),
+      () => {
+        if (connectorStateChanged) {
+          set(reloadConnectors$);
+        }
+      },
+    );
+  },
+);
+
 const pollConnectorOAuthDeviceAuth$ = command(
   async (
     { get, set },
@@ -1194,100 +1356,24 @@ const pollConnectorOAuthDeviceAuth$ = command(
 
     await setLoop(
       async (sig) => {
-        const current = get(internalConnectorOAuthDeviceAuthState$);
-        if (!isCurrentRequest(current)) {
-          return true;
-        }
-
-        const remainingMs = current.expiresAtMs - now();
-        if (remainingMs <= 0) {
-          expired = true;
-          return true;
-        }
-
-        if (!current.approvalOpened) {
-          await delay(
-            Math.min(OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS, remainingMs),
-            { signal: sig },
-          );
-          sig.throwIfAborted();
-          return false;
-        }
-
-        set(internalConnectorOAuthDeviceAuthState$, {
-          ...current,
-          status: "polling",
-        });
-
-        const pollSettled = await settle(
-          accept(
-            client.poll({
-              params: { type, sessionId: current.sessionId },
-              body: { sessionToken: current.sessionToken },
-              fetchOptions: { signal: sig },
-            }),
-            [200],
-          ),
+        const outcome = await set(
+          pollConnectorOAuthDeviceAuthOnce$,
+          { client, type, authMethod, requestId, options },
           sig,
         );
-        const pollResult = pollSettled.ok
-          ? pollSettled.value.body
-          : {
-              status: "error" as const,
-              errorMessage: oauthDeviceAuthErrorMessage(pollSettled.error),
-            };
-
-        const latest = get(internalConnectorOAuthDeviceAuthState$);
-        if (!isCurrentRequest(latest)) {
-          return true;
-        }
-
-        if (pollResult.status === "complete") {
-          set(finishConnectorConnection$, type, {
-            ...options,
-            clearSelectedConnector: true,
-          });
-          set(
-            internalConnectorOAuthDeviceAuthState$,
-            createIdleConnectorOAuthDeviceAuthState(),
-          );
-          completed = true;
-          return true;
-        }
-
-        if (pollResult.status !== "pending") {
-          set(internalConnectorOAuthDeviceAuthState$, {
-            status: pollResult.status,
-            connectorType: type,
-            authMethod,
-            message: getOAuthDeviceAuthTerminalMessage(pollResult),
-          });
-          return true;
-        }
-
-        const pollIntervalMs = Math.max(
-          secondsToMilliseconds(pollResult.interval),
-          OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS,
-        );
-        set(internalConnectorOAuthDeviceAuthState$, {
-          ...latest,
-          status: "pending",
-          pollIntervalMs,
-          errorMessage: null,
-        });
-
-        const nextRemainingMs = latest.expiresAtMs - now();
-        if (nextRemainingMs <= 0) {
-          expired = true;
-          return true;
-        }
-        await delay(Math.min(pollIntervalMs, nextRemainingMs), { signal: sig });
         sig.throwIfAborted();
-        return false;
+        if (outcome.completed) {
+          completed = true;
+        }
+        if (outcome.expired) {
+          expired = true;
+        }
+        return outcome.stop;
       },
       0,
       signal,
     );
+    signal.throwIfAborted();
 
     const latest = get(internalConnectorOAuthDeviceAuthState$);
     if (expired && isCurrentRequest(latest)) {
@@ -1709,61 +1795,74 @@ const completeConnectorExternalCode$ = command(
       errorMessage: null,
     });
 
-    const flowSignal = set(resetConnectorExternalCodeFlowSignal$, signal);
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroConnectorExternalCodeSessionContract, {
-      apiBase: OAUTH_WEB_API_BASE,
-    });
-    const completeSettled = await settle(
-      accept(
-        client.complete({
-          params: { type, sessionId: current.sessionId },
-          body: {
-            sessionToken: current.sessionToken,
-            code,
-          },
-          fetchOptions: { signal: flowSignal },
-        }),
-        [200],
-        { toast: false },
-      ),
-      flowSignal,
-    );
-    signal.throwIfAborted();
-    flowSignal.throwIfAborted();
-    const latest = get(internalConnectorExternalCodeState$);
-    if (
-      !isCurrentConnectorExternalCodeRequest(
-        latest,
-        type,
-        authMethod,
-        current.requestId,
-      )
-    ) {
-      return false;
-    }
+    let connectorStateChanged = false;
+    return await withCleanup(
+      (async () => {
+        const flowSignal = set(resetConnectorExternalCodeFlowSignal$, signal);
+        const createClient = get(zeroClient$);
+        const client = createClient(zeroConnectorExternalCodeSessionContract, {
+          apiBase: OAUTH_WEB_API_BASE,
+        });
+        const completeSettled = await settle(
+          accept(
+            client.complete({
+              params: { type, sessionId: current.sessionId },
+              body: {
+                sessionToken: current.sessionToken,
+                code,
+              },
+              fetchOptions: { signal: flowSignal },
+            }),
+            [200],
+            { toast: false },
+          ),
+        );
+        if (completeSettled.ok) {
+          connectorStateChanged = true;
+        }
+        signal.throwIfAborted();
+        flowSignal.throwIfAborted();
+        const latest = get(internalConnectorExternalCodeState$);
+        if (
+          !isCurrentConnectorExternalCodeRequest(
+            latest,
+            type,
+            authMethod,
+            current.requestId,
+          )
+        ) {
+          return false;
+        }
 
-    if (!completeSettled.ok) {
-      if (flowSignal.aborted) {
-        return false;
-      }
-      set(internalConnectorExternalCodeState$, {
-        ...latest,
-        status: "pending",
-        errorMessage: externalCodeErrorMessage(completeSettled.error),
-      });
-      return false;
-    }
+        if (!completeSettled.ok) {
+          if (flowSignal.aborted) {
+            return false;
+          }
+          set(internalConnectorExternalCodeState$, {
+            ...latest,
+            status: "pending",
+            errorMessage: externalCodeErrorMessage(completeSettled.error),
+          });
+          return false;
+        }
 
-    set(finishConnectorConnection$, type, {
-      ...options,
-      clearSelectedConnector: true,
-    });
-    set(
-      internalConnectorExternalCodeState$,
-      createIdleConnectorExternalCodeState(),
+        set(finishConnectorConnection$, type, {
+          ...options,
+          clearSelectedConnector: true,
+          reloadConnectors: false,
+        });
+        set(
+          internalConnectorExternalCodeState$,
+          createIdleConnectorExternalCodeState(),
+        );
+        return true;
+      })(),
+      () => {
+        if (connectorStateChanged) {
+          set(reloadConnectors$);
+        }
+      },
     );
-    return true;
   },
 );
 
