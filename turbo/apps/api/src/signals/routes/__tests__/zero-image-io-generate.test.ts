@@ -69,6 +69,12 @@ const FAL_NANO_BANANA_2_EDIT_URL =
   "https://queue.fal.run/fal-ai/nano-banana-2/edit";
 const FAL_NANO_BANANA_2_MEDIA_URL =
   "https://fal.media/files/test/nano-banana-2.webp";
+const FAL_BIREFNET_URL = "https://queue.fal.run/fal-ai/birefnet/v2";
+const FAL_BIREFNET_MEDIA_URL = "https://fal.media/files/test/birefnet.png";
+const FAL_CLARITY_UPSCALER_URL =
+  "https://queue.fal.run/fal-ai/clarity-upscaler";
+const FAL_CLARITY_UPSCALER_MEDIA_URL =
+  "https://fal.media/files/test/clarity-upscaler.png";
 const MOCKUP_IMAGE_URL = "https://example.com/mockup.png";
 const SECOND_MOCKUP_IMAGE_URL = "https://example.com/mockup-2.png";
 const IMAGE_PRICING_MARKUP_MULTIPLIER = 1.2;
@@ -359,6 +365,30 @@ async function upsertNanoBanana2ImagePricing(): Promise<void> {
       provider: "fal-ai/nano-banana-2",
       category: "output_image",
       unitPrice: FAL_NANO_BANANA_2_MARKED_UP_CREDITS_PER_IMAGE,
+      unitSize: 1,
+    },
+  ]);
+}
+
+async function upsertBirefnetImagePricing(): Promise<void> {
+  await upsertGenerationPricingRows(context.signal, [
+    {
+      kind: "image",
+      provider: "fal-ai/birefnet/v2",
+      category: "output_image",
+      unitPrice: 0,
+      unitSize: 1,
+    },
+  ]);
+}
+
+async function upsertClarityUpscalerImagePricing(): Promise<void> {
+  await upsertGenerationPricingRows(context.signal, [
+    {
+      kind: "image",
+      provider: "fal-ai/clarity-upscaler",
+      category: "output_megapixel",
+      unitPrice: 30,
       unitSize: 1,
     },
   ]);
@@ -1535,6 +1565,190 @@ describe("POST /api/zero/image-io/generate", () => {
       safety_tolerance: "4",
       image_urls: sourceImageUrls,
     });
+  });
+
+  it("removes backgrounds with birefnet through fal without a prompt", async () => {
+    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    await upsertBirefnetImagePricing();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let observedAuthorization: string | null = null;
+    let observedBody: Record<string, unknown> | null = null;
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(FAL_BIREFNET_URL, async ({ request }) => {
+        observedAuthorization = request.headers.get("authorization");
+        observedRequestUrl = request.url;
+        observedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(falQueueHandle("birefnet-request"));
+      }),
+      http.get(FAL_BIREFNET_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+
+    const app = createImageIoTestApp();
+    const response = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        model: "birefnet",
+        sourceImageUrls: [MOCKUP_IMAGE_URL],
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+
+    await postFalWebhook(app, observedRequestUrl, {
+      images: [
+        {
+          url: FAL_BIREFNET_MEDIA_URL,
+          width: 1024,
+          height: 1024,
+          content_type: "image/png",
+        },
+      ],
+    });
+    await flushWaitUntilForTest();
+
+    expect(observedRequestUrl).not.toBeNull();
+    expect(new URL(observedRequestUrl ?? "").pathname).toBe(
+      "/fal-ai/birefnet/v2",
+    );
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
+    expect(body).toMatchObject({
+      contentType: "image/png",
+      model: "fal-ai/birefnet/v2",
+      provider: "fal",
+      outputFormat: "png",
+      billingCategory: "output_image",
+      billingQuantity: 1,
+      sourceUrl: FAL_BIREFNET_MEDIA_URL,
+      sourceImageUrls: [MOCKUP_IMAGE_URL],
+    });
+    expect(observedAuthorization).toBe("Key test-fal-key");
+    expect(observedBody).toStrictEqual({ image_url: MOCKUP_IMAGE_URL });
+    expect(observedBody).not.toHaveProperty("prompt");
+  });
+
+  it("upscales images with clarity-upscaler through fal without a prompt", async () => {
+    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    await upsertClarityUpscalerImagePricing();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let observedAuthorization: string | null = null;
+    let observedBody: Record<string, unknown> | null = null;
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(FAL_CLARITY_UPSCALER_URL, async ({ request }) => {
+        observedAuthorization = request.headers.get("authorization");
+        observedRequestUrl = request.url;
+        observedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(falQueueHandle("clarity-upscaler-request"));
+      }),
+      http.get(FAL_CLARITY_UPSCALER_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+
+    const app = createImageIoTestApp();
+    const response = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        model: "clarity-upscaler",
+        imageUrl: MOCKUP_IMAGE_URL,
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+
+    await postFalWebhook(app, observedRequestUrl, {
+      images: [
+        {
+          url: FAL_CLARITY_UPSCALER_MEDIA_URL,
+          width: 2048,
+          height: 2048,
+          content_type: "image/png",
+        },
+      ],
+    });
+    await flushWaitUntilForTest();
+
+    expect(observedRequestUrl).not.toBeNull();
+    expect(new URL(observedRequestUrl ?? "").pathname).toBe(
+      "/fal-ai/clarity-upscaler",
+    );
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
+    expect(body).toMatchObject({
+      contentType: "image/png",
+      model: "fal-ai/clarity-upscaler",
+      provider: "fal",
+      imageSize: "2048x2048",
+      outputFormat: "png",
+      billingCategory: "output_megapixel",
+      billingQuantity: 5,
+      sourceUrl: FAL_CLARITY_UPSCALER_MEDIA_URL,
+      sourceImageUrls: [MOCKUP_IMAGE_URL],
+    });
+    expect(observedAuthorization).toBe("Key test-fal-key");
+    expect(observedBody).toStrictEqual({ image_url: MOCKUP_IMAGE_URL });
+    expect(observedBody).not.toHaveProperty("prompt");
+  });
+
+  it("rejects promptless models without a source image", async () => {
+    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    await upsertBirefnetImagePricing();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let calledFal = false;
+    server.use(
+      http.post(FAL_BIREFNET_URL, () => {
+        calledFal = true;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const app = createImageIoTestApp();
+    const response = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ model: "birefnet" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "birefnet requires imageUrl",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(calledFal).toBeFalsy();
   });
 
   it("generates GPT Image 1.5 through fal without returned usage", async () => {

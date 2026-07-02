@@ -401,6 +401,12 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ...usageGroup("image", "fal-ai/nano-banana-2", [
     ["output_image", usd(0.08 * 1.2), 1],
   ]),
+  // Background removal transform (fal cost is $0).
+  ...usageGroup("image", "fal-ai/birefnet/v2", [["output_image", usd(0), 1]]),
+  // Upscale/HD transform, billed per output megapixel.
+  ...usageGroup("image", "fal-ai/clarity-upscaler", [
+    ["output_megapixel", usd(0.036), 1],
+  ]),
 
   // BytePlus ModelArk video generation with a 200% provider-price multiplier.
   ...usageGroup("video", "dreamina-seedance-2-0-260128", [

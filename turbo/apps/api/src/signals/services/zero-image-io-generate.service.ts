@@ -28,6 +28,8 @@ const IMAGE_IO_EDGE_MULTIPLE = 16;
 const IMAGE_IO_MAX_ASPECT_RATIO = 3;
 const NANO_BANANA_2_MODEL = "fal-ai/nano-banana-2";
 const NANO_BANANA_2_MAX_SOURCE_IMAGE_URLS = 14;
+const BIREFNET_MODEL = "fal-ai/birefnet/v2";
+const CLARITY_UPSCALER_MODEL = "fal-ai/clarity-upscaler";
 
 const USAGE_KIND = "image";
 const FAL_OUTPUT_IMAGE_CATEGORY = "output_image";
@@ -83,11 +85,14 @@ const IMAGE_MODEL_ALIASES = {
   seedream4: "fal-ai/bytedance/seedream/v4/text-to-image",
   "nano-banana-2": NANO_BANANA_2_MODEL,
   "nano-banana2": NANO_BANANA_2_MODEL,
+  birefnet: BIREFNET_MODEL,
+  "clarity-upscaler": CLARITY_UPSCALER_MODEL,
 } as const;
 
 const IMAGE_MODEL_CONFIGS = {
   "gpt-image-2": {
     alias: "gpt-image-2",
+    promptless: false,
     endpointId: "openai/gpt-image-2",
     imageToImageEndpointId: "openai/gpt-image-2/edit",
     sourceImageInput: "image_urls",
@@ -112,6 +117,7 @@ const IMAGE_MODEL_CONFIGS = {
   },
   "gpt-image-1.5": {
     alias: "gpt-image-1.5",
+    promptless: false,
     endpointId: "fal-ai/gpt-image-1.5",
     imageToImageEndpointId: "fal-ai/gpt-image-1.5/edit",
     sourceImageInput: "image_urls",
@@ -136,6 +142,7 @@ const IMAGE_MODEL_CONFIGS = {
   },
   "gpt-image-1": {
     alias: "gpt-image-1",
+    promptless: false,
     endpointId: "fal-ai/gpt-image-1/text-to-image",
     imageToImageEndpointId: "fal-ai/gpt-image-1/edit-image",
     sourceImageInput: "image_urls",
@@ -160,6 +167,7 @@ const IMAGE_MODEL_CONFIGS = {
   },
   "gpt-image-1-mini": {
     alias: "gpt-image-1-mini",
+    promptless: false,
     endpointId: "fal-ai/gpt-image-1-mini",
     imageToImageEndpointId: "fal-ai/gpt-image-1-mini/edit",
     sourceImageInput: "image_urls",
@@ -184,6 +192,7 @@ const IMAGE_MODEL_CONFIGS = {
   },
   "fal-ai/flux-pro/v1.1": {
     alias: "flux-pro-1.1",
+    promptless: false,
     endpointId: "fal-ai/flux-pro/v1.1",
     imageToImageEndpointId: "fal-ai/flux-pro/v1.1/redux",
     sourceImageInput: "image_url",
@@ -208,6 +217,7 @@ const IMAGE_MODEL_CONFIGS = {
   },
   "fal-ai/flux-pro/v1.1-ultra": {
     alias: "flux-pro-1.1-ultra",
+    promptless: false,
     endpointId: "fal-ai/flux-pro/v1.1-ultra",
     imageToImageEndpointId: "fal-ai/flux-pro/v1.1-ultra/redux",
     sourceImageInput: "image_url",
@@ -232,6 +242,7 @@ const IMAGE_MODEL_CONFIGS = {
   },
   "fal-ai/qwen-image": {
     alias: "qwen-image",
+    promptless: false,
     endpointId: "fal-ai/qwen-image",
     imageToImageEndpointId: "fal-ai/qwen-image-2/edit",
     sourceImageInput: "image_url",
@@ -256,6 +267,7 @@ const IMAGE_MODEL_CONFIGS = {
   },
   "fal-ai/bytedance/seedream/v4/text-to-image": {
     alias: "seedream4",
+    promptless: false,
     endpointId: "fal-ai/bytedance/seedream/v4/text-to-image",
     imageToImageEndpointId: "fal-ai/bytedance/seedream/v4/edit",
     sourceImageInput: "image_urls",
@@ -280,6 +292,7 @@ const IMAGE_MODEL_CONFIGS = {
   },
   [NANO_BANANA_2_MODEL]: {
     alias: "nano-banana-2",
+    promptless: false,
     endpointId: NANO_BANANA_2_MODEL,
     imageToImageEndpointId: "fal-ai/nano-banana-2/edit",
     sourceImageInput: "image_urls",
@@ -297,6 +310,56 @@ const IMAGE_MODEL_CONFIGS = {
     usesOpenAiByok: false,
     supportsSeed: true,
     supportsSafetyTolerance: true,
+    supportsEnhancePrompt: false,
+    supportsMaskImage: false,
+    supportsInputFidelity: false,
+    supportsImagePromptStrength: false,
+  },
+  [BIREFNET_MODEL]: {
+    alias: "birefnet",
+    promptless: true,
+    endpointId: BIREFNET_MODEL,
+    imageToImageEndpointId: BIREFNET_MODEL,
+    sourceImageInput: "image_url",
+    provider: "fal",
+    sizeMode: "flexible",
+    sizeParameter: undefined,
+    outputFormats: ["png"],
+    pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
+    billingMode: "image",
+    supportsTransparentBackground: true,
+    supportsOutputCompression: false,
+    supportsModeration: false,
+    supportsQuality: false,
+    supportsBackground: false,
+    usesOpenAiByok: false,
+    supportsSeed: false,
+    supportsSafetyTolerance: false,
+    supportsEnhancePrompt: false,
+    supportsMaskImage: false,
+    supportsInputFidelity: false,
+    supportsImagePromptStrength: false,
+  },
+  [CLARITY_UPSCALER_MODEL]: {
+    alias: "clarity-upscaler",
+    promptless: true,
+    endpointId: CLARITY_UPSCALER_MODEL,
+    imageToImageEndpointId: CLARITY_UPSCALER_MODEL,
+    sourceImageInput: "image_url",
+    provider: "fal",
+    sizeMode: "flexible",
+    sizeParameter: undefined,
+    outputFormats: FAL_IMAGE_OUTPUT_FORMATS,
+    pricingCategories: [FAL_OUTPUT_MEGAPIXEL_CATEGORY],
+    billingMode: "megapixel",
+    supportsTransparentBackground: false,
+    supportsOutputCompression: false,
+    supportsModeration: false,
+    supportsQuality: false,
+    supportsBackground: false,
+    usesOpenAiByok: false,
+    supportsSeed: false,
+    supportsSafetyTolerance: false,
     supportsEnhancePrompt: false,
     supportsMaskImage: false,
     supportsInputFidelity: false,
@@ -677,9 +740,15 @@ function readBoolean(
   return typeof value === "boolean" ? value : fallback;
 }
 
-function parsePrompt(body: Record<string, unknown>): string | ErrorResponse {
+function parsePrompt(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+): string | ErrorResponse {
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   if (prompt.length === 0) {
+    if (modelConfig.promptless) {
+      return prompt;
+    }
     return badRequest("prompt is required");
   }
   if (prompt.length > IMAGE_IO_MAX_PROMPT_LENGTH) {
@@ -884,6 +953,9 @@ function parseSourceImageUrls(
   }
 
   if (sourceImageUrls.length === 0) {
+    if (modelConfig.promptless) {
+      return badRequest(`${modelConfig.alias} requires imageUrl`);
+    }
     return sourceImageUrls;
   }
   const maxSourceImageUrls =
@@ -992,16 +1064,16 @@ export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
     return badRequest("Invalid JSON body");
   }
 
-  const prompt = parsePrompt(body);
-  if (typeof prompt === "object") {
-    return prompt;
-  }
-
   const model = parseImageModel(body);
   if (typeof model === "object") {
     return model;
   }
   const modelConfig = IMAGE_MODEL_CONFIGS[model];
+
+  const prompt = parsePrompt(body, modelConfig);
+  if (typeof prompt === "object") {
+    return prompt;
+  }
 
   const sourceImageUrls = parseSourceImageUrls(body, modelConfig);
   if (typeof sourceImageUrls === "object" && "status" in sourceImageUrls) {
@@ -1309,8 +1381,20 @@ function falAspectRatio(options: ImageOptions): string {
   return nearestFalAspectRatio(parsed.width, parsed.height);
 }
 
+function falSourceImageInput(
+  modelConfig: ImageModelConfig,
+  sourceImageUrls: readonly string[],
+): Record<string, unknown> {
+  return modelConfig.sourceImageInput === "image_url"
+    ? { image_url: sourceImageUrls[0] }
+    : { image_urls: sourceImageUrls };
+}
+
 function falImageInput(options: ImageOptions): Record<string, unknown> {
   const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
+  if (modelConfig.promptless) {
+    return falSourceImageInput(modelConfig, options.sourceImageUrls);
+  }
   return {
     prompt: options.prompt,
     ...(modelConfig.sizeParameter === "aspect_ratio"
@@ -1339,9 +1423,7 @@ function falImageInput(options: ImageOptions): Record<string, unknown> {
       ? { enhance_prompt: options.enhancePrompt }
       : {}),
     ...(options.sourceImageUrls.length > 0
-      ? modelConfig.sourceImageInput === "image_url"
-        ? { image_url: options.sourceImageUrls[0] }
-        : { image_urls: options.sourceImageUrls }
+      ? falSourceImageInput(modelConfig, options.sourceImageUrls)
       : {}),
     ...(modelConfig.supportsMaskImage && options.maskImageUrl
       ? { mask_image_url: options.maskImageUrl }
