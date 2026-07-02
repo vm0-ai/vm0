@@ -300,6 +300,22 @@ async function setOwnerTimezone(
   });
 }
 
+async function setAgentVisibility(
+  scenario: Scenario,
+  opts: {
+    readonly visibility: "public" | "private";
+    readonly ownerUserId?: string;
+  },
+): Promise<void> {
+  await postWorkflowStateAction({
+    action: "set-agent-visibility",
+    org_id: scenario.fixture.orgId,
+    agent_id: scenario.agentId,
+    visibility: opts.visibility,
+    owner_user_id: opts.ownerUserId,
+  });
+}
+
 async function workflowUserMessageBrief(args: {
   readonly runId: string;
 }): Promise<string | undefined> {
@@ -610,6 +626,32 @@ describe("zero workflow trigger scheduler", () => {
 
     const trigger = await loadTrigger(triggerId);
     expect(dateField(trigger, "nextRunAt").getTime()).toBe(due.getTime());
+  });
+
+  it("skips a due trigger when the owner can no longer read the agent", async () => {
+    const scenario = await setup();
+    const due = pastDate();
+    const { triggerId } = await seedTrigger(scenario, {
+      scheduleType: "loop",
+      intervalSeconds: 300,
+      nextRunAt: due,
+    });
+
+    await setAgentVisibility(scenario, {
+      visibility: "private",
+      ownerUserId: `other_${scenario.fixture.userId}`,
+    });
+
+    const result = await executeDueWorkflowTriggers();
+    expect(result.executed).toBe(0);
+    expect(result.skipped).toBe(1);
+
+    const trigger = await loadTrigger(triggerId);
+    expect(booleanField(trigger, "enabled")).toBeTruthy();
+    expect(dateField(trigger, "nextRunAt").getTime()).toBe(due.getTime());
+    expect(trigger?.lastRunId).toBeNull();
+    const state = await runStateForTrigger(triggerId);
+    expect(records(state.runs)).toHaveLength(0);
   });
 
   it("advances a cron trigger on the completion callback", async () => {

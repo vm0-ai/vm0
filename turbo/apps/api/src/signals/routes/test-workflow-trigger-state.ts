@@ -347,6 +347,21 @@ async function seedWorkflowsFixtureForAction(
     })
     .onConflictDoNothing();
   signal.throwIfAborted();
+  await db
+    .insert(orgMembersCache)
+    .values({ orgId, userId, role: "member" })
+    .onConflictDoNothing();
+  signal.throwIfAborted();
+  await db
+    .insert(orgMembersMetadata)
+    .values({ orgId, userId, timezone: null })
+    .onConflictDoNothing();
+  signal.throwIfAborted();
+  await db
+    .insert(userCache)
+    .values({ userId, email: `${userId}@example.com` })
+    .onConflictDoNothing();
+  signal.throwIfAborted();
   return actionOk({
     fixture: {
       org_id: orgId,
@@ -765,6 +780,28 @@ async function setOwnerTimezoneForAction(
         eq(orgMembersMetadata.userId, userId),
       ),
     );
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function setAgentVisibilityForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const orgId = readString(body, "org_id");
+  const agentId = readString(body, "agent_id");
+  if (!orgId || !agentId) {
+    return actionBadRequest("org_id and agent_id are required");
+  }
+  const owner = readOptionalString(body, "owner_user_id");
+  await db
+    .update(zeroAgents)
+    .set({
+      visibility: readVisibility(body),
+      ...(owner ? { owner } : {}),
+    })
+    .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.id, agentId)));
   signal.throwIfAborted();
   return actionOk();
 }
@@ -1254,6 +1291,7 @@ const workflowTriggerStateActionHandlers = {
   "seed-github-installation": seedGithubInstallationForAction,
   "seed-github-user-link": seedGithubUserLinkForAction,
   "set-owner-timezone": setOwnerTimezoneForAction,
+  "set-agent-visibility": setAgentVisibilityForAction,
   "seed-active-run": seedActiveRunForAction,
   "set-trigger-run-state": setTriggerRunStateForAction,
   "get-trigger": getTriggerForAction,
