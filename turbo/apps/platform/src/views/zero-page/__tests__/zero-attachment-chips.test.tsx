@@ -1819,6 +1819,7 @@ describe("zero attachment chips", () => {
     const deleteButton = marker.querySelector<HTMLElement>(
       "[data-testid='html-dom-comment-delete']",
     )!;
+    const deleteIcon = deleteButton.querySelector<SVGSVGElement>("svg")!;
     expect(marker).toHaveAttribute(HTML_DOM_EDIT_OVERLAY_ATTR);
     expect(marker).not.toHaveAttribute("title");
     expect(marker).toHaveAttribute("data-vm0-html-comment-placement", "right");
@@ -1831,9 +1832,17 @@ describe("zero attachment chips", () => {
     expect(deleteButton.parentElement).toBe(tag);
     expect(deleteButton.style.right).toBe("8px");
     expect(deleteButton.style.top).toBe("50%");
+    expect(deleteButton.style.width).toBe("24px");
+    expect(deleteButton.style.height).toBe("24px");
+    expect(deleteButton.style.alignItems).toBe("center");
+    expect(deleteButton.style.justifyContent).toBe("center");
     expect(deleteButton.style.transform).toBe("translateY(-50%)");
     expect(deleteButton.style.opacity).toBe("0");
     expect(deleteButton.style.pointerEvents).toBe("none");
+    expect(deleteIcon).not.toBeNull();
+    expect(deleteIcon.getAttribute("viewBox")).toBe("0 0 24 24");
+    expect(deleteIcon.style.width).toBe("14px");
+    expect(deleteIcon.style.height).toBe("14px");
     expect(frame.contentDocument?.head.textContent).toContain(
       "[data-vm0-html-comment-target-node-id]:hover [data-vm0-html-comment-delete-id]",
     );
@@ -1847,6 +1856,7 @@ describe("zero attachment chips", () => {
     expect(tag.style.textAlign).toBe("center");
     expect(tagText.style.whiteSpace).toBe("normal");
     expect(tagText.style.overflowWrap).toBe("anywhere");
+    expect(tagText.style.padding).toBe("0px 22px");
     expect(tagText.style.textAlign).toBe("center");
     expect(tagText.style.getPropertyValue("-webkit-line-clamp")).toBe("2");
     expect(screen.getByTestId("html-dom-comment-toolbar")).toBeInTheDocument();

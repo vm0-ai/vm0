@@ -1688,7 +1688,7 @@ function styleCommentMarkerLabelText(labelText: HTMLElement): void {
   labelText.style.whiteSpace = "normal";
   labelText.style.overflow = "hidden";
   labelText.style.overflowWrap = "anywhere";
-  labelText.style.padding = "0 18px";
+  labelText.style.padding = "0 22px";
   labelText.style.textAlign = "center";
   labelText.style.setProperty("-webkit-box-orient", "vertical");
   labelText.style.setProperty(
@@ -1720,30 +1720,48 @@ function styleCommentMarkerDeleteButton(params: {
   params.button.dataset.testid = "html-dom-comment-delete";
   params.button.setAttribute(HTML_DOM_COMMENT_DELETE_ATTR, params.commentId);
   params.button.setAttribute("aria-label", "Delete comment");
-  params.button.textContent = "x";
   params.button.style.position = "absolute";
   params.button.style.right = "8px";
   params.button.style.top = "50%";
   params.button.style.display = "inline-flex";
   params.button.style.alignItems = "center";
   params.button.style.justifyContent = "center";
-  params.button.style.width = "20px";
-  params.button.style.height = "20px";
+  params.button.style.width = "24px";
+  params.button.style.height = "24px";
   params.button.style.border = "0";
   params.button.style.borderRadius = "999px";
   params.button.style.background = "rgba(255, 255, 255, 0.18)";
   params.button.style.color = "white";
   params.button.style.cursor = "pointer";
-  params.button.style.fontFamily =
-    "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-  params.button.style.fontSize = "13px";
-  params.button.style.fontWeight = "700";
   params.button.style.lineHeight = "1";
   params.button.style.opacity = "0";
   params.button.style.padding = "0";
   params.button.style.pointerEvents = "none";
   params.button.style.transform = "translateY(-50%)";
   params.button.style.transition = "opacity 120ms ease, background 120ms ease";
+}
+
+function createCommentMarkerDeleteIcon(doc: Document): SVGSVGElement {
+  const icon = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("fill", "none");
+  icon.setAttribute("stroke", "currentColor");
+  icon.setAttribute("stroke-width", "2.25");
+  icon.setAttribute("stroke-linecap", "round");
+  icon.setAttribute("stroke-linejoin", "round");
+  icon.setAttribute("aria-hidden", "true");
+  icon.style.display = "block";
+  icon.style.width = "14px";
+  icon.style.height = "14px";
+
+  const firstLine = doc.createElementNS("http://www.w3.org/2000/svg", "path");
+  firstLine.setAttribute("d", "M18 6 6 18");
+
+  const secondLine = doc.createElementNS("http://www.w3.org/2000/svg", "path");
+  secondLine.setAttribute("d", "m6 6 12 12");
+
+  icon.append(firstLine, secondLine);
+  return icon;
 }
 
 function positionCommentMarkerParts(params: {
@@ -1850,6 +1868,7 @@ function createFrameCommentMarker(params: {
   const label = params.doc.createElement("button");
   const labelText = params.doc.createElement("span");
   const deleteButton = params.doc.createElement("button");
+  const deleteIcon = createCommentMarkerDeleteIcon(params.doc);
   label.type = "button";
   deleteButton.type = "button";
   dot.dataset.testid = "html-dom-comment-anchor";
@@ -1863,6 +1882,7 @@ function createFrameCommentMarker(params: {
     button: deleteButton,
     commentId: params.comment.id,
   });
+  deleteButton.append(deleteIcon);
   label.append(labelText, deleteButton);
   positionCommentMarkerParts({
     dot,
