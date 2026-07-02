@@ -7,6 +7,23 @@ import { user$ } from "../auth.ts";
 import { getStoredAdAttributionMetadata } from "./ad-attribution.ts";
 
 const SIGNUP_ATTRIBUTION_RECORDED_KEY = "vm0.signupAttributionRecorded";
+const SIGNUP_CONVERSION_RECORDED_KEY = "vm0.googleAdsSignupConversionRecorded";
+const GOOGLE_ADS_SIGNUP_SEND_TO = "AW-18144854014/OlLBCNXGgqwcEP7_kcxD";
+const SIGNUP_CONVERSION_VALUE_USD = 1;
+
+type GoogleTag = (
+  command: "event",
+  eventName: "conversion",
+  params: {
+    readonly send_to: string;
+    readonly value: number;
+    readonly currency: "USD";
+  },
+) => void;
+
+type WindowWithGoogleTag = Window & {
+  readonly gtag?: GoogleTag;
+};
 
 function getSessionStorage(): Storage | null {
   if (typeof window === "undefined") {
@@ -14,6 +31,30 @@ function getSessionStorage(): Storage | null {
   }
 
   return window.sessionStorage;
+}
+
+function trackGoogleAdsSignupConversion(
+  storage: Storage | null,
+  fingerprint: string,
+): void {
+  if (storage?.getItem(SIGNUP_CONVERSION_RECORDED_KEY) === fingerprint) {
+    return;
+  }
+
+  const gtag =
+    typeof window === "undefined"
+      ? undefined
+      : (window as WindowWithGoogleTag).gtag;
+  if (typeof gtag !== "function") {
+    return;
+  }
+
+  gtag("event", "conversion", {
+    send_to: GOOGLE_ADS_SIGNUP_SEND_TO,
+    value: SIGNUP_CONVERSION_VALUE_USD,
+    currency: "USD",
+  });
+  storage?.setItem(SIGNUP_CONVERSION_RECORDED_KEY, fingerprint);
 }
 
 export const recordSignupAttribution$ = command(
@@ -37,7 +78,7 @@ export const recordSignupAttribution$ = command(
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroAttributionContract);
-    await accept(
+    const result = await accept(
       client.recordSignup({
         body: { attribution },
         fetchOptions: { signal },
@@ -45,6 +86,9 @@ export const recordSignupAttribution$ = command(
       [200],
     );
     signal.throwIfAborted();
+    if (result.body.recorded) {
+      trackGoogleAdsSignupConversion(storage, fingerprint);
+    }
     storage?.setItem(SIGNUP_ATTRIBUTION_RECORDED_KEY, fingerprint);
   },
 );
