@@ -116,6 +116,26 @@ export interface DesktopKeepAwakeState {
   readonly active: boolean;
 }
 
+export type DesktopComputerUseFilesystemPluginStatus =
+  | "disabled"
+  | "starting"
+  | "running"
+  | "error";
+
+export interface DesktopComputerUseFilesystemPluginState {
+  readonly featureEnabled: boolean;
+  readonly enabled: boolean;
+  readonly allowedDirectories: readonly string[];
+  readonly status: DesktopComputerUseFilesystemPluginStatus;
+  readonly lastError: string | null;
+  readonly version: string;
+  readonly capabilities: readonly string[];
+}
+
+export interface DesktopComputerUsePluginsState {
+  readonly filesystem: DesktopComputerUseFilesystemPluginState;
+}
+
 export interface DesktopComputerUseState {
   readonly platform: NodeJS.Platform;
   readonly supported: boolean;
@@ -127,6 +147,7 @@ export interface DesktopComputerUseState {
   readonly permissions: ComputerUsePermissionState;
   readonly host: ComputerUseHostRuntimeState;
   readonly keepAwake: DesktopKeepAwakeState;
+  readonly plugins?: DesktopComputerUsePluginsState;
 }
 
 export function hasRequiredComputerUsePermissions(

@@ -250,6 +250,15 @@ function createComputerUseApi(): {
   readonly setKeepAwakeEnabled: ReturnType<
     typeof vi.fn<(enabled: boolean) => DesktopComputerUseState>
   >;
+  readonly setFilesystemPluginEnabled: ReturnType<
+    typeof vi.fn<(enabled: boolean) => DesktopComputerUseState>
+  >;
+  readonly addFilesystemPluginAllowedDirectory: ReturnType<
+    typeof vi.fn<() => Promise<DesktopComputerUseState>>
+  >;
+  readonly removeFilesystemPluginAllowedDirectory: ReturnType<
+    typeof vi.fn<(directory: string) => DesktopComputerUseState>
+  >;
 } {
   const state = createComputerUseState();
   return {
@@ -261,6 +270,9 @@ function createComputerUseApi(): {
     requestScreenRecordingPermission: vi.fn(async () => state),
     probeAutomationPermission: vi.fn(async () => state),
     setKeepAwakeEnabled: vi.fn(() => state),
+    setFilesystemPluginEnabled: vi.fn(() => state),
+    addFilesystemPluginAllowedDirectory: vi.fn(async () => state),
+    removeFilesystemPluginAllowedDirectory: vi.fn(() => state),
   };
 }
 

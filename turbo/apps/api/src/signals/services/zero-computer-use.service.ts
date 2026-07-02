@@ -13,18 +13,31 @@ import {
   type SQL,
 } from "drizzle-orm";
 import {
+  isExpiredPluginContentPointer,
   isExpiredScreenshotPointer,
+  isStoredPluginContentPointer,
   isStoredScreenshotPointer,
+  type ClientPluginContentPointer,
   type ClientScreenshotPointer,
   type ComputerUseCommandError,
   type ComputerUseCommandKind,
   type ComputerUseCommandResult,
   type ComputerUseCommandStatus,
   type ComputerUseHost,
+  type ComputerUsePluginCommandKind,
   type ComputerUseReadCommandKind,
   type ComputerUseWriteCommandKind,
+  type StoredPluginContentPointer,
   type StoredScreenshotPointer,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
+import {
+  COMPUTER_USE_PLUGIN_CALL_KIND,
+  COMPUTER_USE_PLUGIN_RESULT_BLOB_MAX_BYTES,
+  COMPUTER_USE_PLUGIN_RESULT_INLINE_TEXT_MAX_BYTES,
+  computerUseFilesystemToolIsDestructive,
+  computerUsePluginCallRequiredCapabilities,
+  isComputerUsePluginCallPayload,
+} from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
 import {
   computerUseCommandAuditEvents,
   computerUseCommands,
@@ -58,7 +71,15 @@ const COMPUTER_USE_WRITE_COMMANDS = [
   "keyboard.type_text",
   "keyboard.press_key",
 ] as const satisfies readonly ComputerUseWriteCommandKind[];
+const COMPUTER_USE_PLUGIN_COMMANDS = [
+  COMPUTER_USE_PLUGIN_CALL_KIND,
+] as const satisfies readonly ComputerUsePluginCommandKind[];
 const COMPUTER_USE_COMMANDS = [
+  ...COMPUTER_USE_READ_COMMANDS,
+  ...COMPUTER_USE_WRITE_COMMANDS,
+  ...COMPUTER_USE_PLUGIN_COMMANDS,
+] as const satisfies readonly ComputerUseCommandKind[];
+const COMPUTER_USE_LEGACY_COMMANDS = [
   ...COMPUTER_USE_READ_COMMANDS,
   ...COMPUTER_USE_WRITE_COMMANDS,
 ] as const satisfies readonly ComputerUseCommandKind[];
@@ -94,6 +115,9 @@ interface ComputerUseCommandPayload {
   readonly text?: string;
   readonly key?: string;
   readonly action?: string;
+  readonly plugin?: string;
+  readonly tool?: string;
+  readonly arguments?: Record<string, unknown>;
 }
 
 type CreateComputerUseCommandResult =
@@ -272,22 +296,53 @@ async function clearComputerUseHostThreadBindings(params: {
     .where(eq(slackOrgThreadSessions.computerUseHostId, params.hostId));
 }
 
-function hostSupportsCommand(
-  host: ComputerUseHostRow,
-  kind: ComputerUseCommandKind,
-): boolean {
-  return (
-    host.supportedCapabilities.length === 0 ||
-    host.supportedCapabilities.includes(kind)
-  );
-}
-
 function isComputerUseWriteCommandKind(
   kind: string,
 ): kind is ComputerUseWriteCommandKind {
   return COMPUTER_USE_WRITE_COMMANDS.includes(
     kind as ComputerUseWriteCommandKind,
   );
+}
+
+function isComputerUsePluginCommandKind(
+  kind: string,
+): kind is ComputerUsePluginCommandKind {
+  return COMPUTER_USE_PLUGIN_COMMANDS.includes(
+    kind as ComputerUsePluginCommandKind,
+  );
+}
+
+function commandRequiredCapabilities(params: {
+  readonly kind: ComputerUseCommandKind;
+  readonly payload: Record<string, unknown>;
+}): readonly string[] {
+  if (params.kind === COMPUTER_USE_PLUGIN_CALL_KIND) {
+    if (!isComputerUsePluginCallPayload(params.payload)) {
+      return [COMPUTER_USE_PLUGIN_CALL_KIND];
+    }
+    return computerUsePluginCallRequiredCapabilities({
+      plugin: params.payload.plugin,
+      tool: params.payload.tool,
+    });
+  }
+  return [params.kind];
+}
+
+function hostSupportsCommand(params: {
+  readonly host: Pick<ComputerUseHostRow, "supportedCapabilities">;
+  readonly kind: ComputerUseCommandKind;
+  readonly payload: Record<string, unknown>;
+}): boolean {
+  if (params.host.supportedCapabilities.length === 0) {
+    return COMPUTER_USE_LEGACY_COMMANDS.includes(params.kind);
+  }
+  const required = commandRequiredCapabilities({
+    kind: params.kind,
+    payload: params.payload,
+  });
+  return required.every((capability) => {
+    return params.host.supportedCapabilities.includes(capability);
+  });
 }
 
 function commandPayload(
@@ -336,6 +391,15 @@ function commandPayload(
   if (params.action) {
     payload.action = params.action.trim();
   }
+  if (params.plugin) {
+    payload.plugin = params.plugin.trim();
+  }
+  if (params.tool) {
+    payload.tool = params.tool.trim();
+  }
+  if (params.arguments) {
+    payload.arguments = params.arguments;
+  }
   return payload;
 }
 
@@ -366,6 +430,17 @@ function extensionForScreenshotMime(mimeType: string): string {
     return "webp";
   }
   return "bin";
+}
+
+function extensionForPluginMime(mimeType: string): string {
+  if (mimeType === "text/plain") {
+    return "txt";
+  }
+  if (mimeType === "application/json") {
+    return "json";
+  }
+  const suffix = mimeType.includes("/") ? mimeType.split("/").at(-1) : null;
+  return suffix?.replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 16) || "bin";
 }
 
 function numberField(result: ComputerUseCommandResult, key: string): number {
@@ -435,6 +510,106 @@ function offloadScreenshotForResult(
   });
 }
 
+interface InlinePluginContent {
+  readonly dataBase64: string;
+  readonly mimeType: string;
+  readonly fileName: string;
+}
+
+function inlinePluginContent(value: unknown): InlinePluginContent | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const content = value as {
+    readonly dataBase64?: unknown;
+    readonly mimeType?: unknown;
+    readonly fileName?: unknown;
+  };
+  if (
+    typeof content.dataBase64 !== "string" ||
+    typeof content.mimeType !== "string" ||
+    typeof content.fileName !== "string"
+  ) {
+    return null;
+  }
+  return {
+    dataBase64: content.dataBase64,
+    mimeType: content.mimeType,
+    fileName: content.fileName,
+  };
+}
+
+function offloadPluginContentForResult(
+  db: Db,
+  params: {
+    readonly hostToken: string;
+    readonly commandId: string;
+    readonly result: ComputerUseCommandResult;
+  },
+  signal: AbortSignal,
+): Computed<Promise<ComputerUseCommandResult>> {
+  return computed(async (get): Promise<ComputerUseCommandResult> => {
+    const pluginContent = inlinePluginContent(params.result.pluginContent);
+    const inlineContent = params.result.content;
+    if (
+      typeof inlineContent === "string" &&
+      Buffer.byteLength(inlineContent, "utf8") >
+        COMPUTER_USE_PLUGIN_RESULT_INLINE_TEXT_MAX_BYTES
+    ) {
+      const error: ComputerUseCommandError = {
+        code: "result_too_large",
+        message: `Computer-use plugin inline result exceeds ${COMPUTER_USE_PLUGIN_RESULT_INLINE_TEXT_MAX_BYTES} bytes`,
+      };
+      return { error };
+    }
+    if (!pluginContent) {
+      return params.result;
+    }
+
+    const buffer = Buffer.from(pluginContent.dataBase64, "base64");
+    if (buffer.length > COMPUTER_USE_PLUGIN_RESULT_BLOB_MAX_BYTES) {
+      const error: ComputerUseCommandError = {
+        code: "result_too_large",
+        message: `Computer-use plugin result exceeds ${COMPUTER_USE_PLUGIN_RESULT_BLOB_MAX_BYTES} bytes`,
+      };
+      return { error };
+    }
+
+    const [identity] = await db
+      .select({
+        orgId: computerUseHosts.orgId,
+        userId: computerUseHosts.userId,
+      })
+      .from(computerUseHosts)
+      .where(
+        and(
+          eq(computerUseHosts.tokenHash, hashSecret(params.hostToken)),
+          isNull(computerUseHosts.revokedAt),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (!identity) {
+      return params.result;
+    }
+
+    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const key = `computer-use/${identity.orgId}/${identity.userId}/${params.commandId}/plugin-content.${extensionForPluginMime(pluginContent.mimeType)}`;
+    await get(putS3Object(bucket, key, buffer, pluginContent.mimeType));
+    signal.throwIfAborted();
+
+    const pointer: StoredPluginContentPointer = {
+      type: "s3",
+      bucket,
+      key,
+      mimeType: pluginContent.mimeType,
+      sizeBytes: buffer.length,
+      fileName: pluginContent.fileName,
+    };
+    return { ...params.result, pluginContent: pointer };
+  });
+}
+
 /**
  * Map a stored result's screenshot pointer to its client-facing form, dropping
  * the internal `bucket`/`key` so storage layout never leaves the API. Inline
@@ -457,6 +632,20 @@ function toClientResult(
   if (isExpiredScreenshotPointer(screenshot)) {
     const clientPointer: ClientScreenshotPointer = { type: "expired" };
     return { ...result, screenshot: clientPointer };
+  }
+  const pluginContent = result.pluginContent;
+  if (isStoredPluginContentPointer(pluginContent)) {
+    const clientPointer: ClientPluginContentPointer = {
+      type: "s3",
+      mimeType: pluginContent.mimeType,
+      sizeBytes: pluginContent.sizeBytes,
+      fileName: pluginContent.fileName,
+    };
+    return { ...result, pluginContent: clientPointer };
+  }
+  if (isExpiredPluginContentPointer(pluginContent)) {
+    const clientPointer: ClientPluginContentPointer = { type: "expired" };
+    return { ...result, pluginContent: clientPointer };
   }
   return result;
 }
@@ -526,6 +715,75 @@ function redactedResultForAudit(
   return result;
 }
 
+function stringArrayMetadata(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const strings = value.filter((entry): entry is string => {
+    return typeof entry === "string";
+  });
+  return strings.length > 0 ? strings : undefined;
+}
+
+function pluginCommandAuditMetadata(params: {
+  readonly command: ComputerUseCommandRow;
+  readonly result?: ComputerUseCommandResult | null;
+  readonly error?: ComputerUseCommandError | null;
+}): Record<string, unknown> | null {
+  if (!isComputerUsePluginCallPayload(params.command.payload)) {
+    return null;
+  }
+
+  const args = params.command.payload.arguments;
+  const metadata: Record<string, unknown> = {
+    plugin: params.command.payload.plugin,
+    tool: params.command.payload.tool,
+    status: params.error ? "failed" : "succeeded",
+    destructive: computerUseFilesystemToolIsDestructive(
+      params.command.payload.tool,
+    ),
+  };
+
+  const path = args.path;
+  if (typeof path === "string") {
+    metadata.path = path;
+  }
+  const paths = stringArrayMetadata(args.paths);
+  if (paths) {
+    metadata.paths = paths;
+  }
+  const source = args.source;
+  if (typeof source === "string") {
+    metadata.source = source;
+  }
+  const destination = args.destination;
+  if (typeof destination === "string") {
+    metadata.destination = destination;
+  }
+
+  const result = params.result;
+  if (result) {
+    if (typeof result.sizeBytes === "number") {
+      metadata.sizeBytes = result.sizeBytes;
+    }
+    if (typeof result.truncated === "boolean") {
+      metadata.truncated = result.truncated;
+    }
+    const pluginContent = result.pluginContent;
+    if (isStoredPluginContentPointer(pluginContent)) {
+      metadata.offloaded = true;
+      metadata.sizeBytes = pluginContent.sizeBytes;
+      metadata.fileName = pluginContent.fileName;
+      metadata.mimeType = pluginContent.mimeType;
+    } else if (isExpiredPluginContentPointer(pluginContent)) {
+      metadata.offloaded = true;
+      metadata.expired = true;
+    }
+  }
+
+  return metadata;
+}
+
 function errorForAudit(
   error: ComputerUseCommandError | null | undefined,
 ): Record<string, unknown> | null {
@@ -554,6 +812,26 @@ function commandErrorFromRow(
     code: "unsupported_command",
     message: row.error ?? "Computer-use command failed",
   };
+}
+
+function commandErrorFromResult(
+  result: ComputerUseCommandResult | null | undefined,
+): ComputerUseCommandError | null {
+  const error = result?.error;
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    "message" in error &&
+    typeof error.code === "string" &&
+    typeof error.message === "string"
+  ) {
+    return {
+      code: error.code as ComputerUseCommandError["code"],
+      message: error.message,
+    };
+  }
+  return null;
 }
 
 function runningCommandHasTimedOut(
@@ -626,9 +904,22 @@ async function insertComputerUseCommandAuditEvent(
     readonly createdAt: Date;
   },
 ): Promise<void> {
-  if (!isComputerUseWriteCommandKind(params.command.kind)) {
+  const auditPluginCommand = isComputerUsePluginCommandKind(
+    params.command.kind,
+  );
+  if (
+    !isComputerUseWriteCommandKind(params.command.kind) &&
+    !auditPluginCommand
+  ) {
     return;
   }
+  const redactedResult = auditPluginCommand
+    ? pluginCommandAuditMetadata({
+        command: params.command,
+        result: params.result,
+        error: params.error,
+      })
+    : redactedResultForAudit(params.result);
 
   await tx.insert(computerUseCommandAuditEvents).values({
     commandId: params.command.id,
@@ -642,7 +933,7 @@ async function insertComputerUseCommandAuditEvent(
         ? params.command.payload.app
         : null,
     event: params.event,
-    redactedResult: redactedResultForAudit(params.result),
+    redactedResult,
     error: errorForAudit(params.error),
     createdAt: params.createdAt,
   });
@@ -710,6 +1001,7 @@ async function failStaleRunningComputerUseCommands(
 function resolveComputerUseCommandTargets(params: {
   readonly onlineHosts: readonly ComputerUseHostRow[];
   readonly kind: ComputerUseCommandKind;
+  readonly payload: Record<string, unknown>;
   readonly targetHostId?: string;
 }): ResolveComputerUseCommandTargetsResult {
   if (params.onlineHosts.length === 0) {
@@ -726,7 +1018,11 @@ function resolveComputerUseCommandTargets(params: {
   }
 
   const supported = candidates.filter((host) => {
-    return hostSupportsCommand(host, params.kind);
+    return hostSupportsCommand({
+      host,
+      kind: params.kind,
+      payload: params.payload,
+    });
   });
   if (supported.length === 0) {
     return { status: "host_unsupported" };
@@ -1090,16 +1386,17 @@ export const createComputerUseCommand$ = command(
     const onlineHosts = hosts.filter((host) => {
       return computerUseHostIsOnline(host, now);
     });
+    const payload = commandPayload(params.payload);
     const target = resolveComputerUseCommandTargets({
       onlineHosts,
       kind: params.kind,
+      payload,
       targetHostId: params.targetHostId,
     });
     if (target.status !== "resolved") {
       return target;
     }
 
-    const payload = commandPayload(params.payload);
     const [row] = await db
       .insert(computerUseCommands)
       .values({
@@ -1231,6 +1528,61 @@ export const getComputerUseCommandScreenshot$ = command(
   },
 );
 
+export const getComputerUseCommandPluginContent$ = command(
+  async (
+    { get, set },
+    params: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly commandId: string;
+      readonly hostId?: string;
+    },
+    signal: AbortSignal,
+  ): Promise<{
+    readonly buffer: Buffer;
+    readonly contentType: string;
+    readonly fileName: string;
+  } | null> => {
+    const db = set(writeDb$);
+    const [row] = await db
+      .select({
+        status: computerUseCommands.status,
+        result: computerUseCommands.result,
+      })
+      .from(computerUseCommands)
+      .where(
+        and(
+          eq(computerUseCommands.orgId, params.orgId),
+          eq(computerUseCommands.userId, params.userId),
+          eq(computerUseCommands.id, params.commandId),
+          ...(params.hostId
+            ? [eq(computerUseCommands.hostId, params.hostId)]
+            : []),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (!row || row.status !== "succeeded" || !row.result) {
+      return null;
+    }
+
+    const pluginContent = row.result.pluginContent;
+    if (!isStoredPluginContentPointer(pluginContent)) {
+      return null;
+    }
+
+    const buffer = await get(
+      downloadS3Buffer(pluginContent.bucket, pluginContent.key),
+    );
+    signal.throwIfAborted();
+    return {
+      buffer,
+      contentType: pluginContent.mimeType,
+      fileName: pluginContent.fileName,
+    };
+  },
+);
+
 export const claimNextComputerUseHostCommand$ = command(
   async (
     { set },
@@ -1290,11 +1642,7 @@ export const claimNextComputerUseHostCommand$ = command(
 
       const effectiveCapabilities =
         capabilities.length > 0 ? capabilities : host.supportedCapabilities;
-      const commandFilter =
-        effectiveCapabilities.length > 0
-          ? inArray(computerUseCommands.kind, effectiveCapabilities)
-          : inArray(computerUseCommands.kind, COMPUTER_USE_COMMANDS);
-      const [row] = await tx
+      const candidateRows = await tx
         .select()
         .from(computerUseCommands)
         .where(
@@ -1306,13 +1654,25 @@ export const claimNextComputerUseHostCommand$ = command(
               eq(computerUseCommands.hostId, host.id),
               isNull(computerUseCommands.hostId),
             ),
-            commandFilter,
+            inArray(computerUseCommands.kind, COMPUTER_USE_COMMANDS),
           ),
         )
         .orderBy(asc(computerUseCommands.createdAt))
         .for("update", { skipLocked: true })
-        .limit(1);
+        .limit(50);
       signal.throwIfAborted();
+
+      const hostWithEffectiveCapabilities = {
+        ...host,
+        supportedCapabilities: effectiveCapabilities,
+      };
+      const row = candidateRows.find((candidate) => {
+        return hostSupportsCommand({
+          host: hostWithEffectiveCapabilities,
+          kind: candidate.kind as ComputerUseCommandKind,
+          payload: candidate.payload,
+        });
+      });
 
       if (!row) {
         return { status: "idle" as const };
@@ -1426,20 +1786,32 @@ export const completeComputerUseHostCommand$ = command(
       return commandState;
     }
 
-    const storedResult =
-      params.status === "succeeded"
-        ? await get(
-            offloadScreenshotForResult(
-              db,
-              {
-                hostToken: params.hostToken,
-                commandId: params.commandId,
-                result: params.result,
-              },
-              signal,
-            ),
-          )
-        : null;
+    let storedResult: ComputerUseCommandResult | null = null;
+    if (params.status === "succeeded") {
+      storedResult = await get(
+        offloadScreenshotForResult(
+          db,
+          {
+            hostToken: params.hostToken,
+            commandId: params.commandId,
+            result: params.result,
+          },
+          signal,
+        ),
+      );
+      storedResult = await get(
+        offloadPluginContentForResult(
+          db,
+          {
+            hostToken: params.hostToken,
+            commandId: params.commandId,
+            result: storedResult,
+          },
+          signal,
+        ),
+      );
+    }
+    const storageError = commandErrorFromResult(storedResult);
     const completedAt = nowDate();
     const result = await db.transaction(async (tx) => {
       const currentState = await computerUseHostCommandCompletionState(
@@ -1455,16 +1827,19 @@ export const completeComputerUseHostCommand$ = command(
         return currentState;
       }
 
+      const finalError =
+        storageError ?? (params.status === "failed" ? params.error : null);
+      const finalStatus = finalError ? "failed" : params.status;
       const commandResult =
-        params.status === "succeeded"
+        finalStatus === "succeeded"
           ? (storedResult ?? params.result)
-          : { error: params.error };
+          : { error: finalError };
       const [updated] = await tx
         .update(computerUseCommands)
         .set({
-          status: params.status,
+          status: finalStatus,
           result: commandResult,
-          error: params.status === "failed" ? params.error.code : null,
+          error: finalStatus === "failed" ? finalError?.code : null,
           completedAt,
           updatedAt: completedAt,
         })
@@ -1479,8 +1854,8 @@ export const completeComputerUseHostCommand$ = command(
       await insertComputerUseCommandAuditEvent(tx, {
         command: updated,
         event: "completed",
-        result: params.status === "succeeded" ? params.result : null,
-        error: params.status === "failed" ? params.error : null,
+        result: finalStatus === "succeeded" ? storedResult : null,
+        error: finalStatus === "failed" ? finalError : null,
         createdAt: completedAt,
       });
       signal.throwIfAborted();
@@ -1552,7 +1927,7 @@ export const listComputerUseAuditEvents$ = command(
           commandId: row.commandId,
           runId: row.runId,
           hostId: row.hostId,
-          kind: row.kind as ComputerUseWriteCommandKind,
+          kind: row.kind as ComputerUseCommandKind,
           app: row.app,
           event: row.event as "completed",
           redactedResult: row.redactedResult,

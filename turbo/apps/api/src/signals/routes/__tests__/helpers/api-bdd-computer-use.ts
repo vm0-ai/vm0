@@ -9,6 +9,7 @@ import {
   zeroComputerUseHeartbeatContract,
   zeroComputerUseHostCommandsContract,
   zeroComputerUseHostsContract,
+  zeroComputerUsePluginCommandContract,
   zeroComputerUseWriteCommandContract,
   type ComputerUseAuthorizationRequestApplyResponse,
   type ComputerUseAuthorizationRequestCreateResponse,
@@ -22,6 +23,7 @@ import {
   type ComputerUseReadCommandKind,
   type ComputerUseWriteCommandKind,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
+import type { ComputerUsePluginCallBody } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
 
 import { now } from "../../../../lib/time";
 import {
@@ -252,6 +254,10 @@ export function createComputerUseBddApi(context: TestContext) {
 
   function writeCommandClient() {
     return setupApp({ context })(zeroComputerUseWriteCommandContract);
+  }
+
+  function pluginCommandClient() {
+    return setupApp({ context })(zeroComputerUsePluginCommandContract);
   }
 
   function hostCommandsClient() {
@@ -505,6 +511,34 @@ export function createComputerUseBddApi(context: TestContext) {
       );
     },
 
+    async createComputerUsePluginCommand(
+      auth: ComputerUseAuth,
+      body: ComputerUsePluginCallBody,
+    ): Promise<ComputerUseCommandCreateResponse> {
+      const response = await accept(
+        pluginCommandClient().create({
+          headers: authenticate(auth),
+          body: { timeoutMs: 60_000, ...body },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestCreateComputerUsePluginCommand(
+      auth: ComputerUseAuth,
+      body: ComputerUsePluginCallBody,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409)[],
+    ) {
+      return await accept(
+        pluginCommandClient().create({
+          headers: authenticate(auth),
+          body: { timeoutMs: 60_000, ...body },
+        }),
+        statuses,
+      );
+    },
+
     async readComputerUseCommand(
       auth: ComputerUseAuth,
       commandId: string,
@@ -547,6 +581,49 @@ export function createComputerUseBddApi(context: TestContext) {
       );
     },
 
+    async requestComputerUsePluginContent(
+      auth: ComputerUseAuth,
+      commandId: string,
+      statuses: readonly (200 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        commandClient().getPluginContent({
+          headers: authenticate(auth),
+          params: { commandId },
+        }),
+        statuses,
+      );
+    },
+
+    async downloadComputerUsePluginContent(
+      auth: ComputerUseAuth,
+      commandId: string,
+    ): Promise<{
+      readonly contentType: string | null;
+      readonly fileName: string | null;
+      readonly bytes: Buffer;
+    }> {
+      const response = await accept(
+        commandClient().getPluginContent({
+          headers: authenticate(auth),
+          params: { commandId },
+        }),
+        [200],
+      );
+      const body: unknown = response.body;
+      if (!(body instanceof Blob)) {
+        throw new Error("Expected a binary computer-use plugin content body");
+      }
+      const contentDisposition = response.headers.get("content-disposition");
+      return {
+        contentType: response.headers.get("content-type"),
+        fileName: contentDisposition
+          ? (/filename="([^"]+)"/.exec(contentDisposition)?.[1] ?? null)
+          : null,
+        bytes: Buffer.from(await body.arrayBuffer()),
+      };
+    },
+
     async downloadComputerUseScreenshot(
       auth: ComputerUseAuth,
       commandId: string,
@@ -571,7 +648,12 @@ export function createComputerUseBddApi(context: TestContext) {
       };
     },
 
-    async claimNextComputerUseCommand(hostToken: string): Promise<
+    async claimNextComputerUseCommand(
+      hostToken: string,
+      supportedCapabilities: readonly string[] = [
+        ...DEFAULT_SUPPORTED_COMPUTER_USE_CAPABILITIES,
+      ],
+    ): Promise<
       | { readonly status: "idle" }
       | {
           readonly status: "command";
@@ -582,9 +664,7 @@ export function createComputerUseBddApi(context: TestContext) {
         hostCommandsClient().next({
           headers: hostHeaders(hostToken),
           body: {
-            supportedCapabilities: [
-              ...DEFAULT_SUPPORTED_COMPUTER_USE_CAPABILITIES,
-            ],
+            supportedCapabilities: [...supportedCapabilities],
           },
         }),
         [200],

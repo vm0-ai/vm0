@@ -6,9 +6,11 @@ import type {
   ComputerUseReadCommandKind,
   ComputerUseWriteCommandKind,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
+import type { ComputerUsePluginCallBody } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
 import {
   zeroComputerUseAuthorizationRequestsContract,
   zeroComputerUseCommandContract,
+  zeroComputerUsePluginCommandContract,
   zeroComputerUseWriteCommandContract,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
 import {
@@ -136,6 +138,20 @@ export async function createComputerUseWriteCommand(
   handleError(result, "Failed to create computer-use write command");
 }
 
+export async function createComputerUsePluginCommand(
+  params: ComputerUsePluginCallBody,
+): Promise<ComputerUseCommandCreateResponse> {
+  const config = await getComputerUseClientConfig();
+  const client = initClient(zeroComputerUsePluginCommandContract, config);
+  const result = await client.create({ body: params });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to create computer-use plugin command");
+}
+
 export async function getComputerUseCommand(
   commandId: string,
 ): Promise<ComputerUseCommandResponse> {
@@ -194,4 +210,36 @@ export async function fetchComputerUseScreenshot(
   const mimeType =
     response.headers.get("content-type") ?? "application/octet-stream";
   return { buffer: Buffer.from(arrayBuffer), mimeType };
+}
+
+export async function fetchComputerUsePluginContent(
+  commandId: string,
+): Promise<{
+  readonly buffer: Buffer;
+  readonly mimeType: string;
+  readonly fileName: string;
+}> {
+  const config = await getComputerUseClientConfig();
+  const response = await fetch(
+    `${config.baseUrl}/api/zero/computer-use/commands/${encodeURIComponent(
+      commandId,
+    )}/plugin-content`,
+    { headers: config.baseHeaders },
+  );
+
+  if (!response.ok) {
+    throw new ApiRequestError(
+      "Failed to download computer-use plugin content",
+      "REQUEST_FAILED",
+      response.status,
+    );
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const mimeType =
+    response.headers.get("content-type") ?? "application/octet-stream";
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const fileName =
+    /filename="([^"]+)"/.exec(disposition)?.[1] ?? "plugin-content.bin";
+  return { buffer: Buffer.from(arrayBuffer), mimeType, fileName };
 }
