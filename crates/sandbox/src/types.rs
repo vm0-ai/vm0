@@ -833,6 +833,97 @@ mod tests {
     }
 
     #[test]
+    fn exec_termination_deserializes_valid_shapes() {
+        for (value, expected) in [
+            (
+                serde_json::json!({
+                    "kind": "exited",
+                    "exit_code": 0,
+                }),
+                ExecTermination::Exited { exit_code: 0 },
+            ),
+            (
+                serde_json::json!({
+                    "kind": "timed_out",
+                }),
+                ExecTermination::TimedOut,
+            ),
+            (
+                serde_json::json!({
+                    "kind": "cancelled",
+                }),
+                ExecTermination::Cancelled,
+            ),
+            (
+                serde_json::json!({
+                    "kind": "start_failed",
+                }),
+                ExecTermination::StartFailed,
+            ),
+            (
+                serde_json::json!({
+                    "kind": "wait_failed",
+                }),
+                ExecTermination::WaitFailed,
+            ),
+        ] {
+            let decoded = serde_json::from_value::<ExecTermination>(value).unwrap();
+            assert_eq!(decoded, expected);
+        }
+    }
+
+    #[test]
+    fn exec_termination_rejects_invalid_shapes() {
+        for value in [
+            serde_json::json!({
+                "exit_code": 0,
+            }),
+            serde_json::json!({
+                "kind": "unknown",
+                "exit_code": 0,
+            }),
+            serde_json::json!({
+                "kind": "exited",
+            }),
+            serde_json::json!({
+                "kind": "exited",
+                "exit_code": null,
+            }),
+            serde_json::json!({
+                "kind": "exited",
+                "exit_code": 0,
+                "signal": 9,
+            }),
+        ] {
+            assert!(serde_json::from_value::<ExecTermination>(value).is_err());
+        }
+    }
+
+    #[test]
+    fn exec_termination_rejects_non_exited_exit_code() {
+        for kind in ["timed_out", "cancelled", "start_failed", "wait_failed"] {
+            for exit_code in [serde_json::json!(124), serde_json::Value::Null] {
+                let value = serde_json::json!({
+                    "kind": kind,
+                    "exit_code": exit_code,
+                });
+
+                assert!(serde_json::from_value::<ExecTermination>(value).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn exec_termination_rejects_duplicate_fields() {
+        for value in [
+            r#"{"kind":"exited","kind":"timed_out","exit_code":0}"#,
+            r#"{"kind":"exited","exit_code":0,"exit_code":1}"#,
+        ] {
+            assert!(serde_json::from_str::<ExecTermination>(value).is_err());
+        }
+    }
+
+    #[test]
     fn exec_result_new_defaults_to_exited() {
         let result = ExecResult::new(7, b"out".to_vec(), b"err".to_vec());
 
