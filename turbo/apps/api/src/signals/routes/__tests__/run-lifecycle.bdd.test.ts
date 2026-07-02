@@ -139,6 +139,12 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest",
   "api_dispatch_prepare_storage_manifest_resolve_inputs",
   "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_lookup_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
   "api_dispatch_prepare_storage_manifest_load_storage_index",
   "api_dispatch_prepare_storage_manifest_build_entries",
   "api_dispatch_prepare_storage_manifest_build_compose_entries",
@@ -156,6 +162,12 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
 const API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest_resolve_inputs",
   "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_lookup_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
   "api_dispatch_prepare_storage_manifest_load_storage_index",
   "api_dispatch_prepare_storage_manifest_build_entries",
   "api_dispatch_prepare_storage_manifest_build_compose_entries",
@@ -558,6 +570,15 @@ function expectApiDispatchTimingEventsNotToLeak(
       expect(serialized).not.toContain(forbiddenValue);
     }
   }
+}
+
+function s3CommandName(command: unknown): string | undefined {
+  return (command as { readonly constructor?: { readonly name?: string } })
+    .constructor?.name;
+}
+
+function s3CommandKey(command: unknown): string | undefined {
+  return (command as { readonly input?: { readonly Key?: string } }).input?.Key;
 }
 
 function mockSessionHistoryBlob(hash: string, history: string): void {
@@ -974,6 +995,29 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_dropped_compose_count_bucket: "1",
         storage_manifest_planned_presign_count_bucket: "2_4",
         storage_manifest_duplicate_presign_candidate_count_bucket: "0",
+        storage_manifest_artifact_ensure_already_initialized_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_storage_count_bucket: "1",
+        storage_manifest_artifact_ensure_created_storage_count_bucket: "1",
+        storage_manifest_artifact_ensure_lost_create_race_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_head_version_count_bucket: "1",
+        storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+          "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_artifact_ensure_already_initialized_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_storage_count_bucket: "1",
+        storage_manifest_artifact_ensure_created_storage_count_bucket: "1",
+        storage_manifest_artifact_ensure_lost_create_race_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_head_version_count_bucket: "1",
+        storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+          "1",
       }),
     );
     expect(
@@ -1041,7 +1085,207 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "https://r2.example.com",
     ]);
 
+    const claim = await api.claimRunnerJob(created.runId);
+    const memoryArtifact = claim.storageManifest?.artifacts.find((artifact) => {
+      return artifact.vasStorageName === "memory";
+    });
+    expect(memoryArtifact).toMatchObject({
+      archiveUrl: expect.any(String),
+      vasStorageId: expect.any(String),
+      vasVersionId: expect.any(String),
+      missingRootPolicy: "preserveParentVersion",
+    });
+    if (!memoryArtifact) {
+      throw new Error("Expected the claim manifest to include memory");
+    }
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      memoryArtifact.archiveUrl,
+      memoryArtifact.vasStorageId,
+      memoryArtifact.vasVersionId,
+    ]);
+
+    const initialized = await api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt: "storage manifest dimensions initialized artifact path",
+      additionalVolumes: [
+        {
+          name: storageName,
+          version: prepared.versionId,
+          mountPath,
+        },
+      ],
+    });
+    const initializedTimingEvents = apiDispatchTimingEventsForRun(
+      initialized.runId,
+    );
+    expect(
+      singleApiDispatchEvent(
+        initializedTimingEvents,
+        "api_dispatch_prepare_storage_manifest",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_artifact_ensure_already_initialized_count_bucket: "1",
+        storage_manifest_artifact_ensure_missing_storage_count_bucket: "0",
+        storage_manifest_artifact_ensure_created_storage_count_bucket: "0",
+        storage_manifest_artifact_ensure_lost_create_race_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_head_version_count_bucket: "0",
+        storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+          "0",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        initializedTimingEvents,
+        "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_artifact_ensure_already_initialized_count_bucket: "1",
+        storage_manifest_artifact_ensure_missing_storage_count_bucket: "0",
+        storage_manifest_artifact_ensure_created_storage_count_bucket: "0",
+        storage_manifest_artifact_ensure_lost_create_race_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_head_version_count_bucket: "0",
+        storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+          "0",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        initializedTimingEvents,
+        "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+      ).duration_ms,
+    ).toBe(0);
+    expect(
+      singleApiDispatchEvent(
+        initializedTimingEvents,
+        "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
+      ).duration_ms,
+    ).toBe(0);
+    expectApiDispatchTimingEventsNotToLeak(initializedTimingEvents, [
+      storageName,
+      mountPath,
+      prepared.versionId,
+      headVersionId,
+    ]);
+
     await api.requestCancelRun(actor, created.runId, [200]);
+    await api.requestCancelRun(actor, initialized.runId, [200]);
+  });
+
+  it("keeps a committed artifact head when stale empty initialization finishes later", async () => {
+    const api = createRunsAutomationsApi(context);
+    const storages = createStoragesBddApi(context);
+    const { actor } = await entitledRunActor();
+    const composeName = `bdd-artifact-head-race-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const headVersionId = await readAutomationComposeHeadVersion(
+      context,
+      compose.composeId,
+    );
+
+    let releaseEmptyUploads = (): void => {};
+    const emptyUploadsGate = new Promise<void>((resolve) => {
+      releaseEmptyUploads = resolve;
+    });
+    let markEmptyUploadStarted = (): void => {};
+    const emptyUploadStarted = new Promise<void>((resolve) => {
+      markEmptyUploadStarted = resolve;
+    });
+
+    let blockedEmptyPutCount = 0;
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (
+        s3CommandName(command) === "PutObjectCommand" &&
+        s3CommandKey(command)?.includes("/artifact/memory/")
+      ) {
+        blockedEmptyPutCount += 1;
+        markEmptyUploadStarted();
+        return emptyUploadsGate.then(() => {
+          return {};
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    const staleInitializerRun = api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt: "stale empty artifact initialization must not overwrite head",
+    });
+    onTestFinished(async () => {
+      releaseEmptyUploads();
+      const created = await staleInitializerRun.then(
+        (run) => {
+          return run;
+        },
+        () => {
+          return undefined;
+        },
+      );
+      if (created) {
+        await api.requestCancelRun(actor, created.runId, [200]);
+      }
+    });
+
+    const gateResult = await Promise.race([
+      emptyUploadStarted.then(() => {
+        return "empty-upload-started" as const;
+      }),
+      staleInitializerRun.then(() => {
+        return "run-finished" as const;
+      }),
+    ]);
+    expect(gateResult).toBe("empty-upload-started");
+
+    const artifactFile = storageTextFile(
+      "artifact.txt",
+      `committed artifact ${randomUUID()}`,
+    );
+    const prepared = await storages.prepareStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      files: [artifactFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      versionId: prepared.versionId,
+      files: [artifactFile],
+    });
+    await expect(
+      storages.downloadStorage(actor, {
+        name: "memory",
+        type: "artifact",
+      }),
+    ).resolves.toStrictEqual(
+      expect.objectContaining({
+        versionId: prepared.versionId,
+        fileCount: 1,
+      }),
+    );
+
+    releaseEmptyUploads();
+    await staleInitializerRun;
+    expect(blockedEmptyPutCount).toBe(2);
+    await expect(
+      storages.downloadStorage(actor, {
+        name: "memory",
+        type: "artifact",
+      }),
+    ).resolves.toStrictEqual(
+      expect.objectContaining({
+        versionId: prepared.versionId,
+        fileCount: 1,
+      }),
+    );
   });
 
   it("keeps a direct launch claimable when run-context ingest fails", async () => {
