@@ -2454,11 +2454,13 @@ function createSendOptimisticMessageEntry({
   threadId,
   clientMessageId,
   result,
+  generationTemplate,
   options,
 }: {
   threadId: string;
   clientMessageId: string;
   result: PreparedSendMessageResult;
+  generationTemplate: GenerationTemplateRequest | undefined;
   options: SendMessageOptions | undefined;
 }): OptimisticChatMessageEntry {
   return {
@@ -2469,7 +2471,7 @@ function createSendOptimisticMessageEntry({
       role: "user",
       content: result.prompt,
       attachFiles: result.attachments,
-      generationTemplate: options?.generationTemplate,
+      generationTemplate,
       ...sendMessageRevocationPatch(options),
       createdAt: nowDate().toISOString(),
     },
@@ -2530,6 +2532,7 @@ function createSendMessage(deps: SendMessageDeps) {
         L.debug("sendMessage$ no agentId, abort", { threadId });
         return;
       }
+      const generationTemplate = get(draft.generationTemplate$);
       const hasVisualAttachments = hasVisualDraftAttachments(
         get(draft.attachments$),
       );
@@ -2574,6 +2577,7 @@ function createSendMessage(deps: SendMessageDeps) {
           threadId,
           clientMessageId,
           result,
+          generationTemplate,
           options,
         }),
       );
@@ -2598,7 +2602,7 @@ function createSendMessage(deps: SendMessageDeps) {
               hasTextContent: result.hasTextContent,
               clientMessageId,
               modelSelection,
-              generationTemplate: options?.generationTemplate,
+              generationTemplate,
               ...(options && "computerUseHostId" in options
                 ? { computerUseHostId: options.computerUseHostId ?? null }
                 : {}),
@@ -2662,7 +2666,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
     async (
       { get, set },
       prompt: string,
-      generationTemplate: GenerationTemplateRequest | undefined,
       computerUseHostId: string | null | undefined,
       signal: AbortSignal,
     ) => {
@@ -2673,6 +2676,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         L.debug("queueMessage$ no thread data, abort", { threadId });
         return;
       }
+      const generationTemplate = get(draft.generationTemplate$);
 
       const modelSelection = await get(modelSelection$);
       signal.throwIfAborted();
