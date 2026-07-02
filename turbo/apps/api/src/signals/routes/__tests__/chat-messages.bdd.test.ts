@@ -1734,7 +1734,7 @@ describe("CHAT-02: explicit provider pins", () => {
     expect(environment.OPENAI_MODEL).toBe("gpt-5.5");
     expect(environment.VM0_CODEX_SERVICE_TIER).toBe("fast");
     expect(environment.CHATGPT_ACCESS_TOKEN).toBe(
-      modelProviderPlaceholder("codex-oauth-token", "CHATGPT_ACCESS_TOKEN"),
+      modelProviderSecretPlaceholder("codex-oauth-token", "CHATGPT_ACCESS_TOKEN"),
     );
     await cancelChatRun(actor, fast.runId);
 
