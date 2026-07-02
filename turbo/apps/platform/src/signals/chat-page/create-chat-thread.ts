@@ -3092,10 +3092,16 @@ function createThinkingTextMeasurer(
 }
 
 function thinkingLabelWidth(el: HTMLElement): number {
-  const parent = el.parentElement;
-  return Math.max(
+  const elementWidth = Math.max(
     el.getBoundingClientRect().width,
     el.clientWidth,
+  );
+  if (elementWidth > 0) {
+    return elementWidth;
+  }
+
+  const parent = el.parentElement;
+  return Math.max(
     parent?.getBoundingClientRect().width ?? 0,
     parent?.clientWidth ?? 0,
   );
