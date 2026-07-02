@@ -130,11 +130,7 @@ function ConnectorPillMarker({
 }: {
   readonly dotClassName: string;
 }) {
-  return (
-    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border/70 bg-gray-50">
-      <span className={cn("h-1.5 w-1.5 rounded-full", dotClassName)} />
-    </span>
-  );
+  return <span className={cn("h-2 w-2 shrink-0 rounded-full", dotClassName)} />;
 }
 
 /** The agent that runs the workflow, drawn as its real avatar. */
