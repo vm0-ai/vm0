@@ -28,10 +28,12 @@
   },
   "scripts": {
     "generate:rust": "tsx src/rust-bindings/generate.ts",
+    "build:runtime-api-schema": "tsx src/runtime-api-schema/cli.ts build",
+    "lint-runtime-api-compat": "tsx src/runtime-api-schema/cli.ts lint",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
-    "check-types": "tsc -p tsconfig.contracts.json --noEmit && tsc -p tsconfig.rust-bindings.json --noEmit"
+    "check-types": "tsc -p tsconfig.contracts.json --noEmit && tsc -p tsconfig.rust-bindings.json --noEmit && tsc -p tsconfig.runtime-api-schema.json --noEmit"
   },
   "dependencies": {
     "@trpc/server": "11.18.0",
