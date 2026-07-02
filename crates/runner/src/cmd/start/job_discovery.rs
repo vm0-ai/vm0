@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 use std::collections::hash_map::Entry;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use sandbox::SandboxId;
@@ -36,8 +36,6 @@ use crate::restored_session_identity::{
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
 use crate::status::{RunnerMode, StatusTracker};
 use crate::types::{ExecutionContext, HeldSessionState, SandboxReuseResult};
-
-const AFFINITY_DEFER_JITTER: Duration = Duration::from_millis(50);
 
 pub(super) struct DiscoveredJob {
     pub(super) candidate: JobCandidate,
@@ -402,8 +400,7 @@ async fn prepare_affinity_protected_candidate(
 
     let delay = candidate
         .affinity_protection_remaining()
-        .unwrap_or(Duration::ZERO)
-        .saturating_add(AFFINITY_DEFER_JITTER);
+        .unwrap_or_default();
     let session_fingerprint = diagnostic_session_fingerprint(&cli_agent_session_id);
     info!(
         run_id = %candidate.run_id(),

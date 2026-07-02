@@ -116,8 +116,8 @@ impl HeldSessionStateSnapshot {
     }
 }
 
-/// Collect current runner state, update the provider's held-sessions cache,
-/// and send a heartbeat to the server.
+/// Collect current runner state, refresh the local held-session snapshot, and
+/// send a heartbeat to the server.
 pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) {
     let pool = hb.idle_pool.lock().await;
     let mut state = collect_heartbeat_state(

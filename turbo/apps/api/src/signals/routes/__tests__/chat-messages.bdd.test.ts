@@ -178,7 +178,6 @@ async function sendChatRun(
 async function claimChatRun(
   runnerGroup: string,
   runId: string,
-  _heldCliAgentSessionId?: string,
 ): Promise<{
   readonly claim: RunnerClaim;
   readonly sandboxHeaders: { readonly authorization: string };
@@ -1982,11 +1981,7 @@ describe("CHAT-02: server-side model switches", () => {
       threadId: first.threadId,
       prompt: "continue on sonnet",
     });
-    const thirdClaim = await claimChatRun(
-      runnerGroup,
-      third.runId,
-      `bdd-cli-${second.runId}`,
-    );
+    const thirdClaim = await claimChatRun(runnerGroup, third.runId);
     expect(thirdClaim.claim.resumeSession?.sessionId).toBe(
       `bdd-cli-${second.runId}`,
     );
@@ -2038,11 +2033,7 @@ describe("CHAT-02: server-side model switches", () => {
       threadId: first.threadId,
       prompt: "follow up after the provider rotation",
     });
-    const secondClaim = await claimChatRun(
-      runnerGroup,
-      second.runId,
-      `bdd-cli-${first.runId}`,
-    );
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
     const environment = claimEnvironment(secondClaim.claim);
     expect(environment.ANTHROPIC_API_KEY).toBe(
       modelProviderSecretPlaceholder("anthropic-api-key", "ANTHROPIC_API_KEY"),
