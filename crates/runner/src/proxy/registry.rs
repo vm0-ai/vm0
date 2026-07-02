@@ -192,6 +192,51 @@ mod tests {
         );
     }
 
+    struct RegistryHarness {
+        _dir: tempfile::TempDir,
+        registry_path: PathBuf,
+        handle: ProxyRegistryHandle,
+    }
+
+    impl RegistryHarness {
+        async fn new() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let registry_path = dir.path().join("proxy-registry.json");
+            let lock_path = dir.path().join("proxy-registry.lock");
+            write_empty_registry(&registry_path).await.unwrap();
+            let handle = ProxyRegistryHandle::new(registry_path.clone(), lock_path);
+
+            Self {
+                _dir: dir,
+                registry_path,
+                handle,
+            }
+        }
+
+        fn registry_path(&self) -> &Path {
+            &self.registry_path
+        }
+    }
+
+    fn base_registration<'a>() -> VmRegistration<'a> {
+        VmRegistration {
+            run_id: "run-test",
+            cli_agent_type: "claude-code",
+            sandbox_token: "tok",
+            network_log_path: Path::new("/tmp/network-run-test.jsonl"),
+            proxy_log_path: Path::new("/tmp/proxy-run-test.jsonl"),
+            firewalls: None,
+            network_policies: None,
+            encrypted_secrets: None,
+            secret_connector_map: None,
+            secret_connector_metadata_map: None,
+            vars: None,
+            capture_network_bodies: false,
+            billable_firewalls: &[],
+            model_usage_provider: None,
+        }
+    }
+
     #[tokio::test]
     async fn registry_register_and_unregister() {
         let dir = tempfile::tempdir().unwrap();
@@ -408,43 +453,20 @@ mod tests {
 
     #[tokio::test]
     async fn registry_handle_register_and_unregister() {
-        let dir = tempfile::tempdir().unwrap();
-        let registry_path = dir.path().join("proxy-registry.json");
-        let lock_path = dir.path().join("proxy-registry.json.lock");
-        let empty = ProxyRegistry {
-            vms: HashMap::new(),
-            updated_at: 0,
-        };
-        write_registry(&registry_path, &empty).await.unwrap();
-
-        let handle = ProxyRegistryHandle {
-            registry_path: registry_path.clone(),
-            lock_path,
-        };
+        let harness = RegistryHarness::new().await;
 
         // Register via handle.
         let registration = VmRegistration {
             run_id: "run-1",
-            cli_agent_type: "claude-code",
-            sandbox_token: "tok-1",
-            network_log_path: std::path::Path::new("/tmp/network-run-1.jsonl"),
-            proxy_log_path: std::path::Path::new("/tmp/proxy-run-1.jsonl"),
-            firewalls: None,
-            network_policies: None,
-            encrypted_secrets: None,
-            secret_connector_map: None,
-            secret_connector_metadata_map: None,
-            vars: None,
-            capture_network_bodies: false,
-            billable_firewalls: &[],
-            model_usage_provider: None,
+            ..base_registration()
         };
-        handle
+        harness
+            .handle
             .register_vm("10.200.0.2", &registration)
             .await
             .unwrap();
 
-        let loaded = read_registry(&registry_path).await.unwrap();
+        let loaded = read_registry(harness.registry_path()).await.unwrap();
         let vm = loaded.vms.get("10.200.0.2").unwrap();
         assert_eq!(vm.run_id, "run-1");
 
@@ -452,58 +474,36 @@ mod tests {
         let registration2 = VmRegistration {
             run_id: "run-2",
             cli_agent_type: "codex",
-            sandbox_token: "tok-2",
-            network_log_path: std::path::Path::new("/tmp/network-run-2.jsonl"),
-            proxy_log_path: std::path::Path::new("/tmp/proxy-run-2.jsonl"),
-            firewalls: None,
-            network_policies: None,
-            encrypted_secrets: None,
-            secret_connector_map: None,
-            secret_connector_metadata_map: None,
-            vars: None,
-            capture_network_bodies: false,
-            billable_firewalls: &[],
-            model_usage_provider: None,
+            ..base_registration()
         };
-        handle
+        harness
+            .handle
             .register_vm("10.200.0.2", &registration2)
             .await
             .unwrap();
-        let loaded = read_registry(&registry_path).await.unwrap();
+        let loaded = read_registry(harness.registry_path()).await.unwrap();
         let vm = loaded.vms.get("10.200.0.2").unwrap();
         assert_eq!(vm.run_id, "run-2");
         assert_eq!(vm.cli_agent_type, "codex");
 
         // Unregister via handle.
-        handle.unregister_vm("10.200.0.2").await.unwrap();
+        harness.handle.unregister_vm("10.200.0.2").await.unwrap();
 
-        let loaded = read_registry(&registry_path).await.unwrap();
+        let loaded = read_registry(harness.registry_path()).await.unwrap();
         assert!(!loaded.vms.contains_key("10.200.0.2"));
 
         // Unregister non-existent IP is a no-op.
-        handle.unregister_vm("10.200.0.99").await.unwrap();
+        harness.handle.unregister_vm("10.200.0.99").await.unwrap();
     }
 
     #[tokio::test]
     async fn registry_handle_concurrent_access() {
-        let dir = tempfile::tempdir().unwrap();
-        let registry_path = dir.path().join("proxy-registry.json");
-        let lock_path = dir.path().join("proxy-registry.json.lock");
-        let empty = ProxyRegistry {
-            vms: HashMap::new(),
-            updated_at: 0,
-        };
-        write_registry(&registry_path, &empty).await.unwrap();
-
-        let handle = ProxyRegistryHandle {
-            registry_path: registry_path.clone(),
-            lock_path,
-        };
+        let harness = RegistryHarness::new().await;
 
         // Spawn 10 concurrent register tasks.
         let mut tasks = tokio::task::JoinSet::new();
         for i in 0..10 {
-            let h = handle.clone();
+            let h = harness.handle.clone();
             let ip = format!("10.200.0.{}", i + 2);
             let run_id_owned = format!("run-{i}");
             tasks.spawn(async move {
@@ -513,19 +513,9 @@ mod tests {
                     std::path::PathBuf::from(format!("/tmp/proxy-{run_id_owned}.jsonl"));
                 let registration = VmRegistration {
                     run_id: &run_id_owned,
-                    cli_agent_type: "claude-code",
-                    sandbox_token: "",
                     network_log_path: &log_path,
                     proxy_log_path: &proxy_path,
-                    firewalls: None,
-                    network_policies: None,
-                    encrypted_secrets: None,
-                    secret_connector_map: None,
-                    secret_connector_metadata_map: None,
-                    vars: None,
-                    capture_network_bodies: false,
-                    billable_firewalls: &[],
-                    model_usage_provider: None,
+                    ..base_registration()
                 };
                 h.register_vm(&ip, &registration).await.unwrap();
             });
@@ -535,25 +525,13 @@ mod tests {
         }
 
         // All 10 VMs should be registered (no lost updates).
-        let loaded = read_registry(&registry_path).await.unwrap();
+        let loaded = read_registry(harness.registry_path()).await.unwrap();
         assert_eq!(loaded.vms.len(), 10);
     }
 
     #[tokio::test]
     async fn registry_with_firewalls() {
-        let dir = tempfile::tempdir().unwrap();
-        let registry_path = dir.path().join("proxy-registry.json");
-        let lock_path = dir.path().join("proxy-registry.json.lock");
-        let empty = ProxyRegistry {
-            vms: HashMap::new(),
-            updated_at: 0,
-        };
-        write_registry(&registry_path, &empty).await.unwrap();
-
-        let handle = ProxyRegistryHandle {
-            registry_path: registry_path.clone(),
-            lock_path,
-        };
+        let harness = RegistryHarness::new().await;
 
         let firewall_entries = vec![FirewallEntry::Inline {
             firewall: Firewall {
@@ -582,28 +560,17 @@ mod tests {
         }];
 
         let registration = VmRegistration {
-            run_id: "run-fw",
-            cli_agent_type: "claude-code",
-            sandbox_token: "tok",
-            network_log_path: std::path::Path::new("/tmp/network-run-fw.jsonl"),
-            proxy_log_path: std::path::Path::new("/tmp/proxy-run-fw.jsonl"),
             firewalls: Some(&firewall_entries),
-            network_policies: None,
-            encrypted_secrets: None,
-            secret_connector_map: None,
-            secret_connector_metadata_map: None,
-            vars: None,
-            capture_network_bodies: false,
-            billable_firewalls: &[],
-            model_usage_provider: None,
+            ..base_registration()
         };
-        handle
+        harness
+            .handle
             .register_vm("10.200.0.5", &registration)
             .await
             .unwrap();
 
         // Verify firewall entries are stored in registry.
-        let loaded = read_registry(&registry_path).await.unwrap();
+        let loaded = read_registry(harness.registry_path()).await.unwrap();
         let vm = loaded.vms.get("10.200.0.5").unwrap();
         let stored = vm.firewalls.as_ref().unwrap();
         assert_eq!(stored.len(), 1);
@@ -618,7 +585,9 @@ mod tests {
         assert_eq!(firewall.apis[0].id, "");
 
         // Verify JSON shape matches what the Python addon expects.
-        let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
+        let raw = tokio::fs::read_to_string(harness.registry_path())
+            .await
+            .unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
         let vm_json = &value["vms"]["10.200.0.5"];
         let fw = &vm_json["firewalls"][0];
@@ -642,48 +611,25 @@ mod tests {
 
     #[tokio::test]
     async fn registry_serializes_billable_firewalls() {
-        let dir = tempfile::tempdir().unwrap();
-        let registry_path = dir.path().join("proxy-registry.json");
-        let lock_path = dir.path().join("proxy-registry.json.lock");
-        write_registry(
-            &registry_path,
-            &ProxyRegistry {
-                vms: HashMap::new(),
-                updated_at: 0,
-            },
-        )
-        .await
-        .unwrap();
-
-        let handle = ProxyRegistryHandle {
-            registry_path: registry_path.clone(),
-            lock_path,
-        };
+        let harness = RegistryHarness::new().await;
         let billable = ["model-provider:vm0".to_string()];
         let registration = VmRegistration {
-            run_id: "run-billing",
             cli_agent_type: "codex",
-            sandbox_token: "tok",
-            network_log_path: std::path::Path::new("/tmp/network-run-billing.jsonl"),
-            proxy_log_path: std::path::Path::new("/tmp/proxy-run-billing.jsonl"),
-            firewalls: None,
-            network_policies: None,
-            encrypted_secrets: None,
-            secret_connector_map: None,
-            secret_connector_metadata_map: None,
-            vars: None,
-            capture_network_bodies: false,
             billable_firewalls: &billable,
             model_usage_provider: Some("claude-sonnet-4-6"),
+            ..base_registration()
         };
-        handle
+        harness
+            .handle
             .register_vm("10.200.0.9", &registration)
             .await
             .unwrap();
 
         // Guard the TS↔Rust↔Python wire contract: the camelCase key is what
         // mitm-addon reads via `vm_info["billableFirewalls"]`.
-        let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
+        let raw = tokio::fs::read_to_string(harness.registry_path())
+            .await
+            .unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(
             value["vms"]["10.200.0.9"]["billableFirewalls"],
@@ -701,20 +647,7 @@ mod tests {
 
     #[tokio::test]
     async fn register_vm_stores_encrypted_secrets() {
-        let dir = tempfile::tempdir().unwrap();
-        let registry_path = dir.path().join("proxy-registry.json");
-        let lock_path = dir.path().join("proxy-registry.lock");
-
-        let empty = ProxyRegistry {
-            vms: HashMap::new(),
-            updated_at: 0,
-        };
-        write_registry(&registry_path, &empty).await.unwrap();
-
-        let handle = ProxyRegistryHandle {
-            registry_path: registry_path.clone(),
-            lock_path,
-        };
+        let harness = RegistryHarness::new().await;
 
         let metadata = HashMap::from([(
             "CHATGPT_ACCESS_TOKEN".to_string(),
@@ -725,27 +658,17 @@ mod tests {
             },
         )]);
         let registration = VmRegistration {
-            run_id: "run-enc",
-            cli_agent_type: "claude-code",
-            sandbox_token: "tok",
-            network_log_path: std::path::Path::new("/tmp/network-run-enc.jsonl"),
-            proxy_log_path: std::path::Path::new("/tmp/proxy-run-enc.jsonl"),
-            firewalls: None,
-            network_policies: None,
             encrypted_secrets: Some("iv_b64:tag_b64:data_b64"),
-            secret_connector_map: None,
             secret_connector_metadata_map: Some(&metadata),
-            vars: None,
-            capture_network_bodies: false,
-            billable_firewalls: &[],
-            model_usage_provider: None,
+            ..base_registration()
         };
-        handle
+        harness
+            .handle
             .register_vm("10.200.0.6", &registration)
             .await
             .unwrap();
 
-        let loaded = read_registry(&registry_path).await.unwrap();
+        let loaded = read_registry(harness.registry_path()).await.unwrap();
         let vm = loaded.vms.get("10.200.0.6").unwrap();
         assert_eq!(
             vm.encrypted_secrets.as_deref(),
@@ -753,7 +676,9 @@ mod tests {
         );
 
         // Verify JSON key name matches what the Python addon expects.
-        let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
+        let raw = tokio::fs::read_to_string(harness.registry_path())
+            .await
+            .unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(
             value["vms"]["10.200.0.6"]["encryptedSecrets"],
@@ -767,19 +692,7 @@ mod tests {
 
     #[tokio::test]
     async fn registry_firewall_auth_base_serialized() {
-        let dir = tempfile::tempdir().unwrap();
-        let registry_path = dir.path().join("proxy-registry.json");
-        let lock_path = dir.path().join("proxy-registry.lock");
-        let empty = ProxyRegistry {
-            vms: HashMap::new(),
-            updated_at: 0,
-        };
-        write_registry(&registry_path, &empty).await.unwrap();
-
-        let handle = ProxyRegistryHandle {
-            registry_path: registry_path.clone(),
-            lock_path,
-        };
+        let harness = RegistryHarness::new().await;
 
         let firewall_entries = vec![FirewallEntry::Inline {
             firewall: Firewall {
@@ -798,28 +711,20 @@ mod tests {
         }];
 
         let registration = VmRegistration {
-            run_id: "run-webhook",
-            cli_agent_type: "claude-code",
-            sandbox_token: "tok",
-            network_log_path: std::path::Path::new("/tmp/network-run-webhook.jsonl"),
-            proxy_log_path: std::path::Path::new("/tmp/proxy-run-webhook.jsonl"),
             firewalls: Some(&firewall_entries),
-            network_policies: None,
             encrypted_secrets: Some("enc_data"),
-            secret_connector_map: None,
-            secret_connector_metadata_map: None,
-            vars: None,
-            capture_network_bodies: false,
-            billable_firewalls: &[],
-            model_usage_provider: None,
+            ..base_registration()
         };
-        handle
+        harness
+            .handle
             .register_vm("10.200.0.7", &registration)
             .await
             .unwrap();
 
         // Verify auth.base is preserved in the registry JSON.
-        let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
+        let raw = tokio::fs::read_to_string(harness.registry_path())
+            .await
+            .unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
         let api = &value["vms"]["10.200.0.7"]["firewalls"][0]["firewall"]["apis"][0];
         assert_eq!(api["auth"]["base"], "${{ secrets.DISCORD_WEBHOOK_URL }}");
@@ -829,19 +734,7 @@ mod tests {
 
     #[tokio::test]
     async fn registry_firewall_auth_query_serialized() {
-        let dir = tempfile::tempdir().unwrap();
-        let registry_path = dir.path().join("proxy-registry.json");
-        let lock_path = dir.path().join("proxy-registry.lock");
-        let empty = ProxyRegistry {
-            vms: HashMap::new(),
-            updated_at: 0,
-        };
-        write_registry(&registry_path, &empty).await.unwrap();
-
-        let handle = ProxyRegistryHandle {
-            registry_path: registry_path.clone(),
-            lock_path,
-        };
+        let harness = RegistryHarness::new().await;
 
         let firewall_entries = vec![FirewallEntry::Inline {
             firewall: Firewall {
@@ -867,28 +760,20 @@ mod tests {
         }];
 
         let registration = VmRegistration {
-            run_id: "run-query-auth",
-            cli_agent_type: "claude-code",
-            sandbox_token: "tok",
-            network_log_path: std::path::Path::new("/tmp/network-run-query.jsonl"),
-            proxy_log_path: std::path::Path::new("/tmp/proxy-run-query.jsonl"),
             firewalls: Some(&firewall_entries),
-            network_policies: None,
             encrypted_secrets: Some("enc_data"),
-            secret_connector_map: None,
-            secret_connector_metadata_map: None,
-            vars: None,
-            capture_network_bodies: false,
-            billable_firewalls: &[],
-            model_usage_provider: None,
+            ..base_registration()
         };
-        handle
+        harness
+            .handle
             .register_vm("10.200.0.8", &registration)
             .await
             .unwrap();
 
         // Verify auth.query is preserved in the registry JSON.
-        let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
+        let raw = tokio::fs::read_to_string(harness.registry_path())
+            .await
+            .unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
         let api = &value["vms"]["10.200.0.8"]["firewalls"][0]["firewall"]["apis"][0];
         assert_eq!(
