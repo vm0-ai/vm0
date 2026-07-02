@@ -12,7 +12,7 @@ export const COMPUTER_USE_UNAUTHENTICATED_MESSAGE =
 export const COMPUTER_USE_NEEDS_ORGANIZATION_MESSAGE =
   "Zero Desktop is signed in but no workspace is active. Select a workspace and retry.";
 
-export type ComputerUseStartupGate =
+type ComputerUseStartupGate =
   | {
       readonly status: "ready";
     }
