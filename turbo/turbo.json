@@ -273,6 +273,10 @@
     "lint": {
       "dependsOn": ["^lint"]
     },
+    "lint-runtime-api-compat": {
+      "cache": false,
+      "outputs": []
+    },
     "check-types": {
       "dependsOn": ["^check-types", "^build"]
     },

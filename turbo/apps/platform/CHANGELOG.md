@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.529.3](https://github.com/vm0-ai/vm0/compare/app-v0.529.2...app-v0.529.3) (2026-07-02)
+
+
+### Bug Fixes
+
+* preserve agent connector add semantics ([#19815](https://github.com/vm0-ai/vm0/issues/19815)) ([1dbc317](https://github.com/vm0-ai/vm0/commit/1dbc317f5b5aebe9dff79353accac2e3f8878d18))
+* simplify computer use download buttons to one CTA ([#19785](https://github.com/vm0-ai/vm0/issues/19785)) ([abd82a8](https://github.com/vm0-ai/vm0/commit/abd82a8d729d989cb899aae46cb646f8564b1a35))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.2
+    * @vm0/core bumped to 8.386.2
+
 ## [0.529.2](https://github.com/vm0-ai/vm0/compare/app-v0.529.1...app-v0.529.2) (2026-07-02)
 
 
