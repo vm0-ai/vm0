@@ -5333,7 +5333,7 @@ function ThinkingLabel({
 
   if (isQueued) {
     return (
-      <p className="zero-shimmer-text text-[0.8125rem] truncate">
+      <p className="zero-shimmer-text min-w-0 flex-1 text-[0.8125rem] truncate">
         Waiting in{" "}
         <button
           type="button"
@@ -5353,7 +5353,7 @@ function ThinkingLabel({
       <p
         key={serverThinkingLabel.id}
         ref={serverThinkingLabel.setRef}
-        className="zero-shimmer-text text-[0.8125rem] truncate"
+        className="zero-shimmer-text min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem]"
         aria-label={serverThinkingLabel.fullText}
       >
         {serverThinkingLabel.displayedText || "\u00a0"}
@@ -5362,7 +5362,7 @@ function ThinkingLabel({
   }
 
   return (
-    <p className="zero-shimmer-text text-[0.8125rem] truncate">
+    <p className="zero-shimmer-text min-w-0 flex-1 text-[0.8125rem] truncate">
       {rotatingLabel}
     </p>
   );
