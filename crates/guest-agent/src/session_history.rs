@@ -681,13 +681,8 @@ fn read_zstd_history_reader(
     max_bytes: Option<u64>,
 ) -> Result<Vec<u8>, AgentError> {
     let mut bytes = Vec::new();
-    match max_bytes {
-        Some(max_bytes) => {
-            let limit = max_bytes.checked_add(1).ok_or_else(|| {
-                AgentError::Checkpoint("Session history read limit overflowed".to_string())
-            })?;
-            reader.by_ref().take(limit).read_to_end(&mut bytes)
-        }
+    match decoded_read_limit(max_bytes) {
+        Some(limit) => reader.by_ref().take(limit).read_to_end(&mut bytes),
         None => reader.read_to_end(&mut bytes),
     }
     .map_err(|e| {
@@ -707,11 +702,8 @@ fn read_history_reader(
     max_bytes: Option<u64>,
 ) -> Result<Vec<u8>, AgentError> {
     let mut bytes = Vec::new();
-    match max_bytes {
-        Some(max_bytes) => {
-            let limit = max_bytes.checked_add(1).ok_or_else(|| {
-                AgentError::Checkpoint("Session history read limit overflowed".to_string())
-            })?;
+    match decoded_read_limit(max_bytes) {
+        Some(limit) => {
             reader
                 .by_ref()
                 .take(limit)
@@ -730,6 +722,12 @@ fn read_history_reader(
         return Err(session_history_exceeds_max_error(max_bytes));
     }
     Ok(bytes)
+}
+
+fn decoded_read_limit(max_bytes: Option<u64>) -> Option<u64> {
+    // `u64::MAX` cannot be exceeded by an in-memory Vec on supported targets,
+    // so there is no extra probe byte to read for that cap.
+    max_bytes.and_then(|max_bytes| max_bytes.checked_add(1))
 }
 
 fn digest_history_reader(
@@ -805,6 +803,31 @@ mod tests {
             .expect_err("bounded literal read must reject over-limit history");
 
         assert_over_limit(err, 4);
+    }
+
+    #[test]
+    fn bounded_read_allows_literal_history_with_u64_max_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_history_file(&dir, "history.jsonl", b"abcde");
+
+        let bytes =
+            read_session_history_from_payload_bounded(path.to_str().unwrap(), u64::MAX).unwrap();
+
+        assert_eq!(bytes, b"abcde");
+    }
+
+    #[test]
+    fn bounded_read_allows_zstd_history_at_decoded_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let max_bytes = 1024;
+        let history = vec![b'a'; max_bytes as usize];
+        let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
+        let path = write_history_file(&dir, "history.jsonl.zst", &compressed);
+
+        let bytes = read_session_history_from_payload_bounded(path.to_str().unwrap(), max_bytes)
+            .expect("bounded zstd read must allow history exactly at the decoded cap");
+
+        assert_eq!(bytes, history);
     }
 
     #[test]
