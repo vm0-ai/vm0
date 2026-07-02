@@ -336,13 +336,25 @@ async fn download_resume_session_history(
     {
         ResumeSessionHistoryEncoding::Identity => {
             validate_identity_ref(&history_ref, timings)?;
-            let bytes = download_body(&http, &history_ref.url, history_ref.size, timings).await?;
+            let bytes = download_body(
+                &http,
+                &history_ref.url,
+                Some(history_ref.encoded_size),
+                timings,
+            )
+            .await?;
             validate_identity_body_size(&history_ref, bytes.len(), timings)?;
             bytes
         }
         ResumeSessionHistoryEncoding::Gzip => {
             let raw_size = validate_gzip_ref(&history_ref, timings)?;
-            let encoded_bytes = download_body(&http, &history_ref.url, None, timings).await?;
+            let encoded_bytes = download_body(
+                &http,
+                &history_ref.url,
+                Some(history_ref.encoded_size),
+                timings,
+            )
+            .await?;
             let raw_bytes = gunzip_session_history(&encoded_bytes, raw_size)?;
             validate_gzip_raw_size(raw_size, raw_bytes.len(), timings)?;
             raw_bytes
@@ -370,18 +382,25 @@ fn validate_identity_ref(
     timings: &mut SessionHistoryDownloadTimings,
 ) -> RunnerResult<()> {
     let validation_started = Instant::now();
-    if history_ref.raw_size.is_some() {
-        timings.add_validation(validation_started.elapsed(), false);
-        return Err(RunnerError::Internal(
-            "identity session history ref must not include compressed size metadata".into(),
-        ));
-    }
-    if let Some(expected_size) = history_ref.size
-        && expected_size > RESUME_SESSION_HISTORY_MAX_BYTES
-    {
+    if history_ref.raw_size > RESUME_SESSION_HISTORY_MAX_BYTES {
         timings.add_validation(validation_started.elapsed(), false);
         return Err(RunnerError::Internal(format!(
-            "session history is too large: {expected_size} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
+            "session history is too large: {} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes",
+            history_ref.raw_size
+        )));
+    }
+    if history_ref.encoded_size > RESUME_SESSION_HISTORY_MAX_BYTES {
+        timings.add_validation(validation_started.elapsed(), false);
+        return Err(RunnerError::Internal(format!(
+            "session history encoded object is too large: {} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes",
+            history_ref.encoded_size
+        )));
+    }
+    if history_ref.raw_size != history_ref.encoded_size {
+        timings.add_validation(validation_started.elapsed(), false);
+        return Err(RunnerError::Internal(format!(
+            "identity session history rawSize must match encodedSize: rawSize={}, encodedSize={}",
+            history_ref.raw_size, history_ref.encoded_size
         )));
     }
     Ok(())
@@ -393,12 +412,11 @@ fn validate_identity_body_size(
     timings: &mut SessionHistoryDownloadTimings,
 ) -> RunnerResult<()> {
     let validation_started = Instant::now();
-    if let Some(expected_size) = history_ref.size
-        && byte_count as u64 != expected_size
-    {
+    if byte_count as u64 != history_ref.raw_size {
         timings.add_validation(validation_started.elapsed(), false);
         return Err(RunnerError::Internal(format!(
-            "session history size mismatch: expected {expected_size} bytes, got {byte_count} bytes"
+            "session history size mismatch: expected {} bytes, got {byte_count} bytes",
+            history_ref.raw_size
         )));
     }
     timings.add_validation(validation_started.elapsed(), true);
@@ -410,18 +428,7 @@ fn validate_gzip_ref(
     timings: &mut SessionHistoryDownloadTimings,
 ) -> RunnerResult<u64> {
     let validation_started = Instant::now();
-    let Some(raw_size) = history_ref.raw_size else {
-        timings.add_validation(validation_started.elapsed(), false);
-        return Err(RunnerError::Internal(
-            "gzip session history ref is missing rawSize".into(),
-        ));
-    };
-    if history_ref.size.is_some() {
-        timings.add_validation(validation_started.elapsed(), false);
-        return Err(RunnerError::Internal(
-            "gzip session history ref must not include identity size metadata".into(),
-        ));
-    }
+    let raw_size = history_ref.raw_size;
     if raw_size == 0 {
         timings.add_validation(validation_started.elapsed(), false);
         return Err(RunnerError::Internal(
@@ -432,6 +439,19 @@ fn validate_gzip_ref(
         timings.add_validation(validation_started.elapsed(), false);
         return Err(RunnerError::Internal(format!(
             "session history is too large: {raw_size} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
+        )));
+    }
+    if history_ref.encoded_size == 0 {
+        timings.add_validation(validation_started.elapsed(), false);
+        return Err(RunnerError::Internal(
+            "gzip session history encodedSize must be positive".into(),
+        ));
+    }
+    if history_ref.encoded_size > RESUME_SESSION_HISTORY_MAX_BYTES {
+        timings.add_validation(validation_started.elapsed(), false);
+        return Err(RunnerError::Internal(format!(
+            "session history encoded object is too large: {} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes",
+            history_ref.encoded_size
         )));
     }
     Ok(raw_size)
@@ -606,7 +626,7 @@ mod tests {
         .unwrap()
     }
 
-    fn ref_session(url: String, hash: String, size: Option<u64>) -> ResumeSession {
+    fn ref_session(url: String, hash: String, raw_size: u64, encoded_size: u64) -> ResumeSession {
         ResumeSession {
             cli_agent_session_id: "sess-123".to_string(),
             history: ResumeSessionHistory::Ref {
@@ -614,15 +634,20 @@ mod tests {
                     kind: ResumeSessionHistoryRefKind::Blob,
                     hash,
                     url,
-                    size,
                     encoding: None,
-                    raw_size: None,
+                    raw_size,
+                    encoded_size,
                 },
             },
         }
     }
 
-    fn gzip_ref_session(url: String, hash: String, raw_size: u64) -> ResumeSession {
+    fn gzip_ref_session(
+        url: String,
+        hash: String,
+        raw_size: u64,
+        encoded_size: u64,
+    ) -> ResumeSession {
         ResumeSession {
             cli_agent_session_id: "sess-123".to_string(),
             history: ResumeSessionHistory::Ref {
@@ -630,9 +655,9 @@ mod tests {
                     kind: ResumeSessionHistoryRefKind::Blob,
                     hash,
                     url,
-                    size: None,
                     encoding: Some(ResumeSessionHistoryEncoding::Gzip),
-                    raw_size: Some(raw_size),
+                    raw_size,
+                    encoded_size,
                 },
             },
         }
@@ -695,7 +720,8 @@ mod tests {
         let session = ref_session(
             serve_once("200 OK", body, Some(body.len() as u64)).await,
             hash,
-            Some(body.len() as u64),
+            body.len() as u64,
+            body.len() as u64,
         );
 
         let materializer = start_materializer(&session);
@@ -720,11 +746,13 @@ mod tests {
     async fn materializer_downloads_decompresses_and_verifies_gzip_hash() {
         let body = b"{\"type\":\"init\"}\n{\"type\":\"user\",\"message\":\"hello\"}\n";
         let compressed = gzip_bytes(body);
+        let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
         let session = gzip_ref_session(
             serve_once("200 OK", compressed, None).await,
             hash,
             body.len() as u64,
+            encoded_size,
         );
 
         let materializer = start_materializer(&session);
@@ -751,11 +779,13 @@ mod tests {
         let second = b"{\"type\":\"user\",\"message\":\"hello\"}\n";
         let body = [first.as_slice(), second.as_slice()].concat();
         let compressed = [gzip_bytes(first), gzip_bytes(second)].concat();
+        let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(&body));
         let session = gzip_ref_session(
             serve_once("200 OK", compressed, None).await,
             hash,
             body.len() as u64,
+            encoded_size,
         );
 
         let materializer = start_materializer(&session);
@@ -773,8 +803,14 @@ mod tests {
     async fn materializer_rejects_gzip_body_over_declared_raw_size() {
         let body = b"{\"type\":\"init\"}\n{\"type\":\"user\",\"message\":\"hello\"}\n";
         let compressed = gzip_bytes(body);
+        let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = gzip_ref_session(serve_once("200 OK", compressed, None).await, hash, 1);
+        let session = gzip_ref_session(
+            serve_once("200 OK", compressed, None).await,
+            hash,
+            1,
+            encoded_size,
+        );
 
         let materializer = start_materializer(&session);
         let result = materializer.finish(&CancellationToken::new()).await;
@@ -801,7 +837,8 @@ mod tests {
         let session = ref_session(
             serve_once("200 OK", b"actual", Some(6)).await,
             expected_hash.clone(),
-            Some(6),
+            6,
+            6,
         );
 
         let result = start_materializer(&session)
@@ -829,7 +866,8 @@ mod tests {
         let session = ref_session(
             serve_once("403 Forbidden", b"no", Some(2)).await,
             hex::encode(Sha256::digest(b"no")),
-            Some(2),
+            2,
+            2,
         );
 
         let result = start_materializer(&session)
@@ -855,7 +893,8 @@ mod tests {
         let session = ref_session(
             serve_once("200 OK", b"", Some(RESUME_SESSION_HISTORY_MAX_BYTES + 1)).await,
             hex::encode(Sha256::digest(b"")),
-            None,
+            0,
+            0,
         );
 
         let result = start_materializer(&session)
@@ -879,7 +918,8 @@ mod tests {
         let session = ref_session(
             serve_once("200 OK", b"short", Some(999)).await,
             hex::encode(Sha256::digest(b"short")),
-            None,
+            999,
+            999,
         );
 
         let result = start_materializer(&session)
@@ -923,7 +963,8 @@ mod tests {
         let session = ref_session(
             format!("http://{address}/history.blob?token=secret"),
             hex::encode(Sha256::digest(b"")),
-            None,
+            0,
+            0,
         );
         let cancel = CancellationToken::new();
         cancel.cancel();
@@ -962,7 +1003,8 @@ mod tests {
         let session = ref_session(
             format!("http://{address}/history.blob?token=secret"),
             hex::encode(Sha256::digest(b"")),
-            None,
+            0,
+            0,
         );
 
         let materializer = start_materializer(&session);
@@ -998,7 +1040,8 @@ mod tests {
         let session = ref_session(
             format!("http://{address}/history.blob?token=secret"),
             hex::encode(Sha256::digest(b"")),
-            None,
+            0,
+            0,
         );
         let cancel = CancellationToken::new();
 
@@ -1040,7 +1083,8 @@ mod tests {
         let session = ref_session(
             format!("http://{address}/history.blob?token=secret"),
             hex::encode(Sha256::digest(b"")),
-            None,
+            0,
+            0,
         );
         let cancel = CancellationToken::new();
         cancel.cancel();

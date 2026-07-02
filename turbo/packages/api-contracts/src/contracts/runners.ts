@@ -186,15 +186,15 @@ const resumeSessionHistoryBlobRefSchema = z.object({
   kind: z.literal("blob"),
   hash: z.string().regex(/^[a-f0-9]{64}$/),
 });
-const resumeSessionHistorySizeSchema = z
+const resumeSessionHistoryRawSizeSchema = z
   .number()
   .int()
   .nonnegative()
   .max(RESUME_SESSION_HISTORY_MAX_BYTES);
-const compressedResumeSessionHistorySizeSchema = z
+const resumeSessionHistoryEncodedSizeSchema = z
   .number()
   .int()
-  .positive()
+  .nonnegative()
   .max(RESUME_SESSION_HISTORY_MAX_BYTES);
 
 const storedResumeSessionRefSchema = z.object({
@@ -208,7 +208,8 @@ const resumeSessionIdentityHistoryRefSchema = resumeSessionHistoryBlobRefSchema
   .extend({
     url: z.string().url(),
     encoding: z.literal("identity").optional(),
-    size: resumeSessionHistorySizeSchema.optional(),
+    rawSize: resumeSessionHistoryRawSizeSchema,
+    encodedSize: resumeSessionHistoryEncodedSizeSchema,
   })
   .strict();
 
@@ -216,7 +217,8 @@ const resumeSessionGzipHistoryRefSchema = resumeSessionHistoryBlobRefSchema
   .extend({
     url: z.string().url(),
     encoding: z.literal("gzip"),
-    rawSize: compressedResumeSessionHistorySizeSchema,
+    rawSize: resumeSessionHistoryRawSizeSchema,
+    encodedSize: resumeSessionHistoryEncodedSizeSchema,
   })
   .strict();
 

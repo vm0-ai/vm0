@@ -1175,7 +1175,8 @@ describe("OPS-01: user data export", () => {
       {
         runId: run.runId,
         hash: historyHash,
-        size: history.length,
+        rawSize: history.length,
+        encodedSize: compressedHistory.length,
         encoding: "gzip",
       },
       headers,
@@ -1261,13 +1262,15 @@ describe("OPS-01: user data export", () => {
     const history = `{"type":"init"}\n{"type":"human","text":"exported-${randomUUID()}"}\n`;
     const tamperedHistory = history.replace("exported-", "tampered-");
     const historyHash = createHash("sha256").update(history).digest("hex");
+    const compressedHistory = gzipSync(Buffer.from(history, "utf8"));
     const compressedKey = `blobs/${historyHash}.blob.gz`;
 
     await webhooks.requestAgentCheckpointPrepareHistory(
       {
         runId: run.runId,
         hash: historyHash,
-        size: Buffer.byteLength(history, "utf8"),
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: compressedHistory.length,
         encoding: "gzip",
       },
       headers,

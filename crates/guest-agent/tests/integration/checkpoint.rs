@@ -114,7 +114,8 @@ async fn success_checkpoint_uploads_non_utf8_session_history() {
             .path("/api/webhooks/agent/checkpoints/prepare-history")
             .json_body_includes(r#"{"runId":"test-run-001"}"#)
             .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
-            .json_body_includes(format!(r#"{{"size":{history_size}}}"#))
+            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
+            .json_body_includes(format!(r#"{{"encodedSize":{history_size}}}"#))
             .json_body_includes(r#"{"encoding":"identity"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
@@ -184,7 +185,7 @@ async fn success_checkpoint_writes_large_final_identity_metadata() {
             .path("/api/webhooks/agent/checkpoints/prepare-history")
             .json_body_includes(r#"{"runId":"test-run-001"}"#)
             .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
-            .json_body_includes(format!(r#"{{"size":{history_size}}}"#))
+            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
             .json_body_includes(r#"{"encoding":"gzip"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
@@ -254,7 +255,7 @@ async fn success_checkpoint_uploads_gzip_session_history_when_acknowledged() {
             .path("/api/webhooks/agent/checkpoints/prepare-history")
             .json_body_includes(r#"{"runId":"test-run-001"}"#)
             .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
-            .json_body_includes(format!(r#"{{"size":{history_size}}}"#))
+            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
             .json_body_includes(r#"{"encoding":"gzip"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
@@ -321,7 +322,8 @@ async fn success_checkpoint_keeps_large_non_utf8_session_history_identity_encode
             .path("/api/webhooks/agent/checkpoints/prepare-history")
             .json_body_includes(r#"{"runId":"test-run-001"}"#)
             .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
-            .json_body_includes(format!(r#"{{"size":{history_size}}}"#))
+            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
+            .json_body_includes(format!(r#"{{"encodedSize":{history_size}}}"#))
             .json_body_includes(r#"{"encoding":"identity"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
@@ -414,7 +416,8 @@ async fn success_checkpoint_uses_explicit_runtime_after_process_env_changes() {
             .path("/api/webhooks/agent/checkpoints/prepare-history")
             .json_body_includes(r#"{"runId":"captured-run"}"#)
             .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
-            .json_body_includes(format!(r#"{{"size":{}}}"#, history.len()))
+            .json_body_includes(format!(r#"{{"rawSize":{}}}"#, history.len()))
+            .json_body_includes(format!(r#"{{"encodedSize":{}}}"#, history.len()))
             .json_body_includes(r#"{"encoding":"identity"}"#);
         then.status(200)
             .header("Content-Type", "application/json")

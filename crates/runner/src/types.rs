@@ -310,11 +310,11 @@ pub struct ResumeSessionHistoryRef {
     pub hash: String,
     pub url: String,
     #[serde(default)]
-    pub size: Option<u64>,
-    #[serde(default)]
     pub encoding: Option<ResumeSessionHistoryEncoding>,
-    #[serde(default, rename = "rawSize")]
-    pub raw_size: Option<u64>,
+    #[serde(rename = "rawSize")]
+    pub raw_size: u64,
+    #[serde(rename = "encodedSize")]
+    pub encoded_size: u64,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
@@ -838,7 +838,8 @@ mod tests {
                     "kind": "blob",
                     "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                     "url": "https://r2.example.com/blobs/a.blob?sig=secret",
-                    "size": 42
+                    "rawSize": 42,
+                    "encodedSize": 42
                 }
             },
             "billableFirewalls": []
@@ -849,7 +850,8 @@ mod tests {
         assert_eq!(ctx.cli_agent_session_id(), Some("sess-ref-123"));
         assert!(session.session_history().is_none());
         assert_eq!(history_ref.kind, ResumeSessionHistoryRefKind::Blob);
-        assert_eq!(history_ref.size, Some(42));
+        assert_eq!(history_ref.raw_size, 42);
+        assert_eq!(history_ref.encoded_size, 42);
     }
 
     #[test]
@@ -866,7 +868,8 @@ mod tests {
                     "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                     "url": "https://r2.example.com/blobs/a.blob.gz?sig=secret",
                     "encoding": "gzip",
-                    "rawSize": 42
+                    "rawSize": 42,
+                    "encodedSize": 24
                 }
             },
             "billableFirewalls": []
@@ -881,8 +884,8 @@ mod tests {
             history_ref.encoding,
             Some(ResumeSessionHistoryEncoding::Gzip)
         );
-        assert_eq!(history_ref.raw_size, Some(42));
-        assert!(history_ref.size.is_none());
+        assert_eq!(history_ref.raw_size, 42);
+        assert_eq!(history_ref.encoded_size, 24);
     }
 
     #[test]

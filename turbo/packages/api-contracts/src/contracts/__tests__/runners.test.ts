@@ -231,6 +231,8 @@ describe("runner resume session contract", () => {
         kind: "blob",
         hash: historyHash,
         url: "https://r2.example.com/blobs/history.blob?sig=secret",
+        rawSize: 1024,
+        encodedSize: 1024,
       },
     };
 
@@ -265,7 +267,8 @@ describe("runner resume session contract", () => {
         kind: "blob",
         hash: historyHash,
         url: "https://r2.example.com/blobs/history.blob?sig=secret",
-        size: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+        rawSize: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+        encodedSize: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
       },
     };
 
@@ -281,6 +284,7 @@ describe("runner resume session contract", () => {
         url: "https://r2.example.com/blobs/history.blob.gz?sig=secret",
         encoding: "gzip",
         rawSize: 1024,
+        encodedSize: 128,
       },
     };
 

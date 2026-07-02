@@ -785,6 +785,7 @@ fn is_static_json_field(field: &str) -> bool {
             | "deny"
             | "description"
             | "disallowedTools"
+            | "encodedSize"
             | "encoding"
             | "encryptedSecrets"
             | "environment"

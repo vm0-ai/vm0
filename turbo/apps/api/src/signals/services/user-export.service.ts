@@ -642,7 +642,7 @@ async function resolveSessionHistory(
   runtime: ExportRuntime,
   hash: string | null,
   encoding: string | null,
-  size: number | null,
+  rawSize: number | null,
   legacyText: string | null,
 ): Promise<Buffer | string | null> {
   if (hash) {
@@ -651,7 +651,7 @@ async function resolveSessionHistory(
     const result = await settle(
       loadSessionHistoryBlob(runtime, {
         encoding: normalizedEncoding,
-        expectedSize: size && size > 0 ? size : undefined,
+        expectedSize: rawSize && rawSize > 0 ? rawSize : undefined,
         hash,
         key,
       }),
@@ -777,7 +777,7 @@ async function collectConversationMessages(
       cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
       cliAgentSessionHistory: conversations.cliAgentSessionHistory,
       sessionHistoryBlobEncoding: blobs.encoding,
-      sessionHistoryBlobSize: blobs.size,
+      sessionHistoryBlobRawSize: blobs.rawSize,
     })
     .from(agentSessions)
     .innerJoin(
@@ -794,7 +794,7 @@ async function collectConversationMessages(
       runtime,
       session.cliAgentSessionHistoryHash,
       session.sessionHistoryBlobEncoding,
-      session.sessionHistoryBlobSize,
+      session.sessionHistoryBlobRawSize,
       session.cliAgentSessionHistory,
     );
 

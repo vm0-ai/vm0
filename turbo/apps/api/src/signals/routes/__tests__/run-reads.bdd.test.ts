@@ -1023,7 +1023,8 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       {
         runId: run.runId,
         hash: historyHash,
-        size: Buffer.byteLength(history, "utf8"),
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: compressedHistory.length,
         encoding: "gzip",
       },
       headers,
@@ -1068,6 +1069,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         url: expect.any(String),
         encoding: "gzip",
         rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: compressedHistory.length,
       },
     });
     await api.requestCancelRun(actor, compressedResume.runId, [200]);
@@ -1109,7 +1111,8 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         {
           runId: run.runId,
           hash: historyHash,
-          size: Buffer.byteLength(history, "utf8"),
+          rawSize: Buffer.byteLength(history, "utf8"),
+          encodedSize: gzipSync(Buffer.from(history, "utf8")).length,
           encoding: "gzip",
         },
         headers,
@@ -1120,11 +1123,29 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       encoding: "gzip",
     });
 
+    const mismatchedEncodedSize =
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash: historyHash,
+          rawSize: Buffer.byteLength(history, "utf8"),
+          encodedSize: gzipSync(Buffer.from(history, "utf8")).length + 1,
+          encoding: "gzip",
+        },
+        headers,
+        [400],
+      );
+    expectApiError(mismatchedEncodedSize.body);
+    expect(mismatchedEncodedSize.body.error.message).toBe(
+      "Session history encoded size does not match the existing blob",
+    );
+
     const identityRepair = await webhooks.requestAgentCheckpointPrepareHistory(
       {
         runId: run.runId,
         hash: historyHash,
-        size: Buffer.byteLength(history, "utf8"),
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: Buffer.byteLength(history, "utf8"),
         encoding: "identity",
       },
       headers,
@@ -1163,7 +1184,8 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       {
         runId: run.runId,
         hash: historyHash,
-        size: Buffer.byteLength(history, "utf8"),
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: corruptCompressedHistory.length,
         encoding: "gzip",
       },
       headers,
@@ -1350,6 +1372,9 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         kind: "blob",
         hash: historyHash,
         url: "https://r2.example.com/storages/presigned?sig=bdd",
+        encoding: "identity",
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: Buffer.byteLength(history, "utf8"),
       },
     });
     await api.requestCancelRun(actor, refResumed.runId, [200]);

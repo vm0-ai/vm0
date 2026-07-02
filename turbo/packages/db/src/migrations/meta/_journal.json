@@ -3690,6 +3690,13 @@
       "when": 1782974622459,
       "tag": "0526_nosy_fixer",
       "breakpoints": true
+    },
+    {
+      "idx": 527,
+      "version": "7",
+      "when": 1782974827218,
+      "tag": "0527_sturdy_colonel_america",
+      "breakpoints": true
     }
   ]
 }

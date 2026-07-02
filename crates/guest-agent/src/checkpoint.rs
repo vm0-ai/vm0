@@ -51,6 +51,13 @@ impl SessionHistoryUpload {
         }
     }
 
+    fn encoded_size(&self) -> u64 {
+        match &self.body {
+            SessionHistoryUploadBody::Identity(raw) => raw.len() as u64,
+            SessionHistoryUploadBody::Gzip { gzip, .. } => gzip.len() as u64,
+        }
+    }
+
     fn into_server_accepted_bytes(self, accepted_encoding: Option<&str>) -> (&'static str, Bytes) {
         match self.body {
             SessionHistoryUploadBody::Identity(raw) => {
@@ -224,13 +231,15 @@ async fn upload_session_history(
     let prep_start = std::time::Instant::now();
     let url = http.checkpoint_prepare_history_url()?;
     let requested_encoding = history_upload.requested_encoding();
+    let encoded_size = history_upload.encoded_size();
     let prep_resp = match http
         .post_json(
             url,
             &json!({
                 "runId": run_id,
                 "hash": history_hash,
-                "size": history_upload.raw_size,
+                "rawSize": history_upload.raw_size,
+                "encodedSize": encoded_size,
                 "encoding": requested_encoding,
             }),
             constants::HTTP_MAX_RETRIES,
