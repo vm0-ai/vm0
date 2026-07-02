@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.131.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.13...runner-rs-v0.131.14) (2026-07-02)
+
+
+### Refactoring
+
+* **mitm-addon:** separate body decode policies ([#19783](https://github.com/vm0-ai/vm0/issues/19783)) ([ba4480a](https://github.com/vm0-ai/vm0/commit/ba4480aa0483bcfde78c9b7dc74cafe8353e48a9))
+
 ## [0.131.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.12...runner-rs-v0.131.13) (2026-07-02)
 
 

@@ -3273,7 +3273,7 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Previous thread")).toBeInTheDocument();
       expect(screen.getByText("Next thread")).toBeInTheDocument();
       expect(screen.getByText("Rename chat")).toBeInTheDocument();
-      expect(screen.getByText("Change emoji")).toBeInTheDocument();
+      expect(screen.getByText("Change icon")).toBeInTheDocument();
       expect(screen.getAllByText("F2")).toHaveLength(2);
       expect(screen.getAllByText("Shift").length).toBeGreaterThan(0);
     });
@@ -3365,7 +3365,7 @@ describe("chat lifecycle", () => {
       ).toBeGreaterThan(0);
     });
 
-    expect(screen.queryByLabelText("Change emoji")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Change icon")).not.toBeInTheDocument();
 
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
@@ -3394,7 +3394,7 @@ describe("chat lifecycle", () => {
         screen.getAllByText("Current keyboard thread").length,
       ).toBeGreaterThan(0);
     });
-    const emojiButton = screen.getByLabelText("Change emoji");
+    const emojiButton = screen.getByLabelText("Change icon");
     expect(emojiButton).toHaveTextContent("");
     expect(emojiButton.querySelector("svg")).not.toBeInTheDocument();
     expect(emojiButton).toHaveClass("h-7", "w-7");
@@ -3646,7 +3646,12 @@ describe("chat lifecycle", () => {
 
     const menu = await screen.findByRole("menu");
     expect(queryAllByRoleFast("menuitem", menu)).toHaveLength(10);
-    click(menuItemByLabel("Done ✅", menu));
+    expect(within(menu).queryByText("Done")).not.toBeInTheDocument();
+    expect(within(menu).getByText("Clear icon")).toBeInTheDocument();
+    expect(within(menu).getAllByText("Shift").length).toBeGreaterThan(0);
+    expect(within(menu).getByText("1")).toBeInTheDocument();
+    expect(within(menu).getByText("0")).toBeInTheDocument();
+    click(menuItemByLabel("Done icon Shift 1", menu));
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
@@ -3747,10 +3752,10 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+      expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
     });
 
-    const emojiButton = screen.getByLabelText("Change emoji");
+    const emojiButton = screen.getByLabelText("Change icon");
     function visibleChatThreadIconTooltip(): HTMLElement | undefined {
       return screen.queryAllByText("Chat thread icon").find((element) => {
         try {
@@ -3808,7 +3813,7 @@ describe("chat lifecycle", () => {
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
       expect(document.title).toBe("🔥   Current keyboard thread | VM0");
-      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+      expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
       expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
     });
 
@@ -3823,10 +3828,10 @@ describe("chat lifecycle", () => {
       }),
     ).toBeFalsy();
     const doneItem = queryAllByRoleFast("menuitem", menu).find((item) => {
-      return item.getAttribute("aria-label") === "Done ✅";
+      return item.getAttribute("aria-label") === "Done icon Shift 1";
     });
     if (!doneItem) {
-      throw new Error("Done emoji menu item not found");
+      throw new Error("Done icon menu item not found");
     }
     click(doneItem);
 
@@ -3859,7 +3864,7 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+      expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
     });
 
     const threadRegion = screen.getByLabelText("Chat thread");
@@ -3897,7 +3902,7 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+      expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
     });
 
     const threadRegion = screen.getByLabelText("Chat thread");
@@ -7066,7 +7071,7 @@ describe("initial thinking indicator", () => {
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 
-  it("restarts on full follow-up lines before sliding a short tail", async () => {
+  it("restarts on every follow-up line instead of sliding a short tail", async () => {
     const threadId = "thread-initial-thinking-rollover";
     const thinking = "ABCDEFG";
     mockThinkingTypewriterLayout({
@@ -7133,13 +7138,14 @@ describe("initial thinking indicator", () => {
 
     const label = await screen.findByLabelText(thinking);
     await waitFor(() => {
-      expect(label).toHaveTextContent("...EFG");
+      expect(label).toHaveTextContent(/^G$/);
     });
     expect(
       Array.from(displayedLabels).some((value) => {
         return value === "D" || value === "DE" || value === "DEF";
       }),
     ).toBeTruthy();
+    expect(displayedLabels.has("...EFG")).toBeFalsy();
     expect(label).not.toHaveTextContent(thinking);
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });

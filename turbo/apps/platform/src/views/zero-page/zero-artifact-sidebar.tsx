@@ -66,6 +66,7 @@ import {
   publicAttachmentUrl,
   TextPreviewLoader,
 } from "./zero-attachment-chips.tsx";
+import { artifactPreviewUrlsMatch } from "./zero-attachment-url.ts";
 import { lightboxDialogVisible$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -938,7 +939,7 @@ function findArtifactItemForUrl(
 ): ArtifactSidebarItem | undefined {
   for (const run of runs) {
     const file = run.files.find((candidate) => {
-      return candidate.url === url;
+      return artifactPreviewUrlsMatch(candidate.url, url);
     });
     if (file) {
       return { runId: run.runId, file };
@@ -1102,6 +1103,8 @@ function ArtifactSidebarActions({
     Boolean(features?.[FeatureSwitchKey.HtmlArtifactCommentEditing]) &&
     htmlState !== undefined;
   const htmlEditActive = showHtmlControls && htmlState !== "idle";
+  const htmlExitAction =
+    htmlState === "editing" && onExitHtmlEdit ? onExitHtmlEdit : undefined;
 
   return (
     <div className="flex shrink-0 items-center gap-1">
@@ -1132,9 +1135,6 @@ function ArtifactSidebarActions({
           {showHtmlControls && (
             <>
               <ArtifactHtmlEditStatus state={htmlState} />
-              {htmlState === "editing" && onExitHtmlEdit && (
-                <ArtifactExitHtmlEditAction onClick={onExitHtmlEdit} />
-              )}
               {onEditHtml && <ArtifactEditHtmlAction onClick={onEditHtml} />}
               <ArtifactActionSeparator />
             </>
@@ -1145,12 +1145,13 @@ function ArtifactSidebarActions({
         fullscreen={fullscreen}
         onToggleFullscreen={onToggleFullscreen}
       />
-      {!htmlEditActive &&
-        (compactActions ? (
-          <ArtifactMoreActions onClose={onClose} />
-        ) : (
-          <ArtifactCloseAction onClose={onClose} />
-        ))}
+      {htmlExitAction ? (
+        <ArtifactExitHtmlEditAction onClick={htmlExitAction} />
+      ) : compactActions ? (
+        <ArtifactMoreActions onClose={onClose} />
+      ) : (
+        <ArtifactCloseAction onClose={onClose} />
+      )}
     </div>
   );
 }
@@ -1188,15 +1189,15 @@ function ArtifactEditHtmlAction({ onClick }: { onClick: () => void }) {
 
 function ArtifactExitHtmlEditAction({ onClick }: { onClick: () => void }) {
   return (
-    <ArtifactActionTooltip label="Exit editing and keep preview open">
+    <ArtifactActionTooltip label="Exit editing">
       <button
         type="button"
         onClick={onClick}
-        aria-label="Exit editing and keep preview open"
+        aria-label="Exit editing"
         data-testid="artifact-sidebar-exit-html-edit"
-        className="inline-flex h-8 items-center rounded-full border border-border/80 bg-background px-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted/60"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
       >
-        Exit
+        <IconX size={16} />
       </button>
     </ArtifactActionTooltip>
   );
@@ -1324,7 +1325,7 @@ function ArtifactCloseAction({ onClose }: { onClose: () => void }) {
         onClick={onClose}
         aria-label="Close artifact"
         data-testid="artifact-sidebar-close"
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       >
         <IconX size={16} />
       </button>

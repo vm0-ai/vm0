@@ -1,8 +1,4 @@
-import { useLastLoadable } from "ccstate-react";
-import type {
-  ModelProviderResponse,
-  ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
+import { useGet, useLoadable } from "ccstate-react";
 import {
   Tooltip,
   TooltipContent,
@@ -10,33 +6,34 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 
-import { personalConfiguredProviders$ } from "../../signals/zero-page/settings/personal-model-providers.ts";
+import {
+  ACCOUNT_MENU_SUBSCRIPTION_PROVIDERS,
+  accountMenuSubscriptionUsageRowsRefreshPromise$,
+  accountMenuSubscriptionUsageRowsCache$,
+  accountMenuSubscriptionUsageWindows,
+  type AccountMenuSubscriptionUsage,
+  type AccountMenuSubscriptionUsageRow,
+  type AccountMenuSubscriptionUsageWindow,
+  type AccountMenuSubscriptionUsageRowsCacheKey,
+} from "../../signals/zero-page/account-menu-subscriptions.ts";
 
-type SubscriptionUsage = NonNullable<
-  ModelProviderResponse["subscriptionUsage"]
->;
-type SubscriptionUsageWindow = NonNullable<SubscriptionUsage["fiveHour"]>;
+type SubscriptionUsage = AccountMenuSubscriptionUsage;
+type SubscriptionUsageWindow = AccountMenuSubscriptionUsageWindow;
 
-const SUBSCRIPTION_PROVIDERS = [
-  { type: "codex-oauth-token", label: "Codex" },
-  { type: "claude-code-oauth-token", label: "Claude Code" },
-] as const satisfies readonly {
-  readonly type: ModelProviderType;
-  readonly label: string;
-}[];
-
-interface SubscriptionUsageRow {
-  readonly type: ModelProviderType;
-  readonly label: string;
-  readonly usage: SubscriptionUsage;
-}
-
-export function useSubscriptionUsageRows() {
-  const providersLoadable = useLastLoadable(personalConfiguredProviders$);
-  const providers =
-    providersLoadable.state === "hasData" ? providersLoadable.data : [];
-  const rows = subscriptionUsageRows(providers);
-  const loading = providersLoadable.state === "loading";
+export function useSubscriptionUsageRows({
+  cacheKey,
+}: {
+  readonly cacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
+}) {
+  const rowsCache = useGet(accountMenuSubscriptionUsageRowsCache$);
+  const refreshLoadable = useLoadable(
+    accountMenuSubscriptionUsageRowsRefreshPromise$,
+  );
+  const cachedRows =
+    cacheKey !== null && rowsCache.key === cacheKey ? rowsCache.rows : null;
+  const hasCachedRows = cachedRows !== null;
+  const loading = refreshLoadable.state === "loading" && !hasCachedRows;
+  const rows = cachedRows ?? [];
 
   return { loading, rows };
 }
@@ -46,7 +43,7 @@ export function AccountMenuSubscriptionsPanel({
   rows,
 }: {
   readonly loading: boolean;
-  readonly rows: readonly SubscriptionUsageRow[];
+  readonly rows: readonly AccountMenuSubscriptionUsageRow[];
 }) {
   return (
     <div data-testid="account-menu-subscriptions" className="px-3 py-2.5">
@@ -75,7 +72,7 @@ export function AccountMenuSubscriptionsPanel({
 function AccountMenuSubscriptionsSkeleton() {
   return (
     <div className="flex flex-col gap-2.5" aria-hidden="true">
-      {SUBSCRIPTION_PROVIDERS.map((provider, index) => {
+      {ACCOUNT_MENU_SUBSCRIPTION_PROVIDERS.map((provider, index) => {
         return (
           <div key={provider.type} className="flex flex-col gap-1.5">
             {index > 0 && <div className="-mx-3 h-px bg-border" />}
@@ -108,7 +105,7 @@ function AccountMenuSubscriptionProviderSection({
   readonly label: string;
   readonly usage: SubscriptionUsage;
 }) {
-  const windows = usageWindows(usage);
+  const windows = accountMenuSubscriptionUsageWindows(usage);
 
   return (
     <section className="flex flex-col gap-1.5" aria-label={`${label} usage`}>
@@ -191,35 +188,6 @@ function AccountMenuSubscriptionUsageBar({
   );
 }
 
-function subscriptionUsageRows(
-  providers: readonly ModelProviderResponse[],
-): readonly SubscriptionUsageRow[] {
-  return SUBSCRIPTION_PROVIDERS.flatMap((definition) => {
-    const provider = providers.find((candidate) => {
-      return candidate.type === definition.type;
-    });
-    if (!provider) {
-      return [];
-    }
-    const usage = fallbackSubscriptionUsage(provider);
-    if (!usage || usageWindows(usage).length === 0) {
-      return [];
-    }
-    return [{ ...definition, usage }];
-  });
-}
-
-function hasUsageWindow(
-  window: SubscriptionUsage["fiveHour"],
-): window is SubscriptionUsageWindow {
-  return (
-    window !== null &&
-    (window.remainingPercent !== null ||
-      window.usedPercent !== null ||
-      window.resetAt !== null)
-  );
-}
-
 function formatUsagePercent(value: number | null): string | null {
   if (value === null || !Number.isFinite(value)) {
     return null;
@@ -250,45 +218,6 @@ function formatUsageReset(resetAt: string | null): string | null {
     options.timeZone = browserTimeZone;
   }
   return `resets ${date.toLocaleDateString("en-US", options)}`;
-}
-
-function fallbackSubscriptionUsage(
-  provider: ModelProviderResponse,
-): SubscriptionUsage | null {
-  if (usageWindows(provider.subscriptionUsage).length > 0) {
-    return provider.subscriptionUsage ?? null;
-  }
-
-  const resetAt = provider.subscriptionNextResetAt?.trim();
-  if (!resetAt) {
-    return null;
-  }
-
-  const resetPeriod = provider.subscriptionResetPeriod?.trim().toLowerCase();
-  const window = {
-    usedPercent: null,
-    remainingPercent: null,
-    resetAt,
-    windowSeconds: resetPeriod?.includes("5") ? 18_000 : 604_800,
-  };
-
-  return resetPeriod?.includes("5")
-    ? { fiveHour: window, weekly: null }
-    : { fiveHour: null, weekly: window };
-}
-
-function usageWindows(usage: SubscriptionUsage | null | undefined): readonly {
-  readonly label: string;
-  readonly window: SubscriptionUsageWindow;
-}[] {
-  return [
-    { label: "5h", window: usage?.fiveHour ?? null },
-    { label: "week", window: usage?.weekly ?? null },
-  ].filter(
-    (item): item is { label: string; window: SubscriptionUsageWindow } => {
-      return hasUsageWindow(item.window);
-    },
-  );
 }
 
 function usageTone(remainingPercent: number | null): {

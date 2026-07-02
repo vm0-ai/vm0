@@ -356,85 +356,86 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ]),
 
   // Fal-hosted GPT Image models. The endpoints return image URLs without
-  // token usage, so built-in generation bills the output image tier with 20%
-  // markup. Large tiers use the highest documented non-1024x1024 price.
+  // token usage, so built-in generation bills per output image tier at the
+  // raw provider cost. Large tiers use the highest documented non-1024x1024
+  // price.
   ...usageGroup("image", "gpt-image-2", [
-    ["output_image.low.standard", usd(0.006 * 1.2), 1],
-    ["output_image.low.large", usd(0.012 * 1.2), 1],
-    ["output_image.medium.standard", usd(0.053 * 1.2), 1],
-    ["output_image.medium.large", usd(0.101 * 1.2), 1],
-    ["output_image.high.standard", usd(0.211 * 1.2), 1],
-    ["output_image.high.large", usd(0.401 * 1.2), 1],
+    ["output_image.low.standard", usd(0.006), 1],
+    ["output_image.low.large", usd(0.012), 1],
+    ["output_image.medium.standard", usd(0.053), 1],
+    ["output_image.medium.large", usd(0.101), 1],
+    ["output_image.high.standard", usd(0.211), 1],
+    ["output_image.high.large", usd(0.401), 1],
   ]),
   ...usageGroup("image", "gpt-image-1.5", [
-    ["output_image.low.standard", usd(0.009 * 1.2), 1],
-    ["output_image.low.large", usd(0.013 * 1.2), 1],
-    ["output_image.medium.standard", usd(0.034 * 1.2), 1],
-    ["output_image.medium.large", usd(0.051 * 1.2), 1],
-    ["output_image.high.standard", usd(0.133 * 1.2), 1],
-    ["output_image.high.large", usd(0.2 * 1.2), 1],
+    ["output_image.low.standard", usd(0.009), 1],
+    ["output_image.low.large", usd(0.013), 1],
+    ["output_image.medium.standard", usd(0.034), 1],
+    ["output_image.medium.large", usd(0.051), 1],
+    ["output_image.high.standard", usd(0.133), 1],
+    ["output_image.high.large", usd(0.2), 1],
   ]),
   ...usageGroup("image", "gpt-image-1", [
-    ["output_image.low.standard", usd(0.011 * 1.2), 1],
-    ["output_image.low.large", usd(0.016 * 1.2), 1],
-    ["output_image.medium.standard", usd(0.042 * 1.2), 1],
-    ["output_image.medium.large", usd(0.063 * 1.2), 1],
-    ["output_image.high.standard", usd(0.167 * 1.2), 1],
-    ["output_image.high.large", usd(0.25 * 1.2), 1],
+    ["output_image.low.standard", usd(0.011), 1],
+    ["output_image.low.large", usd(0.016), 1],
+    ["output_image.medium.standard", usd(0.042), 1],
+    ["output_image.medium.large", usd(0.063), 1],
+    ["output_image.high.standard", usd(0.167), 1],
+    ["output_image.high.large", usd(0.25), 1],
   ]),
   ...usageGroup("image", "gpt-image-1-mini", [
-    ["output_image.low.standard", usd(0.005 * 1.2), 1],
-    ["output_image.low.large", usd(0.006 * 1.2), 1],
-    ["output_image.medium.standard", usd(0.011 * 1.2), 1],
-    ["output_image.medium.large", usd(0.015 * 1.2), 1],
-    ["output_image.high.standard", usd(0.036 * 1.2), 1],
-    ["output_image.high.large", usd(0.052 * 1.2), 1],
+    ["output_image.low.standard", usd(0.005), 1],
+    ["output_image.low.large", usd(0.006), 1],
+    ["output_image.medium.standard", usd(0.011), 1],
+    ["output_image.medium.large", usd(0.015), 1],
+    ["output_image.high.standard", usd(0.036), 1],
+    ["output_image.high.large", usd(0.052), 1],
   ]),
 
-  // fal.ai image generation — billed by model-specific output unit with 20% markup.
+  // fal.ai image generation — billed by model-specific output unit at the raw
+  // provider cost.
   ...usageGroup("image", "fal-ai/flux-pro/v1.1", [
-    ["output_megapixel", usd(0.048), 1],
+    ["output_megapixel", usd(0.04), 1],
   ]),
   ...usageGroup("image", "fal-ai/flux-pro/v1.1-ultra", [
-    ["output_image", usd(0.072), 1],
+    ["output_image", usd(0.06), 1],
   ]),
   ...usageGroup("image", "fal-ai/qwen-image", [
-    ["output_megapixel", usd(0.024), 1],
+    ["output_megapixel", usd(0.02), 1],
   ]),
   ...usageGroup("image", "fal-ai/bytedance/seedream/v4/text-to-image", [
-    ["output_image", usd(0.036), 1],
+    ["output_image", usd(0.03), 1],
   ]),
   ...usageGroup("image", "fal-ai/nano-banana-2", [
-    ["output_image", usd(0.08 * 1.2), 1],
+    ["output_image", usd(0.08), 1],
   ]),
   // Background removal transform (fal cost is $0).
   ...usageGroup("image", "fal-ai/birefnet/v2", [["output_image", usd(0), 1]]),
   // Upscale/HD transform, billed per output megapixel.
   ...usageGroup("image", "fal-ai/clarity-upscaler", [
-    ["output_megapixel", usd(0.036), 1],
+    ["output_megapixel", usd(0.03), 1],
   ]),
 
-  // BytePlus ModelArk video generation with a 200% provider-price multiplier.
+  // BytePlus ModelArk video generation (raw provider cost).
   ...usageGroup("video", "dreamina-seedance-2-0-260128", [
-    ["output_video_tokens.480p_720p.no_video", usd(7 * 2), 1_000_000],
-    ["output_video_tokens.480p_720p.with_video", usd(4.3 * 2), 1_000_000],
-    ["output_video_tokens.1080p.no_video", usd(7.7 * 2), 1_000_000],
-    ["output_video_tokens.1080p.with_video", usd(4.7 * 2), 1_000_000],
+    ["output_video_tokens.480p_720p.no_video", usd(7), 1_000_000],
+    ["output_video_tokens.480p_720p.with_video", usd(4.3), 1_000_000],
+    ["output_video_tokens.1080p.no_video", usd(7.7), 1_000_000],
+    ["output_video_tokens.1080p.with_video", usd(4.7), 1_000_000],
   ]),
   ...usageGroup("video", "dreamina-seedance-2-0-fast-260128", [
-    ["output_video_tokens.480p_720p.no_video", usd(5.6 * 2), 1_000_000],
-    ["output_video_tokens.480p_720p.with_video", usd(3.3 * 2), 1_000_000],
+    ["output_video_tokens.480p_720p.no_video", usd(5.6), 1_000_000],
+    ["output_video_tokens.480p_720p.with_video", usd(3.3), 1_000_000],
   ]),
   ...usageGroup("video", "seedance-1-5-pro-251215", [
-    ["output_video_tokens.audio", usd(2.4 * 2), 1_000_000],
-    ["output_video_tokens.silent", usd(1.2 * 2), 1_000_000],
+    ["output_video_tokens.audio", usd(2.4), 1_000_000],
+    ["output_video_tokens.silent", usd(1.2), 1_000_000],
   ]),
 
   // OpenAI GPT-4o mini TTS — https://platform.openai.com/docs/pricing
-  // $0.015/minute cost with 20% gross margin = $0.01875/minute,
-  // rounded to 19 credits/minute.
+  // $0.015/minute raw provider cost = 15 credits/minute.
   ...usageGroup("audio", "gpt-4o-mini-tts", [
-    ["output_audio_seconds", usd(0.018_75), 60],
+    ["output_audio_seconds", usd(0.015), 60],
   ]),
 ];
 
