@@ -407,7 +407,7 @@ async fn prepare_affinity_protected_candidate(
         .saturating_add(AFFINITY_DEFER_JITTER);
     info!(
         run_id = %candidate.run_id(),
-        session = %diagnostic_session_fingerprint(&cli_agent_session_id),
+        session_id = %cli_agent_session_id,
         delay_ms = delay.as_millis(),
         "same-session affinity protected by another runner, deferring claim"
     );
