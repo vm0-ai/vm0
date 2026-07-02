@@ -795,6 +795,27 @@ mod tests {
     }
 
     #[test]
+    fn bounded_read_allows_empty_literal_history_with_zero_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_history_file(&dir, "history.jsonl", b"");
+
+        let bytes = read_session_history_from_payload_bounded(path.to_str().unwrap(), 0).unwrap();
+
+        assert_eq!(bytes, b"");
+    }
+
+    #[test]
+    fn bounded_read_rejects_nonempty_literal_history_with_zero_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_history_file(&dir, "history.jsonl", b"a");
+
+        let err = read_session_history_from_payload_bounded(path.to_str().unwrap(), 0)
+            .expect_err("bounded literal read must reject nonempty history when cap is zero");
+
+        assert_over_limit(err, 0);
+    }
+
+    #[test]
     fn bounded_read_rejects_literal_history_over_limit() {
         let dir = tempfile::tempdir().unwrap();
         let path = write_history_file(&dir, "history.jsonl", b"abcde");
