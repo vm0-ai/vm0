@@ -921,6 +921,18 @@ mod tests {
     }
 
     #[test]
+    fn exec_termination_rejects_non_exited_unknown_fields() {
+        for kind in ["timed_out", "cancelled", "start_failed", "wait_failed"] {
+            let value = serde_json::json!({
+                "kind": kind,
+                "signal": 9,
+            });
+
+            assert!(serde_json::from_value::<ExecTermination>(value).is_err());
+        }
+    }
+
+    #[test]
     fn exec_termination_rejects_duplicate_fields() {
         for value in [
             r#"{"kind":"exited","kind":"timed_out","exit_code":0}"#,
