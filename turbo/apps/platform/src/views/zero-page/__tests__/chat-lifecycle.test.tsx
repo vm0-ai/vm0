@@ -1406,7 +1406,7 @@ describe("chat lifecycle", () => {
   it("keeps thinking when a different run completes while another run is open", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-stale-lifecycle-thinking",
-      activeRunIds: [],
+      activeRunIds: ["run-r2"],
       chatMessages: [
         {
           id: "msg-stale-usage-r1",
@@ -1472,6 +1472,51 @@ describe("chat lifecycle", () => {
       expect(
         document.querySelector("[data-thinking-indicator]"),
       ).not.toBeNull();
+    });
+  });
+
+  it("clears thinking when only the latest completed marker is loaded after an older unterminated run", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-completed-marker-only-after-stale-run",
+      activeRunIds: [],
+      chatMessages: [
+        {
+          id: "msg-marker-only-stale-user",
+          role: "user",
+          content: "Start an older run",
+          runId: "run-marker-only-stale",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-marker-only-stale-assistant",
+          role: "assistant",
+          content: "This older run is missing its terminal marker.",
+          runId: "run-marker-only-stale",
+          runEventId: "event-marker-only-stale-assistant-text",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-marker-only-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-marker-only-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-completed-marker-only-after-stale-run",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("This older run is missing its terminal marker."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });
   });
 

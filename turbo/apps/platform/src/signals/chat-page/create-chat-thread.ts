@@ -430,9 +430,7 @@ function assistantRunIndicatorState(
 ): RunIndicatorState | undefined {
   const runId = message.runId;
   if (runId !== undefined && message.runLifecycleEvent !== undefined) {
-    if (message.content !== null || message.error !== undefined) {
-      scan.sawInactiveRunActivity = true;
-    }
+    scan.sawInactiveRunActivity = true;
     return undefined;
   }
   if (isQueueMarkerMessage(message)) {
