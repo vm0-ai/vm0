@@ -30,12 +30,22 @@ permissions:
 
 jobs:
   build-macos:
-    name: build-macos-arm64
-    runs-on: macos-latest
+    name: build-macos-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-latest
+          - arch: x64
+            runner: macos-15-intel
     defaults:
       run:
         working-directory: turbo
+    env:
+      DESKTOP_ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v7
 
@@ -94,13 +104,13 @@ jobs:
           pnpm -F @vm0/desktop upload:sentry
           node apps/desktop/scripts/run-forge-make-with-retry.js \
             --platform darwin \
-            --arch arm64 \
+            --arch "$DESKTOP_ARCH" \
             --targets @electron-forge/maker-zip
 
           desktop_dir="$PWD/apps/desktop"
           version=$(node -p "require('./apps/desktop/package.json').version")
-          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero Computer Use-darwin-arm64-$version.zip"
-          artifact_path="apps/desktop/out/Zero-darwin-arm64.zip"
+          forge_zip="$desktop_dir/out/make/zip/darwin/$DESKTOP_ARCH/Zero Computer Use-darwin-$DESKTOP_ARCH-$version.zip"
+          artifact_path="apps/desktop/out/Zero-darwin-$DESKTOP_ARCH.zip"
 
           if [ ! -f "$forge_zip" ]; then
             echo "No Forge zip artifact found: $forge_zip"
@@ -113,9 +123,14 @@ jobs:
 
       - name: Verify production artifact
         run: |
-          artifact_path=apps/desktop/out/Zero-darwin-arm64.zip
-          app_dir="apps/desktop/out/Zero Computer Use-darwin-arm64/Zero Computer Use.app"
+          artifact_path="apps/desktop/out/Zero-darwin-$DESKTOP_ARCH.zip"
+          app_dir="apps/desktop/out/Zero Computer Use-darwin-$DESKTOP_ARCH/Zero Computer Use.app"
           plist="$app_dir/Contents/Info.plist"
+          case "$DESKTOP_ARCH" in
+            arm64) expected_mach_arch="arm64" ;;
+            x64) expected_mach_arch="x86_64" ;;
+            *) echo "Unsupported desktop architecture: $DESKTOP_ARCH"; exit 1 ;;
+          esac
           if [ ! -f "$artifact_path" ]; then
             echo "No desktop zip artifact found"
             find apps/desktop/out -maxdepth 5 -type f -print || true
@@ -158,6 +173,8 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$plist" | grep -qx "icon.icns"
           /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Zero Desktop Auth"
           /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "ai.vm0.zero.desktop"
+          file "$app_dir/Contents/MacOS/Zero Computer Use" | grep -q "$expected_mach_arch"
+          file "$app_dir/Contents/Resources/native/computer-use-helper" | grep -q "$expected_mach_arch"
           cmp -s apps/desktop/assets/icon.icns "$app_dir/Contents/Resources/icon.icns"
           cmp -s apps/desktop/assets/icon.png "$app_dir/Contents/Resources/app/assets/icon.png"
 
@@ -170,7 +187,7 @@ jobs:
       - name: Upload unsigned macOS artifact
         uses: actions/upload-artifact@v7
         with:
-          name: zero-desktop-macos-arm64-unsigned
+          name: zero-desktop-macos-${{ matrix.arch }}-unsigned
           path: turbo/${{ steps.build-prod.outputs.path }}
           if-no-files-found: error
           retention-days: 14
@@ -209,13 +226,13 @@ jobs:
           pnpm -F @vm0/desktop upload:sentry
           node apps/desktop/scripts/run-forge-make-with-retry.js \
             --platform darwin \
-            --arch arm64 \
+            --arch "$DESKTOP_ARCH" \
             --targets @electron-forge/maker-zip
 
           desktop_dir="$PWD/apps/desktop"
           version=$(node -p "require('./apps/desktop/package.json').version")
-          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero CU Dev-darwin-arm64-$version.zip"
-          artifact_path="apps/desktop/out/ZeroCUDev-darwin-arm64-preview.zip"
+          forge_zip="$desktop_dir/out/make/zip/darwin/$DESKTOP_ARCH/Zero CU Dev-darwin-$DESKTOP_ARCH-$version.zip"
+          artifact_path="apps/desktop/out/ZeroCUDev-darwin-$DESKTOP_ARCH-preview.zip"
 
           if [ ! -f "$forge_zip" ]; then
             echo "No Forge preview zip artifact found: $forge_zip"
@@ -231,10 +248,15 @@ jobs:
         env:
           EXPECTED_PLATFORM_URL: ${{ steps.preview.outputs.platform-url }}
         run: |
-          artifact_path=apps/desktop/out/ZeroCUDev-darwin-arm64-preview.zip
-          app_dir="apps/desktop/out/Zero CU Dev-darwin-arm64/Zero CU Dev.app"
+          artifact_path="apps/desktop/out/ZeroCUDev-darwin-$DESKTOP_ARCH-preview.zip"
+          app_dir="apps/desktop/out/Zero CU Dev-darwin-$DESKTOP_ARCH/Zero CU Dev.app"
           plist="$app_dir/Contents/Info.plist"
           runtime_config="$app_dir/Contents/Resources/app/desktop-runtime-config.json"
+          case "$DESKTOP_ARCH" in
+            arm64) expected_mach_arch="arm64" ;;
+            x64) expected_mach_arch="x86_64" ;;
+            *) echo "Unsupported desktop architecture: $DESKTOP_ARCH"; exit 1 ;;
+          esac
           if [ ! -f "$artifact_path" ]; then
             echo "No desktop preview zip artifact found"
             find apps/desktop/out -maxdepth 5 -type f -print || true
@@ -291,6 +313,8 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$plist" | grep -qx "icon.icns"
           /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Zero CU Dev Desktop Auth"
           /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "ai.vm0.zero.desktop.dev"
+          file "$app_dir/Contents/MacOS/Zero CU Dev" | grep -q "$expected_mach_arch"
+          file "$app_dir/Contents/Resources/native/computer-use-helper" | grep -q "$expected_mach_arch"
           cmp -s apps/desktop/assets/icon.icns "$app_dir/Contents/Resources/icon.icns"
           cmp -s apps/desktop/assets/icon.png "$app_dir/Contents/Resources/app/assets/icon.png"
 
@@ -305,7 +329,7 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7
         with:
-          name: zero-desktop-macos-arm64-preview-unsigned
+          name: zero-desktop-macos-${{ matrix.arch }}-preview-unsigned
           path: turbo/${{ steps.build-preview.outputs.path }}
           if-no-files-found: error
           retention-days: 14

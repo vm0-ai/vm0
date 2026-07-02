@@ -5829,6 +5829,45 @@ describe("chat lifecycle", () => {
     expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
   });
 
+  it("shows Apple Silicon and Intel download links when x64 downloads are enabled", async () => {
+    mockMacUserAgentData("x86");
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-download-x64";
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.DesktopX64Download]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await screen.findByText("Connect my computer"));
+
+    const appleSiliconDownload = await waitFor(() => {
+      return linkByText("Download for Apple Silicon");
+    });
+    expect(appleSiliconDownload).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
+      ),
+    );
+    expect(linkByText("Download for Intel Mac")).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "/api/zero/desktop/updates/stable/darwin/x64/dmg",
+      ),
+    );
+    expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Requires Apple Silicon Mac"),
+    ).not.toBeInTheDocument();
+  });
+
   it("does not auto-select the only online Computer Use host", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "computer-use-manual-selection";

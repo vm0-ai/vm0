@@ -11,9 +11,16 @@ import { onRef, settle } from "../utils.ts";
 
 const ZERO_DESKTOP_DMG_DOWNLOAD_PATH =
   "/api/zero/desktop/updates/stable/darwin/arm64/dmg";
+const ZERO_DESKTOP_INTEL_DMG_DOWNLOAD_PATH =
+  "/api/zero/desktop/updates/stable/darwin/x64/dmg";
 
 export const ZERO_DESKTOP_DOWNLOAD_URL = new URL(
   ZERO_DESKTOP_DMG_DOWNLOAD_PATH,
+  resolveApiBaseForNavigation("api"),
+).toString();
+
+export const ZERO_DESKTOP_INTEL_DOWNLOAD_URL = new URL(
+  ZERO_DESKTOP_INTEL_DMG_DOWNLOAD_PATH,
   resolveApiBaseForNavigation("api"),
 ).toString();
 
