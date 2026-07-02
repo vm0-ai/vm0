@@ -203,6 +203,17 @@ function openAgentRowMenu(container: HTMLElement, name: string): void {
   );
 }
 
+function agentRowActionRootForMenuTrigger(trigger: HTMLElement): HTMLElement {
+  let current = trigger.parentElement;
+  while (current instanceof HTMLElement) {
+    if (current.style.getPropertyValue("--agent-row-trigger-opacity")) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  throw new Error("Agent row action root not found");
+}
+
 function openThreadMenu(title: string): void {
   click(
     within(threadRowByTitle(title)).getByTestId("chat-thread-menu-trigger"),
@@ -1354,19 +1365,32 @@ describe("zero sidebar", () => {
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
     const researchDialogRow = agentRowByName(dialog, "Research Agent");
     const supportDialogRow = agentRowByName(dialog, "Support Agent");
-    expect(
-      within(researchDialogRow).getByLabelText("Unread"),
-    ).toBeInTheDocument();
-    expect(
-      within(supportDialogRow).getByLabelText("Unread"),
-    ).toBeInTheDocument();
+    const researchDialogUnread =
+      within(researchDialogRow).getByLabelText("Unread");
+    const supportDialogUnread =
+      within(supportDialogRow).getByLabelText("Unread");
+    expect(researchDialogUnread).toBeInTheDocument();
+    expect(researchDialogUnread).toBeVisible();
+    expect(supportDialogUnread).toBeInTheDocument();
+    expect(supportDialogUnread).toBeVisible();
     expect(
       within(supportDialogRow).queryByLabelText("Pin to sidebar"),
     ).not.toBeInTheDocument();
 
-    click(within(supportDialogRow).getByLabelText("Open agent menu"));
+    const supportMenuTrigger =
+      within(supportDialogRow).getByLabelText("Open agent menu");
+    const supportActionRoot =
+      agentRowActionRootForMenuTrigger(supportMenuTrigger);
+    fireEvent.pointerEnter(supportActionRoot);
+    expect(supportDialogUnread).not.toBeVisible();
+    fireEvent.pointerLeave(supportActionRoot);
+    expect(supportDialogUnread).toBeVisible();
+
+    click(supportMenuTrigger);
+    expect(supportDialogUnread).not.toBeVisible();
     expect(menuItemByText("Pin to sidebar")).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(supportDialogUnread).toBeVisible();
 
     await waitFor(() => {
       expect(
@@ -1389,6 +1413,7 @@ describe("zero sidebar", () => {
       expect(
         within(supportDialogRow).getByLabelText("Unread"),
       ).toBeInTheDocument();
+      expect(within(supportDialogRow).getByLabelText("Unread")).toBeVisible();
     });
   });
 
