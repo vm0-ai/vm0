@@ -1560,11 +1560,92 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText("Continue the plan")).toBeInTheDocument();
       expect(screen.getByText("The next step is ready.")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
       expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });
   });
 
-  it("clears thinking when loaded runs are terminated", async () => {
+  it("keeps thinking when the message stream shows later run activity", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-stale-lifecycle-thinking-active-later",
+      activeRunIds: ["run-r2"],
+      chatMessages: [
+        {
+          id: "msg-stale-active-later-usage-r1",
+          role: "assistant",
+          content: null,
+          runId: "run-r1",
+          usage: {
+            version: 1,
+            totalCredits: 5,
+            settledAt: "2026-06-09T10:00:00Z",
+            breakdown: [
+              {
+                kind: "model/kimi-k2.5/tokens.input",
+                credits: 5,
+                providers: [{ provider: "moonshot", credits: 5 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-stale-active-later-user-r2",
+          role: "user",
+          content: "Continue the plan",
+          runId: "run-r2",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-stale-active-later-start-r2",
+          role: "assistant",
+          content: null,
+          runId: "run-r2",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-stale-active-later-assistant-r2",
+          role: "assistant",
+          content: "The next step is ready.",
+          runId: "run-r2",
+          runEventId: "event-r2-assistant-text-active-later",
+          createdAt: "2026-06-09T10:00:03Z",
+        },
+        {
+          id: "msg-stale-active-later-completed-r3",
+          role: "assistant",
+          content: null,
+          runId: "run-r3",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:04Z",
+        },
+        {
+          id: "msg-stale-active-later-thinking-r2",
+          role: "assistant",
+          content: null,
+          thinking: "Continuing the plan",
+          runId: "run-r2",
+          createdAt: "2026-06-09T10:00:05Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-stale-lifecycle-thinking-active-later",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Continue the plan")).toBeInTheDocument();
+      expect(screen.getByText("The next step is ready.")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+  });
+
+  it("clears thinking when only the latest completed marker is loaded after an older unterminated run", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-completed-marker-only-after-stale-run",
       activeRunIds: [],
@@ -1672,7 +1753,78 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("The current status summary is ready."),
       ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
       expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("keeps thinking for an active run when the message stream shows later activity", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-concurrent-run-active-later",
+      activeRunIds: ["run-concurrent-active"],
+      chatMessages: [
+        {
+          id: "msg-concurrent-active-later-user",
+          role: "user",
+          content: "Keep monitoring deployment",
+          runId: "run-concurrent-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-concurrent-active-later-assistant",
+          role: "assistant",
+          content: "Monitoring is still running.",
+          runId: "run-concurrent-active",
+          runEventId: "event-concurrent-active-later-assistant-text",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-concurrent-active-later-completed-user",
+          role: "user",
+          content: "Summarize current status",
+          runId: "run-concurrent-completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-concurrent-active-later-completed-assistant",
+          role: "assistant",
+          content: "The current status summary is ready.",
+          runId: "run-concurrent-completed",
+          runEventId: "event-concurrent-active-later-completed-assistant-text",
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+        {
+          id: "msg-concurrent-active-later-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-concurrent-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+        {
+          id: "msg-concurrent-active-later-thinking",
+          role: "assistant",
+          content: null,
+          thinking: "Still monitoring deployment",
+          runId: "run-concurrent-active",
+          createdAt: "2026-06-09T10:01:03Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-concurrent-run-active-later",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The current status summary is ready."),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
     });
   });
 
@@ -7124,6 +7276,46 @@ describe("initial thinking indicator", () => {
     });
     const label = await screen.findByLabelText("Reviewing your request");
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
+  });
+
+  it("renders the thinking marker before thread detail resolves", async () => {
+    const threadId = "thread-initial-thinking-thread-detail-gated";
+    const threadGate = context.mocks.deferred<void>();
+    mockChatLifecycle(context, {
+      threadId,
+      threadGate: threadGate.promise,
+      chatMessages: [
+        {
+          id: "msg-thinking-detail-gated-user",
+          role: "user",
+          content: "Draft a launch checklist",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-thinking-detail-gated-marker",
+          role: "assistant",
+          content: null,
+          thinking: "Reading the prompt",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
+      },
+    });
+
+    const label = await screen.findByLabelText("Reading the prompt");
+    expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
+
+    threadGate.resolve();
   });
 
   it("restarts on every follow-up line instead of sliding a short tail", async () => {

@@ -86,7 +86,7 @@ pub(crate) fn session_history_marker_kind(history_path_payload: &str) -> &'stati
 pub(crate) fn read_existing_history_marker_payload_from(
     session_history_path_file: &str,
 ) -> io::Result<Option<String>> {
-    match std::fs::read_to_string(session_history_path_file) {
+    match session_history::read_history_marker_payload_file(session_history_path_file) {
         Ok(existing) => {
             let existing = existing.trim();
             if existing.is_empty() {
@@ -218,6 +218,40 @@ mod tests {
         assert_eq!(
             marker, ".claude/projects/-home-user-workspace/session-123.jsonl",
             "marker should use relative .claude history dir for empty HOME"
+        );
+    }
+
+    #[test]
+    fn read_existing_history_marker_payload_allows_payload_at_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session-history-marker");
+        let payload = "a".repeat(session_history::SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES);
+        std::fs::write(&path, &payload).unwrap();
+
+        let existing = read_existing_history_marker_payload_from(path.to_str().unwrap())
+            .expect("marker read should succeed at limit");
+
+        assert_eq!(existing.as_deref(), Some(payload.as_str()));
+    }
+
+    #[test]
+    fn read_existing_history_marker_payload_rejects_oversized_payload() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session-history-marker");
+        std::fs::write(
+            &path,
+            vec![b'a'; session_history::SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES + 1],
+        )
+        .unwrap();
+
+        let err = read_existing_history_marker_payload_from(path.to_str().unwrap())
+            .expect_err("marker read must reject oversized payloads");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        let message = err.to_string();
+        assert!(
+            message.contains("session history marker exceeds maximum size"),
+            "expected oversized marker error, got: {message}"
         );
     }
 }

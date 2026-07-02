@@ -1613,7 +1613,7 @@ function createPagedMessages(
   });
   const messageRunIndicatorState$ =
     createMessageRunIndicatorState(rawMessages$);
-  const latestRunStatus$ = createLatestRunStatus(rawMessages$);
+  const latestRunStatus$ = messageRunIndicatorState$;
 
   // The thread's active goal, folded from the (goal-marker) message stream so
   // the composer reads it without polling /api/automations. Reads rawMessages$
@@ -1958,15 +1958,6 @@ function createInputRef() {
     get(internalInputRef$)?.focus();
   });
   return { setInputRef$, focusInput$ };
-}
-
-function createLatestRunStatus(
-  rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
-) {
-  return computed(async (get): Promise<string | null> => {
-    const raw = await get(rawMessages$);
-    return deriveRunIndicatorStateFromRawMessages(raw);
-  });
 }
 
 function createMessageRunIndicatorState(
