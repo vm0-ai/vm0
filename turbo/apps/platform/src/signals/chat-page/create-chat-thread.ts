@@ -347,18 +347,6 @@ function isRawOptimisticRunMessage(entry: ChatMessageProjectionEntry): boolean {
   );
 }
 
-function isRawQueuedUserMessage(entry: ChatMessageProjectionEntry): boolean {
-  const { message } = entry;
-  return (
-    message.role === "user" &&
-    message.runId === undefined &&
-    entry.optimisticUserMessageAssociation !== "run" &&
-    message.revokesMessageId === undefined &&
-    message.interruptsRunId === undefined &&
-    message.error === undefined
-  );
-}
-
 function terminatedRunIdsFromRawMessages(
   raw: readonly ChatMessageProjectionEntry[],
 ): Set<string> {
@@ -385,82 +373,47 @@ type AssistantPagedChatMessage = Extract<
   { role: "assistant" }
 >;
 
-interface RunIndicatorScanContext {
-  readonly terminatedRunIds: Set<string>;
-  readonly queuedRunIds: Set<string>;
-  sawQueued: boolean;
-  sawInactiveRunActivity: boolean;
-}
-
-function inactiveRunIndicatorState(
-  scan: RunIndicatorScanContext,
-): RunIndicatorState {
-  return scan.sawQueued ? "queued" : null;
-}
-
-function rememberQueuedRun(
-  scan: RunIndicatorScanContext,
-  runId: string | undefined,
-): void {
-  if (runId !== undefined && scan.terminatedRunIds.has(runId)) {
-    return;
-  }
-  scan.sawQueued = true;
-  if (runId !== undefined) {
-    scan.queuedRunIds.add(runId);
-  }
-}
-
 function runActivityIndicatorState(
-  scan: RunIndicatorScanContext,
+  terminatedRunIds: ReadonlySet<string>,
   runId: string,
 ): RunIndicatorState | undefined {
-  if (scan.queuedRunIds.has(runId)) {
-    return "queued";
-  }
-  if (scan.terminatedRunIds.has(runId)) {
-    scan.sawInactiveRunActivity = true;
-    return undefined;
-  }
-  if (scan.sawInactiveRunActivity) {
+  if (terminatedRunIds.has(runId)) {
     return undefined;
   }
   return "running";
 }
 
 function assistantRunIndicatorState(
-  scan: RunIndicatorScanContext,
+  terminatedRunIds: ReadonlySet<string>,
   message: AssistantPagedChatMessage,
 ): RunIndicatorState | undefined {
   const runId = message.runId;
-  if (runId !== undefined && message.runLifecycleEvent !== undefined) {
-    scan.sawInactiveRunActivity = true;
-    return undefined;
-  }
   if (isQueueMarkerMessage(message)) {
-    rememberQueuedRun(scan, runId);
+    if (runId !== undefined && terminatedRunIds.has(runId)) {
+      return undefined;
+    }
+    return "queued";
+  }
+  if (runId !== undefined && message.runLifecycleEvent !== undefined) {
+    return null;
+  }
+  if (runId === undefined) {
     return undefined;
   }
-  return runId === undefined
-    ? inactiveRunIndicatorState(scan)
-    : runActivityIndicatorState(scan, runId);
+  return runActivityIndicatorState(terminatedRunIds, runId);
 }
 
 function nonAssistantRunIndicatorState(
-  scan: RunIndicatorScanContext,
+  terminatedRunIds: ReadonlySet<string>,
   entry: ChatMessageProjectionEntry,
 ): RunIndicatorState | undefined {
   if (isRawOptimisticRunMessage(entry)) {
     return "running";
   }
-  if (isRawQueuedUserMessage(entry)) {
-    scan.sawQueued = true;
-    return undefined;
-  }
   const { runId } = entry.message;
   return runId === undefined
     ? undefined
-    : runActivityIndicatorState(scan, runId);
+    : runActivityIndicatorState(terminatedRunIds, runId);
 }
 
 function deriveRunIndicatorStateFromRawMessages(
@@ -468,12 +421,6 @@ function deriveRunIndicatorStateFromRawMessages(
 ): RunIndicatorState {
   const revokedMessageIds = revokedMessageIdsFromRawMessages(raw);
   const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
-  const scan: RunIndicatorScanContext = {
-    terminatedRunIds,
-    queuedRunIds: new Set<string>(),
-    sawQueued: false,
-    sawInactiveRunActivity: false,
-  };
 
   for (let index = raw.length - 1; index >= 0; index--) {
     const entry = raw[index]!;
@@ -485,18 +432,18 @@ function deriveRunIndicatorStateFromRawMessages(
       continue;
     }
     if (message.role === "assistant") {
-      const state = assistantRunIndicatorState(scan, message);
+      const state = assistantRunIndicatorState(terminatedRunIds, message);
       if (state !== undefined) {
         return state;
       }
       continue;
     }
-    const state = nonAssistantRunIndicatorState(scan, entry);
+    const state = nonAssistantRunIndicatorState(terminatedRunIds, entry);
     if (state !== undefined) {
       return state;
     }
   }
-  return inactiveRunIndicatorState(scan);
+  return null;
 }
 
 function liveRunIdsFromRawMessages(
@@ -507,34 +454,27 @@ function liveRunIdsFromRawMessages(
   const liveRunIds: string[] = [];
   const seenRunIds = new Set<string>();
   for (const { message } of raw) {
+    const runId = message.runId;
     if (
-      message.role === "user" &&
-      message.runId !== undefined &&
+      runId !== undefined &&
       !revokedMessageIds.has(message.id) &&
-      !terminatedRunIds.has(message.runId) &&
-      !seenRunIds.has(message.runId)
+      !terminatedRunIds.has(runId) &&
+      !isQueueMarkerMessage(message) &&
+      !isUsageMessage(message) &&
+      !isGoalMarkerMessage(message) &&
+      !seenRunIds.has(runId)
     ) {
-      liveRunIds.push(message.runId);
-      seenRunIds.add(message.runId);
-    }
-  }
-  return liveRunIds;
-}
-
-function cancellableRunIdsFromThreadAndRawMessages(
-  thread: ChatThread,
-  raw: readonly ChatMessageProjectionEntry[],
-): string[] {
-  const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
-  const liveRunIds = liveRunIdsFromRawMessages(raw);
-  const seenRunIds = new Set(liveRunIds);
-  for (const runId of thread.activeRunIds) {
-    if (!terminatedRunIds.has(runId) && !seenRunIds.has(runId)) {
       liveRunIds.push(runId);
       seenRunIds.add(runId);
     }
   }
   return liveRunIds;
+}
+
+function cancellableRunIdsFromRawMessages(
+  raw: readonly ChatMessageProjectionEntry[],
+): string[] {
+  return liveRunIdsFromRawMessages(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -2346,9 +2286,9 @@ function createRunTracking({
         return true;
       }
 
-      const thread = await get(threadData$);
+      const latestRunStatus = await get(latestRunStatus$);
       signal.throwIfAborted();
-      return (thread?.activeRunIds.length ?? 0) > 0;
+      return latestRunStatus !== null;
     },
   );
 
@@ -2935,23 +2875,22 @@ function createCancelRunWithQueuedRecall({
       });
     });
 
-    const interruptRequests = cancellableRunIdsFromThreadAndRawMessages(
-      thread,
-      raw,
-    ).map((runId) => {
-      const clientMessageId = crypto.randomUUID();
-      set(appendOptimisticChatMessage$, {
-        threadId,
-        message: {
-          id: clientMessageId,
-          role: "user",
-          content: null,
-          interruptsRunId: runId,
-          createdAt: nowDate().toISOString(),
-        },
-      });
-      return { runId, clientMessageId };
-    });
+    const interruptRequests = cancellableRunIdsFromRawMessages(raw).map(
+      (runId) => {
+        const clientMessageId = crypto.randomUUID();
+        set(appendOptimisticChatMessage$, {
+          threadId,
+          message: {
+            id: clientMessageId,
+            role: "user",
+            content: null,
+            interruptsRunId: runId,
+            createdAt: nowDate().toISOString(),
+          },
+        });
+        return { runId, clientMessageId };
+      },
+    );
 
     const recallRequests = queuedMessages.map((message) => {
       const clientMessageId = crypto.randomUUID();
