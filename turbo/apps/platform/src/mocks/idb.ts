@@ -37,6 +37,8 @@ export function openDB(): Promise<Record<string, unknown>> {
     objectStoreNames: {
       contains: () => false,
     },
+    addEventListener: () => undefined,
+    close: () => undefined,
     transaction: () => fakeTransaction(),
     // Direct get/put on the database (used by idb-thread-agent-store)
     get: () => Promise.resolve(undefined),
