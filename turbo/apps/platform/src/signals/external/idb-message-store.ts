@@ -1,4 +1,4 @@
-import { openDB, type IDBPDatabase } from "idb";
+import type { IDBPDatabase } from "idb";
 import {
   pagedChatMessageSchema,
   type PagedChatMessage,
@@ -7,9 +7,7 @@ import { chatMessageOrderSequence } from "../chat-message-order.ts";
 import { logger } from "../log.ts";
 import {
   CHAT_MESSAGES_ORDER_INDEX,
-  CHAT_IDB_VERSION,
   CHAT_MESSAGES_STORE,
-  upgradeChatIdb,
 } from "./chat-idb-schema.ts";
 import {
   chatIdbReadOr,
@@ -18,6 +16,7 @@ import {
   logChatIdbDisabled,
   withChatIdbTimeout,
 } from "./chat-idb-safe.ts";
+import { openChatIdb } from "./chat-idb-store.ts";
 
 const L = logger("ChatIdbCache");
 
@@ -263,16 +262,7 @@ function createIdbMessageStores(userId: string, orgId: string) {
 
     if (!dbPromise) {
       L.debug("openDB", { dbName, storeName });
-      // Schema is shared with idb-thread-meta-store.ts: both modules open
-      // the same DB at the same version. The upgrade callback creates every store
-      // the schema currently defines, idempotently, so whichever module
-      // triggers the version bump leaves a complete schema for the other.
-      const openPromise = openDB(dbName, CHAT_IDB_VERSION, {
-        upgrade(db, oldVersion) {
-          L.debug("openDB:upgrade", { dbName, storeName });
-          upgradeChatIdb(db, oldVersion);
-        },
-      });
+      const openPromise = openChatIdb(userId, orgId);
       dbPromise = openPromise;
     }
 

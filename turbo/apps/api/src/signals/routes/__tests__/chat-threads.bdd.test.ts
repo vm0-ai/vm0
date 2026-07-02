@@ -2409,6 +2409,39 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       expiresInDays: 30,
     });
     const bearer = `Bearer ${key.token}`;
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
+    });
+    mockOptionalEnv("OPENROUTER_API_KEY", "thinking-v1-key");
+    let initialThinkingRequests = 0;
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          const payload = (await request.json()) as {
+            readonly messages?: readonly {
+              readonly content?: unknown;
+            }[];
+          };
+          const requestText = (payload.messages ?? [])
+            .map((message) => {
+              return typeof message.content === "string" ? message.content : "";
+            })
+            .join("\n\n");
+          if (requestText.includes("Write user-visible progress copy")) {
+            initialThinkingRequests += 1;
+          }
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: "not expected for v1 send" },
+              },
+            ],
+          });
+        },
+      ),
+    );
     const thread = await chat.createThread(actor, {
       agentId,
       title: "v1 send thread",
@@ -2537,6 +2570,16 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
         return message.id === sent.body.messageId;
       }),
     ).toMatchObject({ content: "hello from v1", runId: run1Id });
+    await flushWaitUntilForTest();
+    const afterV1SideEffects = await chat.listThreadMessages(actor, thread.id);
+    expect(initialThinkingRequests).toBe(0);
+    expect(
+      assistantMessages(afterV1SideEffects.messages).some((message) => {
+        return (
+          message.runId === run1Id && message.runEventId === "thinking:initial"
+        );
+      }),
+    ).toBeFalsy();
 
     // The claim carries a run-scoped ZERO_TOKEN for the sandbox.
     const claim1 = await claimChatRun(runnerGroup, run1Id);
@@ -2613,6 +2656,20 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
     }
     expect(promoted.content).toBe("queued from v1");
     await expectZeroPreCreateSource(promoted.runId, "chat_callback_auto_send");
+    await flushWaitUntilForTest();
+    const afterAutoSendSideEffects = await chat.listThreadMessages(
+      actor,
+      thread.id,
+    );
+    expect(initialThinkingRequests).toBe(0);
+    expect(
+      assistantMessages(afterAutoSendSideEffects.messages).some((message) => {
+        return (
+          message.runId === promoted.runId &&
+          message.runEventId === "thinking:initial"
+        );
+      }),
+    ).toBeFalsy();
     await cancelChatRun(actor, promoted.runId);
 
     // Workflows still mount as SKILL.md-backed volumes in the runtime. Under
