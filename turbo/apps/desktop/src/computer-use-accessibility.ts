@@ -62,39 +62,6 @@ export interface AccessibilityElementSnapshot {
   readonly children?: readonly AccessibilityElementSnapshot[];
 }
 
-type AccessibilityTextSourceAttribute =
-  | "AXTitle"
-  | "AXValue"
-  | "AXDescription"
-  | "AXHelp"
-  | "AXPlaceholderValue"
-  | "AXVisibleText"
-  | "AXText"
-  | "AXTitleUIElement"
-  | "AXColumnTitles"
-  | "AXIdentifier"
-  | "AXURL";
-
-interface AccessibilityVisibleElement {
-  readonly elementIndex?: number;
-  readonly elementId: string;
-  readonly role?: string;
-  readonly text: string;
-  readonly source: "accessibility";
-  readonly sourceAttributes: readonly AccessibilityTextSourceAttribute[];
-  readonly bounds?: ComputerUseCoordinateBounds;
-  readonly focused?: boolean;
-  readonly enabled?: boolean;
-  readonly selected?: boolean;
-  readonly expanded?: boolean;
-  readonly actions?: readonly string[];
-  readonly pressable?: boolean;
-  readonly pickable?: boolean;
-  readonly selectable?: boolean;
-  readonly mouseClickable?: boolean;
-  readonly clickableKind?: AccessibilityElementClickableKind;
-}
-
 export interface AccessibilityAppStateSnapshot {
   readonly app: string;
   readonly appDisplayName?: string;
@@ -820,196 +787,6 @@ export function normalizeAccessibilitySnapshot(
   };
 }
 
-function boundsIntersect(
-  lhs: ComputerUseCoordinateBounds,
-  rhs: ComputerUseCoordinateBounds,
-): boolean {
-  const lhsRight = lhs.x + lhs.width;
-  const lhsBottom = lhs.y + lhs.height;
-  const rhsRight = rhs.x + rhs.width;
-  const rhsBottom = rhs.y + rhs.height;
-  return (
-    lhs.width > 0 &&
-    lhs.height > 0 &&
-    rhs.width > 0 &&
-    rhs.height > 0 &&
-    lhs.x < rhsRight &&
-    lhsRight > rhs.x &&
-    lhs.y < rhsBottom &&
-    lhsBottom > rhs.y
-  );
-}
-
-function elementIsInCapturedSource(
-  element: AccessibilityElementSnapshot,
-  sourceBounds: ComputerUseCoordinateBounds | undefined,
-): boolean {
-  if (!sourceBounds || !element.bounds) {
-    return true;
-  }
-  return (
-    boundsIntersect(element.bounds, sourceBounds) ||
-    element.focused === true ||
-    element.selected === true
-  );
-}
-
-interface AccessibilityTextCandidate {
-  readonly text: string;
-  readonly sourceAttribute: AccessibilityTextSourceAttribute;
-}
-
-function pushTextCandidate(
-  candidates: AccessibilityTextCandidate[],
-  value: string | undefined,
-  sourceAttribute: AccessibilityTextSourceAttribute,
-): void {
-  if (!value) {
-    return;
-  }
-  const text = normalizeDisplayText(value);
-  if (text.length === 0) {
-    return;
-  }
-  candidates.push({ text, sourceAttribute });
-}
-
-function pushTextArrayCandidate(
-  candidates: AccessibilityTextCandidate[],
-  value: readonly string[] | undefined,
-  sourceAttribute: AccessibilityTextSourceAttribute,
-): void {
-  if (!value) {
-    return;
-  }
-  const text = value
-    .map(normalizeDisplayText)
-    .filter((entry) => {
-      return entry.length > 0;
-    })
-    .join(", ");
-  if (text.length === 0) {
-    return;
-  }
-  candidates.push({ text, sourceAttribute });
-}
-
-function elementTextCandidates(
-  element: AccessibilityElementSnapshot,
-): readonly AccessibilityTextCandidate[] {
-  const candidates: AccessibilityTextCandidate[] = [];
-  pushTextCandidate(candidates, element.name, "AXTitle");
-  pushTextCandidate(candidates, element.value, "AXValue");
-  pushTextCandidate(candidates, element.description, "AXDescription");
-  pushTextCandidate(candidates, element.help, "AXHelp");
-  pushTextCandidate(candidates, element.placeholderValue, "AXPlaceholderValue");
-  pushTextCandidate(candidates, element.visibleText, "AXVisibleText");
-  pushTextCandidate(candidates, element.text, "AXText");
-  pushTextCandidate(candidates, element.titleElementText, "AXTitleUIElement");
-  pushTextArrayCandidate(candidates, element.columnTitles, "AXColumnTitles");
-  pushTextCandidate(candidates, element.identifier, "AXIdentifier");
-  pushTextCandidate(candidates, element.url, "AXURL");
-  return candidates;
-}
-
-function visibleElementForSnapshotElement(
-  element: AccessibilityElementSnapshot,
-  sourceBounds: ComputerUseCoordinateBounds | undefined,
-): AccessibilityVisibleElement | null {
-  if (
-    element.hidden === true &&
-    element.focused !== true &&
-    element.selected !== true
-  ) {
-    return null;
-  }
-  if (!elementIsInCapturedSource(element, sourceBounds)) {
-    return null;
-  }
-
-  const candidates = elementTextCandidates(element);
-  const primary = candidates[0];
-  if (!primary) {
-    return null;
-  }
-
-  const sourceAttributes = candidates
-    .filter((candidate) => {
-      return candidate.text === primary.text;
-    })
-    .map((candidate) => {
-      return candidate.sourceAttribute;
-    });
-
-  return {
-    ...(element.index !== undefined ? { elementIndex: element.index } : {}),
-    elementId: element.id,
-    ...(element.role ? { role: element.role } : {}),
-    text: primary.text,
-    source: "accessibility",
-    sourceAttributes: [...new Set(sourceAttributes)],
-    ...(element.bounds ? { bounds: element.bounds } : {}),
-    ...(element.focused !== undefined ? { focused: element.focused } : {}),
-    ...(element.enabled !== undefined ? { enabled: element.enabled } : {}),
-    ...(element.selected !== undefined ? { selected: element.selected } : {}),
-    ...(element.expanded !== undefined ? { expanded: element.expanded } : {}),
-    ...(element.actions && element.actions.length > 0
-      ? { actions: element.actions }
-      : {}),
-    ...(element.pressable === true ? { pressable: true } : {}),
-    ...(element.pickable === true ? { pickable: true } : {}),
-    ...(element.selectable === true ? { selectable: true } : {}),
-    ...(element.mouseClickable === true ? { mouseClickable: true } : {}),
-    ...(element.clickableKind ? { clickableKind: element.clickableKind } : {}),
-  };
-}
-
-export function collectAccessibilityVisibleElements(
-  snapshot: AccessibilityAppStateSnapshot,
-  sourceBounds?: ComputerUseCoordinateBounds,
-): readonly AccessibilityVisibleElement[] {
-  const result: AccessibilityVisibleElement[] = [];
-  const seen = new Set<string>();
-
-  const visit = (element: AccessibilityElementSnapshot): void => {
-    const visibleElement = visibleElementForSnapshotElement(
-      element,
-      sourceBounds,
-    );
-    if (visibleElement) {
-      const key = `${visibleElement.elementId}\0${visibleElement.text}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        result.push(visibleElement);
-      }
-    }
-    for (const child of element.children ?? []) {
-      visit(child);
-    }
-  };
-
-  for (const element of snapshot.elements) {
-    visit(element);
-  }
-  return result;
-}
-
-function renderAccessibilityVisibleText(
-  visibleElements: readonly AccessibilityVisibleElement[],
-): string {
-  return visibleElements
-    .map((element) => {
-      const role = element.role ? ` ${element.role}` : "";
-      const source = element.sourceAttributes.join("+");
-      const selector =
-        element.elementIndex !== undefined
-          ? String(element.elementIndex)
-          : element.elementId;
-      return `${selector}${role} [${source}] ${element.text}`;
-    })
-    .join("\n");
-}
-
 function unsupportedCommand(message: string): ComputerUseCommandFailure {
   return {
     status: "failed",
@@ -1463,23 +1240,12 @@ export function renderAccessibilityTree(
   return lines.join("\n");
 }
 
-function publicElementSnapshot(
-  element: AccessibilityElementSnapshot,
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(element)) {
-    if (key !== "id" && key !== "children" && value !== undefined) {
-      result[key] = value;
-    }
-  }
-  if (element.children && element.children.length > 0) {
-    result.children = element.children.map((child) => {
-      return publicElementSnapshot(child);
-    });
-  }
-  return result;
-}
-
+/**
+ * Snapshot fields shared with the server, excluding the raw `elements` tree:
+ * only the rendered `appState` representation is consumed downstream (the CLI
+ * writes it to a file for the agent), so the structured tree stays local to
+ * the host's snapshot store.
+ */
 function publicAppStateSnapshot(
   snapshot: AccessibilityAppStateSnapshot,
 ): Record<string, unknown> {
@@ -1489,9 +1255,6 @@ function publicAppStateSnapshot(
       result[key] = value;
     }
   }
-  result.elements = snapshot.elements.map((element) => {
-    return publicElementSnapshot(element);
-  });
   return result;
 }
 
@@ -1507,10 +1270,6 @@ function buildComputerUseAppStateResult(
   screenshot: ComputerUseAppStateScreenshot,
   metrics: ComputerUseAppStateMetrics,
 ): Record<string, unknown> {
-  const visibleElements = collectAccessibilityVisibleElements(
-    snapshot,
-    screenshot.sourceBounds,
-  );
   const appState = renderAccessibilityTree(snapshot);
   return {
     ...publicAppStateSnapshot(snapshot),
@@ -1518,11 +1277,7 @@ function buildComputerUseAppStateResult(
     metrics: {
       ...metrics,
       appStateChars: appState.length,
-      visibleElementCount: visibleElements.length,
     },
-    visibleTextSource: "accessibility",
-    visibleText: renderAccessibilityVisibleText(visibleElements),
-    visibleElements,
     screenshot: screenshot.dataUrl,
     screenshotMimeType: screenshot.mimeType,
     screenshotSource: screenshot.source,
