@@ -62,7 +62,7 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
     let marker = std::fs::read_to_string(runtime.paths.session_history_path_file())?;
     assert!(marker.starts_with("CODEX_SEARCH:"));
     assert!(marker.ends_with(&format!(":{thread_id}")));
-    assert_eq!(masker.mask_string(thread_id), "***");
+    assert_eq!(masker.mask_string(thread_id), thread_id);
 
     let session_events = read_codex_session_history_events(&runtime.paths)?;
     let input_event = session_events

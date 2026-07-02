@@ -48,13 +48,13 @@ pub async fn send_event_for_config(
     config: &GuestConfig,
     paths: &paths::GuestPaths,
 ) -> Result<(), AgentError> {
-    let mut capture = SessionMetadataCapture::from_values(
+    let capture = SessionMetadataCapture::from_values(
         config.framework,
         &config.home_dir,
         paths.session_id_file(),
         paths.session_history_path_file(),
     );
-    capture.capture_event(&event, masker);
+    capture.capture_event(&event);
 
     if !http.has_api() {
         return Ok(());
@@ -480,9 +480,7 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
 /// - Claude Code: `{type: system, subtype: init, session_id: <uuid>}`
 /// - Codex:       `{type: thread.started, thread_id: <uuid>}`
 ///
-/// Ordinary events only seed the masker from an existing session id once; they
-/// do not repair the history marker. Checkpoint resolves missing markers when
-/// it consumes session metadata.
+/// Checkpoint resolves missing markers when it consumes session metadata.
 ///
 /// The on-disk format of `session_history_path_file()` differs by framework:
 /// - Claude: literal `~/.claude/projects/-{cwd}/{session_id}.jsonl` path.
@@ -490,7 +488,6 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
 ///   marker — codex doesn't write the session file until turn-completion, so
 ///   resolution is deferred to checkpoint time.
 pub(crate) struct SessionMetadataCapture {
-    existing_session_id_seeded: bool,
     framework: Framework,
     home_dir: String,
     session_id_file: String,
@@ -505,7 +502,6 @@ impl SessionMetadataCapture {
         session_history_path_file: &str,
     ) -> Self {
         Self {
-            existing_session_id_seeded: false,
             framework,
             home_dir: home_dir.to_string(),
             session_id_file: session_id_file.to_string(),
@@ -513,15 +509,12 @@ impl SessionMetadataCapture {
         }
     }
 
-    pub(crate) fn capture_event(&mut self, event: &Value, masker: &SecretMasker) {
-        self.register_event_session_identifier(event, masker);
-
+    pub(crate) fn capture_event(&self, event: &Value) {
         let session_id = match self.framework {
             Framework::ClaudeCode => extract_claude_session_id(event),
             Framework::Codex => extract_codex_thread_id(event),
         };
         let Some(session_id) = session_id else {
-            self.seed_existing_session_id(masker);
             return;
         };
         let Some(history_path_payload) =
@@ -531,10 +524,8 @@ impl SessionMetadataCapture {
                 &session_id,
             )
         else {
-            self.seed_existing_session_id(masker);
             return;
         };
-        masker.add_sensitive_value(&session_id);
 
         // Idempotency: only the first id-bearing event of the run wins, but allow
         // a retry of the same session to repair a missing history marker after a
@@ -542,10 +533,6 @@ impl SessionMetadataCapture {
         match std::fs::read_to_string(&self.session_id_file) {
             Ok(existing_session_id) => {
                 let existing_session_id = existing_session_id.trim();
-                if !existing_session_id.is_empty() {
-                    masker.add_sensitive_value(existing_session_id);
-                    self.existing_session_id_seeded = true;
-                }
                 if existing_session_id == session_id {
                     session_metadata::ensure_history_marker_payload_at(
                         &self.session_history_path_file,
@@ -574,51 +561,10 @@ impl SessionMetadataCapture {
                 self.session_id_file
             ),
         }
-        self.existing_session_id_seeded = true;
         session_metadata::write_session_history_marker_at(
             &self.session_history_path_file,
             &history_path_payload,
         );
-    }
-
-    pub(crate) fn register_event_session_identifier(&self, event: &Value, masker: &SecretMasker) {
-        register_event_session_identifier_for_framework(event, masker, self.framework);
-    }
-
-    fn seed_existing_session_id(&mut self, masker: &SecretMasker) {
-        if self.existing_session_id_seeded {
-            return;
-        }
-        self.existing_session_id_seeded = true;
-
-        match std::fs::read_to_string(&self.session_id_file) {
-            Ok(session_id) => {
-                let session_id = session_id.trim();
-                if !session_id.is_empty() {
-                    masker.add_sensitive_value(session_id);
-                }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => log_error!(
-                LOG_TAG,
-                "Failed to read existing session ID from {}: {e}",
-                self.session_id_file
-            ),
-        }
-    }
-}
-
-fn register_event_session_identifier_for_framework(
-    event: &Value,
-    masker: &SecretMasker,
-    framework: Framework,
-) {
-    let id = match framework {
-        Framework::ClaudeCode => string_field(event, "session_id"),
-        Framework::Codex => string_field(event, "thread_id"),
-    };
-    if let Some(id) = id {
-        masker.add_sensitive_value(id);
     }
 }
 

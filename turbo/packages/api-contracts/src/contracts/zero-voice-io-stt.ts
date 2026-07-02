@@ -47,6 +47,7 @@ export const zeroVoiceIoSttContract = c.router({
       403: apiErrorSchema,
       429: zeroVoiceIoSttQuotaErrorSchema,
       500: apiErrorSchema,
+      503: apiErrorSchema,
     },
     summary: "Transcribe audio input",
   },

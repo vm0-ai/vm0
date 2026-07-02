@@ -51,10 +51,12 @@ export enum FeatureSwitchKey {
   ComputerUseDelegatedAuthorization = "computerUseDelegatedAuthorization",
   DesktopX64Download = "desktopX64Download",
   PresentationTemplateRunbook = "presentationTemplateRunbook",
+  PresentationImageUnsplashPreferred = "presentationImageUnsplashPreferred",
   AgentUnreadIndicators = "agentUnreadIndicators",
   ImageArtifactKeyboardNavigation = "imageArtifactKeyboardNavigation",
   AgentsPageRedesign = "agentsPageRedesign",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   ChatInitialThinkingIndicator = "chatInitialThinkingIndicator",
   TeamsIntegration = "teamsIntegration",
+  BytePlusVoiceInputStt = "bytePlusVoiceInputStt",
 }

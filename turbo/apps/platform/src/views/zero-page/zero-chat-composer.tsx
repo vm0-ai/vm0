@@ -216,7 +216,9 @@ import {
   audioInputAvailable$,
   audioInputQuota$,
   sttRecording$,
+  sttStarting$,
   sttTranscribing$,
+  sttVoiceLevel$,
   startRecording$,
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
@@ -5860,9 +5862,14 @@ function ComputerUseDownloadDialog({
         <div className="px-6 pb-6 pt-4">
           {showIntelDownload ? (
             <div className="flex flex-col gap-2">
-              <Button asChild size="lg" className="w-full justify-start">
+              <Button
+                asChild
+                size="lg"
+                className="h-auto min-h-11 w-full justify-start px-4 py-2"
+              >
                 <a
                   href={downloadUrl}
+                  aria-label="Download for Mac Apple Silicon"
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => {
@@ -5870,17 +5877,23 @@ function ComputerUseDownloadDialog({
                   }}
                 >
                   <IconDownload size={16} stroke={1.5} />
-                  Download for Apple Silicon
+                  <span className="flex flex-col items-start gap-0.5">
+                    <span>Download for Mac</span>
+                    <span className="text-xs font-normal text-primary-foreground/80">
+                      Apple Silicon
+                    </span>
+                  </span>
                 </a>
               </Button>
               <Button
                 asChild
                 size="lg"
                 variant="outline"
-                className="w-full justify-start"
+                className="h-auto min-h-11 w-full justify-start px-4 py-2"
               >
                 <a
                   href={ZERO_DESKTOP_INTEL_DOWNLOAD_URL}
+                  aria-label="Download for Mac Intel"
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => {
@@ -5888,7 +5901,12 @@ function ComputerUseDownloadDialog({
                   }}
                 >
                   <IconDownload size={16} stroke={1.5} />
-                  Download for Intel Mac
+                  <span className="flex flex-col items-start gap-0.5">
+                    <span>Download for Mac</span>
+                    <span className="text-xs font-normal text-muted-foreground">
+                      Intel
+                    </span>
+                  </span>
                 </a>
               </Button>
             </div>
@@ -5934,7 +5952,10 @@ function MicButton({
   const available = useLastResolved(audioInputAvailable$) ?? false;
   const quota = useLastResolved(audioInputQuota$) ?? null;
   const recording = useGet(sttRecording$);
+  const starting = useGet(sttStarting$);
   const transcribing = useGet(sttTranscribing$);
+  const voiceLevel = useGet(sttVoiceLevel$);
+  const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
   const startRec = useSet(startRecording$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
   const setTab = useSet(setActiveOrgManageTab$);
@@ -5947,7 +5968,7 @@ function MicButton({
   }
 
   const handleClick = () => {
-    if (transcribing) {
+    if (starting || transcribing) {
       return;
     }
     if (recording) {
@@ -5978,34 +5999,37 @@ function MicButton({
           <button
             type="button"
             className={cn(
-              "inline-flex shrink-0 items-center justify-center rounded-lg transition-colors",
-              recording || transcribing
-                ? "gap-[3px] h-9 w-[52px] bg-[#2E9E9F] text-white hover:bg-[#279394]"
-                : "h-9 w-9 text-muted-foreground hover:bg-accent hover:text-foreground",
+              "relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
+              recording || starting || transcribing
+                ? "bg-[#2E9E9F] text-white hover:bg-[#279394]"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             onClick={handleClick}
-            disabled={transcribing}
+            disabled={starting || transcribing}
             aria-label={
               recording
                 ? "Stop recording"
-                : transcribing
-                  ? "Transcribing"
-                  : "Voice input"
+                : starting
+                  ? "Starting voice input"
+                  : transcribing
+                    ? "Transcribing"
+                    : "Voice input"
             }
           >
-            {transcribing ? (
-              <>
-                <span className="mic-eq-dot" />
-                <span className="mic-eq-dot" />
-                <span className="mic-eq-dot" />
-              </>
+            {starting || transcribing ? (
+              <span className="mic-starting-spinner" aria-hidden="true" />
             ) : recording ? (
               <>
-                <span className="mic-eq-bar" />
-                <span className="mic-eq-bar" />
-                <IconMicrophone size={16} stroke={1.5} />
-                <span className="mic-eq-bar" />
-                <span className="mic-eq-bar" />
+                <span
+                  className="mic-volume-icon-meter"
+                  aria-hidden="true"
+                  style={
+                    {
+                      "--mic-volume-fill": voiceLevelFill,
+                    } as CSSProperties
+                  }
+                />
+                <IconMicrophone size={17} stroke={1.8} className="relative" />
               </>
             ) : (
               <IconMicrophone size={18} stroke={1.5} />
@@ -6015,9 +6039,11 @@ function MicButton({
         <TooltipContent side="top" className="text-xs">
           {recording
             ? "Stop recording"
-            : transcribing
-              ? "Transcribing..."
-              : "Voice input"}
+            : starting
+              ? "Opening microphone..."
+              : transcribing
+                ? "Transcribing..."
+                : "Voice input"}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
