@@ -280,6 +280,33 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     ).resolves.toStrictEqual([]);
   });
 
+  it("returns agent not found before connector configuration errors", async () => {
+    const owner = bdd.user();
+    const requester = bdd.user({ orgId: owner.orgId });
+    const agent = await createAgent(owner, {
+      displayName: "Private Agent",
+      visibility: "private",
+    });
+    const connector = await createUnconfiguredCustomConnector(
+      requester,
+      "hidden-agent-order",
+    );
+
+    const response = await connectors.requestUpdateAgentCustomConnectors(
+      requester,
+      agent.agentId,
+      [connector.id],
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: `Agent not found: ${agent.agentId}`,
+        code: "NOT_FOUND",
+      },
+    });
+  });
+
   it("replaces the list atomically", async () => {
     const actor = bdd.user();
     const agent = await createAgent(actor, { displayName: "Test Agent" });

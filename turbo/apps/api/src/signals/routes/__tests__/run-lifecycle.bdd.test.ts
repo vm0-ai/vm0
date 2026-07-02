@@ -3467,6 +3467,105 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("omits custom connector auth entries backed only by missing optional fields", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Optional Runtime",
+        prefixTemplates: [`https://${rand}.optional.test/v1/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+          {
+            key: "secondary_token",
+            label: "Secondary token",
+            kind: "secret",
+            required: false,
+          },
+          {
+            key: "tenant_id",
+            label: "Tenant ID",
+            kind: "variable",
+            required: false,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+          {
+            name: "X-Secondary",
+            valueTemplate: "{{secrets.secondary_token}}",
+          },
+        ],
+        queryInjections: [
+          {
+            name: "tenant",
+            valueTemplate: "{{variables.tenant_id}}",
+          },
+        ],
+      },
+      values: [{ key: "api_key", kind: "secret", value: "optional-primary" }],
+      agentId,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the optional custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const idPart = saved.connector.id.replaceAll("-", "");
+    const internalName = `custom_connector_${idPart}`;
+    const secretKey = `CUSTOM_${idPart}_S_API_KEY`;
+    const secondarySecretKey = `CUSTOM_${idPart}_S_SECONDARY_TOKEN`;
+    const tenantVarKey = `CUSTOM_${idPart}_V_TENANT_ID`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(customApis[0]?.auth?.headers).toStrictEqual({
+      Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+    });
+    expect(customApis[0]?.auth?.query).toStrictEqual({});
+    expect(JSON.stringify(customApis)).not.toContain(secondarySecretKey);
+    expect(JSON.stringify(customApis)).not.toContain(tenantVarKey);
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the custom claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected the optional custom firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer optional-primary",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
   it("keeps connector-owned vars out of custom connector base urls", async () => {
     const api = createRunsAutomationsApi(context);
     const authOrg = createAuthOrgAgentsBddApi(context);

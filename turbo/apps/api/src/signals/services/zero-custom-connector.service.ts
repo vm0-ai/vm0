@@ -1370,7 +1370,8 @@ export function renderTemplateForRuntime(args: {
   readonly template: string;
   readonly connectorId: string;
   readonly fields: readonly CustomConnectorField[];
-}): string {
+  readonly configuredValueMarkers?: ReadonlySet<string>;
+}): string | null {
   const fieldByReference = new Map<string, CustomConnectorField>(
     args.fields.map((field) => {
       return [
@@ -1379,6 +1380,32 @@ export function renderTemplateForRuntime(args: {
       ] as const;
     }),
   );
+
+  if (
+    args.configuredValueMarkers &&
+    args.template.includes(LEGACY_SECRET_PLACEHOLDER) &&
+    !args.configuredValueMarkers.has(
+      valueMarkerKey({ kind: "secret", key: LEGACY_SECRET_KEY }),
+    )
+  ) {
+    return null;
+  }
+  for (const match of args.template.matchAll(TEMPLATE_REFERENCE_REGEX)) {
+    const namespace = match[1];
+    const key = match[2];
+    if (!namespace || !key) {
+      continue;
+    }
+    const field = fieldByReference.get(`${namespace}.${key}`);
+    if (
+      field &&
+      args.configuredValueMarkers &&
+      !args.configuredValueMarkers.has(valueMarkerKey(field))
+    ) {
+      return null;
+    }
+  }
+
   return args.template
     .replaceAll(
       LEGACY_SECRET_PLACEHOLDER,

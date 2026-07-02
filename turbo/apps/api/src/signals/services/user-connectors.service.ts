@@ -358,6 +358,11 @@ export async function updateUserCustomConnectors(
       return { status: "agentNotFound" };
     }
 
+    const agentLocked = await lockZeroAgentForConnectorReplace(tx, args);
+    if (!agentLocked) {
+      return { status: "agentNotFound" };
+    }
+
     if (operation !== "remove") {
       const validation = await lockCustomConnectorsForReplace(tx, {
         orgId: args.orgId,
@@ -376,11 +381,6 @@ export async function updateUserCustomConnectors(
           unconfiguredIds: validation.unconfiguredIds,
         };
       }
-    }
-
-    const agentLocked = await lockZeroAgentForConnectorReplace(tx, args);
-    if (!agentLocked) {
-      return { status: "agentNotFound" };
     }
 
     const connectorScope = and(
