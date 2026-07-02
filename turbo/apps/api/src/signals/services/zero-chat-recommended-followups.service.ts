@@ -43,7 +43,9 @@ function isJsonSyntaxPromptFragment(prompt: string): boolean {
     return true;
   }
 
-  return /^,?[{[]?\s*"?(?:prompt|kind|generationType)"\s*:/.test(prompt);
+  return /^,?\s*(?:\[\s*)?(?:\{\s*)?"?(?:prompt|kind|generationType)"\s*:/.test(
+    prompt,
+  );
 }
 
 export function normalizeRecommendedFollowups(
