@@ -135,6 +135,7 @@ async function withStorageStateRestore(
     readonly orgId: string;
     readonly userId: string;
     readonly storageName: string;
+    readonly cleanupVersionId?: string;
   },
   run: () => Promise<void>,
 ): Promise<void> {
@@ -142,9 +143,21 @@ async function withStorageStateRestore(
   await run().then(
     async () => {
       await restoreStorageState({ ...args, previous });
+      if (args.cleanupVersionId) {
+        await deleteStorageVersion({
+          ...args,
+          versionId: args.cleanupVersionId,
+        });
+      }
     },
     async (error: unknown) => {
       await restoreStorageState({ ...args, previous });
+      if (args.cleanupVersionId) {
+        await deleteStorageVersion({
+          ...args,
+          versionId: args.cleanupVersionId,
+        });
+      }
       throw error;
     },
   );
@@ -176,6 +189,21 @@ async function seedStorageVersion(args: {
     version_id: args.versionId,
     s3_prefix: args.s3Prefix,
     s3_key: args.s3Key,
+  });
+}
+
+async function deleteStorageVersion(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly storageName: string;
+  readonly versionId: string;
+}): Promise<void> {
+  await stateAction({
+    action: "delete-storage-version",
+    org_id: args.orgId,
+    user_id: args.userId,
+    storage_name: args.storageName,
+    version_id: args.versionId,
   });
 }
 
@@ -289,6 +317,7 @@ describe("system storage presigned URL cache", () => {
             orgId: SYSTEM_ORG_ID,
             userId: VOLUME_ORG_USER_ID,
             storageName: skill.storageName,
+            cleanupVersionId: skill.versionId,
           },
           async () => {
             await seedStorageVersion({

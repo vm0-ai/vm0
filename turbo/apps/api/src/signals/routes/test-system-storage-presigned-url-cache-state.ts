@@ -184,6 +184,33 @@ async function seedStorageVersionForAction(
   return actionOk();
 }
 
+async function deleteStorageVersionForAction(
+  db: Db,
+  body: CacheStateAction<"delete-storage-version">,
+  signal: AbortSignal,
+) {
+  const [storage] = await db
+    .select({ id: storages.id })
+    .from(storages)
+    .where(storageIdentityCondition(body))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!storage) {
+    return actionOk();
+  }
+
+  await db
+    .delete(storageVersions)
+    .where(
+      and(
+        eq(storageVersions.id, body.version_id),
+        eq(storageVersions.storageId, storage.id),
+      ),
+    );
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 async function seedCacheRowForAction(
   db: Db,
   body: CacheStateAction<"seed-cache-row">,
@@ -293,6 +320,9 @@ const mutateSystemStoragePresignedUrlCacheState$ = command(
       }
       case "seed-storage-version": {
         return await seedStorageVersionForAction(db, body, signal);
+      }
+      case "delete-storage-version": {
+        return await deleteStorageVersionForAction(db, body, signal);
       }
       case "seed-cache-row": {
         return await seedCacheRowForAction(db, body, signal);

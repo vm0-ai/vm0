@@ -57,6 +57,13 @@ export const testSystemStoragePresignedUrlCacheStateActionBodySchema =
       s3_key: z.string(),
     }),
     z.object({
+      action: z.literal("delete-storage-version"),
+      org_id: z.string(),
+      user_id: z.string(),
+      storage_name: z.string(),
+      version_id: z.string(),
+    }),
+    z.object({
       action: z.literal("seed-cache-row"),
       bucket: z.string(),
       object_key: z.string(),
