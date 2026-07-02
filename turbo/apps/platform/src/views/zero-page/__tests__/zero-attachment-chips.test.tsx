@@ -1829,9 +1829,9 @@ describe("zero attachment chips", () => {
     expect(
       marker.querySelector("[data-testid='html-dom-comment-leader']"),
     ).not.toBeNull();
-    expect(deleteButton.parentElement).toBe(tag);
-    expect(deleteButton.style.right).toBe("8px");
-    expect(deleteButton.style.top).toBe("50%");
+    expect(deleteButton.parentElement).toBe(marker);
+    expect(deleteButton.style.left).toBe("140px");
+    expect(deleteButton.style.top).toBe("28px");
     expect(deleteButton.style.width).toBe("24px");
     expect(deleteButton.style.height).toBe("24px");
     expect(deleteButton.style.alignItems).toBe("center");

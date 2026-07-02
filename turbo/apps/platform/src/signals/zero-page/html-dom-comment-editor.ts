@@ -165,6 +165,8 @@ const FRAME_COMMENT_LABEL_MAX_LINES = 2;
 const FRAME_COMMENT_LABEL_HEIGHT =
   FRAME_COMMENT_LABEL_MAX_LINES * FRAME_COMMENT_LABEL_LINE_HEIGHT +
   FRAME_COMMENT_LABEL_VERTICAL_PADDING;
+const FRAME_COMMENT_DELETE_BUTTON_SIZE = 24;
+const FRAME_COMMENT_DELETE_BUTTON_INSET = 8;
 const FRAME_COMMENT_CONNECTOR_GAP = 36;
 const FRAME_COMMENT_DOT_SIZE = 8;
 const FRAME_COMMENT_VIEWPORT_PADDING = 8;
@@ -1721,13 +1723,11 @@ function styleCommentMarkerDeleteButton(params: {
   params.button.setAttribute(HTML_DOM_COMMENT_DELETE_ATTR, params.commentId);
   params.button.setAttribute("aria-label", "Delete comment");
   params.button.style.position = "absolute";
-  params.button.style.right = "8px";
-  params.button.style.top = "50%";
   params.button.style.display = "inline-flex";
   params.button.style.alignItems = "center";
   params.button.style.justifyContent = "center";
-  params.button.style.width = "24px";
-  params.button.style.height = "24px";
+  params.button.style.width = `${FRAME_COMMENT_DELETE_BUTTON_SIZE}px`;
+  params.button.style.height = `${FRAME_COMMENT_DELETE_BUTTON_SIZE}px`;
   params.button.style.border = "0";
   params.button.style.borderRadius = "999px";
   params.button.style.background = "rgba(255, 255, 255, 0.18)";
@@ -1764,7 +1764,27 @@ function createCommentMarkerDeleteIcon(doc: Document): SVGSVGElement {
   return icon;
 }
 
+function positionCommentMarkerLabel(params: {
+  readonly deleteButton: HTMLElement;
+  readonly label: HTMLElement;
+  readonly left: number;
+  readonly top: number;
+}): void {
+  params.label.style.left = `${params.left}px`;
+  params.label.style.top = `${params.top}px`;
+  params.deleteButton.style.left = `${
+    params.left +
+    FRAME_COMMENT_LABEL_MAX_WIDTH -
+    FRAME_COMMENT_DELETE_BUTTON_INSET -
+    FRAME_COMMENT_DELETE_BUTTON_SIZE
+  }px`;
+  params.deleteButton.style.top = `${
+    params.top + FRAME_COMMENT_LABEL_HEIGHT / 2
+  }px`;
+}
+
 function positionCommentMarkerParts(params: {
+  readonly deleteButton: HTMLElement;
   readonly dot: HTMLElement;
   readonly label: HTMLElement;
   readonly leader: HTMLElement;
@@ -1794,8 +1814,12 @@ function positionCommentMarkerParts(params: {
       params.leader.style.top = `${markerCenterY - 1}px`;
       params.leader.style.width = `${horizontalLeaderWidth}px`;
       params.leader.style.borderTop = "2px dashed rgb(37, 99, 235)";
-      params.label.style.left = `${FRAME_COMMENT_CONNECTOR_GAP}px`;
-      params.label.style.top = `${markerCenterY - labelCenterOffset}px`;
+      positionCommentMarkerLabel({
+        deleteButton: params.deleteButton,
+        label: params.label,
+        left: FRAME_COMMENT_CONNECTOR_GAP,
+        top: markerCenterY - labelCenterOffset,
+      });
       break;
     }
     case "bottom": {
@@ -1805,13 +1829,21 @@ function positionCommentMarkerParts(params: {
       params.leader.style.top = `${verticalLeaderTop}px`;
       params.leader.style.height = `${verticalLeaderHeight}px`;
       params.leader.style.borderLeft = "2px dashed rgb(37, 99, 235)";
-      params.label.style.left = "0";
-      params.label.style.top = `${FRAME_COMMENT_CONNECTOR_GAP}px`;
+      positionCommentMarkerLabel({
+        deleteButton: params.deleteButton,
+        label: params.label,
+        left: 0,
+        top: FRAME_COMMENT_CONNECTOR_GAP,
+      });
       break;
     }
     case "left": {
-      params.label.style.left = "0";
-      params.label.style.top = `${markerCenterY - labelCenterOffset}px`;
+      positionCommentMarkerLabel({
+        deleteButton: params.deleteButton,
+        label: params.label,
+        left: 0,
+        top: markerCenterY - labelCenterOffset,
+      });
       params.leader.style.left = `${FRAME_COMMENT_LABEL_MAX_WIDTH + 4}px`;
       params.leader.style.top = `${markerCenterY - 1}px`;
       params.leader.style.width = `${horizontalLeaderWidth}px`;
@@ -1821,8 +1853,12 @@ function positionCommentMarkerParts(params: {
       break;
     }
     case "top": {
-      params.label.style.left = "0";
-      params.label.style.top = "0";
+      positionCommentMarkerLabel({
+        deleteButton: params.deleteButton,
+        label: params.label,
+        left: 0,
+        top: 0,
+      });
       params.leader.style.left = `${markerCenterX - 1}px`;
       params.leader.style.top = `${labelHeight + 4}px`;
       params.leader.style.height = `${verticalLeaderHeight}px`;
@@ -1883,15 +1919,16 @@ function createFrameCommentMarker(params: {
     commentId: params.comment.id,
   });
   deleteButton.append(deleteIcon);
-  label.append(labelText, deleteButton);
+  label.append(labelText);
   positionCommentMarkerParts({
+    deleteButton,
     dot,
     label,
     leader,
     placement: params.position.placement,
     rect: params.position.rect,
   });
-  marker.append(dot, leader, label);
+  marker.append(dot, leader, label, deleteButton);
   return marker;
 }
 
