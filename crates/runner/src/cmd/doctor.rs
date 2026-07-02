@@ -9,7 +9,7 @@ use std::time::Duration;
 use crate::config::RunnerConfig;
 use crate::error::RunnerResult;
 use crate::live_runner_instances::LiveRunnerInstance;
-use crate::paths::{HomePaths, diagnostic_session_fingerprint};
+use crate::paths::HomePaths;
 use crate::process;
 use chrono::{DateTime, Utc};
 use clap::Args;
@@ -1343,9 +1343,8 @@ fn print_report(
 
 fn format_idle_vm_diagnostic_line(vm: &IdleVm) -> String {
     format!(
-        "      - session fingerprint {} -> sandbox {}",
-        diagnostic_session_fingerprint(&vm.session_id),
-        vm.sandbox_id
+        "      - session id {} -> sandbox {}",
+        vm.session_id, vm.sandbox_id
     )
 }
 
@@ -2350,21 +2349,14 @@ mod tests {
     }
 
     #[test]
-    fn idle_vm_diagnostic_line_redacts_session_id() {
+    fn idle_vm_diagnostic_line_includes_session_id() {
         let raw_session_id = "sess-sensitive-doctor-17975";
         let line = format_idle_vm_diagnostic_line(&IdleVm {
             session_id: raw_session_id.into(),
             sandbox_id: "sandbox-123".into(),
         });
 
-        assert!(
-            !line.contains(raw_session_id),
-            "doctor idle VM output must not expose raw session id: {line}"
-        );
-        assert!(
-            line.contains(&diagnostic_session_fingerprint(raw_session_id)),
-            "doctor idle VM output should retain session-level correlation: {line}"
-        );
+        assert!(line.contains(raw_session_id));
         assert!(line.contains("sandbox-123"));
     }
 

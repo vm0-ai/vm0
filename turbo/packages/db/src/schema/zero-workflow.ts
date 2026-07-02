@@ -49,9 +49,6 @@ export const zeroWorkflows = pgTable(
       .$type<ZeroWorkflowVisibility>()
       .notNull()
       .default("private"),
-    // Pending promotion request. Only meaningful while `visibility = 'private'`;
-    // cleared back to false when the workflow becomes public.
-    requestToPublish: boolean("request_to_publish").notNull().default(false),
     // Instruction body (the SKILL.md content below the frontmatter). DB is the
     // single source of truth; the SKILL.md written to the volume is synthesized
     // from (name, description, instruction).

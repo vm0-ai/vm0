@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.20.5...desktop-v0.21.0) (2026-07-02)
+
+
+### Features
+
+* support darwin x64 desktop builds ([#19766](https://github.com/vm0-ai/vm0/issues/19766)) ([d58dd67](https://github.com/vm0-ai/vm0/commit/d58dd6729078d9bf6556ed5a75c4a66e08b87373))
+
 ## [0.20.5](https://github.com/vm0-ai/vm0/compare/desktop-v0.20.4...desktop-v0.20.5) (2026-07-02)
 
 

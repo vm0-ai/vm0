@@ -76,7 +76,7 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
             .path("/api/webhooks/agent/events")
             .body_includes(format!(r#""runId":"{expected_run_id}""#))
             .body_includes(r#""subtype":"init""#)
-            .body_includes(r#""session_id":"***"#);
+            .body_includes(format!(r#""session_id":"{session_id}""#));
         then.status(200);
     });
     let result_event = server.mock(|when, then| {

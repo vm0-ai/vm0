@@ -100,4 +100,28 @@ describe("upgradeChatIdb", () => {
       "id",
     ]);
   });
+
+  it("keeps thread metadata when resetting v5 messages for terminal marker ordering", () => {
+    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_META_STORE,
+    ]);
+
+    upgradeChatIdb(db, 5);
+
+    expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
+    expect(deleteObjectStore).not.toHaveBeenCalledWith(CHAT_THREAD_META_STORE);
+    expect(createObjectStore).toHaveBeenCalledTimes(1);
+    expect(createObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE, {
+      keyPath: "id",
+    });
+    expect(
+      createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
+    ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, [
+      "threadId",
+      "createdAt",
+      "orderSequence",
+      "id",
+    ]);
+  });
 });

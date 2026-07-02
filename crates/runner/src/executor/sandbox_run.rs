@@ -15,7 +15,9 @@ use super::diagnostics::{
     AgentStdoutStreamDiagnostics, append_stdout_stream_diagnostics_to_stream_log, copy_guest_logs,
     read_guest_cli_agent_session_id,
 };
-use super::session_id::{canonical_codex_thread_id, is_valid_session_id};
+use super::session_id::{
+    canonical_codex_thread_id, invalid_session_id_diagnostic_preview, is_valid_session_id,
+};
 use super::telemetry::record_workspace_cache_result;
 use super::{
     ExecuteOutcome, ExecutionFailure, ExecutorConfig, JobParams, NewSandboxDispatch, RunnerError,
@@ -24,7 +26,6 @@ use super::{
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::network_log_manager::NetworkLogSession;
-use crate::paths::diagnostic_session_fingerprint;
 use crate::proxy;
 use crate::telemetry::JobTelemetry;
 use crate::types::ExecutionContext;
@@ -570,7 +571,7 @@ pub(super) async fn execute_prepared_sandbox_run(
             if let Some(ref sid) = id {
                 info!(
                     run_id = %context.run_id,
-                    session_fingerprint = %diagnostic_session_fingerprint(sid),
+                    session_id = %sid,
                     "read guest session ID for parking"
                 );
             }
@@ -599,7 +600,7 @@ fn normalize_guest_cli_agent_session_id_for_parking(
             warn!(
                 run_id = %context.run_id,
                 framework = "codex",
-                session_fingerprint = %diagnostic_session_fingerprint(&session_id),
+                session_id = %invalid_session_id_diagnostic_preview(&session_id),
                 "ignoring invalid guest session ID for framework"
             );
             None
@@ -611,7 +612,7 @@ fn normalize_guest_cli_agent_session_id_for_parking(
                 warn!(
                     run_id = %context.run_id,
                     framework = "claude-code",
-                    session_fingerprint = %diagnostic_session_fingerprint(&session_id),
+                    session_id = %invalid_session_id_diagnostic_preview(&session_id),
                     "ignoring invalid guest session ID for framework"
                 );
                 None

@@ -39,11 +39,6 @@ function triggerClassName(
   return "peer absolute inset-0 z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18 disabled:cursor-not-allowed disabled:opacity-50";
 }
 
-const actionVisibilityStyle = {
-  "--agent-row-trigger-opacity": 0,
-  "--agent-row-unread-opacity": 1,
-} as CSSProperties;
-
 const triggerOpacityStyle = {
   opacity: "var(--agent-row-trigger-opacity)",
 } as CSSProperties;
@@ -52,9 +47,50 @@ const unreadOpacityStyle = {
   opacity: "var(--agent-row-unread-opacity)",
 } as CSSProperties;
 
+const hiddenActionStyle = {
+  "--agent-row-trigger-opacity": 0,
+  "--agent-row-unread-opacity": 1,
+} as CSSProperties;
+
+const actionRootSelector = "[data-agent-row-actions-root]";
+
 function setActionVisibility(element: HTMLElement, visible: boolean) {
   element.style.setProperty("--agent-row-trigger-opacity", visible ? "1" : "0");
   element.style.setProperty("--agent-row-unread-opacity", visible ? "0" : "1");
+}
+
+function actionRootFromElement(element: Element | null): HTMLElement | null {
+  const root = element?.closest(actionRootSelector);
+  return root instanceof HTMLElement ? root : null;
+}
+
+function currentMenuActionRoot(): HTMLElement | null {
+  const activeRoot = actionRootFromElement(document.activeElement);
+  if (activeRoot) {
+    return activeRoot;
+  }
+  const openRoot = document.querySelector(
+    `${actionRootSelector}[data-agent-row-menu-open="true"]`,
+  );
+  return openRoot instanceof HTMLElement ? openRoot : null;
+}
+
+function updateMenuActionVisibility(open: boolean) {
+  const root = currentMenuActionRoot();
+  if (!root) {
+    return;
+  }
+  root.dataset.agentRowMenuOpen = open ? "true" : "false";
+  setActionVisibility(root, open || root.matches(":hover"));
+}
+
+function showMenuActionForTrigger(trigger: Element) {
+  const root = actionRootFromElement(trigger);
+  if (!root) {
+    return;
+  }
+  root.dataset.agentRowMenuOpen = "true";
+  setActionVisibility(root, true);
 }
 
 export function AgentRowSideActions({
@@ -82,25 +118,24 @@ export function AgentRowSideActions({
   });
 
   function handleMenuTriggerClick(e: MouseEvent<HTMLButtonElement>) {
+    showMenuActionForTrigger(e.currentTarget);
     e.preventDefault();
     e.stopPropagation();
   }
 
   return (
     <div
+      data-agent-row-actions-root
+      data-agent-row-menu-open="false"
       onPointerEnter={(e) => {
         setActionVisibility(e.currentTarget, true);
       }}
       onPointerLeave={(e) => {
-        setActionVisibility(e.currentTarget, false);
+        if (e.currentTarget.dataset.agentRowMenuOpen !== "true") {
+          setActionVisibility(e.currentTarget, false);
+        }
       }}
-      onFocusCapture={(e) => {
-        setActionVisibility(e.currentTarget, true);
-      }}
-      onBlurCapture={(e) => {
-        setActionVisibility(e.currentTarget, false);
-      }}
-      style={hasMenuActions ? actionVisibilityStyle : undefined}
+      style={hasMenuActions ? hiddenActionStyle : undefined}
       className={
         variant === "sidebar"
           ? `absolute right-0 top-0 flex h-8 w-8 items-center justify-center ${
@@ -113,12 +148,15 @@ export function AgentRowSideActions({
     >
       {hasMenuActions ? (
         <TooltipProvider delayDuration={200}>
-          <DropdownMenu>
+          <DropdownMenu onOpenChange={updateMenuActionVisibility}>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
                 className={triggerClassName(variant, isPrimarySelected)}
                 style={triggerOpacityStyle}
+                onPointerDownCapture={(e) => {
+                  showMenuActionForTrigger(e.currentTarget);
+                }}
                 onClick={handleMenuTriggerClick}
                 aria-label="Open agent menu"
                 disabled={triggerDisabled}

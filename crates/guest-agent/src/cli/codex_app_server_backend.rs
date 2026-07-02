@@ -71,7 +71,6 @@ pub(super) async fn execute_codex_app_server_for_runtime(
     active_input: ActiveInputWriter,
     runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
-    masker.add_sensitive_value(runtime.resume_session_id.as_ref());
     log_info!(LOG_TAG, "Starting codex app-server execution...");
 
     let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
@@ -148,9 +147,6 @@ async fn run_codex_app_server(
     let mut log_file = tokio::fs::File::from_std(log_file);
     let mut ingestor = CliEventIngestor::new(runtime);
     let resume_thread_id = resume_thread_id_from_runtime(runtime)?;
-    if let Some(resume_thread_id) = &resume_thread_id {
-        masker.add_sensitive_value(resume_thread_id);
-    }
     let mut client = CodexAppServerClient::spawn(codex_app_server_config(runtime))
         .map_err(|error| app_server_error(masker, error))?;
     let mut heartbeat_done = false;

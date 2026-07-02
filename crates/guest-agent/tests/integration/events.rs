@@ -108,11 +108,11 @@ async fn send_event_captures_session_metadata_before_masking() {
     let mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/events")
-            .body_includes(r#""session_id":"***""#);
+            .body_includes(r#""session_id":"ses-session-id-123""#);
         then.status(200);
     });
 
-    let session_id = "ses-secret-123";
+    let session_id = "ses-session-id-123";
     let masker = SecretMasker::from_raw("");
     let event = json!({
         "type": "system",
@@ -187,7 +187,7 @@ async fn prepare_event_does_not_capture_session_metadata() {
 }
 
 #[tokio::test]
-async fn send_event_masks_invalid_session_id_without_checkpoint_metadata() {
+async fn send_event_preserves_invalid_session_id_without_checkpoint_metadata() {
     let api = SharedApiMock::new().await;
     let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
@@ -197,11 +197,11 @@ async fn send_event_masks_invalid_session_id_without_checkpoint_metadata() {
     let mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/events")
-            .body_includes(r#""session_id":"***""#);
+            .body_includes(r#""session_id":"bad/session-id""#);
         then.status(200);
     });
 
-    let session_id = "bad/session-secret";
+    let session_id = "bad/session-id";
     let masker = SecretMasker::from_raw("");
     let event = json!({
         "type": "system",
@@ -212,7 +212,7 @@ async fn send_event_masks_invalid_session_id_without_checkpoint_metadata() {
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
-    assert_eq!(masker.mask_string(session_id), "***");
+    assert_eq!(masker.mask_string(session_id), session_id);
     assert!(
         !std::path::Path::new(&sid_file).exists(),
         "invalid session id must not be persisted"
@@ -236,7 +236,7 @@ async fn send_event_keeps_existing_session_metadata() {
     let mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/events")
-            .body_includes(r#""session_id":"***""#);
+            .body_includes(r#""session_id":"second-session""#);
         then.status(200);
     });
 
@@ -260,12 +260,12 @@ async fn send_event_keeps_existing_session_metadata() {
         "/tmp/first-session.jsonl",
         "later id-bearing events must not replace checkpoint history metadata"
     );
-    assert_eq!(masker.mask_string("first-session"), "***");
-    assert_eq!(masker.mask_string("second-session"), "***");
+    assert_eq!(masker.mask_string("first-session"), "first-session");
+    assert_eq!(masker.mask_string("second-session"), "second-session");
 }
 
 #[tokio::test]
-async fn send_event_seeds_existing_claude_session_id_without_repairing_history_marker() {
+async fn send_event_keeps_existing_claude_session_id_without_repairing_history_marker() {
     let api = SharedApiMock::new().await;
     let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
@@ -313,7 +313,7 @@ async fn send_event_seeds_existing_claude_session_id_without_repairing_history_m
                 "ordinary events must not create missing history markers"
             );
         }
-        assert_eq!(masker.mask_string(session_id), "***");
+        assert_eq!(masker.mask_string(session_id), session_id);
     }
 
     mock.assert_calls_async(2).await;

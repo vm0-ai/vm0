@@ -1,7 +1,6 @@
 import type { Command, Computed } from "ccstate";
 import type {
   ChatThreadArtifactRun,
-  GenerationTemplateRequest,
   ModelSelectionRequest,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
@@ -26,7 +25,6 @@ export interface ActiveGoalState {
 export interface SendMessageOptions {
   readonly revokesMessageId?: string;
   readonly includeDraftAttachments?: boolean;
-  readonly generationTemplate?: GenerationTemplateRequest;
   readonly computerUseHostId?: string | null;
 }
 
@@ -60,12 +58,7 @@ export interface ChatThreadSignals {
   >;
   queueMessage$: Command<
     Promise<void>,
-    [
-      string,
-      GenerationTemplateRequest | undefined,
-      string | null | undefined,
-      AbortSignal,
-    ]
+    [string, string | null | undefined, AbortSignal]
   >;
   recallMessage$: Command<Promise<void>, [EnrichedChatMessage, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;

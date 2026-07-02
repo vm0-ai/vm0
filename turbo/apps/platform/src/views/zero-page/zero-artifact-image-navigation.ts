@@ -8,11 +8,21 @@ import {
 } from "../../signals/chat-page/parse-body-blocks.ts";
 
 export type ImageArtifactNavigationItem = {
-  readonly file: ChatThreadArtifactFile;
-  readonly runId: string;
+  readonly url: string;
+  readonly filename: string;
+  /**
+   * Present when the image is a run artifact (agent-generated / hosted): carries
+   * the artifact file and its run so the lightbox keeps full download/share/sync
+   * metadata. Absent for human-uploaded images, which resolve from the user
+   * artifacts bucket and are not part of the thread's run artifacts.
+   */
+  readonly artifact?: {
+    readonly file: ChatThreadArtifactFile;
+    readonly runId: string;
+  };
 };
 
-export type ImageArtifactNavigation = {
+type ImageArtifactNavigation = {
   readonly next?: ImageArtifactNavigationItem;
   readonly previous?: ImageArtifactNavigationItem;
 };
@@ -23,7 +33,7 @@ export type ImageArtifactNavigation = {
  * rendered body `blocks` (image previews parsed from message content, e.g.
  * agent-generated images). Structurally satisfied by `EnrichedChatMessage`.
  */
-export type MessageImageSource = {
+type MessageImageSource = {
   readonly attachFiles?: readonly {
     readonly url: string;
     readonly filename: string;
@@ -46,48 +56,68 @@ function isImageDescriptor(descriptor: {
   );
 }
 
-// Matches a markdown image `![alt](url)`, allowing escaped characters in the
-// alt text. Agent-generated images render as markdown image lines rather than
-// dedicated preview blocks (see renderExtractedPreviewLine).
-const MARKDOWN_IMAGE_PATTERN = /!\[(?:\\.|[^\]\\])*\]\(([^)]+)\)/g;
+type MessageImage = {
+  readonly url: string;
+  readonly filename: string;
+};
 
-/** Ordered, de-duplicated image URLs shown in a single message. */
-function messageImageUrls(message: MessageImageSource): string[] {
-  const urls: string[] = [];
+// Matches a markdown image `![alt](url)`, capturing the alt (filename) and url
+// while allowing escaped characters in the alt text. Agent-generated images
+// render as markdown image lines rather than dedicated preview blocks (see
+// renderExtractedPreviewLine).
+const MARKDOWN_IMAGE_PATTERN = /!\[((?:\\.|[^\]\\])*)\]\(([^)]+)\)/g;
+
+function unescapeMarkdownAlt(alt: string): string {
+  return alt.replace(/\\([\]\\])/g, "$1");
+}
+
+function filenameFromImageUrl(url: string): string {
+  const path = url.split("?")[0].split("#")[0];
+  return path.split("/").pop() || "image";
+}
+
+/** Ordered, de-duplicated images (url + filename) shown in a single message. */
+function messageImages(message: MessageImageSource): MessageImage[] {
+  const images: MessageImage[] = [];
   const seen = new Set<string>();
-  const add = (url: string): void => {
+  const add = (url: string, filename: string): void => {
     if (!seen.has(url)) {
       seen.add(url);
-      urls.push(url);
+      images.push({ url, filename });
     }
   };
 
   for (const file of message.attachFiles ?? []) {
     if (isImageDescriptor(file)) {
-      add(file.url);
+      add(file.url, file.filename);
     }
   }
   for (const block of message.blocks ?? []) {
     if (block.type === "preview") {
       if (block.preview.kind === "image") {
-        add(block.preview.url);
+        add(block.preview.url, block.preview.filename);
       }
       continue;
     }
     if (block.type === "markdown") {
       for (const match of block.content.matchAll(MARKDOWN_IMAGE_PATTERN)) {
-        add(match[1]);
+        const url = match[2];
+        const alt = unescapeMarkdownAlt(match[1] ?? "");
+        add(url, alt || filenameFromImageUrl(url));
       }
     }
   }
-  return urls;
+  return images;
 }
 
 /**
- * Navigate image previews strictly within the images attached to the same chat
- * message as `currentUrl`. Generated/hosted artifacts that live in the run but
- * were not attached to the message are excluded. File metadata is sourced from
- * the run artifacts so the lightbox keeps download/share/sync capabilities.
+ * Navigate image previews strictly within the images shown in the same chat
+ * message as `currentUrl`. The message is the source of truth (both attached
+ * files and body-rendered images), so both human-uploaded and agent-generated
+ * images navigate. Run artifacts only enrich metadata when available; images
+ * that are not run artifacts (human uploads) still navigate with url + filename.
+ * Generated/hosted artifacts that live in the run but are not shown in the
+ * message are excluded.
  */
 export function currentMessageImageArtifactNavigation(
   runs: readonly ChatThreadArtifactRun[],
@@ -95,14 +125,19 @@ export function currentMessageImageArtifactNavigation(
   currentUrl: string,
 ): ImageArtifactNavigation {
   const message = messages.find((candidate) => {
-    return messageImageUrls(candidate).includes(currentUrl);
+    return messageImages(candidate).some((image) => {
+      return image.url === currentUrl;
+    });
   });
 
   if (!message) {
     return {};
   }
 
-  const artifactByUrl = new Map<string, ImageArtifactNavigationItem>();
+  const artifactByUrl = new Map<
+    string,
+    { file: ChatThreadArtifactFile; runId: string }
+  >();
   for (const run of runs) {
     for (const file of run.files) {
       if (!artifactByUrl.has(file.url)) {
@@ -111,15 +146,21 @@ export function currentMessageImageArtifactNavigation(
     }
   }
 
-  const images = messageImageUrls(message)
-    .map((url) => {
-      return artifactByUrl.get(url);
-    })
-    .filter((item): item is ImageArtifactNavigationItem => {
-      return item !== undefined;
-    });
+  const images: ImageArtifactNavigationItem[] = messageImages(message).map(
+    (image) => {
+      const artifact = artifactByUrl.get(image.url);
+      if (artifact) {
+        return {
+          url: image.url,
+          filename: artifact.file.filename,
+          artifact,
+        };
+      }
+      return { url: image.url, filename: image.filename };
+    },
+  );
   const currentIndex = images.findIndex((item) => {
-    return item.file.url === currentUrl;
+    return item.url === currentUrl;
   });
 
   if (currentIndex === -1) {

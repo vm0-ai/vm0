@@ -207,7 +207,7 @@ function ArtifactSidebarWithThreadData({
       return undefined;
     }
     return () => {
-      navigateArtifactSidebarImage(navigationItem.file.url);
+      navigateArtifactSidebarImage(navigationItem.url);
     };
   };
 

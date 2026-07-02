@@ -1,4 +1,4 @@
-//! Error masking coverage for the experimental Codex app-server backend.
+//! Error visibility coverage for the experimental Codex app-server backend.
 //!
 //! This test lives in its own binary to isolate process env, working directory,
 //! and guest runtime path overrides used during setup.
@@ -9,7 +9,7 @@ use guest_agent::masker::SecretMasker;
 use std::time::Duration;
 
 #[tokio::test]
-async fn codex_app_server_backend_masks_resume_id_in_rpc_errors()
+async fn codex_app_server_backend_preserves_resume_id_in_rpc_errors()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock_codex()?;
     let tmp = tempfile::tempdir()?;
@@ -42,16 +42,8 @@ async fn codex_app_server_backend_masks_resume_id_in_rpc_errors()
     let error = result.expect_err("resume RPC error should fail the app-server backend");
     let message = error.to_string();
     assert!(
-        message.contains("resume failed for ***"),
-        "unexpected masked error: {message}"
-    );
-    assert!(
-        !message.contains(resume_thread_id),
-        "raw resume id leaked in app-server RPC error: {message}"
-    );
-    assert!(
-        !message.contains(canonical_resume_thread_id),
-        "canonical resume id leaked in app-server RPC error: {message}"
+        message.contains(&format!("resume failed for {canonical_resume_thread_id}")),
+        "unexpected error: {message}"
     );
 
     Ok(())

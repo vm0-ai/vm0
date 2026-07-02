@@ -53,15 +53,6 @@ pub(crate) fn base_dir_lock_name(base_dir: &Path) -> String {
     format!("base-dir-{hash}.lock")
 }
 
-/// Stable non-reversible label for diagnostics that need to correlate one CLI
-/// session across logs without exposing the resumable session ID.
-///
-/// Do not use this value for resume, parking, cache metadata, or API payloads;
-/// it is diagnostic-only.
-pub(crate) fn diagnostic_session_fingerprint(session_id: &str) -> String {
-    short_digest(session_id)
-}
-
 /// Versioned digest key for host-shared session workspace image baselines.
 ///
 /// The raw CLI session id is untrusted and must not be embedded directly in
@@ -574,20 +565,6 @@ mod tests {
         assert_eq!(home.ca_dir(), PathBuf::from("/test/ca"));
         assert_eq!(home.debootstrap_dir(), PathBuf::from("/test/debootstrap"));
         assert_eq!(home.locks_dir(), PathBuf::from("/test/locks"));
-    }
-
-    #[test]
-    fn diagnostic_session_fingerprint_is_stable_short_hex() {
-        let raw_session_id = "sess-sensitive-paths-17975";
-        let fingerprint = diagnostic_session_fingerprint(raw_session_id);
-
-        assert_eq!(fingerprint, diagnostic_session_fingerprint(raw_session_id));
-        assert_ne!(fingerprint, raw_session_id);
-        assert_eq!(fingerprint.len(), 16);
-        assert!(
-            fingerprint.bytes().all(|byte| byte.is_ascii_hexdigit()),
-            "fingerprint should be hex: {fingerprint}"
-        );
     }
 
     #[test]
