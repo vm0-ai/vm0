@@ -1269,7 +1269,7 @@ function ChatThreadEmojiMenuButton({
         </Tooltip>
         <UiDropdownMenuContent
           align="start"
-          className="w-40"
+          className="w-48"
           onCloseAutoFocus={(event) => {
             event.preventDefault();
           }}
@@ -1280,7 +1280,7 @@ function ChatThreadEmojiMenuButton({
               <UiDropdownMenuItem
                 key={option.emoji}
                 aria-label={`${option.label} icon Shift ${index + 1}`}
-                className="justify-between gap-6"
+                className="justify-between gap-4"
                 onSelect={() => {
                   selectEmoji(option.emoji);
                 }}
@@ -1295,12 +1295,12 @@ function ChatThreadEmojiMenuButton({
           <UiDropdownMenuSeparator />
           <UiDropdownMenuItem
             aria-label="Clear icon Shift 0"
-            className="justify-between gap-6"
+            className="justify-between gap-4"
             onSelect={() => {
               clearEmoji();
             }}
           >
-            <span>Clear icon</span>
+            <span className="whitespace-nowrap">Clear icon</span>
             <ChatThreadIconShortcutHint shortcut="shift+0" />
           </UiDropdownMenuItem>
         </UiDropdownMenuContent>
@@ -1311,15 +1311,12 @@ function ChatThreadEmojiMenuButton({
 
 function ChatThreadIconShortcutHint({ shortcut }: { shortcut: string }) {
   return (
-    <span
-      aria-hidden="true"
-      className="ml-auto flex shrink-0 items-center gap-1 text-muted-foreground"
-    >
+    <span aria-hidden="true" className="ml-4 flex shrink-0 items-center gap-1">
       {getShortcutParts(shortcut).map((part) => {
         return (
           <kbd
             key={part}
-            className='inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-background px-1 text-[10px] font-medium leading-none text-muted-foreground shadow-[inset_0_-1px_0_hsl(var(--border)),0_0_0_1px_hsl(var(--border))] font-["-apple-system",BlinkMacSystemFont,"Segoe_UI",system-ui,sans-serif]'
+            className='inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-md bg-background px-1.5 text-[11px] font-medium text-foreground shadow-[inset_0_-1px_0_hsl(var(--border)),0_0_0_1px_hsl(var(--border))] font-["-apple-system",BlinkMacSystemFont,"Segoe_UI",system-ui,sans-serif]'
           >
             {part}
           </kbd>
