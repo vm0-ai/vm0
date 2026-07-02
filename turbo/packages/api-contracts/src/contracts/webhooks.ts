@@ -632,6 +632,7 @@ const sandboxOperationSchema = z.object({
   duration_ms: z.number(),
   success: z.boolean(),
   error: z.string().optional(),
+  encoding: sessionHistoryEncodingSchema.optional(),
 });
 
 /**

@@ -345,6 +345,7 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
         dimensions: {
           source: "sandbox",
           ...(op.error ? { error: op.error } : {}),
+          ...(op.encoding ? { encoding: op.encoding } : {}),
         },
       });
     }
