@@ -382,7 +382,7 @@ type AssistantPagedChatMessage = Extract<
 
 interface RunIndicatorScanContext {
   readonly terminatedRunIds: Set<string>;
-  readonly activeRunIds: Set<string>;
+  readonly liveRunIds: Set<string>;
   readonly queuedRunIds: Set<string>;
   sawQueued: boolean;
   sawInactiveRunActivity: boolean;
@@ -392,17 +392,6 @@ function inactiveRunIndicatorState(
   scan: RunIndicatorScanContext,
 ): RunIndicatorState {
   return scan.sawQueued ? "queued" : null;
-}
-
-function unresolvedActiveRunIndicatorState(
-  scan: RunIndicatorScanContext,
-): RunIndicatorState {
-  for (const runId of scan.activeRunIds) {
-    if (!scan.queuedRunIds.has(runId)) {
-      return "running";
-    }
-  }
-  return inactiveRunIndicatorState(scan);
 }
 
 function rememberQueuedRun(
@@ -429,7 +418,7 @@ function runActivityIndicatorState(
     scan.sawInactiveRunActivity = true;
     return undefined;
   }
-  if (scan.sawInactiveRunActivity && !scan.activeRunIds.has(runId)) {
+  if (scan.sawInactiveRunActivity && !scan.liveRunIds.has(runId)) {
     return undefined;
   }
   return "running";
@@ -472,17 +461,13 @@ function nonAssistantRunIndicatorState(
 
 function deriveRunIndicatorStateFromRawMessages(
   raw: readonly ChatMessageProjectionEntry[],
-  activeRunIds: readonly string[],
 ): RunIndicatorState {
   const revokedMessageIds = revokedMessageIdsFromRawMessages(raw);
   const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
+  const liveRunIds = new Set(liveRunIdsFromRawMessages(raw));
   const scan: RunIndicatorScanContext = {
     terminatedRunIds,
-    activeRunIds: new Set(
-      activeRunIds.filter((runId) => {
-        return !terminatedRunIds.has(runId);
-      }),
-    ),
+    liveRunIds,
     queuedRunIds: new Set<string>(),
     sawQueued: false,
     sawInactiveRunActivity: false,
@@ -509,9 +494,7 @@ function deriveRunIndicatorStateFromRawMessages(
       return state;
     }
   }
-  return scan.activeRunIds.size > 0
-    ? unresolvedActiveRunIndicatorState(scan)
-    : inactiveRunIndicatorState(scan);
+  return inactiveRunIndicatorState(scan);
 }
 
 function liveRunIdsFromRawMessages(
@@ -522,34 +505,27 @@ function liveRunIdsFromRawMessages(
   const liveRunIds: string[] = [];
   const seenRunIds = new Set<string>();
   for (const { message } of raw) {
+    const runId = message.runId;
     if (
-      message.role === "user" &&
-      message.runId !== undefined &&
+      runId !== undefined &&
       !revokedMessageIds.has(message.id) &&
-      !terminatedRunIds.has(message.runId) &&
-      !seenRunIds.has(message.runId)
+      !terminatedRunIds.has(runId) &&
+      !isQueueMarkerMessage(message) &&
+      !isUsageMessage(message) &&
+      !isGoalMarkerMessage(message) &&
+      !seenRunIds.has(runId)
     ) {
-      liveRunIds.push(message.runId);
-      seenRunIds.add(message.runId);
-    }
-  }
-  return liveRunIds;
-}
-
-function cancellableRunIdsFromThreadAndRawMessages(
-  thread: ChatThread,
-  raw: readonly ChatMessageProjectionEntry[],
-): string[] {
-  const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
-  const liveRunIds = liveRunIdsFromRawMessages(raw);
-  const seenRunIds = new Set(liveRunIds);
-  for (const runId of thread.activeRunIds) {
-    if (!terminatedRunIds.has(runId) && !seenRunIds.has(runId)) {
       liveRunIds.push(runId);
       seenRunIds.add(runId);
     }
   }
   return liveRunIds;
+}
+
+function cancellableRunIdsFromRawMessages(
+  raw: readonly ChatMessageProjectionEntry[],
+): string[] {
+  return liveRunIdsFromRawMessages(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -1688,7 +1664,7 @@ function createPagedMessages(
   });
   const messageRunIndicatorState$ =
     createMessageRunIndicatorState(rawMessages$);
-  const latestRunStatus$ = createLatestRunStatus(rawMessages$, threadData$);
+  const latestRunStatus$ = createLatestRunStatus(rawMessages$);
 
   // The thread's active goal, folded from the (goal-marker) message stream so
   // the composer reads it without polling /api/automations. Reads rawMessages$
@@ -2037,16 +2013,10 @@ function createInputRef() {
 
 function createLatestRunStatus(
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
-  threadData$: Computed<Promise<ChatThread | null>>,
 ) {
   return computed(async (get): Promise<string | null> => {
-    const rawPromise = get(rawMessages$);
-    const threadPromise = get(threadData$);
-    const [raw, thread] = await Promise.all([rawPromise, threadPromise]);
-    return deriveRunIndicatorStateFromRawMessages(
-      raw,
-      thread?.activeRunIds ?? [],
-    );
+    const raw = await get(rawMessages$);
+    return deriveRunIndicatorStateFromRawMessages(raw);
   });
 }
 
@@ -2055,7 +2025,7 @@ function createMessageRunIndicatorState(
 ) {
   return computed(async (get): Promise<RunIndicatorState> => {
     const raw = await get(rawMessages$);
-    return deriveRunIndicatorStateFromRawMessages(raw, []);
+    return deriveRunIndicatorStateFromRawMessages(raw);
   });
 }
 
@@ -2376,9 +2346,9 @@ function createRunTracking({
         return true;
       }
 
-      const thread = await get(threadData$);
+      const latestRunStatus = await get(latestRunStatus$);
       signal.throwIfAborted();
-      return (thread?.activeRunIds.length ?? 0) > 0;
+      return latestRunStatus !== null;
     },
   );
 
@@ -2936,23 +2906,22 @@ function createCancelRunWithQueuedRecall({
       });
     });
 
-    const interruptRequests = cancellableRunIdsFromThreadAndRawMessages(
-      thread,
-      raw,
-    ).map((runId) => {
-      const clientMessageId = crypto.randomUUID();
-      set(appendOptimisticChatMessage$, {
-        threadId,
-        message: {
-          id: clientMessageId,
-          role: "user",
-          content: null,
-          interruptsRunId: runId,
-          createdAt: nowDate().toISOString(),
-        },
-      });
-      return { runId, clientMessageId };
-    });
+    const interruptRequests = cancellableRunIdsFromRawMessages(raw).map(
+      (runId) => {
+        const clientMessageId = crypto.randomUUID();
+        set(appendOptimisticChatMessage$, {
+          threadId,
+          message: {
+            id: clientMessageId,
+            role: "user",
+            content: null,
+            interruptsRunId: runId,
+            createdAt: nowDate().toISOString(),
+          },
+        });
+        return { runId, clientMessageId };
+      },
+    );
 
     const recallRequests = queuedMessages.map((message) => {
       const clientMessageId = crypto.randomUUID();
