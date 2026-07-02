@@ -141,8 +141,6 @@ interface AgentForChatSend {
 
 type ThreadModelPin = ModelFirstPin;
 
-const CODEX_FAST_SERVICE_TIER_MODELS = new Set(["gpt-5.5", "gpt-5.4"]);
-
 interface ResolvedThread {
   readonly threadId: string;
   readonly sessionId: string | undefined;
@@ -2591,7 +2589,7 @@ function isCodexFastServiceTierModel(
   const bareModel = model?.startsWith("openai/")
     ? model.slice("openai/".length)
     : model;
-  return CODEX_FAST_SERVICE_TIER_MODELS.has(bareModel ?? "");
+  return bareModel === "gpt-5.5" || bareModel === "gpt-5.4";
 }
 
 function validateCodexServiceTier(params: {

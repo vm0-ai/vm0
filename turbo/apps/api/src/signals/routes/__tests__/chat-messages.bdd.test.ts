@@ -42,6 +42,7 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -64,6 +65,7 @@ const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const cu = createComputerUseBddApi(context);
+const misc = createMiscRoutesApi(context);
 const routeMocks = createZeroRouteMocks(context);
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
@@ -118,6 +120,39 @@ const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "api_key",
   "apiKey",
 ] as const;
+
+function base64UrlEncode(input: string): string {
+  return Buffer.from(input, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function unsignedJwt(payload: Record<string, unknown>): string {
+  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  return `${header}.${base64UrlEncode(JSON.stringify(payload))}.bdd-signature`;
+}
+
+function codexAuthJson(): string {
+  const accessExp = Math.floor(now() / 1000) + 7200;
+  return JSON.stringify({
+    OPENAI_API_KEY: null,
+    tokens: {
+      access_token: unsignedJwt({ exp: accessExp }),
+      refresh_token: "rt_bdd_chat_fast_mode",
+      account_id: "ws_acct_bdd_fast_mode",
+      id_token: unsignedJwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "ws_acct_bdd_fast_mode_id_token",
+          chatgpt_plan_type: "plus",
+          organization: { title: "BDD Chat Fast Mode" },
+        },
+        exp: accessExp,
+      }),
+    },
+  });
+}
 
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
 type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
@@ -1650,15 +1685,16 @@ describe("CHAT-02: explicit provider pins", () => {
   it("passes Codex fast mode only for ChatGPT subscription GPT-5.5 and GPT-5.4 sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const fw = createFirewallApi(context);
 
-    await fw.seedOrgCodexProvider(actor, {
-      accessToken: "chatgpt-access",
-      refreshToken: "chatgpt-refresh",
-      accountId: "workspace-id",
-      idToken: "chatgpt-id-token",
-      expiresIn: 3600,
-    });
+    await misc.upsertPersonalModelProvider(
+      actor,
+      {
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+        secrets: { CODEX_AUTH_JSON: codexAuthJson() },
+      },
+      [200, 201],
+    );
     await api.updateOrgModelPolicies(actor, [
       {
         model: "gpt-5.5",

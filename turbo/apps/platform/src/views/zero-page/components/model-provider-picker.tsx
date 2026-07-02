@@ -91,8 +91,6 @@ const INHERIT_SENTINEL = "__inherit_default__";
 const MEASURABLE_HIDDEN_SELECT_ITEM_CLASS =
   "absolute left-0 top-0 h-8 w-px overflow-hidden opacity-0 data-[disabled]:opacity-0 pointer-events-none";
 
-const CODEX_FAST_SERVICE_TIER_MODELS = new Set(["gpt-5.5", "gpt-5.4"]);
-
 function PriceTierBadge({ tier }: { tier: Vm0ModelPriceTier }) {
   return (
     <TooltipProvider delayDuration={300}>
@@ -263,7 +261,10 @@ function codexFastModeAvailableForModel(
   policies: OrgModelPolicy[],
   selectedModel: string | null | undefined,
 ): boolean {
-  if (!selectedModel || !CODEX_FAST_SERVICE_TIER_MODELS.has(selectedModel)) {
+  if (
+    !selectedModel ||
+    (selectedModel !== "gpt-5.5" && selectedModel !== "gpt-5.4")
+  ) {
     return false;
   }
   const policy = policies.find((candidate) => {
@@ -521,6 +522,34 @@ function CodexFastModeControl({
   );
 }
 
+function CodexFastModeSelectControl({
+  available,
+  selectedModel,
+  codexServiceTier,
+  onChange,
+}: {
+  available: boolean;
+  selectedModel: string | null;
+  codexServiceTier: CodexServiceTier | undefined;
+  onChange: (value: ModelProviderSelection | null) => void;
+}) {
+  if (!available || !selectedModel) {
+    return null;
+  }
+  return (
+    <CodexFastModeControl
+      checked={codexServiceTier === "fast"}
+      onCheckedChange={(checked) => {
+        onChange({
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel,
+          ...(checked ? { codexServiceTier: "fast" as const } : {}),
+        });
+      }}
+    />
+  );
+}
+
 function ModelFirstModelPicker({
   value,
   onChange,
@@ -564,7 +593,6 @@ function ModelFirstModelPicker({
   const codexServiceTier = codexFastModeAvailable
     ? value?.codexServiceTier
     : undefined;
-  const explicitSelectedModel = selectableValue?.selectedModel ?? null;
   const selectValue =
     selectableValue?.selectedModel ?? selectedModel ?? INHERIT_SENTINEL;
   const triggerAriaLabel = selectedModel
@@ -639,22 +667,16 @@ function ModelFirstModelPicker({
         )}
         <ModelFirstPolicyItems
           policies={policies}
-          explicitSelectedModel={explicitSelectedModel}
+          explicitSelectedModel={selectableValue?.selectedModel ?? null}
           limitedFree1={limitedFree1}
           showSeparator={false}
         />
-        {codexFastModeAvailable && selectedModel && (
-          <CodexFastModeControl
-            checked={codexServiceTier === "fast"}
-            onCheckedChange={(checked) => {
-              onChange({
-                modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-                selectedModel,
-                ...(checked ? { codexServiceTier: "fast" as const } : {}),
-              });
-            }}
-          />
-        )}
+        <CodexFastModeSelectControl
+          available={codexFastModeAvailable}
+          selectedModel={selectedModel}
+          codexServiceTier={codexServiceTier}
+          onChange={onChange}
+        />
       </SelectContent>
     </Select>
   );

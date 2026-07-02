@@ -2536,6 +2536,35 @@ function sendMessageRevocationPatch(options: SendMessageOptions | undefined): {
     : {};
 }
 
+function sendMessageRequestBody(params: {
+  readonly agentId: string;
+  readonly threadId: string;
+  readonly clientMessageId: string;
+  readonly result: PreparedSendMessageResult;
+  readonly modelSelection: ModelProviderSelection | null;
+  readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly options: SendMessageOptions | undefined;
+}) {
+  const runOptions = runOptionsFromModelProviderSelection(
+    params.modelSelection,
+  );
+  return {
+    agentId: params.agentId,
+    prompt: params.result.prompt,
+    threadId: params.threadId,
+    hasTextContent: params.result.hasTextContent,
+    clientMessageId: params.clientMessageId,
+    modelSelection: modelSelectionRequestFromSelection(params.modelSelection),
+    ...(runOptions ? { runOptions } : {}),
+    generationTemplate: params.generationTemplate,
+    ...(params.options && "computerUseHostId" in params.options
+      ? { computerUseHostId: params.options.computerUseHostId ?? null }
+      : {}),
+    attachFiles: params.result.attachFiles,
+    ...sendMessageRevocationPatch(params.options),
+  };
+}
+
 function hasVisualDraftAttachments(
   attachments: readonly { contentType: string; filename: string }[],
 ): boolean {
@@ -2641,27 +2670,19 @@ function createSendMessage(deps: SendMessageDeps) {
       );
 
       const client = get(zeroClient$)(chatMessagesContract);
-      const runOptions = runOptionsFromModelProviderSelection(modelSelection);
       const [, sendResult] = await Promise.all([
         set(flushDraftClear$, signal),
         accept(
           client.send({
-            body: {
+            body: sendMessageRequestBody({
               agentId,
-              prompt: result.prompt,
-              threadId: threadId,
-              hasTextContent: result.hasTextContent,
               clientMessageId,
-              modelSelection:
-                modelSelectionRequestFromSelection(modelSelection),
-              ...(runOptions ? { runOptions } : {}),
+              threadId,
+              result,
+              modelSelection,
               generationTemplate,
-              ...(options && "computerUseHostId" in options
-                ? { computerUseHostId: options.computerUseHostId ?? null }
-                : {}),
-              attachFiles: result.attachFiles,
-              ...sendMessageRevocationPatch(options),
-            },
+              options,
+            }),
             fetchOptions: { signal },
           }),
           [201],
