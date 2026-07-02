@@ -135,6 +135,12 @@ const cronSummarizeMemoryResponseSchema = z.union([
   cronSummarizeMemorySummarizedResponseSchema,
 ]);
 
+const cronRefreshSystemStoragePresignedUrlsResponseSchema = z.object({
+  success: z.literal(true),
+  due: z.number(),
+  refreshed: z.number(),
+});
+
 export const CRON_AGGREGATE_MODEL_STATS_MAX_HOURS = 24 * 32;
 
 const cronAggregateModelStatsResponseSchema = z.object({
@@ -334,6 +340,19 @@ export const cronSummarizeMemoryContract = c.router({
   },
 });
 
+export const cronRefreshSystemStoragePresignedUrlsContract = c.router({
+  refresh: {
+    method: "GET",
+    path: "/api/cron/refresh-system-storage-presigned-urls",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronRefreshSystemStoragePresignedUrlsResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Refresh cached system storage presigned URLs",
+  },
+});
+
 export type CronAggregateUsageContract = typeof cronAggregateUsageContract;
 export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
@@ -344,6 +363,8 @@ export type CronAggregateInsightsContract =
 export type CronAggregateModelStatsContract =
   typeof cronAggregateModelStatsContract;
 export type CronSummarizeMemoryContract = typeof cronSummarizeMemoryContract;
+export type CronRefreshSystemStoragePresignedUrlsContract =
+  typeof cronRefreshSystemStoragePresignedUrlsContract;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
 export type CronComputerUseScreenshotCleanupContract =
   typeof cronComputerUseScreenshotCleanupContract;
@@ -373,4 +394,5 @@ export {
   cronAggregateInsightsResponseSchema,
   cronAggregateModelStatsResponseSchema,
   cronSummarizeMemoryResponseSchema,
+  cronRefreshSystemStoragePresignedUrlsResponseSchema,
 };

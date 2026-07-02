@@ -965,7 +965,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_final_artifact_count_bucket: "1",
         storage_manifest_dropped_compose_count_bucket: "1",
         storage_manifest_planned_presign_count_bucket: "2_4",
-        storage_manifest_duplicate_presign_candidate_count_bucket: "1",
+        storage_manifest_duplicate_presign_candidate_count_bucket: "0",
       }),
     );
     expect(
@@ -979,7 +979,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_resolved_additional_count_bucket: "1",
         storage_manifest_resolved_artifact_count_bucket: "1",
         storage_manifest_planned_presign_count_bucket: "2_4",
-        storage_manifest_duplicate_presign_candidate_count_bucket: "1",
+        storage_manifest_duplicate_presign_candidate_count_bucket: "0",
       }),
     );
     expect(
@@ -989,7 +989,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       ),
     ).toStrictEqual(
       expect.objectContaining({
-        storage_manifest_compose_planned_presign_count_bucket: "1",
+        storage_manifest_compose_planned_presign_count_bucket: "0",
       }),
     );
     expect(
