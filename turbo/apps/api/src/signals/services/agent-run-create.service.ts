@@ -3013,6 +3013,9 @@ async function buildCustomConnectorRuntimeContext(args: {
         return rendered === null ? [] : [[queryInjection.name, rendered]];
       }),
     );
+    if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {
+      continue;
+    }
     for (const prefixTemplate of row.connector.prefixTemplates) {
       const renderedPrefix = renderCustomConnectorRuntimePrefix({
         template: prefixTemplate,

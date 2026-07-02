@@ -3566,6 +3566,62 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("skips custom connectors when all auth entries require missing optional fields", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Optional Only Runtime",
+        prefixTemplates: [`https://${rand}.optional-only.test/v1/`],
+        fields: [
+          {
+            key: "secret",
+            label: "API key",
+            kind: "secret",
+            required: false,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.secret}}",
+          },
+        ],
+        queryInjections: [],
+      },
+      values: [
+        {
+          key: "secret",
+          kind: "secret",
+          value: "optional-only-secret",
+        },
+      ],
+      agentId,
+    });
+    expect(saved.authorizedAgentId).toBe(agentId);
+    await connectors.deleteCustomConnectorSecret(actor, saved.connector.id);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the optional-only custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const internalName = `custom_connector_${saved.connector.id.replaceAll("-", "")}`;
+    expect(findFirewallEntry(claim.firewalls, internalName)).toBeUndefined();
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty(internalName);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
   it("keeps connector-owned vars out of custom connector base urls", async () => {
     const api = createRunsAutomationsApi(context);
     const authOrg = createAuthOrgAgentsBddApi(context);

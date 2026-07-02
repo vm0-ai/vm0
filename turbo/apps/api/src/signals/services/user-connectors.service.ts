@@ -4,6 +4,8 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import {
   orgCustomConnectors,
   type OrgCustomConnectorField,
+  type OrgCustomConnectorHeaderInjection,
+  type OrgCustomConnectorQueryInjection,
 } from "@vm0/db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
@@ -52,6 +54,9 @@ type AddUserCustomConnectorResult =
     };
 
 const LEGACY_SECRET_KEY = "secret";
+const LEGACY_SECRET_PLACEHOLDER = "{{secret}}";
+const CUSTOM_CONNECTOR_TEMPLATE_REFERENCE_REGEX =
+  /\{\{\s*(secrets|variables)\.([a-z][a-z0-9_]*)\s*\}\}/g;
 
 function legacyCustomConnectorFields(): readonly OrgCustomConnectorField[] {
   return [
@@ -76,6 +81,91 @@ function customConnectorValueMarkerKey(marker: {
   readonly key: string;
 }): string {
   return `${marker.kind}:${marker.key}`;
+}
+
+function customConnectorFieldConfigured(args: {
+  readonly connectorId: string;
+  readonly field: OrgCustomConnectorField;
+  readonly configuredMarkers: ReadonlySet<string>;
+}): boolean {
+  return args.configuredMarkers.has(
+    `${args.connectorId}:${customConnectorValueMarkerKey(args.field)}`,
+  );
+}
+
+function customConnectorAuthTemplateConfigured(args: {
+  readonly connectorId: string;
+  readonly fields: readonly OrgCustomConnectorField[];
+  readonly configuredMarkers: ReadonlySet<string>;
+  readonly template: string;
+}): boolean {
+  const fieldByReference = new Map<string, OrgCustomConnectorField>(
+    args.fields.map((field) => {
+      return [
+        `${field.kind === "secret" ? "secrets" : "variables"}.${field.key}`,
+        field,
+      ] as const;
+    }),
+  );
+
+  const legacyField = args.fields.find((field) => {
+    return field.kind === "secret" && field.key === LEGACY_SECRET_KEY;
+  });
+  if (args.template.includes(LEGACY_SECRET_PLACEHOLDER)) {
+    if (!legacyField) {
+      return false;
+    }
+    if (
+      !customConnectorFieldConfigured({
+        connectorId: args.connectorId,
+        field: legacyField,
+        configuredMarkers: args.configuredMarkers,
+      })
+    ) {
+      return false;
+    }
+  }
+
+  for (const match of args.template.matchAll(
+    CUSTOM_CONNECTOR_TEMPLATE_REFERENCE_REGEX,
+  )) {
+    const namespace = match[1];
+    const key = match[2];
+    if (!namespace || !key) {
+      continue;
+    }
+    const field = fieldByReference.get(`${namespace}.${key}`);
+    if (!field) {
+      return false;
+    }
+    if (
+      !customConnectorFieldConfigured({
+        connectorId: args.connectorId,
+        field,
+        configuredMarkers: args.configuredMarkers,
+      })
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function customConnectorAuthTemplates(row: {
+  readonly headerTemplate: string;
+  readonly headerInjections: readonly OrgCustomConnectorHeaderInjection[];
+  readonly queryInjections: readonly OrgCustomConnectorQueryInjection[];
+}): readonly string[] {
+  return [
+    ...(row.headerInjections.length > 0
+      ? row.headerInjections.map((injection) => {
+          return injection.valueTemplate;
+        })
+      : [row.headerTemplate]),
+    ...row.queryInjections.map((injection) => {
+      return injection.valueTemplate;
+    }),
+  ];
 }
 
 async function loadCustomConnectorGrantValueMarkers(
@@ -203,13 +293,19 @@ async function lockCustomConnectorsForReplace(
   const sortedIds = [...args.enabledIds].sort();
   const lockedRows: {
     readonly id: string;
+    readonly headerTemplate: string;
     readonly fields: readonly OrgCustomConnectorField[];
+    readonly headerInjections: readonly OrgCustomConnectorHeaderInjection[];
+    readonly queryInjections: readonly OrgCustomConnectorQueryInjection[];
   }[] = [];
   for (const id of sortedIds) {
     const [locked] = await db
       .select({
         id: orgCustomConnectors.id,
+        headerTemplate: orgCustomConnectors.headerTemplate,
         fields: orgCustomConnectors.fields,
+        headerInjections: orgCustomConnectors.headerInjections,
+        queryInjections: orgCustomConnectors.queryInjections,
       })
       .from(orgCustomConnectors)
       .where(
@@ -254,7 +350,17 @@ async function lockCustomConnectorsForReplace(
         )
       );
     });
-    return missingRequired ? [row.id] : [];
+    const hasConfiguredAuth = customConnectorAuthTemplates(row).some(
+      (template) => {
+        return customConnectorAuthTemplateConfigured({
+          connectorId: row.id,
+          fields,
+          configuredMarkers,
+          template,
+        });
+      },
+    );
+    return missingRequired || !hasConfiguredAuth ? [row.id] : [];
   });
   return { missingIds: [], unconfiguredIds };
 }

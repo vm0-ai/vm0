@@ -1383,12 +1383,15 @@ export function renderTemplateForRuntime(args: {
 
   if (
     args.configuredValueMarkers &&
-    args.template.includes(LEGACY_SECRET_PLACEHOLDER) &&
-    !args.configuredValueMarkers.has(
-      valueMarkerKey({ kind: "secret", key: LEGACY_SECRET_KEY }),
-    )
+    args.template.includes(LEGACY_SECRET_PLACEHOLDER)
   ) {
-    return null;
+    const legacyField = fieldByReference.get(`secrets.${LEGACY_SECRET_KEY}`);
+    if (
+      !legacyField ||
+      !args.configuredValueMarkers.has(valueMarkerKey(legacyField))
+    ) {
+      return null;
+    }
   }
   for (const match of args.template.matchAll(TEMPLATE_REFERENCE_REGEX)) {
     const namespace = match[1];
@@ -1397,8 +1400,10 @@ export function renderTemplateForRuntime(args: {
       continue;
     }
     const field = fieldByReference.get(`${namespace}.${key}`);
+    if (!field) {
+      return null;
+    }
     if (
-      field &&
       args.configuredValueMarkers &&
       !args.configuredValueMarkers.has(valueMarkerKey(field))
     ) {
