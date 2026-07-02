@@ -331,9 +331,7 @@ async function claimFollowUpInThread(args: {
     text: "continue in the same thread",
   });
   await runsApi.heartbeatRunner(args.runnerGroup);
-  return await runsApi.claimRunnerJob(followUpRunId, {
-    capabilities: ["resumeSessionHistoryRef"],
-  });
+  return await runsApi.claimRunnerJob(followUpRunId);
 }
 
 beforeEach(() => {
