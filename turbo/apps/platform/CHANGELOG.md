@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.528.0](https://github.com/vm0-ai/vm0/compare/app-v0.527.0...app-v0.528.0) (2026-07-02)
+
+
+### Features
+
+* add byteplus voice input stt ([#19510](https://github.com/vm0-ai/vm0/issues/19510)) ([42665c5](https://github.com/vm0-ai/vm0/commit/42665c5054ab243593122ab999f98829f301f6b7))
+* navigate human-uploaded images, not only agent artifacts ([#19746](https://github.com/vm0-ai/vm0/issues/19746)) ([b1168a3](https://github.com/vm0-ai/vm0/commit/b1168a31918615507dd61ca8d924692e2a823060)), closes [#19739](https://github.com/vm0-ai/vm0/issues/19739)
+
+
+### Bug Fixes
+
+* bump chat idb schema version ([#19773](https://github.com/vm0-ai/vm0/issues/19773)) ([06c18ad](https://github.com/vm0-ai/vm0/commit/06c18ad7fc3d496af22b50fdf45a20707f080098))
+* clarify mac desktop download labels ([#19774](https://github.com/vm0-ai/vm0/issues/19774)) ([714f775](https://github.com/vm0-ai/vm0/commit/714f77560460dd636f99c34384a42d996090de56))
+* fail open chat indexeddb cache ([#19782](https://github.com/vm0-ai/vm0/issues/19782)) ([1b55562](https://github.com/vm0-ai/vm0/commit/1b55562f6cacc21f9e692ea97cbb7d883d21ec91))
+* fire Google Ads signup conversion ([#19775](https://github.com/vm0-ai/vm0/issues/19775)) ([c1092a7](https://github.com/vm0-ai/vm0/commit/c1092a70ba713db885cb89475bb57b3d1883db95))
+* restart full thinking typewriter lines ([#19771](https://github.com/vm0-ai/vm0/issues/19771)) ([063aac1](https://github.com/vm0-ai/vm0/commit/063aac15a9cf3c7ac5d48963583db987e980899d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.0
+    * @vm0/connectors bumped to 1.126.0
+    * @vm0/core bumped to 8.386.0
+
 ## [0.527.0](https://github.com/vm0-ai/vm0/compare/app-v0.526.1...app-v0.527.0) (2026-07-02)
 
 

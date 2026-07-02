@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.206.0](https://github.com/vm0-ai/vm0/compare/api-v1.205.0...api-v1.206.0) (2026-07-02)
+
+
+### Features
+
+* add byteplus voice input stt ([#19510](https://github.com/vm0-ai/vm0/issues/19510)) ([42665c5](https://github.com/vm0-ai/vm0/commit/42665c5054ab243593122ab999f98829f301f6b7))
+* add Pexels as presentation image provider with Unsplash-preferred switch ([#19756](https://github.com/vm0-ai/vm0/issues/19756)) ([9222ea2](https://github.com/vm0-ai/vm0/commit/9222ea207ba7a4224eb6809d46ccac2b02ece38b))
+
+
+### Bug Fixes
+
+* **api:** suppress malformed follow-up suggestions ([#19762](https://github.com/vm0-ai/vm0/issues/19762)) ([70208d8](https://github.com/vm0-ai/vm0/commit/70208d8fe9d594ecfb07dc841041d5738b9fd2c3))
+* fire Google Ads signup conversion ([#19775](https://github.com/vm0-ai/vm0/issues/19775)) ([c1092a7](https://github.com/vm0-ai/vm0/commit/c1092a70ba713db885cb89475bb57b3d1883db95))
+* gate workflow trigger firing by fireability ([#19768](https://github.com/vm0-ai/vm0/issues/19768)) ([cfb7c81](https://github.com/vm0-ai/vm0/commit/cfb7c81110271d2f79db668a933c5546318e34c9))
+* restart full thinking typewriter lines ([#19771](https://github.com/vm0-ai/vm0/issues/19771)) ([063aac1](https://github.com/vm0-ai/vm0/commit/063aac15a9cf3c7ac5d48963583db987e980899d))
+
+
+### Performance Improvements
+
+* add compressed resume session history transport ([#19667](https://github.com/vm0-ai/vm0/issues/19667)) ([ee23c32](https://github.com/vm0-ai/vm0/commit/ee23c326ccf794228d2c4f9dd6d8844cd032fc49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.0
+    * @vm0/connectors bumped to 1.126.0
+    * @vm0/core bumped to 8.386.0
+    * @vm0/db bumped to 1.84.3
+
 ## [1.205.0](https://github.com/vm0-ai/vm0/compare/api-v1.204.2...api-v1.205.0) (2026-07-02)
 
 
