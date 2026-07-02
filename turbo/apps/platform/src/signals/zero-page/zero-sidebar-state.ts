@@ -139,6 +139,7 @@ export const setChatListOpen$ = command(({ set }, open: boolean) => {
 });
 
 export const openAgentListDialog$ = command(({ set }) => {
+  set(internalChatListQuery$, "");
   set(internalChatListOpen$, true);
   set(reloadAgents$);
 });
