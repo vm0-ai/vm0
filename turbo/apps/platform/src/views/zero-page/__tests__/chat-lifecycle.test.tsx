@@ -5798,6 +5798,7 @@ describe("chat lifecycle", () => {
         "So Zero can work in your browser and apps for you, even ones with no connector like LinkedIn or Reddit.",
       ),
     ).toBeInTheDocument();
+    expect(screen.getByText("Requires macOS 14 or newer.")).toBeInTheDocument();
     const downloadLink = await waitFor(() => {
       return linkByText("Download for macOS");
     });
@@ -5830,6 +5831,7 @@ describe("chat lifecycle", () => {
       return buttonByText("Requires Apple Silicon Mac");
     });
     expect(requiredButton).toBeDisabled();
+    expect(screen.getByText("Requires macOS 14 or newer.")).toBeInTheDocument();
     expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
   });
 
