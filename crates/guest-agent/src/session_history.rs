@@ -90,6 +90,12 @@ pub(crate) fn read_session_history_from_payload_bounded(
     read_session_history_from_payload_impl(payload, Some(max_bytes))
 }
 
+fn session_history_exceeds_max_error(max_bytes: u64) -> AgentError {
+    AgentError::Checkpoint(format!(
+        "Session history exceeds maximum size of {max_bytes} bytes"
+    ))
+}
+
 pub(crate) struct SessionHistoryDigest {
     pub(crate) size_bytes: u64,
     pub(crate) sha256_hex: String,
@@ -683,6 +689,11 @@ fn read_zstd_history_reader(
     .map_err(|e| {
         AgentError::Checkpoint(format!("Failed to decompress zstd session history: {e}"))
     })?;
+    if let Some(max_bytes) = max_bytes
+        && bytes.len() as u64 > max_bytes
+    {
+        return Err(session_history_exceeds_max_error(max_bytes));
+    }
     Ok(bytes)
 }
 
@@ -708,6 +719,11 @@ fn read_history_reader(
                 .read_to_end(&mut bytes)
                 .map_err(|e| read_history_error(path, e))?;
         }
+    }
+    if let Some(max_bytes) = max_bytes
+        && bytes.len() as u64 > max_bytes
+    {
+        return Err(session_history_exceeds_max_error(max_bytes));
     }
     Ok(bytes)
 }
@@ -746,14 +762,75 @@ fn digest_history_reader(
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_history_file(dir: &tempfile::TempDir, name: &str, bytes: &[u8]) -> PathBuf {
+        let path = dir.path().join(name);
+        std::fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    fn assert_over_limit(error: AgentError, max_bytes: u64) {
+        let message = error.to_string();
+        assert!(
+            message.contains(&format!(
+                "Session history exceeds maximum size of {max_bytes} bytes"
+            )),
+            "expected over-limit error for cap {max_bytes}, got: {message}"
+        );
+    }
+
+    #[test]
+    fn bounded_read_allows_literal_history_at_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_history_file(&dir, "history.jsonl", b"abcd");
+
+        let bytes = read_session_history_from_payload_bounded(path.to_str().unwrap(), 4).unwrap();
+
+        assert_eq!(bytes, b"abcd");
+    }
+
+    #[test]
+    fn bounded_read_rejects_literal_history_over_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_history_file(&dir, "history.jsonl", b"abcde");
+
+        let err = read_session_history_from_payload_bounded(path.to_str().unwrap(), 4)
+            .expect_err("bounded literal read must reject over-limit history");
+
+        assert_over_limit(err, 4);
+    }
+
+    #[test]
+    fn bounded_read_rejects_zstd_history_over_decoded_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let max_bytes = 64;
+        let history = vec![b'a'; max_bytes as usize + 1];
+        let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
+        assert!(
+            compressed.len() <= max_bytes as usize,
+            "test fixture should be smaller than the decoded cap"
+        );
+        let path = write_history_file(&dir, "history.jsonl.zst", &compressed);
+
+        let err = read_session_history_from_payload_bounded(path.to_str().unwrap(), max_bytes)
+            .expect_err("bounded zstd read must reject over-limit decoded history");
+
+        assert_over_limit(err, max_bytes);
+    }
+}
+
 // Note: integration coverage for the public `read_session_history` entry
 // (both Claude literal-path and codex marker -> bounded layout scan + zstd
 // decode) lives in `crates/guest-agent/tests/session_history_read.rs`.
 // The internal helpers
 // (`read_codex_session_history`, `codex_session_filename_matches`,
 // `read_history_bytes`, `decode_marker`) are exercised transitively by
-// those integration tests, in line with the project's "integration
-// tests only" policy (`docs/testing.md`, `CLAUDE.md`).
+// those integration tests. Inline coverage above is limited to the
+// `read_session_history_from_payload_bounded` cap contract because the public
+// entry point cannot pass a small test cap.
 //
 // `decode_marker` is the one piece of non-trivial parsing logic; if it
 // regresses, the integration tests will catch it because the codex flow
