@@ -3701,8 +3701,15 @@
     {
       "idx": 528,
       "version": "7",
-      "when": 1782981774086,
-      "tag": "0528_hard_timeslip",
+      "when": 1782976948642,
+      "tag": "0528_chief_madripoor",
+      "breakpoints": true
+    },
+    {
+      "idx": 529,
+      "version": "7",
+      "when": 1782984397133,
+      "tag": "0529_light_butterfly",
       "breakpoints": true
     }
   ]

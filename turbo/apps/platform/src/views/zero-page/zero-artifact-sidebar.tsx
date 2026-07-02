@@ -66,6 +66,7 @@ import {
   publicAttachmentUrl,
   TextPreviewLoader,
 } from "./zero-attachment-chips.tsx";
+import { artifactPreviewUrlsMatch } from "./zero-attachment-url.ts";
 import { lightboxDialogVisible$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -938,7 +939,7 @@ function findArtifactItemForUrl(
 ): ArtifactSidebarItem | undefined {
   for (const run of runs) {
     const file = run.files.find((candidate) => {
-      return candidate.url === url;
+      return artifactPreviewUrlsMatch(candidate.url, url);
     });
     if (file) {
       return { runId: run.runId, file };
