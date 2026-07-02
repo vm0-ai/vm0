@@ -5596,11 +5596,6 @@ describe("chat lifecycle", () => {
         "So Zero can work in your browser and apps for you, even ones with no connector like LinkedIn or Reddit.",
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Zero Computer Use currently supports Apple Silicon Macs only.",
-      ),
-    ).toBeInTheDocument();
     const downloadLink = await waitFor(() => {
       return linkByText("Download for macOS");
     });
@@ -5630,7 +5625,7 @@ describe("chat lifecycle", () => {
     await user.click(await screen.findByText("Connect my computer"));
 
     const requiredButton = await waitFor(() => {
-      return buttonByText("Apple Silicon Mac required");
+      return buttonByText("Requires Apple Silicon Mac");
     });
     expect(requiredButton).toBeDisabled();
     expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();

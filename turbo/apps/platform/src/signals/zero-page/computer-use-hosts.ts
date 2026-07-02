@@ -17,8 +17,8 @@ export const ZERO_DESKTOP_DOWNLOAD_URL = new URL(
   resolveApiBaseForNavigation("api"),
 ).toString();
 
-export const ZERO_DESKTOP_APPLE_SILICON_REQUIREMENT =
-  "Zero Computer Use currently supports Apple Silicon Macs only.";
+export const ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL =
+  "Requires Apple Silicon Mac";
 
 export type ZeroDesktopDownloadSupportStatus =
   | "available"

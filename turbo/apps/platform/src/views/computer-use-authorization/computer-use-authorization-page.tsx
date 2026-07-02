@@ -14,10 +14,10 @@ import {
   computerUseAuthorizationRequest$,
 } from "../../signals/computer-use-authorization/computer-use-authorization.ts";
 import {
-  ZERO_DESKTOP_APPLE_SILICON_REQUIREMENT,
   zeroDesktopDownloadSupportStatus$,
   visibleComputerUseHosts,
   ZERO_DESKTOP_DOWNLOAD_URL,
+  ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -110,14 +110,11 @@ function EmptyHosts() {
           Open Zero Computer Use on your Mac and refresh this page when it comes
           online.
         </p>
-        <p className="text-xs leading-4 text-muted-foreground">
-          {ZERO_DESKTOP_APPLE_SILICON_REQUIREMENT}
-        </p>
       </div>
       {downloadSupportStatus === "unsupported-intel-mac" ? (
         <Button type="button" variant="outline" disabled className="h-9">
           <IconAlertTriangle size={16} />
-          Apple Silicon Mac required
+          {ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL}
         </Button>
       ) : downloadSupportStatus === "checking" ? (
         <Button type="button" variant="outline" disabled className="h-9">

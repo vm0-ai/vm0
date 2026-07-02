@@ -222,11 +222,6 @@ describe("computer use authorization page", () => {
         "Open Zero Computer Use on your Mac and refresh this page when it comes online.",
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Zero Computer Use currently supports Apple Silicon Macs only.",
-      ),
-    ).toBeInTheDocument();
     const downloadLink = await waitFor(() => {
       return linkByText("Download for macOS");
     });
@@ -263,7 +258,7 @@ describe("computer use authorization page", () => {
       screen.findByText("No online computers"),
     ).resolves.toBeInTheDocument();
     const requiredButton = await waitFor(() => {
-      return buttonByText("Apple Silicon Mac required");
+      return buttonByText("Requires Apple Silicon Mac");
     });
     expect(requiredButton).toBeDisabled();
     expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
