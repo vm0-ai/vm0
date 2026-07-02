@@ -660,6 +660,7 @@ describe("CHAT-02: chat thread message pagination", () => {
             prompt: '[{"prompt": "Investigate this", "kind": "talk"}',
             kind: "talk",
           },
+          { prompt: "}]", kind: "talk" },
           { prompt: "Review the valid suggestion", kind: "talk" },
           {
             prompt: "Generate a follow-up website",

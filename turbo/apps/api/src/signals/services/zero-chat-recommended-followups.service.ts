@@ -32,14 +32,20 @@ function isRecommendedFollowupGenerationType(
 }
 
 function isJsonSyntaxPromptFragment(prompt: string): boolean {
-  if (
-    prompt === "[" ||
-    prompt === "]" ||
-    prompt === "{" ||
-    prompt === "}" ||
-    prompt === "]," ||
-    prompt === "},"
-  ) {
+  let onlyJsonPunctuation = true;
+  for (const char of prompt) {
+    if (
+      char !== "[" &&
+      char !== "]" &&
+      char !== "{" &&
+      char !== "}" &&
+      char !== ","
+    ) {
+      onlyJsonPunctuation = false;
+      break;
+    }
+  }
+  if (onlyJsonPunctuation) {
     return true;
   }
 
