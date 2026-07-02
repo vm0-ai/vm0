@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.131.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.17...runner-rs-v0.131.18) (2026-07-02)
+
+
+### Bug Fixes
+
+* protect same-session runner affinity claims ([#19764](https://github.com/vm0-ai/vm0/issues/19764)) ([5bbd286](https://github.com/vm0-ai/vm0/commit/5bbd2862e2eceb51a71ba681a24d64b87894d712))
+
 ## [0.131.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.16...runner-rs-v0.131.17) (2026-07-02)
 
 ## [0.131.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.15...runner-rs-v0.131.16) (2026-07-02)
