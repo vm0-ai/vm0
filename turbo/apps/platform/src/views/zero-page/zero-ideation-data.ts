@@ -17,613 +17,442 @@ interface Category {
 
 const categories: readonly Category[] = [
   {
-    id: "reports",
-    title: "Reports",
+    id: "engineer",
+    title: "Engineer",
     cases: [
       {
-        title: "Daily standup report",
-        description: "Morning metrics become a slide deck posted to Slack",
+        title: "Auto-merge GitHub PRs",
+        description: "Reviews the diff, waits for CI, and merges when green",
         prompt:
-          "Set up a daily standup report that pulls data from GitHub, Sentry, Axiom, and Plausible every morning, generates a pptx, and posts it to #all-vm0",
-        connectors: ["github", "sentry", "axiom", "plausible", "slack"],
+          "Set up a workflow that reviews pull requests labeled ready-to-merge, waits for CI checks to pass, merges them, and posts the result to Slack",
+        connectors: ["github", "vercel", "slack"],
       },
       {
-        title: "Personal weekly digest",
-        description: "Pull requests, email, and calendar in one Slack update",
+        title: "File Sentry crashes as GitHub issues",
+        description: "Ranks new errors by user impact and files the bad ones",
         prompt:
-          "Create a personal weekly report workflow that merges GitHub PRs, Gmail, and Calendar data into a summary and sends it to Slack",
-        connectors: ["github", "gmail", "google-calendar", "slack"],
+          "Every hour, check Sentry for new errors, rank them by user impact, open a GitHub issue for the worst ones, and notify the owner in Slack",
+        connectors: ["sentry", "github", "linear", "slack"],
       },
       {
-        title: "GitHub progress weekly",
-        description: "Weekly repo activity summarized by feature",
-        prompt:
-          "Generate a weekly GitHub progress report summarized by feature modules",
-        connectors: ["github"],
-      },
-      {
-        title: "Morning brief",
+        title: "Watch Sentry after a release",
         description:
-          "Email, calendar, and notes turned into a short daily plan",
+          "Compares the new release crash-free rate against baseline",
         prompt:
-          "Set up a morning brief that pulls updates from Gmail, Calendar, and Notion every morning and posts a daily plan to Slack",
-        connectors: ["gmail", "google-calendar", "notion", "slack"],
+          "After each release, monitor the new version's crash-free rate in Sentry against baseline and alert Slack with a rollback suggestion if it regresses",
+        connectors: ["sentry", "github", "vercel", "slack"],
       },
       {
-        title: "GitHub PR summarizer",
-        description:
-          "Merged pull request summaries in Notion with optional Slack posts",
+        title: "Post GitHub updates to Slack",
+        description: "Compiles your logged work into a daily progress update",
         prompt:
-          "Summarize all merged GitHub PRs from the past week and save a daily report in Notion with an optional Slack post",
+          "Every weekday at 9am, compile my merged and in-progress work from GitHub and Linear into a progress update and post it to Slack",
+        connectors: ["github", "linear", "sentry", "slack"],
+      },
+      {
+        title: "Draft GitHub release notes in Notion",
+        description: "Turns merged PRs since the last tag into clean notes",
+        prompt:
+          "When a pull request is labeled shipped, turn the merged PRs since the last release into clean release notes saved in Notion",
         connectors: ["github", "notion", "slack"],
       },
       {
-        title: "Sentry issue digest",
-        description: "Morning digest of issues grouped by severity",
+        title: "Report AI model costs to Slack",
+        description: "Token spend and p95 latency per model and route",
         prompt:
-          "Set up a daily Sentry issue digest that summarizes critical and high severity issues every morning and posts to Slack",
-        connectors: ["sentry", "slack"],
-      },
-      {
-        title: "Vercel deploy digest",
-        description:
-          "It links each deployment to its commit and alerts Slack when a deploy fails",
-        prompt:
-          "Set up a Vercel deploy digest that monitors deployments, links each to its GitHub commit, and sends Slack alerts on failures",
-        connectors: ["vercel", "github", "slack"],
-      },
-      {
-        title: "Cloudflare traffic & security report",
-        description: "Weekly Slack recap of traffic and security events",
-        prompt:
-          "Set up a weekly Cloudflare report that summarizes traffic analytics, WAF events, and bot activity, then posts to Slack",
-        connectors: ["cloudflare", "slack"],
-      },
-      {
-        title: "Metabase dashboard digest",
-        description: "Dashboard snapshots posted to Slack automatically",
-        prompt:
-          "Set up a weekly Metabase digest that snapshots key dashboards, captures charts, and posts them to Slack every Monday morning",
-        connectors: ["metabase", "slack"],
-      },
-      {
-        title: "RevenueCat subscription digest",
-        description:
-          "Subscription metrics in Sheets with churn alerts in Slack",
-        prompt:
-          "Set up a daily RevenueCat digest that tracks new subscriptions, renewals, and cancellations in Google Sheets and alerts on Slack for churn spikes",
-        connectors: ["revenuecat", "google-sheets", "slack"],
-      },
-      {
-        title: "Xero financial summary",
-        description: "Weekly profit and cash flow from Xero in Slack",
-        prompt:
-          "Set up a weekly Xero financial summary that pulls profit & loss and cash flow data and posts a formatted report to Slack",
-        connectors: ["xero", "slack"],
-      },
-      {
-        title: "Strava team fitness digest",
-        description: "Weekly team activity summary posted to Slack",
-        prompt:
-          "Set up a weekly Strava digest that summarizes team members' running and cycling activities and posts a leaderboard to Slack",
-        connectors: ["strava", "slack"],
-      },
-      {
-        title: "Streak pipeline report",
-        description: "Weekly CRM pipeline stats from Gmail in Slack",
-        prompt:
-          "Set up a weekly Streak pipeline report that summarizes deal stages, win rates, and upcoming follow-ups, then posts to Slack",
-        connectors: ["streak", "slack"],
+          "Every day, report LLM token spend and p95 latency per model and route from Langfuse to Slack",
+        connectors: ["langfuse", "slack"],
       },
     ],
   },
   {
-    id: "github",
-    title: "GitHub",
+    id: "product",
+    title: "Product",
     cases: [
       {
-        title: "Batch-create issues",
-        description: "Paste a list and Zero opens the issues for you",
+        title: "Turn a GitHub idea into a Notion spec",
+        description: "Expands a labeled idea into a structured PRD",
         prompt:
-          "Create the following GitHub issues and assign them to the right people: 1) ... 2) ... 3) ...",
-        connectors: ["github"],
+          "When a GitHub issue is labeled needs-spec, expand it into a structured PRD with problem, users, requirements, and acceptance criteria in Notion",
+        connectors: ["github", "notion", "figma"],
       },
       {
-        title: "Codebase investigation",
-        description: "Give a URL and Zero traces the bug through the repo",
+        title: "Summarize user feedback in Notion",
+        description: "Clusters feedback into themes and ranks by frequency",
         prompt:
-          "Look at this page and search the codebase to find the root cause of the bug: [paste URL]",
-        connectors: ["github"],
+          "Every week, gather user feedback from Productlane, Typeform, Intercom, and GitHub, cluster it into themes, and write a ranked summary in Notion",
+        connectors: ["productlane", "typeform", "intercom", "github", "notion"],
       },
       {
-        title: "Deep-research code analysis",
-        description: "Explains how a subsystem works in your codebase",
+        title: "Post release notes to Slack",
+        description: "Drafts the user-facing changelog and posts it",
         prompt:
-          "Do a deep research on how the agent run queue locking mechanism works in our codebase",
-        connectors: ["github"],
+          "When a pull request is labeled release, draft a user-facing changelog and post it to Slack and Notion",
+        connectors: ["github", "notion", "slack"],
       },
       {
-        title: "Security & dependency alert digest",
-        description: "Weekly security and dependency alerts from GitHub",
+        title: "Sync the Linear roadmap to Notion",
+        description: "Keeps a Now/Next/Later board in sync with tickets",
         prompt:
-          "Generate a weekly GitHub security and dependency alert digest and post it to Slack",
-        connectors: ["github", "slack"],
+          "Every day, sync Linear ticket status into a Now/Next/Later roadmap board in Notion",
+        connectors: ["linear", "notion"],
       },
       {
-        title: "Jira \u2194 GitHub issue sync",
-        description: "Keeps Jira tickets and GitHub issues in sync",
+        title: "Track feature usage with PostHog",
+        description: "Flags features rising or falling this week",
         prompt:
-          "Set up a bidirectional sync between Jira and GitHub so that issue status, labels, and comments stay in sync across both platforms",
-        connectors: ["jira", "github", "slack"],
+          "Every week, check PostHog for features rising or falling in usage and post the shifts to Slack",
+        connectors: ["posthog", "slack"],
       },
       {
-        title: "GitLab to GitHub migration helper",
-        description: "Mirrors GitLab issues and merge requests into GitHub",
+        title: "Flag Figma designs without a task",
+        description: "Finds design frames missing a linked build task",
         prompt:
-          "Set up a workflow that mirrors GitLab issues to GitHub issues and notifies on Slack when new items are synced",
-        connectors: ["gitlab", "github", "slack"],
+          "Every day, check Figma for design frames that don't have a linked build task and flag them in Slack",
+        connectors: ["figma", "linear", "slack"],
       },
     ],
   },
   {
-    id: "collaboration",
-    title: "Collaboration",
+    id: "data",
+    title: "Data",
     cases: [
       {
-        title: "Email assistant",
-        description: "Morning inbox summary with suggested next steps",
+        title: "Post daily metrics to Slack",
+        description: "Visitors, signups, and activation every morning",
         prompt:
-          "Set up a daily email assistant that summarizes my inbox every morning and suggests actions for each thread",
+          "Every morning, pull visitors, signups, and activation from Plausible, PostHog, and Clerk and post the KPIs to Slack",
+        connectors: ["plausible", "posthog", "clerk", "slack"],
+      },
+      {
+        title: "Run a daily query into Google Sheets",
+        description: "Runs a saved query and writes formatted results",
+        prompt:
+          "Every day, run my saved database query and write the formatted results into a Google Sheet",
+        connectors: ["maskdb", "google-sheets", "slack"],
+      },
+      {
+        title: "Check the PostHog signup funnel",
+        description: "Runs the funnel and flags the biggest drop-off",
+        prompt:
+          "Every week, run the signup funnel in PostHog and post the biggest drop-off to Slack",
+        connectors: ["posthog", "slack"],
+      },
+      {
+        title: "Alert when a metric moves",
+        description: "Watches a key metric and alerts when it deviates",
+        prompt:
+          "Every hour, watch a key metric and alert Slack when it deviates from its normal range",
+        connectors: ["plausible", "posthog", "slack"],
+      },
+      {
+        title: "Track signup sources in Google Sheets",
+        description: "Ties signups to channel and campaign in a sheet",
+        prompt:
+          "Every day, attribute new signups to their channel and campaign and append them to a tracking Google Sheet",
+        connectors: ["clerk", "plausible", "google-sheets"],
+      },
+      {
+        title: "Build the weekly deck in Gamma",
+        description: "Assembles the metrics deck you'd build by hand",
+        prompt:
+          "Every week, assemble a metrics deck in Gamma from Google Sheets and analytics and post it to Slack",
+        connectors: ["google-sheets", "plausible", "gamma", "slack"],
+      },
+    ],
+  },
+  {
+    id: "marketing",
+    title: "Marketing",
+    cases: [
+      {
+        title: "Track keyword ranks with Ahrefs",
+        description: "Tracks target keywords and reports movers",
+        prompt:
+          "Every week, track target keyword rankings in Ahrefs and Search Console and report the movers in Notion",
+        connectors: ["ahrefs", "google-search-console", "notion"],
+      },
+      {
+        title: "Publish scheduled posts to Buffer",
+        description: "Publishes whatever's scheduled for today",
+        prompt:
+          "Every day, publish the content scheduled for today from the Notion calendar to Strapi and queue the social posts in Buffer",
+        connectors: ["notion", "strapi", "buffer"],
+      },
+      {
+        title: "Turn blog posts into X posts",
+        description: "Turns each new post into social variants",
+        prompt:
+          "Every day, turn newly published blog posts into social variants and queue them to X through Buffer",
+        connectors: ["strapi", "buffer", "x"],
+      },
+      {
+        title: "Draft the newsletter in Mailchimp",
+        description: "Assembles the issue from what shipped",
+        prompt:
+          "Every month, assemble a newsletter from shipped features and stage a draft in Mailchimp",
+        connectors: ["github", "mailchimp"],
+      },
+      {
+        title: "Compare Google Ads vs last month",
+        description: "Spend, CPA, and ROAS vs the prior period",
+        prompt:
+          "Every day, compare Google Ads and Meta Ads spend, CPA, and ROAS against the prior period and flag anomalies in Slack",
+        connectors: ["google-ads", "meta-ads", "slack"],
+      },
+      {
+        title: "Watch Reddit and HN for brand mentions",
+        description: "Pings you when someone mentions your product",
+        prompt:
+          "Every hour, search the web, Hacker News, Reddit, and X for mentions of our product and post them to Slack",
+        connectors: ["exa", "x", "slack"],
+      },
+    ],
+  },
+  {
+    id: "sales",
+    title: "Sales",
+    cases: [
+      {
+        title: "Catch leads from Gmail",
+        description: "Spots buying signals and logs the lead",
+        prompt:
+          "Scan new Gmail messages for buying signals, log qualified leads to a Google Sheet, enrich them with Apollo, and suggest the next step in Slack",
+        connectors: ["gmail", "apollo", "google-sheets", "slack"],
+      },
+      {
+        title: "Add new Gmail contacts to HubSpot",
+        description: "Email from someone new adds and enriches them",
+        prompt:
+          "When an email arrives from someone who isn't in the CRM yet, add and enrich them in HubSpot using Apollo",
+        connectors: ["gmail", "hubspot", "apollo"],
+      },
+      {
+        title: "Research new signups with Apollo",
+        description: "Posts each new signup's background to the channel",
+        prompt:
+          "Every hour, check Clerk for new signups, research their background and company with Apollo, and post a snapshot to Slack",
+        connectors: ["clerk", "apollo", "slack"],
+      },
+      {
+        title: "Send Gmail follow-ups automatically",
+        description: "Advances sequences and drafts the next touch",
+        prompt:
+          "Every day, advance outreach sequences and draft the next follow-up for anyone who hasn't replied",
+        connectors: ["instantly", "apollo", "gmail"],
+      },
+      {
+        title: "Prep for Google Calendar meetings",
+        description: "A one-page dossier before each meeting",
+        prompt:
+          "When a meeting with an external attendee is added to my calendar, research them with Apollo and Gong and send me a prep brief in Slack",
+        connectors: ["google-calendar", "apollo", "gong", "slack"],
+      },
+      {
+        title: "Log Gong calls to HubSpot",
+        description: "Logs call notes and next steps to the deal",
+        prompt:
+          "After a sales call, pull the Gong transcript and log the notes and next steps to the HubSpot deal",
+        connectors: ["gong", "hubspot", "slack"],
+      },
+    ],
+  },
+  {
+    id: "support",
+    title: "Support",
+    cases: [
+      {
+        title: "Sort and route Zendesk tickets",
+        description: "Sets urgency, routes it, drafts the first reply",
+        prompt:
+          "When a support ticket arrives, set its severity, route it to the right team, and draft a first reply",
+        connectors: ["zendesk", "linear"],
+      },
+      {
+        title: "Draft replies from your Notion FAQ",
+        description: "Checks the FAQ in Notion, then drafts the reply",
+        prompt:
+          "When a support question arrives, check the FAQ in Notion and draft an on-brand reply for review",
+        connectors: ["intercom", "notion", "gmail"],
+      },
+      {
+        title: "Send bugs to GitHub and Slack",
+        description: "Packages repro and impact for engineering",
+        prompt:
+          "When an issue is labeled bug, package the reproduction steps and impact and send it to the engineering channel in Slack",
+        connectors: ["github", "linear", "slack"],
+      },
+      {
+        title: "Turn fixes into Notion help docs",
+        description: "Turns a resolved ticket into a reusable article",
+        prompt:
+          "When a ticket is marked resolved, turn the fix into a reusable help article in Notion",
+        connectors: ["notion", "zendesk"],
+      },
+      {
+        title: "Spot churn risk in Stripe and Zendesk",
+        description: "Flags churn risk and drafts a recovery email",
+        prompt:
+          "Every day, flag accounts with billing issues or a spike in tickets and draft a recovery email",
+        connectors: ["clerk", "stripe", "zendesk", "resend", "slack"],
+      },
+      {
+        title: "Summarize Zendesk tickets daily",
+        description: "Summarizes the last 24 hours by severity and age",
+        prompt:
+          "Every morning, summarize the last 24 hours of Zendesk tickets by severity and age and post it to Slack",
+        connectors: ["zendesk", "slack"],
+      },
+    ],
+  },
+  {
+    id: "ceo",
+    title: "CEO",
+    cases: [
+      {
+        title: "Post a daily company brief to Slack",
+        description: "Wins, risks, and what needs attention",
+        prompt:
+          "Every morning at 9am, compile product health, growth, revenue, and engineering into a company brief and post it to Slack",
+        connectors: [
+          "plausible",
+          "clerk",
+          "stripe",
+          "github",
+          "sentry",
+          "slack",
+        ],
+      },
+      {
+        title: "Post daily industry news to Slack",
+        description: "What happened in your space in the last 24h",
+        prompt:
+          "Every day, gather AI and competitor news from the last 24 hours and post a brief to Slack",
+        connectors: ["exa", "slack"],
+      },
+      {
+        title: "Build the business review in Gamma",
+        description: "MRR, burn, runway, and growth as a deck",
+        prompt:
+          "Every week, build a business review deck in Gamma covering MRR, burn, runway, and growth",
+        connectors: ["stripe", "clerk", "gamma"],
+      },
+      {
+        title: "Highlight key emails in Gmail",
+        description: "Just the few emails that actually need you",
+        prompt:
+          "Every morning, surface the few emails in Gmail that actually need my attention and post them to Slack",
+        connectors: ["gmail", "slack"],
+      },
+      {
+        title: "Draft the investor update in Google Docs",
+        description: "KPIs and highlights into an editable update",
+        prompt:
+          "Every month, assemble KPIs and highlights into an editable investor update in Google Docs",
+        connectors: ["stripe", "google-sheets", "google-docs"],
+      },
+      {
+        title: "Get Gmail reconnect reminders",
+        description: "People you've gone quiet with, plus an opener",
+        prompt:
+          "Every week, surface important contacts I haven't talked to lately and suggest an opener",
+        connectors: ["gmail", "google-calendar", "slack"],
+      },
+    ],
+  },
+  {
+    id: "operations",
+    title: "Operations",
+    cases: [
+      {
+        title: "Sync Asana projects to Notion",
+        description: "Rolls every team's task status into one board",
+        prompt:
+          "Every day, roll up task status from Asana into a single status board in Notion and post a digest",
+        connectors: ["asana", "notion"],
+      },
+      {
+        title: "Turn meeting notes into Asana tasks",
+        description: "Extracts action items into assigned tasks",
+        prompt:
+          "After a meeting, extract the action items from the transcript and create assigned tasks in Asana",
+        connectors: ["fireflies", "asana"],
+      },
+      {
+        title: "File Gmail invoices to Google Drive",
+        description: "Saves the file to Drive and logs the expense",
+        prompt:
+          "When an invoice is labeled in Gmail, save the file to the right Google Drive folder and log the expense in a sheet",
+        connectors: ["gmail", "google-drive", "google-sheets"],
+      },
+      {
+        title: "Onboard new hires in Asana",
+        description: "Fires the checklist and provisions docs",
+        prompt:
+          "When a new hire is added, fire the onboarding checklist in Asana and provision their docs in Google Drive",
+        connectors: ["deel", "asana", "google-drive"],
+      },
+      {
+        title: "Chase overdue Asana tasks",
+        description: "Finds what's late and nudges the owner",
+        prompt:
+          "Every day, find overdue tasks in Asana and nudge their owners in Slack",
+        connectors: ["asana", "slack"],
+      },
+      {
+        title: "Catch Google Calendar conflicts",
+        description: "Catches double-bookings before they land",
+        prompt:
+          "When a calendar event is created, detect double-bookings and conflicts and alert me in Slack",
+        connectors: ["cal-com", "google-calendar", "slack"],
+      },
+    ],
+  },
+  {
+    id: "everyone",
+    title: "Everyone",
+    cases: [
+      {
+        title: "Sort Gmail and draft replies",
+        description: "Sorts mail by urgency, drafts replies you approve",
+        prompt:
+          "Sort new Gmail messages by urgency and draft replies for me to approve",
         connectors: ["gmail"],
       },
       {
-        title: "Calendar optimizer",
-        description: "Helps with conflicts, overload, and focus time",
+        title: "Get a morning brief in Slack",
+        description: "Your schedule and the emails that need you",
         prompt:
-          "Analyze my calendar for today and recommend how to manage conflicts, prevent overload, and schedule focus time",
-        connectors: ["google-calendar"],
+          "Every morning, send me a brief with my schedule and the emails that need me and post it to Slack",
+        connectors: ["gmail", "google-calendar", "slack"],
       },
       {
-        title: "Send messages on your behalf",
-        description: "Posts team announcements to Slack for you",
+        title: "Research your calendar meetings",
+        description: "A dossier on the person and company before a call",
         prompt:
-          "Send a message to the team on my behalf: I'll be taking a day off tomorrow. Please reach out to [name] for urgent matters.",
-        connectors: ["slack"],
+          "When a meeting is added to my calendar, research the attendees and company and send me a dossier before the call",
+        connectors: ["google-calendar", "exa", "slack"],
       },
       {
-        title: "Browser screenshots",
-        description: "Opens a page in the browser and returns a screenshot",
+        title: "Summarize Gmail newsletters",
+        description: "One tidy weekly summary of what you subscribe to",
         prompt:
-          "Open this URL in the browser and take a screenshot: [paste URL]",
+          "Every week, summarize the newsletters labeled in Gmail into one digest and post it to Slack",
+        connectors: ["gmail", "slack"],
       },
       {
-        title: "Self-update instructions",
-        description: "Update the agent instructions right in chat",
-        prompt: "Update yourself: add the following instructions \u2014 ...",
+        title: "Get meeting recaps in Slack",
+        description: "Decisions and action items after the call",
+        prompt:
+          "After a meeting, send me a recap with the decisions and action items",
+        connectors: ["fireflies", "gmail", "slack"],
       },
       {
-        title: "Support ticket router",
-        description: "Tickets go to Notion and urgent ones ping Slack",
+        title: "Turn flagged Gmail into Todoist tasks",
+        description: "Researches the flagged email, files a ready task",
         prompt:
-          "Set up a support ticket router that monitors Gmail for support emails, classifies them by category and priority, creates Notion entries, and sends Slack alerts for critical tickets",
-        connectors: ["gmail", "notion", "slack"],
-      },
-      {
-        title: "Meeting notes pipeline",
-        description: "Fireflies notes to Notion with follow ups in Slack",
-        prompt:
-          "Set up a meeting notes pipeline that takes Fireflies transcripts, generates a summary in Notion, and posts action items to Slack after each meeting",
-        connectors: ["fireflies", "notion", "slack"],
-      },
-      {
-        title: "Calendly booking sync",
-        description: "New bookings on your calendar with a Slack ping",
-        prompt:
-          "Set up a Calendly sync that adds new bookings to Google Calendar and sends a Slack notification with meeting details",
-        connectors: ["calendly", "google-calendar", "slack"],
-      },
-      {
-        title: "Todoist \u2192 Notion task sync",
-        description: "Todoist tasks mirrored in Notion for the team",
-        prompt:
-          "Set up a sync that mirrors my Todoist tasks into a Notion database so the team can see what I'm working on",
-        connectors: ["todoist", "notion"],
-      },
-      {
-        title: "Lark \u2194 Slack message relay",
-        description: "Forwards messages between Lark and Slack both ways",
-        prompt:
-          "Set up a message relay between a Lark group and a Slack channel so that messages are forwarded both ways",
-        connectors: ["lark", "slack"],
-      },
-      {
-        title: "Google Drive file organizer",
-        description: "New files sorted into folders automatically",
-        prompt:
-          "Set up a workflow that watches Google Drive for new files, classifies them by content, and moves them into the right folders",
-        connectors: ["google-drive"],
-      },
-      {
-        title: "tl;dv meeting recap",
-        description:
-          "Meeting recordings summarized in Notion with action items",
-        prompt:
-          "Set up a workflow that takes tl;dv meeting recordings, generates a summary with action items in Notion, and posts highlights to Slack",
-        connectors: ["tldv", "notion", "slack"],
-      },
-      {
-        title: "Granola notes to Notion",
-        description: "Granola meeting notes synced to a Notion database",
-        prompt:
-          "Set up a sync that takes meeting notes from Granola and organizes them in a Notion database grouped by project",
-        connectors: ["granola", "notion"],
-      },
-      {
-        title: "LINE message relay",
-        description: "Forward LINE messages to Slack and vice versa",
-        prompt:
-          "Set up a message relay between a LINE group and a Slack channel so messages flow both ways",
-        connectors: ["line", "slack"],
-      },
-      {
-        title: "Loops email campaign",
-        description: "Draft and send transactional emails via Loops",
-        prompt:
-          "Set up a workflow that drafts email campaigns from Notion content and sends them through Loops",
-        connectors: ["loops", "notion"],
-      },
-      {
-        title: "Brevo email nurture sequence",
-        description: "Automated email sequences from CRM events",
-        prompt:
-          "Set up a Brevo nurture sequence that sends onboarding emails when new contacts are added to a Notion database",
-        connectors: ["brevo", "notion", "slack"],
-      },
-    ],
-  },
-  {
-    id: "content",
-    title: "Growth",
-    cases: [
-      {
-        title: "Content planner",
-        description: "Brainstorm topics and outline an editorial calendar",
-        prompt:
-          "Help me brainstorm content ideas and plan an editorial calendar for the next month in Notion",
-        connectors: ["notion"],
-      },
-      {
-        title: "Marketing content planning",
-        description:
-          "Plans launch stories from Slack, interviews, and competitors",
-        prompt:
-          "Help me plan GTM use case content. Reference our team's Slack usage patterns, user interviews, and competitor analysis",
-        connectors: ["slack"],
-      },
-      {
-        title: "Onboarding email use cases",
-        description: "Finds onboarding angles from Slack and interviews",
-        prompt:
-          "Analyze our Slack usage records and user interviews to extract key onboarding use cases for email campaigns",
-        connectors: ["slack"],
-      },
-      {
-        title: "Product copy & naming",
-        description: "Friendlier names for technical terms in the product",
-        prompt:
-          'Suggest user-friendly alternative names for "logs" in our product UI',
-      },
-      {
-        title: "Competitor research to Notion",
-        description: "Research on X saved as structured notes in Notion",
-        prompt:
-          "Research competitor [name] on X/Twitter and save the findings into our Notion research database",
-        connectors: ["x", "notion"],
-      },
-      {
-        title: "Pricing analysis",
-        description:
-          "Analyze competitor pricing strategies and compare with similar products",
-        prompt:
-          "Analyze the pricing strategy of Claude Code and compare it with similar products",
-      },
-      {
-        title: "Social media content calendar",
-        description: "Turns a Sheets calendar into posts for each network",
-        prompt:
-          "Generate social media content for Twitter and LinkedIn from my Google Sheets content calendar and schedule the posts",
-        connectors: ["google-sheets", "x"],
-      },
-      {
-        title: "YouTube to X thread repurposer",
-        description:
-          "When a new YouTube video is published, generate a Notion summary and an X thread to promote it",
-        prompt:
-          "Set up a workflow that monitors my YouTube channel for new videos, creates a summary page in Notion, and generates a promotional X thread",
-        connectors: ["youtube", "notion", "x"],
-      },
-      {
-        title: "Competitive intel scraper",
-        description:
-          "Firecrawl watches competitor sites and logs changes in Notion",
-        prompt:
-          "Set up a weekly competitor scraper using Firecrawl that monitors competitor websites for pricing and feature changes, saves findings to Notion, and alerts on Slack",
-        connectors: ["firecrawl", "notion", "slack"],
-      },
-      {
-        title: "Dev.to auto-publisher",
-        description: "Publishes Notion posts to Dev.to and links them on X",
-        prompt:
-          "Set up a workflow that publishes Notion pages tagged as 'ready' to Dev.to and posts a link on X",
-        connectors: ["devto", "notion", "x"],
-      },
-      {
-        title: "Instagram engagement tracker",
-        description: "Engagement in Sheets with weekly Slack summaries",
-        prompt:
-          "Set up an Instagram tracker that logs post engagement metrics to Google Sheets and posts a weekly summary to Slack",
-        connectors: ["instagram", "google-sheets", "slack"],
-      },
-      {
-        title: "SimilarWeb traffic comparison",
-        description: "Traffic benchmarks versus competitors saved in Notion",
-        prompt:
-          "Run a monthly SimilarWeb traffic comparison between our site and top 5 competitors, save the report to Notion",
-        connectors: ["similarweb", "notion"],
-      },
-      {
-        title: "ElevenLabs audio content",
-        description: "Voice narration from Notion articles saved to Drive",
-        prompt:
-          "Set up a workflow that takes blog posts from Notion, generates voice narration with ElevenLabs, and saves the audio to Google Drive",
-        connectors: ["elevenlabs", "notion", "google-drive"],
-      },
-      {
-        title: "HeyGen video from script",
-        description: "Notion script becomes a HeyGen video with a team ping",
-        prompt:
-          "Set up a workflow that takes a script from Notion, generates a video with HeyGen, and sends a Slack notification when it's ready",
-        connectors: ["heygen", "notion", "slack"],
-      },
-      {
-        title: "Lead follow-up pipeline",
-        description: "New leads become HubSpot tasks with Slack alerts",
-        prompt:
-          "Set up a lead follow-up pipeline that monitors Gmail for new leads, analyzes them with AI, creates HubSpot tasks, and notifies the sales team on Slack",
-        connectors: ["gmail", "hubspot", "slack"],
-      },
-      {
-        title: "Win/loss reporter",
-        description: "Win and loss trends from the pipeline in Slack",
-        prompt:
-          "Set up a weekly win/loss report that analyzes our HubSpot pipeline, tracks deal outcomes, and posts trends to Slack",
-        connectors: ["hubspot", "slack"],
-      },
-      {
-        title: "Intercom conversation triager",
-        description: "Intercom chats become prioritized Notion tasks",
-        prompt:
-          "Set up a workflow that takes Intercom conversations, classifies them, and creates structured tasks in Notion",
-        connectors: ["intercom", "notion"],
-      },
-      {
-        title: "Salesforce pipeline digest",
-        description: "Weekly Salesforce opportunity updates in Slack",
-        prompt:
-          "Set up a weekly Salesforce pipeline digest that summarizes new opportunities, stage changes, and close dates, then posts to Slack",
-        connectors: ["salesforce", "slack"],
-      },
-      {
-        title: "Zendesk \u2192 Notion knowledge base",
-        description:
-          "Extract frequently asked Zendesk questions and auto-add them to a Notion FAQ",
-        prompt:
-          "Set up a workflow that identifies recurring Zendesk questions, drafts FAQ entries, and adds them to our Notion knowledge base",
-        connectors: ["zendesk", "notion", "slack"],
-      },
-      {
-        title: "Jotform intake to Notion",
-        description: "Form answers land in Notion with Slack notifications",
-        prompt:
-          "Set up a Jotform intake that routes new form submissions to the right Notion database and sends a Slack notification",
-        connectors: ["jotform", "notion", "slack"],
-      },
-      {
-        title: "Airtable deal tracker",
-        description: "Deals sync to Sheets and Slack when they close",
-        prompt:
-          "Set up an Airtable deal tracker that syncs deal records to Google Sheets and sends a Slack notification when a deal is marked as closed-won",
-        connectors: ["airtable", "google-sheets", "slack"],
-      },
-      {
-        title: "SerpAPI keyword tracker",
-        description: "Track keyword rankings weekly and log to Sheets",
-        prompt:
-          "Set up a weekly keyword ranking tracker using SerpAPI that monitors our target keywords and logs position changes to Google Sheets with a Slack summary",
-        connectors: ["serpapi", "google-sheets", "slack"],
-      },
-      {
-        title: "Perplexity deep research",
-        description: "AI-powered research summaries saved to Notion",
-        prompt:
-          "Use Perplexity to research a topic in depth, compile findings into a structured Notion page with sources and key insights",
-        connectors: ["perplexity", "notion"],
-      },
-      {
-        title: "Runway video from brief",
-        description: "Generate short videos from a creative brief",
-        prompt:
-          "Take a creative brief from Notion and generate a short promotional video using Runway, then notify the team on Slack when ready",
-        connectors: ["runway", "notion", "slack"],
-      },
-      {
-        title: "Fal AI image generation",
-        description: "Generate product images from descriptions in Notion",
-        prompt:
-          "Set up a workflow that takes product descriptions from Notion, generates marketing images using Fal, and saves them to Google Drive",
-        connectors: ["fal", "notion", "google-drive"],
-      },
-      {
-        title: "Cloudinary media optimizer",
-        description: "Optimize and transform images in bulk",
-        prompt:
-          "Set up a workflow that takes images from Google Drive, optimizes them with Cloudinary for web use, and logs the results in Notion",
-        connectors: ["cloudinary", "google-drive", "notion"],
-      },
-    ],
-  },
-  {
-    id: "workflows",
-    title: "Workflows",
-    cases: [
-      {
-        title: "Marketing automation system",
-        description:
-          "Three agents for research, weekly monitoring, and ad hoc work",
-        prompt:
-          "Set up a marketing automation system with three agents: a daily researcher for information collection, a weekly monitor for tracking, and an on-demand agent for ad-hoc tasks",
-        connectors: ["slack"],
-      },
-      {
-        title: "Linear PRD implementer",
-        description: "Notion specs become Linear projects and issues",
-        prompt:
-          "Take the product spec from Notion and create a structured Linear project with epics and issues",
-        connectors: ["notion", "linear"],
-      },
-      {
-        title: "AgentMail inbox",
-        description: "Create and manage inboxes with the AgentMail API",
-        prompt:
-          "Create a new AgentMail inbox and set up email forwarding rules",
-        connectors: ["agentmail"],
-      },
-      {
-        title: "Customer support bot",
-        description: "Answers from the knowledge base and tasks for gaps",
-        prompt:
-          "Set up a customer support bot that answers questions from our Notion knowledge base and creates tasks for unanswered questions",
-        connectors: ["slack", "notion"],
-      },
-      {
-        title: "Feedback router",
-        description: "Slack feedback routed by your rules to the right place",
-        prompt:
-          "Set up a feedback router that watches a Slack channel and routes messages to the right team based on keywords and labels",
-        connectors: ["slack", "notion"],
-      },
-      {
-        title: "HubSpot sales reporter",
-        description: "Weekly HubSpot summaries saved as structured reports",
-        prompt:
-          "Generate a weekly HubSpot sales summary and save it as a structured report in Notion",
-        connectors: ["hubspot", "notion"],
-      },
-      {
-        title: "Discord community insights",
-        description: "Discord feedback in Notion with a weekly Slack digest",
-        prompt:
-          "Set up a Discord community monitor that watches for feature requests and bug reports, categorizes them in Notion, and posts a weekly digest to Slack",
-        connectors: ["discord", "notion", "slack"],
-      },
-      {
-        title: "X brand monitor",
-        description: "Brand mentions on X saved in Notion with team alerts",
-        prompt:
-          "Set up an X brand monitor that watches for mentions of our product, saves relevant posts to Notion, and sends Slack alerts for high-engagement posts",
-        connectors: ["x", "notion", "slack"],
-      },
-      {
-        title: "Asana \u2192 Notion project sync",
-        description: "Asana milestones and tasks mirrored in Notion",
-        prompt:
-          "Set up a sync between Asana and Notion that mirrors project milestones, task progress, and due dates into a Notion dashboard",
-        connectors: ["asana", "notion", "slack"],
-      },
-      {
-        title: "ClickUp \u2192 Slack standups",
-        description: "Daily ClickUp tasks posted as a standup in Slack",
-        prompt:
-          "Set up a daily standup that pulls each team member's tasks from ClickUp and posts a formatted summary to Slack every morning",
-        connectors: ["clickup", "slack"],
-      },
-      {
-        title: "Monday.com weekly digest",
-        description: "Weekly board progress from Monday.com in Slack",
-        prompt:
-          "Set up a weekly Monday.com digest that summarizes board activity, completed items, and blockers, then posts to Slack",
-        connectors: ["monday", "slack"],
-      },
-      {
-        title: "Google Docs \u2192 Notion migrator",
-        description: "Google Docs batches into Notion with layout preserved",
-        prompt:
-          "Set up a workflow that converts a folder of Google Docs into Notion pages, preserving headings, tables, and images",
-        connectors: ["google-docs", "notion"],
-      },
-      {
-        title: "Apify web scraper to Sheets",
-        description: "Apify scrapes sites into structured Google Sheets rows",
-        prompt:
-          "Set up an Apify scraper that extracts product listings from a competitor website and saves them to Google Sheets daily",
-        connectors: ["apify", "google-sheets", "slack"],
-      },
-      {
-        title: "Wrike project reporter",
-        description: "Weekly Wrike progress summaries in Slack",
-        prompt:
-          "Set up a weekly Wrike report that summarizes task completion, overdue items, and blockers across all projects, then posts to Slack",
-        connectors: ["wrike", "slack"],
-      },
-      {
-        title: "PDF contract processor",
-        description: "Contract fields in Notion with reminders before expiry",
-        prompt:
-          "Set up a workflow that processes PDF contracts, extracts key dates and terms into Notion, and sends Slack reminders before expiration dates",
-        connectors: ["pdfco", "notion", "slack"],
-      },
-      {
-        title: "Zapier → VM0 migration",
-        description: "Recreate your Zapier workflows as VM0 agents",
-        prompt:
-          "Help me migrate my Zapier workflows to VM0. I have zaps for: new Slack message → Notion, Gmail → Google Sheets, and GitHub PR → Slack",
-        connectors: ["zapier", "slack", "notion"],
-        featureFlag: FeatureSwitchKey.ZapierConnector,
-      },
-      {
-        title: "Make scenario builder",
-        description: "Design multi-step Make scenarios from a description",
-        prompt:
-          "Design a Make scenario that watches a Gmail inbox for invoices, extracts amounts and dates, logs them to Google Sheets, and alerts on Slack",
-        connectors: ["make", "gmail", "google-sheets", "slack"],
-      },
-      {
-        title: "Tavily web research pipeline",
-        description: "Search the web and compile findings in Notion",
-        prompt:
-          "Use Tavily to research the latest trends in AI agents, compile a structured report in Notion with sources and key takeaways",
-        connectors: ["tavily", "notion"],
-      },
-      {
-        title: "Browserbase web testing",
-        description: "Automated browser tests for your web app",
-        prompt:
-          "Set up automated browser tests using Browserbase that check our landing page, login flow, and dashboard every day and report failures to Slack",
-        connectors: ["browserbase", "slack"],
-      },
-      {
-        title: "Chatwoot → Notion support log",
-        description: "Customer conversations logged and categorized in Notion",
-        prompt:
-          "Set up a workflow that takes Chatwoot customer conversations, categorizes them by topic, and creates structured entries in Notion",
-        connectors: ["chatwoot", "notion", "slack"],
-      },
-      {
-        title: "Bitrix24 lead nurture",
-        description: "New Bitrix leads get follow-up tasks and Slack pings",
-        prompt:
-          "Set up a lead nurture workflow that monitors Bitrix24 for new leads, creates follow-up tasks, and notifies sales on Slack",
-        connectors: ["bitrix", "slack"],
+          "When I flag an email in Gmail, research the topic and file a ready-to-do task in Todoist",
+        connectors: ["gmail", "todoist"],
       },
     ],
   },

@@ -20,7 +20,7 @@ import {
 } from "../../signals/zero-page/zero-ideation.ts";
 export function ZeroIdeationPage() {
   const features = useLastResolved(featureSwitch$);
-  const categories = getCategories(features).slice(0, 5);
+  const categories = getCategories(features).slice(0, 9);
   const activeTab = useGet(ideationActiveTab$);
   const setActiveTab = useSet(setIdeationActiveTab$);
   const searchQuery = useGet(ideationSearchQuery$);
