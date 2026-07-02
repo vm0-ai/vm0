@@ -32,15 +32,6 @@ use sandbox::SandboxId;
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody {
     telemetry: ClaimRequestTelemetry,
-    capabilities: [ClaimCapability; 2],
-}
-
-#[derive(Serialize)]
-enum ClaimCapability {
-    #[serde(rename = "resumeSessionHistoryRef")]
-    ResumeSessionHistoryRef,
-    #[serde(rename = "resumeSessionHistoryCompressedRef")]
-    ResumeSessionHistoryCompressedRef,
 }
 
 #[derive(Serialize)]
@@ -559,10 +550,6 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
                 .map(claim_telemetry_duration_ms),
             poll_reason: candidate.poll_reason().map(String::from),
         },
-        capabilities: [
-            ClaimCapability::ResumeSessionHistoryRef,
-            ClaimCapability::ResumeSessionHistoryCompressedRef,
-        ],
     }
 }
 
@@ -1046,13 +1033,7 @@ mod tests {
         assert_eq!(body["telemetry"]["pollDueToJobDiscoveredMs"], 19);
         assert_eq!(body["telemetry"]["pollHttpRequestMs"], 11);
         assert_eq!(body["telemetry"]["pollReason"], "deferred");
-        assert_eq!(
-            body["capabilities"],
-            serde_json::json!([
-                "resumeSessionHistoryRef",
-                "resumeSessionHistoryCompressedRef"
-            ])
-        );
+        assert!(body.get("capabilities").is_none());
     }
 
     #[test]

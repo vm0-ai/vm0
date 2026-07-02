@@ -8,14 +8,22 @@ function knownSessionHistoryBodies(runId: string): readonly string[] {
     `bdd agentphone history ${runId}`,
     `bdd chat session history ${runId}`,
     `bdd chat thread history ${runId}`,
+    `bdd cancelled checkpoint ${runId}`,
+    `bdd cleanup-first session history ${runId}`,
+    `bdd empty checkpoint ${runId}`,
     `bdd github session history ${runId}`,
+    `bdd null vars checkpoint ${runId}`,
     `bdd run reads history ${runId}`,
     `bdd schedule history ${runId}`,
+    `bdd session checkpoint ${runId}`,
     `bdd session history ${runId}`,
     `bdd slack history ${runId}`,
     `bdd teams history ${runId}`,
+    `bdd timing session history ${runId}`,
     `bdd snapshot history ${runId}`,
-    `bdd cleanup-first session history ${runId}`,
+    `bdd zero detail ${runId}`,
+    `slack dispatch probe ${runId}`,
+    `workflow trigger history ${runId}`,
   ];
 }
 
@@ -27,13 +35,15 @@ export function registerKnownSessionHistoryBlob(
   context: TestContext,
   runId: string,
   hash: string,
-): void {
+): Uint8Array | undefined {
   for (const body of knownSessionHistoryBodies(runId)) {
     if (hashText(body) === hash) {
-      context.sessionHistoryBlobs.set(hash, Buffer.from(body, "utf8"));
-      return;
+      const blob = Buffer.from(body, "utf8");
+      context.sessionHistoryBlobs.set(hash, blob);
+      return blob;
     }
   }
+  return undefined;
 }
 
 export function sessionHistoryBlobBodyForKey(

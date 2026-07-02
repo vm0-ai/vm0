@@ -3,8 +3,8 @@ import { command, computed, state } from "ccstate";
 export const PRIMARY_IMAGE_ITEM_ID = "primary-image";
 export const DEFAULT_CANVAS_WIDTH = 1600;
 export const DEFAULT_CANVAS_HEIGHT = 1200;
-export const DEFAULT_IMAGE_WIDTH = 720;
-export const DEFAULT_IMAGE_HEIGHT = 540;
+const DEFAULT_IMAGE_WIDTH = 720;
+const DEFAULT_IMAGE_HEIGHT = 540;
 
 const DUPLICATE_OFFSET = 24;
 

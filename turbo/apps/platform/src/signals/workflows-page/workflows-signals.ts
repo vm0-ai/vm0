@@ -45,10 +45,12 @@ export interface WorkflowCopyFormState {
   readonly removeOriginal: boolean;
 }
 
-const DEFAULT_WORKFLOW_COPY_FORM: WorkflowCopyFormState = {
-  selectedAgentId: null,
-  removeOriginal: false,
-};
+function defaultWorkflowCopyForm(): WorkflowCopyFormState {
+  return {
+    selectedAgentId: null,
+    removeOriginal: false,
+  };
+}
 type WorkflowTriggerCreateDialog =
   | "interval"
   | "scheduled"
@@ -167,7 +169,7 @@ const internalWorkflowDetailActiveTab$ =
 const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
 const internalWorkflowCopyForm$ = state<WorkflowCopyFormState>(
-  DEFAULT_WORKFLOW_COPY_FORM,
+  defaultWorkflowCopyForm(),
 );
 const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
 const internalEditingWorkflowTriggerId$ = state<string | null>(null);
@@ -228,7 +230,7 @@ export const setWorkflowIndexFilterTab$ = command(
 export const setWorkflowActionDialog$ = command(
   ({ set }, dialog: WorkflowDetailActionDialog) => {
     set(internalWorkflowActionDialog$, dialog);
-    set(internalWorkflowCopyForm$, DEFAULT_WORKFLOW_COPY_FORM);
+    set(internalWorkflowCopyForm$, defaultWorkflowCopyForm());
   },
 );
 
@@ -277,7 +279,7 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalWorkflowDetailActiveTab$, "automations");
   set(internalSelectedFilePath$, null);
   set(internalWorkflowActionDialog$, null);
-  set(internalWorkflowCopyForm$, DEFAULT_WORKFLOW_COPY_FORM);
+  set(internalWorkflowCopyForm$, defaultWorkflowCopyForm());
   set(internalWorkflowFileDraft$, null);
   set(internalEditingWorkflowTriggerId$, null);
   set(internalWorkflowMetadataPatch$, null);
