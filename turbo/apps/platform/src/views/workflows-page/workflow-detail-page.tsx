@@ -407,25 +407,24 @@ function DetailHeader({
     <DetailPageHeader>
       {detail ? (
         <>
-          <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h1 className="truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
-                {workflowTitle(detail)}
-              </h1>
-              <span className="inline-flex max-w-full shrink-0 items-center rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                /{detail.name}
-              </span>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h1 className="truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+                  {workflowTitle(detail)}
+                </h1>
+                <span className="inline-flex max-w-full shrink-0 items-center rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                  /{detail.name}
+                </span>
+              </div>
+              <p className="mt-1.5 line-clamp-2 text-sm leading-tight text-muted-foreground">
+                {detail.description || "No description yet"}
+              </p>
             </div>
-            <p className="mt-1.5 line-clamp-2 text-sm leading-tight text-muted-foreground">
-              {detail.description || "No description yet"}
-            </p>
+            <WorkflowChatButton detail={detail} />
           </div>
           <div className="mt-4 flex items-center gap-2 sm:mt-6">
             <WorkflowTabNav activeTab={activeTab} onTabChange={onTabChange} />
-            {activeTab === "automations" ? (
-              <WorkflowAddAutomationButton />
-            ) : null}
-            <WorkflowChatButton detail={detail} />
           </div>
         </>
       ) : (
@@ -492,22 +491,6 @@ function WorkflowTabNav({
         </TabsTrigger>
       </TabsList>
     </Tabs>
-  );
-}
-
-function WorkflowAddAutomationButton() {
-  const features = useGet(featureSwitch$);
-  const setCreateDialog = useSet(setWorkflowTriggerCreateDialog$);
-  const workflowAutomationEnabled =
-    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
-
-  return (
-    <TriggerCreateMenu
-      onSelect={setCreateDialog}
-      githubLabelTriggersEnabled={workflowAutomationEnabled}
-      googleCalendarTriggersEnabled={workflowAutomationEnabled}
-      webhookTriggersEnabled={workflowAutomationEnabled}
-    />
   );
 }
 
@@ -2697,9 +2680,23 @@ function TriggersSection({
     userLoadable.state === "hasData" ? (userLoadable.data?.id ?? "") : "";
   const displayTimezone = preferences?.timezone ?? browserTimezone();
   const triggers = detail.triggers;
+  const features = useGet(featureSwitch$);
+  const workflowAutomationEnabled =
+    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
 
   return (
     <section className="mx-auto flex max-w-[900px] flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="min-w-0 text-sm text-muted-foreground">
+          Automations run this workflow whenever their trigger fires
+        </p>
+        <TriggerCreateMenu
+          onSelect={setCreateDialog}
+          githubLabelTriggersEnabled={workflowAutomationEnabled}
+          googleCalendarTriggersEnabled={workflowAutomationEnabled}
+          webhookTriggersEnabled={workflowAutomationEnabled}
+        />
+      </div>
       <div className="flex flex-col gap-2">
         {triggers.length > 0 ? (
           <div className="zero-card overflow-visible">
