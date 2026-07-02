@@ -177,7 +177,7 @@ class TestStreamDecodeFeed:
         assert b"".join(chunks) == plaintext
         assert session.finish_error() is None
         assert stats.max_input > 4
-        assert stats.calls < len(compressed) // 64
+        assert stats.calls < len(compressed) // 8
 
     def test_zstd_high_ratio_input_stays_small_before_large_output(self, headers, monkeypatch):
         plaintext = b"A" * (STREAM_DECODE_CHUNK_LIMIT * 4 + 123)
@@ -192,7 +192,25 @@ class TestStreamDecodeFeed:
         assert b"".join(chunks) == plaintext
         assert session.finish_error() is None
         assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
-        assert stats.max_input <= 16
+        assert stats.max_input <= 12
+
+    def test_zstd_mixed_ratio_input_keeps_transient_output_small(self, headers, monkeypatch):
+        plaintext = _deterministic_low_ratio_bytes(256 * 1024) + (
+            b"A" * (STREAM_DECODE_CHUNK_LIMIT * 64)
+        )
+        compressed = zstandard.ZstdCompressor().compress(plaintext)
+        stats = track_zstd_decompressor(monkeypatch)
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(headers(("Content-Encoding", "zstd")), chunks.append)
+        assert session is not None
+
+        session.feed(compressed)
+
+        assert b"".join(chunks) == plaintext
+        assert session.finish_error() is None
+        assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
+        assert stats.max_input <= 12
+        assert stats.max_output <= STREAM_DECODE_CHUNK_LIMIT * 4
 
     def test_concatenated_zstd_frames_same_callback(self, headers):
         first = zstandard.ZstdCompressor().compress(b"hello ")

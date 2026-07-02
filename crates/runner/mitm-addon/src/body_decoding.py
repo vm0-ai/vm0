@@ -32,7 +32,10 @@ _BROTLI_DECOMPRESS_MIN_INPUT_CHUNK_SIZE = 16
 _BROTLI_DECOMPRESS_MAX_INPUT_CHUNK_SIZE = 1024
 _BROTLI_DECOMPRESS_TARGET_INPUT_CHUNKS = 64
 _ZSTD_STREAM_DECODE_MIN_INPUT_CHUNK_SIZE = 4
-_ZSTD_STREAM_DECODE_MAX_INPUT_CHUNK_SIZE = 4 * 1024
+# The streaming zstd API does not expose a per-call output limit. Keep the
+# adaptive ceiling small so a low-ratio prefix cannot make a later high-ratio
+# block materialise a multi-MB decoded ``bytes`` object before _feed_chunks().
+_ZSTD_STREAM_DECODE_MAX_INPUT_CHUNK_SIZE = 12
 _ZSTD_STREAM_DECODE_INPUT_GROWTH_FACTOR = 2
 _ZSTD_STREAM_DECODE_LOW_EXPANSION_RATIO = 2
 
