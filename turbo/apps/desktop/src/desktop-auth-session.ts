@@ -4,6 +4,7 @@ import {
   headersWithSessionCookies,
   type DesktopSessionCookieSource,
 } from "./desktop-session-cookies";
+import { singleFlight } from "./desktop-async-control";
 
 const AUTH_ME_PATH = "/api/auth/me";
 const ZERO_ORG_PATH = "/api/zero/org";
@@ -96,7 +97,7 @@ export class DesktopAuthSession {
   private readonly onAuthCompleted: () => Promise<void> | void;
 
   private token: string | null = null;
-  private tokenRefresh: Promise<string | null> | null = null;
+  private readonly tokenRefresh = singleFlight(() => this.refreshToken());
   private pendingCallback: DesktopAuthCallback | null = null;
   private signingIn = false;
   private acceptsSignInCompletions = true;
@@ -211,7 +212,7 @@ export class DesktopAuthSession {
 
   signOut(): void {
     this.token = null;
-    this.tokenRefresh = null;
+    this.tokenRefresh.clear();
     this.pendingCallback = null;
     this.signingIn = false;
     this.acceptsSignInCompletions = false;
@@ -258,30 +259,22 @@ export class DesktopAuthSession {
   }
 
   private async refresh(): Promise<string | null> {
-    if (this.tokenRefresh) {
-      return await this.tokenRefresh;
-    }
+    return await this.tokenRefresh();
+  }
 
-    this.tokenRefresh = (async () => {
-      const before = this.token;
-      await this.runAuthWindow({
-        url: this.tokenUrl,
-        visible: false,
-        allowInteractiveFallbacks: false,
-      });
-      const after = this.token;
-      // completeSignIn() is the token's only write path. If the refresh window
-      // reached a completion navigation without ever delivering a token, the
-      // token is unchanged, so surface an explicit null instead of the stale
-      // value the 401 retry would otherwise resend.
-      return after === before ? null : after;
-    })();
-
-    try {
-      return await this.tokenRefresh;
-    } finally {
-      this.tokenRefresh = null;
-    }
+  private async refreshToken(): Promise<string | null> {
+    const before = this.token;
+    await this.runAuthWindow({
+      url: this.tokenUrl,
+      visible: false,
+      allowInteractiveFallbacks: false,
+    });
+    const after = this.token;
+    // completeSignIn() is the token's only write path. If the refresh window
+    // reached a completion navigation without ever delivering a token, the
+    // token is unchanged, so surface an explicit null instead of the stale
+    // value the 401 retry would otherwise resend.
+    return after === before ? null : after;
   }
 
   private setSigningIn(value: boolean): void {

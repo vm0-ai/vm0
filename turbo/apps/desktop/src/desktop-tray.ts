@@ -12,6 +12,7 @@ import {
   type DesktopTrayMenuActions,
   type DesktopTrayMenuItem,
 } from "./desktop-tray-menu";
+import { latestWinsGuard } from "./desktop-async-control";
 
 interface DesktopTrayControllerOptions {
   readonly displayName: string;
@@ -117,7 +118,7 @@ export class DesktopTrayController {
   private authState: DesktopAuthState | null = null;
   private authLoading = true;
   private authError: string | null = null;
-  private authRefreshVersion = 0;
+  private readonly nextAuthRefresh = latestWinsGuard();
   private iconFrame: DesktopTrayIconFrame | null = null;
   private readonly iconCache = new Map<DesktopTrayIconFrame, NativeImage>();
   private runningActivityUntilMs: number | null = null;
@@ -281,14 +282,13 @@ export class DesktopTrayController {
   }
 
   refreshAuth(): void {
-    const version = this.authRefreshVersion + 1;
-    this.authRefreshVersion = version;
+    const refresh = this.nextAuthRefresh();
     this.authLoading = true;
     this.refresh();
     void this.options
       .getAuthState()
       .then((authState) => {
-        if (version !== this.authRefreshVersion) {
+        if (!refresh.isCurrent()) {
           return;
         }
         this.authState = authState;
@@ -297,7 +297,7 @@ export class DesktopTrayController {
         this.refresh();
       })
       .catch((error: unknown) => {
-        if (version !== this.authRefreshVersion) {
+        if (!refresh.isCurrent()) {
           return;
         }
         this.authError = error instanceof Error ? error.message : String(error);
