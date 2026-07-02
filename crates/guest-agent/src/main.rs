@@ -2025,7 +2025,7 @@ mod tests {
     }
 
     #[test]
-    fn cli_failure_reason_ignores_stream_idle_timeout_from_stderr() {
+    fn cli_failure_reason_ignores_claude_result_stream_timeout_messages_from_stderr() {
         for message in [
             "API Error: Stream idle timeout - partial response received",
             "API Error: Response stalled mid-stream. The response above may be incomplete.",
@@ -2041,7 +2041,7 @@ mod tests {
     }
 
     #[test]
-    fn cli_failure_reason_ignores_codex_stream_idle_timeout() {
+    fn cli_failure_reason_ignores_non_claude_stream_timeout_messages() {
         for message in [
             "API Error: Stream idle timeout - partial response received",
             "API Error: Response stalled mid-stream. The response above may be incomplete.",
@@ -2068,7 +2068,7 @@ mod tests {
     }
 
     #[test]
-    fn cli_failure_reason_ignores_explanatory_stream_idle_timeout_text() {
+    fn cli_failure_reason_ignores_explanatory_stream_timeout_text() {
         for message in [
             "Observed API Error: Stream idle timeout - partial response received in an earlier run",
             "Observed API Error: Response stalled mid-stream. The response above may be incomplete in an earlier run",
