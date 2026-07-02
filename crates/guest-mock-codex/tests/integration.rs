@@ -162,14 +162,6 @@ fn cli_run_timeout_error_after_kill(args: &[&str]) -> std::io::Error {
     )
 }
 
-fn spawn(codex_home: &Path, args: &[&str]) -> std::io::Result<Child> {
-    let mut cmd = Command::new(BIN);
-    cmd.env("CODEX_HOME", codex_home).args(args);
-    cmd.env_remove("MOCK_CODEX_FIXTURE");
-    cmd.stdout(Stdio::null()).stderr(Stdio::null());
-    cmd.spawn()
-}
-
 struct AppServerProcess {
     child: Option<Child>,
     stdin: Option<ChildStdin>,
@@ -1906,18 +1898,62 @@ fn concurrent_resume_writes_preserve_all_turns() -> std::io::Result<()> {
     assert_eq!(first.status, 0);
     let thread_id = first.events[0]["thread_id"].as_str().unwrap();
 
-    let mut children = Vec::new();
+    let mut handles = Vec::new();
     for prompt in ["turn-1", "turn-2", "turn-3", "turn-4", "turn-5"] {
-        children.push(spawn(
-            dir.path(),
-            &["exec", "resume", thread_id, "--", prompt],
-        )?);
+        let codex_home = dir.path().to_path_buf();
+        let thread_id = thread_id.to_string();
+        handles.push((
+            prompt,
+            std::thread::spawn(move || {
+                run(&codex_home, &["exec", "resume", &thread_id, "--", prompt])
+            }),
+        ));
     }
 
-    for mut child in children {
-        let status = child.wait()?;
-        assert!(status.success(), "resume child failed with {status}");
+    let mut io_failures = Vec::new();
+    let mut status_failures = Vec::new();
+    let mut error_kind = None;
+    for (prompt, handle) in handles {
+        match handle.join() {
+            Ok(Ok(out)) if out.status == 0 => {}
+            Ok(Ok(out)) => {
+                status_failures.push(format!(
+                    "{prompt}: status={}; stderr={:?}",
+                    out.status, out.stderr
+                ));
+            }
+            Ok(Err(err)) => {
+                if err.kind() == std::io::ErrorKind::TimedOut {
+                    error_kind = Some(std::io::ErrorKind::TimedOut);
+                } else {
+                    error_kind.get_or_insert(err.kind());
+                }
+                io_failures.push(format!("{prompt}: {err}"));
+            }
+            Err(_) => {
+                error_kind.get_or_insert(std::io::ErrorKind::Other);
+                io_failures.push(format!("{prompt}: resume thread panicked"));
+            }
+        }
     }
+    if !io_failures.is_empty() {
+        let mut message = format!("resume child errors: {}", io_failures.join("; "));
+        if !status_failures.is_empty() {
+            message.push_str(&format!(
+                "; resume child non-zero statuses: {}",
+                status_failures.join("; ")
+            ));
+        }
+        return Err(std::io::Error::new(
+            error_kind.unwrap_or(std::io::ErrorKind::Other),
+            message,
+        ));
+    }
+    assert!(
+        status_failures.is_empty(),
+        "resume child non-zero statuses: {}",
+        status_failures.join("; ")
+    );
 
     let session_path = require_session_file(dir.path())?;
     let events = read_session_file(&session_path)?;
