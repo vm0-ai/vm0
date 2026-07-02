@@ -9,9 +9,10 @@
     "vm0-computer": "dist/vm0-computer.js"
   },
   "scripts": {
-    "build": "pnpm build:native && pnpm build:electron && pnpm build:cli && pnpm build:renderer",
+    "build": "pnpm build:native && pnpm build:electron && pnpm build:mcp-filesystem && pnpm build:cli && pnpm build:renderer",
     "build:cli": "tsup src/vm0-computer.ts --format cjs --platform node --target node20 --out-dir dist --sourcemap --external electron && chmod +x dist/vm0-computer.js",
     "build:electron": "tsup --config tsup.electron.config.js",
+    "build:mcp-filesystem": "tsup --config tsup.mcp-filesystem.config.js",
     "build:native": "node scripts/build-native-helper.js",
     "build:renderer": "vite build --config vite.renderer.config.ts",
     "check-types": "tsc --noEmit",
@@ -28,9 +29,12 @@
     "vm0-computer": "pnpm build:cli && node dist/vm0-computer.js"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/server-filesystem": "2026.1.14",
     "@sentry/electron": "^7.13.0",
     "@sentry/react": "^10.50.0",
     "@tabler/icons-react": "^3.36.1",
+    "@vm0/api-contracts": "workspace:*",
     "ccstate": "^5.3.0",
     "ccstate-react": "^5.3.0",
     "react": "^19.2.6",

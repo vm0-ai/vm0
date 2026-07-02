@@ -9,6 +9,7 @@ import {
   IconCode,
   IconDots,
   IconExternalLink,
+  IconFolderPlus,
   IconHistory,
   IconLogout,
   IconMaximize,
@@ -17,6 +18,7 @@ import {
   IconPlayerStop,
   IconRefresh,
   IconShieldCheck,
+  IconTrash,
   IconX,
 } from "@tabler/icons-react";
 import { zeroAvatarDataUrl } from "./zero-avatar";
@@ -37,6 +39,7 @@ import {
   computerUseData$,
   developerToolsData$,
   desktopAuthData$,
+  addFilesystemPluginAllowedDirectory$,
   hasDesktopAuthBridge,
   hasDesktopComputerUseBridge,
   hasDesktopDeveloperToolsBridge,
@@ -47,8 +50,10 @@ import {
   openScreenRecordingSettings$,
   probeAutomationPermission$,
   refreshComputerUse$,
+  removeFilesystemPluginAllowedDirectory$,
   requestAccessibilityPermission$,
   requestScreenRecordingPermission$,
+  setFilesystemPluginEnabled$,
   setKeepAwakeEnabled$,
   signOutDesktop$,
   setupComputerUseBridge$,
@@ -60,6 +65,9 @@ type HostStatus = DesktopComputerUseState["host"]["status"];
 type CommandLogEntry =
   DesktopComputerUseState["host"]["localCommandLog"][number];
 type RuntimeErrorEntry = DesktopComputerUseState["host"]["errorLog"][number];
+type FilesystemPluginState = NonNullable<
+  DesktopComputerUseState["plugins"]
+>["filesystem"];
 
 interface ScreenshotPreview {
   readonly src: string;
@@ -112,6 +120,13 @@ const RECOVERY_PHASE_LABELS = {
   NonNullable<DesktopComputerUseState["host"]["recovery"]>["phase"],
   string
 >;
+
+const FILESYSTEM_PLUGIN_STATUS_LABELS = {
+  disabled: "Disabled",
+  starting: "Starting",
+  running: "Ready",
+  error: "Error",
+} as const satisfies Record<FilesystemPluginState["status"], string>;
 
 const RESULT_SUMMARY_KEYS_TO_SKIP = new Set([
   "appState",
@@ -874,6 +889,109 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
   );
 }
 
+function FilesystemPluginPanel({
+  state,
+}: {
+  readonly state: DesktopComputerUseState;
+}) {
+  const plugin = state.plugins?.filesystem;
+  const [enabledLoadable, setEnabled] = useLoadableSet(
+    setFilesystemPluginEnabled$,
+  );
+  const [addDirectoryLoadable, addDirectory] = useLoadableSet(
+    addFilesystemPluginAllowedDirectory$,
+  );
+  const [removeDirectoryLoadable, removeDirectory] = useLoadableSet(
+    removeFilesystemPluginAllowedDirectory$,
+  );
+
+  if (!plugin?.featureEnabled) {
+    return null;
+  }
+
+  const busy =
+    enabledLoadable.state === "loading" ||
+    addDirectoryLoadable.state === "loading" ||
+    removeDirectoryLoadable.state === "loading";
+  const statusLabel = FILESYSTEM_PLUGIN_STATUS_LABELS[plugin.status];
+  const directoryCount = plugin.allowedDirectories.length;
+
+  return (
+    <Panel title="Filesystem plugin" icon={<IconFolderPlus size={18} />}>
+      <div className="runtime-grid">
+        <div>
+          <span>Status</span>
+          <strong>{statusLabel}</strong>
+        </div>
+        <div>
+          <span>Directories</span>
+          <strong>{directoryCount}</strong>
+        </div>
+        <div>
+          <span>Tools</span>
+          <strong>{plugin.capabilities.length}</strong>
+        </div>
+        <div>
+          <span>Version</span>
+          <strong>{plugin.version}</strong>
+        </div>
+      </div>
+      <CheckboxRow
+        title="Enable filesystem"
+        subtitle="Allow authorized Computer Use sessions to use selected folders."
+        meta={statusLabel}
+        checked={plugin.enabled}
+        disabled={busy}
+        onChange={(enabled) => {
+          void setEnabled(enabled);
+        }}
+      />
+      <div className="filesystem-directory-list">
+        {plugin.allowedDirectories.length === 0 ? (
+          <div className="compact-empty">No directories added.</div>
+        ) : (
+          plugin.allowedDirectories.map((directory) => {
+            return (
+              <div className="filesystem-directory-row" key={directory}>
+                <span>{directory}</span>
+                <button
+                  type="button"
+                  className="icon-only-button"
+                  aria-label={`Remove ${directory}`}
+                  title="Remove directory"
+                  disabled={busy}
+                  onClick={() => {
+                    void removeDirectory(directory);
+                  }}
+                >
+                  <IconTrash size={15} />
+                </button>
+              </div>
+            );
+          })
+        )}
+      </div>
+      {plugin.lastError && (
+        <div className="inline-alert inline-alert-error">
+          <IconAlertCircle size={16} />
+          <span>{plugin.lastError}</span>
+        </div>
+      )}
+      <div className="panel-actions">
+        <IconButton
+          icon={<IconFolderPlus size={15} />}
+          onClick={() => {
+            void addDirectory();
+          }}
+          disabled={busy}
+        >
+          Add directory
+        </IconButton>
+      </div>
+    </Panel>
+  );
+}
+
 const PERMISSION_POLL_INTERVAL_MS = 5_000;
 const ARRIVAL_ANIMATION_MS = 1_100;
 
@@ -1177,6 +1295,7 @@ function ReadyExperience({
         <OfflineHero authState={authState} state={state} />
       )}
       {!running && <PermissionAutoRefresh />}
+      <FilesystemPluginPanel state={state} />
       {developerToolsEnabled && (
         <>
           <RuntimePanel state={state} />

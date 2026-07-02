@@ -71,6 +71,27 @@ const desktopComputerUseApi: DesktopComputerUseApi = {
       enabled,
     );
   },
+  setFilesystemPluginEnabled(
+    enabled: boolean,
+  ): Promise<DesktopComputerUseState> {
+    return ipcRenderer.invoke(
+      COMPUTER_USE_CHANNELS.setFilesystemPluginEnabled,
+      enabled,
+    );
+  },
+  addFilesystemPluginAllowedDirectory(): Promise<DesktopComputerUseState> {
+    return ipcRenderer.invoke(
+      COMPUTER_USE_CHANNELS.addFilesystemPluginAllowedDirectory,
+    );
+  },
+  removeFilesystemPluginAllowedDirectory(
+    directory: string,
+  ): Promise<DesktopComputerUseState> {
+    return ipcRenderer.invoke(
+      COMPUTER_USE_CHANNELS.removeFilesystemPluginAllowedDirectory,
+      directory,
+    );
+  },
   openAccessibilitySettings(): Promise<void> {
     return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.openAccessibilitySettings);
   },
