@@ -2150,10 +2150,11 @@ const prepareNormalSend$ = command(
       FeatureSwitchKey.PresentationTemplateRunbook,
       featureSwitchContext,
     );
-    const initialThinkingEnabled = isFeatureEnabled(
-      FeatureSwitchKey.ChatInitialThinkingIndicator,
-      featureSwitchContext,
-    );
+    const initialThinkingEnabled =
+      isFeatureEnabled(
+        FeatureSwitchKey.ChatInitialThinkingIndicator,
+        featureSwitchContext,
+      ) && args.zeroPreCreateSource === undefined;
     const liveGenerationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
       explicit: args.body.generationTemplate,
       presentationRunbookEnabled,
