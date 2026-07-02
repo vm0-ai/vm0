@@ -1686,6 +1686,8 @@ function createPagedMessages(
     serverMessages$,
     optimisticMessages$,
   });
+  const messageRunIndicatorState$ =
+    createMessageRunIndicatorState(rawMessages$);
   const latestRunStatus$ = createLatestRunStatus(rawMessages$, threadData$);
 
   // The thread's active goal, folded from the (goal-marker) message stream so
@@ -1791,6 +1793,7 @@ function createPagedMessages(
     refreshGroupedChatMessagesCache$,
     rawMessages$,
     hasOlderHistory$,
+    messageRunIndicatorState$,
     latestRunStatus$,
     activeGoal$,
     fetchNextPage$,
@@ -2044,6 +2047,15 @@ function createLatestRunStatus(
       raw,
       thread?.activeRunIds ?? [],
     );
+  });
+}
+
+function createMessageRunIndicatorState(
+  rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
+) {
+  return computed(async (get): Promise<RunIndicatorState> => {
+    const raw = await get(rawMessages$);
+    return deriveRunIndicatorStateFromRawMessages(raw, []);
   });
 }
 
@@ -3599,6 +3611,7 @@ export function createChatThreadSignals(
     groupedChatMessages$: messages.groupedChatMessages$,
     renderedGroupedChatMessages$: messages.renderedGroupedChatMessages$,
     hasOlderHistory$: messages.hasOlderHistory$,
+    messageRunIndicatorState$: messages.messageRunIndicatorState$,
     latestRunStatus$: messages.latestRunStatus$,
     activeGoal$: messages.activeGoal$,
     allFinished$: runTracking.allFinished$,
