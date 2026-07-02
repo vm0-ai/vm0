@@ -1,12 +1,12 @@
 import type {
   CSSProperties,
   FormEvent,
-  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   ReactNode,
   UIEvent as ReactUIEvent,
 } from "react";
+import { useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
   useGet,
@@ -57,9 +57,6 @@ import {
 } from "@tabler/icons-react";
 import {
   cn,
-  isEditableTarget,
-  matchShortcut,
-  getShortcutParts,
   Button,
   Skeleton,
   DropdownMenu as UiDropdownMenu,
@@ -116,7 +113,7 @@ import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { Markdown } from "../components/markdown.tsx";
-import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import {
   captureRecommendedFollowupSelected,
   captureRecommendedFollowupsShown,
@@ -271,14 +268,9 @@ import {
   type PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
 import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
-import {
-  openRenameChatThreadDialogFromThreadData$,
-  reloadChatThreadDataForId$,
-} from "../../signals/chat-page/chat-thread-rename.ts";
+import { reloadChatThreadDataForId$ } from "../../signals/chat-page/chat-thread-rename.ts";
 import {
   applyChatThreadEmoji,
-  chatThreadEmojiShortcutIndex,
-  isChatThreadEmojiClearShortcut,
   removeChatThreadEmoji,
   CHAT_THREAD_EMOJI_OPTIONS,
 } from "../../signals/chat-page/chat-thread-title.ts";
@@ -347,8 +339,8 @@ import {
   currentRightThread$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
 import {
-  navigateToAdjacentThread$,
-  scrollCurrentThread$,
+  focusChatThreadContainer$,
+  setChatKeyboardNavigableThreads$,
   setChatKeyboardScrollRoot$,
   setMainChatThreadKeyboardFocusRef$,
 } from "../../signals/chat-page/chat-keyboard.ts";
@@ -1113,15 +1105,6 @@ function GithubPrTrackingDock({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function focusChatThreadContainer(threadId: string) {
-  const threadContainer = Array.from(
-    document.querySelectorAll<HTMLElement>("[data-chat-thread-container-id]"),
-  ).find((candidate) => {
-    return candidate.dataset.chatThreadContainerId === threadId;
-  });
-  threadContainer?.focus({ preventScroll: true });
-}
-
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const threadDataLoadable = useLastLoadable(thread.threadData$);
   const threadTitleEmoji = useLastResolved(thread.threadTitleEmoji$);
@@ -1187,6 +1170,7 @@ function useChatThreadEmojiMenuActions({
   const closeChatThreadEmojiMenu = useSet(closeChatThreadEmojiMenu$);
   const renameChatThread = useSet(renameChatThread$);
   const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
+  const focusChatThreadContainer = useSet(focusChatThreadContainer$);
   const pageSignal = useGet(pageSignal$);
   const open = emojiMenuThreadId === threadId;
 
@@ -1295,23 +1279,8 @@ function ChatThreadEmojiMenuButton({
           onCloseAutoFocus={(event) => {
             event.preventDefault();
           }}
-          onKeyDown={(event) => {
-            const index = chatThreadEmojiShortcutIndex(event);
-            if (index !== null) {
-              event.preventDefault();
-              const option = CHAT_THREAD_EMOJI_OPTIONS[index];
-              if (option) {
-                selectEmoji(option.emoji);
-              }
-              return;
-            }
-            if (isChatThreadEmojiClearShortcut(event)) {
-              event.preventDefault();
-              clearEmoji();
-            }
-          }}
         >
-          {CHAT_THREAD_EMOJI_OPTIONS.map((option, index) => {
+          {CHAT_THREAD_EMOJI_OPTIONS.map((option) => {
             return (
               <UiDropdownMenuItem
                 key={option.emoji}
@@ -1324,11 +1293,6 @@ function ChatThreadEmojiMenuButton({
                   {option.emoji}
                 </span>
                 <span>{option.label}</span>
-                <span className="ml-auto flex items-center gap-0.5 text-xs text-muted-foreground">
-                  {getShortcutParts(`shift+${index + 1}`).map((part) => {
-                    return <span key={part}>{part}</span>;
-                  })}
-                </span>
               </UiDropdownMenuItem>
             );
           })}
@@ -1340,11 +1304,6 @@ function ChatThreadEmojiMenuButton({
             }}
           >
             <span>Clear emoji</span>
-            <span className="ml-auto flex items-center gap-0.5 text-xs text-muted-foreground">
-              {getShortcutParts("shift+0").map((part) => {
-                return <span key={part}>{part}</span>;
-              })}
-            </span>
           </UiDropdownMenuItem>
         </UiDropdownMenuContent>
       </UiDropdownMenu>
@@ -3059,145 +3018,34 @@ function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
 
 function ChatThread({
   thread,
-  onKeyDown,
   onFocusFallbackRef,
 }: {
   thread: ChatThreadSignals;
-  onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
-  onFocusFallbackRef?: (el: HTMLElement | null) => void;
+  onFocusFallbackRef?: (el: HTMLElement | null) => (() => void) | undefined;
 }) {
-  const openRenameDialog = useOpenCurrentChatThreadRenameDialog(thread);
-  const openEmojiMenu = useOpenCurrentChatThreadEmojiMenu(thread);
-  const setThreadEmoji = useSetCurrentChatThreadEmoji(thread);
-  const clearThreadEmoji = useClearCurrentChatThreadEmoji(thread);
-  const features = useLastResolved(featureSwitch$);
-  const chatThreadEmojiEnabled =
-    features?.[FeatureSwitchKey.ChatThreadEmoji] ?? false;
-  const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (event.defaultPrevented) {
-      return;
-    }
-    if (chatThreadEmojiEnabled && !isEditableTarget(event.target)) {
-      const emojiOptionIndex = chatThreadEmojiShortcutIndex(event);
-      if (emojiOptionIndex !== null) {
-        const option = CHAT_THREAD_EMOJI_OPTIONS[emojiOptionIndex];
-        if (option) {
-          event.preventDefault();
-          setThreadEmoji(option.emoji);
-          return;
-        }
-      }
-      if (isChatThreadEmojiClearShortcut(event)) {
-        event.preventDefault();
-        clearThreadEmoji();
-        return;
-      }
-    }
-    if (
-      chatThreadEmojiEnabled &&
-      !isEditableTarget(event.target) &&
-      matchShortcut("shift+f2", event)
-    ) {
-      event.preventDefault();
-      openEmojiMenu();
-      return;
-    }
-    if (matchShortcut("f2", event)) {
-      event.preventDefault();
-      openRenameDialog();
-      return;
-    }
-    onKeyDown(event);
-  };
+  const setContainerRef = useSet(thread.setContainerRef$);
+  const setThreadContainerRef = useCallback(
+    (el: HTMLElement | null) => {
+      const cleanupContainerRef = setContainerRef(el);
+      const cleanupFocusFallbackRef = onFocusFallbackRef?.(el);
+      return () => {
+        cleanupFocusFallbackRef?.();
+        cleanupContainerRef?.();
+      };
+    },
+    [onFocusFallbackRef, setContainerRef],
+  );
 
   return (
     <section
       aria-label="Chat thread"
       className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
-      data-chat-thread-container-id={thread.threadId}
-      onKeyDown={handleKeyDown}
-      ref={onFocusFallbackRef}
+      ref={setThreadContainerRef}
       tabIndex={-1}
     >
       <ChatThreadContent thread={thread} />
     </section>
   );
-}
-
-function useOpenCurrentChatThreadRenameDialog(thread: ChatThreadSignals) {
-  const openRenameChatThreadDialog = useSet(
-    openRenameChatThreadDialogFromThreadData$,
-  );
-  const pageSignal = useGet(pageSignal$);
-  return () => {
-    detach(
-      openRenameChatThreadDialog(thread.threadId, pageSignal),
-      Reason.DomCallback,
-    );
-  };
-}
-
-function useOpenCurrentChatThreadEmojiMenu(thread: ChatThreadSignals) {
-  const openChatThreadEmojiMenu = useSet(openChatThreadEmojiMenu$);
-  const title = useCurrentChatThreadDialogTitle(thread);
-  return () => {
-    openChatThreadEmojiMenu({
-      threadId: thread.threadId,
-      title,
-    });
-  };
-}
-
-function useSetCurrentChatThreadEmoji(thread: ChatThreadSignals) {
-  const renameChatThread = useSet(renameChatThread$);
-  const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
-  const title = useCurrentChatThreadDialogTitle(thread);
-  const pageSignal = useGet(pageSignal$);
-  return (emoji: string) => {
-    detach(
-      (async () => {
-        await renameChatThread(
-          {
-            threadId: thread.threadId,
-            title: applyChatThreadEmoji(title, emoji),
-          },
-          pageSignal,
-        );
-        reloadChatThreadDataForId(thread.threadId);
-      })(),
-      Reason.DomCallback,
-    );
-  };
-}
-
-function useClearCurrentChatThreadEmoji(thread: ChatThreadSignals) {
-  const renameChatThread = useSet(renameChatThread$);
-  const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
-  const title = useCurrentChatThreadDialogTitle(thread);
-  const pageSignal = useGet(pageSignal$);
-  return () => {
-    const nextTitle = removeChatThreadEmoji(title);
-    if (!nextTitle) {
-      return;
-    }
-    detach(
-      (async () => {
-        await renameChatThread(
-          { threadId: thread.threadId, title: nextTitle },
-          pageSignal,
-        );
-        reloadChatThreadDataForId(thread.threadId);
-      })(),
-      Reason.DomCallback,
-    );
-  };
-}
-
-function useCurrentChatThreadDialogTitle(
-  thread: ChatThreadSignals,
-): string | null | undefined {
-  const threadData = useLastResolved(thread.threadData$);
-  return threadData?.title;
 }
 
 // Drag the divider to resize the artifact preview against the chat thread.
@@ -3299,12 +3147,15 @@ function ChatThreadArea({
   const setMainThreadKeyboardFocusRef = useSet(
     setMainChatThreadKeyboardFocusRef$,
   );
-  // Lifted from ChatThread so the keyboard handler's sidebarChatThreads$
-  // snapshot survives keyed ChatThread remounts during thread navigation.
-  // Otherwise a second mod+shift+arrow press lands on a freshly mounted
-  // ChatThread whose useLastResolved has no cached value yet, leading to an
-  // empty threads list and a silently dropped keypress.
-  const makeChatThreadKeyDown = useChatThreadKeyDownFactory();
+  const setKeyboardNavigableThreads = useSet(setChatKeyboardNavigableThreads$);
+  const sidebarThreads = useLastResolved(sidebarChatThreads$);
+
+  useEffect(() => {
+    setKeyboardNavigableThreads(sidebarThreads ?? []);
+    return () => {
+      setKeyboardNavigableThreads([]);
+    };
+  }, [setKeyboardNavigableThreads, sidebarThreads]);
 
   return (
     <div
@@ -3321,18 +3172,13 @@ function ChatThreadArea({
             <ChatThread
               key={leftThread.threadId}
               thread={leftThread}
-              onKeyDown={makeChatThreadKeyDown(leftThread)}
               onFocusFallbackRef={setMainThreadKeyboardFocusRef}
             />
           )}
           {rightThread && (
             <>
               <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-              <ChatThread
-                key={rightThread.threadId}
-                thread={rightThread}
-                onKeyDown={makeChatThreadKeyDown(rightThread)}
-              />
+              <ChatThread key={rightThread.threadId} thread={rightThread} />
             </>
           )}
         </>
@@ -4347,67 +4193,6 @@ function ChatThreadSkeletonOverlay({
       </main>
     </div>
   );
-}
-
-// Lifted to ZeroChatThreadPage so the useLastResolved(sidebarChatThreads$)
-// snapshot survives keyed ChatThread remounts during thread navigation.
-function useChatThreadKeyDownFactory() {
-  const pageSignal = useGet(pageSignal$);
-  const scrollCurrentThread = useSet(scrollCurrentThread$);
-  const navigateToAdjacentThread = useSet(navigateToAdjacentThread$);
-  const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
-  // Snapshot the sidebar list on the read side so the keyboard command stays
-  // sync — awaiting `sidebarChatThreads$` inside the command would block the
-  // keypress on whatever async work that signal is currently doing
-  // (e.g. an IDB miss + remote refetch).
-  const sidebarThreads = useLastResolved(sidebarChatThreads$) ?? [];
-
-  return (thread: ChatThreadSignals) => {
-    return onDomEventFn(async (event: ReactKeyboardEvent<HTMLElement>) => {
-      if (event.defaultPrevented) {
-        return;
-      }
-      if (matchShortcut("mod+arrowup", event)) {
-        event.preventDefault();
-        scrollCurrentThread(thread, "top");
-        return;
-      }
-      if (matchShortcut("mod+arrowdown", event)) {
-        event.preventDefault();
-        scrollCurrentThread(thread, "bottom");
-        return;
-      }
-      if (matchShortcut("mod+shift+arrowup", event)) {
-        event.preventDefault();
-        await navigateToAdjacentThread(
-          {
-            currentThreadId: thread.threadId,
-            direction: "prev",
-            threads: sidebarThreads,
-          },
-          pageSignal,
-        );
-        return;
-      }
-      if (matchShortcut("mod+shift+arrowdown", event)) {
-        event.preventDefault();
-        await navigateToAdjacentThread(
-          {
-            currentThreadId: thread.threadId,
-            direction: "next",
-            threads: sidebarThreads,
-          },
-          pageSignal,
-        );
-        return;
-      }
-
-      if (matchShortcut("shift+/", event) && !isEditableTarget(event.target)) {
-        event.preventDefault();
-        setShortcutHelpOpen(true);
-      }
-    });
-  };
 }
 
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {

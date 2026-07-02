@@ -2791,6 +2791,14 @@ describe("chat lifecycle", () => {
       scrollHeight: 1500,
       clientHeight: 300,
     });
+    fireEvent.keyDown(composer, { key: "ArrowUp", ctrlKey: true });
+    expect(scrollContainer.scrollTop).toBe(0);
+
+    scrollContainer.scrollTop = 420;
+    fireEvent.scroll(scrollContainer);
+    fireEvent.keyDown(composer, { key: "ArrowDown", ctrlKey: true });
+    expect(scrollContainer.scrollTop).toBe(1500);
+
     threadRegion.focus();
     fireEvent.keyDown(threadRegion, { key: "ArrowDown", ctrlKey: true });
     expect(scrollContainer.scrollTop).toBe(1500);
@@ -3025,6 +3033,74 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("keeps shifted slash editable in the chat composer", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+    });
+
+    const composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, { key: "?", shiftKey: true });
+
+    expect(screen.queryByText("Keyboard Shortcuts")).not.toBeInTheDocument();
+  });
+
+  it("moves between chat threads with page shortcuts from the composer", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Previous keyboard thread")).toBeInTheDocument();
+      expect(screen.getByText("Next keyboard thread")).toBeInTheDocument();
+    });
+
+    let composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, {
+      key: "ArrowUp",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Previous thread launch note"),
+      ).toBeInTheDocument();
+    });
+
+    composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, {
+      key: "ArrowDown",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("hides the chat emoji shortcut when the feature switch is off", async () => {
     mockResizeObserver();
     mockKeyboardNavigationThreads();
@@ -3177,7 +3253,7 @@ describe("chat lifecycle", () => {
     expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue("");
   });
 
-  it("renames the main chat with F2 when a side chat is focused", async () => {
+  it("renames the focused side chat with F2", async () => {
     const user = userEvent.setup({ delay: null });
     mockResizeObserver();
     mockKeyboardNavigationThreads();
@@ -3202,8 +3278,93 @@ describe("chat lifecycle", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
     expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
-      "Current keyboard thread",
+      "Next keyboard thread",
     );
+  });
+
+  it("moves the focused side chat with page keyboard shortcuts", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread?sidebar=keyboard-next-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
+    });
+
+    const threadRegions = screen.getAllByLabelText("Chat thread");
+    expect(threadRegions).toHaveLength(2);
+    const sideThreadRegion = threadRegions[1];
+    if (!sideThreadRegion) {
+      throw new Error("Side chat thread not found");
+    }
+    sideThreadRegion.focus();
+    fireEvent.keyDown(sideThreadRegion, {
+      key: "ArrowUp",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Previous thread launch note"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("adds an emoji to the focused side chat directly with Shift+1", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({ currentDetailTitle: null });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread?sidebar=keyboard-next-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
+    });
+
+    const threadRegions = screen.getAllByLabelText("Chat thread");
+    expect(threadRegions).toHaveLength(2);
+    const sideThreadRegion = threadRegions[1];
+    if (!sideThreadRegion) {
+      throw new Error("Side chat thread not found");
+    }
+    sideThreadRegion.focus();
+    fireEvent.keyDown(sideThreadRegion, {
+      key: "1",
+      code: "Digit1",
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        "keyboard-next-thread",
+        "✅ Next keyboard thread",
+      );
+    });
   });
 
   it("adds an emoji to the current chat with Shift+F2", async () => {
@@ -3233,9 +3394,9 @@ describe("chat lifecycle", () => {
       ).toBeGreaterThan(0);
     });
 
-    const threadRegion = screen.getByLabelText("Chat thread");
-    threadRegion.focus();
-    fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
+    const composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, { key: "F2", shiftKey: true });
 
     const menu = await screen.findByRole("menu");
     expect(queryAllByRoleFast("menuitem", menu)).toHaveLength(10);
@@ -3244,7 +3405,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
         "keyboard-current-thread",
-        "✅",
+        "✅ Current keyboard thread",
       );
     });
   });
@@ -3284,7 +3445,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
         "keyboard-current-thread",
-        "✅",
+        "✅ Current keyboard thread",
       );
     });
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
@@ -3376,7 +3537,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("replaces the current chat emoji from the Shift+F2 picker", async () => {
+  it("replaces the current chat emoji from the Shift+F2 picker item", async () => {
     const renameRequest = vi.fn();
     mockResizeObserver();
     mockKeyboardNavigationThreads({
@@ -3415,7 +3576,13 @@ describe("chat lifecycle", () => {
         return item.getAttribute("aria-label") === "Important 📌";
       }),
     ).toBeFalsy();
-    fireEvent.keyDown(menu, { key: "1", code: "Digit1", shiftKey: true });
+    const doneItem = queryAllByRoleFast("menuitem", menu).find((item) => {
+      return item.getAttribute("aria-label") === "Done ✅";
+    });
+    if (!doneItem) {
+      throw new Error("Done emoji menu item not found");
+    }
+    click(doneItem);
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
