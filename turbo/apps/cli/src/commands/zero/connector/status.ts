@@ -1,117 +1,70 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import {
-  CONNECTOR_TYPE_KEYS,
-  CONNECTOR_TYPES,
-  type ConnectorType,
-  connectorTypeSchema,
-} from "@vm0/connectors/connectors";
-import {
-  getConnectorAuthMethodScopeDiff,
-  hasRequiredConnectorAuthMethodScopes,
-} from "@vm0/connectors/connector-utils";
-import { getZeroConnector, searchZeroConnectors } from "../../../lib/api";
-import { formatDateTime } from "../../../lib/domain/schedule-utils";
+import { listZeroConnectorCatalogStatus } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { resolveAgentContext } from "./agent-context";
 import { getPlatformOrigin } from "../doctor/platform-url";
+import {
+  availableConnectorRefs,
+  findConnectorStatusItem,
+  type PublicConnectorStatus,
+} from "./public-catalog";
 
 const LABEL_WIDTH = 16;
 
-type Connector = NonNullable<Awaited<ReturnType<typeof getZeroConnector>>>;
 type AgentContext = NonNullable<
   Awaited<ReturnType<typeof resolveAgentContext>>
 >;
 
-function isConnectorType(type: string): type is ConnectorType {
-  return type in CONNECTOR_TYPES;
-}
-
-async function availableConnectorTypes(): Promise<Set<ConnectorType>> {
-  const catalog = await searchZeroConnectors();
-  return new Set(
-    catalog.connectors
-      .map((connector) => {
-        return connector.id;
-      })
-      .filter(isConnectorType),
-  );
-}
-
-function printConnectorDetails(
-  type: ConnectorType,
-  connector: Connector | null,
-): void {
-  if (connector) {
-    console.log(
-      `${"Status:".padEnd(LABEL_WIDTH)}${
-        connector.connectionStatus === "reconnect-required"
-          ? chalk.yellow("reconnect needed")
-          : chalk.green("connected")
-      }`,
-    );
-    console.log(
-      `${"Account:".padEnd(LABEL_WIDTH)}@${connector.externalUsername}`,
-    );
-    console.log(`${"Auth Method:".padEnd(LABEL_WIDTH)}${connector.authMethod}`);
-
-    if (connector.oauthScopes && connector.oauthScopes.length > 0) {
-      console.log(
-        `${"OAuth Scopes:".padEnd(LABEL_WIDTH)}${connector.oauthScopes.join(", ")}`,
-      );
-    }
-
-    if (
-      !hasRequiredConnectorAuthMethodScopes(
-        type,
-        connector.authMethod,
-        connector.oauthScopes,
-      )
-    ) {
-      const diff = getConnectorAuthMethodScopeDiff(
-        type,
-        connector.authMethod,
-        connector.oauthScopes,
-      );
-      console.log(
-        `${"Permissions:".padEnd(LABEL_WIDTH)}${chalk.yellow("update available")}`,
-      );
-      if (diff.addedScopes.length > 0) {
-        console.log(
-          `${"  Added:".padEnd(LABEL_WIDTH)}${diff.addedScopes.join(", ")}`,
-        );
-      }
-      if (diff.removedScopes.length > 0) {
-        console.log(
-          `${"  Removed:".padEnd(LABEL_WIDTH)}${diff.removedScopes.join(", ")}`,
-        );
-      }
-    }
-
-    console.log(
-      `${"Connected:".padEnd(LABEL_WIDTH)}${formatDateTime(connector.createdAt)}`,
-    );
-
-    if (connector.updatedAt !== connector.createdAt) {
-      console.log(
-        `${"Last Updated:".padEnd(LABEL_WIDTH)}${formatDateTime(connector.updatedAt)}`,
-      );
-    }
-  } else {
+function printConnectorDetails(connector: PublicConnectorStatus): void {
+  if (connector.connectionStatus === "not-connected") {
     console.log(
       `${"Status:".padEnd(LABEL_WIDTH)}${chalk.dim("not connected")}`,
+    );
+    return;
+  }
+
+  console.log(
+    `${"Status:".padEnd(LABEL_WIDTH)}${
+      connector.connectionStatus === "reconnect-required"
+        ? chalk.yellow("reconnect needed")
+        : chalk.green("connected")
+    }`,
+  );
+  if (connector.connection?.externalUsername) {
+    console.log(
+      `${"Account:".padEnd(LABEL_WIDTH)}@${connector.connection.externalUsername}`,
+    );
+  } else if (connector.connection?.externalEmail) {
+    console.log(
+      `${"Account:".padEnd(LABEL_WIDTH)}${connector.connection.externalEmail}`,
+    );
+  }
+  if (connector.connection?.authMethod) {
+    console.log(
+      `${"Auth Method:".padEnd(LABEL_WIDTH)}${connector.connection.authMethod}`,
+    );
+  }
+  if (connector.scopeMismatch) {
+    console.log(
+      `${"Permissions:".padEnd(LABEL_WIDTH)}${chalk.yellow("update available")}`,
+    );
+  }
+  if (connector.tokenExpiresAt) {
+    console.log(
+      `${"Token Expires:".padEnd(LABEL_WIDTH)}${connector.tokenExpiresAt}`,
     );
   }
 }
 
 async function printAgentAction(
-  type: ConnectorType,
-  connector: Connector | null,
+  connector: PublicConnectorStatus,
   agentCtx: AgentContext,
 ): Promise<void> {
-  const authorized = agentCtx.authorizedTypes.has(type);
-  const isConnected = connector !== null;
-  const needsReconnect = connector?.connectionStatus === "reconnect-required";
+  const connectorRef = connector.connectorRef;
+  const authorized = agentCtx.authorizedTypes.has(connectorRef);
+  const isConnected = connector.connected;
+  const needsReconnect = connector.connectionStatus === "reconnect-required";
   const agentLabel =
     agentCtx.displayName === agentCtx.agentId
       ? agentCtx.agentId
@@ -122,52 +75,61 @@ async function printAgentAction(
     const origin = await getPlatformOrigin();
     const url = `${origin}/connectors`;
     console.log(
-      `The ${type} connector is connected but needs to be reconnected before agent ${agentLabel} can use it.`,
+      `The ${connectorRef} connector is connected but needs to be reconnected before agent ${agentLabel} can use it.`,
     );
-    console.log(`Reconnect it at: [Reconnect ${type}](${url})`);
+    console.log(`Reconnect it at: [Reconnect ${connectorRef}](${url})`);
   } else if (authorized && !isConnected) {
     const origin = await getPlatformOrigin();
-    const url = `${origin}/connectors/${type}/connect?agentId=${agentCtx.agentId}`;
+    const url = `${origin}/connectors/${connectorRef}/connect?agentId=${agentCtx.agentId}`;
     console.log(
-      `The ${type} connector is authorized for agent ${agentLabel}, but it is not connected.`,
+      `The ${connectorRef} connector is authorized for agent ${agentLabel}, but it is not connected.`,
     );
-    console.log(`Connect it at: [Connect ${type}](${url})`);
+    console.log(`Connect it at: [Connect ${connectorRef}](${url})`);
   } else if (authorized) {
-    console.log(`The ${type} connector is authorized for agent ${agentLabel}.`);
+    console.log(
+      `The ${connectorRef} connector is authorized for agent ${agentLabel}.`,
+    );
   } else if (!isConnected) {
     const origin = await getPlatformOrigin();
-    const url = `${origin}/connectors/${type}/connect?agentId=${agentCtx.agentId}`;
+    const url = `${origin}/connectors/${connectorRef}/connect?agentId=${agentCtx.agentId}`;
     console.log(
-      `The ${type} connector is not connected. Once connected, it will be authorized for agent ${agentLabel}.`,
+      `The ${connectorRef} connector is not connected. Once connected, it will be authorized for agent ${agentLabel}.`,
     );
-    console.log(`Connect and authorize it at: [Connect ${type}](${url})`);
+    console.log(
+      `Connect and authorize it at: [Connect ${connectorRef}](${url})`,
+    );
   } else {
     const origin = await getPlatformOrigin();
-    const url = `${origin}/connectors/${type}/authorize?agentId=${agentCtx.agentId}`;
+    const url = `${origin}/connectors/${connectorRef}/authorize?agentId=${agentCtx.agentId}`;
     console.log(
-      `The ${type} connector is not authorized for agent ${agentLabel}.`,
+      `The ${connectorRef} connector is not authorized for agent ${agentLabel}.`,
     );
-    console.log(`Authorize it at: [Authorize ${type}](${url})`);
+    console.log(`Authorize it at: [Authorize ${connectorRef}](${url})`);
   }
 }
 
 async function printStandaloneAction(
-  type: ConnectorType,
-  connector: Connector | null,
+  connector: PublicConnectorStatus,
 ): Promise<void> {
-  if (connector?.connectionStatus === "connected") return;
+  const connectorRef = connector.connectorRef;
+  if (
+    connector.connectionStatus === "connected" ||
+    connector.connectionStatus === "scope-mismatch"
+  ) {
+    return;
+  }
 
   const origin = await getPlatformOrigin();
   console.log();
-  if (connector?.connectionStatus === "reconnect-required") {
+  if (connector.connectionStatus === "reconnect-required") {
     const url = `${origin}/connectors`;
     console.log(
-      `The ${type} connector is connected but needs to be reconnected.`,
+      `The ${connectorRef} connector is connected but needs to be reconnected.`,
     );
-    console.log(`Reconnect it at: [Reconnect ${type}](${url})`);
+    console.log(`Reconnect it at: [Reconnect ${connectorRef}](${url})`);
   } else {
-    const url = `${origin}/connectors/${type}/connect`;
-    console.log(`Connect it at: [Connect ${type}](${url})`);
+    const url = `${origin}/connectors/${connectorRef}/connect`;
+    console.log(`Connect it at: [Connect ${connectorRef}](${url})`);
   }
 }
 
@@ -178,35 +140,28 @@ export const statusCommand = new Command()
   .option("--agent <id>", "Show authorization state for the given agent")
   .action(
     withErrorHandler(async (type: string, options: { agent?: string }) => {
-      const parseResult = connectorTypeSchema.safeParse(type);
-      if (!parseResult.success) {
-        const available = CONNECTOR_TYPE_KEYS.join(", ");
-        throw new Error(`Unknown connector type: ${type}`, {
-          cause: new Error(`Available connectors: ${available}`),
+      const [catalog, agentCtx] = await Promise.all([
+        listZeroConnectorCatalogStatus(),
+        resolveAgentContext(options.agent),
+      ]);
+      const connector = findConnectorStatusItem(catalog.connectors, type);
+      if (!connector) {
+        throw new Error(`Unknown or unavailable connector: ${type}`, {
+          cause: new Error(
+            `Available connectors: ${availableConnectorRefs(catalog.connectors)}`,
+          ),
         });
       }
 
-      const [connector, availableTypes, agentCtx] = await Promise.all([
-        getZeroConnector(parseResult.data),
-        availableConnectorTypes(),
-        resolveAgentContext(options.agent),
-      ]);
-      const available = availableTypes.has(parseResult.data);
-
-      console.log(`Connector: ${chalk.cyan(type)}`);
+      console.log(`Connector: ${chalk.cyan(connector.connectorRef)}`);
       console.log();
 
-      printConnectorDetails(parseResult.data, connector);
-      if (!available) {
-        console.log();
-        console.log(`The ${type} connector is not available for this account.`);
-        return;
-      }
+      printConnectorDetails(connector);
 
       if (agentCtx) {
-        await printAgentAction(parseResult.data, connector, agentCtx);
+        await printAgentAction(connector, agentCtx);
       } else {
-        await printStandaloneAction(parseResult.data, connector);
+        await printStandaloneAction(connector);
       }
     }),
   );

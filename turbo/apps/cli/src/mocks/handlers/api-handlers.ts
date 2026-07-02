@@ -2,10 +2,22 @@ import { http, HttpResponse } from "msw";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
+  type ConnectorAuthMethodConfig,
   connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
+  type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { getAvailableConnectorAuthMethodIds } from "@vm0/connectors/connector-utils";
+import type {
+  PublicConnectorCatalogAuthMethodDetail,
+  PublicConnectorCatalogItem,
+  PublicConnectorCatalogStatusItem,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import {
+  getAvailableConnectorAuthMethodIds,
+  getConnectorAuthMethod,
+  getConnectorGenerationTypes,
+  getConnectorTags,
+} from "@vm0/connectors/connector-utils";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -33,6 +45,133 @@ function defaultAvailableConnectors() {
         authMethods,
       };
     });
+}
+
+function defaultPermissionSummary() {
+  return {
+    hasPermissions: false,
+    permissionCount: 0,
+    hasCategories: false,
+    hasDefaultPolicyOverrides: false,
+  };
+}
+
+function defaultManualFieldsForCatalog(
+  method: ConnectorAuthMethodConfig,
+): PublicConnectorCatalogAuthMethodDetail["manualFields"] {
+  if (method.grant.kind !== "manual") {
+    return [];
+  }
+  return Object.values(method.grant.fields).map((field) => {
+    return {
+      id: field.publicId,
+      label: field.label,
+      required: field.required,
+      placeholder: field.placeholder ?? null,
+      inputType: field.storage === "variable" ? "text" : "password",
+    };
+  });
+}
+
+function defaultStartOptionsForCatalog(
+  method: ConnectorAuthMethodConfig,
+): PublicConnectorCatalogAuthMethodDetail["startOptions"] {
+  if (method.grant.kind !== "device-auth") {
+    return [];
+  }
+  return Object.values(method.grant.startOptions ?? {}).map((option) => {
+    return {
+      id: option.publicId,
+      kind: option.kind,
+      label: option.label,
+      required: option.required,
+      defaultValue: option.defaultValue ?? null,
+      options: option.options.map((choice) => {
+        return { value: choice.value, label: choice.label };
+      }),
+    };
+  });
+}
+
+function defaultCatalogAuthMethods(
+  type: ConnectorType,
+): PublicConnectorCatalogAuthMethodDetail[] {
+  return getAvailableConnectorAuthMethodIds(type, {}).flatMap((authMethod) => {
+    const method = getConnectorAuthMethod(type, authMethod);
+    if (!method) return [];
+    return [
+      {
+        id: authMethod,
+        label: method.label,
+        description: null,
+        grantKind: method.grant.kind,
+        manualFields: defaultManualFieldsForCatalog(method),
+        startOptions: defaultStartOptionsForCatalog(method),
+      },
+    ];
+  });
+}
+
+function defaultPublicCatalogItem(
+  type: ConnectorType,
+): PublicConnectorCatalogItem | null {
+  const authMethods = defaultCatalogAuthMethods(type);
+  if (authMethods.length === 0) {
+    return null;
+  }
+  const config = CONNECTOR_TYPES[type];
+  return {
+    connectorRef: type,
+    label: config.label,
+    description: config.helpText,
+    category: config.category,
+    generation: [...getConnectorGenerationTypes(type)],
+    tags: [...getConnectorTags(type)],
+    authMethods: authMethods.map((authMethod) => {
+      return {
+        id: authMethod.id,
+        label: authMethod.label,
+        description: authMethod.description,
+        grantKind: authMethod.grantKind,
+      };
+    }),
+    permissionSummary: defaultPermissionSummary(),
+  };
+}
+
+function defaultPublicCatalog() {
+  return CONNECTOR_TYPE_KEYS.flatMap((type) => {
+    const item = defaultPublicCatalogItem(type);
+    return item ? [item] : [];
+  });
+}
+
+function defaultPublicCatalogStatusItem(
+  type: ConnectorType,
+): PublicConnectorCatalogStatusItem | null {
+  const item = defaultPublicCatalogItem(type);
+  if (!item) {
+    return null;
+  }
+  return {
+    ...item,
+    authMethods: defaultCatalogAuthMethods(type),
+    connection: null,
+    connected: false,
+    connectionStatus: "not-connected",
+    scopeMismatch: false,
+    authMethodSupportsRefresh: false,
+    tokenExpiresAt: null,
+    singleAuthCodeAuthMethodId: null,
+    connectNotice: null,
+  };
+}
+
+function defaultPublicCatalogStatus() {
+  return CONNECTOR_TYPE_KEYS.flatMap((type) => {
+    const item = defaultPublicCatalogStatusItem(type);
+    return item ? [item] : [];
+  });
 }
 
 function manualGrantAuthMethodFromBody(body: unknown): ConnectorAuthMethodId {
@@ -122,6 +261,46 @@ export const apiHandlers = [
   http.get("https://www.vm0.ai/api/zero/connectors", () => {
     return HttpResponse.json(
       { connectors: [], configuredTypes: [], connectorProvidedBindings: [] },
+      { status: 200 },
+    );
+  }),
+
+  // GET /api/zero/connector-catalog - list public connector catalog
+  http.get("http://localhost:3000/api/zero/connector-catalog", () => {
+    return HttpResponse.json(
+      { connectors: defaultPublicCatalog() },
+      { status: 200 },
+    );
+  }),
+  http.get("https://app.vm0.ai/api/zero/connector-catalog", () => {
+    return HttpResponse.json(
+      { connectors: defaultPublicCatalog() },
+      { status: 200 },
+    );
+  }),
+  http.get("https://www.vm0.ai/api/zero/connector-catalog", () => {
+    return HttpResponse.json(
+      { connectors: defaultPublicCatalog() },
+      { status: 200 },
+    );
+  }),
+
+  // GET /api/zero/connector-catalog/status - public catalog with connection status
+  http.get("http://localhost:3000/api/zero/connector-catalog/status", () => {
+    return HttpResponse.json(
+      { connectors: defaultPublicCatalogStatus() },
+      { status: 200 },
+    );
+  }),
+  http.get("https://app.vm0.ai/api/zero/connector-catalog/status", () => {
+    return HttpResponse.json(
+      { connectors: defaultPublicCatalogStatus() },
+      { status: 200 },
+    );
+  }),
+  http.get("https://www.vm0.ai/api/zero/connector-catalog/status", () => {
+    return HttpResponse.json(
+      { connectors: defaultPublicCatalogStatus() },
       { status: 200 },
     );
   }),

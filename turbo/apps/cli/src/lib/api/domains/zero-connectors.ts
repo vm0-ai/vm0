@@ -11,6 +11,11 @@ import {
   type ConnectorSearchResponse,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogListResponse,
+  type PublicConnectorCatalogStatusResponse,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorsContract,
   type CustomConnectorResponse,
@@ -57,6 +62,32 @@ export async function searchZeroConnectors(
   }
 
   handleError(result, "Failed to search connectors");
+}
+
+export async function listZeroConnectorCatalog(): Promise<PublicConnectorCatalogListResponse> {
+  const config = await getClientConfig();
+  const client = initClient(zeroConnectorCatalogContract, config);
+
+  const result = await client.list({ headers: {} });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to list connector catalog");
+}
+
+export async function listZeroConnectorCatalogStatus(): Promise<PublicConnectorCatalogStatusResponse> {
+  const config = await getClientConfig();
+  const client = initClient(zeroConnectorCatalogContract, config);
+
+  const result = await client.status({ headers: {} });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to list connector catalog status");
 }
 
 /**

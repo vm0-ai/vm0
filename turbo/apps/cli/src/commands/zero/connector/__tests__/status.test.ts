@@ -12,6 +12,11 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { statusCommand } from "../status";
 import chalk from "chalk";
+import {
+  authCodeMethod,
+  catalogStatusItem,
+  stubConnectorCatalogStatus,
+} from "../../__tests__/helpers/connector-catalog";
 
 const AGENT_UUID = "550e8400-e29b-41d4-a716-446655440000";
 const ALT_AGENT_UUID = "550e8400-e29b-41d4-a716-446655440099";
@@ -29,14 +34,45 @@ const connectedGithub = {
   updatedAt: "2025-01-01T00:00:00Z",
 };
 
+function statusItemFromConnector(connector: Record<string, unknown>) {
+  return catalogStatusItem({
+    connectorRef: connector.type as string,
+    authMethods: [authCodeMethod(connector.authMethod as string)],
+    connection: {
+      authMethod: connector.authMethod as string,
+      externalUsername: (connector.externalUsername as string | null) ?? null,
+      externalEmail: (connector.externalEmail as string | null) ?? null,
+      reconnectReason: null,
+    },
+    connected: true,
+    connectionStatus:
+      (connector.connectionStatus as "connected" | "reconnect-required") ??
+      "connected",
+  });
+}
+
 function stubConnector(
   body: Record<string, unknown>,
   status = 200,
   type = "github",
 ) {
-  return http.get(`http://localhost:3000/api/zero/connectors/${type}`, () => {
-    return HttpResponse.json(body, { status });
-  });
+  if (status === 200) {
+    return stubConnectorCatalogStatus([statusItemFromConnector(body)]);
+  }
+  if (status === 404) {
+    return stubConnectorCatalogStatus([
+      catalogStatusItem({
+        connectorRef: type,
+        authMethods: [authCodeMethod("oauth")],
+      }),
+    ]);
+  }
+  return http.get(
+    "http://localhost:3000/api/zero/connector-catalog/status",
+    () => {
+      return HttpResponse.json(body, { status });
+    },
+  );
 }
 
 function stubAgent(id: string, displayName: string | null) {
@@ -62,18 +98,14 @@ function stubUserConnectors(id: string, enabledTypes: string[]) {
 }
 
 function stubAvailableConnectors(types: string[]) {
-  return http.get("http://localhost:3000/api/zero/connectors/search", () => {
-    return HttpResponse.json({
-      connectors: types.map((type) => {
-        return {
-          id: type,
-          label: type,
-          description: type,
-          authMethods: ["oauth"],
-        };
-      }),
-    });
-  });
+  return stubConnectorCatalogStatus(
+    types.map((type) => {
+      return catalogStatusItem({
+        connectorRef: type,
+        authMethods: [authCodeMethod("oauth")],
+      });
+    }),
+  );
 }
 
 describe("zero connector status command", () => {
@@ -132,22 +164,15 @@ describe("zero connector status command", () => {
     });
 
     it("does not print connect guidance for unavailable connectors", async () => {
-      server.use(
-        stubAvailableConnectors([]),
-        stubConnector(
-          { error: { message: "Not found", code: "NOT_FOUND" } },
-          404,
-        ),
-      );
+      server.use(stubAvailableConnectors([]));
 
-      await statusCommand.parseAsync(["node", "cli", "github"]);
+      await expect(async () => {
+        await statusCommand.parseAsync(["node", "cli", "github"]);
+      }).rejects.toThrow("process.exit called");
 
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(
-        "The github connector is not available for this account.",
-      );
-      expect(logCalls).not.toContain("[Connect github]");
-      expect(logCalls).not.toContain("/connectors/github/connect");
+      const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
+      expect(errorOutput).toContain("Unknown or unavailable connector: github");
+      expect(errorOutput).toContain("Available connectors:");
     });
 
     it("shows reconnect guidance when connector needs reconnect", async () => {
@@ -386,13 +411,15 @@ describe("zero connector status command", () => {
   });
 
   describe("input validation", () => {
-    it("should reject invalid connector type", async () => {
+    it("should reject unavailable connector refs", async () => {
       await expect(async () => {
         await statusCommand.parseAsync(["node", "cli", "invalid-type"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Unknown connector type: invalid-type"),
+        expect.stringContaining(
+          "Unknown or unavailable connector: invalid-type",
+        ),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Available connectors:"),

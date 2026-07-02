@@ -1,29 +1,29 @@
 import chalk from "chalk";
-import { hasRequiredConnectorAuthMethodScopes } from "@vm0/connectors/connector-utils";
-import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import type { PublicConnectorStatus } from "./public-catalog";
 
-type Connector = ConnectorListResponse["connectors"][number];
-
-function renderIdentity(connector: Connector): string {
-  if (connector.externalUsername) return `@${connector.externalUsername}`;
-  if (connector.externalEmail) return connector.externalEmail;
+function renderIdentity(connector: PublicConnectorStatus): string {
+  if (connector.connection?.externalUsername) {
+    return `@${connector.connection.externalUsername}`;
+  }
+  if (connector.connection?.externalEmail)
+    return connector.connection.externalEmail;
   return "-";
 }
 
 export function renderConnectedAsCell(
-  connector: Connector | undefined,
+  connector: PublicConnectorStatus | undefined,
 ): string {
-  if (!connector) return chalk.dim("(not connected)");
+  if (!connector || connector.connectionStatus === "not-connected") {
+    return chalk.dim("(not connected)");
+  }
   const identity = renderIdentity(connector);
   if (connector.connectionStatus === "reconnect-required") {
     return chalk.yellow(`${identity} (reconnect needed)`);
   }
-  const scopeMismatch = !hasRequiredConnectorAuthMethodScopes(
-    connector.type,
-    connector.authMethod,
-    connector.oauthScopes,
-  );
-  if (scopeMismatch) {
+  if (
+    connector.scopeMismatch ||
+    connector.connectionStatus === "scope-mismatch"
+  ) {
     return chalk.yellow(`${identity} (permissions update available)`);
   }
   return identity;
