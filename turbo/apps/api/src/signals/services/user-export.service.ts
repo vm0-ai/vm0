@@ -638,24 +638,33 @@ function exportMessageRole(role: string): "user" | "assistant" | null {
   return null;
 }
 
+interface ResolveSessionHistoryArgs {
+  readonly hash: string | null;
+  readonly encoding: string | null;
+  readonly rawSize: number | null;
+  readonly encodedSize: number | null;
+  readonly legacyText: string | null;
+}
+
 async function resolveSessionHistory(
   runtime: ExportRuntime,
-  hash: string | null,
-  encoding: string | null,
-  rawSize: number | null,
-  encodedSize: number | null,
-  legacyText: string | null,
+  args: ResolveSessionHistoryArgs,
 ): Promise<Buffer | string | null> {
-  if (hash) {
-    const normalizedEncoding = normalizeSessionHistoryBlobEncoding(encoding);
-    const key = resumeSessionHistoryBlobKey(hash, normalizedEncoding);
+  if (args.hash) {
+    const normalizedEncoding = normalizeSessionHistoryBlobEncoding(
+      args.encoding,
+    );
+    const rawSize = args.rawSize && args.rawSize > 0 ? args.rawSize : undefined;
+    const encodedSize =
+      args.encodedSize && args.encodedSize > 0 ? args.encodedSize : undefined;
+    const key = resumeSessionHistoryBlobKey(args.hash, normalizedEncoding);
     const result = await settle(
       loadSessionHistoryBlob(runtime, {
         encoding: normalizedEncoding,
-        encodedSize: encodedSize && encodedSize > 0 ? encodedSize : undefined,
-        hash,
+        encodedSize,
+        hash: args.hash,
         key,
-        rawSize: rawSize && rawSize > 0 ? rawSize : undefined,
+        rawSize,
       }),
     );
     runtime.signal.throwIfAborted();
@@ -667,7 +676,7 @@ async function resolveSessionHistory(
     throw result.error;
   }
 
-  return legacyText;
+  return args.legacyText;
 }
 
 async function loadSessionHistoryBlob(
@@ -794,14 +803,13 @@ async function collectConversationMessages(
   runtime.signal.throwIfAborted();
 
   for (const session of sessionsWithHistory) {
-    const history = await resolveSessionHistory(
-      runtime,
-      session.cliAgentSessionHistoryHash,
-      session.sessionHistoryBlobEncoding,
-      session.sessionHistoryBlobRawSize,
-      session.sessionHistoryBlobEncodedSize,
-      session.cliAgentSessionHistory,
-    );
+    const history = await resolveSessionHistory(runtime, {
+      hash: session.cliAgentSessionHistoryHash,
+      encoding: session.sessionHistoryBlobEncoding,
+      rawSize: session.sessionHistoryBlobRawSize,
+      encodedSize: session.sessionHistoryBlobEncodedSize,
+      legacyText: session.cliAgentSessionHistory,
+    });
 
     if (history) {
       entries.push({

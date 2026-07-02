@@ -62,6 +62,17 @@ interface CheckpointRunContext {
   readonly vars: unknown;
 }
 
+interface SessionHistoryBlobMetadata {
+  readonly rawSize: number;
+  readonly encoding: string;
+  readonly encodedSize: number;
+}
+
+interface PreparedSessionHistoryBlob {
+  readonly blob: SessionHistoryBlobMetadata;
+  readonly insertedNewBlob: boolean;
+}
+
 const L = logger("webhooks:agent:checkpoints");
 
 function recordOfStringsOrUndefined(
@@ -167,6 +178,84 @@ async function loadCheckpointRunContext(
   return run;
 }
 
+async function loadSessionHistoryBlobMetadata(
+  db: Db,
+  hash: string,
+): Promise<SessionHistoryBlobMetadata | undefined> {
+  const [blob] = await db
+    .select({
+      rawSize: blobs.rawSize,
+      encoding: blobs.encoding,
+      encodedSize: blobs.encodedSize,
+    })
+    .from(blobs)
+    .where(eq(blobs.hash, hash))
+    .limit(1);
+  return blob;
+}
+
+async function ensureSessionHistoryBlobMetadata(args: {
+  readonly db: Db;
+  readonly body: PrepareHistoryBody;
+  readonly requestedEncoding: string;
+  readonly signal: AbortSignal;
+}): Promise<PreparedSessionHistoryBlob> {
+  const { db, body, requestedEncoding, signal } = args;
+  const [insertedBlob] = await db
+    .insert(blobs)
+    .values({
+      hash: body.hash,
+      rawSize: body.rawSize,
+      encoding: requestedEncoding,
+      encodedSize: body.encodedSize,
+      refCount: 0,
+    })
+    .onConflictDoNothing()
+    .returning({
+      rawSize: blobs.rawSize,
+      encoding: blobs.encoding,
+      encodedSize: blobs.encodedSize,
+    });
+  signal.throwIfAborted();
+
+  const insertedNewBlob = insertedBlob !== undefined;
+  let blob =
+    insertedBlob ?? (await loadSessionHistoryBlobMetadata(db, body.hash));
+  signal.throwIfAborted();
+
+  if (!blob) {
+    throw new Error("failed to load session history blob metadata");
+  }
+
+  if (blob.rawSize !== 0) {
+    return { blob, insertedNewBlob };
+  }
+
+  const [updatedBlob] = await db
+    .update(blobs)
+    .set({
+      rawSize: body.rawSize,
+      encoding: requestedEncoding,
+      encodedSize: body.encodedSize,
+    })
+    .where(and(eq(blobs.hash, body.hash), eq(blobs.rawSize, 0)))
+    .returning({
+      rawSize: blobs.rawSize,
+      encoding: blobs.encoding,
+      encodedSize: blobs.encodedSize,
+    });
+  signal.throwIfAborted();
+
+  blob = updatedBlob ?? (await loadSessionHistoryBlobMetadata(db, body.hash));
+  signal.throwIfAborted();
+
+  if (!blob) {
+    throw new Error("failed to load session history blob metadata");
+  }
+
+  return { blob, insertedNewBlob };
+}
+
 export const prepareCheckpointHistoryUpload$ = command(
   async (
     { get, set },
@@ -200,78 +289,12 @@ export const prepareCheckpointHistoryUpload$ = command(
         "Identity session history encodedSize must match rawSize",
       );
     }
-    const [insertedBlob] = await db
-      .insert(blobs)
-      .values({
-        hash: input.body.hash,
-        rawSize: input.body.rawSize,
-        encoding: requestedEncoding,
-        encodedSize: input.body.encodedSize,
-        refCount: 0,
-      })
-      .onConflictDoNothing()
-      .returning({
-        rawSize: blobs.rawSize,
-        encoding: blobs.encoding,
-        encodedSize: blobs.encodedSize,
-      });
-    signal.throwIfAborted();
-
-    const insertedNewBlob = insertedBlob !== undefined;
-    let blob =
-      insertedBlob ??
-      (
-        await db
-          .select({
-            rawSize: blobs.rawSize,
-            encoding: blobs.encoding,
-            encodedSize: blobs.encodedSize,
-          })
-          .from(blobs)
-          .where(eq(blobs.hash, input.body.hash))
-          .limit(1)
-      )[0];
-    signal.throwIfAborted();
-
-    if (!blob) {
-      throw new Error("failed to load session history blob metadata");
-    }
-
-    if (blob.rawSize === 0) {
-      const [updatedBlob] = await db
-        .update(blobs)
-        .set({
-          rawSize: input.body.rawSize,
-          encoding: requestedEncoding,
-          encodedSize: input.body.encodedSize,
-        })
-        .where(and(eq(blobs.hash, input.body.hash), eq(blobs.rawSize, 0)))
-        .returning({
-          rawSize: blobs.rawSize,
-          encoding: blobs.encoding,
-          encodedSize: blobs.encodedSize,
-        });
-      signal.throwIfAborted();
-
-      blob =
-        updatedBlob ??
-        (
-          await db
-            .select({
-              rawSize: blobs.rawSize,
-              encoding: blobs.encoding,
-              encodedSize: blobs.encodedSize,
-            })
-            .from(blobs)
-            .where(eq(blobs.hash, input.body.hash))
-            .limit(1)
-        )[0];
-      signal.throwIfAborted();
-
-      if (!blob) {
-        throw new Error("failed to load session history blob metadata");
-      }
-    }
+    const { blob, insertedNewBlob } = await ensureSessionHistoryBlobMetadata({
+      db,
+      body: input.body,
+      requestedEncoding,
+      signal,
+    });
 
     if (blob.rawSize !== input.body.rawSize) {
       return badRequestMessage(
