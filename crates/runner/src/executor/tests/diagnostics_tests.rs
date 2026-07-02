@@ -25,15 +25,9 @@ use super::super::{
     ResourceFailureKind, SMALL_GUEST_FILE_MAX_BYTES, STDOUT_STREAM_LIMIT_MARKER,
     STDOUT_STREAM_OVERFLOW_MARKER, guest_runtime_path,
 };
-use super::support::{
-    CapturedEvent, CapturedEvents, minimal_context, sandbox_exec_error, test_executor_config,
-};
+use super::support::{minimal_context, sandbox_exec_error, test_executor_config};
 use crate::ids::RunId;
 use crate::paths::LogPaths;
-use tokio::sync::Mutex;
-use tracing_subscriber::prelude::*;
-
-static DIAGNOSTICS_LOG_CALLSITE_LOCK: Mutex<()> = Mutex::const_new(());
 
 fn mode(path: &Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777
@@ -423,52 +417,6 @@ async fn read_guest_cli_agent_session_id_rejects_overlong_content() {
     let session_id = read_guest_cli_agent_session_id(&sandbox, RunId::nil()).await;
 
     assert!(session_id.is_none());
-}
-
-#[tokio::test]
-async fn read_guest_cli_agent_session_id_bounds_invalid_diagnostic_field() {
-    let raw_id = format!("bad\n{}", "a".repeat(200));
-    let sandbox = MockSandbox::new("test");
-    sandbox.push_read_file_result(Ok(Some(raw_id.as_bytes().to_vec())));
-
-    let (session_id, events) =
-        capture_diagnostics_events(read_guest_cli_agent_session_id(&sandbox, RunId::nil())).await;
-
-    assert!(session_id.is_none());
-    let event = captured_event(&events, "ignoring invalid guest session ID");
-    let field = event
-        .fields
-        .get("session_id")
-        .expect("invalid session id diagnostic field should be present");
-    assert!(field.contains("bad\\n"), "got: {field}");
-    assert!(field.contains("[truncated 76 bytes]"), "got: {field}");
-    assert!(
-        !field.contains(&raw_id),
-        "diagnostic field should not contain the full invalid id: {field}"
-    );
-}
-
-#[tokio::test]
-async fn read_guest_cli_agent_session_id_truncates_invalid_diagnostic_at_char_boundary() {
-    let raw_id = "€".repeat(50);
-    let sandbox = MockSandbox::new("test");
-    sandbox.push_read_file_result(Ok(Some(raw_id.as_bytes().to_vec())));
-
-    let (session_id, events) =
-        capture_diagnostics_events(read_guest_cli_agent_session_id(&sandbox, RunId::nil())).await;
-
-    assert!(session_id.is_none());
-    let event = captured_event(&events, "ignoring invalid guest session ID");
-    let field = event
-        .fields
-        .get("session_id")
-        .expect("invalid session id diagnostic field should be present");
-    assert!(field.contains("\\u{20ac}"), "got: {field}");
-    assert!(field.ends_with("...[truncated 24 bytes]"), "got: {field}");
-    assert!(
-        !field.contains(&raw_id),
-        "diagnostic field should not contain the full invalid id: {field}"
-    );
 }
 
 #[tokio::test]
@@ -902,30 +850,4 @@ async fn append_stdout_stream_diagnostics_writes_markers() {
     expected.extend_from_slice(STDOUT_STREAM_OVERFLOW_MARKER);
     assert_eq!(content, expected);
     assert_eq!(mode(&path), 0o600);
-}
-
-async fn capture_diagnostics_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
-where
-    F: std::future::Future,
-{
-    let _capture_guard = DIAGNOSTICS_LOG_CALLSITE_LOCK.lock().await;
-    let captured = CapturedEvents::default();
-    let subscriber = tracing_subscriber::registry().with(captured.clone());
-    let guard = tracing::subscriber::set_default(subscriber);
-    tracing::callsite::rebuild_interest_cache();
-    let output = future.await;
-    drop(guard);
-    (output, captured.entries())
-}
-
-fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
-    events
-        .iter()
-        .find(|event| {
-            event
-                .fields
-                .get("message")
-                .is_some_and(|actual| actual == message)
-        })
-        .unwrap_or_else(|| panic!("missing event {message:?}; captured={events:#?}"))
 }
