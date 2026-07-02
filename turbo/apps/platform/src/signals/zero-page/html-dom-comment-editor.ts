@@ -123,7 +123,7 @@ interface UploadHtmlSnapshotParams {
 
 interface SendHtmlDomEditRequestParams {
   readonly onFailed?: () => void;
-  readonly onGenerated?: (draft: HtmlDomEditDraft) => Promise<void>;
+  readonly onGenerated?: (draft: HtmlDomEditDraft) => void | Promise<void>;
   readonly onPrepared?: (payload: HtmlDomEditPayload) => Promise<void>;
   readonly onStarted?: () => void;
 }
