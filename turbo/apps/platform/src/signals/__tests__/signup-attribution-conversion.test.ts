@@ -6,6 +6,12 @@ import {
   mockOrganization,
   mockUser,
 } from "../../__tests__/mock-auth.ts";
+import {
+  dateFromIso,
+  isoFromNowMs,
+  mockNow,
+  nowDate,
+} from "../../__tests__/time.ts";
 import { recordSignupAttribution$ } from "../bootstrap/signup-attribution.ts";
 import { testContext } from "./test-helpers.ts";
 
@@ -20,12 +26,13 @@ type WindowWithGtag = Window & {
 };
 
 function mockSignedInUser(options: { readonly createdAt?: Date } = {}): void {
+  mockNow();
   mockUser(
     {
       id: "test-user-123",
       fullName: "Test User",
       email: "test@example.com",
-      createdAt: options.createdAt ?? new Date(),
+      createdAt: options.createdAt ?? nowDate(),
     },
     {
       token: "test-token",
@@ -127,7 +134,7 @@ describe("signup attribution Google Ads conversion", () => {
 
   it("records attribution without firing the Signup conversion for older users", async () => {
     const gtag = installGtagMock();
-    mockSignedInUser({ createdAt: new Date(Date.now() - 31 * 60 * 1000) });
+    mockSignedInUser({ createdAt: dateFromIso(isoFromNowMs(-31 * 60 * 1000)) });
     storePaidSignupAttribution();
 
     await context.store.set(recordSignupAttribution$, context.signal);

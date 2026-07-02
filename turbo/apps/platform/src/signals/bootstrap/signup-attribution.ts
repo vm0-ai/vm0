@@ -5,6 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-attribution";
 
 import { accept } from "../../lib/accept.ts";
+import { now } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { user$ } from "../auth.ts";
 import { getStoredAdAttributionMetadata } from "./ad-attribution.ts";
@@ -83,7 +84,7 @@ function isRecentlyCreatedUser(user: {
   if (createdAtMs === null) {
     return false;
   }
-  const ageMs = Date.now() - createdAtMs;
+  const ageMs = now() - createdAtMs;
   return ageMs >= 0 && ageMs <= SIGNUP_CONVERSION_MAX_USER_AGE_MS;
 }
 
