@@ -347,6 +347,21 @@ async function seedWorkflowsFixtureForAction(
     })
     .onConflictDoNothing();
   signal.throwIfAborted();
+  await db
+    .insert(orgMembersCache)
+    .values({ orgId, userId, role: "member" })
+    .onConflictDoNothing();
+  signal.throwIfAborted();
+  await db
+    .insert(orgMembersMetadata)
+    .values({ orgId, userId, timezone: null })
+    .onConflictDoNothing();
+  signal.throwIfAborted();
+  await db
+    .insert(userCache)
+    .values({ userId, email: `${userId}@example.com` })
+    .onConflictDoNothing();
+  signal.throwIfAborted();
   return actionOk({
     fixture: {
       org_id: orgId,
