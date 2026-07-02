@@ -418,10 +418,14 @@ function buildProviderChain(
   const pexelsKey = env("PEXELS_API_KEY");
 
   if (unsplashPreferred && unsplashKey) {
-    chain.push((item, signal) => searchUnsplash(item, unsplashKey, signal));
+    chain.push((item, signal) => {
+      return searchUnsplash(item, unsplashKey, signal);
+    });
   }
   if (pexelsKey) {
-    chain.push((item, signal) => searchPexels(item, pexelsKey, signal));
+    chain.push((item, signal) => {
+      return searchPexels(item, pexelsKey, signal);
+    });
   }
 
   return chain;

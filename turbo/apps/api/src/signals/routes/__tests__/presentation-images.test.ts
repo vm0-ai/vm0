@@ -23,11 +23,11 @@ interface PresentationImagesFixture {
   readonly runId: string;
 }
 
-function createFixture(): PresentationImagesFixture {
+function createFixture(suffix = ""): PresentationImagesFixture {
   return {
-    orgId: "org_presentation_images",
-    userId: "user_presentation_images",
-    runId: "run_presentation_images",
+    orgId: `org_presentation_images${suffix}`,
+    userId: `user_presentation_images${suffix}`,
+    runId: `run_presentation_images${suffix}`,
   };
 }
 
@@ -339,7 +339,9 @@ describe("POST /api/presentation/images/resolve", () => {
   });
 
   it("resolves directly through Pexels when the switch is off", async () => {
-    const fixture = createFixture();
+    // Use an isolated org/user so no PresentationImageUnsplashPreferred override
+    // from earlier tests leaks in and flips this to the Unsplash-preferred path.
+    const fixture = createFixture("_pexels_only");
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
     mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
     mockEnv("PEXELS_API_KEY", "test-pexels-key");
@@ -387,7 +389,7 @@ describe("POST /api/presentation/images/resolve", () => {
     );
 
     // Switch off: Unsplash is never consulted even though its key is present.
-    expect(unsplashCalled).toBe(false);
+    expect(unsplashCalled).toBeFalsy();
     expect(pexelsQueries).toStrictEqual(["city skyline"]);
     expect(response.body.items).toStrictEqual([
       {
@@ -454,7 +456,7 @@ describe("POST /api/presentation/images/resolve", () => {
     );
 
     // Switch on: Unsplash is tried first, then Pexels resolves the fallback.
-    expect(unsplashCalled).toBe(true);
+    expect(unsplashCalled).toBeTruthy();
     expect(response.body.items).toStrictEqual([
       {
         path: "$.pages[0].visual",
