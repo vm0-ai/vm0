@@ -882,22 +882,18 @@ function WorkflowPublicToggle({
     changeWorkflowVisibility$,
   );
   const busy = changeLoadable.state === "loading";
-  const requested = detail.visibility === "private" && detail.requestToPublish;
   const isPublic = detail.visibility === "public";
-  const checked = requested || isPublic;
-  const statusLabel = isPublic
-    ? "Public"
-    : requested
-      ? "Requested to public"
-      : "Private";
+  const statusLabel = isPublic ? "Public" : "Private";
+  const publishBlocked =
+    detail.visibility === "private" && detail.canManage && !detail.canPublish;
   const toggleAction: Parameters<typeof changeVisibility>[0]["action"] | null =
     isPublic
       ? detail.canManage
         ? "demote"
         : null
-      : requested
-        ? "cancel-publish-request"
-        : "request-publish";
+      : detail.canPublish
+        ? "publish"
+        : null;
   const submitVisibilityAction = (
     action: Parameters<typeof changeVisibility>[0]["action"],
   ) => {
@@ -915,7 +911,7 @@ function WorkflowPublicToggle({
           type="button"
           role="switch"
           aria-label="Make workflow public"
-          aria-checked={checked}
+          aria-checked={isPublic}
           disabled={busy || !toggleAction}
           className={cn(
             "relative h-5 w-9 shrink-0 rounded-full transition-colors",
@@ -931,40 +927,16 @@ function WorkflowPublicToggle({
           <span
             className={cn(
               "absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform",
-              checked ? "translate-x-4" : "translate-x-0",
+              isPublic ? "translate-x-4" : "translate-x-0",
             )}
           />
         </button>
       </div>
-      {requested ? (
+      {publishBlocked ? (
         <p className="text-xs leading-5 text-muted-foreground">
-          This workflow is waiting for the agent owner to review before it can
-          go public.
+          Publishing a workflow under an agent you do not own requires org admin
+          permissions.
         </p>
-      ) : null}
-      {requested && detail.canManage ? (
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            className="zero-btn-morandi inline-flex h-8 items-center rounded-md px-2 text-xs"
-            onClick={() => {
-              submitVisibilityAction("approve-publish");
-            }}
-          >
-            Approve
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            className="zero-btn-morandi inline-flex h-8 items-center rounded-md px-2 text-xs text-destructive/90"
-            onClick={() => {
-              submitVisibilityAction("reject-publish");
-            }}
-          >
-            Reject
-          </button>
-        </div>
       ) : null}
     </div>
   );

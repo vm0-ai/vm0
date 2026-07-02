@@ -29,9 +29,9 @@ function workflowSummary(overrides: Record<string, unknown> = {}) {
     displayName: "Tell a joke",
     description: null,
     visibility: "private",
-    requestToPublish: false,
     ownerUserId: "user-123",
     canManage: true,
+    canPublish: true,
     shadowedBy: null,
     ...overrides,
   };
@@ -77,9 +77,9 @@ describe("zero workflow copy command", () => {
                 displayName: "My Workflow",
                 description: null,
                 visibility: "private",
-                requestToPublish: false,
                 ownerUserId: "user-123",
                 canManage: true,
+                canPublish: true,
               },
               { status: 201 },
             );
@@ -123,9 +123,9 @@ describe("zero workflow copy command", () => {
                 displayName: "Tell a joke",
                 description: null,
                 visibility: "private",
-                requestToPublish: false,
                 ownerUserId: "user-123",
                 canManage: true,
+                canPublish: true,
               },
               { status: 201 },
             );

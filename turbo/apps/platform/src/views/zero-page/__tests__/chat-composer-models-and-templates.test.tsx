@@ -704,9 +704,9 @@ function workflowSummary({
     displayName,
     description,
     visibility: "public" as const,
-    requestToPublish: false,
     ownerUserId: "user-1",
     canManage: true,
+    canPublish: false,
   };
 }
 

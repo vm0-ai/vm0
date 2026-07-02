@@ -1024,7 +1024,6 @@ async function applyVisibilityUpdate(
     readonly updatedByUserId: string;
     readonly patch: {
       readonly visibility?: "public" | "private";
-      readonly requestToPublish?: boolean;
     };
   },
 ): Promise<void> {
@@ -1042,15 +1041,11 @@ function summaryFrom(
   args: VisibilityTransition,
   patch: {
     readonly visibility?: "public" | "private";
-    readonly requestToPublish?: boolean;
   },
 ) {
   const updatedWorkflow: WorkflowRow = {
     ...args.workflow,
     ...(patch.visibility !== undefined ? { visibility: patch.visibility } : {}),
-    ...(patch.requestToPublish !== undefined
-      ? { requestToPublish: patch.requestToPublish }
-      : {}),
   };
   return workflowSummary({
     workflow: updatedWorkflow,
@@ -1080,217 +1075,61 @@ async function loadVisibilityTransition(
   return { ...visible, member: args.member };
 }
 
-const requestPublishInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const member = memberFromAuth(auth);
-    const params = get(
-      pathParamsOf(zeroWorkflowVisibilityContract.requestPublish),
-    );
+const publishInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const member = memberFromAuth(auth);
+  const params = get(pathParamsOf(zeroWorkflowVisibilityContract.publish));
 
-    const writeDb = set(writeDb$);
-    const loaded = await loadVisibilityTransition(writeDb, {
-      orgId: auth.orgId,
-      member,
-      workflowId: params.workflowId,
-    });
-    signal.throwIfAborted();
-    if ("status" in loaded) {
-      return loaded;
-    }
-    const { workflow, agent } = loaded;
+  const writeDb = set(writeDb$);
+  const loaded = await loadVisibilityTransition(writeDb, {
+    orgId: auth.orgId,
+    member,
+    workflowId: params.workflowId,
+  });
+  signal.throwIfAborted();
+  if ("status" in loaded) {
+    return loaded;
+  }
+  const { workflow, agent } = loaded;
 
-    if (workflow.ownerUserId !== member.userId) {
-      return forbidden("Only the workflow owner can request to publish");
-    }
-    if (workflow.visibility === "public") {
-      return { status: 200 as const, body: summaryFrom(loaded, {}) };
-    }
+  if (workflow.ownerUserId !== member.userId) {
+    return forbidden("Only the workflow owner can publish this workflow");
+  }
+  if (workflow.visibility === "public") {
+    return { status: 200 as const, body: summaryFrom(loaded, {}) };
+  }
 
-    // An owner who can write the host agent publishes directly; otherwise the
-    // request is queued for a reviewer.
-    const canPublishDirectly =
-      requireAgentWritePermission(agent, member, "publish") === null;
-    if (canPublishDirectly) {
-      const slugError = await requirePublicWorkflowSlugAvailable(writeDb, {
-        orgId: auth.orgId,
-        agentId: workflow.agentId,
-        name: workflow.name,
-        excludeWorkflowId: workflow.id,
-      });
-      signal.throwIfAborted();
-      if (slugError) {
-        return slugError;
-      }
+  const publishError = requireAgentWritePermission(agent, member, "publish");
+  if (publishError) {
+    return publishError;
+  }
 
-      await applyVisibilityUpdate(writeDb, {
-        workflowId: workflow.id,
-        updatedByUserId: auth.userId,
-        patch: {
-          visibility: "public",
-          requestToPublish: false,
-        },
-      });
-      signal.throwIfAborted();
-      return {
-        status: 200 as const,
-        body: summaryFrom(loaded, {
-          visibility: "public",
-          requestToPublish: false,
-        }),
-      };
-    }
+  const slugError = await requirePublicWorkflowSlugAvailable(writeDb, {
+    orgId: auth.orgId,
+    agentId: workflow.agentId,
+    name: workflow.name,
+    excludeWorkflowId: workflow.id,
+  });
+  signal.throwIfAborted();
+  if (slugError) {
+    return slugError;
+  }
 
-    await applyVisibilityUpdate(writeDb, {
-      workflowId: workflow.id,
-      updatedByUserId: auth.userId,
-      patch: {
-        requestToPublish: true,
-      },
-    });
-    signal.throwIfAborted();
-    return {
-      status: 200 as const,
-      body: summaryFrom(loaded, { requestToPublish: true }),
-    };
-  },
-);
-
-const cancelPublishRequestInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const member = memberFromAuth(auth);
-    const params = get(
-      pathParamsOf(zeroWorkflowVisibilityContract.cancelPublishRequest),
-    );
-
-    const writeDb = set(writeDb$);
-    const loaded = await loadVisibilityTransition(writeDb, {
-      orgId: auth.orgId,
-      member,
-      workflowId: params.workflowId,
-    });
-    signal.throwIfAborted();
-    if ("status" in loaded) {
-      return loaded;
-    }
-    if (loaded.workflow.ownerUserId !== member.userId) {
-      return forbidden("Only the workflow owner can cancel a publish request");
-    }
-
-    await applyVisibilityUpdate(writeDb, {
-      workflowId: loaded.workflow.id,
-      updatedByUserId: auth.userId,
-      patch: {
-        requestToPublish: false,
-      },
-    });
-    signal.throwIfAborted();
-    return {
-      status: 200 as const,
-      body: summaryFrom(loaded, { requestToPublish: false }),
-    };
-  },
-);
-
-const approvePublishInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const member = memberFromAuth(auth);
-    const params = get(
-      pathParamsOf(zeroWorkflowVisibilityContract.approvePublish),
-    );
-
-    const writeDb = set(writeDb$);
-    const loaded = await loadVisibilityTransition(writeDb, {
-      orgId: auth.orgId,
-      member,
-      workflowId: params.workflowId,
-    });
-    signal.throwIfAborted();
-    if ("status" in loaded) {
-      return loaded;
-    }
-    const reviewError = requireAgentWritePermission(
-      loaded.agent,
-      member,
-      "approve publish requests",
-    );
-    if (reviewError) {
-      return reviewError;
-    }
-
-    const slugError = await requirePublicWorkflowSlugAvailable(writeDb, {
-      orgId: auth.orgId,
-      agentId: loaded.workflow.agentId,
-      name: loaded.workflow.name,
-      excludeWorkflowId: loaded.workflow.id,
-    });
-    signal.throwIfAborted();
-    if (slugError) {
-      return slugError;
-    }
-
-    await applyVisibilityUpdate(writeDb, {
-      workflowId: loaded.workflow.id,
-      updatedByUserId: auth.userId,
-      patch: {
-        visibility: "public",
-        requestToPublish: false,
-      },
-    });
-    signal.throwIfAborted();
-    return {
-      status: 200 as const,
-      body: summaryFrom(loaded, {
-        visibility: "public",
-        requestToPublish: false,
-      }),
-    };
-  },
-);
-
-const rejectPublishInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const member = memberFromAuth(auth);
-    const params = get(
-      pathParamsOf(zeroWorkflowVisibilityContract.rejectPublish),
-    );
-
-    const writeDb = set(writeDb$);
-    const loaded = await loadVisibilityTransition(writeDb, {
-      orgId: auth.orgId,
-      member,
-      workflowId: params.workflowId,
-    });
-    signal.throwIfAborted();
-    if ("status" in loaded) {
-      return loaded;
-    }
-    const reviewError = requireAgentWritePermission(
-      loaded.agent,
-      member,
-      "reject publish requests",
-    );
-    if (reviewError) {
-      return reviewError;
-    }
-
-    await applyVisibilityUpdate(writeDb, {
-      workflowId: loaded.workflow.id,
-      updatedByUserId: auth.userId,
-      patch: {
-        requestToPublish: false,
-      },
-    });
-    signal.throwIfAborted();
-    return {
-      status: 200 as const,
-      body: summaryFrom(loaded, { requestToPublish: false }),
-    };
-  },
-);
+  await applyVisibilityUpdate(writeDb, {
+    workflowId: workflow.id,
+    updatedByUserId: auth.userId,
+    patch: {
+      visibility: "public",
+    },
+  });
+  signal.throwIfAborted();
+  return {
+    status: 200 as const,
+    body: summaryFrom(loaded, {
+      visibility: "public",
+    }),
+  };
+});
 
 const demoteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -1332,7 +1171,6 @@ const demoteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     updatedByUserId: auth.userId,
     patch: {
       visibility: "private",
-      requestToPublish: false,
     },
   });
   signal.throwIfAborted();
@@ -1340,7 +1178,6 @@ const demoteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     status: 200 as const,
     body: summaryFrom(loaded, {
       visibility: "private",
-      requestToPublish: false,
     }),
   };
 });
@@ -1379,20 +1216,8 @@ export const zeroWorkflowsRoutes: readonly RouteEntry[] = [
     handler: authRoute(workflowWriteAuth, runWorkflowInner$),
   },
   {
-    route: zeroWorkflowVisibilityContract.requestPublish,
-    handler: authRoute(workflowWriteAuth, requestPublishInner$),
-  },
-  {
-    route: zeroWorkflowVisibilityContract.cancelPublishRequest,
-    handler: authRoute(workflowWriteAuth, cancelPublishRequestInner$),
-  },
-  {
-    route: zeroWorkflowVisibilityContract.approvePublish,
-    handler: authRoute(workflowWriteAuth, approvePublishInner$),
-  },
-  {
-    route: zeroWorkflowVisibilityContract.rejectPublish,
-    handler: authRoute(workflowWriteAuth, rejectPublishInner$),
+    route: zeroWorkflowVisibilityContract.publish,
+    handler: authRoute(workflowWriteAuth, publishInner$),
   },
   {
     route: zeroWorkflowVisibilityContract.demote,

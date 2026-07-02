@@ -28,9 +28,9 @@ const mockWorkflow = {
   displayName: "My Workflow",
   description: "A test workflow",
   visibility: "private",
-  requestToPublish: false,
   ownerUserId: "user-123",
   canManage: true,
+  canPublish: true,
 };
 
 describe("zero workflow create command", () => {
