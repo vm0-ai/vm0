@@ -26,7 +26,10 @@ import {
 } from "@vm0/api-contracts/contracts/automations";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+import {
+  zeroModelProvidersByTypeContract,
+  zeroModelProvidersMainContract,
+} from "@vm0/api-contracts/contracts/zero-model-providers";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import {
   cronAggregateInsightsContract,
@@ -147,6 +150,9 @@ type OrgModelPolicyRequest = z.infer<
 type OrgModelProviderUpsertRequest = z.infer<
   (typeof zeroModelProvidersMainContract.upsert)["body"]
 >;
+type OrgModelProviderType = z.infer<
+  (typeof zeroModelProvidersByTypeContract.delete)["pathParams"]
+>["type"];
 type RunnerHeartbeatBody = z.infer<
   (typeof runnersHeartbeatContract.heartbeat)["body"]
 >;
@@ -809,6 +815,19 @@ export function createRunsAutomationsApi(context: TestContext) {
         [200, 201],
       );
       return { providerId: response.body.provider.id };
+    },
+
+    async deleteOrgModelProvider(
+      actor: ApiTestUser,
+      type: OrgModelProviderType,
+    ): Promise<void> {
+      await accept(
+        runsAutomationApp(context)(zeroModelProvidersByTypeContract).delete({
+          headers: authenticate(context, actor),
+          params: { type },
+        }),
+        [204],
+      );
     },
 
     /**

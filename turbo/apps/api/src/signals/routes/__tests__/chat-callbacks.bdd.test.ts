@@ -1057,6 +1057,85 @@ describe("CHAT-02: completed chat callback", () => {
     ).toBeFalsy();
   }, 90_000);
 
+  it("marks queued messages when auto-send admission cannot create a run", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockOptionalEnv("ANTHROPIC_API_KEY", undefined);
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before provider disappears",
+    });
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "queued after provider disappears",
+    });
+    const beforeComplete = await chat.listThreadMessages(actor, first.threadId);
+    const queued = userMessages(beforeComplete.messages).find((message) => {
+      return message.content === "queued after provider disappears";
+    });
+    if (!queued) {
+      throw new Error("Expected the queued user message to be listed");
+    }
+
+    await api.deleteOrgModelProvider(actor, "anthropic-api-key");
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    context.mocks.ably.publish.mockClear();
+    chatCallbacks.mockChatOutputEvents([assistantEvent(0, "final answer")]);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const afterComplete = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        const erroredQueued = userMessages(messages).find((message) => {
+          return (
+            message.id === queued.id && message.error === "provider_unavailable"
+          );
+        });
+        const assistantError = assistantMessages(messages).find((message) => {
+          return (
+            message.error === "provider_unavailable" &&
+            message.content?.includes("No model provider configured")
+          );
+        });
+        return erroredQueued !== undefined && assistantError !== undefined;
+      },
+    );
+    await flushWaitUntilForTest();
+
+    const erroredQueued = userMessages(afterComplete.messages).find(
+      (message) => {
+        return message.id === queued.id;
+      },
+    );
+    expect(erroredQueued).toMatchObject({
+      error: "provider_unavailable",
+    });
+    expect(erroredQueued?.runId).toBeUndefined();
+    expect(
+      userMessages(afterComplete.messages).filter((message) => {
+        return message.revokesMessageId === queued.id;
+      }),
+    ).toHaveLength(0);
+    expect(
+      assistantMessages(afterComplete.messages).some((message) => {
+        return (
+          message.error === "provider_unavailable" &&
+          message.content?.includes("No model provider configured")
+        );
+      }),
+    ).toBeTruthy();
+    expect(
+      context.mocks.ably.publish.mock.calls.some((call) => {
+        return call[0] === `chatThreadRunCreated:${first.threadId}`;
+      }),
+    ).toBeFalsy();
+  }, 90_000);
+
   it("marks an auto-sent follow-up when org concurrency queues the new run", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();

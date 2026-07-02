@@ -881,6 +881,66 @@ async function insertAssistantErrorMessage(args: {
   return { displayErrorMessage, inserted: true };
 }
 
+function chatMessageErrorMarker(code: string): string {
+  return code.toLowerCase();
+}
+
+async function markQueuedMessageAutoSendCreateError(args: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly queuedMessageId: string;
+  readonly errorCode: string;
+  readonly errorMessage: string;
+}): Promise<void> {
+  const errorMarker = chatMessageErrorMarker(args.errorCode);
+  const inserted = await args.db.transaction(async (tx) => {
+    const [queuedMessage] = await tx
+      .update(chatMessages)
+      .set({ error: errorMarker })
+      .where(
+        and(
+          eq(chatMessages.id, args.queuedMessageId),
+          eq(chatMessages.chatThreadId, args.threadId),
+          eq(chatMessages.role, "user"),
+          isNull(chatMessages.runId),
+          isNull(chatMessages.revokesMessageId),
+          isNull(chatMessages.interruptsRunId),
+          isNull(chatMessages.error),
+          sql`NOT EXISTS (
+            SELECT 1
+            FROM ${chatMessages} AS revoker
+            WHERE revoker.revokes_message_id = ${chatMessages.id}
+          )`,
+        ),
+      )
+      .returning({ createdAt: chatMessages.createdAt });
+    if (!queuedMessage) {
+      return false;
+    }
+
+    await tx.insert(chatMessages).values({
+      chatThreadId: args.threadId,
+      role: "assistant",
+      content: args.errorMessage,
+      error: errorMarker,
+      createdAt: new Date(queuedMessage.createdAt.getTime() + 1),
+    });
+    await touchChatThreadLastMessageAt(tx, args.threadId);
+    return true;
+  });
+
+  if (!inserted) {
+    return;
+  }
+
+  await publishUserSignal(
+    [args.userId],
+    `chatThreadMessageCreated:${args.threadId}`,
+  );
+  await publishThreadListChanged(args.userId);
+}
+
 async function insertRunLifecycleMarker(args: {
   readonly db: Db;
   readonly runId: string;
@@ -2729,14 +2789,29 @@ export const handleChatInternalCallback$ = command(
           throw settledRunResult.error;
         }
         const runResult = settledRunResult.value;
+        if (runResult.status !== 201) {
+          await markQueuedMessageAutoSendCreateError({
+            db,
+            threadId: runInput.threadId,
+            userId: runInput.userId,
+            queuedMessageId: runInput.queuedMessage.id,
+            errorCode: runResult.body.error.code,
+            errorMessage: runResult.body.error.message,
+          });
+          log.warn("Auto-send failed to create run", {
+            threadId: runInput.threadId,
+            status: runResult.status,
+          });
+          return null;
+        }
         if (
-          runResult.status !== 201 ||
           runResult.body.status === "failed" ||
           runResult.body.status === "cancelled"
         ) {
           log.warn("Auto-send failed to create run", {
             threadId: runInput.threadId,
             status: runResult.status,
+            runStatus: runResult.body.status,
           });
           return null;
         }
