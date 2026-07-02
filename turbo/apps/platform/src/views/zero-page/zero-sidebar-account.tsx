@@ -41,6 +41,7 @@ import {
   type ZeroAccountAction,
 } from "../../signals/zero-page/zero-nav.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { reloadPersonalModelProviders$ } from "../../signals/external/personal-model-providers.ts";
 import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
@@ -264,11 +265,7 @@ function AccountUsageGroupWithCredit({
   onOpenCreditBalance: () => void;
 }) {
   const billingLoadable = useLastLoadable(billingStatusAsync$);
-  const {
-    loading: subscriptionsLoading,
-    refreshSubscriptions,
-    rows,
-  } = useSubscriptionUsageRows();
+  const { loading: subscriptionsLoading, rows } = useSubscriptionUsageRows();
   const credits =
     billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
   const creditLoading = billingLoadable.state === "loading" && credits === null;
@@ -292,16 +289,10 @@ function AccountUsageGroupWithCredit({
           onOpenCreditBalance={onOpenCreditBalance}
         />
       )}
+      {showCredit && showSubscriptions && <DropdownMenuSeparator />}
       {showSubscriptions && (
         <AccountMenuSubscriptionsPanel
           loading={subscriptionsLoading}
-          onRefresh={() => {
-            detach(
-              refreshSubscriptions(),
-              Reason.DomCallback,
-              "refresh account menu subscriptions",
-            );
-          }}
           rows={rows}
         />
       )}
@@ -311,7 +302,7 @@ function AccountUsageGroupWithCredit({
 }
 
 function AccountSubscriptionsGroup() {
-  const { loading, refreshSubscriptions, rows } = useSubscriptionUsageRows();
+  const { loading, rows } = useSubscriptionUsageRows();
   const showSubscriptions = loading || rows.length > 0;
 
   if (!showSubscriptions) {
@@ -320,17 +311,7 @@ function AccountSubscriptionsGroup() {
 
   return (
     <>
-      <AccountMenuSubscriptionsPanel
-        loading={loading}
-        onRefresh={() => {
-          detach(
-            refreshSubscriptions(),
-            Reason.DomCallback,
-            "refresh account menu subscriptions",
-          );
-        }}
-        rows={rows}
-      />
+      <AccountMenuSubscriptionsPanel loading={loading} rows={rows} />
       <DropdownMenuSeparator />
     </>
   );
@@ -547,6 +528,7 @@ export function AccountDropdown({
     features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
   const selectNav = useSet(handleZeroNavSelect$);
   const openSettings = useSet(openSettingsDialogAt$);
+  const reloadSubscriptions = useSet(reloadPersonalModelProviders$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
   const pageSignal = useGet(pageSignal$);
 
@@ -606,8 +588,22 @@ export function AccountDropdown({
     detach(openSettings("usage", pageSignal), Reason.DomCallback);
   };
 
+  const handleMenuOpenChange = (open: boolean) => {
+    if (!open || hidePreferences || !subscriptionsEnabled) {
+      return;
+    }
+
+    queueMicrotask(() => {
+      detach(
+        reloadSubscriptions(),
+        Reason.DomCallback,
+        "reload account menu subscriptions",
+      );
+    });
+  };
+
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={handleMenuOpenChange}>
       <DropdownMenuTrigger asChild>
         {renderAccountTrigger(accountDisplay, collapsed)}
       </DropdownMenuTrigger>

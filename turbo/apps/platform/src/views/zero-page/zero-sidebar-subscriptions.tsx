@@ -1,5 +1,4 @@
-import { useLastLoadable, useSet } from "ccstate-react";
-import { IconRefresh } from "@tabler/icons-react";
+import { useLastLoadable } from "ccstate-react";
 import type {
   ModelProviderResponse,
   ModelProviderType,
@@ -11,7 +10,6 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 
-import { reloadPersonalModelProviders$ } from "../../signals/external/personal-model-providers.ts";
 import { personalConfiguredProviders$ } from "../../signals/zero-page/settings/personal-model-providers.ts";
 
 export type SubscriptionUsage = NonNullable<
@@ -35,61 +33,33 @@ export interface SubscriptionUsageRow {
 
 export function useSubscriptionUsageRows() {
   const providersLoadable = useLastLoadable(personalConfiguredProviders$);
-  const refreshSubscriptions = useSet(reloadPersonalModelProviders$);
   const providers =
     providersLoadable.state === "hasData" ? providersLoadable.data : [];
   const rows = subscriptionUsageRows(providers);
   const loading = providersLoadable.state === "loading";
 
-  return { loading, refreshSubscriptions, rows };
+  return { loading, rows };
 }
 
 export function AccountMenuSubscriptionsPanel({
   loading,
-  onRefresh,
   rows,
 }: {
   readonly loading: boolean;
-  readonly onRefresh: () => void;
   readonly rows: readonly SubscriptionUsageRow[];
 }) {
   return (
     <div data-testid="account-menu-subscriptions" className="px-3 py-2.5">
-      <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
-        <h3 className="truncate text-[11px] font-semibold leading-4 text-muted-foreground">
-          Subscriptions
-        </h3>
-        <TooltipProvider delayDuration={150}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-60"
-                aria-label="Refresh subscriptions"
-                disabled={loading}
-                onClick={onRefresh}
-              >
-                <IconRefresh
-                  size={13}
-                  className={loading ? "animate-spin" : undefined}
-                />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              <p className="text-xs">Refresh subscriptions</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
       {loading && rows.length === 0 ? (
         <AccountMenuSubscriptionsSkeleton />
       ) : (
         <TooltipProvider delayDuration={100}>
-          <div className="flex flex-col gap-1">
-            {rows.map((row) => {
+          <div className="flex flex-col gap-2.5">
+            {rows.map((row, index) => {
               return (
-                <AccountMenuSubscriptionProviderRows
+                <AccountMenuSubscriptionProviderSection
                   key={row.type}
+                  divided={index > 0}
                   label={row.label}
                   usage={row.usage}
                 />
@@ -104,16 +74,24 @@ export function AccountMenuSubscriptionsPanel({
 
 function AccountMenuSubscriptionsSkeleton() {
   return (
-    <div className="flex flex-col gap-1.5" aria-hidden="true">
-      {SUBSCRIPTION_PROVIDERS.map((provider) => {
+    <div className="flex flex-col gap-2.5" aria-hidden="true">
+      {SUBSCRIPTION_PROVIDERS.map((provider, index) => {
         return (
-          <div
-            key={provider.type}
-            className="grid grid-cols-[68px_minmax(0,1fr)_34px] items-center gap-1.5"
-          >
-            <div className="h-2.5 animate-pulse rounded bg-muted/60" />
-            <div className="h-1.5 animate-pulse rounded-full bg-muted/60" />
-            <div className="h-2.5 animate-pulse rounded bg-muted/60" />
+          <div key={provider.type} className="flex flex-col gap-1.5">
+            {index > 0 && <div className="-mx-3 h-px bg-border" />}
+            <div className="h-3 w-20 animate-pulse rounded bg-muted/60" />
+            {["5h", "week"].map((label) => {
+              return (
+                <div
+                  key={label}
+                  className="grid grid-cols-[34px_minmax(0,1fr)_34px] items-center gap-1.5"
+                >
+                  <div className="h-2.5 animate-pulse rounded bg-muted/60" />
+                  <div className="h-1.5 animate-pulse rounded-full bg-muted/60" />
+                  <div className="h-2.5 animate-pulse rounded bg-muted/60" />
+                </div>
+              );
+            })}
           </div>
         );
       })}
@@ -121,39 +99,44 @@ function AccountMenuSubscriptionsSkeleton() {
   );
 }
 
-function AccountMenuSubscriptionProviderRows({
+function AccountMenuSubscriptionProviderSection({
+  divided,
   label,
   usage,
 }: {
+  readonly divided: boolean;
   readonly label: string;
   readonly usage: SubscriptionUsage;
 }) {
   const windows = usageWindows(usage);
 
   return (
-    <>
-      {windows.map(({ label: windowLabel, window }, index) => {
-        return (
-          <AccountMenuSubscriptionUsageBar
-            key={windowLabel}
-            displayLabel={index === 0 ? label : windowLabel}
-            providerLabel={label}
-            windowLabel={windowLabel}
-            window={window}
-          />
-        );
-      })}
-    </>
+    <section className="flex flex-col gap-1.5" aria-label={`${label} usage`}>
+      {divided && <div className="-mx-3 h-px bg-border" />}
+      <h3 className="truncate text-xs font-medium leading-4 text-foreground">
+        {label}
+      </h3>
+      <div className="flex flex-col gap-1">
+        {windows.map(({ label: windowLabel, window }) => {
+          return (
+            <AccountMenuSubscriptionUsageBar
+              key={windowLabel}
+              providerLabel={label}
+              windowLabel={windowLabel}
+              window={window}
+            />
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
 function AccountMenuSubscriptionUsageBar({
-  displayLabel,
   providerLabel,
   windowLabel,
   window,
 }: {
-  readonly displayLabel: string;
   readonly providerLabel: string;
   readonly windowLabel: string;
   readonly window: SubscriptionUsageWindow;
@@ -174,9 +157,9 @@ function AccountMenuSubscriptionUsageBar({
       : Math.min(100, Math.max(0, remainingPercent));
 
   return (
-    <div className="grid grid-cols-[68px_minmax(0,1fr)_34px] items-center gap-1.5">
+    <div className="grid grid-cols-[34px_minmax(0,1fr)_34px] items-center gap-1.5">
       <span className="truncate text-[10px] font-medium leading-none text-muted-foreground">
-        {displayLabel}
+        {windowLabel}
       </span>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -300,7 +283,7 @@ function usageWindows(usage: SubscriptionUsage | null | undefined): readonly {
 }[] {
   return [
     { label: "5h", window: usage?.fiveHour ?? null },
-    { label: "Week", window: usage?.weekly ?? null },
+    { label: "week", window: usage?.weekly ?? null },
   ].filter(
     (item): item is { label: string; window: SubscriptionUsageWindow } => {
       return hasUsageWindow(item.window);
