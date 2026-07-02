@@ -1055,6 +1055,19 @@ describe("CHAT-02: completed chat callback", () => {
         return call[0] === `chatThreadRunCreated:${first.threadId}`;
       }),
     ).toBeFalsy();
+
+    const rejectedRecall = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        revokesMessageId: errored.message_id,
+      },
+      [400],
+    );
+    expect(rejectedRecall.body).toMatchObject({
+      error: { message: "Only queued user messages can be recalled" },
+    });
   }, 90_000);
 
   it("marks queued messages when auto-send admission cannot create a run", async () => {

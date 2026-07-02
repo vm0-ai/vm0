@@ -5157,6 +5157,27 @@ async function writeAutoSendChatLaunchAssociation(
     return false;
   }
 
+  const targets = await tx.execute<{ readonly id: string }>(sql`
+    SELECT ${chatMessages.id} AS "id"
+    FROM ${chatMessages}
+    WHERE ${chatMessages.id} = ${association.queuedMessageId}
+      AND ${chatMessages.chatThreadId} = ${association.threadId}
+      AND ${chatMessages.role} = ${"user"}
+      AND ${chatMessages.runId} IS NULL
+      AND ${chatMessages.revokesMessageId} IS NULL
+      AND ${chatMessages.interruptsRunId} IS NULL
+      AND ${chatMessages.error} IS NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM ${chatMessages} AS revoker
+        WHERE revoker.revokes_message_id = ${chatMessages.id}
+      )
+    FOR UPDATE
+  `);
+  if (targets.rows.length === 0) {
+    return false;
+  }
+
   const [inserted] = await tx
     .insert(chatMessages)
     .values({

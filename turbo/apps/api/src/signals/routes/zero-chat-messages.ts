@@ -1708,6 +1708,8 @@ function appendRecallUserMessage(params: {
           eq(chatMessages.role, "user"),
           isNull(chatMessages.runId),
           isNull(chatMessages.revokesMessageId),
+          isNull(chatMessages.interruptsRunId),
+          isNull(chatMessages.error),
         ),
       )
       .limit(1);
