@@ -391,10 +391,13 @@ def decode_request_body_for_network_log_capture(
 ) -> bytes | None:
     """Decode a request body for network-log capture.
 
-    Request capture hides unsupported or invalid encoded bodies instead of
-    preserving opaque request bytes in logs. Returns ``None`` when callers
-    should omit request body text and mark the body as binary. Returns decoded
-    bytes on success, including ``b""`` for a valid empty compressed body.
+    Request capture hides unsupported encodings and bodies that the bounded
+    primitive reports as decode failures instead of preserving opaque request
+    bytes in logs. Gzip/deflate input that yields partial decoded output still
+    follows the primitive's best-effort success semantics. Returns ``None`` when
+    callers should omit request body text and mark the body as binary. Returns
+    decoded bytes on success, including ``b""`` for a valid empty compressed
+    body.
 
     This is distinct from ``billing_body.decode_request_body_for_billing``,
     which has stricter billing-inspection policy.
