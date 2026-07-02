@@ -79,7 +79,7 @@ async function removeStaleEntries(
   }
 }
 
-export async function prepareComputerUseOutputDir(): Promise<string> {
+async function prepareComputerUseOutputDir(): Promise<string> {
   const outputDir = computerUseOutputDir();
   await ensurePrivateDirectory(outputDir);
   await removeStaleEntries(outputDir, Date.now() - COMPUTER_USE_OUTPUT_TTL_MS);
