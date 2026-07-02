@@ -242,6 +242,7 @@ async fn success_checkpoint_uploads_gzip_session_history_when_acknowledged() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
+    let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
     let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
     let _history_dir = write_literal_session_history("success-gzip-session", &history).unwrap();
@@ -294,7 +295,7 @@ async fn success_checkpoint_uploads_gzip_session_history_when_acknowledged() {
             .json_body(json!({"checkpointId": "checkpoint-success-gzip"}));
     });
 
-    let result = guest_agent::checkpoint::create_checkpoint(&http_client!()).await;
+    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime).await;
 
     assert!(result.is_ok());
     prepare_mock.assert_calls_async(1).await;
@@ -307,6 +308,7 @@ async fn success_checkpoint_keeps_large_non_utf8_session_history_identity_encode
     let api = SharedApiMock::new().await;
     let server = api.server();
 
+    let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
     let mut history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
     history.extend_from_slice(&[0xc3, 0x28, b'\n']);
@@ -348,7 +350,7 @@ async fn success_checkpoint_keeps_large_non_utf8_session_history_identity_encode
             .json_body(json!({"checkpointId": "checkpoint-large-non-utf8"}));
     });
 
-    let result = guest_agent::checkpoint::create_checkpoint(&http_client!()).await;
+    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime).await;
 
     assert!(result.is_ok());
     prepare_mock.assert_calls_async(1).await;
