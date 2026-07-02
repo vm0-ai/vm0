@@ -234,9 +234,11 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     );
 
     expect(new Set(response)).toStrictEqual(new Set([c1.id, c2.id]));
-    await expect(
-      connectors.readAgentCustomConnectors(actor, agent.agentId),
-    ).resolves.toStrictEqual(response);
+    const readBack = await connectors.readAgentCustomConnectors(
+      actor,
+      agent.agentId,
+    );
+    expect([...readBack].sort()).toStrictEqual([...response].sort());
   });
 
   it("replaces the list atomically", async () => {
