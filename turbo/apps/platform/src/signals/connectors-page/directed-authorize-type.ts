@@ -48,6 +48,23 @@ export const agentEnabledTypes$ = computed(async (get) => {
   return { agentId, enabledTypes: result.body.enabledTypes };
 });
 
+export type DirectedAuthorizeConnectModalKey = {
+  readonly connectorType: ConnectorType;
+  readonly agentId: string;
+  readonly signal: AbortSignal;
+};
+
+const internalDirectedAuthorizeConnectModalKey$ =
+  state<DirectedAuthorizeConnectModalKey | null>(null);
+export const directedAuthorizeConnectModalKey$ = computed((get) => {
+  return get(internalDirectedAuthorizeConnectModalKey$);
+});
+export const setDirectedAuthorizeConnectModalKey$ = command(
+  ({ set }, key: DirectedAuthorizeConnectModalKey | null) => {
+    set(internalDirectedAuthorizeConnectModalKey$, key);
+  },
+);
+
 function connectorAgentAuthorizationKey(args: {
   readonly connectorType: ConnectorType;
   readonly agentId: string;

@@ -1176,12 +1176,18 @@ export function ConnectModal({
   onClose,
   onSuccess,
   showPermissionDialogOnConnect = false,
+  selectedType: selectedTypeOverride,
 }: {
   onClose: () => void;
   onSuccess?: () => void | Promise<void>;
   showPermissionDialogOnConnect?: boolean;
+  selectedType?: ConnectorType | null;
 }) {
-  const selectedType = useGet(selectedConnectorType$);
+  const globalSelectedType = useGet(selectedConnectorType$);
+  const selectedType =
+    selectedTypeOverride === undefined
+      ? globalSelectedType
+      : selectedTypeOverride;
   const connectorTypes = useLastResolved(allConnectorTypes$);
   const clearConnectorOAuthDeviceAuth = useSet(clearConnectorOAuthDeviceAuth$);
   const clearConnectorExternalCode = useSet(clearConnectorExternalCode$);

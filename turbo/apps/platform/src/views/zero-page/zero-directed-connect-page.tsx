@@ -20,8 +20,6 @@ import {
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
   pollingOAuthDeviceAuthConnectorType$,
-  selectedConnectorType$,
-  setSelectedConnectorType$,
   submitManualGrant$,
   manualGrantFormSubmitting$,
   setManualGrantFormValue$,
@@ -48,6 +46,9 @@ import {
   directedConnectAgentName$,
   manualGrantDialogKey$,
   setManualGrantDialogKey$,
+  directedConnectModalKey$,
+  setDirectedConnectModalKey$,
+  type DirectedConnectModalKey,
   type DirectedConnectManualGrantDialogKey,
 } from "../../signals/connectors-page/directed-connect-type.ts";
 import { authorizeConnector$ } from "../../signals/connectors-page/directed-authorize-type.ts";
@@ -304,17 +305,25 @@ function ConnectActions({
 
 function DirectedConnectModal({
   open,
+  connectorType,
   onClose,
   onSuccess,
 }: {
   readonly open: boolean;
+  readonly connectorType: ConnectorType;
   readonly onClose: () => void;
   readonly onSuccess: () => Promise<void>;
 }) {
   if (!open) {
     return null;
   }
-  return <ConnectModal onClose={onClose} onSuccess={onSuccess} />;
+  return (
+    <ConnectModal
+      selectedType={connectorType}
+      onClose={onClose}
+      onSuccess={onSuccess}
+    />
+  );
 }
 
 function DirectedConnectDialogs({
@@ -325,8 +334,8 @@ function DirectedConnectDialogs({
   setManualGrantDialogOpen,
   agentId,
   runPostConnectActions,
-  selectedConnectorType,
-  setSelectedConnectorType,
+  connectModalOpen,
+  setConnectModalOpen,
 }: {
   readonly connectorType: ConnectorType;
   readonly connectorLabel: string;
@@ -335,8 +344,8 @@ function DirectedConnectDialogs({
   readonly setManualGrantDialogOpen: (open: boolean) => void;
   readonly agentId: string | null | undefined;
   readonly runPostConnectActions: () => Promise<void>;
-  readonly selectedConnectorType: ConnectorType | null;
-  readonly setSelectedConnectorType: (type: ConnectorType | null) => void;
+  readonly connectModalOpen: boolean;
+  readonly setConnectModalOpen: (open: boolean) => void;
 }) {
   return (
     <>
@@ -349,9 +358,10 @@ function DirectedConnectDialogs({
         onConnected={agentId ? runPostConnectActions : undefined}
       />
       <DirectedConnectModal
-        open={selectedConnectorType === connectorType}
+        open={connectModalOpen}
+        connectorType={connectorType}
         onClose={() => {
-          setSelectedConnectorType(null);
+          setConnectModalOpen(false);
         }}
         onSuccess={runPostConnectActions}
       />
@@ -432,6 +442,91 @@ function directedConnectManualGrantDialogOpen(
   );
 }
 
+function directedConnectModalOpen(
+  key: DirectedConnectModalKey | null,
+  args: {
+    readonly connectorType: ConnectorType | null;
+    readonly agentId: string | null;
+    readonly signal: AbortSignal;
+  },
+): boolean {
+  return (
+    key?.connectorType === args.connectorType &&
+    key.agentId === args.agentId &&
+    key.signal === args.signal
+  );
+}
+
+function DirectedConnectCardContent({
+  connectorType,
+  connectorLabel,
+  connectorDescription,
+  connectNotice,
+  agentName,
+  isLoading,
+  isConnected,
+  isConnecting,
+  canConnect,
+  onConnect,
+}: {
+  readonly connectorType: ConnectorType;
+  readonly connectorLabel: string;
+  readonly connectorDescription: string;
+  readonly connectNotice: ConnectorTypeWithStatus["connectNotice"] | null;
+  readonly agentName: string;
+  readonly isLoading: boolean;
+  readonly isConnected: boolean;
+  readonly isConnecting: boolean;
+  readonly canConnect: boolean;
+  readonly onConnect: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+      <div className="pointer-events-auto flex w-[430px] max-w-[calc(100%-48px)] flex-col items-center gap-12 rounded-[20px] border border-border bg-background px-6 py-12 text-center">
+        <Vm0LogoLink />
+        <div className="flex w-full flex-col gap-4">
+          <div className="flex flex-col items-center gap-2.5">
+            {isLoading ? (
+              <IconLoader2
+                size={20}
+                className="animate-spin text-muted-foreground"
+              />
+            ) : (
+              <>
+                <h1 className="text-lg font-medium text-foreground">
+                  {isConnected
+                    ? `${connectorLabel} connected`
+                    : `${agentName} needs ${connectorLabel} to proceed`}
+                </h1>
+                <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
+                  <ConnectorIcon type={connectorType} size={20} />
+                </div>
+                <p className="w-60 text-sm text-muted-foreground">
+                  {connectorDescription}
+                </p>
+                <ConnectorConnectNotices
+                  connectNotice={connectNotice}
+                  isConnected={isConnected}
+                />
+              </>
+            )}
+          </div>
+          {!isLoading && (
+            <div className="flex flex-col items-center justify-center gap-2">
+              <ConnectActions
+                isConnected={isConnected}
+                isConnecting={isConnecting}
+                disabled={!canConnect}
+                onConnect={onConnect}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DirectedConnectCard() {
   const connectorType = useDirectedConnectConnectorType();
   const agentId = useGet(directedConnectAgentId$);
@@ -445,12 +540,17 @@ function DirectedConnectCard() {
     useDirectedConnectCatalogState(connectorType);
   const manualGrantDialogKey = useGet(manualGrantDialogKey$);
   const setManualGrantDialogKey = useSet(setManualGrantDialogKey$);
-  const selectedConnectorType = useGet(selectedConnectorType$);
-  const setSelectedConnectorType = useSet(setSelectedConnectorType$);
+  const connectModalKey = useGet(directedConnectModalKey$);
+  const setDirectedConnectModalKey = useSet(setDirectedConnectModalKey$);
   const manualGrantDialogOpen = directedConnectManualGrantDialogOpen(
     manualGrantDialogKey,
     { connectorType, agentId, signal },
   );
+  const connectModalOpen = directedConnectModalOpen(connectModalKey, {
+    connectorType,
+    agentId,
+    signal,
+  });
 
   if (!connectorType) {
     return null;
@@ -496,56 +596,25 @@ function DirectedConnectCard() {
         return setManualGrantDialogKey({ connectorType, agentId, signal });
       },
       openConnectModal: () => {
-        setSelectedConnectorType(connectorType);
+        setDirectedConnectModalKey({ connectorType, agentId, signal });
       },
     });
   };
 
   return (
     <>
-      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-        <div className="pointer-events-auto flex w-[430px] max-w-[calc(100%-48px)] flex-col items-center gap-12 rounded-[20px] border border-border bg-background px-6 py-12 text-center">
-          <Vm0LogoLink />
-          <div className="flex w-full flex-col gap-4">
-            <div className="flex flex-col items-center gap-2.5">
-              {isLoading ? (
-                <IconLoader2
-                  size={20}
-                  className="animate-spin text-muted-foreground"
-                />
-              ) : (
-                <>
-                  <h1 className="text-lg font-medium text-foreground">
-                    {isConnected
-                      ? `${connectorLabel} connected`
-                      : `${agentName} needs ${connectorLabel} to proceed`}
-                  </h1>
-                  <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
-                    <ConnectorIcon type={connectorType} size={20} />
-                  </div>
-                  <p className="w-60 text-sm text-muted-foreground">
-                    {connectorDescription}
-                  </p>
-                  <ConnectorConnectNotices
-                    connectNotice={item?.connectNotice ?? null}
-                    isConnected={isConnected}
-                  />
-                </>
-              )}
-            </div>
-            {!isLoading && (
-              <div className="flex flex-col items-center justify-center gap-2">
-                <ConnectActions
-                  isConnected={isConnected}
-                  isConnecting={isConnecting}
-                  disabled={!canConnect}
-                  onConnect={handleConnect}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <DirectedConnectCardContent
+        connectorType={connectorType}
+        connectorLabel={connectorLabel}
+        connectorDescription={connectorDescription}
+        connectNotice={item?.connectNotice ?? null}
+        agentName={agentName}
+        isLoading={isLoading}
+        isConnected={isConnected}
+        isConnecting={isConnecting}
+        canConnect={canConnect}
+        onConnect={handleConnect}
+      />
       <DirectedConnectDialogs
         connectorType={connectorType}
         connectorLabel={connectorLabel}
@@ -558,8 +627,12 @@ function DirectedConnectCard() {
         }}
         agentId={agentId}
         runPostConnectActions={runPostConnectActions}
-        selectedConnectorType={selectedConnectorType}
-        setSelectedConnectorType={setSelectedConnectorType}
+        connectModalOpen={connectModalOpen}
+        setConnectModalOpen={(open) => {
+          setDirectedConnectModalKey(
+            open ? { connectorType, agentId, signal } : null,
+          );
+        }}
       />
     </>
   );

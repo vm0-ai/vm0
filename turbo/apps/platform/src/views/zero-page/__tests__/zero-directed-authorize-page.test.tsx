@@ -364,6 +364,17 @@ describe("directed connector authorize page", () => {
 
     await screen.findByRole("dialog", { name: "Public GitHub" });
     expect(startCalls).toBe(0);
+
+    context.store.set(detachedNavigateTo$, ROUTES.directedAuthorize, {
+      pathParams: { type: "github" },
+      searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Public GitHub" }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("does not authorize the agent when OAuth connection is cancelled", async () => {

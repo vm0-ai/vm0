@@ -85,6 +85,45 @@ function publicManualTokenConnectorStatus(args: {
   };
 }
 
+function publicOAuthConnectorStatus(args: {
+  readonly connectorRef: PublicConnectorCatalogStatusItem["connectorRef"];
+  readonly label: string;
+  readonly singleAuthCodeAuthMethodId: string | null;
+}): PublicConnectorCatalogStatusItem {
+  return {
+    connectorRef: args.connectorRef,
+    label: args.label,
+    description: `${args.label} description`,
+    category: "engineering-team-execution",
+    generation: [],
+    tags: [],
+    authMethods: [
+      {
+        id: "oauth",
+        label: "Public OAuth",
+        description: "Public OAuth description",
+        grantKind: "auth-code",
+        manualFields: [],
+        startOptions: [],
+      },
+    ],
+    permissionSummary: {
+      hasPermissions: false,
+      permissionCount: 0,
+      hasCategories: false,
+      hasDefaultPolicyOverrides: false,
+    },
+    connection: null,
+    connected: false,
+    connectionStatus: "not-connected",
+    scopeMismatch: false,
+    authMethodSupportsRefresh: false,
+    tokenExpiresAt: null,
+    singleAuthCodeAuthMethodId: args.singleAuthCodeAuthMethodId,
+    connectNotice: null,
+  };
+}
+
 function mockConnectorOauthStart(): { readonly authWindow: Window } {
   const authWindow = context.mocks.browser.authWindow();
   authWindow.closed = true;
@@ -164,6 +203,44 @@ describe("directed connector connect page", () => {
       expect(authWindow.location.href).toBe(
         "https://oauth.test/github/authorize",
       );
+    });
+  });
+
+  it("does not reuse an open provider connect dialog across routed agent ids", async () => {
+    mockPublicConnectorStatus(
+      publicOAuthConnectorStatus({
+        connectorRef: "github",
+        label: "Public GitHub",
+        singleAuthCodeAuthMethodId: null,
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/github/connect?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Public GitHub to proceed"),
+      ).toBeInTheDocument();
+    });
+    click(getButtonByText("Connect"));
+
+    await screen.findByRole("dialog", { name: "Public GitHub" });
+
+    context.store.set(detachedNavigateTo$, ROUTES.directedConnect, {
+      pathParams: { type: "github" },
+      searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Public GitHub" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText("Zero needs Public GitHub to proceed"),
+      ).toBeInTheDocument();
     });
   });
 

@@ -39,13 +39,30 @@ export type DirectedConnectManualGrantDialogKey = {
   readonly signal: AbortSignal;
 };
 
+export type DirectedConnectModalKey = {
+  readonly connectorType: ConnectorType;
+  readonly agentId: string | null;
+  readonly signal: AbortSignal;
+};
+
 const internalManualGrantDialogKey$ =
   state<DirectedConnectManualGrantDialogKey | null>(null);
+const internalDirectedConnectModalKey$ = state<DirectedConnectModalKey | null>(
+  null,
+);
 export const manualGrantDialogKey$ = computed((get) => {
   return get(internalManualGrantDialogKey$);
+});
+export const directedConnectModalKey$ = computed((get) => {
+  return get(internalDirectedConnectModalKey$);
 });
 export const setManualGrantDialogKey$ = command(
   ({ set }, key: DirectedConnectManualGrantDialogKey | null) => {
     set(internalManualGrantDialogKey$, key);
+  },
+);
+export const setDirectedConnectModalKey$ = command(
+  ({ set }, key: DirectedConnectModalKey | null) => {
+    set(internalDirectedConnectModalKey$, key);
   },
 );
