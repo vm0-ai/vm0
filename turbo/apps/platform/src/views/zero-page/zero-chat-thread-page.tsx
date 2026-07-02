@@ -3077,7 +3077,7 @@ function ChatThread({
     if (event.defaultPrevented) {
       return;
     }
-    if (chatThreadEmojiEnabled) {
+    if (chatThreadEmojiEnabled && !isEditableTarget(event.target)) {
       const emojiOptionIndex = chatThreadEmojiShortcutIndex(event);
       if (emojiOptionIndex !== null) {
         const option = CHAT_THREAD_EMOJI_OPTIONS[emojiOptionIndex];
@@ -3093,7 +3093,11 @@ function ChatThread({
         return;
       }
     }
-    if (chatThreadEmojiEnabled && matchShortcut("shift+f2", event)) {
+    if (
+      chatThreadEmojiEnabled &&
+      !isEditableTarget(event.target) &&
+      matchShortcut("shift+f2", event)
+    ) {
       event.preventDefault();
       openEmojiMenu();
       return;
