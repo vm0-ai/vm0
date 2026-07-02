@@ -743,6 +743,7 @@ describe("connectors page", () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
         switches: { [FeatureSwitchKey.AwsConnector]: true },
+        effectiveSwitches: { [FeatureSwitchKey.AwsConnector]: true },
       });
     });
     await context.store.set(
