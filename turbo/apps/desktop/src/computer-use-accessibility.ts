@@ -27,7 +27,7 @@ const DEFAULT_FOREGROUND_RECOVERY_POLICY =
 
 export interface ComputerUseCommand {
   readonly id: string;
-  readonly kind: ComputerUseCommandKind;
+  readonly kind: string;
   readonly payload: Record<string, unknown>;
 }
 
@@ -181,7 +181,19 @@ export interface ComputerUseCommandFailure {
       | "screen_recording_unavailable"
       | "app_not_found"
       | "app_open_failed"
-      | "unsupported_command";
+      | "unsupported_command"
+      | "command_timeout"
+      | "feature_disabled"
+      | "plugin_disabled"
+      | "plugin_unavailable"
+      | "plugin_restarting"
+      | "unknown_plugin"
+      | "unknown_tool"
+      | "invalid_arguments"
+      | "path_denied"
+      | "result_too_large"
+      | "input_too_large"
+      | "mcp_error";
     readonly message: string;
   };
 }

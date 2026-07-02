@@ -121,7 +121,10 @@ module.exports = {
       LSMinimumSystemVersion: MINIMUM_MACOS_VERSION,
     },
     asar: false,
-    extraResource: [path.join(__dirname, "native", "dist", "native")],
+    extraResource: [
+      path.join(__dirname, "native", "dist", "native"),
+      path.join(__dirname, "dist", "mcp"),
+    ],
     protocols: [
       {
         name: desktopIdentity.authProtocolName,
@@ -139,6 +142,7 @@ module.exports = {
       /^\/forge\.config\.js$/,
       /^\/tsconfig\.json$/,
       /^\/tsup\.electron\.config\.js$/,
+      /^\/tsup\.mcp-filesystem\.config\.js$/,
       /^\/vite\.renderer\.config\.ts$/,
       /^\/vitest\.config\.ts$/,
     ],

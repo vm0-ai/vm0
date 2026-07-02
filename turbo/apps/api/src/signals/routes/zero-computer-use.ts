@@ -5,8 +5,12 @@ import {
   zeroComputerUseHeartbeatContract,
   zeroComputerUseHostCommandsContract,
   zeroComputerUseHostsContract,
+  zeroComputerUsePluginCommandContract,
   zeroComputerUseWriteCommandContract,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
+import { COMPUTER_USE_PLUGIN_CALL_KIND } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -18,6 +22,7 @@ import {
   createComputerUseCommand$,
   deleteComputerUseHost$,
   getComputerUseCommand$,
+  getComputerUseCommandPluginContent$,
   getComputerUseCommandScreenshot$,
   heartbeatComputerUseHost$,
   listComputerUseAuditEvents$,
@@ -25,6 +30,7 @@ import {
   startComputerUseHost$,
   stopComputerUseHost$,
 } from "../services/zero-computer-use.service";
+import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 
 const computerUseHostNotAuthorized = Object.freeze({
@@ -68,6 +74,13 @@ function conflict(message: string) {
   return {
     status: 409 as const,
     body: { error: { message, code: "CONFLICT" } },
+  };
+}
+
+function forbidden(message: string) {
+  return {
+    status: 403 as const,
+    body: { error: { message, code: "FORBIDDEN" } },
   };
 }
 
@@ -295,6 +308,77 @@ const writeCommandCreateInner$ = command(
   },
 );
 
+const pluginCommandCreateBody$ = bodyResultOf(
+  zeroComputerUsePluginCommandContract.create,
+);
+const pluginCommandCreateInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const featureContext = await get(
+      userFeatureSwitchContext(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (
+      !isFeatureEnabled(
+        FeatureSwitchKey.ComputerUseDesktopPlugins,
+        featureContext,
+      )
+    ) {
+      return forbidden("Computer Use Desktop plugins are disabled");
+    }
+
+    const bodyResult = await get(pluginCommandCreateBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const targetHostId =
+      auth.tokenType === "zero" ? auth.computerUseHostId : undefined;
+    if (auth.tokenType === "zero" && !targetHostId) {
+      return computerUseHostNotAuthorized;
+    }
+
+    const result = await set(
+      createComputerUseCommand$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        kind: COMPUTER_USE_PLUGIN_CALL_KIND,
+        payload: {
+          plugin: bodyResult.data.plugin,
+          tool: bodyResult.data.tool,
+          arguments: bodyResult.data.arguments,
+        },
+        timeoutMs: bodyResult.data.timeoutMs,
+        ...(auth.tokenType === "zero"
+          ? { runId: auth.runId, targetHostId }
+          : {}),
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "no_host") {
+      return notFound("No linked computer-use host found");
+    }
+    if (result.status === "host_ambiguous") {
+      return conflict("Multiple active computer-use hosts are online");
+    }
+    if (result.status === "host_offline") {
+      return conflict("No online computer-use host found");
+    }
+    if (result.status === "host_unsupported") {
+      return conflict("No online computer-use host supports this plugin tool");
+    }
+
+    return {
+      status: 200 as const,
+      body: { commandId: result.commandId, status: result.commandStatus },
+    };
+  },
+);
+
 const commandGetParams$ = pathParamsOf(zeroComputerUseCommandContract.get);
 const commandGetInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -354,6 +438,49 @@ const screenshotGetInner$ = command(
     headers.set("Content-Length", String(screenshot.buffer.length));
     headers.set("Cache-Control", "private, no-store");
     return new Response(new Uint8Array(screenshot.buffer), {
+      status: 200,
+      headers,
+    });
+  },
+);
+
+const pluginContentGetParams$ = pathParamsOf(
+  zeroComputerUseCommandContract.getPluginContent,
+);
+const pluginContentGetInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(pluginContentGetParams$);
+    const hostId =
+      auth.tokenType === "zero" ? auth.computerUseHostId : undefined;
+    if (auth.tokenType === "zero" && !hostId) {
+      return computerUseHostNotAuthorized;
+    }
+    const content = await set(
+      getComputerUseCommandPluginContent$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        commandId: params.commandId,
+        ...(hostId ? { hostId } : {}),
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (!content) {
+      return notFound("Computer-use plugin content not found");
+    }
+
+    const headers = new Headers();
+    headers.set("Content-Type", content.contentType);
+    headers.set("Content-Length", String(content.buffer.length));
+    headers.set("Cache-Control", "private, no-store");
+    headers.set(
+      "Content-Disposition",
+      `attachment; filename="${content.fileName.replaceAll('"', "")}"`,
+    );
+    return new Response(new Uint8Array(content.buffer), {
       status: 200,
       headers,
     });
@@ -518,12 +645,23 @@ export const zeroComputerUseRoutes: readonly RouteEntry[] = [
     handler: authRoute(computerUseCommandAuthOptions, writeCommandCreateInner$),
   },
   {
+    route: zeroComputerUsePluginCommandContract.create,
+    handler: authRoute(
+      computerUseCommandAuthOptions,
+      pluginCommandCreateInner$,
+    ),
+  },
+  {
     route: zeroComputerUseCommandContract.get,
     handler: authRoute(computerUseCommandAuthOptions, commandGetInner$),
   },
   {
     route: zeroComputerUseCommandContract.getScreenshot,
     handler: authRoute(computerUseCommandAuthOptions, screenshotGetInner$),
+  },
+  {
+    route: zeroComputerUseCommandContract.getPluginContent,
+    handler: authRoute(computerUseCommandAuthOptions, pluginContentGetInner$),
   },
   {
     route: zeroComputerUseHostCommandsContract.next,

@@ -5,6 +5,12 @@ import type {
   TestComputerUseStateGetResponse,
   TestComputerUseStatePostResponse,
 } from "@vm0/api-contracts/contracts/test-computer-use-state";
+import {
+  COMPUTER_USE_FILESYSTEM_PLUGIN,
+  COMPUTER_USE_PLUGIN_CALL_KIND,
+  computerUsePluginCapability,
+  computerUsePluginToolCapability,
+} from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
@@ -68,6 +74,30 @@ async function enableComputerUseDelegatedAuthorization(
       [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: true,
     },
   );
+}
+
+async function enableComputerUseDesktopPlugins(
+  actor: ApiTestUser,
+): Promise<void> {
+  await updateFeatureSwitchesForUser(
+    context,
+    {
+      userId: actor.userId,
+      orgId: requireOrg(actor),
+      orgRole: actor.orgRole,
+    },
+    {
+      [FeatureSwitchKey.ComputerUseDesktopPlugins]: true,
+    },
+  );
+}
+
+function filesystemToolCapabilities(tool: "read_text_file"): readonly string[] {
+  return [
+    COMPUTER_USE_PLUGIN_CALL_KIND,
+    computerUsePluginCapability(COMPUTER_USE_FILESYSTEM_PLUGIN),
+    computerUsePluginToolCapability(COMPUTER_USE_FILESYSTEM_PLUGIN, tool),
+  ];
 }
 
 interface ComputerUseRunFixture {
@@ -907,6 +937,182 @@ describe("FILE-03 desktop computer-use runtime", () => {
     expectApiError(offlineGrant.body);
     expect(offlineGrant.body.error.message).toBe(
       "No online computer-use host found",
+    );
+  });
+
+  it("gates plugin commands by feature switch and routes them by tool capability", async () => {
+    const actor = bdd.user();
+
+    const disabled = await api.requestCreateComputerUsePluginCommand(
+      actor,
+      {
+        plugin: "filesystem",
+        tool: "read_text_file",
+        arguments: { path: "/tmp/notes.txt" },
+      },
+      [403],
+    );
+    expectApiError(disabled.body);
+    expect(disabled.body.error.message).toBe(
+      "Computer Use Desktop plugins are disabled",
+    );
+
+    await enableComputerUseDesktopPlugins(actor);
+    const unsupportedHost = await api.startComputerUseHost(actor);
+
+    const unsupported = await api.requestCreateComputerUsePluginCommand(
+      actor,
+      {
+        plugin: "filesystem",
+        tool: "read_text_file",
+        arguments: { path: "/tmp/notes.txt" },
+      },
+      [409],
+    );
+    expectApiError(unsupported.body);
+    expect(unsupported.body.error.message).toBe(
+      "No online computer-use host supports this plugin tool",
+    );
+
+    const pluginCapabilities = filesystemToolCapabilities("read_text_file");
+    const pluginHost = await api.startComputerUseHost(actor, {
+      supportedCapabilities: pluginCapabilities,
+    });
+    const created = await api.createComputerUsePluginCommand(actor, {
+      plugin: "filesystem",
+      tool: "read_text_file",
+      arguments: { path: "/tmp/notes.txt" },
+    });
+
+    const unsupportedClaim = await api.claimNextComputerUseCommand(
+      unsupportedHost.hostToken,
+    );
+    expect(unsupportedClaim.status).toBe("idle");
+
+    const claimed = await api.claimNextComputerUseCommand(
+      pluginHost.hostToken,
+      pluginCapabilities,
+    );
+    expect(claimed.status).toBe("command");
+    if (claimed.status !== "command") {
+      throw new Error("Expected plugin host to claim the plugin command");
+    }
+    expect(claimed.command).toMatchObject({
+      id: created.commandId,
+      hostId: pluginHost.hostId,
+      kind: "plugin.call",
+      payload: {
+        plugin: "filesystem",
+        tool: "read_text_file",
+        arguments: { path: "/tmp/notes.txt" },
+      },
+    });
+  });
+
+  it("offloads filesystem plugin content and records metadata-only audit", async () => {
+    const fake = api.installComputerUseS3Fake();
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const actor = bdd.user({ orgId, userId });
+    await enableComputerUseDesktopPlugins(actor);
+
+    const pluginCapabilities = filesystemToolCapabilities("read_text_file");
+    const host = await api.startComputerUseHost(actor, {
+      supportedCapabilities: pluginCapabilities,
+    });
+    mockClerkMembership(context, actor, "org:admin");
+    const granted = zeroComputerUseToken({
+      userId,
+      orgId,
+      capabilities: ["computer-use:write"],
+      computerUseHostId: host.hostId,
+    });
+
+    const created = await api.createComputerUsePluginCommand(
+      { bearer: granted.token },
+      {
+        plugin: "filesystem",
+        tool: "read_text_file",
+        arguments: { path: "/tmp/notes.txt" },
+      },
+    );
+    const claimed = await api.claimNextComputerUseCommand(
+      host.hostToken,
+      pluginCapabilities,
+    );
+    expect(claimed.status).toBe("command");
+
+    const content = Buffer.from("private local notes");
+    await api.completeComputerUseCommandWith(
+      host.hostToken,
+      created.commandId,
+      {
+        status: "succeeded",
+        result: {
+          plugin: "filesystem",
+          tool: "read_text_file",
+          sizeBytes: content.length,
+          pluginContent: {
+            dataBase64: content.toString("base64"),
+            mimeType: "text/plain",
+            fileName: "notes.txt",
+          },
+        },
+      },
+    );
+
+    const key = `computer-use/${orgId}/${userId}/${created.commandId}/plugin-content.txt`;
+    expect(fake.puts).toHaveLength(1);
+    expect(fake.puts[0]).toMatchObject({
+      bucket: "test-user-storages",
+      key,
+      contentType: "text/plain",
+    });
+    expect(fake.puts[0]?.body.equals(content)).toBeTruthy();
+
+    const detail = await api.readComputerUseCommand(actor, created.commandId);
+    expect(detail.result?.pluginContent).toStrictEqual({
+      type: "s3",
+      mimeType: "text/plain",
+      sizeBytes: content.length,
+      fileName: "notes.txt",
+    });
+    expect(JSON.stringify(detail.result)).not.toContain(
+      content.toString("base64"),
+    );
+
+    const downloaded = await api.downloadComputerUsePluginContent(
+      actor,
+      created.commandId,
+    );
+    expect(downloaded.contentType).toBe("text/plain");
+    expect(downloaded.fileName).toBe("notes.txt");
+    expect(downloaded.bytes.equals(content)).toBeTruthy();
+
+    const audit = await api.listComputerUseAuditEvents(actor, {
+      runId: granted.runId,
+      hostId: host.hostId,
+    });
+    expect(audit.auditEvents).toHaveLength(1);
+    expect(audit.auditEvents[0]).toMatchObject({
+      commandId: created.commandId,
+      runId: granted.runId,
+      hostId: host.hostId,
+      kind: "plugin.call",
+      redactedResult: {
+        plugin: "filesystem",
+        tool: "read_text_file",
+        status: "succeeded",
+        destructive: false,
+        path: "/tmp/notes.txt",
+        offloaded: true,
+        sizeBytes: content.length,
+        fileName: "notes.txt",
+        mimeType: "text/plain",
+      },
+    });
+    expect(JSON.stringify(audit.auditEvents[0]?.redactedResult)).not.toContain(
+      "private local notes",
     );
   });
 

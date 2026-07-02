@@ -656,6 +656,34 @@ button {
   white-space: nowrap;
 }
 
+.filesystem-directory-list {
+  display: grid;
+  gap: 8px;
+}
+
+.filesystem-directory-row {
+  min-height: 42px;
+  border: 1px solid rgba(30, 38, 52, 0.08);
+  border-radius: 7px;
+  padding: 6px 6px 6px 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  background: #f8fafc;
+}
+
+.filesystem-directory-row span {
+  min-width: 0;
+  color: #202631;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .raw-log-details summary {
   color: #3d4a5c;
   font-size: 12px;
@@ -778,6 +806,12 @@ button {
   background: #fffbeb;
   font-size: 13px;
   line-height: 1.4;
+}
+
+.inline-alert-error {
+  border-color: rgba(180, 35, 24, 0.22);
+  color: #b42318;
+  background: #fef3f2;
 }
 
 .runtime-error-modal {

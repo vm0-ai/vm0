@@ -186,6 +186,21 @@ function createComputerUseBridge(initialState: DesktopComputerUseState): {
     });
     return currentState;
   });
+  const setFilesystemPluginEnabled = vi.fn<
+    DesktopComputerUseApi["setFilesystemPluginEnabled"]
+  >(async () => {
+    return currentState;
+  });
+  const addFilesystemPluginAllowedDirectory = vi.fn<
+    DesktopComputerUseApi["addFilesystemPluginAllowedDirectory"]
+  >(async () => {
+    return currentState;
+  });
+  const removeFilesystemPluginAllowedDirectory = vi.fn<
+    DesktopComputerUseApi["removeFilesystemPluginAllowedDirectory"]
+  >(async () => {
+    return currentState;
+  });
   const subscribe = vi.fn<DesktopComputerUseApi["subscribe"]>((callback) => {
     subscribers.add(callback);
     return () => {
@@ -201,6 +216,9 @@ function createComputerUseBridge(initialState: DesktopComputerUseState): {
     requestScreenRecordingPermission,
     probeAutomationPermission,
     setKeepAwakeEnabled,
+    setFilesystemPluginEnabled,
+    addFilesystemPluginAllowedDirectory,
+    removeFilesystemPluginAllowedDirectory,
     openAccessibilitySettings: vi.fn<
       DesktopComputerUseApi["openAccessibilitySettings"]
     >(async () => {}),
