@@ -2778,6 +2778,7 @@ dependencies = [
  "async-trait",
  "guest-contracts",
  "sandbox",
+ "tempfile",
  "tokio",
  "uuid",
 ]
