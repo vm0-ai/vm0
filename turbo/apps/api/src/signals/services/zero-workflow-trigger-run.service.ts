@@ -35,6 +35,9 @@ export interface DueWorkflowTrigger {
   readonly agentId: string;
   readonly workflowName: string;
   readonly chatThreadId: string;
+  // One-time schedule triggers are disabled as part of the optimistic claim.
+  // That claimed row can still proceed through the run-start readability gate.
+  readonly allowClaimedOnceScheduleTrigger?: boolean;
 }
 
 type RunErrorResponse = {
@@ -273,6 +276,7 @@ async function checkWorkflowTriggerTargetReadable(args: {
   readonly db: Db;
   readonly trigger: TriggerRow;
   readonly agentId: string;
+  readonly allowClaimedOnceScheduleTrigger: boolean;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
 }): Promise<RunFailure | undefined> {
@@ -284,6 +288,7 @@ async function checkWorkflowTriggerTargetReadable(args: {
       const canFire = await workflowTriggerCanFire(args.db, {
         trigger: args.trigger,
         agentId: args.agentId,
+        allowClaimedOnceScheduleTrigger: args.allowClaimedOnceScheduleTrigger,
         signal: args.signal,
       });
       args.signal.throwIfAborted();
@@ -379,6 +384,8 @@ export const runWorkflowTriggerNow$ = command(
       db,
       trigger,
       agentId,
+      allowClaimedOnceScheduleTrigger:
+        args.due.allowClaimedOnceScheduleTrigger === true,
       timing,
       signal,
     });

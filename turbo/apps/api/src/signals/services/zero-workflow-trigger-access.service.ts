@@ -65,10 +65,18 @@ export async function workflowTriggerCanFire(
   args: {
     readonly trigger: WorkflowTriggerRow;
     readonly agentId: string;
+    readonly allowClaimedOnceScheduleTrigger?: boolean;
     readonly signal: AbortSignal;
   },
 ): Promise<boolean> {
-  if (!args.trigger.enabled) {
+  const claimedOnceSchedule =
+    args.allowClaimedOnceScheduleTrigger === true &&
+    args.trigger.kind === "schedule" &&
+    args.trigger.scheduleType === "once" &&
+    args.trigger.nextRunAt === null &&
+    args.trigger.lastRunAt !== null;
+
+  if (!args.trigger.enabled && !claimedOnceSchedule) {
     return false;
   }
 
