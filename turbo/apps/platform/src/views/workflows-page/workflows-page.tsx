@@ -8,7 +8,6 @@ import {
 } from "ccstate-react";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  IconBolt,
   IconChevronDown,
   IconLock,
   IconPlus,
@@ -118,8 +117,8 @@ function connectorPillClassName({
   readonly muted?: boolean;
 }) {
   return cn(
-    "inline-flex h-8 shrink-0 items-center gap-2 rounded-full border border-border/70 bg-background px-2.5 py-1 text-xs font-medium shadow-[0_1px_0_rgba(0,0,0,0.03)]",
-    muted ? "text-muted-foreground" : "text-foreground/80",
+    "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-background px-2 text-[11px] font-normal leading-none",
+    muted ? "text-muted-foreground" : "text-foreground/70",
     interactive &&
       "transition-colors hover:border-border hover:bg-gray-50 hover:text-foreground",
   );
@@ -130,7 +129,9 @@ function ConnectorPillMarker({
 }: {
   readonly dotClassName: string;
 }) {
-  return <span className={cn("h-2 w-2 shrink-0 rounded-full", dotClassName)} />;
+  return (
+    <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotClassName)} />
+  );
 }
 
 /** The agent that runs the workflow, drawn as its real avatar. */
@@ -594,6 +595,7 @@ function FilterPills<T extends string>({
   value,
   options,
   onChange,
+  deselectValue,
 }: {
   readonly value: T;
   readonly options: readonly {
@@ -601,9 +603,11 @@ function FilterPills<T extends string>({
     readonly label: ReactNode;
   }[];
   readonly onChange: (value: T) => void;
+  /** When set, clicking the active pill toggles back to this value. */
+  readonly deselectValue?: T;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <>
       {options.map((option) => {
         const active = option.value === value;
         return (
@@ -611,10 +615,14 @@ function FilterPills<T extends string>({
             key={option.value}
             type="button"
             onClick={() => {
-              onChange(option.value);
+              onChange(
+                active && deselectValue !== undefined
+                  ? deselectValue
+                  : option.value,
+              );
             }}
             className={cn(
-              "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors",
+              "inline-flex h-7 shrink-0 cursor-pointer items-center rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors",
               active
                 ? "bg-muted text-foreground"
                 : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
@@ -624,7 +632,7 @@ function FilterPills<T extends string>({
           </button>
         );
       })}
-    </div>
+    </>
   );
 }
 
@@ -710,47 +718,23 @@ function WorkflowFilterBar({
   const setSortMode = useSet(setWorkflowSortMode$);
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+    <div className="flex flex-wrap items-center gap-1.5">
       <FilterPills
         value={automation}
         onChange={setAutomation}
         options={[
           { value: "all", label: "All" },
-          {
-            value: "automated",
-            label: (
-              <>
-                <IconBolt size={13} stroke={1.8} />
-                Automated
-              </>
-            ),
-          },
+          { value: "automated", label: "Automated" },
           { value: "without", label: "Without automation" },
         ]}
       />
       <FilterPills
         value={visibility}
         onChange={setVisibility}
+        deselectValue="all"
         options={[
-          { value: "all", label: "Any" },
-          {
-            value: "private",
-            label: (
-              <>
-                <IconLock size={13} stroke={1.8} />
-                Private
-              </>
-            ),
-          },
-          {
-            value: "public",
-            label: (
-              <>
-                <IconWorld size={13} stroke={1.8} />
-                Public
-              </>
-            ),
-          },
+          { value: "private", label: "Private" },
+          { value: "public", label: "Public" },
         ]}
       />
       <div className="ml-auto">
