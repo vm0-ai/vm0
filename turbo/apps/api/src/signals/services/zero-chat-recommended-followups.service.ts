@@ -32,8 +32,10 @@ function isRecommendedFollowupGenerationType(
 }
 
 function isJsonSyntaxPromptFragment(prompt: string): boolean {
+  let fieldStart = 0;
   let onlyJsonPunctuation = true;
-  for (const char of prompt) {
+  for (let index = 0; index < prompt.length; index += 1) {
+    const char = prompt.charAt(index);
     if (
       char !== "[" &&
       char !== "]" &&
@@ -43,6 +45,7 @@ function isJsonSyntaxPromptFragment(prompt: string): boolean {
       char.trim() !== ""
     ) {
       onlyJsonPunctuation = false;
+      fieldStart = index;
       break;
     }
   }
@@ -50,8 +53,8 @@ function isJsonSyntaxPromptFragment(prompt: string): boolean {
     return true;
   }
 
-  return /^,?\s*(?:\[\s*)?(?:\{\s*)?"?(?:prompt|kind|generationType)"\s*:/.test(
-    prompt,
+  return /^"?(?:prompt|kind|generationType)"\s*:/.test(
+    prompt.slice(fieldStart),
   );
 }
 
