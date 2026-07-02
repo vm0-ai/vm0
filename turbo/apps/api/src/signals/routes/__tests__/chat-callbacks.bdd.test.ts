@@ -176,6 +176,7 @@ async function queueChatMessage(
     readonly prompt: string;
     readonly attachFiles?: readonly AttachFile[];
     readonly generationTemplate?: GenerationTemplateRequest;
+    readonly selectedModel?: string;
   },
 ): Promise<void> {
   const sent = await chat.requestSendMessage(
@@ -190,6 +191,14 @@ async function queueChatMessage(
       ...(body.generationTemplate === undefined
         ? {}
         : { generationTemplate: body.generationTemplate }),
+      ...(body.selectedModel === undefined
+        ? {}
+        : {
+            modelSelection: {
+              modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+              selectedModel: body.selectedModel,
+            },
+          }),
     },
     [201],
   );
@@ -2178,6 +2187,90 @@ describe("CHAT-02: auto-send after failures", () => {
 });
 
 describe("CHAT-02: auto-send across a model switch", () => {
+  it("preserves the queued message model pin when later queued messages change the thread model", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await chatCallbacks.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "claude-opus-4-6",
+        isDefault: false,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const active = await startChatRun(actor, {
+      agentId,
+      prompt: "active opus turn",
+      selectedModel: "claude-opus-4-6",
+    });
+    const activeHeaders = await claimChatRun(runnerGroup, active.runId);
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: active.threadId,
+      prompt: "queued sonnet turn",
+      selectedModel: "claude-sonnet-4-6",
+    });
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: active.threadId,
+      prompt: "queued opus turn",
+      selectedModel: "claude-opus-4-6",
+    });
+
+    chatCallbacks.mockChatOutputEvents([assistantEvent(0, "active done")]);
+    await completeChatRunOk(active.runId, activeHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      active.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.content === "queued sonnet turn" &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    const claimed = userMessages(messages.messages).find((message) => {
+      return (
+        message.content === "queued sonnet turn" && message.runId !== undefined
+      );
+    });
+    if (!claimed?.runId) {
+      throw new Error("Expected the first queued message to be auto-claimed");
+    }
+
+    const metadata = await postChatMessagesStateAction({
+      action: "read-run-model-metadata",
+      run_id: claimed.runId,
+    });
+    expect(metadata.run_selected_model).toBe("claude-sonnet-4-6");
+    expect(metadata.run_model_provider).toBe("anthropic-api-key");
+    expect(metadata.run_model_provider_credential_scope).toBe("org");
+
+    const autoContext = await waitForRunContext(actor, claimed.runId);
+    expect(autoContext.body.sessionId).toBeNull();
+
+    const thread = await chat.readThread(actor, active.threadId);
+    expect(thread.selectedModel).toBe("claude-opus-4-6");
+
+    await api.requestCancelRun(actor, claimed.runId, [200]);
+    await waitForRunStatus(actor, claimed.runId, "cancelled");
+  }, 90_000);
+
   it("starts a fresh session with prior web context when the queued model differs, without regenerating an existing title", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();

@@ -336,6 +336,7 @@ interface QueuedUserMessage {
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly selectedModel: string | null;
+  readonly modelPinCaptured: boolean;
 }
 
 interface AgentForAutoSend {
@@ -1633,10 +1634,13 @@ async function nextQueuedUserMessage(
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
       generationTemplate: chatMessages.generationTemplate,
-      modelProviderId: sql<null>`NULL`,
-      modelProviderType: sql<null>`NULL`,
-      modelProviderCredentialScope: sql<null>`NULL`,
-      selectedModel: chatThreads.selectedModel,
+      modelProviderId: chatMessages.modelProviderId,
+      modelProviderType: chatMessages.modelProviderType,
+      modelProviderCredentialScope: sql<ModelProviderCredentialScope | null>`${chatMessages.modelProviderCredentialScope}`,
+      selectedModel: sql<
+        string | null
+      >`COALESCE(${chatMessages.selectedModel}, ${chatThreads.selectedModel})`,
+      modelPinCaptured: sql<boolean>`(${chatMessages.modelProviderId} IS NOT NULL OR ${chatMessages.modelProviderType} IS NOT NULL OR ${chatMessages.modelProviderCredentialScope} IS NOT NULL OR ${chatMessages.selectedModel} IS NOT NULL)`,
     })
     .from(chatMessages)
     .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
@@ -1746,6 +1750,9 @@ async function resolveQueuedMessageModelPin(params: {
   readonly queuedMessage: QueuedUserMessage;
 }): Promise<QueuedUserMessage> {
   if (!params.queuedMessage.selectedModel) {
+    return params.queuedMessage;
+  }
+  if (params.queuedMessage.modelPinCaptured) {
     return params.queuedMessage;
   }
 

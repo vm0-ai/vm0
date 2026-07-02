@@ -8,6 +8,7 @@ import {
   integer,
   uniqueIndex,
   jsonb,
+  varchar,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
@@ -178,6 +179,13 @@ export const chatMessages = pgTable(
     automationSnapshot: jsonb(
       "automation_snapshot",
     ).$type<ChatMessageAutomationSnapshot>(),
+    // Model pin captured when a user message is queued behind an active run.
+    modelProviderId: uuid("model_provider_id"),
+    modelProviderType: varchar("model_provider_type", { length: 50 }),
+    modelProviderCredentialScope: varchar("model_provider_credential_scope", {
+      length: 20,
+    }),
+    selectedModel: varchar("selected_model", { length: 255 }),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
     thinking: text("thinking"),

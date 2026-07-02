@@ -1592,6 +1592,7 @@ function appendUnassociatedUserMessage(params: {
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
   readonly generationTemplate: IncomingGenerationTemplate;
+  readonly modelPin: ThreadModelPin;
 }): Promise<ClientMessageIdResolution | NoActiveRunForQueuedMessage> {
   return params.db.transaction(async (tx) => {
     const activeRunLocked = await lockActiveRunForQueuedMessage(
@@ -1626,6 +1627,11 @@ function appendUnassociatedUserMessage(params: {
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
         generationTemplate: params.generationTemplate,
+        modelProviderId: params.modelPin.modelProviderId,
+        modelProviderType: params.modelPin.modelProviderType,
+        modelProviderCredentialScope:
+          params.modelPin.modelProviderCredentialScope,
+        selectedModel: params.modelPin.selectedModel,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
@@ -2149,6 +2155,7 @@ async function queueUnassociatedNormalMessage(params: {
   readonly prepared: PreparedNormalSend;
   readonly body: NormalSendBody;
   readonly userId: string;
+  readonly modelPin: ThreadModelPin;
 }): Promise<QueueUnassociatedNormalMessageResult> {
   const message = await appendUnassociatedUserMessage({
     db: params.prepared.db,
@@ -2158,6 +2165,7 @@ async function queueUnassociatedNormalMessage(params: {
     attachFiles: params.body.attachFiles,
     clientMessageId: params.body.clientMessageId,
     generationTemplate: params.body.generationTemplate,
+    modelPin: params.modelPin,
   });
   if (message.kind === "no-active-run") {
     return message;
@@ -2576,6 +2584,7 @@ const createNormalChatRun$ = command(
         prepared,
         body: args.body,
         userId: args.userId,
+        modelPin,
       });
     }
 
@@ -2690,10 +2699,16 @@ export const sendNormalMessage$ = command(
         if (args.body.revokesMessageId) {
           return badRequestMessage("Recommended follow-up cannot be queued");
         }
+        const modelPin = await resolveTimedRunModelPin(args, prepared);
+        signal.throwIfAborted();
+        if ("status" in modelPin) {
+          return modelPin;
+        }
         const response = await queueUnassociatedNormalMessage({
           prepared,
           body: args.body,
           userId: args.userId,
+          modelPin,
         });
         signal.throwIfAborted();
         if (!isNoActiveRunForQueuedMessage(response)) {
