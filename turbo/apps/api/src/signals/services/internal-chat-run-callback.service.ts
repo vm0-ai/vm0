@@ -1345,7 +1345,7 @@ function generationTemplateReplayMarker(
   }
   const description = describeGenerationTemplateSelection(generationTemplate);
   return description
-    ? `[This turn selected a template — ${description}.]\n`
+    ? `[Selected a template — ${description}.]\n`
     : "";
 }
 
