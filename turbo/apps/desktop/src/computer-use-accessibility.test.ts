@@ -323,25 +323,10 @@ describe("executeComputerUseCommand", () => {
     expect(result.result.appState).toContain(
       "The focused UI element is 1 button Open.",
     );
-    expect(result.result.visibleText).toContain("1 AXButton [AXTitle] Open");
-    expect(result.result.elements).toStrictEqual([
-      {
-        index: 0,
-        role: "AXWindow",
-        name: "Inbox",
-        children: [
-          {
-            index: 1,
-            role: "AXButton",
-            name: "Open",
-            focused: true,
-            actions: ["AXPress"],
-            pressable: true,
-            bounds: { x: 120, y: 260, width: 80, height: 32 },
-          },
-        ],
-      },
-    ]);
+    expect(result.result.elements).toBeUndefined();
+    expect(result.result.visibleText).toBeUndefined();
+    expect(result.result.visibleElements).toBeUndefined();
+    expect(result.result.visibleTextSource).toBeUndefined();
     expect(
       snapshotStore.get("Things", String(result.result.snapshotId)),
     ).toMatchObject({

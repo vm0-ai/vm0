@@ -4,9 +4,12 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   currentLeftThread$,
   currentRightThread$,
-  loadLeftThread$,
-  loadRightThread$,
 } from "./chat-thread-panes.ts";
+import {
+  clickAdjacentSidebarThread,
+  sidebarThreadTitleForPane,
+  type SidebarThreadPane,
+} from "./chat-sidebar-dom.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import {
   clearChatThreadEmojiFromThreadData$,
@@ -22,13 +25,6 @@ import {
   setupGlobalShortcut,
   type GlobalShortcutBindings,
 } from "../../lib/setup-global-shortcut.ts";
-import { sidebarChatThreads$ } from "./optimistic-chat-thread-page.ts";
-
-interface NavigableThread {
-  readonly id: string;
-  readonly title?: string | null;
-}
-
 function plainArrowScrollDirection(
   event: KeyboardEvent,
 ): ScrollStepDirection | null {
@@ -103,21 +99,124 @@ function resolveKeyboardScrollThread(
   return leftThread;
 }
 
-const focusedThreadSidebarTitle$ = command(
-  async ({ get }, thread: ChatThreadSignals, signal: AbortSignal) => {
-    const threads = await get(sidebarChatThreads$);
-    signal.throwIfAborted();
-    const navigableThread = threads.find((item) => {
-      return item.id === thread.threadId;
-    });
-    return navigableThread?.title;
-  },
-);
+function containingChatThread(
+  target: EventTarget | null,
+  leftThread: ChatThreadSignals | null,
+  rightThread: ChatThreadSignals | null,
+  containerElForThread: (thread: ChatThreadSignals) => HTMLElement | null,
+): ChatThreadSignals | null {
+  if (
+    rightThread &&
+    containerContainsTarget(containerElForThread(rightThread), target)
+  ) {
+    return rightThread;
+  }
+  if (
+    leftThread &&
+    containerContainsTarget(containerElForThread(leftThread), target)
+  ) {
+    return leftThread;
+  }
+  return null;
+}
+
+function paneForThread(
+  leftThread: ChatThreadSignals | null,
+  rightThread: ChatThreadSignals | null,
+  thread: ChatThreadSignals | null,
+): SidebarThreadPane | null {
+  if (!thread) {
+    return null;
+  }
+  if (thread.threadId === rightThread?.threadId) {
+    return "side";
+  }
+  if (thread.threadId === leftThread?.threadId) {
+    return "main";
+  }
+  return null;
+}
+
+function setupKeyboardScrollPrepareListener({
+  activeThreadId,
+  containingThread,
+  currentLeftThread,
+  currentRightThread,
+  doc,
+  prepareScroll,
+  root,
+  signal,
+}: {
+  activeThreadId: () => string | null;
+  containingThread: (target: EventTarget | null) => ChatThreadSignals | null;
+  currentLeftThread: () => ChatThreadSignals | null;
+  currentRightThread: () => ChatThreadSignals | null;
+  doc: Document;
+  prepareScroll: (thread: ChatThreadSignals) => void;
+  root: HTMLElement;
+  signal: AbortSignal;
+}): void {
+  doc.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+      const direction = plainArrowScrollDirection(event);
+      if (!direction || !isKeyboardScrollAllowedTarget(root, event.target)) {
+        return;
+      }
+      const thread = resolveKeyboardScrollThread(
+        currentLeftThread(),
+        currentRightThread(),
+        containingThread(event.target)?.threadId ?? activeThreadId(),
+      );
+      if (thread) {
+        prepareScroll(thread);
+      }
+    },
+    { signal },
+  );
+}
+
+interface ChatPageShortcutActions {
+  clearEmoji: () => void | Promise<void>;
+  openEmojiMenu: () => void | Promise<void>;
+  renameThread: () => void | Promise<void>;
+  navigateNext: () => void | Promise<void>;
+  navigatePrev: () => void | Promise<void>;
+  scrollBottom: () => void | Promise<void>;
+  scrollTop: () => void | Promise<void>;
+  setEmoji: (emoji: string) => void | Promise<void>;
+}
+
+function setupChatPageGlobalShortcutListener({
+  actions,
+  doc,
+  root,
+  signal,
+}: {
+  actions: ChatPageShortcutActions;
+  doc: Document;
+  root: HTMLElement;
+  signal: AbortSignal;
+}): void {
+  setupGlobalShortcut(createChatPageShortcutBindings(actions), signal, {
+    doc,
+    shouldHandleEvent: (event) => {
+      return isChatShortcutTarget(root, event.target);
+    },
+  });
+}
 
 const setFocusedThreadEmoji$ = command(
   async (
     { get, set },
-    args: { thread: ChatThreadSignals; emoji: string },
+    args: {
+      thread: ChatThreadSignals;
+      emoji: string;
+      title?: string | null;
+    },
     signal: AbortSignal,
   ) => {
     if (!(get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false)) {
@@ -128,7 +227,7 @@ const setFocusedThreadEmoji$ = command(
       {
         threadId: args.thread.threadId,
         emoji: args.emoji,
-        title: await set(focusedThreadSidebarTitle$, args.thread, signal),
+        title: args.title,
       },
       signal,
     );
@@ -136,15 +235,19 @@ const setFocusedThreadEmoji$ = command(
 );
 
 const clearFocusedThreadEmoji$ = command(
-  async ({ get, set }, thread: ChatThreadSignals, signal: AbortSignal) => {
+  async (
+    { get, set },
+    args: { thread: ChatThreadSignals; title?: string | null },
+    signal: AbortSignal,
+  ) => {
     if (!(get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false)) {
       return;
     }
     await set(
       clearChatThreadEmojiFromThreadData$,
       {
-        threadId: thread.threadId,
-        title: await set(focusedThreadSidebarTitle$, thread, signal),
+        threadId: args.thread.threadId,
+        title: args.title,
       },
       signal,
     );
@@ -152,43 +255,18 @@ const clearFocusedThreadEmoji$ = command(
 );
 
 const openFocusedThreadEmojiMenu$ = command(
-  async ({ get, set }, thread: ChatThreadSignals, signal: AbortSignal) => {
+  async (
+    { get, set },
+    args: { thread: ChatThreadSignals; title?: string | null },
+    signal: AbortSignal,
+  ) => {
     if (!(get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false)) {
       return;
     }
-    const threadData = await get(thread.threadData$);
+    const threadData = await get(args.thread.threadData$);
     signal.throwIfAborted();
-    const snapshotTitle = await set(focusedThreadSidebarTitle$, thread, signal);
-    signal.throwIfAborted();
-    const title =
-      snapshotTitle !== undefined ? snapshotTitle : threadData?.title;
-    set(openChatThreadEmojiMenu$, { threadId: thread.threadId, title });
-  },
-);
-
-const navigateFocusedThreadFromSidebar$ = command(
-  async (
-    { get, set },
-    args: {
-      thread: ChatThreadSignals | null;
-      direction: "prev" | "next";
-    },
-    signal: AbortSignal,
-  ) => {
-    if (!args.thread) {
-      return;
-    }
-    const threads = await get(sidebarChatThreads$);
-    signal.throwIfAborted();
-    await set(
-      navigateToAdjacentThread$,
-      {
-        currentThreadId: args.thread.threadId,
-        direction: args.direction,
-        threads,
-      },
-      signal,
-    );
+    const title = args.title !== undefined ? args.title : threadData?.title;
+    set(openChatThreadEmojiMenu$, { threadId: args.thread.threadId, title });
   },
 );
 
@@ -227,16 +305,7 @@ function createChatPageShortcutBindings({
   scrollBottom,
   scrollTop,
   setEmoji,
-}: {
-  clearEmoji: () => void | Promise<void>;
-  openEmojiMenu: () => void | Promise<void>;
-  renameThread: () => void | Promise<void>;
-  navigateNext: () => void | Promise<void>;
-  navigatePrev: () => void | Promise<void>;
-  scrollBottom: () => void | Promise<void>;
-  scrollTop: () => void | Promise<void>;
-  setEmoji: (emoji: string) => void | Promise<void>;
-}): GlobalShortcutBindings {
+}: ChatPageShortcutActions): GlobalShortcutBindings {
   return {
     "shift+f2": {
       allowInEditableTarget: true,
@@ -288,47 +357,6 @@ export const focusChatThreadContainer$ = command(
   },
 );
 
-export const navigateToAdjacentThread$ = command(
-  async (
-    { get, set },
-    args: {
-      currentThreadId: string;
-      direction: "prev" | "next";
-      threads: readonly NavigableThread[];
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const leftThreadId = get(currentLeftThread$)?.threadId ?? null;
-    const rightThreadId = get(currentRightThread$)?.threadId ?? null;
-    const inMainPane = args.currentThreadId === leftThreadId;
-    const inSidebarPane = args.currentThreadId === rightThreadId;
-    if (!inMainPane && !inSidebarPane) {
-      return;
-    }
-
-    const excludedThreadId = inMainPane ? rightThreadId : leftThreadId;
-    const availableThreads = args.threads.filter((thread) => {
-      return thread.id !== excludedThreadId;
-    });
-    const idx = availableThreads.findIndex((t) => {
-      return t.id === args.currentThreadId;
-    });
-    if (idx === -1) {
-      return;
-    }
-    const targetIdx = args.direction === "prev" ? idx - 1 : idx + 1;
-    if (targetIdx < 0 || targetIdx >= availableThreads.length) {
-      return;
-    }
-    const targetThreadId = availableThreads[targetIdx]!.id;
-    if (inMainPane) {
-      await set(loadLeftThread$, targetThreadId, signal);
-    } else {
-      await set(loadRightThread$, targetThreadId, signal);
-    }
-  },
-);
-
 export const scrollCurrentThread$ = command(
   (
     { set },
@@ -353,21 +381,14 @@ export const setChatKeyboardScrollRoot$ = onRef(
     const doc = el.ownerDocument;
 
     const containingThread = (target: EventTarget | null) => {
-      const leftThread = get(currentLeftThread$);
-      const rightThread = get(currentRightThread$);
-      if (
-        rightThread &&
-        containerContainsTarget(get(rightThread.containerEl$), target)
-      ) {
-        return rightThread;
-      }
-      if (
-        leftThread &&
-        containerContainsTarget(get(leftThread.containerEl$), target)
-      ) {
-        return leftThread;
-      }
-      return null;
+      return containingChatThread(
+        target,
+        get(currentLeftThread$),
+        get(currentRightThread$),
+        (thread) => {
+          return get(thread.containerEl$);
+        },
+      );
     };
     const markActiveThread = (event: Event) => {
       activeThreadId = containingThread(event.target)?.threadId ?? null;
@@ -375,22 +396,51 @@ export const setChatKeyboardScrollRoot$ = onRef(
     const focusedThread = () => {
       return containingThread(doc.activeElement) ?? get(currentLeftThread$);
     };
+    const sidebarTitleForThread = (thread: ChatThreadSignals) => {
+      return sidebarThreadTitleForPane(
+        el,
+        paneForThread(
+          get(currentLeftThread$),
+          get(currentRightThread$),
+          thread,
+        ),
+        thread.threadId,
+      );
+    };
+    const navigateFocusedThread = (direction: "prev" | "next") => {
+      const pane = paneForThread(
+        get(currentLeftThread$),
+        get(currentRightThread$),
+        focusedThread(),
+      );
+      if (pane) {
+        clickAdjacentSidebarThread(el, pane, direction);
+      }
+    };
 
     el.addEventListener("focusin", markActiveThread, { signal });
     el.addEventListener("pointerdown", markActiveThread, { signal });
     el.addEventListener("pointerover", markActiveThread, { signal });
-    setupGlobalShortcut(
-      createChatPageShortcutBindings({
+    setupChatPageGlobalShortcutListener({
+      actions: {
         clearEmoji: async () => {
           const thread = focusedThread();
           if (thread) {
-            await set(clearFocusedThreadEmoji$, thread, signal);
+            await set(
+              clearFocusedThreadEmoji$,
+              { thread, title: sidebarTitleForThread(thread) },
+              signal,
+            );
           }
         },
         openEmojiMenu: async () => {
           const thread = focusedThread();
           if (thread) {
-            await set(openFocusedThreadEmojiMenu$, thread, signal);
+            await set(
+              openFocusedThreadEmojiMenu$,
+              { thread, title: sidebarTitleForThread(thread) },
+              signal,
+            );
           }
         },
         renameThread: async () => {
@@ -403,19 +453,11 @@ export const setChatKeyboardScrollRoot$ = onRef(
             );
           }
         },
-        navigateNext: async () => {
-          await set(
-            navigateFocusedThreadFromSidebar$,
-            { thread: focusedThread(), direction: "next" },
-            signal,
-          );
+        navigateNext: () => {
+          navigateFocusedThread("next");
         },
-        navigatePrev: async () => {
-          await set(
-            navigateFocusedThreadFromSidebar$,
-            { thread: focusedThread(), direction: "prev" },
-            signal,
-          );
+        navigatePrev: () => {
+          navigateFocusedThread("prev");
         },
         scrollBottom: () => {
           const thread = focusedThread();
@@ -432,39 +474,36 @@ export const setChatKeyboardScrollRoot$ = onRef(
         setEmoji: async (emoji) => {
           const thread = focusedThread();
           if (thread) {
-            await set(setFocusedThreadEmoji$, { thread, emoji }, signal);
+            await set(
+              setFocusedThreadEmoji$,
+              { thread, emoji, title: sidebarTitleForThread(thread) },
+              signal,
+            );
           }
         },
-      }),
+      },
+      doc,
+      root: el,
       signal,
-      {
-        doc,
-        shouldHandleEvent: (event) => {
-          return isChatShortcutTarget(el, event.target);
-        },
+    });
+    setupKeyboardScrollPrepareListener({
+      containingThread,
+      doc,
+      root: el,
+      signal,
+      activeThreadId() {
+        return activeThreadId;
       },
-    );
-    doc.addEventListener(
-      "keydown",
-      (event) => {
-        if (event.defaultPrevented) {
-          return;
-        }
-        const direction = plainArrowScrollDirection(event);
-        if (!direction || !isKeyboardScrollAllowedTarget(el, event.target)) {
-          return;
-        }
-        const thread = resolveKeyboardScrollThread(
-          get(currentLeftThread$),
-          get(currentRightThread$),
-          containingThread(event.target)?.threadId ?? activeThreadId,
-        );
-        if (thread) {
-          set(thread.prepareKeyboardScroll$);
-        }
+      currentLeftThread() {
+        return get(currentLeftThread$);
       },
-      { signal },
-    );
+      currentRightThread() {
+        return get(currentRightThread$);
+      },
+      prepareScroll(thread) {
+        set(thread.prepareKeyboardScroll$);
+      },
+    });
   }),
 );
 

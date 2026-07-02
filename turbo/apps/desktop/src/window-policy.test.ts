@@ -3,7 +3,6 @@ import {
   ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS,
   ComputerUseSnapshotStore,
   type ComputerUseCoordinateBounds,
-  collectAccessibilityVisibleElements,
   executeComputerUseCommand,
   normalizeAccessibilitySnapshot,
   renderAccessibilityTree,
@@ -929,96 +928,6 @@ describe("computer use desktop runtime", () => {
     expect(text).not.toContain("Secondary Actions: Pick");
   });
 
-  it("builds an AX-derived visible element summary", () => {
-    const snapshot = normalizeAccessibilitySnapshot({
-      app: "Things",
-      snapshotId: "snap_1",
-      elements: [
-        {
-          id: "w0",
-          role: "AXWindow",
-          name: "Things",
-          bounds: { x: 0, y: 0, width: 800, height: 600 },
-          children: [
-            {
-              id: "w0.a0",
-              role: "AXRow",
-              description: "Hello Computer Use",
-              selected: true,
-              selectable: true,
-              mouseClickable: true,
-              clickableKind: "select",
-              bounds: { x: 24, y: 120, width: 360, height: 24 },
-            },
-            {
-              id: "w0.a1",
-              role: "AXRow",
-              help: "Can you see this?",
-              selectable: true,
-              mouseClickable: true,
-              clickableKind: "select",
-              bounds: { x: 24, y: 152, width: 360, height: 24 },
-            },
-            {
-              id: "w0.a2",
-              role: "AXRow",
-              value: "Hidden old task",
-              hidden: true,
-              bounds: { x: 24, y: 184, width: 360, height: 24 },
-            },
-            {
-              id: "w0.a3",
-              role: "AXRow",
-              value: "Scrolled away task",
-              bounds: { x: 24, y: 900, width: 360, height: 24 },
-            },
-          ],
-        },
-      ],
-    });
-
-    const visibleElements = collectAccessibilityVisibleElements(snapshot, {
-      x: 0,
-      y: 0,
-      width: 800,
-      height: 600,
-    });
-
-    expect(visibleElements).toStrictEqual([
-      {
-        elementId: "w0",
-        role: "AXWindow",
-        text: "Things",
-        source: "accessibility",
-        sourceAttributes: ["AXTitle"],
-        bounds: { x: 0, y: 0, width: 800, height: 600 },
-      },
-      {
-        elementId: "w0.a0",
-        role: "AXRow",
-        text: "Hello Computer Use",
-        source: "accessibility",
-        sourceAttributes: ["AXDescription"],
-        bounds: { x: 24, y: 120, width: 360, height: 24 },
-        selected: true,
-        selectable: true,
-        mouseClickable: true,
-        clickableKind: "select",
-      },
-      {
-        elementId: "w0.a1",
-        role: "AXRow",
-        text: "Can you see this?",
-        source: "accessibility",
-        sourceAttributes: ["AXHelp"],
-        bounds: { x: 24, y: 152, width: 360, height: 24 },
-        selectable: true,
-        mouseClickable: true,
-        clickableKind: "select",
-      },
-    ]);
-  });
-
   it("compacts structural web wrappers while preserving child controls", () => {
     const snapshot = {
       app: "Slack",
@@ -1504,18 +1413,6 @@ describe("computer use desktop runtime", () => {
       result: {
         app: "Safari",
         snapshotId: expect.stringMatching(/^desktop_/),
-        visibleTextSource: "accessibility",
-        visibleText: "0 AXWindow [AXTitle] Example",
-        visibleElements: [
-          {
-            elementIndex: 0,
-            elementId: "w0",
-            role: "AXWindow",
-            text: "Example",
-            source: "accessibility",
-            sourceAttributes: ["AXTitle"],
-          },
-        ],
         screenshot: "data:image/png;base64,abc123",
         screenshotMimeType: "image/png",
         screenshotSource: "window",
@@ -1526,13 +1423,10 @@ describe("computer use desktop runtime", () => {
       },
     });
     expect(result.result.appState).toContain("0 standard window Example");
-    expect(result.result.elements).toStrictEqual([
-      {
-        index: 0,
-        role: "AXWindow",
-        name: "Example",
-      },
-    ]);
+    expect(result.result.elements).toBeUndefined();
+    expect(result.result.visibleText).toBeUndefined();
+    expect(result.result.visibleElements).toBeUndefined();
+    expect(result.result.visibleTextSource).toBeUndefined();
   });
 
   it("normalizes deep accessibility state from the native helper", async () => {
@@ -1617,22 +1511,6 @@ describe("computer use desktop runtime", () => {
       "text entry area Message composer",
     );
     expect(result.result.appState).toContain("Secondary Actions: Confirm");
-    expect(result.result.visibleText).toContain(
-      "AXStaticText [AXValue] Release notes posted",
-    );
-    expect(result.result.visibleElements).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          elementIndex: expect.any(Number),
-          elementId: "w0.e0.e0.c0.v1",
-          role: "AXTextArea",
-          text: "Message composer",
-          source: "accessibility",
-          sourceAttributes: ["AXTitle"],
-          actions: ["AXConfirm"],
-        }),
-      ]),
-    );
     expect(result.result.truncated).toBe(false);
   });
 
@@ -1754,7 +1632,6 @@ describe("computer use desktop runtime", () => {
       },
     });
     expect(result.result.appState).toContain("Can you see this?");
-    expect(result.result.visibleText).toContain("Can you see this?");
   });
 
   it("requests a settled snapshot after write actions but not for explicit app state", async () => {
@@ -1883,21 +1760,8 @@ describe("computer use desktop runtime", () => {
     if (typeof snapshotId !== "string") {
       throw new Error("expected snapshot id");
     }
-    expect(state.result.elements).toStrictEqual([
-      {
-        index: 0,
-        role: "AXWindow",
-        name: "Example",
-        children: [
-          {
-            index: 1,
-            role: "AXButton",
-            name: "Open",
-            actions: ["AXPress"],
-          },
-        ],
-      },
-    ]);
+    expect(state.result.elements).toBeUndefined();
+    expect(state.result.elementIdsByIndex).toStrictEqual(["w0", "w0.e0.e0"]);
 
     const click = await executeComputerUseCommand(
       {
