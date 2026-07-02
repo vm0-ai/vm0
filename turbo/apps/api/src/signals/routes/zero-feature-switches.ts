@@ -1,5 +1,6 @@
 import { command, computed } from "ccstate";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { getAllFeatureStates } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -16,6 +17,21 @@ const featureSwitchesAuthOptions = {
   missingOrganizationStatus: 401,
 } as const;
 
+function featureSwitchResponseBody(params: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly switches: Record<string, boolean>;
+}) {
+  return {
+    switches: params.switches,
+    effectiveSwitches: getAllFeatureStates({
+      orgId: params.orgId,
+      userId: params.userId,
+      overrides: params.switches,
+    }),
+  };
+}
+
 const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
   const auth = get(organizationAuthContext$);
   const switches = await get(
@@ -23,7 +39,11 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
   );
   return {
     status: 200 as const,
-    body: { switches },
+    body: featureSwitchResponseBody({
+      orgId: auth.orgId,
+      userId: auth.userId,
+      switches,
+    }),
   };
 });
 
@@ -50,7 +70,14 @@ const updateFeatureSwitchesInner$ = command(
       signal,
     );
 
-    return { status: 200 as const, body: { switches } };
+    return {
+      status: 200 as const,
+      body: featureSwitchResponseBody({
+        orgId: auth.orgId,
+        userId: auth.userId,
+        switches,
+      }),
+    };
   },
 );
 

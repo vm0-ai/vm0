@@ -1,6 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
 import type { DesktopKeepAwakeState } from "./computer-use-types";
+import {
+  readDesktopPreferenceRecord,
+  writeDesktopPreferenceRecord,
+} from "./desktop-preferences";
 
 const KEEP_AWAKE_BLOCKER_TYPE = "prevent-display-sleep";
 
@@ -16,31 +18,17 @@ interface DesktopKeepAwakeControllerOptions {
   readonly onChange: () => void;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function readPreferenceRecord(filePath: string): Record<string, unknown> {
-  if (!existsSync(filePath)) {
-    return {};
-  }
-  const parsed: unknown = JSON.parse(readFileSync(filePath, "utf8"));
-  return isRecord(parsed) ? parsed : {};
-}
-
 function readKeepAwakeEnabled(filePath: string): boolean {
-  const value = readPreferenceRecord(filePath).keepAwakeEnabled;
+  const value = readDesktopPreferenceRecord(filePath).keepAwakeEnabled;
   return typeof value === "boolean" ? value : false;
 }
 
 function writeKeepAwakeEnabled(filePath: string, enabled: boolean): void {
-  const preferences = readPreferenceRecord(filePath);
-  mkdirSync(path.dirname(filePath), { recursive: true });
-  writeFileSync(
-    filePath,
-    `${JSON.stringify({ ...preferences, keepAwakeEnabled: enabled }, null, 2)}\n`,
-    "utf8",
-  );
+  const preferences = readDesktopPreferenceRecord(filePath);
+  writeDesktopPreferenceRecord(filePath, {
+    ...preferences,
+    keepAwakeEnabled: enabled,
+  });
 }
 
 export class DesktopKeepAwakeController {
