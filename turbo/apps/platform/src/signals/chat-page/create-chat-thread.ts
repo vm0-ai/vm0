@@ -394,6 +394,17 @@ function inactiveRunIndicatorState(
   return scan.sawQueued ? "queued" : null;
 }
 
+function unresolvedActiveRunIndicatorState(
+  scan: RunIndicatorScanContext,
+): RunIndicatorState {
+  for (const runId of scan.activeRunIds) {
+    if (!scan.queuedRunIds.has(runId)) {
+      return "running";
+    }
+  }
+  return inactiveRunIndicatorState(scan);
+}
+
 function rememberQueuedRun(
   scan: RunIndicatorScanContext,
   runId: string | undefined,
@@ -499,7 +510,7 @@ function deriveRunIndicatorStateFromRawMessages(
     }
   }
   return scan.activeRunIds.size > 0
-    ? "running"
+    ? unresolvedActiveRunIndicatorState(scan)
     : inactiveRunIndicatorState(scan);
 }
 
