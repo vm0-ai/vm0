@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.526.1](https://github.com/vm0-ai/vm0/compare/app-v0.526.0...app-v0.526.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* block Intel Mac Computer Use downloads ([#19750](https://github.com/vm0-ai/vm0/issues/19750)) ([0042056](https://github.com/vm0-ai/vm0/commit/00420566128b67ee47f11d01e8c654993f2c9958))
+* keep chat draft until local send starts ([#19757](https://github.com/vm0-ai/vm0/issues/19757)) ([60e43de](https://github.com/vm0-ai/vm0/commit/60e43de387960bd97978ef2593286eb0a8b8194b))
+* keep follow-up markers after assistant content ([#19737](https://github.com/vm0-ai/vm0/issues/19737)) ([d135270](https://github.com/vm0-ai/vm0/commit/d135270c327e2aece0a9a014128928e1e230107b))
+
 ## [0.526.0](https://github.com/vm0-ai/vm0/compare/app-v0.525.0...app-v0.526.0) (2026-07-02)
 
 
