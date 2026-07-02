@@ -1,4 +1,5 @@
 import type { DesktopDeveloperToolsState } from "./desktop-bridge";
+import { latestWinsSingleFlight } from "./desktop-async-control";
 
 const ZERO_DEBUG_FEATURE_SWITCH_KEY = "zeroDebug";
 const COMPUTER_USE_DESKTOP_PLUGINS_FEATURE_SWITCH_KEY =
@@ -51,8 +52,15 @@ export class DeveloperToolsController {
 
   private available = false;
   private enabled = false;
-  private refresh: Promise<void> | null = null;
-  private refreshRequested = false;
+  private readonly refresh = latestWinsSingleFlight(
+    () => this.refreshAvailability(),
+    {
+      onError: (error) => {
+        this.logRefreshError(error);
+        this.setAvailability(false);
+      },
+    },
+  );
 
   constructor(options: DeveloperToolsControllerOptions) {
     this.fetchFeatureSwitches = options.fetchFeatureSwitches;
@@ -84,22 +92,7 @@ export class DeveloperToolsController {
    * follow-up refresh once it settles.
    */
   requestRefresh(): void {
-    if (this.refresh) {
-      this.refreshRequested = true;
-      return;
-    }
-    this.refresh = this.refreshAvailability()
-      .catch((error) => {
-        this.logRefreshError(error);
-        this.setAvailability(false);
-      })
-      .finally(() => {
-        this.refresh = null;
-        if (this.refreshRequested) {
-          this.refreshRequested = false;
-          this.requestRefresh();
-        }
-      });
+    this.refresh();
   }
 
   private setAvailability(available: boolean): void {

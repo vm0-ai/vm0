@@ -73,15 +73,79 @@ beforeEach(() => {
 });
 
 describe("Desktop IPC boundary", () => {
+  it("rejects every computer use handler from untrusted sender frames", async () => {
+    const { installComputerUseIpc } = await import("./computer-use-electron");
+    const api = createComputerUseApi();
+
+    installComputerUseIpc(api, { rendererUrl });
+
+    const protectedHandlers: readonly {
+      readonly channel: string;
+      readonly args: readonly unknown[];
+    }[] = [
+      { channel: COMPUTER_USE_CHANNELS.getState, args: [] },
+      { channel: COMPUTER_USE_CHANNELS.refreshPermissions, args: [] },
+      {
+        channel: COMPUTER_USE_CHANNELS.start,
+        args: [{ userInitiated: true }],
+      },
+      { channel: COMPUTER_USE_CHANNELS.stop, args: [] },
+      {
+        channel: COMPUTER_USE_CHANNELS.requestAccessibilityPermission,
+        args: [],
+      },
+      {
+        channel: COMPUTER_USE_CHANNELS.requestScreenRecordingPermission,
+        args: [],
+      },
+      {
+        channel: COMPUTER_USE_CHANNELS.probeAutomationPermission,
+        args: ["chrome"],
+      },
+      { channel: COMPUTER_USE_CHANNELS.setKeepAwakeEnabled, args: [true] },
+      {
+        channel: COMPUTER_USE_CHANNELS.setFilesystemPluginEnabled,
+        args: [true],
+      },
+      {
+        channel: COMPUTER_USE_CHANNELS.addFilesystemPluginAllowedDirectory,
+        args: [],
+      },
+      {
+        channel: COMPUTER_USE_CHANNELS.removeFilesystemPluginAllowedDirectory,
+        args: ["/tmp"],
+      },
+      { channel: COMPUTER_USE_CHANNELS.openAccessibilitySettings, args: [] },
+      { channel: COMPUTER_USE_CHANNELS.openScreenRecordingSettings, args: [] },
+      { channel: COMPUTER_USE_CHANNELS.openAutomationSettings, args: [] },
+    ];
+
+    for (const { channel, args } of protectedHandlers) {
+      await expect(invokeIpc(channel, blockedAppUrl, ...args)).rejects.toThrow(
+        "Desktop Computer Use is unavailable on this page",
+      );
+    }
+
+    expect(api.getState).not.toHaveBeenCalled();
+    expect(api.refreshPermissions).not.toHaveBeenCalled();
+    expect(api.start).not.toHaveBeenCalled();
+    expect(api.stop).not.toHaveBeenCalled();
+    expect(api.requestAccessibilityPermission).not.toHaveBeenCalled();
+    expect(api.requestScreenRecordingPermission).not.toHaveBeenCalled();
+    expect(api.probeAutomationPermission).not.toHaveBeenCalled();
+    expect(api.setKeepAwakeEnabled).not.toHaveBeenCalled();
+    expect(api.setFilesystemPluginEnabled).not.toHaveBeenCalled();
+    expect(api.addFilesystemPluginAllowedDirectory).not.toHaveBeenCalled();
+    expect(api.removeFilesystemPluginAllowedDirectory).not.toHaveBeenCalled();
+    expect(electronMock.shell.openExternal).not.toHaveBeenCalled();
+  });
+
   it("protects computer use handlers by renderer URL and validates keep-awake payloads", async () => {
     const { installComputerUseIpc } = await import("./computer-use-electron");
     const api = createComputerUseApi();
 
     installComputerUseIpc(api, { rendererUrl });
 
-    await expect(
-      invokeIpc(COMPUTER_USE_CHANNELS.getState, blockedAppUrl),
-    ).rejects.toThrow("Desktop Computer Use is unavailable on this page");
     await expect(
       invokeIpc(COMPUTER_USE_CHANNELS.setKeepAwakeEnabled, rendererUrl, "true"),
     ).rejects.toThrow("Desktop keep-awake enabled state must be a boolean");
@@ -110,6 +174,32 @@ describe("Desktop IPC boundary", () => {
     expect(api.start).toHaveBeenCalledWith({ userInitiated: true });
     expect(api.setKeepAwakeEnabled).toHaveBeenCalledWith(true);
     expect(api.probeAutomationPermission).toHaveBeenCalledWith("chrome");
+  });
+
+  it("rejects desktop auth renderer handlers from untrusted sender frames", async () => {
+    const { installDesktopAuthIpc } = await import("./desktop-auth-electron");
+    const api = createDesktopAuthApi();
+
+    installDesktopAuthIpc(api, {
+      rendererUrl,
+      allowedAppOrigins: new Set(["https://app.vm0.ai"]),
+    });
+
+    for (const channel of [
+      DESKTOP_AUTH_CHANNELS.getState,
+      DESKTOP_AUTH_CHANNELS.openSignIn,
+      DESKTOP_AUTH_CHANNELS.openOrgSelection,
+      DESKTOP_AUTH_CHANNELS.signOut,
+    ]) {
+      await expect(invokeIpc(channel, blockedAppUrl)).rejects.toThrow(
+        "Desktop auth is unavailable on this page",
+      );
+    }
+
+    expect(api.getState).not.toHaveBeenCalled();
+    expect(api.openSignIn).not.toHaveBeenCalled();
+    expect(api.openOrgSelection).not.toHaveBeenCalled();
+    expect(api.signOut).not.toHaveBeenCalled();
   });
 
   it("protects auth handlers by renderer URL, allowed app origins, and token payloads", async () => {
