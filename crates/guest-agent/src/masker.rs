@@ -31,7 +31,6 @@ struct MaskerState {
     diagnostic_patterns: Vec<String>,
     url_encoded_patterns: Vec<String>,
     diagnostic_url_encoded_patterns: Vec<String>,
-    registered_values: HashSet<String>,
 }
 
 struct Matcher {
@@ -57,24 +56,22 @@ impl SecretMasker {
 
         // Parse comma-separated base64 values
         let engine = base64::engine::general_purpose::STANDARD;
-        let secrets: Vec<String> = raw
-            .split(',')
-            .filter_map(|part| {
-                let trimmed = part.trim();
-                if trimmed.is_empty() {
-                    return None;
-                }
-                engine
-                    .decode(trimmed)
-                    .ok()
-                    .and_then(|bytes| String::from_utf8(bytes).ok())
-            })
-            .filter(|s| !s.is_empty())
-            .collect();
-
         let mut state = MaskerState::empty();
-        for secret in &secrets {
-            state.add_secret_value_patterns(secret);
+        let mut seen_secrets = HashSet::new();
+        for secret in raw.split(',').filter_map(|part| {
+            let trimmed = part.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            engine
+                .decode(trimmed)
+                .ok()
+                .and_then(|bytes| String::from_utf8(bytes).ok())
+                .filter(|value| !value.is_empty())
+        }) {
+            if seen_secrets.insert(secret.clone()) {
+                state.add_secret_value_patterns(&secret);
+            }
         }
         state.rebuild_matchers();
         Self::from_state(state)
@@ -178,7 +175,6 @@ impl MaskerState {
             diagnostic_patterns: Vec::new(),
             url_encoded_patterns: Vec::new(),
             diagnostic_url_encoded_patterns: Vec::new(),
-            registered_values: HashSet::new(),
         }
     }
 
@@ -198,15 +194,14 @@ impl MaskerState {
             diagnostic_patterns,
             url_encoded_patterns,
             diagnostic_url_encoded_patterns,
-            registered_values: HashSet::new(),
         };
         state.rebuild_matchers();
         state
     }
 
-    fn add_secret_value_patterns(&mut self, value: &str) -> bool {
-        if value.len() < MIN_SECRET_LEN || !self.registered_values.insert(value.to_string()) {
-            return false;
+    fn add_secret_value_patterns(&mut self, value: &str) {
+        if value.len() < MIN_SECRET_LEN {
+            return;
         }
 
         push_secret_patterns(value, &mut self.patterns);
@@ -214,7 +209,6 @@ impl MaskerState {
         push_url_encoded_secret_pattern(value, &mut self.url_encoded_patterns);
         push_url_encoded_secret_pattern(value, &mut self.diagnostic_url_encoded_patterns);
         push_diagnostic_multiline_patterns(value, &mut self.diagnostic_patterns);
-        true
     }
 
     fn rebuild_matchers(&mut self) {
