@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.209.0](https://github.com/vm0-ai/vm0/compare/api-v1.208.3...api-v1.209.0) (2026-07-02)
+
+
+### Features
+
+* add Codex fast mode for ChatGPT subscription runs ([#19811](https://github.com/vm0-ai/vm0/issues/19811)) ([42e8e48](https://github.com/vm0-ai/vm0/commit/42e8e4883e548d497eb0b86a936b6be308ad1bed))
+* redesign workflows list with connector pills and next-run view ([#19790](https://github.com/vm0-ai/vm0/issues/19790)) ([1114b1e](https://github.com/vm0-ai/vm0/commit/1114b1e0bdd7b7e0007e91e6048318a568c2fabc))
+
+
+### Bug Fixes
+
+* **runner:** remove session history claim capabilities ([#19832](https://github.com/vm0-ai/vm0/issues/19832)) ([f80876f](https://github.com/vm0-ai/vm0/commit/f80876f4dbfd3674f7b60b34941a1783dbe26f04))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.144.0
+    * @vm0/connectors bumped to 1.129.0
+    * @vm0/core bumped to 8.390.0
+    * @vm0/db bumped to 1.85.3
+
 ## [1.208.3](https://github.com/vm0-ai/vm0/compare/api-v1.208.2...api-v1.208.3) (2026-07-02)
 
 

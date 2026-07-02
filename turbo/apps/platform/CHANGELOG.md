@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.534.0](https://github.com/vm0-ai/vm0/compare/app-v0.533.0...app-v0.534.0) (2026-07-02)
+
+
+### Features
+
+* add Codex fast mode for ChatGPT subscription runs ([#19811](https://github.com/vm0-ai/vm0/issues/19811)) ([42e8e48](https://github.com/vm0-ai/vm0/commit/42e8e4883e548d497eb0b86a936b6be308ad1bed))
+* redesign workflows list with connector pills and next-run view ([#19790](https://github.com/vm0-ai/vm0/issues/19790)) ([1114b1e](https://github.com/vm0-ai/vm0/commit/1114b1e0bdd7b7e0007e91e6048318a568c2fabc))
+
+
+### Bug Fixes
+
+* derive chat run indicator state from message stream evidence ([#19893](https://github.com/vm0-ai/vm0/issues/19893)) ([c33d6e4](https://github.com/vm0-ai/vm0/commit/c33d6e4efb71665001e1cd440e0768ed42f9f44e))
+* derive chat thinking state from messages ([#19892](https://github.com/vm0-ai/vm0/issues/19892)) ([0b9de2f](https://github.com/vm0-ai/vm0/commit/0b9de2fa80f4b5aa7fc4dcbbfea561e0c69a64f9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.144.0
+    * @vm0/connectors bumped to 1.129.0
+    * @vm0/core bumped to 8.390.0
+
 ## [0.533.0](https://github.com/vm0-ai/vm0/compare/app-v0.532.1...app-v0.533.0) (2026-07-02)
 
 
