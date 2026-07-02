@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.532.0](https://github.com/vm0-ai/vm0/compare/app-v0.531.0...app-v0.532.0) (2026-07-02)
+
+
+### Features
+
+* add in-canvas image editing ([#19873](https://github.com/vm0-ai/vm0/issues/19873)) ([758557b](https://github.com/vm0-ai/vm0/commit/758557ba1d7963d7eee86ae7362e31f081840f39))
+
+
+### Bug Fixes
+
+* remove unsupported interactive-widget viewport hint ([#19864](https://github.com/vm0-ai/vm0/issues/19864)) ([95b9d02](https://github.com/vm0-ai/vm0/commit/95b9d02b5897af9683067c155310fca51f83ce40))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.2
+    * @vm0/connectors bumped to 1.128.0
+    * @vm0/core bumped to 8.389.0
+
 ## [0.531.0](https://github.com/vm0-ai/vm0/compare/app-v0.530.0...app-v0.531.0) (2026-07-02)
 
 
