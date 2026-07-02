@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -36,6 +37,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
@@ -48,6 +50,8 @@ const PRO_DAILY_DURATION_LIMIT_SECONDS = 200 * 60;
 const OPENAI_AUDIO_SPEECH_URL = "https://api.openai.com/v1/audio/speech";
 const OPENAI_AUDIO_TRANSCRIPTIONS_URL =
   "https://api.openai.com/v1/audio/transcriptions";
+const BYTEPLUS_ASR_FLASH_URL =
+  "https://voice.ap-southeast-1.bytepluses.com/api/v3/auc/bigmodel/recognize/flash";
 const VOICE_IO_TTS_MODEL = "gpt-4o-mini-tts";
 const VOICE_IO_STT_VERBOSE_MODEL = "whisper-1";
 const SPEECH_CONTENT_TYPE = "audio/wav";
@@ -534,6 +538,131 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(counts.get(AUDIO_INPUT_BEHAVIOR_KEY)).toBe(1);
     expect(counts.get(sttDailyRateKey())).toBe(1);
     expect(counts.get(sttDailyDurationKey())).toBe(2);
+  });
+
+  it("routes /stt through BytePlus when the feature switch is enabled", async () => {
+    const fixture = await track(seedVoiceFixture({}));
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.BytePlusVoiceInputStt]: true,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const audioBytes = wavBytes(2);
+    let calledOpenAi = false;
+    let observedApiKey: string | null = null;
+    let observedResourceId: string | null = null;
+    let observedSequence: string | null = null;
+    let observedRequestId: string | null = null;
+    let observedBody: Record<string, unknown> | null = null;
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        calledOpenAi = true;
+        return HttpResponse.json({ text: "should not run" });
+      }),
+      http.post(BYTEPLUS_ASR_FLASH_URL, async ({ request }) => {
+        observedApiKey = request.headers.get("x-api-key");
+        observedResourceId = request.headers.get("x-api-resource-id");
+        observedSequence = request.headers.get("x-api-sequence");
+        observedRequestId = request.headers.get("x-api-request-id");
+        observedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          {
+            result: {
+              text: "hello from byteplus",
+              utterances: [
+                {
+                  start_time: 80,
+                  end_time: 1280,
+                  text: "hello from byteplus",
+                },
+              ],
+            },
+          },
+          { headers: { "x-api-status-code": "20000000" } },
+        );
+      }),
+    );
+
+    const app = createVoiceIoTestApp();
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(sttFile(audioBytes)),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      text: "hello from byteplus",
+      segments: [{ start: 0.08, end: 1.28, text: "hello from byteplus" }],
+    });
+    expect(calledOpenAi).toBeFalsy();
+    expect(observedApiKey).toBe("test-byteplus-stt-key");
+    expect(observedResourceId).toBe("volc.seedasr.auc_turbo");
+    expect(observedSequence).toBe("-1");
+    expect(observedRequestId).toStrictEqual(expect.any(String));
+    expect(observedBody).toStrictEqual({
+      audio: {
+        data: Buffer.from(audioBytes).toString("base64"),
+        format: "wav",
+      },
+      request: {
+        model_name: "bigmodel",
+        enable_itn: true,
+        enable_punc: true,
+        enable_ddc: true,
+        enable_speaker_info: false,
+        show_utterances: true,
+      },
+    });
+
+    const rows = await readGenerationBehaviorCounts(context.signal, fixture);
+    const counts = new Map(
+      rows.map((row): readonly [string, number] => {
+        return [row.behaviorKey, row.count];
+      }),
+    );
+    expect(counts.get(AUDIO_INPUT_BEHAVIOR_KEY)).toBe(1);
+    expect(counts.get(sttDailyRateKey())).toBe(1);
+    expect(counts.get(sttDailyDurationKey())).toBe(2);
+  });
+
+  it("accepts BytePlus no-speech responses as empty transcripts", async () => {
+    const fixture = await track(seedVoiceFixture({}));
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.BytePlusVoiceInputStt]: true,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    server.use(
+      http.post(BYTEPLUS_ASR_FLASH_URL, () => {
+        return HttpResponse.json(
+          {
+            audio_info: { duration: 2700 },
+            result: {
+              additions: { duration: "2700" },
+              text: "",
+            },
+          },
+          { headers: { "x-api-status-code": "20000003" } },
+        );
+      }),
+    );
+
+    const app = createVoiceIoTestApp();
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(sttFile(wavBytes(2))),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ text: "" });
+    await expect(readBehaviorCount(fixture, sttDailyRateKey())).resolves.toBe(
+      1,
+    );
+    await expect(
+      readBehaviorCount(fixture, sttDailyDurationKey()),
+    ).resolves.toBe(2);
   });
 
   it("meters /stt WAV duration from the data chunk, not a fixed 44-byte offset", async () => {

@@ -6209,7 +6209,7 @@ describe("chat lifecycle", () => {
   it("transcribes voice input into the composer", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "voice-input-thread";
-    context.mocks.browser.voiceInput();
+    context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
     context.mocks.http.post("*/api/zero/voice-io/stt", () => {
       return new Response(JSON.stringify({ text: "Summarize the standup" }), {
@@ -6236,10 +6236,115 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("shows voice input starting state while the browser opens the microphone", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "voice-input-starting-thread";
+    const micReady = context.mocks.deferred<void>();
+    context.mocks.browser.voiceInput({
+      getUserMediaReady: micReady.promise,
+      rms: 0.1,
+    });
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Starting voice input")).toBeDisabled();
+    });
+    expect(screen.queryByLabelText("Stop recording")).not.toBeInTheDocument();
+
+    micReady.resolve(undefined);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+  });
+
+  it("starts recording before the voice activity monitor is ready", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "voice-input-monitor-pending-thread";
+    const audioReady = context.mocks.deferred<void>();
+    context.mocks.browser.voiceInput({
+      audioContextReady: audioReady.promise,
+      rms: 0.1,
+    });
+    mockChatLifecycle(context, { threadId });
+    let transcriptionCalled = false;
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      transcriptionCalled = true;
+      return new Response(JSON.stringify({ text: "first words" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByLabelText("Starting voice input"),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Stop recording"));
+    audioReady.resolve(undefined);
+
+    await waitFor(() => {
+      expect(transcriptionCalled).toBeTruthy();
+      expect(textarea).toHaveValue("first words");
+    });
+  });
+
+  it("cancels silent voice input without calling transcription", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "silent-voice-input-thread";
+    context.mocks.browser.voiceInput({ rms: 0 });
+    mockChatLifecycle(context, { threadId });
+    let transcriptionCalled = false;
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      transcriptionCalled = true;
+      return new Response(JSON.stringify({ text: "unexpected" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Stop recording"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+    });
+    expect(transcriptionCalled).toBeFalsy();
+    expect(textarea).toHaveValue("");
+  });
+
   it("opens billing recovery when voice input quota is depleted", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "voice-input-quota-thread";
-    context.mocks.browser.voiceInput();
+    context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
     context.mocks.http.post("*/api/zero/voice-io/stt", () => {
       return new Response(

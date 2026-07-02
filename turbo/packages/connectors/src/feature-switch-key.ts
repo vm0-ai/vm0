@@ -58,4 +58,5 @@ export enum FeatureSwitchKey {
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   ChatInitialThinkingIndicator = "chatInitialThinkingIndicator",
   TeamsIntegration = "teamsIntegration",
+  BytePlusVoiceInputStt = "bytePlusVoiceInputStt",
 }

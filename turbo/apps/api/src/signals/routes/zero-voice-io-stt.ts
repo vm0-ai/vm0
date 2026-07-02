@@ -1,5 +1,7 @@
 import { command } from "ccstate";
 import { zeroVoiceIoSttContract } from "@vm0/api-contracts/contracts/zero-voice-io-stt";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -10,18 +12,15 @@ import { audioInputQuota } from "../services/voice-io.service";
 import {
   badRequest,
   getAudioDuration,
-  internalError,
   isAllowedSttMimeType,
-  isTranscriptionBody,
-  isVerboseTranscriptionSegment,
   MAX_STT_FILE_SIZE,
   MAX_STT_REQUEST_DURATION_SECONDS,
-  OPENAI_AUDIO_TRANSCRIPTIONS_URL,
   recordSttUsage$,
   sttDailyPolicy$,
-  VOICE_IO_STT_VERBOSE_MODEL,
+  transcribeBytePlusVoiceInputFile,
+  transcribeOpenAiVoiceInputFile,
 } from "../services/zero-voice-io-post.service";
-import { env } from "../../lib/env";
+import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 
 const L = logger("ZeroVoiceIoStt");
 
@@ -103,38 +102,31 @@ const postSttInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return policy;
   }
 
-  const openaiForm = new FormData();
-  openaiForm.append("file", file, file.name || "audio.webm");
-  openaiForm.append("model", VOICE_IO_STT_VERBOSE_MODEL);
-  openaiForm.append("response_format", "verbose_json");
-
-  const openaiResponse = await fetch(OPENAI_AUDIO_TRANSCRIPTIONS_URL, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env("OPENAI_API_KEY")}` },
-    body: openaiForm,
-    signal,
-  });
+  const overrides = await get(
+    userFeatureSwitchOverrides(auth.orgId, auth.userId),
+  );
   signal.throwIfAborted();
+  const useBytePlus = isFeatureEnabled(FeatureSwitchKey.BytePlusVoiceInputStt, {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    overrides,
+  });
 
-  if (!openaiResponse.ok) {
-    const errorBody = await openaiResponse.text();
-    signal.throwIfAborted();
-    L.error("OpenAI STT API error", {
-      status: openaiResponse.status,
-      statusText: openaiResponse.statusText,
-      body: errorBody,
+  const result = await (useBytePlus
+    ? transcribeBytePlusVoiceInputFile(file, signal)
+    : transcribeOpenAiVoiceInputFile(file, signal));
+  signal.throwIfAborted();
+  if ("status" in result) {
+    L.warn("STT provider rejected transcription", {
+      provider: useBytePlus ? "byteplus" : "openai",
+      status: result.status,
       fileMime: file.type,
       fileSize: file.size,
       fileName: file.name,
     });
-    return internalError("Transcription failed");
+    return result;
   }
-
-  const result: unknown = await openaiResponse.json();
   signal.throwIfAborted();
-  if (!isTranscriptionBody(result)) {
-    return internalError("Transcription failed");
-  }
 
   await set(
     recordSttUsage$,
@@ -142,17 +134,11 @@ const postSttInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal,
   );
 
-  const segments = Array.isArray((result as Record<string, unknown>).segments)
-    ? ((result as Record<string, unknown>).segments as unknown[]).filter(
-        isVerboseTranscriptionSegment,
-      )
-    : undefined;
-
   return {
     status: 200 as const,
     body: {
       text: result.text,
-      ...(segments !== undefined && { segments }),
+      ...(result.segments !== undefined && { segments: result.segments }),
     },
   };
 });

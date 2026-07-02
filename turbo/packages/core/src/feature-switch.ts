@@ -336,6 +336,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.BytePlusVoiceInputStt]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Route voice input speech-to-text requests through BytePlus Seed ASR flash mode instead of OpenAI.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

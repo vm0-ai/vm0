@@ -216,7 +216,9 @@ import {
   audioInputAvailable$,
   audioInputQuota$,
   sttRecording$,
+  sttStarting$,
   sttTranscribing$,
+  sttVoiceLevel$,
   startRecording$,
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
@@ -5950,7 +5952,10 @@ function MicButton({
   const available = useLastResolved(audioInputAvailable$) ?? false;
   const quota = useLastResolved(audioInputQuota$) ?? null;
   const recording = useGet(sttRecording$);
+  const starting = useGet(sttStarting$);
   const transcribing = useGet(sttTranscribing$);
+  const voiceLevel = useGet(sttVoiceLevel$);
+  const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
   const startRec = useSet(startRecording$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
   const setTab = useSet(setActiveOrgManageTab$);
@@ -5963,7 +5968,7 @@ function MicButton({
   }
 
   const handleClick = () => {
-    if (transcribing) {
+    if (starting || transcribing) {
       return;
     }
     if (recording) {
@@ -5994,34 +5999,37 @@ function MicButton({
           <button
             type="button"
             className={cn(
-              "inline-flex shrink-0 items-center justify-center rounded-lg transition-colors",
-              recording || transcribing
-                ? "gap-[3px] h-9 w-[52px] bg-[#2E9E9F] text-white hover:bg-[#279394]"
-                : "h-9 w-9 text-muted-foreground hover:bg-accent hover:text-foreground",
+              "relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
+              recording || starting || transcribing
+                ? "bg-[#2E9E9F] text-white hover:bg-[#279394]"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             onClick={handleClick}
-            disabled={transcribing}
+            disabled={starting || transcribing}
             aria-label={
               recording
                 ? "Stop recording"
-                : transcribing
-                  ? "Transcribing"
-                  : "Voice input"
+                : starting
+                  ? "Starting voice input"
+                  : transcribing
+                    ? "Transcribing"
+                    : "Voice input"
             }
           >
-            {transcribing ? (
-              <>
-                <span className="mic-eq-dot" />
-                <span className="mic-eq-dot" />
-                <span className="mic-eq-dot" />
-              </>
+            {starting || transcribing ? (
+              <span className="mic-starting-spinner" aria-hidden="true" />
             ) : recording ? (
               <>
-                <span className="mic-eq-bar" />
-                <span className="mic-eq-bar" />
-                <IconMicrophone size={16} stroke={1.5} />
-                <span className="mic-eq-bar" />
-                <span className="mic-eq-bar" />
+                <span
+                  className="mic-volume-icon-meter"
+                  aria-hidden="true"
+                  style={
+                    {
+                      "--mic-volume-fill": voiceLevelFill,
+                    } as CSSProperties
+                  }
+                />
+                <IconMicrophone size={17} stroke={1.8} className="relative" />
               </>
             ) : (
               <IconMicrophone size={18} stroke={1.5} />
@@ -6031,9 +6039,11 @@ function MicButton({
         <TooltipContent side="top" className="text-xs">
           {recording
             ? "Stop recording"
-            : transcribing
-              ? "Transcribing..."
-              : "Voice input"}
+            : starting
+              ? "Opening microphone..."
+              : transcribing
+                ? "Transcribing..."
+                : "Voice input"}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

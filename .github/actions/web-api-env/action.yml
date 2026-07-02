@@ -250,6 +250,7 @@ runs:
         add_secret OPENAI_API_KEY OPENAI_API_KEY
         add_secret FAL_KEY FAL_KEY
         add_secret BYTEPLUS_API_KEY BYTEPLUS_API_KEY
+        add_secret BYTEPLUS_STT_API_KEY BYTEPLUS_STT_API_KEY
         add_secret UNSPLASH_ACCESS_KEY UNSPLASH_ACCESS_KEY
         add_secret PEXELS_API_KEY PEXELS_API_KEY
         add_var VAPID_PUBLIC_KEY VAPID_PUBLIC_KEY
