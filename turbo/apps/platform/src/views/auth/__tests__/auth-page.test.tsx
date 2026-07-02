@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -8,6 +8,17 @@ const context = testContext();
 
 function setBrowserUrl(url: string): void {
   window.location.href = url;
+}
+
+async function withProductionDeployment<T>(
+  callback: () => T | Promise<T>,
+): Promise<T> {
+  vi.stubEnv("VITE_VERCEL_ENV", "production");
+  try {
+    return await callback();
+  } finally {
+    vi.stubEnv("VITE_VERCEL_ENV", "");
+  }
 }
 
 describe("app auth pages", () => {
@@ -111,6 +122,27 @@ describe("app auth pages", () => {
     expect(redirectUrl.searchParams.get("utm_campaign")).toBe("summer");
     expect(redirectUrl.searchParams.get("vm0_source")).toBe("homepage");
     expect(redirectUrl.searchParams.get("vm0_experiment")).toBe("491858");
+    expect(redirectUrl.searchParams.get("domain")).toBe("api.vm7.ai:8443");
+  });
+
+  it("does not add the configured API domain to production onboarding redirects", async () => {
+    await withProductionDeployment(async () => {
+      const path = "/sign-up?gclid=click-123&utm_campaign=summer";
+      setBrowserUrl(`https://app.vm0.ai${path}`);
+
+      detachedSetupPage({ context, path });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("clerk-sign-up")).toBeInTheDocument();
+      });
+
+      const redirectUrl = new URL(
+        screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl ?? "",
+      );
+      expect(redirectUrl.pathname).toBe("/onboarding/491858");
+      expect(redirectUrl.searchParams.get("gclid")).toBe("click-123");
+      expect(redirectUrl.searchParams.has("domain")).toBeFalsy();
+    });
   });
 
   it.each([
@@ -141,4 +173,27 @@ describe("app auth pages", () => {
       );
     },
   );
+
+  it("adds the configured API domain to normalized staging onboarding redirects", async () => {
+    const redirectUrl =
+      "https://staging-www.vm6.ai/onboarding/2afcf6?vm0_theme=light";
+    const path = `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
+    setBrowserUrl(`https://app.vm0.ai${path}`);
+
+    detachedSetupPage({ context, path });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-sign-up")).toBeInTheDocument();
+    });
+
+    const normalizedRedirectUrl = new URL(
+      screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl ?? "",
+    );
+    expect(normalizedRedirectUrl.origin).toBe("https://www.vm7.ai:8443");
+    expect(normalizedRedirectUrl.pathname).toBe("/onboarding/2afcf6");
+    expect(normalizedRedirectUrl.searchParams.get("vm0_theme")).toBe("light");
+    expect(normalizedRedirectUrl.searchParams.get("domain")).toBe(
+      "api.vm7.ai:8443",
+    );
+  });
 });

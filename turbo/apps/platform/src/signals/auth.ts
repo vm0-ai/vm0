@@ -386,14 +386,23 @@ function setCurrentLandingContext(params: URLSearchParams): void {
   }
 }
 
+function appendDomainOverrideParam(url: URL): void {
+  const domainOverride = resolveDomainOverride();
+  if (domainOverride && !url.searchParams.has("domain")) {
+    url.searchParams.set("domain", domainOverride);
+  }
+}
+
 function buildVm0OnboardingEntryUrl(paramsInit?: URLSearchParams): string {
   const params = new URLSearchParams(paramsInit);
   if (!params.has("vm0_experiment")) {
     params.set("vm0_experiment", VM0_ONBOARDING_EXPERIMENT);
   }
   setCurrentLandingContext(params);
-  const query = params.toString();
-  return `${onboardingBaseUrl()}${VM0_ONBOARDING_PATH}${query ? `?${query}` : ""}`;
+  const url = new URL(VM0_ONBOARDING_PATH, onboardingBaseUrl());
+  url.search = params.toString();
+  appendDomainOverrideParam(url);
+  return url.toString();
 }
 
 function isKnownStagingOnboardingRedirect(redirectUrl: URL): boolean {
@@ -431,6 +440,7 @@ function normalizeOnboardingRedirectUrl(
   const normalized = new URL(redirectUrl.toString());
   normalized.protocol = paidUrl.protocol;
   normalized.host = paidUrl.host;
+  appendDomainOverrideParam(normalized);
   return normalized;
 }
 
