@@ -5860,9 +5860,14 @@ function ComputerUseDownloadDialog({
         <div className="px-6 pb-6 pt-4">
           {showIntelDownload ? (
             <div className="flex flex-col gap-2">
-              <Button asChild size="lg" className="w-full justify-start">
+              <Button
+                asChild
+                size="lg"
+                className="h-auto min-h-11 w-full justify-start px-4 py-2"
+              >
                 <a
                   href={downloadUrl}
+                  aria-label="Download for Mac Apple Silicon"
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => {
@@ -5870,17 +5875,23 @@ function ComputerUseDownloadDialog({
                   }}
                 >
                   <IconDownload size={16} stroke={1.5} />
-                  Download for Apple Silicon
+                  <span className="flex flex-col items-start gap-0.5">
+                    <span>Download for Mac</span>
+                    <span className="text-xs font-normal text-primary-foreground/80">
+                      Apple Silicon
+                    </span>
+                  </span>
                 </a>
               </Button>
               <Button
                 asChild
                 size="lg"
                 variant="outline"
-                className="w-full justify-start"
+                className="h-auto min-h-11 w-full justify-start px-4 py-2"
               >
                 <a
                   href={ZERO_DESKTOP_INTEL_DOWNLOAD_URL}
+                  aria-label="Download for Mac Intel"
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => {
@@ -5888,7 +5899,12 @@ function ComputerUseDownloadDialog({
                   }}
                 >
                   <IconDownload size={16} stroke={1.5} />
-                  Download for Intel Mac
+                  <span className="flex flex-col items-start gap-0.5">
+                    <span>Download for Mac</span>
+                    <span className="text-xs font-normal text-muted-foreground">
+                      Intel
+                    </span>
+                  </span>
                 </a>
               </Button>
             </div>
