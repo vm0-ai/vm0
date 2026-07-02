@@ -189,12 +189,12 @@ const resumeSessionHistoryBlobRefSchema = z.object({
 const resumeSessionHistoryRawSizeSchema = z
   .number()
   .int()
-  .nonnegative()
+  .positive()
   .max(RESUME_SESSION_HISTORY_MAX_BYTES);
 const resumeSessionHistoryEncodedSizeSchema = z
   .number()
   .int()
-  .nonnegative()
+  .positive()
   .max(RESUME_SESSION_HISTORY_MAX_BYTES);
 
 const storedResumeSessionRefSchema = z.object({

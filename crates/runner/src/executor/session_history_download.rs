@@ -583,6 +583,14 @@ async fn download_body(
         }
         body.extend_from_slice(&chunk);
     }
+    if let Some(expected_size) = expected_size
+        && downloaded != expected_size
+    {
+        timings.record_body_read(body_started.elapsed(), false);
+        return Err(RunnerError::Internal(format!(
+            "session history downloaded size mismatch: expected {expected_size} bytes, got {downloaded} bytes"
+        )));
+    }
     timings.record_body_read(body_started.elapsed(), true);
 
     Ok(body)
@@ -703,10 +711,11 @@ mod tests {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut request = [0u8; 1024];
             let _ = stream.read(&mut request).await;
-            let content_length = content_length.unwrap_or(body.len() as u64);
-            let response = format!(
-                "HTTP/1.1 {status}\r\nContent-Length: {content_length}\r\nConnection: close\r\n\r\n"
-            );
+            let content_length_header = content_length
+                .map(|content_length| format!("Content-Length: {content_length}\r\n"))
+                .unwrap_or_default();
+            let response =
+                format!("HTTP/1.1 {status}\r\n{content_length_header}Connection: close\r\n\r\n");
             stream.write_all(response.as_bytes()).await.unwrap();
             stream.write_all(&body).await.unwrap();
         });
@@ -770,6 +779,38 @@ mod tests {
                 assert_phase_success(timings.hash_verification());
             }
             _ => panic!("expected downloaded session"),
+        }
+    }
+
+    #[tokio::test]
+    async fn materializer_rejects_gzip_body_under_declared_encoded_size_without_content_length() {
+        let body = b"{\"type\":\"init\"}\n{\"type\":\"user\",\"message\":\"hello\"}\n";
+        let compressed = gzip_bytes(body);
+        let encoded_size = compressed.len() as u64;
+        let hash = hex::encode(Sha256::digest(body));
+        let session = gzip_ref_session(
+            serve_once("200 OK", compressed, None).await,
+            hash,
+            body.len() as u64,
+            encoded_size + 1,
+        );
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                assert!(
+                    error.to_string().contains("downloaded size mismatch"),
+                    "unexpected error: {error}"
+                );
+                assert_phase_success(timings.request_status());
+                assert_phase_failure(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_no_phase(timings.hash_verification());
+            }
+            _ => panic!("expected failed materialization"),
         }
     }
 

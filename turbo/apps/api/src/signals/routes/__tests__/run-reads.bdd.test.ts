@@ -1034,6 +1034,22 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       existing: false,
       encoding: "gzip",
     });
+    const duplicatePrepared =
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash: historyHash,
+          rawSize: Buffer.byteLength(history, "utf8"),
+          encodedSize: compressedHistory.length + 1,
+          encoding: "gzip",
+        },
+        headers,
+        [200],
+      );
+    expect(duplicatePrepared.body).toStrictEqual({
+      existing: true,
+      encoding: "gzip",
+    });
     const checkpointed = await webhooks.requestAgentCheckpoint(
       {
         runId: run.runId,

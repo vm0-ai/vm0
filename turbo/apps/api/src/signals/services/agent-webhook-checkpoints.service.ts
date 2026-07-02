@@ -288,15 +288,6 @@ export const prepareCheckpointHistoryUpload$ = command(
         "Identity session history upload cannot repair a compressed blob",
       );
     }
-    if (
-      requestedEncoding === encoding &&
-      blob.encodedSize !== input.body.encodedSize
-    ) {
-      return badRequestMessage(
-        "Session history encoded size does not match the existing blob",
-      );
-    }
-
     const s3Key = resumeSessionHistoryBlobKey(input.body.hash, encoding);
     const bucketName = env("R2_USER_STORAGES_BUCKET_NAME");
     if (!insertedNewBlob) {
@@ -309,6 +300,14 @@ export const prepareCheckpointHistoryUpload$ = command(
           body: { existing: true, encoding },
         };
       }
+    }
+    if (
+      requestedEncoding === encoding &&
+      blob.encodedSize !== input.body.encodedSize
+    ) {
+      return badRequestMessage(
+        "Session history encoded size does not match the existing blob",
+      );
     }
 
     const presignedUrl = await get(
