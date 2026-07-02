@@ -64,7 +64,7 @@ function tab(label: "Public" | "Private"): HTMLElement {
 }
 
 describe("agents page (redesign)", () => {
-  it("filters agents by tab and shows the creator on every card", async () => {
+  it("filters agents by tab and shows creator only on public cards", async () => {
     const user = userEvent.setup();
     context.mocks.data.team(agents);
     context.mocks.data.orgMembers({
@@ -100,15 +100,15 @@ describe("agents page (redesign)", () => {
       expect(tab("Private")).toBeInTheDocument();
     });
 
-    // Private tab: only private agents, each with a creator footer.
+    // Private tab: only private agents, no creator footer.
     await user.click(tab("Private"));
     await waitFor(() => {
       expect(agentCard("Private Ops")).toBeInTheDocument();
     });
     expect(findAgentCard("Research Agent")).toBeNull();
     expect(
-      within(agentCard("Private Ops")).getByText("Created by Bob Builder"),
-    ).toBeInTheDocument();
+      within(agentCard("Private Ops")).queryByText("Created by Bob Builder"),
+    ).not.toBeInTheDocument();
 
     // Public tab: only public agents, each with a creator footer.
     await user.click(tab("Public"));
