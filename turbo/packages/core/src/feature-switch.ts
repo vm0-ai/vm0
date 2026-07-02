@@ -336,6 +336,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Route voice input speech-to-text requests through BytePlus Seed ASR flash mode instead of OpenAI.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 
