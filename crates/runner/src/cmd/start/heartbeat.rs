@@ -79,7 +79,7 @@ impl HeldSessionStateSnapshot {
         Self::default()
     }
 
-    fn update_workspace_cache_states(&self, states: Vec<HeldSessionState>) {
+    pub(super) fn update_workspace_cache_states(&self, states: Vec<HeldSessionState>) {
         let mut inner = self.lock_inner();
         inner.workspace_cache_states = states;
         inner.workspace_cache_loaded = true;

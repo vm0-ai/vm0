@@ -10,7 +10,7 @@ use tracing::{error, info, warn};
 
 use api_contracts::generated::routes;
 use reqwest::{RequestBuilder, Response, StatusCode};
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use super::api_ably_supervisor::{
     AblySupervisor, AblySupervisorConfig, DirectCandidateSenders, DirectJobCandidate, PollDue,
@@ -35,6 +35,8 @@ use sandbox::SandboxId;
 struct ClaimRequestBody {
     telemetry: ClaimRequestTelemetry,
     capabilities: [ClaimCapability; 2],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    held_session_states: Option<Vec<HeldSessionState>>,
 }
 
 #[derive(Serialize)]
@@ -67,6 +69,16 @@ const CLAIM_TELEMETRY_DURATION_MS_MAX: u64 = 9_007_199_254_740_991;
 struct PollApiResult {
     job: Option<Job>,
     http_request_elapsed: Duration,
+}
+
+#[derive(Deserialize)]
+struct ApiErrorBody {
+    error: ApiErrorPayload,
+}
+
+#[derive(Deserialize)]
+struct ApiErrorPayload {
+    code: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -320,12 +332,16 @@ impl JobProvider for ApiProvider {
                     }
                     // Fall back to default profile when server doesn't send one
                     // (backwards compat with pre-profile API).
+                    let run_id = job.run_id;
+                    let cli_agent_session_id = job.cli_agent_session_id;
+                    let affinity_protected_until = job.affinity_protected_until;
                     let profile = job
                         .experimental_profile
                         .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
-                    info!(run_id = %job.run_id, %profile, poll_reason = ?reason, "poll: job found");
+                    info!(run_id = %run_id, %profile, poll_reason = ?reason, "poll: job found");
                     return Some(
-                        JobCandidate::new(job.run_id, profile)
+                        JobCandidate::new(run_id, profile)
+                            .with_affinity_metadata(cli_agent_session_id, affinity_protected_until)
                             .with_discovery_source(JobDiscoverySource::Poll)
                             .with_poll_reason(poll_reason_value(reason))
                             .with_poll_timing(poll_due_started_at.elapsed(), http_request_elapsed),
@@ -368,6 +384,23 @@ impl JobProvider for ApiProvider {
                 info!(run_id = %run_id, "already claimed, skipping");
                 None
             }
+            Err(RunnerError::AffinityProtected) => {
+                if let Some(delay) = candidate.affinity_protection_remaining() {
+                    info!(
+                        run_id = %run_id,
+                        delay_ms = delay.as_millis(),
+                        "claim rejected by affinity protection, deferring poll"
+                    );
+                    self.poll_wakeups.request_deferred_poll_after(delay).await;
+                } else {
+                    info!(
+                        run_id = %run_id,
+                        "claim rejected by affinity protection without active local deadline"
+                    );
+                    self.poll_wakeups.request_immediate_poll().await;
+                }
+                None
+            }
             Err(e) => {
                 error!(run_id = %run_id, error = %e, "claim failed");
                 self.poll_wakeups.request_immediate_poll().await;
@@ -384,6 +417,10 @@ impl JobProvider for ApiProvider {
 
     async fn set_held_session_states(&self, states: Vec<HeldSessionState>) {
         *self.held_session_states.lock().await = states;
+    }
+
+    async fn defer_poll_after(&self, delay: Duration) {
+        self.poll_wakeups.request_deferred_poll_after(delay).await;
     }
 
     async fn shutdown(&self) {
@@ -521,7 +558,15 @@ impl ApiClient {
         )
         .await?;
 
-        if matches!(resp.status(), StatusCode::CONFLICT | StatusCode::NOT_FOUND) {
+        if resp.status() == StatusCode::CONFLICT {
+            let (_, body) = read_api_error(resp).await;
+            if api_error_code_is(&body, "AFFINITY_PROTECTED") {
+                return Err(RunnerError::AffinityProtected);
+            }
+            return Err(RunnerError::AlreadyClaimed);
+        }
+
+        if resp.status() == StatusCode::NOT_FOUND {
             return Err(RunnerError::AlreadyClaimed);
         }
 
@@ -606,6 +651,9 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             ClaimCapability::ResumeSessionHistoryRef,
             ClaimCapability::ResumeSessionHistoryCompressedRef,
         ],
+        held_session_states: candidate
+            .claim_held_session_states()
+            .map(|states| states.to_vec()),
     }
 }
 
@@ -681,6 +729,10 @@ async fn read_api_error(resp: Response) -> (StatusCode, String) {
 
 fn api_status_error(label: &str, status: StatusCode, body: &str) -> RunnerError {
     RunnerError::Api(format!("{label} {status}: {body}"))
+}
+
+fn api_error_code_is(body: &str, code: &str) -> bool {
+    serde_json::from_str::<ApiErrorBody>(body).is_ok_and(|api_error| api_error.error.code == code)
 }
 
 fn decode_api_json_bytes<T: DeserializeOwned>(body: &[u8]) -> Result<T, String> {
@@ -779,6 +831,7 @@ fn is_static_json_field(field: &str) -> bool {
             | "captureNetworkBodies"
             | "checkpointId"
             | "cliAgentType"
+            | "cliAgentSessionId"
             | "clientId"
             | "debugNoMockClaude"
             | "debugNoMockCodex"
@@ -797,6 +850,7 @@ fn is_static_json_field(field: &str) -> bool {
             | "headers"
             | "hash"
             | "historyRef"
+            | "heldSessionStates"
             | "issued"
             | "job"
             | "keyName"
@@ -830,6 +884,7 @@ fn is_static_json_field(field: &str) -> bool {
             | "storages"
             | "timestamp"
             | "token"
+            | "lastCompletedAt"
             | "tools"
             | "ttl"
             | "unknownPolicy"
@@ -1177,6 +1232,24 @@ mod tests {
         assert!(body["telemetry"].get("pollReason").is_none());
     }
 
+    #[test]
+    fn claim_request_body_serializes_claim_held_session_states() {
+        let mut candidate =
+            JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string());
+        candidate.set_claim_held_session_states(vec![HeldSessionState {
+            session_id: "sess-claim".to_string(),
+            last_completed_at: "2026-07-02T00:00:00.000Z".to_string(),
+        }]);
+
+        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
+
+        assert_eq!(body["heldSessionStates"][0]["sessionId"], "sess-claim");
+        assert_eq!(
+            body["heldSessionStates"][0]["lastCompletedAt"],
+            "2026-07-02T00:00:00.000Z"
+        );
+    }
+
     async fn write_poll_job_response(socket: &mut tokio::net::TcpStream, run_id: RunId) {
         let body = serde_json::json!({
             "job": {
@@ -1240,7 +1313,9 @@ mod tests {
                 then.status(200).json_body(serde_json::json!({
                     "job": {
                         "runId": run_id,
-                        "experimentalProfile": "vm0/default"
+                        "experimentalProfile": "vm0/default",
+                        "cliAgentSessionId": "sess-poll",
+                        "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
                     }
                 }));
             })
@@ -1258,6 +1333,8 @@ mod tests {
 
         assert_eq!(discovered.run_id(), run_id);
         assert_eq!(discovered.profile_name(), "vm0/default");
+        assert_eq!(discovered.cli_agent_session_id(), Some("sess-poll"));
+        assert!(discovered.is_affinity_protected());
         assert_eq!(
             discovered.discovery_source(),
             Some(JobDiscoverySource::Poll)
@@ -1677,6 +1754,31 @@ mod tests {
             assert!(matches!(err, RunnerError::AlreadyClaimed));
             mock.assert_async().await;
         }
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_affinity_protected_conflict_is_retryable() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path.as_str());
+                then.status(409).json_body(serde_json::json!({
+                    "error": {
+                        "message": "Job is protected",
+                        "code": "AFFINITY_PROTECTED"
+                    }
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
+        let err = api.claim(&candidate).await.unwrap_err();
+
+        assert!(matches!(err, RunnerError::AffinityProtected));
+        mock.assert_async().await;
     }
 
     #[tokio::test]

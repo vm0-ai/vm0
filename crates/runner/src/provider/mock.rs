@@ -54,9 +54,11 @@ pub struct MockJobProvider {
     /// delay won't be discovered until it completes.
     poll_delay: Option<Duration>,
     claim_results: StdMutex<HashMap<RunId, Option<ExecutionContext>>>,
+    claim_candidates: Arc<StdMutex<Vec<JobCandidate>>>,
     completions: Arc<StdMutex<Vec<Completion>>>,
     heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
     held_session_state_updates: Arc<StdMutex<Vec<Vec<HeldSessionState>>>>,
+    deferred_poll_delays: Arc<StdMutex<Vec<Duration>>>,
     cancel: CancellationToken,
     /// Fired each time `discover()` has reached its inner `select!` await
     /// point (lock + optional `poll_delay` complete, about to park on
@@ -86,9 +88,11 @@ pub struct MockJobProvider {
 /// Test-side handle for driving the mock provider.
 pub struct MockProviderHandle {
     pub discover_tx: mpsc::UnboundedSender<JobCandidate>,
+    claim_candidates: Arc<StdMutex<Vec<JobCandidate>>>,
     pub completions: Arc<StdMutex<Vec<Completion>>>,
     pub heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
     held_session_state_updates: Arc<StdMutex<Vec<Vec<HeldSessionState>>>>,
+    deferred_poll_delays: Arc<StdMutex<Vec<Duration>>>,
     /// See [`Self::wait_discover_entered`].
     discover_entered: Arc<Notify>,
     /// See [`MockJobProvider::completion_notify`].
@@ -119,9 +123,11 @@ impl MockJobProvider {
         poll_delay: Option<Duration>,
     ) -> (Arc<Self>, MockProviderHandle) {
         let (tx, rx) = mpsc::unbounded_channel();
+        let claim_candidates = Arc::new(StdMutex::new(Vec::new()));
         let completions = Arc::new(StdMutex::new(Vec::new()));
         let heartbeats = Arc::new(StdMutex::new(Vec::new()));
         let held_session_state_updates = Arc::new(StdMutex::new(Vec::new()));
+        let deferred_poll_delays = Arc::new(StdMutex::new(Vec::new()));
         let discover_entered = Arc::new(Notify::new());
         let completion_notify = Arc::new(Notify::new());
         let discover_poll_started = Arc::new(Notify::new());
@@ -130,9 +136,11 @@ impl MockJobProvider {
             discovery: Mutex::new(rx),
             poll_delay,
             claim_results: StdMutex::new(HashMap::new()),
+            claim_candidates: Arc::clone(&claim_candidates),
             completions: Arc::clone(&completions),
             heartbeats: Arc::clone(&heartbeats),
             held_session_state_updates: Arc::clone(&held_session_state_updates),
+            deferred_poll_delays: Arc::clone(&deferred_poll_delays),
             cancel,
             discover_entered: Arc::clone(&discover_entered),
             completion_notify: Arc::clone(&completion_notify),
@@ -141,9 +149,11 @@ impl MockJobProvider {
         });
         let handle = MockProviderHandle {
             discover_tx: tx,
+            claim_candidates,
             completions,
             heartbeats,
             held_session_state_updates,
+            deferred_poll_delays,
             discover_entered,
             completion_notify,
             discover_poll_started,
@@ -224,6 +234,20 @@ impl MockProviderHandle {
             .clone()
     }
 
+    pub fn claim_candidates(&self) -> Vec<JobCandidate> {
+        self.claim_candidates
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    pub fn deferred_poll_delays(&self) -> Vec<Duration> {
+        self.deferred_poll_delays
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
     /// Wait until `heartbeat_count()` exceeds `baseline`, or return false on
     /// timeout. Uses the same subscribe-then-check pattern as
     /// [`wait_completion`](Self::wait_completion) — a heartbeat that lands
@@ -283,6 +307,10 @@ impl JobProvider for MockJobProvider {
 
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
+        self.claim_candidates
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(candidate.clone());
         let context = self
             .claim_results
             .lock()
@@ -339,6 +367,13 @@ impl JobProvider for MockJobProvider {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push(states);
+    }
+
+    async fn defer_poll_after(&self, delay: Duration) {
+        self.deferred_poll_delays
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(delay);
     }
 
     /// Acquire the discovery Mutex to preserve the shutdown deadlock regression shape.

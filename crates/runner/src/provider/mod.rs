@@ -13,13 +13,14 @@ pub mod mock;
 pub use api::ApiProvider;
 pub use local::LocalProvider;
 
+use chrono::{DateTime, Utc};
 use sandbox::SandboxId;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::active_input::ActiveInputSource;
 use crate::ids::RunId;
-use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
+use crate::types::{ExecutionContext, HeartbeatState, HeldSessionState, SandboxReuseResult};
 
 /// Low-cardinality source that first discovered a job candidate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -49,6 +50,9 @@ pub struct JobCandidate {
     poll_reason: Option<String>,
     poll_due_to_job_discovered_elapsed: Option<Duration>,
     poll_http_request_elapsed: Option<Duration>,
+    cli_agent_session_id: Option<String>,
+    affinity_protected_until: Option<DateTime<Utc>>,
+    claim_held_session_states: Option<Vec<HeldSessionState>>,
 }
 
 impl JobCandidate {
@@ -71,6 +75,9 @@ impl JobCandidate {
             poll_reason: None,
             poll_due_to_job_discovered_elapsed: None,
             poll_http_request_elapsed: None,
+            cli_agent_session_id: None,
+            affinity_protected_until: None,
+            claim_held_session_states: None,
         }
     }
 
@@ -85,6 +92,9 @@ impl JobCandidate {
             poll_reason: None,
             poll_due_to_job_discovered_elapsed: None,
             poll_http_request_elapsed: None,
+            cli_agent_session_id: None,
+            affinity_protected_until: None,
+            claim_held_session_states: None,
         }
     }
 
@@ -129,6 +139,45 @@ impl JobCandidate {
         self.poll_http_request_elapsed
     }
 
+    pub(crate) fn cli_agent_session_id(&self) -> Option<&str> {
+        self.cli_agent_session_id.as_deref()
+    }
+
+    pub(crate) fn affinity_protection_remaining(&self) -> Option<Duration> {
+        let protected_until = self.affinity_protected_until?;
+        let now = Utc::now();
+        if protected_until <= now {
+            return None;
+        }
+        (protected_until - now).to_std().ok()
+    }
+
+    pub(crate) fn is_affinity_protected(&self) -> bool {
+        self.affinity_protection_remaining()
+            .is_some_and(|remaining| !remaining.is_zero())
+    }
+
+    pub(crate) fn claim_held_session_states(&self) -> Option<&[HeldSessionState]> {
+        self.claim_held_session_states.as_deref()
+    }
+
+    pub(crate) fn set_claim_held_session_states(&mut self, states: Vec<HeldSessionState>) {
+        self.claim_held_session_states = Some(states);
+    }
+
+    pub(crate) fn with_affinity_metadata(
+        mut self,
+        cli_agent_session_id: Option<String>,
+        affinity_protected_until: Option<String>,
+    ) -> Self {
+        self.cli_agent_session_id =
+            cli_agent_session_id.filter(|session_id| !session_id.is_empty());
+        self.affinity_protected_until = affinity_protected_until
+            .as_deref()
+            .and_then(parse_affinity_protected_until);
+        self
+    }
+
     pub(crate) fn with_discovery_source(mut self, source: JobDiscoverySource) -> Self {
         self.discovery_source = Some(source);
         self
@@ -166,8 +215,17 @@ impl JobCandidate {
             poll_reason: None,
             poll_due_to_job_discovered_elapsed: None,
             poll_http_request_elapsed: None,
+            cli_agent_session_id: None,
+            affinity_protected_until: None,
+            claim_held_session_states: None,
         }
     }
+}
+
+fn parse_affinity_protected_until(value: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|parsed| parsed.with_timezone(&Utc))
 }
 
 /// Job claim result with the context and auth required for terminal completion.
@@ -362,7 +420,12 @@ pub trait JobProvider: Send + Sync {
     /// changes so the provider can include current session state in poll
     /// requests.
     /// Default no-op — only relevant for API-backed providers.
-    async fn set_held_session_states(&self, _states: Vec<crate::types::HeldSessionState>) {}
+    async fn set_held_session_states(&self, _states: Vec<HeldSessionState>) {}
+
+    /// Delay the next API-backed poll until a protected same-session job can
+    /// fall back to normal compatible-runner claiming.
+    /// Default no-op — only relevant for API-backed providers.
+    async fn defer_poll_after(&self, _delay: Duration) {}
 
     /// Release discovery resources (subscriptions, background tasks).
     ///

@@ -7,8 +7,9 @@ import { and, eq, gt } from "drizzle-orm";
 import type { ReadonlyDb } from "../external/db";
 import { publishRunnerJobNotification } from "../external/realtime";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
-import { now } from "../external/time";
+import { now, nowDate } from "../external/time";
 import { settle } from "../utils";
+import { affinityProtectedUntil } from "./runner-session-affinity";
 import { logger } from "../../lib/log";
 
 const L = logger("RunnerDispatch");
@@ -109,11 +110,19 @@ export async function notifyRunnerJob(
 
   const notificationTarget = targetRunnerId ? "targeted" : "broadcast";
   const publishStartedAt = now();
+  const protectedUntil = affinityProtectedUntil(
+    args.cliAgentSessionId,
+    nowDate(),
+  );
   const published = await publishRunnerJobNotification(
     args.runnerGroup,
     args.runId,
     args.profile,
     targetRunnerId,
+    {
+      cliAgentSessionId: args.cliAgentSessionId,
+      affinityProtectedUntil: protectedUntil?.toISOString() ?? null,
+    },
   );
   const publishFinishedAt = now();
 

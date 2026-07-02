@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 use std::collections::hash_map::Entry;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use sandbox::SandboxId;
@@ -35,7 +35,9 @@ use crate::restored_session_identity::{
 };
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
 use crate::status::{RunnerMode, StatusTracker};
-use crate::types::{ExecutionContext, SandboxReuseResult};
+use crate::types::{ExecutionContext, HeldSessionState, SandboxReuseResult};
+
+const AFFINITY_DEFER_JITTER: Duration = Duration::from_millis(50);
 
 pub(super) struct DiscoveredJob {
     pub(super) candidate: JobCandidate,
@@ -305,12 +307,13 @@ async fn publish_active_run_status(
 }
 
 async fn claim_with_local_admission(
-    mut candidate: JobCandidate,
+    candidate: JobCandidate,
     run_id: RunId,
     job_vcpu: u32,
     job_memory: u32,
     ctx: &DiscoveredJobContext<'_>,
 ) -> Option<AdmittedClaim> {
+    let mut candidate = prepare_affinity_protected_candidate(candidate, ctx).await?;
     candidate.mark_local_admission_started();
 
     // Reserve resources before claiming so we don't waste a job that another
@@ -376,6 +379,64 @@ async fn claim_with_local_admission(
     }
 
     Some(admission.into_admitted(claimed))
+}
+
+async fn prepare_affinity_protected_candidate(
+    mut candidate: JobCandidate,
+    ctx: &DiscoveredJobContext<'_>,
+) -> Option<JobCandidate> {
+    if !candidate.is_affinity_protected() {
+        return Some(candidate);
+    }
+    let Some(cli_agent_session_id) = candidate.cli_agent_session_id().map(str::to_owned) else {
+        return Some(candidate);
+    };
+
+    let held_session_states = current_claim_held_session_states(ctx).await;
+    if held_session_states
+        .iter()
+        .any(|state| state.session_id == cli_agent_session_id)
+    {
+        candidate.set_claim_held_session_states(held_session_states);
+        return Some(candidate);
+    }
+
+    let delay = candidate
+        .affinity_protection_remaining()
+        .unwrap_or(Duration::ZERO)
+        .saturating_add(AFFINITY_DEFER_JITTER);
+    info!(
+        run_id = %candidate.run_id(),
+        session = %diagnostic_session_fingerprint(&cli_agent_session_id),
+        delay_ms = delay.as_millis(),
+        "same-session affinity protected by another runner, deferring claim"
+    );
+    ctx.spawn_ctx.provider.defer_poll_after(delay).await;
+    None
+}
+
+async fn current_claim_held_session_states(
+    ctx: &DiscoveredJobContext<'_>,
+) -> Vec<HeldSessionState> {
+    let idle_states = {
+        let pool = ctx.idle_pool.lock().await;
+        pool.held_session_states()
+    };
+    if let Some(workspace_cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref() {
+        let cache_states = workspace_cache.held_session_states().await;
+        ctx.spawn_ctx
+            .held_session_snapshot
+            .update_workspace_cache_states(cache_states);
+    }
+    let held_session_states = ctx
+        .spawn_ctx
+        .held_session_snapshot
+        .current_held_session_states(idle_states, &ctx.spawn_ctx.active_cli_agent_sessions, None);
+    ctx.spawn_ctx
+        .provider
+        .set_held_session_states(held_session_states.clone())
+        .await;
+    held_session_states
 }
 
 async fn try_reuse_from_pool(

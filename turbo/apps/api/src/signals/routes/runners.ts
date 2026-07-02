@@ -20,7 +20,17 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
-import { and, eq, gt, inArray, isNull, lt, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lt,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 
 import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
 import { authorization$ } from "../context/hono";
@@ -54,6 +64,12 @@ import {
   SESSION_HISTORY_ENCODING_GZIP,
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
+import {
+  RUNNER_SESSION_AFFINITY_PROTECTION_MS,
+  affinityProtectedUntil,
+  heldSessionStatesContain,
+  isAffinityProtected,
+} from "../services/runner-session-affinity";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
 
@@ -292,6 +308,18 @@ function forbidden(message: string) {
   };
 }
 
+function affinityProtectedConflict(protectedUntil: Date) {
+  return {
+    status: 409 as const,
+    body: {
+      error: {
+        message: `Job is protected by same-session affinity until ${protectedUntil.toISOString()}`,
+        code: "AFFINITY_PROTECTED",
+      },
+    },
+  };
+}
+
 function isOfficialRunnerGroup(group: string): boolean {
   return group.split("/")[0] === "vm0";
 }
@@ -394,6 +422,25 @@ function uniqueHeldCliAgentSessionIds(
   ];
 }
 
+function sessionAffinityProtectionExpiredSql(): SQL<unknown> {
+  return sql`${runnerJobQueue.createdAt} <= now() - (${RUNNER_SESSION_AFFINITY_PROTECTION_MS} * interval '1 millisecond')`;
+}
+
+function pollAffinityEligibilityCondition(
+  heldCliAgentSessionIds: readonly string[],
+): SQL<unknown> {
+  const conditions: SQL<unknown>[] = [
+    isNull(runnerJobQueue.cliAgentSessionId),
+    sessionAffinityProtectionExpiredSql(),
+  ];
+  if (heldCliAgentSessionIds.length > 0) {
+    conditions.push(
+      inArray(runnerJobQueue.cliAgentSessionId, heldCliAgentSessionIds),
+    );
+  }
+  return or(...conditions) ?? conditions[0]!;
+}
+
 function recordPollTimingMetrics(args: {
   readonly runId: string;
   readonly runnerGroup: string;
@@ -490,6 +537,9 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (profiles && profiles.length > 0) {
     whereConditions.push(inArray(runnerJobQueue.profile, profiles));
   }
+  whereConditions.push(
+    pollAffinityEligibilityCondition(heldCliAgentSessionIds),
+  );
 
   const orderClauses =
     heldCliAgentSessionIds.length > 0
@@ -515,6 +565,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       vars: agentRuns.vars,
       resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
       profile: runnerJobQueue.profile,
+      cliAgentSessionId: runnerJobQueue.cliAgentSessionId,
       createdAt: runnerJobQueue.createdAt,
     })
     .from(runnerJobQueue)
@@ -530,6 +581,10 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const pollResponseAtMs = now();
+  const protectedUntil = affinityProtectedUntil(
+    pendingJob.cliAgentSessionId,
+    pendingJob.createdAt,
+  );
   recordPollTimingMetrics({
     runId: pendingJob.runId,
     runnerGroup: group,
@@ -554,6 +609,8 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         vars: (pendingJob.vars as Record<string, string>) ?? null,
         checkpointId: pendingJob.resumedFromCheckpointId ?? null,
         experimentalProfile: pendingJob.profile,
+        cliAgentSessionId: pendingJob.cliAgentSessionId,
+        affinityProtectedUntil: protectedUntil?.toISOString() ?? null,
       },
     },
   };
@@ -584,6 +641,34 @@ type ClaimLookupResult =
 
 function isClaimableJob(value: ClaimLookupResult): value is ClaimableJob {
   return "job" in value;
+}
+
+function claimAffinityProtectionError(
+  job: ClaimableJob["job"],
+  heldSessionStates: readonly HeldSessionState[] | undefined,
+) {
+  const protectedUntil = affinityProtectedUntil(
+    job.cliAgentSessionId,
+    job.createdAt,
+  );
+  if (
+    !protectedUntil ||
+    !isAffinityProtected(job.cliAgentSessionId, job.createdAt)
+  ) {
+    return null;
+  }
+
+  const cliAgentSessionId = job.cliAgentSessionId;
+  const canonicalStates =
+    canonicalizeHeldSessionStates(heldSessionStates) ?? [];
+  if (
+    cliAgentSessionId &&
+    !heldSessionStatesContain(canonicalStates, cliAgentSessionId)
+  ) {
+    return affinityProtectedConflict(protectedUntil);
+  }
+
+  return null;
 }
 
 async function getClaimableJob(
@@ -1844,6 +1929,14 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return authError;
   }
 
+  const affinityProtectionError = claimAffinityProtectionError(
+    jobWithRun.job,
+    body.data.heldSessionStates,
+  );
+  if (affinityProtectionError) {
+    return affinityProtectionError;
+  }
+
   const run = jobWithRun.run;
 
   const contextParseStartedAt = now();
@@ -1924,10 +2017,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     claimRouteTiming,
   });
 
-  return {
-    status: 200 as const,
-    body: responseBody,
-  };
+  return { status: 200 as const, body: responseBody };
 });
 
 const runnerRealtimeTokenBody$ = bodyResultOf(

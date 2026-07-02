@@ -49,24 +49,58 @@ pub(super) struct DirectJobCandidate {
     profile_name: String,
     targeted: bool,
     discovered_at: StdInstant,
+    cli_agent_session_id: Option<String>,
+    affinity_protected_until: Option<String>,
 }
 
 impl DirectJobCandidate {
+    #[cfg(test)]
     pub(super) fn new(run_id: RunId, profile_name: String, targeted: bool) -> Self {
         Self::new_with_discovered_at(run_id, profile_name, targeted, StdInstant::now())
     }
 
+    pub(super) fn new_with_affinity(
+        run_id: RunId,
+        profile_name: String,
+        targeted: bool,
+        cli_agent_session_id: Option<String>,
+        affinity_protected_until: Option<String>,
+    ) -> Self {
+        Self::new_with_affinity_metadata(
+            run_id,
+            profile_name,
+            targeted,
+            StdInstant::now(),
+            cli_agent_session_id,
+            affinity_protected_until,
+        )
+    }
+
+    #[cfg(test)]
     pub(super) fn new_with_discovered_at(
         run_id: RunId,
         profile_name: String,
         targeted: bool,
         discovered_at: StdInstant,
     ) -> Self {
+        Self::new_with_affinity_metadata(run_id, profile_name, targeted, discovered_at, None, None)
+    }
+
+    pub(super) fn new_with_affinity_metadata(
+        run_id: RunId,
+        profile_name: String,
+        targeted: bool,
+        discovered_at: StdInstant,
+        cli_agent_session_id: Option<String>,
+        affinity_protected_until: Option<String>,
+    ) -> Self {
         Self {
             run_id,
             profile_name,
             targeted,
             discovered_at,
+            cli_agent_session_id,
+            affinity_protected_until,
         }
     }
 
@@ -84,6 +118,7 @@ impl DirectJobCandidate {
 
     pub(super) fn into_job_candidate(self) -> JobCandidate {
         JobCandidate::new_with_discovered_at(self.run_id, self.profile_name, self.discovered_at)
+            .with_affinity_metadata(self.cli_agent_session_id, self.affinity_protected_until)
             .with_discovery_source(JobDiscoverySource::Ably)
     }
 }
@@ -236,7 +271,7 @@ impl PollWakeups {
         self.notify.notify_waiters();
     }
 
-    async fn request_deferred_poll_after(&self, delay: Duration) {
+    pub(super) async fn request_deferred_poll_after(&self, delay: Duration) {
         let now = tokio::time::Instant::now();
         self.request_deferred_poll_capped_at(now + delay, now + TARGETED_RUNNER_DEFER_MAX)
             .await;
@@ -703,10 +738,12 @@ async fn handle_ably_message(
                     targeted,
                     "ably: job notification, queueing direct candidate"
                 );
-                JobNotificationAction::Direct(DirectJobCandidate::new(
+                JobNotificationAction::Direct(DirectJobCandidate::new_with_affinity(
                     notif.run_id,
                     profile.to_owned(),
                     targeted,
+                    notif.cli_agent_session_id.map(str::to_owned),
+                    notif.affinity_protected_until.map(str::to_owned),
                 ))
             } else {
                 info!(
@@ -756,6 +793,8 @@ struct JobNotification<'a> {
     run_id: RunId,
     profile: Option<&'a str>,
     target_runner_id: Option<&'a str>,
+    cli_agent_session_id: Option<&'a str>,
+    affinity_protected_until: Option<&'a str>,
 }
 
 fn supports_profile(profiles: &[String], profile: &str) -> bool {
@@ -839,10 +878,22 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("targetRunnerId")
         .and_then(|v| v.as_str())
         .filter(|value| !value.is_empty());
+    let cli_agent_session_id = msg
+        .data
+        .get("cliAgentSessionId")
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.is_empty());
+    let affinity_protected_until = msg
+        .data
+        .get("affinityProtectedUntil")
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.is_empty());
     Some(JobNotification {
         run_id,
         profile,
         target_runner_id,
+        cli_agent_session_id,
+        affinity_protected_until,
     })
 }
 
@@ -1655,7 +1706,9 @@ mod tests {
             Some("job"),
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000001",
-                "profile": "vm0/default"
+                "profile": "vm0/default",
+                "cliAgentSessionId": "sess-ably",
+                "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
             }),
         );
 
@@ -1676,6 +1729,9 @@ mod tests {
         );
         assert_eq!(candidate.profile_name(), "vm0/default");
         assert!(!candidate.targeted());
+        let candidate = candidate.into_job_candidate();
+        assert_eq!(candidate.cli_agent_session_id(), Some("sess-ably"));
+        assert!(candidate.is_affinity_protected());
         assert!(direct_rx.targeted.try_recv().is_err());
         assert!(!wakeups.snapshot().await.poll_now);
     }
@@ -2064,7 +2120,9 @@ mod tests {
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000001",
                 "profile": "vm0/default",
-                "targetRunnerId": "00000000-0000-0000-0000-000000000099"
+                "targetRunnerId": "00000000-0000-0000-0000-000000000099",
+                "cliAgentSessionId": "sess-target",
+                "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
             }),
         );
         let notif = parse_job_notification(&msg).unwrap();
@@ -2073,6 +2131,11 @@ mod tests {
             Some("00000000-0000-0000-0000-000000000099")
         );
         assert_eq!(notif.profile, Some("vm0/default"));
+        assert_eq!(notif.cli_agent_session_id, Some("sess-target"));
+        assert_eq!(
+            notif.affinity_protected_until,
+            Some("2999-01-01T00:00:00.000Z")
+        );
     }
 
     #[test]

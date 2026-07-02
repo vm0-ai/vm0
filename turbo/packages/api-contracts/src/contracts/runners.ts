@@ -95,6 +95,12 @@ export const jobSchema = z.object({
   vars: z.record(z.string(), z.string()).nullable(),
   checkpointId: z.uuid().nullable(),
   experimentalProfile: z.string().optional(),
+  cliAgentSessionId: z.string().nullable().optional(),
+  affinityProtectedUntil: z
+    .string()
+    .datetime({ offset: true })
+    .nullable()
+    .optional(),
 });
 
 export const heldSessionStateSchema = z.object({
@@ -393,6 +399,7 @@ export const runnersJobClaimContract = c.router({
     body: z.object({
       telemetry: runnerClaimTelemetrySchema.optional(),
       capabilities: z.array(runnerClaimCapabilitySchema).optional(),
+      heldSessionStates: z.array(heldSessionStateSchema).max(1024).optional(),
     }),
     responses: {
       200: executionContextSchema,
@@ -400,7 +407,7 @@ export const runnersJobClaimContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema, // Job does not belong to user
       404: apiErrorSchema,
-      409: apiErrorSchema, // Already claimed
+      409: apiErrorSchema, // Already claimed or temporarily affinity-protected
       500: apiErrorSchema,
     },
     summary: "Claim a pending job for execution",
