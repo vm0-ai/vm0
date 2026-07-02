@@ -1,4 +1,4 @@
-import { command, state } from "ccstate";
+import { command } from "ccstate";
 import { isEditableTarget, matchShortcut } from "@vm0/ui";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -22,26 +22,12 @@ import {
   setupGlobalShortcut,
   type GlobalShortcutBindings,
 } from "../../lib/setup-global-shortcut.ts";
+import { sidebarChatThreads$ } from "./optimistic-chat-thread-page.ts";
 
-/**
- * Snapshot row shape consumed by `navigateToAdjacentThread$`. The caller
- * passes the already-resolved sidebar list (via `useLastResolved`) so the
- * keyboard command stays synchronous on the read side — awaiting
- * `sidebarChatThreads$` here would block the keypress on whatever async
- * work that signal is currently doing (e.g. an IDB miss + remote refetch).
- */
 interface NavigableThread {
   readonly id: string;
   readonly title?: string | null;
 }
-
-const chatKeyboardNavigableThreads$ = state<readonly NavigableThread[]>([]);
-
-export const setChatKeyboardNavigableThreads$ = command(
-  ({ set }, threads: readonly NavigableThread[]) => {
-    set(chatKeyboardNavigableThreads$, threads);
-  },
-);
 
 function plainArrowScrollDirection(
   event: KeyboardEvent,
@@ -115,6 +101,169 @@ function resolveKeyboardScrollThread(
     return leftThread;
   }
   return leftThread;
+}
+
+const focusedThreadSidebarTitle$ = command(
+  async ({ get }, thread: ChatThreadSignals, signal: AbortSignal) => {
+    const threads = await get(sidebarChatThreads$);
+    signal.throwIfAborted();
+    const navigableThread = threads.find((item) => {
+      return item.id === thread.threadId;
+    });
+    return navigableThread?.title;
+  },
+);
+
+const setFocusedThreadEmoji$ = command(
+  async (
+    { get, set },
+    args: { thread: ChatThreadSignals; emoji: string },
+    signal: AbortSignal,
+  ) => {
+    if (!(get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false)) {
+      return;
+    }
+    await set(
+      setChatThreadEmojiFromThreadData$,
+      {
+        threadId: args.thread.threadId,
+        emoji: args.emoji,
+        title: await set(focusedThreadSidebarTitle$, args.thread, signal),
+      },
+      signal,
+    );
+  },
+);
+
+const clearFocusedThreadEmoji$ = command(
+  async ({ get, set }, thread: ChatThreadSignals, signal: AbortSignal) => {
+    if (!(get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false)) {
+      return;
+    }
+    await set(
+      clearChatThreadEmojiFromThreadData$,
+      {
+        threadId: thread.threadId,
+        title: await set(focusedThreadSidebarTitle$, thread, signal),
+      },
+      signal,
+    );
+  },
+);
+
+const openFocusedThreadEmojiMenu$ = command(
+  async ({ get, set }, thread: ChatThreadSignals, signal: AbortSignal) => {
+    if (!(get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false)) {
+      return;
+    }
+    const threadData = await get(thread.threadData$);
+    signal.throwIfAborted();
+    const snapshotTitle = await set(focusedThreadSidebarTitle$, thread, signal);
+    signal.throwIfAborted();
+    const title =
+      snapshotTitle !== undefined ? snapshotTitle : threadData?.title;
+    set(openChatThreadEmojiMenu$, { threadId: thread.threadId, title });
+  },
+);
+
+const navigateFocusedThreadFromSidebar$ = command(
+  async (
+    { get, set },
+    args: {
+      thread: ChatThreadSignals | null;
+      direction: "prev" | "next";
+    },
+    signal: AbortSignal,
+  ) => {
+    if (!args.thread) {
+      return;
+    }
+    const threads = await get(sidebarChatThreads$);
+    signal.throwIfAborted();
+    await set(
+      navigateToAdjacentThread$,
+      {
+        currentThreadId: args.thread.threadId,
+        direction: args.direction,
+        threads,
+      },
+      signal,
+    );
+  },
+);
+
+function createEmojiShortcutBindings({
+  clearEmoji,
+  setEmoji,
+}: {
+  clearEmoji: () => void | Promise<void>;
+  setEmoji: (emoji: string) => void | Promise<void>;
+}): GlobalShortcutBindings {
+  return {
+    ...(Object.fromEntries(
+      CHAT_THREAD_EMOJI_OPTIONS.map((option, index) => {
+        return [
+          `shift+${index + 1}`,
+          {
+            run: async () => {
+              await setEmoji(option.emoji);
+            },
+          },
+        ];
+      }),
+    ) as GlobalShortcutBindings),
+    "shift+0": {
+      run: clearEmoji,
+    },
+  };
+}
+
+function createChatPageShortcutBindings({
+  clearEmoji,
+  openEmojiMenu,
+  renameThread,
+  navigateNext,
+  navigatePrev,
+  scrollBottom,
+  scrollTop,
+  setEmoji,
+}: {
+  clearEmoji: () => void | Promise<void>;
+  openEmojiMenu: () => void | Promise<void>;
+  renameThread: () => void | Promise<void>;
+  navigateNext: () => void | Promise<void>;
+  navigatePrev: () => void | Promise<void>;
+  scrollBottom: () => void | Promise<void>;
+  scrollTop: () => void | Promise<void>;
+  setEmoji: (emoji: string) => void | Promise<void>;
+}): GlobalShortcutBindings {
+  return {
+    "shift+f2": {
+      allowInEditableTarget: true,
+      run: openEmojiMenu,
+    },
+    f2: {
+      allowInEditableTarget: true,
+      run: renameThread,
+    },
+    "mod+shift+arrowup": {
+      allowInEditableTarget: true,
+      run: navigatePrev,
+    },
+    "mod+shift+arrowdown": {
+      allowInEditableTarget: true,
+      run: navigateNext,
+    },
+    "mod+arrowup": {
+      allowInEditableTarget: true,
+      run: scrollTop,
+    },
+    "mod+arrowdown": {
+      allowInEditableTarget: true,
+      run: scrollBottom,
+    },
+    ...createEmojiShortcutBindings({ clearEmoji, setEmoji }),
+  };
 }
 
 export const focusChatThreadContainer$ = command(
@@ -220,185 +369,73 @@ export const setChatKeyboardScrollRoot$ = onRef(
       }
       return null;
     };
-
     const markActiveThread = (event: Event) => {
       activeThreadId = containingThread(event.target)?.threadId ?? null;
     };
-
     const focusedThread = () => {
       return containingThread(doc.activeElement) ?? get(currentLeftThread$);
-    };
-    const focusedThreadTitle = (thread: ChatThreadSignals) => {
-      const navigableThread = get(chatKeyboardNavigableThreads$).find(
-        (item) => {
-          return item.id === thread.threadId;
-        },
-      );
-      return navigableThread?.title;
-    };
-    const chatThreadEmojiEnabled = () => {
-      return get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false;
-    };
-    const setFocusedThreadEmoji = async (emoji: string) => {
-      if (!chatThreadEmojiEnabled()) {
-        return;
-      }
-      const thread = focusedThread();
-      if (!thread) {
-        return;
-      }
-      await set(
-        setChatThreadEmojiFromThreadData$,
-        { threadId: thread.threadId, emoji, title: focusedThreadTitle(thread) },
-        signal,
-      );
-    };
-    const clearFocusedThreadEmoji = async () => {
-      if (!chatThreadEmojiEnabled()) {
-        return;
-      }
-      const thread = focusedThread();
-      if (!thread) {
-        return;
-      }
-      await set(
-        clearChatThreadEmojiFromThreadData$,
-        { threadId: thread.threadId, title: focusedThreadTitle(thread) },
-        signal,
-      );
-    };
-    const emojiShortcutBindings = Object.fromEntries(
-      CHAT_THREAD_EMOJI_OPTIONS.map((option, index) => {
-        return [
-          `shift+${index + 1}`,
-          {
-            run: async () => {
-              await setFocusedThreadEmoji(option.emoji);
-            },
-          },
-        ];
-      }),
-    ) as GlobalShortcutBindings;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) {
-        return;
-      }
-      const direction = plainArrowScrollDirection(event);
-      if (!direction || !isKeyboardScrollAllowedTarget(el, event.target)) {
-        return;
-      }
-      const thread = resolveKeyboardScrollThread(
-        get(currentLeftThread$),
-        get(currentRightThread$),
-        containingThread(event.target)?.threadId ?? activeThreadId,
-      );
-      if (thread) {
-        set(thread.prepareKeyboardScroll$);
-      }
     };
 
     el.addEventListener("focusin", markActiveThread, { signal });
     el.addEventListener("pointerdown", markActiveThread, { signal });
     el.addEventListener("pointerover", markActiveThread, { signal });
     setupGlobalShortcut(
-      {
-        "shift+f2": {
-          allowInEditableTarget: true,
-          run: async () => {
-            if (!chatThreadEmojiEnabled()) {
-              return;
-            }
-            const thread = focusedThread();
-            if (!thread) {
-              return;
-            }
-            const threadData = await get(thread.threadData$);
-            signal.throwIfAborted();
-            const snapshotTitle = focusedThreadTitle(thread);
-            const title =
-              snapshotTitle !== undefined ? snapshotTitle : threadData?.title;
-            set(openChatThreadEmojiMenu$, {
-              threadId: thread.threadId,
-              title,
-            });
-          },
+      createChatPageShortcutBindings({
+        clearEmoji: async () => {
+          const thread = focusedThread();
+          if (thread) {
+            await set(clearFocusedThreadEmoji$, thread, signal);
+          }
         },
-        f2: {
-          allowInEditableTarget: true,
-          run: async () => {
-            const thread = focusedThread();
-            if (!thread) {
-              return;
-            }
+        openEmojiMenu: async () => {
+          const thread = focusedThread();
+          if (thread) {
+            await set(openFocusedThreadEmojiMenu$, thread, signal);
+          }
+        },
+        renameThread: async () => {
+          const thread = focusedThread();
+          if (thread) {
             await set(
               openRenameChatThreadDialogFromThreadData$,
               thread.threadId,
               signal,
             );
-          },
+          }
         },
-        "mod+shift+arrowup": {
-          allowInEditableTarget: true,
-          run: async () => {
-            const thread = focusedThread();
-            if (!thread) {
-              return;
-            }
-            await set(
-              navigateToAdjacentThread$,
-              {
-                currentThreadId: thread.threadId,
-                direction: "prev",
-                threads: get(chatKeyboardNavigableThreads$),
-              },
-              signal,
-            );
-          },
+        navigateNext: async () => {
+          await set(
+            navigateFocusedThreadFromSidebar$,
+            { thread: focusedThread(), direction: "next" },
+            signal,
+          );
         },
-        "mod+shift+arrowdown": {
-          allowInEditableTarget: true,
-          run: async () => {
-            const thread = focusedThread();
-            if (!thread) {
-              return;
-            }
-            await set(
-              navigateToAdjacentThread$,
-              {
-                currentThreadId: thread.threadId,
-                direction: "next",
-                threads: get(chatKeyboardNavigableThreads$),
-              },
-              signal,
-            );
-          },
+        navigatePrev: async () => {
+          await set(
+            navigateFocusedThreadFromSidebar$,
+            { thread: focusedThread(), direction: "prev" },
+            signal,
+          );
         },
-        "mod+arrowup": {
-          allowInEditableTarget: true,
-          run: () => {
-            const thread = focusedThread();
-            if (!thread) {
-              return;
-            }
-            set(scrollCurrentThread$, thread, "top");
-          },
-        },
-        "mod+arrowdown": {
-          allowInEditableTarget: true,
-          run: () => {
-            const thread = focusedThread();
-            if (!thread) {
-              return;
-            }
+        scrollBottom: () => {
+          const thread = focusedThread();
+          if (thread) {
             set(scrollCurrentThread$, thread, "bottom");
-          },
+          }
         },
-        ...emojiShortcutBindings,
-        "shift+0": {
-          run: clearFocusedThreadEmoji,
+        scrollTop: () => {
+          const thread = focusedThread();
+          if (thread) {
+            set(scrollCurrentThread$, thread, "top");
+          }
         },
-      },
+        setEmoji: async (emoji) => {
+          const thread = focusedThread();
+          if (thread) {
+            await set(setFocusedThreadEmoji$, { thread, emoji }, signal);
+          }
+        },
+      }),
       signal,
       {
         doc,
@@ -407,7 +444,27 @@ export const setChatKeyboardScrollRoot$ = onRef(
         },
       },
     );
-    doc.addEventListener("keydown", onKeyDown, { signal });
+    doc.addEventListener(
+      "keydown",
+      (event) => {
+        if (event.defaultPrevented) {
+          return;
+        }
+        const direction = plainArrowScrollDirection(event);
+        if (!direction || !isKeyboardScrollAllowedTarget(el, event.target)) {
+          return;
+        }
+        const thread = resolveKeyboardScrollThread(
+          get(currentLeftThread$),
+          get(currentRightThread$),
+          containingThread(event.target)?.threadId ?? activeThreadId,
+        );
+        if (thread) {
+          set(thread.prepareKeyboardScroll$);
+        }
+      },
+      { signal },
+    );
   }),
 );
 

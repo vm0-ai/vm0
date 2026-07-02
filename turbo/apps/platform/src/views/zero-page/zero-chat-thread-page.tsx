@@ -6,7 +6,6 @@ import type {
   ReactNode,
   UIEvent as ReactUIEvent,
 } from "react";
-import { useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
   useGet,
@@ -336,11 +335,9 @@ import {
 } from "../../signals/chat-page/chat-thread-panes.ts";
 import {
   focusChatThreadContainer$,
-  setChatKeyboardNavigableThreads$,
   setChatKeyboardScrollRoot$,
   setMainChatThreadKeyboardFocusRef$,
 } from "../../signals/chat-page/chat-keyboard.ts";
-import { sidebarChatThreads$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 
@@ -3020,23 +3017,20 @@ function ChatThread({
   onFocusFallbackRef?: (el: HTMLElement | null) => (() => void) | undefined;
 }) {
   const setContainerRef = useSet(thread.setContainerRef$);
-  const setThreadContainerRef = useCallback(
-    (el: HTMLElement | null) => {
-      const cleanupContainerRef = setContainerRef(el);
-      const cleanupFocusFallbackRef = onFocusFallbackRef?.(el);
-      return () => {
-        cleanupFocusFallbackRef?.();
-        cleanupContainerRef?.();
-      };
-    },
-    [onFocusFallbackRef, setContainerRef],
-  );
 
   return (
     <section
       aria-label="Chat thread"
       className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
-      ref={setThreadContainerRef}
+      data-chat-thread-container-id={thread.threadId}
+      ref={(el) => {
+        const cleanupContainerRef = setContainerRef(el);
+        const cleanupFocusFallbackRef = onFocusFallbackRef?.(el);
+        return () => {
+          cleanupFocusFallbackRef?.();
+          cleanupContainerRef?.();
+        };
+      }}
       tabIndex={-1}
     >
       <ChatThreadContent thread={thread} />
@@ -3143,15 +3137,6 @@ function ChatThreadArea({
   const setMainThreadKeyboardFocusRef = useSet(
     setMainChatThreadKeyboardFocusRef$,
   );
-  const setKeyboardNavigableThreads = useSet(setChatKeyboardNavigableThreads$);
-  const sidebarThreads = useLastResolved(sidebarChatThreads$);
-
-  useEffect(() => {
-    setKeyboardNavigableThreads(sidebarThreads ?? []);
-    return () => {
-      setKeyboardNavigableThreads([]);
-    };
-  }, [setKeyboardNavigableThreads, sidebarThreads]);
 
   return (
     <div
