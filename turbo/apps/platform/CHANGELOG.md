@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.529.2](https://github.com/vm0-ai/vm0/compare/app-v0.529.1...app-v0.529.2) (2026-07-02)
+
+
+### Bug Fixes
+
+* animate initial thinking lines independently ([#19806](https://github.com/vm0-ai/vm0/issues/19806)) ([8fa9603](https://github.com/vm0-ai/vm0/commit/8fa96039cd1259d2dae2fa5ff55ad4974c1304f0))
+* fire Signup Google Ads conversion for recent signups ([#19794](https://github.com/vm0-ai/vm0/issues/19794)) ([442fe0b](https://github.com/vm0-ai/vm0/commit/442fe0b23ed514d6072c4a22f3b557ec7aba04b4))
+* refine html artifact edit controls ([#19787](https://github.com/vm0-ai/vm0/issues/19787)) ([98a2040](https://github.com/vm0-ai/vm0/commit/98a20404c3e41c96b356ddd7f017a965948f9969))
+* show chat thread icon shortcut hints ([#19804](https://github.com/vm0-ai/vm0/issues/19804)) ([b34cbfe](https://github.com/vm0-ai/vm0/commit/b34cbfe2a93886c574a5818ba893a83ec8036c86))
+* show edit action for hosted site root URLs ([#19808](https://github.com/vm0-ai/vm0/issues/19808)) ([7fa7f17](https://github.com/vm0-ai/vm0/commit/7fa7f17ad84b1bff8d21861ccf53d828ec3247ec))
+
 ## [0.529.1](https://github.com/vm0-ai/vm0/compare/app-v0.529.0...app-v0.529.1) (2026-07-02)
 
 
