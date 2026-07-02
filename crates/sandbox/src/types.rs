@@ -844,6 +844,13 @@ mod tests {
             ),
             (
                 serde_json::json!({
+                    "kind": "exited",
+                    "exit_code": -1,
+                }),
+                ExecTermination::Exited { exit_code: -1 },
+            ),
+            (
+                serde_json::json!({
                     "kind": "timed_out",
                 }),
                 ExecTermination::TimedOut,
@@ -917,7 +924,9 @@ mod tests {
     fn exec_termination_rejects_duplicate_fields() {
         for value in [
             r#"{"kind":"exited","kind":"timed_out","exit_code":0}"#,
+            r#"{"kind":"exited","kind":"exited","exit_code":0}"#,
             r#"{"kind":"exited","exit_code":0,"exit_code":1}"#,
+            r#"{"kind":"exited","exit_code":0,"exit_code":0}"#,
         ] {
             assert!(serde_json::from_str::<ExecTermination>(value).is_err());
         }
