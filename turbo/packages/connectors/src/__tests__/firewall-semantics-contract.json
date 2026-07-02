@@ -107,6 +107,14 @@
       }
     },
     {
+      "name": "greedy star marker without name",
+      "segment": "{*}",
+      "expected": {
+        "kind": "error",
+        "reasonIncludes": "empty parameter name"
+      }
+    },
+    {
       "name": "adjacent parameters",
       "segment": "{a}{b}",
       "expected": {
