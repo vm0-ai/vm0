@@ -18,22 +18,12 @@ export function recordStringValue(
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-export function recordNumberValue(
+function recordNumberValue(
   record: Record<string, unknown> | null,
   key: string,
 ): number | null {
   const value = record?.[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-export function visibleElementRecords(
-  result: Record<string, unknown> | null,
-): readonly Record<string, unknown>[] {
-  const value = result?.visibleElements;
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.filter(isRecord);
 }
 
 function jsonDisplayRecord(
