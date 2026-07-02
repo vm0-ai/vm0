@@ -23,13 +23,16 @@ describe("lab page", () => {
       [FeatureSwitchKey.AwsConnector]: false,
     };
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
-      return respond(200, { switches });
+      return respond(200, { switches, effectiveSwitches: switches });
     });
     context.mocks.api(
       zeroFeatureSwitchesContract.update,
       ({ body, respond }) => {
         switches = { ...switches, ...body.switches };
-        return respond(200, { switches: body.switches });
+        return respond(200, {
+          switches: body.switches,
+          effectiveSwitches: switches,
+        });
       },
     );
     context.mocks.api(zeroFeatureSwitchesContract.delete, ({ respond }) => {

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createConnection, createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -30,6 +30,7 @@ interface DaemonPaths {
   readonly dir: string;
   readonly socketPath: string;
   readonly pidPath: string;
+  readonly authTokenPath: string;
 }
 
 interface DaemonCommandRequest {
@@ -103,6 +104,9 @@ const zeroCommands = new Map<string, string>([
 
 const COMPUTER_USE_OUTPUT_DIR = "/tmp/vm0/computer-use";
 const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/s;
+const DAEMON_DIR_MODE = 0o700;
+const DAEMON_SOCKET_MODE = 0o600;
+const DAEMON_FILE_MODE = 0o600;
 
 function usage(): string {
   return `Usage:
@@ -202,6 +206,7 @@ function daemonPaths(values: ReadonlyMap<string, string>): DaemonPaths {
     dir,
     socketPath: path.join(dir, "daemon.sock"),
     pidPath: path.join(dir, "daemon.pid"),
+    authTokenPath: path.join(dir, "daemon.auth"),
   };
 }
 
@@ -521,6 +526,49 @@ function daemonUnavailableMessage(socketPath: string): string {
   return `vm0-computer daemon is not running at ${socketPath}. Start it first with: vm0-computer daemon start`;
 }
 
+async function ensureSecureDaemonDir(dir: string): Promise<void> {
+  await mkdir(dir, { recursive: true, mode: DAEMON_DIR_MODE });
+  await chmod(dir, DAEMON_DIR_MODE);
+}
+
+async function writeDaemonAuthToken(paths: DaemonPaths): Promise<string> {
+  const token = randomBytes(32).toString("hex");
+  await writeFile(paths.authTokenPath, `${token}\n`, {
+    mode: DAEMON_FILE_MODE,
+  });
+  await chmod(paths.authTokenPath, DAEMON_FILE_MODE);
+  return token;
+}
+
+async function readDaemonAuthToken(paths: DaemonPaths): Promise<string> {
+  return (await readFile(paths.authTokenPath, "utf8")).trim();
+}
+
+async function readOrCreateDaemonAuthToken(
+  paths: DaemonPaths,
+): Promise<string> {
+  try {
+    return await readDaemonAuthToken(paths);
+  } catch (error) {
+    if (isConnectionUnavailable(error)) {
+      return await writeDaemonAuthToken(paths);
+    }
+    throw error;
+  }
+}
+
+function daemonAuthTokensMatch(expected: string, actual: unknown): boolean {
+  if (typeof actual !== "string" || actual.length === 0) {
+    return false;
+  }
+  const expectedBuffer = Buffer.from(expected);
+  const actualBuffer = Buffer.from(actual);
+  return (
+    expectedBuffer.length === actualBuffer.length &&
+    timingSafeEqual(expectedBuffer, actualBuffer)
+  );
+}
+
 function isConnectionUnavailable(error: unknown): boolean {
   return (
     isJsonObject(error) &&
@@ -552,12 +600,13 @@ async function executeRuntimeCommand(
 }
 
 async function sendDaemonRequest(
-  socketPath: string,
+  paths: DaemonPaths,
   request: DaemonRequest,
   timeoutMs = 30_000,
 ): Promise<DaemonResponse> {
+  const authToken = await readDaemonAuthToken(paths);
   return await new Promise((resolve, reject) => {
-    const socket = createConnection(socketPath);
+    const socket = createConnection(paths.socketPath);
     let buffer = "";
     let settled = false;
     let timer: NodeJS.Timeout;
@@ -583,7 +632,7 @@ async function sendDaemonRequest(
       settle(error);
     });
     socket.once("connect", () => {
-      socket.write(`${JSON.stringify(request)}\n`);
+      socket.write(`${JSON.stringify({ ...request, authToken })}\n`);
     });
     socket.on("data", (chunk: string) => {
       buffer += chunk;
@@ -626,7 +675,7 @@ async function runCommandThroughDaemon(
 ): Promise<void> {
   try {
     const response = await sendDaemonRequest(
-      paths.socketPath,
+      paths,
       {
         type: "command",
         command,
@@ -669,7 +718,7 @@ async function runCommandThroughDaemon(
 }
 
 async function daemonStatus(paths: DaemonPaths): Promise<DaemonStatusResult> {
-  const response = await sendDaemonRequest(paths.socketPath, {
+  const response = await sendDaemonRequest(paths, {
     type: "status",
   });
   if (response.status === "error") {
@@ -725,8 +774,10 @@ async function startDaemon(
     }
   }
 
-  await mkdir(paths.dir, { recursive: true });
+  await ensureSecureDaemonDir(paths.dir);
   await rm(paths.socketPath, { force: true });
+  await rm(paths.authTokenPath, { force: true });
+  await writeDaemonAuthToken(paths);
   const child = spawn(
     process.execPath,
     [
@@ -751,7 +802,7 @@ async function startDaemon(
 
 async function stopDaemon(paths: DaemonPaths): Promise<void> {
   try {
-    const response = await sendDaemonRequest(paths.socketPath, {
+    const response = await sendDaemonRequest(paths, {
       type: "stop",
     });
     if (response.status === "error") {
@@ -807,8 +858,9 @@ async function serveDaemon(
   paths: DaemonPaths,
   helperPath: string,
 ): Promise<void> {
-  await mkdir(paths.dir, { recursive: true });
+  await ensureSecureDaemonDir(paths.dir);
   await rm(paths.socketPath, { force: true });
+  const authToken = await readOrCreateDaemonAuthToken(paths);
   const nativeBackend = createComputerUseNativeBackend({ helperPath });
   const snapshotStore = new ComputerUseSnapshotStore();
   let commandQueue = Promise.resolve();
@@ -827,6 +879,12 @@ async function serveDaemon(
       commandQueue = commandQueue
         .then(async () => {
           const parsed = JSON.parse(line) as unknown;
+          if (
+            !isJsonObject(parsed) ||
+            !daemonAuthTokensMatch(authToken, parsed.authToken)
+          ) {
+            throw new Error("Unauthorized vm0-computer daemon request");
+          }
           const request = assertDaemonRequest(parsed);
           if (request.type === "status") {
             writeDaemonResponse(socket, {
@@ -864,14 +922,33 @@ async function serveDaemon(
   });
 
   await new Promise<void>((resolve, reject) => {
+    const previousUmask = process.umask(0o177);
+    let restoredUmask = false;
+    const restoreUmask = (): void => {
+      if (restoredUmask) {
+        return;
+      }
+      restoredUmask = true;
+      process.umask(previousUmask);
+    };
     server.once("error", (error) => {
+      restoreUmask();
       reject(error);
     });
-    server.listen(paths.socketPath, () => {
-      resolve();
-    });
+    try {
+      server.listen(paths.socketPath, () => {
+        restoreUmask();
+        chmod(paths.socketPath, DAEMON_SOCKET_MODE).then(resolve, reject);
+      });
+    } catch (error) {
+      restoreUmask();
+      reject(error);
+    }
   });
-  await writeFile(paths.pidPath, `${process.pid}\n`);
+  await writeFile(paths.pidPath, `${process.pid}\n`, {
+    mode: DAEMON_FILE_MODE,
+  });
+  await chmod(paths.pidPath, DAEMON_FILE_MODE);
 
   const shutdown = (): void => {
     void shutdownDaemon(server, nativeBackend, paths);
@@ -893,6 +970,7 @@ async function shutdownDaemon(
   });
   await rm(paths.socketPath, { force: true });
   await rm(paths.pidPath, { force: true });
+  await rm(paths.authTokenPath, { force: true });
   process.exit(0);
 }
 

@@ -6,6 +6,7 @@ const c = initContract();
 
 export const featureSwitchesResponseSchema = z.object({
   switches: z.record(z.string(), z.boolean()),
+  effectiveSwitches: z.record(z.string(), z.boolean()),
 });
 
 export type FeatureSwitchesResponse = z.infer<

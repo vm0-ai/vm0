@@ -123,6 +123,9 @@ describe("Desktop preload bridge", () => {
     await computerUse.requestScreenRecordingPermission();
     await computerUse.probeAutomationPermission("chrome");
     await computerUse.setKeepAwakeEnabled(true);
+    await computerUse.setFilesystemPluginEnabled(true);
+    await computerUse.addFilesystemPluginAllowedDirectory();
+    await computerUse.removeFilesystemPluginAllowedDirectory("/tmp/project");
     await computerUse.openAccessibilitySettings();
     await computerUse.openScreenRecordingSettings();
     await computerUse.openAutomationSettings();
@@ -136,6 +139,12 @@ describe("Desktop preload bridge", () => {
       [COMPUTER_USE_CHANNELS.requestScreenRecordingPermission],
       [COMPUTER_USE_CHANNELS.probeAutomationPermission, "chrome"],
       [COMPUTER_USE_CHANNELS.setKeepAwakeEnabled, true],
+      [COMPUTER_USE_CHANNELS.setFilesystemPluginEnabled, true],
+      [COMPUTER_USE_CHANNELS.addFilesystemPluginAllowedDirectory],
+      [
+        COMPUTER_USE_CHANNELS.removeFilesystemPluginAllowedDirectory,
+        "/tmp/project",
+      ],
       [COMPUTER_USE_CHANNELS.openAccessibilitySettings],
       [COMPUTER_USE_CHANNELS.openScreenRecordingSettings],
       [COMPUTER_USE_CHANNELS.openAutomationSettings],
