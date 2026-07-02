@@ -4,6 +4,7 @@ import {
   buildGoogleMeetOfficialRouteKeys,
   GOOGLE_MEET_DISCOVERY_URL,
   GOOGLE_MEET_PERMISSION_MANIFEST,
+  GOOGLE_MEET_WORKSPACE_EVENTS_PERMISSIONS,
   validateGoogleMeetPermissionManifest,
   type GoogleMeetDiscoveryDocument,
   type GoogleMeetManifestPermission,
@@ -133,6 +134,31 @@ describe("Google Meet permission manifest", () => {
     expect(manifestPermission("transcript-entries.read").routeKeys).toEqual([
       "base:GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts/{transcriptsId}/entries",
       "base:GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts/{transcriptsId}/entries/{entriesId}",
+    ]);
+  });
+
+  it("adds Workspace Events subscription management as a separate API surface", () => {
+    expect(GOOGLE_MEET_WORKSPACE_EVENTS_PERMISSIONS).toEqual([
+      {
+        name: "workspace-events.subscriptions.read",
+        description:
+          "Read Google Workspace Events subscriptions used by Google Meet triggers.",
+        rules: [
+          "GET /v1/subscriptions",
+          "GET /v1/subscriptions/{subscriptionsId}",
+        ],
+      },
+      {
+        name: "workspace-events.subscriptions.write",
+        description:
+          "Create, update, delete, and reactivate Google Workspace Events subscriptions used by Google Meet triggers.",
+        rules: [
+          "POST /v1/subscriptions",
+          "PATCH /v1/subscriptions/{subscriptionsId}",
+          "DELETE /v1/subscriptions/{subscriptionsId}",
+          "POST /v1/subscriptions/{subscriptionsId}:reactivate",
+        ],
+      },
     ]);
   });
 

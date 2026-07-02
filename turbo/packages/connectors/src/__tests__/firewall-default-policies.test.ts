@@ -184,6 +184,10 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.policies["spaces.create"]).toBe("deny");
     expect(policy.policies["spaces.write"]).toBe("deny");
     expect(policy.policies["spaces.end-active-conference"]).toBe("deny");
+    expect(policy.policies["workspace-events.subscriptions.read"]).toBe("deny");
+    expect(policy.policies["workspace-events.subscriptions.write"]).toBe(
+      "deny",
+    );
     expect(policy.unknownPolicy).toBe("deny");
   });
 
