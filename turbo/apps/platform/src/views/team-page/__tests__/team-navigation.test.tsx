@@ -2,7 +2,11 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { loadFirewallPermissionMetadata } from "@vm0/connectors/firewall-metadata";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadByIdContract,
+  chatThreadMessagesContract,
+  chatThreadsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
@@ -29,6 +33,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { pathname } from "../../../signals/location.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -454,6 +459,130 @@ describe("team page navigation", () => {
         screen.getByPlaceholderText(
           "Ask me to automate workflows, manage tasks...",
         ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("opens the first chat thread from an agent chat page shortcut", async () => {
+    mockTeamAPIs();
+    const firstThreadId = "agent-chat-shortcut-first-thread";
+    const secondThreadId = "agent-chat-shortcut-second-thread";
+    const firstMessageId = "b0000000-0000-4000-a000-000000000501";
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, {
+        pinned: [],
+        threads: [
+          {
+            id: firstThreadId,
+            title: "First shortcut thread",
+            agent: { id: researchAgentId, avatarUrl: null },
+            createdAt: "2026-06-01T00:00:00Z",
+            updatedAt: "2026-06-01T00:02:00Z",
+            running: false,
+            pinnedAt: null,
+          },
+          {
+            id: secondThreadId,
+            title: "Second shortcut thread",
+            agent: { id: researchAgentId, avatarUrl: null },
+            createdAt: "2026-06-01T00:00:00Z",
+            updatedAt: "2026-06-01T00:01:00Z",
+            running: false,
+            pinnedAt: null,
+          },
+        ],
+        hasMore: false,
+        nextCursor: null,
+      });
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+      return respond(200, {
+        id: params.id,
+        title:
+          params.id === firstThreadId
+            ? "First shortcut thread"
+            : "Second shortcut thread",
+        agentId: researchAgentId,
+        activeRunIds: [],
+        createdAt: "2026-06-01T00:00:00Z",
+        updatedAt: "2026-06-01T00:02:00Z",
+        lastReadMessageId: null,
+        lastReadAt: null,
+        lastMessageAt: "2026-06-01T00:02:00Z",
+        pinnedAt: null,
+        draftContent: null,
+        draftAttachments: null,
+        computerUseHostId: null,
+        modelProviderId: null,
+        selectedModel: null,
+      });
+    });
+    context.mocks.api(
+      chatThreadMessagesContract.list,
+      ({ params, query, respond }) => {
+        if (query.sinceId) {
+          return respond(200, { messages: [] });
+        }
+        return respond(200, {
+          messages:
+            params.threadId === firstThreadId
+              ? [
+                  {
+                    id: firstMessageId,
+                    role: "user",
+                    content: "First shortcut thread message",
+                    createdAt: "2026-06-01T00:02:00Z",
+                  },
+                ]
+              : [],
+          hasHistoryBefore: false,
+        });
+      },
+    );
+    context.mocks.api(chatThreadMessagesContract.get, ({ params, respond }) => {
+      if (
+        params.threadId === firstThreadId &&
+        params.messageId === firstMessageId
+      ) {
+        return respond(200, {
+          id: firstMessageId,
+          role: "user",
+          content: "First shortcut thread message",
+          createdAt: "2026-06-01T00:02:00Z",
+        });
+      }
+      return respond(404, {
+        error: { message: "Message not found", code: "NOT_FOUND" },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/agents/${researchAgentId}/chat` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText(
+          "Ask me to automate workflows, manage tasks...",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(
+      screen.getByPlaceholderText(
+        "Ask me to automate workflows, manage tasks...",
+      ),
+      {
+        key: "ArrowDown",
+        ctrlKey: true,
+        shiftKey: true,
+      },
+    );
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/chats/${firstThreadId}`);
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByText("First shortcut thread message"),
       ).toBeInTheDocument();
     });
   });
