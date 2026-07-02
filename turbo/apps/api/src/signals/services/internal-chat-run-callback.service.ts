@@ -76,7 +76,10 @@ import { loadActiveGoalForThread } from "./zero-goal.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { describeGenerationTemplateSelection } from "../routes/generation-template-prompt";
-import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
+import {
+  fallbackGenerationTemplateNote,
+  resolveThreadGenerationTemplatePrompt,
+} from "../routes/thread-generation-template";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
@@ -1344,9 +1347,7 @@ function generationTemplateReplayMarker(
     return "";
   }
   const description = describeGenerationTemplateSelection(generationTemplate);
-  return description
-    ? `[Selected a template — ${description}.]\n`
-    : "";
+  return description ? `[Selected a template — ${description}.]\n` : "";
 }
 
 function formatPriorRunMessage(message: PriorRunMessage): string {
@@ -2021,13 +2022,23 @@ async function buildCreateQueuedChatRunInput(args: {
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_generation_template",
     "nested",
-    () => {
-      return Promise.resolve(
+    async () => {
+      const liveGenerationTemplatePrompt =
         resolveThreadGenerationTemplatePrompt({
           explicit: resolvedQueuedMessage.generationTemplate,
           presentationRunbookEnabled,
-        }),
-      );
+        });
+      const fallbackNote = await fallbackGenerationTemplateNote({
+        db: args.db,
+        threadId: args.threadId,
+        explicit: resolvedQueuedMessage.generationTemplate,
+        replaySuppressed: priorContext.length === 0,
+      });
+      return [liveGenerationTemplatePrompt, fallbackNote]
+        .filter((part) => {
+          return part.length > 0;
+        })
+        .join("\n\n");
     },
   );
   const prompt = await measureChatCallbackPreCreateTiming(

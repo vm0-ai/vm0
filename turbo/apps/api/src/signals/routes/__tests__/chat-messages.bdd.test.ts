@@ -2482,12 +2482,17 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(thirdPrompt).toContain(
       `zero generate video --provider built-in --template ${videoTemplate.id}`,
     );
-    // The illustration style is no longer live for this turn — it only shows up
-    // as the replayed marker on turn 1's message, not as its own resolved block.
+    // The illustration style is gone entirely for this turn: it's not live
+    // (explicit selection this turn is video, not illustration), and turn 2's
+    // cancellation put an incomplete round in the thread, which suppresses the
+    // general "# Web Chat Run Context" replay (turn 1's marker included) in
+    // favor of resuming the existing session. An explicit selection this turn
+    // means there's nothing to fall back to either — see the "no explicit
+    // selection" case covered by the workflow test below.
     expect(thirdPrompt).not.toContain(
       `zero generate image --provider built-in --style ${style.illustrationStyleId}`,
     );
-    expect(thirdPrompt).toContain(style.illustrationStyleId);
+    expect(thirdPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, third.runId);
 
     // A brand-new thread starts clean: neither template carries over — there is
@@ -2549,7 +2554,13 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(workflowPrompt).toContain("Use the workflow-setup skill");
     expect(workflowPrompt).toContain("Gmail label-applied automation");
     expect(workflowPrompt).not.toContain("# Artifact Template Context");
-    expect(workflowPrompt).not.toContain(style.illustrationStyleId);
+    // The "sticky" run was cancelled, so it's now an incomplete round replayed
+    // via "# Incomplete Rounds Context" — its illustration marker legitimately
+    // shows up there. That's independent of (and doesn't contaminate) the live
+    // workflow block asserted above: workflow selections never get their own
+    // replay marker (checked below), so nothing here merges the two types.
+    expect(workflowPrompt).toContain("# Incomplete Rounds Context");
+    expect(workflowPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, workflow.runId);
 
     const followUp = await sendChatRun(actor, {
@@ -2560,14 +2571,19 @@ describe("CHAT-02: generation templates and attachments", () => {
     const followUpPrompt = (await api.readRun(actor, followUp.runId))
       .appendSystemPrompt;
     // No explicit selection this turn, so there is no live block for either
-    // type. Workflow selections never get a replayed marker (one-shot by
-    // design), but the illustration selection from the "sticky" turn still
-    // surfaces via its marker in the replayed "# Web Chat Run Context".
+    // type. Both "sticky" and "workflow" were cancelled, so the general
+    // "# Web Chat Run Context" replay is suppressed in favor of resuming the
+    // existing session (see prepareRecentChatContext) — the illustration
+    // selection surfaces instead via the incomplete round replay (its own
+    // marker) and the "# Prior Template Selection" fallback note, neither of
+    // which workflow selections get (one-shot by design, no marker at all).
     expect(followUpPrompt).not.toContain("# Workflow Template Context");
     expect(followUpPrompt).not.toContain(workflowTemplate.id);
     expect(followUpPrompt).not.toContain("# Artifact Template Context");
-    expect(followUpPrompt).toContain("# Web Chat Run Context");
+    expect(followUpPrompt).not.toContain("# Web Chat Run Context");
+    expect(followUpPrompt).toContain("# Incomplete Rounds Context");
     expect(followUpPrompt).toContain("Selected a template");
+    expect(followUpPrompt).toContain("# Prior Template Selection");
     expect(followUpPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, followUp.runId);
   }, 120_000);

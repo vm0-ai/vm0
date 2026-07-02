@@ -88,7 +88,10 @@ import {
   buildGenerationTemplatePrompt,
   describeGenerationTemplateSelection,
 } from "./generation-template-prompt";
-import { resolveThreadGenerationTemplatePrompt } from "./thread-generation-template";
+import {
+  fallbackGenerationTemplateNote,
+  resolveThreadGenerationTemplatePrompt,
+} from "./thread-generation-template";
 
 type SendBody = z.infer<typeof chatMessagesContract.send.body>;
 
@@ -579,9 +582,7 @@ function generationTemplateReplayMarker(
     return "";
   }
   const description = describeGenerationTemplateSelection(generationTemplate);
-  return description
-    ? `[Selected a template — ${description}.]\n`
-    : "";
+  return description ? `[Selected a template — ${description}.]\n` : "";
 }
 
 function formatPriorRunMessage(message: WebChatPriorRunMessage): string {
@@ -2153,10 +2154,24 @@ const prepareNormalSend$ = command(
       FeatureSwitchKey.ChatInitialThinkingIndicator,
       featureSwitchContext,
     );
-    const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
+    const liveGenerationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
       explicit: args.body.generationTemplate,
       presentationRunbookEnabled,
     });
+    const fallbackNote = await fallbackGenerationTemplateNote({
+      db,
+      threadId: thread.threadId,
+      explicit: args.body.generationTemplate,
+      replaySuppressed: priorContext.length === 0 && !thread.isNewThread,
+    });
+    const generationTemplatePrompt = [
+      liveGenerationTemplatePrompt,
+      fallbackNote,
+    ]
+      .filter((part) => {
+        return part.length > 0;
+      })
+      .join("\n\n");
     signal.throwIfAborted();
     const persistedExplicitSelection =
       await maybePersistExplicitModelFirstSelection({
