@@ -3,7 +3,7 @@
  * base URL validation, permission rule path validation, and runtime URL
  * matching.
  *
- * Grammar mirrors crates/runner/mitm-addon/src/matching.py::parse_segment —
+ * Grammar mirrors crates/runner/mitm-addon/src/firewall_matching/patterns.py::parse_segment —
  * keep both implementations in lockstep. Any change to accepted or rejected
  * forms must land in both languages and the shared contract fixture at once:
  * turbo/packages/connectors/src/__tests__/firewall-semantics-contract.json.
