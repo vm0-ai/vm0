@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -368,8 +368,10 @@ function setupPresentationArtifactThread(
 function setupHostedSiteArtifactThread(
   siteUrl: string,
   html = "<!doctype html><html><body><h1>Original site</h1></body></html>",
+  artifactUrl = siteUrl,
 ): void {
-  const filename = new URL(siteUrl).pathname.split("/").pop() || "site.html";
+  const filename =
+    new URL(artifactUrl).pathname.split("/").pop() || "site.html";
   context.mocks.http.get(siteUrl, () => {
     return new Response(html, {
       headers: { "Content-Type": "text/html" },
@@ -377,7 +379,7 @@ function setupHostedSiteArtifactThread(
   });
   setupChatThread({
     artifactFiles: [
-      artifactFile(siteUrl, {
+      artifactFile(artifactUrl, {
         id: "artifact-hosted-site",
         filename,
         contentType: "text/html",
@@ -609,6 +611,18 @@ describe("zero artifact sidebar", () => {
     await user.click(screen.getByLabelText("Close artifact"));
     await waitFor(() => {
       expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows hosted-site edit action when the sidebar URL has a root trailing slash", async () => {
+    const artifactUrl = "https://root-launch-site.sites.vm7.io";
+    const siteUrl = `${artifactUrl}/`;
+    setupHostedSiteArtifactThread(siteUrl, undefined, artifactUrl);
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    await waitFor(() => {
+      expect(within(sidebar).getByLabelText("Edit page")).toBeInTheDocument();
+      expect(within(sidebar).queryByLabelText("Edit presentation")).toBeNull();
     });
   });
 

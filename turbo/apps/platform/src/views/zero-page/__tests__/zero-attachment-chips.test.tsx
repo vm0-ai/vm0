@@ -75,6 +75,7 @@ function presentationHtml(): string {
 }
 
 function setupHostedSiteArtifactPreview({
+  artifactUrl,
   featureSwitches = {
     [FeatureSwitchKey.HtmlArtifactCommentEditing]: true,
   },
@@ -85,6 +86,7 @@ function setupHostedSiteArtifactPreview({
   path = `/chats/${THREAD_ID}`,
   runId,
 }: {
+  artifactUrl?: string;
   featureSwitches?: Parameters<typeof detachedSetupPage>[0]["featureSwitches"];
   filename: string;
   html?: string;
@@ -93,6 +95,7 @@ function setupHostedSiteArtifactPreview({
   path?: string;
   runId: string;
 }): void {
+  const artifactMetadataUrl = artifactUrl ?? htmlUrl;
   context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
     expect(new URL(request.url).searchParams.get("url")).toBe(htmlUrl);
     return new Response(
@@ -116,7 +119,7 @@ function setupHostedSiteArtifactPreview({
         {
           runId,
           files: [
-            artifactFile(htmlUrl, {
+            artifactFile(artifactMetadataUrl, {
               artifactKind: "hosted-site",
               filename,
             }),
@@ -2276,6 +2279,31 @@ describe("zero attachment chips", () => {
       expect(restoredEditFrame.contentDocument?.body.textContent).not.toContain(
         "Launch sooner",
       );
+    });
+  });
+
+  it("shows hosted-site HTML edit action when the preview URL has a root trailing slash", async () => {
+    const artifactUrl = "https://launch-site-root.sites.vm7.io";
+    const previewUrl = `${artifactUrl}/`;
+    setupHostedSiteArtifactPreview({
+      artifactUrl,
+      filename: "launch-site-root.html",
+      htmlUrl: previewUrl,
+      label: "Launch site",
+      runId: "run-hosted-site-root",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Open html preview for Launch site"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open html preview for Launch site"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit page")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Edit presentation")).toBeNull();
     });
   });
 
