@@ -777,7 +777,7 @@ exit 32
         assert!(cmd.contains("proc_maps_has_workspace_ref()"));
         assert!(cmd.contains("pid_has_direct_workspace_ref()"));
         assert!(cmd.contains("pid_has_fd_workspace_ref()"));
-        assert!(cmd.contains("pid_has_workspace_ref_for_mode()"));
+        assert!(cmd.contains("pid_has_cleanup_workspace_ref()"));
         assert!(cmd.contains("if proc_path_has_workspace_ref \"$proc_dir/exe\"; then"));
         assert!(cmd.contains("if proc_maps_has_workspace_ref \"$proc_dir/maps\"; then"));
         assert!(cmd.contains("WORKSPACE_HOLDER_DIAGNOSTIC_LIMIT=40"));
@@ -798,7 +798,7 @@ exit 32
         assert!(cmd.contains("pid=%s uid=%s comm=%s ref=%s path=%s"));
         assert!(cmd.contains("comm=\"$(sanitize_log_value \"$comm\")\""));
         assert!(cmd.contains("target=\"$(sanitize_log_value \"$target\")\""));
-        assert!(cmd.contains("pid_has_workspace_ref_for_mode \"$pid\" \"$ref_mode\" || continue"));
+        assert!(cmd.contains("pid_has_cleanup_workspace_ref \"$pid\" \"$ref_mode\" || continue"));
         assert!(cmd.contains("[ \"$pid\" != \"$$\" ] || return 1"));
         assert!(cmd.contains("[ \"$pid\" != \"1\" ] || return 1"));
         assert!(!cmd.contains("workspace_fast_holder_pids()"));

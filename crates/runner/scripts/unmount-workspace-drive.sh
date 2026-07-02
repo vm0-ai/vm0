@@ -272,13 +272,27 @@ pid_has_maps_workspace_ref() {
   return 1
 }
 
-pid_has_workspace_ref_for_mode() {
+pid_has_cleanup_workspace_ref() {
   pid=$1
   ref_mode=$2
   case "$ref_mode" in
-    direct) pid_has_direct_workspace_ref "$pid"; return $? ;;
-    fd) pid_has_fd_workspace_ref "$pid"; return $? ;;
-    maps) pid_has_maps_workspace_ref "$pid"; return $? ;;
+    direct|fd)
+      if pid_has_direct_workspace_ref "$pid"; then
+        return 0
+      fi
+      pid_has_fd_workspace_ref "$pid"
+      return $?
+      ;;
+    maps)
+      if pid_has_direct_workspace_ref "$pid"; then
+        return 0
+      fi
+      if pid_has_fd_workspace_ref "$pid"; then
+        return 0
+      fi
+      pid_has_maps_workspace_ref "$pid"
+      return $?
+      ;;
     *) return 1 ;;
   esac
 }
@@ -318,7 +332,7 @@ term_workspace_holder_record_pids() {
   records_file=$1
   ref_mode=$2
   for pid in $(holder_record_pids "$records_file"); do
-    pid_has_workspace_ref_for_mode "$pid" "$ref_mode" || continue
+    pid_has_cleanup_workspace_ref "$pid" "$ref_mode" || continue
     kill -TERM "$pid" 2>/dev/null || true
   done
 }
@@ -327,7 +341,7 @@ kill_workspace_holder_record_pids() {
   records_file=$1
   ref_mode=$2
   for pid in $(holder_record_pids "$records_file"); do
-    pid_has_workspace_ref_for_mode "$pid" "$ref_mode" || continue
+    pid_has_cleanup_workspace_ref "$pid" "$ref_mode" || continue
     kill -KILL "$pid" 2>/dev/null || true
   done
 }
@@ -336,7 +350,7 @@ holder_records_have_workspace_ref() {
   records_file=$1
   ref_mode=$2
   for pid in $(holder_record_pids "$records_file"); do
-    if pid_has_workspace_ref_for_mode "$pid" "$ref_mode"; then
+    if pid_has_cleanup_workspace_ref "$pid" "$ref_mode"; then
       return 0
     fi
   done
