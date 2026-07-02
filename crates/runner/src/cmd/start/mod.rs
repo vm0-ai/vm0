@@ -606,7 +606,6 @@ async fn run_start_with_home(
                 server.token,
                 group,
                 profiles,
-                runner_id.clone(),
                 cancel.clone(),
                 Arc::clone(&cancel_tokens),
             )

@@ -120,7 +120,6 @@ impl ApiProvider {
         token: String,
         group: String,
         profiles: Vec<String>,
-        runner_id: String,
         cancel: CancellationToken,
         cancel_tokens: SharedRunCancellationMap,
     ) -> Arc<Self> {
@@ -131,7 +130,6 @@ impl ApiProvider {
         let ably_supervisor = AblySupervisor::spawn(AblySupervisorConfig {
             api: api.clone(),
             group: group.clone(),
-            runner_id,
             profiles: profiles.clone(),
             poll_wakeups: Arc::clone(&poll_wakeups),
             direct_candidate_senders: DirectCandidateSenders::new(direct_candidate_tx.clone()),

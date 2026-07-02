@@ -404,9 +404,10 @@ async fn prepare_affinity_protected_candidate(
         .affinity_protection_remaining()
         .unwrap_or(Duration::ZERO)
         .saturating_add(AFFINITY_DEFER_JITTER);
+    let session_fingerprint = diagnostic_session_fingerprint(&cli_agent_session_id);
     info!(
         run_id = %candidate.run_id(),
-        session_id = %cli_agent_session_id,
+        session_fingerprint = %session_fingerprint,
         delay_ms = delay.as_millis(),
         "same-session affinity protected by another runner, deferring claim"
     );
@@ -476,12 +477,11 @@ async fn try_reuse_from_pool(
     };
     // Take the entry under the pool lock, then drop the lock before any awaits
     // so unpark does not block other take/park operations.
-    let (taken, snapshot, held_session_states) = {
+    let (taken, snapshot) = {
         let mut pool = ctx.idle_pool.lock().await;
         let taken = pool.take(cli_agent_session_id);
         let snapshot = taken.as_ref().map(|_| pool.status_snapshot());
-        let held_session_states = pool.held_session_states();
-        (taken, snapshot, held_session_states)
+        (taken, snapshot)
     };
     let took_idle_session = taken.is_some();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
@@ -491,14 +491,6 @@ async fn try_reuse_from_pool(
             .spawn_ctx
             .held_session_snapshot
             .might_contain_workspace_cache_session(cli_agent_session_id);
-    let _ = ctx
-        .spawn_ctx
-        .held_session_snapshot
-        .current_held_session_states(
-            held_session_states,
-            &ctx.spawn_ctx.active_cli_agent_sessions,
-            Some(cli_agent_session_id),
-        );
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::HeldSessionStateRefresh, started_at);
     let needs_session_affinity_refresh = took_idle_session || claimed_workspace_cache_session;
     match taken {

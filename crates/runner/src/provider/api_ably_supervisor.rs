@@ -499,7 +499,6 @@ pub(super) struct AblySupervisor {
 pub(super) struct AblySupervisorConfig {
     pub(super) api: ApiClient,
     pub(super) group: String,
-    pub(super) runner_id: String,
     pub(super) profiles: Vec<String>,
     pub(super) poll_wakeups: Arc<PollWakeups>,
     pub(super) direct_candidate_senders: DirectCandidateSenders,
@@ -510,7 +509,6 @@ pub(super) struct AblySupervisorConfig {
 struct SupervisorTaskConfig {
     api: ApiClient,
     group: String,
-    runner_id: String,
     profiles: Vec<String>,
     poll_wakeups: Arc<PollWakeups>,
     direct_candidate_senders: DirectCandidateSenders,
@@ -526,7 +524,6 @@ impl AblySupervisor {
         let task_config = SupervisorTaskConfig {
             api: config.api,
             group: config.group,
-            runner_id: config.runner_id,
             profiles: config.profiles,
             poll_wakeups: config.poll_wakeups,
             direct_candidate_senders: config.direct_candidate_senders,
@@ -598,7 +595,6 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                     Some(ably_subscriber::Event::Message(msg)) => {
                         handle_ably_message(
                             &msg,
-                            &config.runner_id,
                             &config.profiles,
                             &config.poll_wakeups,
                             &config.direct_candidate_senders,
@@ -670,7 +666,6 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
 
 async fn handle_ably_message(
     msg: &ably_subscriber::Message,
-    _runner_id: &str,
     profiles: &[String],
     poll_wakeups: &PollWakeups,
     direct_candidate_senders: &DirectCandidateSenders,
@@ -804,7 +799,7 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
             }
         },
         None => {
-            warn!(data = %msg.data, "ably: job message missing runId");
+            warn!("ably: job message missing runId");
             return None;
         }
     };
@@ -1602,15 +1597,7 @@ mod tests {
         let profiles = default_profiles();
         let msg = make_message(Some("cancel"), serde_json::json!({ "runId": run_id }));
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
         assert!(token.is_cancelled());
         assert!(direct_rx.direct.try_recv().is_err());
@@ -1639,15 +1626,7 @@ mod tests {
             }),
         );
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
         let candidate = direct_rx.direct.try_recv().expect("direct candidate");
         assert_eq!(
@@ -1684,15 +1663,7 @@ mod tests {
             }),
         );
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
         let candidate = direct_rx.direct.try_recv().expect("direct candidate");
         assert_eq!(candidate.profile_name(), "vm0/default");
@@ -1721,15 +1692,7 @@ mod tests {
             }),
         );
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
         assert!(direct_rx.direct.try_recv().is_err());
         let snapshot = wakeups.snapshot().await;
@@ -1769,15 +1732,7 @@ mod tests {
                 .await;
             let msg = make_message(Some("job"), data);
 
-            handle_ably_message(
-                &msg,
-                "runner-1",
-                &profiles,
-                &wakeups,
-                &direct_senders,
-                &tokens,
-            )
-            .await;
+            handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
             let snapshot = wakeups.snapshot().await;
             assert!(direct_rx.direct.try_recv().is_err());
@@ -1806,15 +1761,7 @@ mod tests {
             }),
         );
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
         assert!(direct_rx.direct.try_recv().is_err());
         assert!(wakeups.snapshot().await.poll_now);
@@ -1841,15 +1788,7 @@ mod tests {
             }),
         );
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
         assert!(direct_rx.direct.try_recv().is_err());
         assert!(wakeups.snapshot().await.poll_now);
@@ -1876,24 +1815,8 @@ mod tests {
             }),
         );
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
         let candidate = direct_rx.direct.try_recv().expect("first direct candidate");
         assert_eq!(candidate.profile_name(), "vm0/default");
@@ -1922,15 +1845,7 @@ mod tests {
             }),
         );
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
         let candidate = direct_rx.direct.try_recv().expect("direct candidate");
         assert_eq!(candidate.profile_name(), "vm0/default");
@@ -1972,15 +1887,7 @@ mod tests {
                 .await;
             let msg = make_message(Some("job"), data);
 
-            handle_ably_message(
-                &msg,
-                "runner-1",
-                &profiles,
-                &wakeups,
-                &direct_senders,
-                &tokens,
-            )
-            .await;
+            handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
             let snapshot = wakeups.snapshot().await;
             assert!(direct_rx.direct.try_recv().is_err());
@@ -2004,15 +1911,7 @@ mod tests {
             .await;
         let msg = make_message(Some("job"), serde_json::json!({ "runId": "not-a-uuid" }));
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
         let snapshot = wakeups.snapshot().await;
         assert!(direct_rx.direct.try_recv().is_err());

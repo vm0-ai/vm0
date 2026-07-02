@@ -201,7 +201,6 @@ async function queueChatMessage(
 async function claimChatRun(
   runnerGroup: string,
   runId: string,
-  _heldCliAgentSessionId?: string,
 ): Promise<{ readonly authorization: string }> {
   await api.heartbeatRunner(runnerGroup);
   let claim: Awaited<ReturnType<typeof api.requestClaimRunnerJob>> | undefined;
@@ -1425,11 +1424,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       threadId: silent.threadId,
       prompt: "result-only streamed run",
     });
-    const resultOnlyHeaders = await claimChatRun(
-      runnerGroup,
-      resultOnly.runId,
-      cliAgentSessionIdForChatRun(silent.runId),
-    );
+    const resultOnlyHeaders = await claimChatRun(runnerGroup, resultOnly.runId);
     await webhooks.requestAgentEvents(
       {
         runId: resultOnly.runId,
@@ -1567,11 +1562,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       threadId: first.threadId,
       prompt: "codex turn",
     });
-    const secondHeaders = await claimChatRun(
-      runnerGroup,
-      second.runId,
-      cliAgentSessionIdForChatRun(first.runId),
-    );
+    const secondHeaders = await claimChatRun(runnerGroup, second.runId);
     chatCallbacks.mockChatOutputEvents([
       {
         eventType: "item.completed",
@@ -1601,11 +1592,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       threadId: first.threadId,
       prompt: "streamed turn",
     });
-    const thirdHeaders = await claimChatRun(
-      runnerGroup,
-      third.runId,
-      cliAgentSessionIdForChatRun(second.runId),
-    );
+    const thirdHeaders = await claimChatRun(runnerGroup, third.runId);
     await webhooks.requestAgentEvents(
       {
         runId: third.runId,
@@ -1652,11 +1639,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       threadId: first.threadId,
       prompt: "title failure turn",
     });
-    const fourthHeaders = await claimChatRun(
-      runnerGroup,
-      fourth.runId,
-      cliAgentSessionIdForChatRun(third.runId),
-    );
+    const fourthHeaders = await claimChatRun(runnerGroup, fourth.runId);
     chatCallbacks.mockChatOutputEvents([resultEvent(0, "Some result")]);
     await completeChatRunOk(fourth.runId, fourthHeaders, {
       lastEventSequence: 0,
@@ -1939,11 +1922,7 @@ describe("CHAT-02: auto-send after failures", () => {
         },
       ],
     });
-    const secondHeaders = await claimChatRun(
-      runnerGroup,
-      second.runId,
-      cliAgentSessionIdForChatRun(first.runId),
-    );
+    const secondHeaders = await claimChatRun(runnerGroup, second.runId);
 
     const queuedUpload = await chat.prepareUpload(actor, {
       filename: "queued-notes.txt",
@@ -2163,11 +2142,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
       threadId: first.threadId,
       prompt: "And stringify?",
     });
-    const secondHeaders = await claimChatRun(
-      runnerGroup,
-      second.runId,
-      cliAgentSessionIdForChatRun(first.runId),
-    );
+    const secondHeaders = await claimChatRun(runnerGroup, second.runId);
     await chat.updateThreadModelSelection(actor, first.threadId, {
       modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
       selectedModel: "claude-sonnet-4-6",
@@ -2326,11 +2301,7 @@ describe("CHAT-02: push notification gating", () => {
       threadId: first.threadId,
       prompt: "now with vapid",
     });
-    const secondHeaders = await claimChatRun(
-      runnerGroup,
-      second.runId,
-      cliAgentSessionIdForChatRun(first.runId),
-    );
+    const secondHeaders = await claimChatRun(runnerGroup, second.runId);
     await completeChatRunOk(second.runId, secondHeaders);
 
     await expect
@@ -2352,11 +2323,7 @@ describe("CHAT-02: push notification gating", () => {
       threadId: first.threadId,
       prompt: "after stale cleanup",
     });
-    const thirdHeaders = await claimChatRun(
-      runnerGroup,
-      third.runId,
-      cliAgentSessionIdForChatRun(second.runId),
-    );
+    const thirdHeaders = await claimChatRun(runnerGroup, third.runId);
     await completeChatRunOk(third.runId, thirdHeaders);
     await waitForThreadMessages(actor, first.threadId, (threadMessages) => {
       return (
