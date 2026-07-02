@@ -1410,6 +1410,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       prompt: "start affinity-protected session",
       modelProvider: "anthropic-api-key",
     });
+    expect(first).toMatchObject({ status: "pending" });
     const firstClaim = await api.claimRunnerJob(first.runId);
     const cliAgentSessionId = `bdd-affinity-cli-${first.runId}`;
     const history = `bdd affinity history ${first.runId}`;
