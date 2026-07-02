@@ -4222,22 +4222,28 @@ function TriggerRow({
           </div>
         </div>
         <div
-          className="truncate text-sm font-medium text-foreground"
+          className="min-w-0"
           aria-label={`Last run ${formatWorkflowTriggerRun(
             trigger.lastRunAt,
             displayTimezone,
           )}`}
         >
-          {formatWorkflowTriggerRun(trigger.lastRunAt, displayTimezone)}
+          <div className="text-xs text-muted-foreground">Last run</div>
+          <div className="mt-0.5 truncate text-sm font-medium text-foreground">
+            {formatWorkflowTriggerRun(trigger.lastRunAt, displayTimezone)}
+          </div>
         </div>
         <div
-          className="truncate text-sm font-medium text-foreground"
+          className="min-w-0"
           aria-label={`Next run ${formatWorkflowTriggerNextRun(
             trigger.nextRunAt,
             displayTimezone,
           )}`}
         >
-          {formatWorkflowTriggerNextRun(trigger.nextRunAt, displayTimezone)}
+          <div className="text-xs text-muted-foreground">Next run</div>
+          <div className="mt-0.5 truncate text-sm font-medium text-foreground">
+            {formatWorkflowTriggerNextRun(trigger.nextRunAt, displayTimezone)}
+          </div>
         </div>
         <TriggerStatusSwitch
           trigger={trigger}
