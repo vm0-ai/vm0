@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.220.5](https://github.com/vm0-ai/vm0/compare/cli-v9.220.4...cli-v9.220.5) (2026-07-02)
+
+
+### Refactoring
+
+* reduce fallback slop in runtime guards ([#19720](https://github.com/vm0-ai/vm0/issues/19720)) ([5d61de7](https://github.com/vm0-ai/vm0/commit/5d61de75720518d76e917f06a7be0bf95f155973))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.140.0
+    * @vm0/core bumped to 8.384.3
+
 ## [9.220.4](https://github.com/vm0-ai/vm0/compare/cli-v9.220.3...cli-v9.220.4) (2026-07-01)
 
 

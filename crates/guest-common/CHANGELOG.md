@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.28](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.27...guest-common-v0.2.28) (2026-07-02)
+
+
+### Refactoring
+
+* remove guest-common runtime path fallbacks ([#19717](https://github.com/vm0-ai/vm0/issues/19717)) ([2ce4fd7](https://github.com/vm0-ai/vm0/commit/2ce4fd76711d400408d340d4126b5224c716616b))
+
 ## [0.2.27](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.26...guest-common-v0.2.27) (2026-07-01)
 
 ## [0.2.26](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.25...guest-common-v0.2.26) (2026-07-01)

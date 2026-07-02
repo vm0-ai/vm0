@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.45.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.44.2...guest-agent-v0.45.0) (2026-07-02)
+
+
+### Features
+
+* restore Claude Fable 5 support ([#19721](https://github.com/vm0-ai/vm0/issues/19721)) ([97a7753](https://github.com/vm0-ai/vm0/commit/97a775354429e1f3de625627e3fbeeaf01c2552d))
+
+
+### Refactoring
+
+* remove guest-common runtime path fallbacks ([#19717](https://github.com/vm0-ai/vm0/issues/19717)) ([2ce4fd7](https://github.com/vm0-ai/vm0/commit/2ce4fd76711d400408d340d4126b5224c716616b))
+
 ## [0.44.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.44.1...guest-agent-v0.44.2) (2026-07-01)
 
 
