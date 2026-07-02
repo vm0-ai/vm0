@@ -309,7 +309,7 @@ describe("runner resume session contract", () => {
 describe("runner claim capability contract", () => {
   it("accepts unknown capabilities for forward compatibility", () => {
     const result = runnersJobClaimContract.claim.body.safeParse({
-      capabilities: ["resumeSessionHistoryRef", "futureCapability"],
+      capabilities: ["futureCapability"],
     });
 
     expect(result.success).toBe(true);
