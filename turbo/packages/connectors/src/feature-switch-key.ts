@@ -50,6 +50,7 @@ export enum FeatureSwitchKey {
   HtmlArtifactCommentEditing = "htmlArtifactCommentEditing",
   ComputerUseDelegatedAuthorization = "computerUseDelegatedAuthorization",
   PresentationTemplateRunbook = "presentationTemplateRunbook",
+  PresentationImageUnsplashPreferred = "presentationImageUnsplashPreferred",
   AgentUnreadIndicators = "agentUnreadIndicators",
   ImageArtifactKeyboardNavigation = "imageArtifactKeyboardNavigation",
   AgentsPageRedesign = "agentsPageRedesign",

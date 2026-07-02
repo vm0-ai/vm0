@@ -284,6 +284,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.PresentationImageUnsplashPreferred]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Prefer Unsplash for presentation image resolution, falling back to Pexels when Unsplash has no result or is unconfigured. When off, presentation images are resolved directly from Pexels.",
+    enabled: false,
+  },
   [FeatureSwitchKey.AgentUnreadIndicators]: {
     maintainer: "ethan@vm0.ai",
     description:

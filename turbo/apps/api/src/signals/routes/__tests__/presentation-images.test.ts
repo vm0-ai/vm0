@@ -1,5 +1,6 @@
 import { presentationImagesContract } from "@vm0/api-contracts/contracts/presentation-images";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -8,11 +9,13 @@ import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const routeMocks = createZeroRouteMocks(context);
 const UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos";
+const PEXELS_SEARCH_URL = "https://api.pexels.com/v1/search";
 
 interface PresentationImagesFixture {
   readonly orgId: string;
@@ -48,11 +51,22 @@ function zeroToken(
   });
 }
 
+async function enableUnsplashPreferred(
+  fixture: PresentationImagesFixture,
+): Promise<void> {
+  await updateFeatureSwitchesForUser(
+    context,
+    { userId: fixture.userId, orgId: fixture.orgId },
+    { [FeatureSwitchKey.PresentationImageUnsplashPreferred]: true },
+  );
+}
+
 describe("POST /api/presentation/images/resolve", () => {
   it("resolves image briefs through Unsplash with per-request query dedupe", async () => {
     const fixture = createFixture();
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
     mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
+    await enableUnsplashPreferred(fixture);
     const searchQueries: string[] = [];
     const downloadPhotoIds: string[] = [];
 
@@ -236,6 +250,7 @@ describe("POST /api/presentation/images/resolve", () => {
     const fixture = createFixture();
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
     mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
+    await enableUnsplashPreferred(fixture);
     server.use(
       http.get(UNSPLASH_SEARCH_URL, () => {
         return HttpResponse.json({ results: [] });
@@ -270,6 +285,7 @@ describe("POST /api/presentation/images/resolve", () => {
     const fixture = createFixture();
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
     mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
+    await enableUnsplashPreferred(fixture);
     server.use(
       http.get(UNSPLASH_SEARCH_URL, () => {
         return HttpResponse.error();
@@ -300,7 +316,7 @@ describe("POST /api/presentation/images/resolve", () => {
     ]);
   });
 
-  it("returns 503 when Unsplash is not configured", async () => {
+  it("returns 503 when no image provider is configured", async () => {
     const fixture = createFixture();
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
     const client = setupApp({ context })(presentationImagesContract);
@@ -316,10 +332,149 @@ describe("POST /api/presentation/images/resolve", () => {
 
     expect(response.body).toStrictEqual({
       error: {
-        message: "Unsplash image resolution is not configured",
+        message: "Presentation image resolution is not configured",
         code: "NOT_CONFIGURED",
       },
     });
+  });
+
+  it("resolves directly through Pexels when the switch is off", async () => {
+    const fixture = createFixture();
+    routeMocks.clerk.session(fixture.userId, fixture.orgId);
+    mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
+    mockEnv("PEXELS_API_KEY", "test-pexels-key");
+
+    let unsplashCalled = false;
+    const pexelsQueries: string[] = [];
+    server.use(
+      http.get(UNSPLASH_SEARCH_URL, () => {
+        unsplashCalled = true;
+        return HttpResponse.json({ results: [] });
+      }),
+      http.get(PEXELS_SEARCH_URL, ({ request }) => {
+        expect(request.headers.get("authorization")).toBe("test-pexels-key");
+        const url = new URL(request.url);
+        pexelsQueries.push(url.searchParams.get("query") ?? "");
+        return HttpResponse.json({
+          photos: [
+            {
+              url: "https://www.pexels.com/photo/city-skyline-123/",
+              src: {
+                large: "https://images.pexels.com/photo-city-large",
+                medium: "https://images.pexels.com/photo-city-medium",
+              },
+              photographer: "City Shooter",
+              photographer_url: "https://www.pexels.com/@cityshooter",
+              alt: "A city skyline",
+              width: 1500,
+              height: 1000,
+              avg_color: "#334455",
+            },
+          ],
+        });
+      }),
+    );
+
+    const client = setupApp({ context })(presentationImagesContract);
+    const response = await accept(
+      client.resolve({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          items: [{ path: "$.pages[0].visual", query: "city skyline" }],
+        },
+      }),
+      [200],
+    );
+
+    // Switch off: Unsplash is never consulted even though its key is present.
+    expect(unsplashCalled).toBe(false);
+    expect(pexelsQueries).toStrictEqual(["city skyline"]);
+    expect(response.body.items).toStrictEqual([
+      {
+        path: "$.pages[0].visual",
+        query: "city skyline",
+        status: "resolved",
+        asset: {
+          src: "https://images.pexels.com/photo-city-large",
+          alt: "A city skyline",
+          source: "pexels",
+          sourceName: "Pexels",
+          sourceUrl: "https://www.pexels.com/photo/city-skyline-123/",
+          unsplashUrl: "https://www.pexels.com/photo/city-skyline-123/",
+          photographerName: "City Shooter",
+          photographerUrl: "https://www.pexels.com/@cityshooter",
+          license: "Pexels",
+          width: 1500,
+          height: 1000,
+          color: "#334455",
+        },
+      },
+    ]);
+  });
+
+  it("falls back to Pexels when the switch is on and Unsplash has no result", async () => {
+    const fixture = createFixture();
+    routeMocks.clerk.session(fixture.userId, fixture.orgId);
+    mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
+    mockEnv("PEXELS_API_KEY", "test-pexels-key");
+    await enableUnsplashPreferred(fixture);
+
+    let unsplashCalled = false;
+    server.use(
+      http.get(UNSPLASH_SEARCH_URL, () => {
+        unsplashCalled = true;
+        return HttpResponse.json({ results: [] });
+      }),
+      http.get(PEXELS_SEARCH_URL, () => {
+        return HttpResponse.json({
+          photos: [
+            {
+              url: "https://www.pexels.com/photo/forest-999/",
+              src: { large: "https://images.pexels.com/photo-forest-large" },
+              photographer: "Forest Fan",
+              photographer_url: "https://www.pexels.com/@forestfan",
+              alt: "A misty forest",
+              width: 1600,
+              height: 900,
+            },
+          ],
+        });
+      }),
+    );
+
+    const client = setupApp({ context })(presentationImagesContract);
+    const response = await accept(
+      client.resolve({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          items: [{ path: "$.pages[0].visual", query: "forest" }],
+        },
+      }),
+      [200],
+    );
+
+    // Switch on: Unsplash is tried first, then Pexels resolves the fallback.
+    expect(unsplashCalled).toBe(true);
+    expect(response.body.items).toStrictEqual([
+      {
+        path: "$.pages[0].visual",
+        query: "forest",
+        status: "resolved",
+        asset: {
+          src: "https://images.pexels.com/photo-forest-large",
+          alt: "A misty forest",
+          source: "pexels",
+          sourceName: "Pexels",
+          sourceUrl: "https://www.pexels.com/photo/forest-999/",
+          unsplashUrl: "https://www.pexels.com/photo/forest-999/",
+          photographerName: "Forest Fan",
+          photographerUrl: "https://www.pexels.com/@forestfan",
+          license: "Pexels",
+          width: 1600,
+          height: 900,
+        },
+      },
+    ]);
   });
 
   it("requires file write capability for zero tokens", async () => {
