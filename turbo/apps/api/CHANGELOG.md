@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.209.1](https://github.com/vm0-ai/vm0/compare/api-v1.209.0...api-v1.209.1) (2026-07-02)
+
+
+### Performance Improvements
+
+* add artifact ensure storage manifest timing ([#19901](https://github.com/vm0-ai/vm0/issues/19901)) ([749e1bb](https://github.com/vm0-ai/vm0/commit/749e1bb01dcd16c04347ec1c7f174af7e167c9ad))
+
 ## [1.209.0](https://github.com/vm0-ai/vm0/compare/api-v1.208.3...api-v1.209.0) (2026-07-02)
 
 
