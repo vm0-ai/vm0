@@ -1,4 +1,4 @@
-export interface SingleFlightTask<TResult> {
+interface SingleFlightTask<TResult> {
   (): Promise<TResult>;
   clear: () => void;
   readonly inFlight: boolean;
@@ -72,7 +72,7 @@ export function latestWinsSingleFlight(
   };
 }
 
-export interface LatestWinsToken {
+interface LatestWinsToken {
   isCurrent: () => boolean;
 }
 
