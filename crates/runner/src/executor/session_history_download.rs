@@ -587,6 +587,14 @@ async fn download_body(
         }
     } {
         downloaded += chunk.len() as u64;
+        if let Some(expected_size) = expected_size
+            && downloaded > expected_size
+        {
+            timings.record_body_read(body_started.elapsed(), false);
+            return Err(RunnerError::Internal(format!(
+                "session history downloaded size mismatch: expected {expected_size} bytes, got more than {expected_size} bytes"
+            )));
+        }
         if downloaded > RESUME_SESSION_HISTORY_MAX_BYTES {
             timings.record_body_read(body_started.elapsed(), false);
             return Err(RunnerError::Internal(format!(
@@ -835,6 +843,31 @@ mod tests {
             body.len() as u64,
             encoded_size + 1,
         );
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                assert!(
+                    error.to_string().contains("downloaded size mismatch"),
+                    "unexpected error: {error}"
+                );
+                assert_phase_success(timings.request_status());
+                assert_phase_failure(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_no_phase(timings.hash_verification());
+            }
+            _ => panic!("expected failed materialization"),
+        }
+    }
+
+    #[tokio::test]
+    async fn materializer_rejects_body_over_declared_size_without_content_length() {
+        let body = b"{\"type\":\"init\"}\n";
+        let hash = hex::encode(Sha256::digest(body));
+        let session = ref_session(serve_once("200 OK", body, None).await, hash, 1, 1);
 
         let result = start_materializer(&session)
             .finish(&CancellationToken::new())
