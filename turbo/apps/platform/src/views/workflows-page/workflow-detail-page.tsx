@@ -19,7 +19,6 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   IconAlertTriangle,
-  IconArrowRight,
   IconBrandGithub,
   IconCalendarTime,
   IconChevronDown,
@@ -42,6 +41,7 @@ import {
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Button,
+  Checkbox,
   cn,
   Dialog,
   DialogContent,
@@ -102,7 +102,7 @@ import {
   setWorkflowActionDialog$,
   setWorkflowDetailActiveTab$,
   setWorkflowFileDraft$,
-  setWorkflowCopyDialogState$,
+  setWorkflowCopyForm$,
   setWorkflowTriggerCreateDialog$,
   setWorkflowTriggerEnabled$,
   updateWorkflowGithubLabelAppliedTrigger$,
@@ -111,13 +111,12 @@ import {
   updateWorkflowScheduleTrigger$,
   updateWorkflow$,
   workflowActionDialog$,
-  workflowCopyDialogState$,
+  workflowCopyForm$,
   workflowDetailActiveTab$,
   workflowTriggerCreateDialog$,
   workflowFileDraft$,
   workflowDetail,
-  type WorkflowCopyDialogAgent,
-  type WorkflowCopyDialogState,
+  type WorkflowCopyFormState,
   type WorkflowCronFields,
   type WorkflowCronFrequency,
   type WorkflowDetailTab,
@@ -151,6 +150,11 @@ import { TiptapInstructionsEditor } from "../zero-page/tiptap-instructions-edito
 import { ZeroUnsavedBar } from "../zero-page/zero-unsaved-bar.tsx";
 import { InlineSettingsRow } from "../zero-page/components/zero-inline-settings-row.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@vm0/ui/components/ui/alert";
 import {
   agentLabel,
   formatWorkflowIntervalSeconds,
@@ -942,6 +946,100 @@ function WorkflowPublicToggle({
   );
 }
 
+interface WorkflowCopyAgent {
+  readonly id: string;
+  readonly displayName: string | null;
+}
+
+function workflowCopyRemovalDescription({
+  enabledSourceTriggerCount,
+  sourceAgentName,
+}: {
+  readonly enabledSourceTriggerCount: number;
+  readonly sourceAgentName: string;
+}): string {
+  if (enabledSourceTriggerCount === 0) {
+    return `This workflow is deleted from ${sourceAgentName}.`;
+  }
+  return `${enabledSourceTriggerCount} ${
+    enabledSourceTriggerCount === 1 ? "automation is" : "automations are"
+  } paused on ${sourceAgentName} and this workflow is deleted.`;
+}
+
+function WorkflowCopyForm({
+  agents,
+  agentsLoaded,
+  form,
+  onChange,
+  sourceAgentName,
+  enabledSourceTriggerCount,
+}: {
+  readonly agents: readonly WorkflowCopyAgent[];
+  readonly agentsLoaded: boolean;
+  readonly form: WorkflowCopyFormState;
+  readonly onChange: (form: WorkflowCopyFormState) => void;
+  readonly sourceAgentName: string;
+  readonly enabledSourceTriggerCount: number;
+}) {
+  const noAgents = agentsLoaded && agents.length === 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-1.5">
+        <span className="text-sm font-medium text-foreground">Copy to</span>
+        {noAgents ? (
+          <p className="text-sm text-muted-foreground">No other agents yet</p>
+        ) : (
+          <Select
+            value={form.selectedAgentId ?? undefined}
+            disabled={!agentsLoaded}
+            onValueChange={(value) => {
+              onChange({ ...form, selectedAgentId: value });
+            }}
+          >
+            <SelectTrigger className="h-9 w-full" aria-label="Copy to">
+              <SelectValue placeholder="Choose an agent" />
+            </SelectTrigger>
+            <SelectContent>
+              {agents.map((agent) => {
+                return (
+                  <SelectItem key={agent.id} value={agent.id}>
+                    {agent.displayName ?? agent.id}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+      <label className="flex items-start gap-2">
+        <Checkbox
+          checked={form.removeOriginal}
+          className="mt-0.5"
+          onCheckedChange={(checked) => {
+            onChange({ ...form, removeOriginal: checked === true });
+          }}
+        />
+        <span className="text-sm text-foreground">
+          Remove the original from {sourceAgentName} after copying
+        </span>
+      </label>
+      {form.removeOriginal ? (
+        <Alert variant="destructive">
+          <IconAlertTriangle size={16} stroke={1.5} />
+          <AlertTitle>This deletes the original</AlertTitle>
+          <AlertDescription>
+            {workflowCopyRemovalDescription({
+              enabledSourceTriggerCount,
+              sourceAgentName,
+            })}
+          </AlertDescription>
+        </Alert>
+      ) : null}
+    </div>
+  );
+}
+
 function WorkflowCopyDialog({
   detail,
   open,
@@ -951,19 +1049,27 @@ function WorkflowCopyDialog({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
-  const copyState = useGet(workflowCopyDialogState$);
   const pageSignal = useGet(pageSignal$);
-  const setCopyState = useSet(setWorkflowCopyDialogState$);
+  const navigate = useSet(detachedNavigateTo$);
+  const form = useGet(workflowCopyForm$);
+  const setForm = useSet(setWorkflowCopyForm$);
   const [copyLoadable, copyWorkflow] = useLoadableSet(copyWorkflow$);
+  const [pauseLoadable, pauseWorkflowTriggers] = useLoadableSet(
+    pauseWorkflowTriggers$,
+  );
+  const [deleteLoadable, deleteWorkflow] = useLoadableSet(deleteWorkflow$);
   const agentsLoadable = useLoadable(agents$);
-  const agents =
-    agentsLoadable.state === "hasData"
-      ? agentsLoadable.data.filter((agent) => {
-          return agent.id !== detail.agentId;
-        })
-      : [];
+  const agentsLoaded = agentsLoadable.state === "hasData";
+  const agents = agentsLoaded
+    ? agentsLoadable.data.filter((agent) => {
+        return agent.id !== detail.agentId;
+      })
+    : [];
+  const submitting =
+    copyLoadable.state === "loading" ||
+    pauseLoadable.state === "loading" ||
+    deleteLoadable.state === "loading";
   const sourceAgentName = agentLabel(detail);
-  const sourceWorkflowName = workflowTitle(detail);
   const enabledSourceTriggerIds = detail.triggers
     .filter((trigger) => {
       return trigger.enabled;
@@ -971,413 +1077,115 @@ function WorkflowCopyDialog({
     .map((trigger) => {
       return trigger.id;
     });
+  const selectedAgent = agents.find((agent) => {
+    return agent.id === form.selectedAgentId;
+  });
+  const agentName =
+    selectedAgent?.displayName ?? form.selectedAgentId ?? "the agent";
+
+  const submit = () => {
+    const toAgentId = form.selectedAgentId;
+    if (!toAgentId) {
+      return;
+    }
+    const removeOriginal = form.removeOriginal;
+    detach(
+      (async () => {
+        const copied = await copyWorkflow(
+          { workflowId: detail.id, toAgentId },
+          pageSignal,
+        );
+        if (removeOriginal) {
+          if (enabledSourceTriggerIds.length > 0) {
+            await pauseWorkflowTriggers(enabledSourceTriggerIds, pageSignal);
+          }
+          await deleteWorkflow(detail.id, pageSignal);
+        }
+        onOpenChange(false);
+        if (removeOriginal) {
+          navigate(ROUTES.workflowDetailAutomations, {
+            pathParams: { workflowId: copied.id },
+          });
+          toast.success(`Moved to ${agentName}`, {
+            description: `Original removed from ${sourceAgentName}.`,
+          });
+          return;
+        }
+        toast.success(`Copied to ${agentName}`, {
+          description: "A private copy is ready.",
+          action: {
+            label: "View",
+            onClick: () => {
+              navigate(ROUTES.workflowDetailAutomations, {
+                pathParams: { workflowId: copied.id },
+              });
+            },
+          },
+        });
+      })(),
+      Reason.DomCallback,
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[560px]">
         <DialogHeader>
-          <DialogTitle>{workflowCopyDialogTitle(copyState)}</DialogTitle>
+          <DialogTitle>Copy workflow</DialogTitle>
           <DialogDescription>
-            {workflowCopyDialogDescription({
-              copyState,
-              sourceAgentName,
-              sourceWorkflowName,
-            })}
+            Copy this workflow to another agent as a new private workflow.
           </DialogDescription>
         </DialogHeader>
-        {copyState.kind === "copying" ? (
-          <WorkflowCopyProgressState
-            copyFailed={copyLoadable.state === "hasError"}
-            copyState={copyState}
-            sourceAgentName={sourceAgentName}
-            sourceWorkflowName={sourceWorkflowName}
-          />
-        ) : copyState.kind === "copied" ? (
-          <WorkflowCopySuccessState
-            copyState={copyState}
-            enabledSourceTriggerIds={enabledSourceTriggerIds}
-            onOpenChange={onOpenChange}
-            sourceAgentName={sourceAgentName}
-            sourceWorkflowId={detail.id}
-            sourceWorkflowName={sourceWorkflowName}
-          />
-        ) : (
-          <WorkflowCopySelectState
-            agents={agents}
-            agentsLoaded={agentsLoadable.state === "hasData"}
-            onCopyToAgent={(agent) => {
-              setCopyState({ kind: "copying", agent });
-              detach(
-                (async () => {
-                  const copiedWorkflow = await copyWorkflow(
-                    {
-                      workflowId: detail.id,
-                      toAgentId: agent.id,
-                    },
-                    pageSignal,
-                  );
-                  setCopyState({
-                    kind: "copied",
-                    agent,
-                    workflow: copiedWorkflow,
-                    sourceTriggersPaused: false,
-                  });
-                })(),
-                Reason.DomCallback,
-              );
-            }}
-          />
-        )}
+        <WorkflowCopyForm
+          agents={agents}
+          agentsLoaded={agentsLoaded}
+          form={form}
+          onChange={setForm}
+          sourceAgentName={sourceAgentName}
+          enabledSourceTriggerCount={enabledSourceTriggerIds.length}
+        />
+        <WorkflowCopyDialogFooter
+          submitting={submitting}
+          removeOriginal={form.removeOriginal}
+          disabled={!form.selectedAgentId || submitting || agents.length === 0}
+          onCancel={() => {
+            onOpenChange(false);
+          }}
+          onSubmit={submit}
+        />
       </DialogContent>
     </Dialog>
   );
 }
 
-function WorkflowCopySelectState({
-  agents,
-  agentsLoaded,
-  onCopyToAgent,
-}: {
-  readonly agents: readonly WorkflowCopyDialogAgent[];
-  readonly agentsLoaded: boolean;
-  readonly onCopyToAgent: (agent: WorkflowCopyDialogAgent) => void;
-}) {
-  if (agents.length === 0) {
-    return agentsLoaded ? (
-      <p className="text-sm text-muted-foreground">
-        No other agents are available.
-      </p>
-    ) : (
-      <div className="h-24 rounded-md bg-muted/50" aria-hidden="true" />
-    );
-  }
-
-  return (
-    <div className="max-h-[360px] overflow-auto rounded-md border border-border/60">
-      {agents.map((agent) => {
-        return (
-          <button
-            key={agent.id}
-            type="button"
-            className="flex w-full items-center justify-between gap-3 border-b border-border/60 px-3 py-2 text-left last:border-b-0 transition-colors hover:bg-muted disabled:opacity-60"
-            onClick={() => {
-              onCopyToAgent(agent);
-            }}
-          >
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-medium text-foreground">
-                {workflowCopyAgentName(agent)}
-              </span>
-              <span className="block text-xs text-muted-foreground">
-                {agent.visibility === "private"
-                  ? "Private agent"
-                  : "Public agent"}
-              </span>
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function WorkflowCopyProgressState({
-  copyFailed,
-  copyState,
-  sourceAgentName,
-  sourceWorkflowName,
-}: {
-  readonly copyFailed: boolean;
-  readonly copyState: Extract<WorkflowCopyDialogState, { kind: "copying" }>;
-  readonly sourceAgentName: string;
-  readonly sourceWorkflowName: string;
-}) {
-  return (
-    <div className="space-y-3">
-      <WorkflowCopyAgentPanels
-        sourceAgentName={sourceAgentName}
-        sourceWorkflowName={sourceWorkflowName}
-        targetAgentName={workflowCopyAgentName(copyState.agent)}
-        targetWorkflowName={sourceWorkflowName}
-      />
-      <div className="rounded-lg border border-border/60 bg-gray-50 px-3 py-3">
-        <div className="flex items-start gap-3">
-          {copyFailed ? (
-            <IconAlertTriangle
-              size={16}
-              className="mt-0.5 shrink-0 text-destructive"
-              stroke={1.5}
-            />
-          ) : (
-            <IconLoader2
-              size={16}
-              className="mt-0.5 shrink-0 animate-spin text-muted-foreground"
-            />
-          )}
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground">
-              {copyFailed
-                ? "Copy failed"
-                : workflowCopyAgentName(copyState.agent)}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {copyFailed
-                ? "Close this dialog and try again."
-                : `${copyState.agent.visibility === "private" ? "Private" : "Public"} target agent`}
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function WorkflowCopySuccessState({
-  copyState,
-  enabledSourceTriggerIds,
-  onOpenChange,
-  sourceAgentName,
-  sourceWorkflowId,
-  sourceWorkflowName,
-}: {
-  readonly copyState: Extract<WorkflowCopyDialogState, { kind: "copied" }>;
-  readonly enabledSourceTriggerIds: readonly string[];
-  readonly onOpenChange: (open: boolean) => void;
-  readonly sourceAgentName: string;
-  readonly sourceWorkflowId: string;
-  readonly sourceWorkflowName: string;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const navigate = useSet(detachedNavigateTo$);
-  const setCopyState = useSet(setWorkflowCopyDialogState$);
-  const [pauseLoadable, pauseWorkflowTriggers] = useLoadableSet(
-    pauseWorkflowTriggers$,
-  );
-  const [deleteLoadable, deleteWorkflow] = useLoadableSet(deleteWorkflow$);
-  const pausingSourceTriggers = pauseLoadable.state === "loading";
-  const deletingSourceWorkflow = deleteLoadable.state === "loading";
-
-  return (
-    <>
-      <WorkflowCopyAgentPanels
-        sourceAgentName={sourceAgentName}
-        sourceWorkflowName={sourceWorkflowName}
-        targetAgentName={workflowCopyAgentName(copyState.agent)}
-        targetWorkflowName={workflowTitle(copyState.workflow)}
-      />
-      <div className="space-y-2">
-        <WorkflowCopyActionButton
-          icon={
-            pausingSourceTriggers ? (
-              <IconLoader2 size={15} className="animate-spin" />
-            ) : (
-              <IconPlayerPause size={15} stroke={1.5} />
-            )
-          }
-          title="Pause source automations"
-          description={sourceTriggerActionDescription({
-            enabledCount: enabledSourceTriggerIds.length,
-            sourceAgentName,
-            paused: copyState.sourceTriggersPaused,
-          })}
-          disabled={
-            pausingSourceTriggers ||
-            deletingSourceWorkflow ||
-            copyState.sourceTriggersPaused ||
-            enabledSourceTriggerIds.length === 0
-          }
-          onClick={() => {
-            detach(
-              (async () => {
-                await pauseWorkflowTriggers(
-                  enabledSourceTriggerIds,
-                  pageSignal,
-                );
-                setCopyState({ ...copyState, sourceTriggersPaused: true });
-              })(),
-              Reason.DomCallback,
-            );
-          }}
-        />
-        <WorkflowCopyActionButton
-          icon={
-            deletingSourceWorkflow ? (
-              <IconLoader2 size={15} className="animate-spin" />
-            ) : (
-              <IconTrash size={15} stroke={1.5} />
-            )
-          }
-          title="Delete source workflow"
-          description={`Delete ${sourceWorkflowName} from ${sourceAgentName}`}
-          disabled={deletingSourceWorkflow}
-          destructive
-          onClick={() => {
-            detach(
-              (async () => {
-                await deleteWorkflow(sourceWorkflowId, pageSignal);
-                onOpenChange(false);
-                navigate(ROUTES.workflows);
-              })(),
-              Reason.DomCallback,
-            );
-          }}
-        />
-        <WorkflowCopyActionButton
-          icon={<IconArrowRight size={15} stroke={1.5} />}
-          title="View target workflow"
-          description={`Open ${workflowTitle(copyState.workflow)} on ${workflowCopyAgentName(copyState.agent)}`}
-          onClick={() => {
-            onOpenChange(false);
-            navigate(ROUTES.workflowDetailAutomations, {
-              pathParams: {
-                workflowId: copyState.workflow.id,
-              },
-            });
-          }}
-        />
-      </div>
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => {
-            onOpenChange(false);
-          }}
-        >
-          Close
-        </Button>
-      </DialogFooter>
-    </>
-  );
-}
-
-function workflowCopyDialogTitle(copyState: WorkflowCopyDialogState): string {
-  return copyState.kind === "copied"
-    ? `Workflow copied to ${workflowCopyAgentName(copyState.agent)}`
-    : "Copy workflow";
-}
-
-function workflowCopyDialogDescription({
-  copyState,
-  sourceAgentName,
-  sourceWorkflowName,
-}: {
-  readonly copyState: WorkflowCopyDialogState;
-  readonly sourceAgentName: string;
-  readonly sourceWorkflowName: string;
-}): string {
-  if (copyState.kind === "copying") {
-    return `Copying ${sourceWorkflowName} from ${sourceAgentName} to ${workflowCopyAgentName(copyState.agent)}.`;
-  }
-  if (copyState.kind === "copied") {
-    return "The new private workflow is ready on the target agent.";
-  }
-  return "Copy to another agent as a new private workflow.";
-}
-
-function workflowCopyAgentName(agent: WorkflowCopyDialogAgent): string {
-  return agent.displayName ?? agent.id;
-}
-
-function sourceTriggerActionDescription({
-  enabledCount,
-  sourceAgentName,
-  paused,
-}: {
-  readonly enabledCount: number;
-  readonly sourceAgentName: string;
-  readonly paused: boolean;
-}): string {
-  if (paused) {
-    return `Source automations are paused on ${sourceAgentName}`;
-  }
-  if (enabledCount === 0) {
-    return `No enabled source automations on ${sourceAgentName}`;
-  }
-  return `Pause ${enabledCount} enabled source ${
-    enabledCount === 1 ? "automation" : "automations"
-  } on ${sourceAgentName}`;
-}
-
-function WorkflowCopyAgentPanels({
-  sourceAgentName,
-  sourceWorkflowName,
-  targetAgentName,
-  targetWorkflowName,
-}: {
-  readonly sourceAgentName: string;
-  readonly sourceWorkflowName: string;
-  readonly targetAgentName: string;
-  readonly targetWorkflowName: string;
-}) {
-  return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      <div className="rounded-lg border border-border/60 bg-gray-50 px-3 py-3">
-        <span className="text-xs text-muted-foreground">Source</span>
-        <span className="mt-1 block truncate text-sm font-semibold text-foreground">
-          {sourceAgentName}
-        </span>
-        <span className="mt-1 block truncate text-xs text-muted-foreground">
-          {sourceWorkflowName}
-        </span>
-      </div>
-      <div className="rounded-lg border border-border/60 bg-gray-50 px-3 py-3">
-        <span className="text-xs text-muted-foreground">Target</span>
-        <span className="mt-1 block truncate text-sm font-semibold text-foreground">
-          {targetAgentName}
-        </span>
-        <span className="mt-1 block truncate text-xs text-muted-foreground">
-          {targetWorkflowName}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function WorkflowCopyActionButton({
-  icon,
-  title,
-  description,
+function WorkflowCopyDialogFooter({
+  submitting,
+  removeOriginal,
   disabled,
-  destructive = false,
-  onClick,
+  onCancel,
+  onSubmit,
 }: {
-  readonly icon: ReactNode;
-  readonly title: string;
-  readonly description: string;
-  readonly disabled?: boolean;
-  readonly destructive?: boolean;
-  readonly onClick: () => void;
+  readonly submitting: boolean;
+  readonly removeOriginal: boolean;
+  readonly disabled: boolean;
+  readonly onCancel: () => void;
+  readonly onSubmit: () => void;
 }) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      className={cn(
-        "flex w-full items-center gap-3 rounded-lg border border-border/60 bg-background px-3 py-3 text-left transition-colors hover:bg-gray-50 disabled:pointer-events-none disabled:opacity-60",
-        destructive && "border-destructive/30 hover:bg-destructive/10",
-      )}
-      onClick={onClick}
-    >
-      <span
-        className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground",
-          destructive
-            ? "bg-destructive/10 text-destructive"
-            : "text-primary bg-primary/10",
-        )}
+    <DialogFooter>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={submitting}
+        onClick={onCancel}
       >
-        {icon}
-      </span>
-      <span className="min-w-0">
-        <span className="block text-sm font-semibold text-foreground">
-          {title}
-        </span>
-        <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-          {description}
-        </span>
-      </span>
-    </button>
+        Cancel
+      </Button>
+      <Button type="button" disabled={disabled} onClick={onSubmit}>
+        {submitting ? <IconLoader2 size={14} className="animate-spin" /> : null}
+        {removeOriginal ? "Copy and remove" : "Copy workflow"}
+      </Button>
+    </DialogFooter>
   );
 }
 

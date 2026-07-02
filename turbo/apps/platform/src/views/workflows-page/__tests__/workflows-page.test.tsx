@@ -894,6 +894,16 @@ function selectOptionByLabel(
   click(screen.getByRole("option", { name: option }));
 }
 
+async function openCopyDialog(): Promise<HTMLElement> {
+  await waitFor(() => {
+    expect(buttonByText(/^Copy workflow$/)).toBeInTheDocument();
+  });
+  click(buttonByText(/^Copy workflow$/));
+  return await waitFor(() => {
+    return screen.getByRole("dialog");
+  });
+}
+
 describe("workflows routes", () => {
   it("redirects the workspace workflows index when workflows are disabled", async () => {
     detachedSetupPage({
@@ -1254,7 +1264,7 @@ describe("workflow detail page", () => {
     );
   });
 
-  it("shows source and target actions after copying a workflow", async () => {
+  it("copies a workflow to another agent from the info tab", async () => {
     const workflows = [salesResearch()];
     const copiedWorkflow: ZeroWorkflowDetailResponse = {
       ...salesResearch(),
@@ -1265,25 +1275,27 @@ describe("workflow detail page", () => {
       visibility: "private",
       triggers: [],
     };
-    const copyGate = context.mocks.deferred<void>();
     const copyRequests: {
       readonly workflowId: string;
       readonly toAgentId: string;
     }[] = [];
     const disabledTriggerIds: string[] = [];
+    const deletedWorkflowIds: string[] = [];
     mockAgentPageApis();
     mockWorkflowApis(workflows);
     mockDisableWorkflowTrigger((triggerId) => {
       disabledTriggerIds.push(triggerId);
     });
+    mockDeleteWorkflow(workflows, (workflowId) => {
+      deletedWorkflowIds.push(workflowId);
+    });
     context.mocks.api(
       zeroWorkflowsDetailContract.copy,
-      async ({ params, body, respond }) => {
+      ({ params, body, respond }) => {
         copyRequests.push({
           workflowId: params.workflowId,
           toAgentId: body.toAgentId,
         });
-        await copyGate.promise;
         workflows.push(copiedWorkflow);
         return respond(201, summary(copiedWorkflow));
       },
@@ -1291,64 +1303,37 @@ describe("workflow detail page", () => {
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
 
-    await waitFor(() => {
-      expect(buttonByText(/^Copy workflow$/)).toBeInTheDocument();
-    });
-    click(buttonByText(/^Copy workflow$/));
-    await waitFor(() => {
-      expect(buttonByText(/Support Bot/)).toBeInTheDocument();
-    });
-    click(buttonByText(/Support Bot/));
+    const dialog = await openCopyDialog();
+    expect(
+      within(dialog).getByText(
+        "Copy this workflow to another agent as a new private workflow.",
+      ),
+    ).toBeInTheDocument();
+
+    selectOptionByLabel("Copy to", "Support Bot", dialog);
+    click(buttonByText(/^Copy workflow$/, dialog));
 
     await waitFor(() => {
       expect(copyRequests).toStrictEqual([
         { workflowId: SALES_WORKFLOW_ID, toAgentId: OTHER_AGENT_ID },
       ]);
     });
-    expect(
-      screen.getByText(
-        "Copying Sales Research from Research Bot to Support Bot.",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText("Copy to another agent as a new private workflow."),
-    ).not.toBeInTheDocument();
-    expect(screen.getByText("Public target agent")).toBeInTheDocument();
+    // Copy-only never touches the source workflow or its automations.
+    expect(disabledTriggerIds).toStrictEqual([]);
+    expect(deletedWorkflowIds).toStrictEqual([]);
+    // Stays on the source page and offers a link to the fresh copy.
+    expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/info`);
+    await expect(
+      screen.findByText("Copied to Support Bot"),
+    ).resolves.toBeInTheDocument();
 
-    copyGate.resolve();
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Workflow copied to Support Bot"),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByText("Source")).toBeInTheDocument();
-    expect(screen.getByText("Target")).toBeInTheDocument();
-    expect(buttonByText(/Pause source automations/)).toBeInTheDocument();
-    expect(buttonByText(/Delete source workflow/)).toBeInTheDocument();
-    expect(buttonByText(/View target workflow/)).toBeInTheDocument();
-
-    click(buttonByText(/Pause source automations/));
-    expect(buttonByText(/Pause source automations/)).toBeDisabled();
-    expect(
-      buttonByText(/Pause source automations/).querySelector(".animate-spin"),
-    ).not.toBeNull();
-    await waitFor(() => {
-      expect(disabledTriggerIds).toStrictEqual([
-        "workflow-trigger-weekday-brief",
-      ]);
-    });
-    expect(
-      screen.getByText("Source automations are paused on Research Bot"),
-    ).toBeInTheDocument();
-
-    click(buttonByText(/View target workflow/));
+    click(buttonByText("View"));
     await waitFor(() => {
       expect(pathname()).toBe(`/workflows/${COPIED_WORKFLOW_ID}/automations`);
     });
   });
 
-  it("shows copy failure in the source and target progress state", async () => {
+  it("keeps the copy dialog open when copying fails", async () => {
     mockAgentPageApis();
     mockWorkflowApis([salesResearch()]);
     context.mocks.api(zeroWorkflowsDetailContract.copy, ({ respond }) => {
@@ -1362,32 +1347,19 @@ describe("workflow detail page", () => {
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
 
-    await waitFor(() => {
-      expect(buttonByText(/^Copy workflow$/)).toBeInTheDocument();
-    });
-    click(buttonByText(/^Copy workflow$/));
-    await waitFor(() => {
-      expect(buttonByText(/Support Bot/)).toBeInTheDocument();
-    });
-    click(buttonByText(/Support Bot/));
+    const dialog = await openCopyDialog();
+    selectOptionByLabel("Copy to", "Support Bot", dialog);
+    click(buttonByText(/^Copy workflow$/, dialog));
 
-    expect(
-      screen.getByText(
-        "Copying Sales Research from Research Bot to Support Bot.",
-      ),
-    ).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByText("Copy failed")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText("Close this dialog and try again."),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Source")).toBeInTheDocument();
-    expect(screen.getByText("Target")).toBeInTheDocument();
-    expect(screen.queryByText(/Workflow copied to/)).not.toBeInTheDocument();
+    await expect(
+      screen.findByText("Failed to copy workflow"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByText(/Copied to/)).not.toBeInTheDocument();
+    expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/info`);
   });
 
-  it("deletes the source workflow from copied workflow actions", async () => {
+  it("moves a workflow by removing the original after copying", async () => {
     const workflows = [salesResearch()];
     const copiedWorkflow: ZeroWorkflowDetailResponse = {
       ...salesResearch(),
@@ -1398,55 +1370,71 @@ describe("workflow detail page", () => {
       visibility: "private",
       triggers: [],
     };
-    const deleteGate = context.mocks.deferred<void>();
+    const copyRequests: {
+      readonly workflowId: string;
+      readonly toAgentId: string;
+    }[] = [];
+    const disabledTriggerIds: string[] = [];
     const deletedWorkflowIds: string[] = [];
     mockAgentPageApis();
     mockWorkflowApis(workflows);
-    mockDeleteWorkflow(workflows, async (workflowId) => {
+    mockDisableWorkflowTrigger((triggerId) => {
+      disabledTriggerIds.push(triggerId);
+    });
+    mockDeleteWorkflow(workflows, (workflowId) => {
       deletedWorkflowIds.push(workflowId);
-      await deleteGate.promise;
     });
-    context.mocks.api(zeroWorkflowsDetailContract.copy, ({ respond }) => {
-      workflows.push(copiedWorkflow);
-      return respond(201, summary(copiedWorkflow));
-    });
+    context.mocks.api(
+      zeroWorkflowsDetailContract.copy,
+      ({ params, body, respond }) => {
+        copyRequests.push({
+          workflowId: params.workflowId,
+          toAgentId: body.toAgentId,
+        });
+        workflows.push(copiedWorkflow);
+        return respond(201, summary(copiedWorkflow));
+      },
+    );
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
 
-    await waitFor(() => {
-      expect(buttonByText(/^Copy workflow$/)).toBeInTheDocument();
-    });
-    click(buttonByText(/^Copy workflow$/));
-    await waitFor(() => {
-      expect(buttonByText(/Support Bot/)).toBeInTheDocument();
-    });
-    click(buttonByText(/Support Bot/));
+    const dialog = await openCopyDialog();
+    selectOptionByLabel("Copy to", "Support Bot", dialog);
+
+    // Opting to remove the original reveals the destructive alert and
+    // relabels the primary action.
+    click(within(dialog).getByRole("checkbox"));
+    expect(
+      within(dialog).getByText("This deletes the original"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        "1 automation is paused on Research Bot and this workflow is deleted.",
+      ),
+    ).toBeInTheDocument();
+
+    click(buttonByText(/^Copy and remove$/, dialog));
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Workflow copied to Support Bot"),
-      ).toBeInTheDocument();
+      expect(copyRequests).toStrictEqual([
+        { workflowId: SALES_WORKFLOW_ID, toAgentId: OTHER_AGENT_ID },
+      ]);
     });
-    expect(buttonByText(/Pause source automations/)).not.toBeDisabled();
-    click(buttonByText(/Delete source workflow/));
-
+    await waitFor(() => {
+      expect(disabledTriggerIds).toStrictEqual([
+        "workflow-trigger-weekday-brief",
+      ]);
+    });
     await waitFor(() => {
       expect(deletedWorkflowIds).toStrictEqual([SALES_WORKFLOW_ID]);
     });
-    expect(buttonByText(/Pause source automations/)).toBeDisabled();
-    expect(buttonByText(/Delete source workflow/)).toBeDisabled();
-    expect(
-      buttonByText(/Delete source workflow/).querySelector(".animate-spin"),
-    ).not.toBeNull();
-    expect(
-      screen.queryByRole("heading", { name: "Delete workflow" }),
-    ).not.toBeInTheDocument();
-
-    deleteGate.resolve();
-
+    // Navigates to the copy because the source page no longer exists.
     await waitFor(() => {
-      expect(pathname()).toBe("/workflows");
+      expect(pathname()).toBe(`/workflows/${COPIED_WORKFLOW_ID}/automations`);
     });
+    await expect(
+      screen.findByText("Moved to Support Bot"),
+    ).resolves.toBeInTheDocument();
     expect(
       workflows.some((workflow) => {
         return workflow.id === SALES_WORKFLOW_ID;

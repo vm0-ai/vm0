@@ -40,20 +40,15 @@ import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
 export type WorkflowDetailTab = "automations" | "instructions" | "info";
 export type WorkflowIndexFilterTab = "automations" | "all";
-export type WorkflowCopyDialogAgent = {
-  readonly id: string;
-  readonly displayName: string | null;
-  readonly visibility?: string | null;
+export interface WorkflowCopyFormState {
+  readonly selectedAgentId: string | null;
+  readonly removeOriginal: boolean;
+}
+
+const DEFAULT_WORKFLOW_COPY_FORM: WorkflowCopyFormState = {
+  selectedAgentId: null,
+  removeOriginal: false,
 };
-export type WorkflowCopyDialogState =
-  | { readonly kind: "select" }
-  | { readonly kind: "copying"; readonly agent: WorkflowCopyDialogAgent }
-  | {
-      readonly kind: "copied";
-      readonly agent: WorkflowCopyDialogAgent;
-      readonly workflow: ZeroWorkflowSummary;
-      readonly sourceTriggersPaused: boolean;
-    };
 type WorkflowTriggerCreateDialog =
   | "interval"
   | "scheduled"
@@ -171,9 +166,9 @@ const internalWorkflowDetailActiveTab$ =
 
 const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
-const internalWorkflowCopyDialogState$ = state<WorkflowCopyDialogState>({
-  kind: "select",
-});
+const internalWorkflowCopyForm$ = state<WorkflowCopyFormState>(
+  DEFAULT_WORKFLOW_COPY_FORM,
+);
 const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
 const internalEditingWorkflowTriggerId$ = state<string | null>(null);
 const internalWorkflowMetadataPatch$ = state<WorkflowMetadataPatch | null>(
@@ -198,8 +193,8 @@ export const workflowActionDialog$ = computed((get) => {
   return get(internalWorkflowActionDialog$);
 });
 
-export const workflowCopyDialogState$ = computed((get) => {
-  return get(internalWorkflowCopyDialogState$);
+export const workflowCopyForm$ = computed((get) => {
+  return get(internalWorkflowCopyForm$);
 });
 
 const WORKFLOW_INDEX_FILTER_TAB_PARAM = "tab";
@@ -233,15 +228,13 @@ export const setWorkflowIndexFilterTab$ = command(
 export const setWorkflowActionDialog$ = command(
   ({ set }, dialog: WorkflowDetailActionDialog) => {
     set(internalWorkflowActionDialog$, dialog);
-    if (dialog === "copy") {
-      set(internalWorkflowCopyDialogState$, { kind: "select" });
-    }
+    set(internalWorkflowCopyForm$, DEFAULT_WORKFLOW_COPY_FORM);
   },
 );
 
-export const setWorkflowCopyDialogState$ = command(
-  ({ set }, copyState: WorkflowCopyDialogState) => {
-    set(internalWorkflowCopyDialogState$, copyState);
+export const setWorkflowCopyForm$ = command(
+  ({ set }, form: WorkflowCopyFormState) => {
+    set(internalWorkflowCopyForm$, form);
   },
 );
 
@@ -284,7 +277,7 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalWorkflowDetailActiveTab$, "automations");
   set(internalSelectedFilePath$, null);
   set(internalWorkflowActionDialog$, null);
-  set(internalWorkflowCopyDialogState$, { kind: "select" });
+  set(internalWorkflowCopyForm$, DEFAULT_WORKFLOW_COPY_FORM);
   set(internalWorkflowFileDraft$, null);
   set(internalEditingWorkflowTriggerId$, null);
   set(internalWorkflowMetadataPatch$, null);
