@@ -213,6 +213,7 @@ interface PreparedNormalSend {
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
+  readonly codexFastModeEnabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -1325,6 +1326,7 @@ async function validateCodexServiceTierBeforeThread(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly body: NormalSendBody;
+  readonly codexFastModeEnabled: boolean;
 }): Promise<NormalSendFailure | undefined> {
   if (!codexFastServiceTierRequested(params.body)) {
     return undefined;
@@ -1344,6 +1346,7 @@ async function validateCodexServiceTierBeforeThread(params: {
     body: params.body,
     modelPin,
     providerAdmission,
+    codexFastModeEnabled: params.codexFastModeEnabled,
   });
   return codexServiceTierError ?? providerAdmission.error ?? undefined;
 }
@@ -2180,11 +2183,22 @@ const prepareNormalSend$ = command(
     if (modelError) {
       return modelError;
     }
+    const featureSwitchContext = await loadUserFeatureSwitchContext(
+      db,
+      args.orgId,
+      args.userId,
+    );
+    signal.throwIfAborted();
+    const codexFastModeEnabled = isFeatureEnabled(
+      FeatureSwitchKey.CodexFastMode,
+      featureSwitchContext,
+    );
     const codexServiceTierError = await validateCodexServiceTierBeforeThread({
       db,
       orgId: args.orgId,
       userId: args.userId,
       body: args.body,
+      codexFastModeEnabled,
     });
     signal.throwIfAborted();
     if (codexServiceTierError) {
@@ -2219,12 +2233,6 @@ const prepareNormalSend$ = command(
       thread.threadId,
       thread.isNewThread,
       thread.incompleteContext,
-    );
-    signal.throwIfAborted();
-    const featureSwitchContext = await loadUserFeatureSwitchContext(
-      db,
-      args.orgId,
-      args.userId,
     );
     signal.throwIfAborted();
     const presentationRunbookEnabled = isFeatureEnabled(
@@ -2285,6 +2293,7 @@ const prepareNormalSend$ = command(
       computerUseHostGrant,
       persistedExplicitSelection,
       initialThinkingEnabled,
+      codexFastModeEnabled,
     };
   },
 );
@@ -2596,9 +2605,15 @@ function validateCodexServiceTier(params: {
   readonly body: NormalSendBody;
   readonly modelPin: ThreadModelPin;
   readonly providerAdmission: ModelFirstProviderAdmission;
+  readonly codexFastModeEnabled: boolean;
 }): ReturnType<typeof badRequestMessage> | undefined {
   if (!codexFastServiceTierRequested(params.body)) {
     return undefined;
+  }
+  if (!params.codexFastModeEnabled) {
+    return badRequestMessage(
+      "Codex fast mode is not enabled for this workspace",
+    );
   }
   if (
     params.providerAdmission.effectiveModelProvider === "codex-oauth-token" &&
@@ -2615,8 +2630,10 @@ function codexServiceTierForRun(params: {
   readonly body: NormalSendBody;
   readonly modelPin: ThreadModelPin;
   readonly providerAdmission: ModelFirstProviderAdmission;
+  readonly codexFastModeEnabled: boolean;
 }): "fast" | undefined {
-  return codexFastServiceTierRequested(params.body) &&
+  return params.codexFastModeEnabled &&
+    codexFastServiceTierRequested(params.body) &&
     params.providerAdmission.effectiveModelProvider === "codex-oauth-token" &&
     isCodexFastServiceTierModel(params.modelPin.selectedModel)
     ? "fast"
@@ -2644,6 +2661,7 @@ function buildCreateZeroRunArgs(params: {
       body: args.body,
       modelPin,
       providerAdmission,
+      codexFastModeEnabled: prepared.codexFastModeEnabled,
     }),
     callbacks: [
       {
@@ -2735,6 +2753,7 @@ const createNormalChatRun$ = command(
       body: args.body,
       modelPin,
       providerAdmission,
+      codexFastModeEnabled: prepared.codexFastModeEnabled,
     });
     if (codexServiceTierError) {
       return codexServiceTierError;

@@ -71,6 +71,8 @@ interface ModelProviderPickerProps {
    * the normal label on larger screens.
    */
   mobileIconTrigger?: boolean;
+  /** Enables the Codex fast mode row for eligible ChatGPT subscription models. */
+  codexFastModeEnabled?: boolean;
   /** Controlled open state for programmatic toggle (e.g. keyboard shortcut). */
   open?: boolean;
   /** Callback when the open state changes. */
@@ -280,11 +282,13 @@ function selectionWithCodexServiceTier(
   selection: ModelProviderSelection | null,
   current: ModelProviderSelection | null,
   policies: OrgModelPolicy[],
+  codexFastModeEnabled: boolean,
 ): ModelProviderSelection | null {
   if (!selection) {
     return null;
   }
   if (
+    codexFastModeEnabled &&
     current?.codexServiceTier === "fast" &&
     codexFastModeAvailableForModel(policies, selection.selectedModel)
   ) {
@@ -557,6 +561,7 @@ function ModelFirstModelPicker({
   triggerClassName,
   compactTrigger,
   mobileIconTrigger,
+  codexFastModeEnabled = false,
   open,
   onOpenChange,
   disabled,
@@ -586,10 +591,9 @@ function ModelFirstModelPicker({
     selectablePolicies,
   );
   const selectedModel = resolved?.selectedModel ?? null;
-  const codexFastModeAvailable = codexFastModeAvailableForModel(
-    selectablePolicies,
-    selectedModel,
-  );
+  const codexFastModeAvailable =
+    codexFastModeEnabled &&
+    codexFastModeAvailableForModel(selectablePolicies, selectedModel);
   const codexServiceTier = codexFastModeAvailable
     ? value?.codexServiceTier
     : undefined;
@@ -635,6 +639,7 @@ function ModelFirstModelPicker({
             modelFirstSelectionFromRaw(raw),
             value,
             selectablePolicies,
+            codexFastModeEnabled,
           ),
         );
       }}
@@ -689,6 +694,7 @@ export function ModelProviderPicker({
   triggerClassName,
   compactTrigger = false,
   mobileIconTrigger = false,
+  codexFastModeEnabled = false,
   open,
   onOpenChange,
   disabled = false,
@@ -701,6 +707,7 @@ export function ModelProviderPicker({
       triggerClassName={triggerClassName}
       compactTrigger={compactTrigger}
       mobileIconTrigger={mobileIconTrigger}
+      codexFastModeEnabled={codexFastModeEnabled}
       open={open}
       onOpenChange={onOpenChange}
       disabled={disabled}

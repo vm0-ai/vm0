@@ -42,6 +42,7 @@ export enum FeatureSwitchKey {
   ZoomConnector = "zoomConnector",
   ApiKeys = "apiKeys",
   CodexFrameworkForMinimax = "codexFrameworkForMinimax",
+  CodexFastMode = "codexFastMode",
 
   ZapierConnector = "zapierConnector",
   ChatGithubPrTracking = "chatGithubPrTracking",

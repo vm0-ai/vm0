@@ -7,6 +7,7 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   chatMessagesContract,
   type AttachFile,
@@ -46,6 +47,7 @@ import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { testChatMessagesStateRoutes } from "../test-chat-messages-state";
 
 /**
@@ -1718,6 +1720,31 @@ describe("CHAT-02: explicit provider pins", () => {
         modelProviderId: null,
       },
     ]);
+
+    const disabledThreadId = randomUUID();
+    const disabled = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "fast mode switch off",
+        clientThreadId: disabledThreadId,
+        modelSelection: {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel: "gpt-5.5",
+        },
+        runOptions: { codexServiceTier: "fast" },
+      },
+      [400],
+    );
+    expectApiError(disabled.body);
+    expect(disabled.body.error.message).toBe(
+      "Codex fast mode is not enabled for this workspace",
+    );
+    await chat.requestReadThread(actor, disabledThreadId, [404]);
+
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.CodexFastMode]: true,
+    });
 
     const fast = await sendChatRun(actor, {
       agentId,

@@ -1,4 +1,5 @@
 import { command, computed } from "ccstate";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { clerk$ } from "../auth.ts";
 import { patchThreadMeta$ } from "../external/idb-thread-meta-store.ts";
 import {
@@ -65,6 +66,7 @@ import { onRejection, toVoid } from "../utils.ts";
 import { resolveModelFirstUserDefaultSelection } from "../zero-page/model-default-selection.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import {
   modelSelectionRequestFromSelection,
@@ -134,6 +136,7 @@ function newThreadSendBody({
   modelSelection,
   generationTemplate,
   computerUseHostId,
+  codexFastModeEnabled,
 }: {
   agentId: string;
   threadId: string;
@@ -142,8 +145,12 @@ function newThreadSendBody({
   modelSelection: ModelProviderSelection | null;
   generationTemplate: GenerationTemplateRequest | undefined;
   computerUseHostId?: string | null;
+  codexFastModeEnabled: boolean;
 }) {
-  const runOptions = runOptionsFromModelProviderSelection(modelSelection);
+  const runOptions = runOptionsFromModelProviderSelection(
+    modelSelection,
+    codexFastModeEnabled,
+  );
   return {
     agentId,
     prompt: prepared.prompt,
@@ -675,6 +682,8 @@ const sendNewThreadMessage$ = command(
     const clearDraftResult = set(clearAgentDraftById$, agentId, signal);
     const createClient = get(zeroClient$);
     const client = createClient(chatMessagesContract);
+    const codexFastModeEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
     const queuedOptimisticMessages$ =
       createQueuedOptimisticUserMessagesForThread(threadId);
     L.debug("sendNewThreadMessage$ POST chat/messages start", {
@@ -694,6 +703,7 @@ const sendNewThreadMessage$ = command(
               modelSelection,
               generationTemplate,
               computerUseHostId,
+              codexFastModeEnabled,
             }),
             fetchOptions: { signal },
           }),

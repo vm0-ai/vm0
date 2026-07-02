@@ -1143,7 +1143,11 @@ describe("chat composer models", () => {
       },
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+    });
 
     click(await findComposerModel("GPT-5.5"));
     await expect(screen.findByText("Fast mode")).resolves.toBeInTheDocument();
@@ -1169,6 +1173,43 @@ describe("chat composer models", () => {
         codexServiceTier: "fast",
       });
     });
+  });
+
+  it("hides Codex fast mode when the feature switch is off", async () => {
+    const codexProvider = buildProvider({
+      id: "00000000-0000-4000-a000-000000000913",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: null,
+      authMethod: "auth_json",
+      secretNames: ["CODEX_AUTH_JSON"],
+    });
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000914",
+        model: "gpt-5.5",
+        modelLabel: "GPT-5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([codexProvider]);
+    mockAgent();
+    mockChatLifecycle(context);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: false },
+    });
+
+    click(await findComposerModel("GPT-5.5"));
+    await waitFor(() => {
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Fast mode")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fast")).not.toBeInTheDocument();
   });
 
   it("keeps the agent chat model picker open while user model preference refreshes", async () => {

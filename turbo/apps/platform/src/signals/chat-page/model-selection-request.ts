@@ -18,8 +18,9 @@ export function modelSelectionRequestFromSelection(
 
 export function runOptionsFromModelProviderSelection(
   value: ModelProviderSelection | null,
+  codexFastModeEnabled: boolean,
 ): ChatRunOptionsRequest | undefined {
-  return value?.codexServiceTier === "fast"
+  return codexFastModeEnabled && value?.codexServiceTier === "fast"
     ? { codexServiceTier: "fast" }
     : undefined;
 }

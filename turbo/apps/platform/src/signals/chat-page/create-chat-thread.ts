@@ -7,6 +7,7 @@ import {
   type State,
 } from "ccstate";
 import { animationFrame, delay } from "signal-timers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { IN_VITEST } from "../../env.ts";
 import {
   onRef,
@@ -62,6 +63,7 @@ import { agentById } from "../agent.ts";
 import { chatMessageOrderSequence } from "../chat-message-order.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import {
   MODEL_FIRST_SELECTION_PROVIDER_ID,
@@ -2544,9 +2546,11 @@ function sendMessageRequestBody(params: {
   readonly modelSelection: ModelProviderSelection | null;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly options: SendMessageOptions | undefined;
+  readonly codexFastModeEnabled: boolean;
 }) {
   const runOptions = runOptionsFromModelProviderSelection(
     params.modelSelection,
+    params.codexFastModeEnabled,
   );
   return {
     agentId: params.agentId,
@@ -2670,6 +2674,8 @@ function createSendMessage(deps: SendMessageDeps) {
       );
 
       const client = get(zeroClient$)(chatMessagesContract);
+      const codexFastModeEnabled =
+        get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
       const [, sendResult] = await Promise.all([
         set(flushDraftClear$, signal),
         accept(
@@ -2682,6 +2688,7 @@ function createSendMessage(deps: SendMessageDeps) {
               modelSelection,
               generationTemplate,
               options,
+              codexFastModeEnabled,
             }),
             fetchOptions: { signal },
           }),
