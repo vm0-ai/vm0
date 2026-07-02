@@ -7,6 +7,7 @@ import {
   type State,
 } from "ccstate";
 import { animationFrame, delay } from "signal-timers";
+import { IN_VITEST } from "../../env.ts";
 import {
   onRef,
   onRejection,
@@ -2939,6 +2940,42 @@ function createCancelRunWithQueuedRecall({
 // ---------------------------------------------------------------------------
 
 const THINKING_TYPEWRITER_INTERVAL_MS = 28;
+const THINKING_TYPEWRITER_LINE_PAUSE_MS = 1000;
+const THINKING_TYPEWRITER_LINE_PAUSE_TICKS = IN_VITEST
+  ? 1
+  : Math.ceil(
+      THINKING_TYPEWRITER_LINE_PAUSE_MS / THINKING_TYPEWRITER_INTERVAL_MS,
+    );
+const THINKING_TYPEWRITER_WIDTH_GUARD_PX = 8;
+
+interface ThinkingTypewriterLine {
+  readonly graphemes: string[];
+  readonly text: string;
+}
+
+interface ThinkingTypewriterFrame {
+  readonly messageId: string | undefined;
+  readonly text: string;
+  readonly width: number;
+  readonly lineIndex: number;
+  readonly charIndex: number;
+  readonly pauseTicksRemaining: number;
+  readonly displayedText: string;
+  readonly complete: boolean;
+}
+
+function emptyThinkingTypewriterFrame(): ThinkingTypewriterFrame {
+  return {
+    messageId: undefined,
+    text: "",
+    width: 0,
+    lineIndex: 0,
+    charIndex: 0,
+    pauseTicksRemaining: 0,
+    displayedText: "",
+    complete: false,
+  };
+}
 
 function isAssistantTextMessage(message: EnrichedChatMessage): boolean {
   return (
@@ -2992,30 +3029,222 @@ function lastRunThinkingMessageForIndicator(
   return runHasAssistantText ? undefined : lastMessage;
 }
 
-function displayedThinkingTextFromGroups(
-  index: number,
-  groups: readonly GroupedChatMessageGroup[],
+function thinkingLineText(
+  line: ThinkingTypewriterLine | undefined,
+  charIndex: number,
 ): string {
-  const message = lastRunThinkingMessageForIndicator(groups);
-  const text = message?.thinking?.trim() ?? "";
-  if (index <= 0 || text.length === 0) {
+  if (!line || charIndex <= 0) {
     return "";
   }
-  return thinkingTextGraphemes(text).slice(0, index).join("");
+  return line.graphemes.slice(0, charIndex).join("");
 }
 
-function nextThinkingTypewriterIndex(args: {
-  readonly text: string;
-  readonly currentIndex: number;
-  readonly width: number;
-}): number {
-  const length = thinkingTextGraphemes(args.text).length;
-  if (args.currentIndex >= length) {
-    return length;
+function thinkingTypewriterStep(width: number): number {
+  if (width >= 520) {
+    return 3;
+  }
+  if (width >= 320) {
+    return 2;
+  }
+  return 1;
+}
+
+function createThinkingTextMeasurer(
+  el: HTMLElement,
+): (value: string) => number | undefined {
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  const style = window.getComputedStyle(el);
+  const font =
+    style.font ||
+    [
+      style.fontStyle,
+      style.fontVariant,
+      style.fontWeight,
+      style.fontSize,
+      style.fontFamily,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  const letterSpacing =
+    style.letterSpacing === "normal"
+      ? 0
+      : Number.parseFloat(style.letterSpacing);
+
+  if (!context || !font) {
+    return () => {
+      return undefined;
+    };
   }
 
-  const step = args.width >= 520 ? 3 : args.width >= 320 ? 2 : 1;
-  return Math.min(length, args.currentIndex + step);
+  context.font = font;
+  return (value: string) => {
+    const measured = context.measureText(value).width;
+    if (!Number.isFinite(measured) || measured <= 0) {
+      return undefined;
+    }
+    const spacing =
+      Number.isFinite(letterSpacing) && letterSpacing > 0
+        ? (thinkingTextGraphemes(value).length - 1) * letterSpacing
+        : 0;
+    return measured + spacing;
+  };
+}
+
+function thinkingLabelWidth(el: HTMLElement): number {
+  const elementWidth = Math.max(
+    el.getBoundingClientRect().width,
+    el.clientWidth,
+  );
+  if (elementWidth > 0) {
+    return elementWidth;
+  }
+
+  const parent = el.parentElement;
+  return Math.max(
+    parent?.getBoundingClientRect().width ?? 0,
+    parent?.clientWidth ?? 0,
+  );
+}
+
+function wrapThinkingTextForWidth(args: {
+  readonly text: string;
+  readonly width: number;
+  readonly measureText: (value: string) => number | undefined;
+}): ThinkingTypewriterLine[] {
+  const graphemes = thinkingTextGraphemes(args.text);
+  if (graphemes.length === 0) {
+    return [];
+  }
+
+  if (!Number.isFinite(args.width) || args.width <= 0) {
+    return [{ graphemes, text: args.text }];
+  }
+
+  const maxWidth = Math.max(1, args.width - THINKING_TYPEWRITER_WIDTH_GUARD_PX);
+  const lines: ThinkingTypewriterLine[] = [];
+  let current: string[] = [];
+
+  for (const grapheme of graphemes) {
+    const candidate = [...current, grapheme];
+    const candidateText = candidate.join("");
+    const measured = args.measureText(candidateText);
+
+    if (measured === undefined) {
+      return [{ graphemes, text: args.text }];
+    }
+
+    if (measured <= maxWidth || current.length === 0) {
+      current = candidate;
+      continue;
+    }
+
+    lines.push({ graphemes: current, text: current.join("") });
+    current = grapheme.trim().length === 0 ? [] : [grapheme];
+  }
+
+  if (current.length > 0) {
+    lines.push({ graphemes: current, text: current.join("") });
+  }
+
+  return lines;
+}
+
+function nextThinkingTypewriterFrame(args: {
+  readonly messageId: string;
+  readonly text: string;
+  readonly currentFrame: ThinkingTypewriterFrame;
+  readonly width: number;
+  readonly measureText: (value: string) => number | undefined;
+}): ThinkingTypewriterFrame {
+  const width = Math.max(0, Math.floor(args.width));
+  const lines = wrapThinkingTextForWidth({
+    text: args.text,
+    width,
+    measureText: args.measureText,
+  });
+
+  if (lines.length === 0) {
+    return emptyThinkingTypewriterFrame();
+  }
+
+  const currentFrame =
+    args.currentFrame.messageId === args.messageId &&
+    args.currentFrame.text === args.text &&
+    args.currentFrame.width === width
+      ? args.currentFrame
+      : {
+          ...emptyThinkingTypewriterFrame(),
+          messageId: args.messageId,
+          text: args.text,
+          width,
+        };
+  const lineIndex = Math.min(currentFrame.lineIndex, lines.length - 1);
+  const currentLine = lines[lineIndex]!;
+
+  if (currentFrame.pauseTicksRemaining > 0) {
+    return {
+      ...currentFrame,
+      lineIndex,
+      pauseTicksRemaining: currentFrame.pauseTicksRemaining - 1,
+      displayedText: currentLine.text,
+      complete: false,
+    };
+  }
+
+  if (currentFrame.charIndex >= currentLine.graphemes.length) {
+    const nextLineIndex = lineIndex + 1;
+    if (nextLineIndex >= lines.length) {
+      return {
+        ...currentFrame,
+        lineIndex,
+        charIndex: currentLine.graphemes.length,
+        displayedText: currentLine.text,
+        complete: true,
+      };
+    }
+
+    const nextLine = lines[nextLineIndex]!;
+    const nextCharIndex = Math.min(
+      nextLine.graphemes.length,
+      thinkingTypewriterStep(width),
+    );
+    return {
+      ...currentFrame,
+      lineIndex: nextLineIndex,
+      charIndex: nextCharIndex,
+      displayedText: thinkingLineText(nextLine, nextCharIndex),
+      complete:
+        nextLineIndex >= lines.length - 1 &&
+        nextCharIndex >= nextLine.graphemes.length,
+    };
+  }
+
+  const nextCharIndex = Math.min(
+    currentLine.graphemes.length,
+    currentFrame.charIndex + thinkingTypewriterStep(width),
+  );
+
+  return {
+    ...currentFrame,
+    lineIndex,
+    charIndex: nextCharIndex,
+    pauseTicksRemaining:
+      nextCharIndex >= currentLine.graphemes.length &&
+      lineIndex < lines.length - 1
+        ? THINKING_TYPEWRITER_LINE_PAUSE_TICKS
+        : 0,
+    displayedText: thinkingLineText(currentLine, nextCharIndex),
+    complete:
+      lineIndex >= lines.length - 1 &&
+      nextCharIndex >= currentLine.graphemes.length,
+  };
+}
+
+function thinkingTypewriterFrameComplete(
+  frame: ThinkingTypewriterFrame,
+): boolean {
+  return frame.complete;
 }
 
 function createPhraseLoop(
@@ -3038,18 +3267,19 @@ function createPhraseLoop(
     return get(internalDonePhrase$);
   });
   const lastDoneMessageId$ = state<string | undefined>(undefined);
-  const thinkingTypewriterIndex$ = state(0);
-  const displayedThinkingText$ = computed(async (get): Promise<string> => {
-    const index = get(thinkingTypewriterIndex$);
-    const groups = await get(groupedChatMessages$);
-    return displayedThinkingTextFromGroups(index, groups);
+  const thinkingTypewriterFrame$ = state<ThinkingTypewriterFrame>(
+    emptyThinkingTypewriterFrame(),
+  );
+  const displayedThinkingText$ = computed((get): Promise<string> => {
+    return Promise.resolve(get(thinkingTypewriterFrame$).displayedText);
   });
   const resetThinkingTypewriterLoopSignal$ = resetSignal();
 
   const setThinkingIndicatorTextRef$ = onRef(
     command(async ({ get, set }, el: HTMLElement, signal: AbortSignal) => {
       const loopSignal = set(resetThinkingTypewriterLoopSignal$, signal);
-      set(thinkingTypewriterIndex$, 0);
+      const measureText = createThinkingTextMeasurer(el);
+      set(thinkingTypewriterFrame$, emptyThinkingTypewriterFrame());
 
       await setLoop(
         async (sig) => {
@@ -3059,18 +3289,23 @@ function createPhraseLoop(
           const thinkingMessage = lastRunThinkingMessageForIndicator(groups);
           const text = thinkingMessage?.thinking?.trim() ?? "";
           if (!thinkingMessage || text.length === 0) {
-            set(thinkingTypewriterIndex$, 0);
+            set(thinkingTypewriterFrame$, emptyThinkingTypewriterFrame());
             return true;
           }
 
-          const width = el.getBoundingClientRect().width;
-          const nextIndex = nextThinkingTypewriterIndex({
+          const width = thinkingLabelWidth(el);
+          if (width <= 0 && !IN_VITEST) {
+            return false;
+          }
+          const nextFrame = nextThinkingTypewriterFrame({
+            messageId: thinkingMessage.id,
             text,
-            currentIndex: get(thinkingTypewriterIndex$),
+            currentFrame: get(thinkingTypewriterFrame$),
             width,
+            measureText,
           });
-          set(thinkingTypewriterIndex$, nextIndex);
-          return nextIndex >= thinkingTextGraphemes(text).length;
+          set(thinkingTypewriterFrame$, nextFrame);
+          return thinkingTypewriterFrameComplete(nextFrame);
         },
         THINKING_TYPEWRITER_INTERVAL_MS,
         loopSignal,
@@ -3098,7 +3333,7 @@ function createPhraseLoop(
           sig.throwIfAborted();
           const thinkingMessage = lastRunThinkingMessageForIndicator(groups);
           if (!thinkingMessage) {
-            set(thinkingTypewriterIndex$, 0);
+            set(thinkingTypewriterFrame$, emptyThinkingTypewriterFrame());
           }
           if (
             !thinkingMessage &&
