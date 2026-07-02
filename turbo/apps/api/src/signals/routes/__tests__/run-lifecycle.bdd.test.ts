@@ -565,6 +565,14 @@ function mockSessionHistoryBlob(hash: string, history: string): void {
     const input = (command as { readonly input?: { readonly Key?: string } })
       .input;
     if (input?.Key === `blobs/${hash}.blob`) {
+      if (
+        (command as { readonly constructor?: { readonly name?: string } })
+          .constructor?.name === "HeadObjectCommand"
+      ) {
+        return Promise.resolve({
+          ContentLength: Buffer.byteLength(history, "utf8"),
+        });
+      }
       return Promise.resolve({
         Body: {
           async *[Symbol.asyncIterator]() {
