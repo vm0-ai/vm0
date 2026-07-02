@@ -312,16 +312,6 @@ function previewValue(value: unknown): string {
   return formatJson(value);
 }
 
-function visibleElementRecords(
-  result: Record<string, unknown> | null,
-): readonly Record<string, unknown>[] {
-  const value = result?.visibleElements;
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.filter(isRecord);
-}
-
 function jsonDisplayRecord(
   value: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -1497,53 +1487,6 @@ function CommandLogSection({
   );
 }
 
-function VisibleElements({
-  elements,
-}: {
-  readonly elements: readonly Record<string, unknown>[];
-}) {
-  if (elements.length === 0) {
-    return null;
-  }
-  const preview = elements.slice(0, 8);
-  return (
-    <CommandLogSection title="Visible Elements" icon={<IconCode size={15} />}>
-      <div className="visible-elements-list">
-        {preview.map((element, index) => {
-          const label =
-            recordStringValue(element, "text") ??
-            recordStringValue(element, "elementId") ??
-            `Element ${index + 1}`;
-          const elementIndex = recordNumberValue(element, "elementIndex");
-          const role = recordStringValue(element, "role");
-          const meta = [
-            elementIndex !== null ? `#${elementIndex.toString()}` : null,
-            role,
-          ]
-            .filter((value): value is string => {
-              return value !== null;
-            })
-            .join(" - ");
-          return (
-            <div
-              className="visible-element-row"
-              key={`${label}-${index.toString()}`}
-            >
-              <span>{label}</span>
-              {meta && <code>{meta}</code>}
-            </div>
-          );
-        })}
-      </div>
-      {elements.length > preview.length && (
-        <div className="compact-empty">
-          {elements.length - preview.length} more elements in raw result
-        </div>
-      )}
-    </CommandLogSection>
-  );
-}
-
 function ScreenshotBlock({
   entry,
   onPreview,
@@ -1591,7 +1534,6 @@ function CommandLogRow({
 }) {
   const resultAppState = recordStringValue(entry.result, "appState");
   const screenshot = recordStringValue(entry.result, "screenshot");
-  const visibleElements = visibleElementRecords(entry.result);
   const completedAt = entry.completedAt ?? entry.startedAt;
   return (
     <article className="command-log-row">
@@ -1657,7 +1599,6 @@ function CommandLogRow({
               onPreview={onPreviewScreenshot}
             />
           )}
-          <VisibleElements elements={visibleElements} />
           <details className="raw-log-details">
             <summary>Raw Log Entry</summary>
             <pre className="json-block">
