@@ -262,6 +262,36 @@ class TestAddCaptureFields:
         assert entry["response_body"] == '{"ok": true}'
         assert entry["response_body_encoding"] == "utf-8"
 
+    def test_request_body_invalid_gzip_is_hidden_as_binary(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="text/plain",
+            request_encoding="gzip",
+            request_body=b"not gzip at all",
+            response_content_type="application/json",
+            response_body=b'{"ok": true}',
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "request_body" not in entry
+        assert entry["request_body_encoding"] == "binary"
+
+    def test_request_body_unknown_content_encoding_is_hidden_as_binary(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="text/plain",
+            request_encoding="x-custom",
+            request_body=b"opaque request body",
+            response_content_type="application/json",
+            response_body=b'{"ok": true}',
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "request_body" not in entry
+        assert entry["request_body_encoding"] == "binary"
+
     def test_response_decompression_error_skips_body(self, real_flow):
         # Content-Encoding: gzip + non-gzip bytes makes flow.response.content
         # raise ValueError, which add_capture_fields is expected to catch.
