@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.5](https://github.com/vm0-ai/vm0/compare/desktop-v0.20.4...desktop-v0.20.5) (2026-07-02)
+
+
+### Refactoring
+
+* reduce fallback slop in runtime guards ([#19720](https://github.com/vm0-ai/vm0/issues/19720)) ([5d61de7](https://github.com/vm0-ai/vm0/commit/5d61de75720518d76e917f06a7be0bf95f155973))
+
 ## [0.20.4](https://github.com/vm0-ai/vm0/compare/desktop-v0.20.3...desktop-v0.20.4) (2026-07-01)
 
 

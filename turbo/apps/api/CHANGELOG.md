@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.204.0](https://github.com/vm0-ai/vm0/compare/api-v1.203.4...api-v1.204.0) (2026-07-02)
+
+
+### Features
+
+* restore Claude Fable 5 support ([#19721](https://github.com/vm0-ai/vm0/issues/19721)) ([97a7753](https://github.com/vm0-ai/vm0/commit/97a775354429e1f3de625627e3fbeeaf01c2552d))
+
+
+### Bug Fixes
+
+* sync chat message updates by id ([#19701](https://github.com/vm0-ai/vm0/issues/19701)) ([dc56030](https://github.com/vm0-ai/vm0/commit/dc56030baa32d7452c906edb3ec36d14543c9ac5))
+
+
+### Refactoring
+
+* reduce fallback slop in runtime guards ([#19720](https://github.com/vm0-ai/vm0/issues/19720)) ([5d61de7](https://github.com/vm0-ai/vm0/commit/5d61de75720518d76e917f06a7be0bf95f155973))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.140.0
+    * @vm0/core bumped to 8.384.3
+    * @vm0/db bumped to 1.84.0
+
 ## [1.203.4](https://github.com/vm0-ai/vm0/compare/api-v1.203.3...api-v1.203.4) (2026-07-01)
 
 

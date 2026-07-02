@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.524.0](https://github.com/vm0-ai/vm0/compare/app-v0.523.3...app-v0.524.0) (2026-07-02)
+
+
+### Features
+
+* add command dialog agent picker ([#19725](https://github.com/vm0-ai/vm0/issues/19725)) ([1c0dc69](https://github.com/vm0-ai/vm0/commit/1c0dc69071eee5028a625c4bdb18b1ee8a7b2a9c))
+* restore Claude Fable 5 support ([#19721](https://github.com/vm0-ai/vm0/issues/19721)) ([97a7753](https://github.com/vm0-ai/vm0/commit/97a775354429e1f3de625627e3fbeeaf01c2552d))
+
+
+### Bug Fixes
+
+* animate thinking text by measured line ([#19722](https://github.com/vm0-ai/vm0/issues/19722)) ([f72517b](https://github.com/vm0-ai/vm0/commit/f72517bfde280ebff3c4c99c1514f3ed1293cf0c))
+* keep emoji shortcuts out of chat inputs ([#19709](https://github.com/vm0-ai/vm0/issues/19709)) ([664d892](https://github.com/vm0-ai/vm0/commit/664d892bc4d9284e4036f01b618cd48a350a7072))
+* stabilize slash workflow menu on mobile keyboard ([#19708](https://github.com/vm0-ai/vm0/issues/19708)) ([39085b6](https://github.com/vm0-ai/vm0/commit/39085b6c342a8653adb4c7a508f7e8d5eb7cdb96))
+* sync chat message updates by id ([#19701](https://github.com/vm0-ai/vm0/issues/19701)) ([dc56030](https://github.com/vm0-ai/vm0/commit/dc56030baa32d7452c906edb3ec36d14543c9ac5))
+* update account menu subscription usage ([#19726](https://github.com/vm0-ai/vm0/issues/19726)) ([7b32153](https://github.com/vm0-ai/vm0/commit/7b321534503f415f41f4f0a4f76374dbd88f1def))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.140.0
+    * @vm0/core bumped to 8.384.3
+
 ## [0.523.3](https://github.com/vm0-ai/vm0/compare/app-v0.523.2...app-v0.523.3) (2026-07-01)
 
 
