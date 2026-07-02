@@ -614,6 +614,7 @@ export const zeroWorkflowSummarySchema = z.object({
   ownerUserId: z.string(),
   ownerUserDisplayName: z.string().nullable().optional(),
   ownerUserImageUrl: z.string().nullable().optional(),
+  createdAt: z.string().datetime(),
   canManage: z.boolean(),
   canPublish: z.boolean(),
   shadowedBy: z
@@ -630,7 +631,6 @@ export const zeroWorkflowDetailResponseSchema =
   zeroWorkflowSummarySchema.extend({
     createdByUserId: z.string(),
     updatedByUserId: z.string(),
-    createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
     instruction: z.string().nullable(),
     files: z.array(workflowFileMetadataSchema).nullable(),

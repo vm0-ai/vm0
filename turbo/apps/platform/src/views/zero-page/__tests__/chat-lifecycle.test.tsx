@@ -1359,6 +1359,39 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("shows thinking from loaded messages before thread metadata resolves", async () => {
+    const threadGate = context.mocks.deferred<void>();
+    mockChatLifecycle(context, {
+      threadId: "thread-message-list-thinking-pending-metadata",
+      activeRunIds: ["run-message-list-thinking-pending-metadata"],
+      threadGate: threadGate.promise,
+      chatMessages: [
+        {
+          id: "msg-message-list-assistant-pending-metadata",
+          role: "assistant",
+          content: "I am still working on this.",
+          runId: "run-message-list-thinking-pending-metadata",
+          runEventId: "event-message-list-assistant-text-pending-metadata",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-message-list-thinking-pending-metadata",
+    });
+
+    await screen.findByText("I am still working on this.");
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+
+    threadGate.resolve();
+  });
+
   it("clears thinking when the same run completes even with stale active run ids", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-message-list-completed",
@@ -1454,7 +1487,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps thinking when a different run completes while another run is open", async () => {
+  it("ignores active run ids when loaded messages end at a completed run", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-stale-lifecycle-thinking",
       activeRunIds: ["run-r2"],
@@ -1508,8 +1541,78 @@ describe("chat lifecycle", () => {
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:00:04Z",
         },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-stale-lifecycle-thinking",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Continue the plan")).toBeInTheDocument();
+      expect(screen.getByText("The next step is ready.")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("keeps thinking when the message stream shows later run activity", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-stale-lifecycle-thinking-active-later",
+      activeRunIds: ["run-r2"],
+      chatMessages: [
         {
-          id: "msg-stale-thinking-r2",
+          id: "msg-stale-active-later-usage-r1",
+          role: "assistant",
+          content: null,
+          runId: "run-r1",
+          usage: {
+            version: 1,
+            totalCredits: 5,
+            settledAt: "2026-06-09T10:00:00Z",
+            breakdown: [
+              {
+                kind: "model/kimi-k2.5/tokens.input",
+                credits: 5,
+                providers: [{ provider: "moonshot", credits: 5 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-stale-active-later-user-r2",
+          role: "user",
+          content: "Continue the plan",
+          runId: "run-r2",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-stale-active-later-start-r2",
+          role: "assistant",
+          content: null,
+          runId: "run-r2",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-stale-active-later-assistant-r2",
+          role: "assistant",
+          content: "The next step is ready.",
+          runId: "run-r2",
+          runEventId: "event-r2-assistant-text-active-later",
+          createdAt: "2026-06-09T10:00:03Z",
+        },
+        {
+          id: "msg-stale-active-later-completed-r3",
+          role: "assistant",
+          content: null,
+          runId: "run-r3",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:04Z",
+        },
+        {
+          id: "msg-stale-active-later-thinking-r2",
           role: "assistant",
           content: null,
           thinking: "Continuing the plan",
@@ -1521,7 +1624,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-stale-lifecycle-thinking",
+      path: "/chats/thread-stale-lifecycle-thinking-active-later",
     });
 
     await waitFor(() => {
@@ -1579,7 +1682,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps thinking for an active run when the message stream shows later activity", async () => {
+  it("does not use active run ids to revive an older run after a newer run completes", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-concurrent-run-completed-later",
       activeRunIds: ["run-concurrent-active"],
@@ -1622,8 +1725,68 @@ describe("chat lifecycle", () => {
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:01:02Z",
         },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-concurrent-run-completed-later",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The current status summary is ready."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("keeps thinking for an active run when the message stream shows later activity", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-concurrent-run-active-later",
+      activeRunIds: ["run-concurrent-active"],
+      chatMessages: [
         {
-          id: "msg-concurrent-active-thinking",
+          id: "msg-concurrent-active-later-user",
+          role: "user",
+          content: "Keep monitoring deployment",
+          runId: "run-concurrent-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-concurrent-active-later-assistant",
+          role: "assistant",
+          content: "Monitoring is still running.",
+          runId: "run-concurrent-active",
+          runEventId: "event-concurrent-active-later-assistant-text",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-concurrent-active-later-completed-user",
+          role: "user",
+          content: "Summarize current status",
+          runId: "run-concurrent-completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-concurrent-active-later-completed-assistant",
+          role: "assistant",
+          content: "The current status summary is ready.",
+          runId: "run-concurrent-completed",
+          runEventId: "event-concurrent-active-later-completed-assistant-text",
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+        {
+          id: "msg-concurrent-active-later-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-concurrent-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+        {
+          id: "msg-concurrent-active-later-thinking",
           role: "assistant",
           content: null,
           thinking: "Still monitoring deployment",
@@ -1635,7 +1798,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-concurrent-run-completed-later",
+      path: "/chats/thread-concurrent-run-active-later",
     });
 
     await waitFor(() => {
@@ -1649,7 +1812,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("ignores active run ids when the loaded message stream is complete", async () => {
+  it("does not use active run ids when active messages are outside the loaded window", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-active-run-outside-loaded-window",
       activeRunIds: ["run-active-outside-window"],

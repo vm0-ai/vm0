@@ -725,6 +725,7 @@ function workflowSummary({
     description,
     visibility: "public" as const,
     ownerUserId: "user-1",
+    createdAt: "2026-06-01T00:00:00.000Z",
     canManage: true,
     canPublish: false,
   };

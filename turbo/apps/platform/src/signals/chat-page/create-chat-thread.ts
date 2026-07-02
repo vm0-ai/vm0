@@ -1666,7 +1666,9 @@ function createPagedMessages(
     serverMessages$,
     optimisticMessages$,
   });
-  const latestRunStatus$ = createLatestRunStatus(rawMessages$);
+  const messageRunIndicatorState$ =
+    createMessageRunIndicatorState(rawMessages$);
+  const latestRunStatus$ = messageRunIndicatorState$;
 
   // The thread's active goal, folded from the (goal-marker) message stream so
   // the composer reads it without polling /api/automations. Reads rawMessages$
@@ -1771,6 +1773,7 @@ function createPagedMessages(
     refreshGroupedChatMessagesCache$,
     rawMessages$,
     hasOlderHistory$,
+    messageRunIndicatorState$,
     latestRunStatus$,
     activeGoal$,
     fetchNextPage$,
@@ -2012,10 +2015,10 @@ function createInputRef() {
   return { setInputRef$, focusInput$ };
 }
 
-function createLatestRunStatus(
+function createMessageRunIndicatorState(
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
 ) {
-  return computed(async (get): Promise<string | null> => {
+  return computed(async (get): Promise<RunIndicatorState> => {
     const raw = await get(rawMessages$);
     return deriveRunIndicatorStateFromRawMessages(raw);
   });
@@ -3573,6 +3576,7 @@ export function createChatThreadSignals(
     groupedChatMessages$: messages.groupedChatMessages$,
     renderedGroupedChatMessages$: messages.renderedGroupedChatMessages$,
     hasOlderHistory$: messages.hasOlderHistory$,
+    messageRunIndicatorState$: messages.messageRunIndicatorState$,
     latestRunStatus$: messages.latestRunStatus$,
     activeGoal$: messages.activeGoal$,
     allFinished$: runTracking.allFinished$,

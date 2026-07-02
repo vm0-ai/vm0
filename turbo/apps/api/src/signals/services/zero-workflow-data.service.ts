@@ -202,6 +202,7 @@ export function workflowSummary(args: {
     ownerUserId: args.workflow.ownerUserId,
     ownerUserDisplayName: args.ownerProfile?.displayName ?? null,
     ownerUserImageUrl: args.ownerProfile?.imageUrl ?? null,
+    createdAt: args.workflow.createdAt.toISOString(),
     canManage: canManageWorkflow(args.workflow, args.agent, args.member),
     canPublish: canPublishWorkflow(args.workflow, args.agent, args.member),
     shadowedBy: args.shadowedBy ?? null,

@@ -424,8 +424,8 @@ export function mockChatLifecycle(
      */
     beforeHistoryGate?: Promise<void>;
     /**
-     * Promise the thread detail handler awaits before responding. Lets tests
-     * prove the transcript can render before thread metadata resolves.
+     * Promise the thread metadata handler awaits before responding. Lets tests
+     * prove message-derived UI does not wait for activeRunIds metadata.
      */
     threadGate?: Promise<void>;
     afterInitialMessagesList?: () => void;
