@@ -17,6 +17,7 @@ import {
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
 import { and, eq, gt, inArray, isNull, lt, sql, type SQL } from "drizzle-orm";
@@ -30,6 +31,7 @@ import {
   downloadS3BufferWithMaxBytes,
   generatePresignedGetUrl,
   S3ObjectSizeLimitError,
+  s3ObjectContentLength,
 } from "../external/s3";
 import {
   createRunnerGroupRealtimeToken,
@@ -44,6 +46,14 @@ import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
+import { gunzipSessionHistoryBufferWithMaxBytes } from "../services/session-history-decompression";
+import {
+  resumeSessionHistoryBlobKey,
+  resumeSessionHistoryRawBlobKey,
+  SESSION_HISTORY_ENCODING_IDENTITY,
+  SESSION_HISTORY_ENCODING_GZIP,
+  tryNormalizeSessionHistoryBlobEncoding,
+} from "../services/session-history-blobs";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
 
@@ -60,6 +70,8 @@ const MAX_VALIDATION_ISSUES_TO_LOG = 10;
 const RESUME_SESSION_HISTORY_URL_TTL_SECONDS = 60 * 60;
 const RESUME_SESSION_HISTORY_REF_CAPABILITY =
   "resumeSessionHistoryRef" satisfies RunnerClaimCapability;
+const RESUME_SESSION_HISTORY_COMPRESSED_REF_CAPABILITY =
+  "resumeSessionHistoryCompressedRef" satisfies RunnerClaimCapability;
 const RESUME_SESSION_HISTORY_LOAD_ERROR =
   "Runner job missing resume session history";
 const RESUME_SESSION_HISTORY_INVALID_ERROR =
@@ -884,6 +896,19 @@ type StoredResumeSessionWithHistoryRef = Extract<
   { historyRef: { kind: "blob"; hash: string } }
 >;
 
+interface GzipResumeSessionHistoryRepresentation {
+  readonly encoding: typeof SESSION_HISTORY_ENCODING_GZIP;
+  readonly rawSize: number;
+  readonly encodedSize: number;
+  readonly objectKey: string;
+}
+
+interface IdentityResumeSessionHistoryRepresentation {
+  readonly encoding: typeof SESSION_HISTORY_ENCODING_IDENTITY;
+  readonly rawSize: number;
+  readonly encodedSize: number;
+}
+
 function hasResumeSessionHistoryRef(
   resumeSession: StoredExecutionContext["resumeSession"],
 ): resumeSession is StoredResumeSessionWithHistoryRef {
@@ -896,8 +921,13 @@ function runnerSupportsResumeSessionHistoryRef(
   return capabilities?.includes(RESUME_SESSION_HISTORY_REF_CAPABILITY) ?? false;
 }
 
-function resumeSessionHistoryBlobKey(hash: string): string {
-  return `blobs/${hash}.blob`;
+function runnerSupportsResumeSessionHistoryCompressedRef(
+  capabilities: readonly string[] | undefined,
+): boolean {
+  return (
+    capabilities?.includes(RESUME_SESSION_HISTORY_COMPRESSED_REF_CAPABILITY) ??
+    false
+  );
 }
 
 function invalidResumeSessionHistoryError(
@@ -914,7 +944,16 @@ function invalidResumeSessionHistoryError(
 function decodeVerifiedResumeSessionHistory(
   hash: string,
   buffer: Buffer,
+  expectedSize?: number,
 ): string {
+  if (expectedSize !== undefined && buffer.length !== expectedSize) {
+    throw invalidResumeSessionHistoryError(
+      hash,
+      new Error(
+        `size mismatch: expected ${expectedSize} bytes, got ${buffer.length} bytes`,
+      ),
+    );
+  }
   const actualHash = createHash("sha256").update(buffer).digest("hex");
   if (actualHash !== hash) {
     throw invalidResumeSessionHistoryError(
@@ -931,12 +970,35 @@ function decodeVerifiedResumeSessionHistory(
   return buffer.toString("utf8");
 }
 
+async function gunzipBufferWithMaxBytes(
+  hash: string,
+  key: string,
+  buffer: Buffer,
+  maxBytes: number,
+): Promise<Buffer> {
+  const result = await settle(
+    gunzipSessionHistoryBufferWithMaxBytes(key, buffer, maxBytes),
+  );
+  if (result.ok) {
+    return result.value;
+  }
+  if (result.error instanceof S3ObjectSizeLimitError) {
+    throw result.error;
+  }
+  throw invalidResumeSessionHistoryError(
+    hash,
+    new Error("failed to decompress gzip session history", {
+      cause: result.error,
+    }),
+  );
+}
+
 const generateResumeSessionHistoryUrl$ = command(
   async ({ get }, hash: string): Promise<string> => {
     return await get(
       generatePresignedGetUrl(
         env("R2_USER_STORAGES_BUCKET_NAME"),
-        resumeSessionHistoryBlobKey(hash),
+        resumeSessionHistoryRawBlobKey(hash),
         RESUME_SESSION_HISTORY_URL_TTL_SECONDS,
         undefined,
         true,
@@ -945,12 +1007,86 @@ const generateResumeSessionHistoryUrl$ = command(
   },
 );
 
+const generateResumeSessionHistoryObjectUrl$ = command(
+  async ({ get }, objectKey: string): Promise<string> => {
+    return await get(
+      generatePresignedGetUrl(
+        env("R2_USER_STORAGES_BUCKET_NAME"),
+        objectKey,
+        RESUME_SESSION_HISTORY_URL_TTL_SECONDS,
+        undefined,
+        true,
+      ),
+    );
+  },
+);
+
+const loadGzipResumeSessionHistoryRepresentation$ = command(
+  async (
+    _,
+    args: {
+      readonly db: Db;
+      readonly hash: string;
+    },
+  ): Promise<GzipResumeSessionHistoryRepresentation | undefined> => {
+    const [blob] = await args.db
+      .select({
+        rawSize: blobs.rawSize,
+        encoding: blobs.encoding,
+        encodedSize: blobs.encodedSize,
+      })
+      .from(blobs)
+      .where(eq(blobs.hash, args.hash))
+      .limit(1);
+    if (!blob) {
+      return undefined;
+    }
+    const encoding = tryNormalizeSessionHistoryBlobEncoding(blob.encoding);
+    if (encoding === undefined) {
+      throw invalidResumeSessionHistoryError(
+        args.hash,
+        new Error(`invalid session history blob encoding: ${blob.encoding}`),
+      );
+    }
+    if (encoding !== SESSION_HISTORY_ENCODING_GZIP) {
+      return undefined;
+    }
+    if (blob.rawSize <= 0 || blob.encodedSize <= 0) {
+      return undefined;
+    }
+
+    return {
+      encoding: SESSION_HISTORY_ENCODING_GZIP,
+      rawSize: blob.rawSize,
+      encodedSize: blob.encodedSize,
+      objectKey: resumeSessionHistoryBlobKey(args.hash, encoding),
+    };
+  },
+);
+
+function validateGzipResumeSessionHistoryRepresentation(
+  hash: string,
+  representation: GzipResumeSessionHistoryRepresentation,
+): void {
+  if (
+    representation.rawSize <= 0 ||
+    representation.rawSize > RESUME_SESSION_HISTORY_MAX_BYTES ||
+    representation.encodedSize <= 0 ||
+    representation.encodedSize > RESUME_SESSION_HISTORY_MAX_BYTES
+  ) {
+    throw invalidResumeSessionHistoryError(
+      hash,
+      new Error(`invalid gzip rawSize: ${representation.rawSize}`),
+    );
+  }
+}
+
 const loadResumeSessionHistory$ = command(
   async ({ get }, hash: string): Promise<string> => {
     const buffer = await get(
       downloadS3BufferWithMaxBytes(
         env("R2_USER_STORAGES_BUCKET_NAME"),
-        resumeSessionHistoryBlobKey(hash),
+        resumeSessionHistoryRawBlobKey(hash),
         RESUME_SESSION_HISTORY_MAX_BYTES,
       ),
     );
@@ -958,11 +1094,143 @@ const loadResumeSessionHistory$ = command(
   },
 );
 
+const loadIdentityResumeSessionHistoryRepresentation$ = command(
+  async (
+    { get },
+    args: {
+      readonly db: Db;
+      readonly hash: string;
+    },
+  ): Promise<IdentityResumeSessionHistoryRepresentation | undefined> => {
+    const [blob] = await args.db
+      .select({
+        rawSize: blobs.rawSize,
+        encoding: blobs.encoding,
+        encodedSize: blobs.encodedSize,
+      })
+      .from(blobs)
+      .where(eq(blobs.hash, args.hash))
+      .limit(1);
+    if (!blob) {
+      return undefined;
+    }
+    const encoding = tryNormalizeSessionHistoryBlobEncoding(blob.encoding);
+    if (encoding === undefined) {
+      throw invalidResumeSessionHistoryError(
+        args.hash,
+        new Error(`invalid session history blob encoding: ${blob.encoding}`),
+      );
+    }
+    if (encoding !== SESSION_HISTORY_ENCODING_IDENTITY) {
+      return undefined;
+    }
+
+    let rawSize = blob.rawSize;
+    let encodedSize = blob.encodedSize;
+    if (rawSize <= 0 || encodedSize <= 0) {
+      const objectKey = resumeSessionHistoryRawBlobKey(args.hash);
+      const contentLengthResult = await settle(
+        get(
+          s3ObjectContentLength(
+            env("R2_USER_STORAGES_BUCKET_NAME"),
+            objectKey,
+            RESUME_SESSION_HISTORY_MAX_BYTES,
+          ),
+        ),
+      );
+      if (!contentLengthResult.ok) {
+        if (contentLengthResult.error instanceof S3ObjectSizeLimitError) {
+          throw invalidResumeSessionHistoryError(
+            args.hash,
+            contentLengthResult.error,
+          );
+        }
+        throw contentLengthResult.error;
+      }
+      const contentLength = contentLengthResult.value;
+      if (contentLength === undefined || contentLength <= 0) {
+        return undefined;
+      }
+      const [updatedBlob] = await args.db
+        .update(blobs)
+        .set({
+          rawSize: contentLength,
+          encoding: SESSION_HISTORY_ENCODING_IDENTITY,
+          encodedSize: contentLength,
+        })
+        .where(and(eq(blobs.hash, args.hash), eq(blobs.rawSize, 0)))
+        .returning({
+          rawSize: blobs.rawSize,
+          encodedSize: blobs.encodedSize,
+        });
+      rawSize = updatedBlob?.rawSize ?? contentLength;
+      encodedSize = updatedBlob?.encodedSize ?? contentLength;
+    }
+    if (rawSize !== encodedSize) {
+      throw invalidResumeSessionHistoryError(
+        args.hash,
+        new Error(
+          `identity session history rawSize must match encodedSize: rawSize=${rawSize}, encodedSize=${encodedSize}`,
+        ),
+      );
+    }
+
+    return {
+      encoding: SESSION_HISTORY_ENCODING_IDENTITY,
+      rawSize,
+      encodedSize,
+    };
+  },
+);
+
+const loadCompressedResumeSessionHistory$ = command(
+  async (
+    { get },
+    args: {
+      readonly hash: string;
+      readonly representation: GzipResumeSessionHistoryRepresentation;
+    },
+  ): Promise<string> => {
+    const encodedBuffer = await get(
+      downloadS3BufferWithMaxBytes(
+        env("R2_USER_STORAGES_BUCKET_NAME"),
+        args.representation.objectKey,
+        args.representation.encodedSize,
+      ),
+    );
+    const rawBuffer = await gunzipBufferWithMaxBytes(
+      args.hash,
+      args.representation.objectKey,
+      encodedBuffer,
+      args.representation.rawSize,
+    );
+    return decodeVerifiedResumeSessionHistory(
+      args.hash,
+      rawBuffer,
+      args.representation.rawSize,
+    );
+  },
+);
+
 async function resolveResumeSessionForClaim(args: {
   readonly resumeSession: StoredExecutionContext["resumeSession"];
   readonly supportsResumeSessionHistoryRef: boolean;
+  readonly supportsResumeSessionHistoryCompressedRef: boolean;
+  readonly loadIdentityRepresentation: (
+    hash: string,
+  ) => Promise<IdentityResumeSessionHistoryRepresentation | undefined>;
+  readonly loadGzipRepresentation: (
+    hash: string,
+  ) => Promise<GzipResumeSessionHistoryRepresentation | undefined>;
   readonly generateResumeSessionHistoryUrl: (hash: string) => Promise<string>;
+  readonly generateResumeSessionHistoryObjectUrl: (
+    objectKey: string,
+  ) => Promise<string>;
   readonly loadResumeSessionHistory: (hash: string) => Promise<string>;
+  readonly loadCompressedResumeSessionHistory: (
+    hash: string,
+    representation: GzipResumeSessionHistoryRepresentation,
+  ) => Promise<string>;
 }): Promise<ExecutionContext["resumeSession"]> {
   const resumeSession = args.resumeSession;
   if (!hasResumeSessionHistoryRef(resumeSession)) {
@@ -970,10 +1238,78 @@ async function resolveResumeSessionForClaim(args: {
   }
 
   const { sessionId, historyRef } = resumeSession;
-  if (!args.supportsResumeSessionHistoryRef) {
-    const sessionHistoryResult = await settle(
-      args.loadResumeSessionHistory(historyRef.hash),
+  const gzipRepresentation =
+    historyRef.encoding === SESSION_HISTORY_ENCODING_GZIP
+      ? await args.loadGzipRepresentation(historyRef.hash)
+      : undefined;
+  if (
+    historyRef.encoding === SESSION_HISTORY_ENCODING_GZIP &&
+    gzipRepresentation === undefined
+  ) {
+    throw invalidResumeSessionHistoryError(
+      historyRef.hash,
+      new Error("gzip session history metadata is missing"),
     );
+  }
+  if (gzipRepresentation !== undefined) {
+    validateGzipResumeSessionHistoryRepresentation(
+      historyRef.hash,
+      gzipRepresentation,
+    );
+  }
+
+  if (
+    args.supportsResumeSessionHistoryCompressedRef &&
+    gzipRepresentation !== undefined
+  ) {
+    const url = await args.generateResumeSessionHistoryObjectUrl(
+      gzipRepresentation.objectKey,
+    );
+    return {
+      sessionId,
+      historyRef: {
+        kind: historyRef.kind,
+        hash: historyRef.hash,
+        url,
+        encoding: gzipRepresentation.encoding,
+        rawSize: gzipRepresentation.rawSize,
+        encodedSize: gzipRepresentation.encodedSize,
+      },
+    };
+  }
+
+  if (
+    args.supportsResumeSessionHistoryRef &&
+    gzipRepresentation === undefined
+  ) {
+    const identityRepresentation = await args.loadIdentityRepresentation(
+      historyRef.hash,
+    );
+    if (identityRepresentation !== undefined) {
+      const url = await args.generateResumeSessionHistoryUrl(historyRef.hash);
+      return {
+        sessionId,
+        historyRef: {
+          kind: historyRef.kind,
+          hash: historyRef.hash,
+          url,
+          encoding: identityRepresentation.encoding,
+          rawSize: identityRepresentation.rawSize,
+          encodedSize: identityRepresentation.encodedSize,
+        },
+      };
+    }
+  }
+
+  const sessionHistoryPromise =
+    gzipRepresentation === undefined
+      ? args.loadResumeSessionHistory(historyRef.hash)
+      : args.loadCompressedResumeSessionHistory(
+          historyRef.hash,
+          gzipRepresentation,
+        );
+  {
+    const sessionHistoryResult = await settle(sessionHistoryPromise);
     if (!sessionHistoryResult.ok) {
       if (isResumeSessionHistoryLoadError(sessionHistoryResult.error)) {
         throw sessionHistoryResult.error;
@@ -998,15 +1334,6 @@ async function resolveResumeSessionForClaim(args: {
       sessionHistory: sessionHistoryResult.value,
     };
   }
-
-  const url = await args.generateResumeSessionHistoryUrl(historyRef.hash);
-  return {
-    sessionId,
-    historyRef: {
-      ...historyRef,
-      url,
-    },
-  };
 }
 
 async function buildClaimResponseBody(args: {
@@ -1016,8 +1343,22 @@ async function buildClaimResponseBody(args: {
   readonly timing: ClaimRouteTimingCollector;
   readonly signal: AbortSignal;
   readonly supportsResumeSessionHistoryRef: boolean;
+  readonly supportsResumeSessionHistoryCompressedRef: boolean;
+  readonly loadIdentityRepresentation: (
+    hash: string,
+  ) => Promise<IdentityResumeSessionHistoryRepresentation | undefined>;
+  readonly loadGzipRepresentation: (
+    hash: string,
+  ) => Promise<GzipResumeSessionHistoryRepresentation | undefined>;
   readonly generateResumeSessionHistoryUrl: (hash: string) => Promise<string>;
+  readonly generateResumeSessionHistoryObjectUrl: (
+    objectKey: string,
+  ) => Promise<string>;
   readonly loadResumeSessionHistory: (hash: string) => Promise<string>;
+  readonly loadCompressedResumeSessionHistory: (
+    hash: string,
+    representation: GzipResumeSessionHistoryRepresentation,
+  ) => Promise<string>;
 }): Promise<ExecutionContext> {
   const featureSwitchContext = await args.timing.measure(
     "claim_route_feature_switch_context",
@@ -1046,8 +1387,20 @@ async function buildClaimResponseBody(args: {
       const resumeSession = await resolveResumeSessionForClaim({
         resumeSession: args.storedContext.resumeSession,
         supportsResumeSessionHistoryRef: args.supportsResumeSessionHistoryRef,
+        supportsResumeSessionHistoryCompressedRef:
+          args.supportsResumeSessionHistoryCompressedRef,
+        loadIdentityRepresentation(hash: string) {
+          return args.loadIdentityRepresentation(hash);
+        },
+        loadGzipRepresentation(hash: string) {
+          return args.loadGzipRepresentation(hash);
+        },
         generateResumeSessionHistoryUrl: args.generateResumeSessionHistoryUrl,
+        generateResumeSessionHistoryObjectUrl:
+          args.generateResumeSessionHistoryObjectUrl,
         loadResumeSessionHistory: args.loadResumeSessionHistory,
+        loadCompressedResumeSessionHistory:
+          args.loadCompressedResumeSessionHistory,
       });
       args.signal.throwIfAborted();
       const sandboxToken = generateSandboxToken(
@@ -1070,6 +1423,63 @@ async function buildClaimResponseBody(args: {
     },
   );
 }
+
+const buildClaimResponseBodyForClaim$ = command(
+  async (
+    { set },
+    args: {
+      readonly db: Db;
+      readonly run: ClaimedRun;
+      readonly storedContext: StoredExecutionContext;
+      readonly timing: ClaimRouteTimingCollector;
+      readonly signal: AbortSignal;
+      readonly capabilities: readonly string[] | undefined;
+    },
+  ): Promise<ExecutionContext> => {
+    return await buildClaimResponseBody({
+      db: args.db,
+      run: args.run,
+      storedContext: args.storedContext,
+      timing: args.timing,
+      signal: args.signal,
+      supportsResumeSessionHistoryRef: runnerSupportsResumeSessionHistoryRef(
+        args.capabilities,
+      ),
+      supportsResumeSessionHistoryCompressedRef:
+        runnerSupportsResumeSessionHistoryCompressedRef(args.capabilities),
+      loadIdentityRepresentation(hash: string) {
+        return set(loadIdentityResumeSessionHistoryRepresentation$, {
+          db: args.db,
+          hash,
+        });
+      },
+      loadGzipRepresentation(hash: string) {
+        return set(loadGzipResumeSessionHistoryRepresentation$, {
+          db: args.db,
+          hash,
+        });
+      },
+      generateResumeSessionHistoryUrl(hash: string) {
+        return set(generateResumeSessionHistoryUrl$, hash);
+      },
+      generateResumeSessionHistoryObjectUrl(objectKey: string) {
+        return set(generateResumeSessionHistoryObjectUrl$, objectKey);
+      },
+      loadResumeSessionHistory(hash: string) {
+        return set(loadResumeSessionHistory$, hash);
+      },
+      loadCompressedResumeSessionHistory(
+        hash: string,
+        representation: GzipResumeSessionHistoryRepresentation,
+      ) {
+        return set(loadCompressedResumeSessionHistory$, {
+          hash,
+          representation,
+        });
+      },
+    });
+  },
+);
 
 function scheduleSuccessfulClaimSideEffects(args: {
   readonly jobWithRun: ClaimableJob;
@@ -1462,21 +1872,13 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const storedContext = storedContextResult.data;
 
   const responseBodyResult = await settle(
-    buildClaimResponseBody({
+    set(buildClaimResponseBodyForClaim$, {
       db,
       run,
       storedContext,
       timing: claimRouteTiming,
       signal,
-      supportsResumeSessionHistoryRef: runnerSupportsResumeSessionHistoryRef(
-        body.data.capabilities,
-      ),
-      generateResumeSessionHistoryUrl(hash: string) {
-        return set(generateResumeSessionHistoryUrl$, hash);
-      },
-      loadResumeSessionHistory(hash: string) {
-        return set(loadResumeSessionHistory$, hash);
-      },
+      capabilities: body.data.capabilities,
     }),
     signal,
   );

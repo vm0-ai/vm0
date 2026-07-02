@@ -4,6 +4,7 @@ import { apiErrorSchema } from "./errors";
 import {
   artifactMissingRootPolicySchema,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  sessionHistoryEncodingSchema,
   secretConnectorMetadataMapSchema,
 } from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
@@ -469,16 +470,23 @@ export const webhookCheckpointsPrepareHistoryContract = c.router({
     body: z.object({
       runId: z.string().min(1, "runId is required"),
       hash: sha256HexSchema,
-      size: z
+      rawSize: z
         .number()
         .int()
-        .positive("size must be a positive integer")
+        .positive("rawSize must be a positive integer")
         .max(RESUME_SESSION_HISTORY_MAX_BYTES),
+      encodedSize: z
+        .number()
+        .int()
+        .positive("encodedSize must be a positive integer")
+        .max(RESUME_SESSION_HISTORY_MAX_BYTES),
+      encoding: sessionHistoryEncodingSchema.optional(),
     }),
     responses: {
       200: z.object({
         presignedUrl: z.string().optional(),
         existing: z.boolean(),
+        encoding: sessionHistoryEncodingSchema.optional(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

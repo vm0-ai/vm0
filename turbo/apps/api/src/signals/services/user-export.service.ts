@@ -1,7 +1,8 @@
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import archiver from "archiver";
 import { command, computed, type Computed } from "ccstate";
 import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
+import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import type {
   UserExportJob,
   UserExportStartResponse,
@@ -13,8 +14,11 @@ import {
   VOLUME_ORG_USER_ID,
 } from "@vm0/core/storage-names";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { blobs } from "@vm0/db/schema/blob";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { conversations } from "@vm0/db/schema/conversation";
 import { exportJobs } from "@vm0/db/schema/export-job";
 import { emailOutbox } from "@vm0/db/schema/email-outbox";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
@@ -30,11 +34,19 @@ import { clerk$ } from "../external/clerk";
 import {
   downloadManifest,
   downloadS3Buffer,
+  downloadS3BufferWithMaxBytes,
   generatePresignedGetUrl,
   putS3Object,
 } from "../external/s3";
 import { nowDate } from "../external/time";
 import { settle } from "../utils";
+import {
+  normalizeSessionHistoryBlobEncoding,
+  resumeSessionHistoryBlobKey,
+  type SessionHistoryBlobEncoding,
+  SESSION_HISTORY_ENCODING_GZIP,
+} from "./session-history-blobs";
+import { gunzipSessionHistoryBufferWithMaxBytes } from "./session-history-decompression";
 import { loadWorkflowVolumeFiles } from "./zero-workflow-volume.service";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
@@ -626,11 +638,103 @@ function exportMessageRole(role: string): "user" | "assistant" | null {
   return null;
 }
 
+interface ResolveSessionHistoryArgs {
+  readonly hash: string | null;
+  readonly encoding: string | null;
+  readonly rawSize: number | null;
+  readonly encodedSize: number | null;
+  readonly legacyText: string | null;
+}
+
+async function resolveSessionHistory(
+  runtime: ExportRuntime,
+  args: ResolveSessionHistoryArgs,
+): Promise<Buffer | string | null> {
+  if (args.hash) {
+    const normalizedEncoding = normalizeSessionHistoryBlobEncoding(
+      args.encoding,
+    );
+    const rawSize = args.rawSize && args.rawSize > 0 ? args.rawSize : undefined;
+    const encodedSize =
+      args.encodedSize && args.encodedSize > 0 ? args.encodedSize : undefined;
+    const key = resumeSessionHistoryBlobKey(args.hash, normalizedEncoding);
+    const result = await settle(
+      loadSessionHistoryBlob(runtime, {
+        encoding: normalizedEncoding,
+        encodedSize,
+        hash: args.hash,
+        key,
+        rawSize,
+      }),
+    );
+    runtime.signal.throwIfAborted();
+
+    if (result.ok) {
+      return result.value;
+    }
+
+    throw result.error;
+  }
+
+  return args.legacyText;
+}
+
+async function loadSessionHistoryBlob(
+  runtime: ExportRuntime,
+  args: {
+    readonly encodedSize: number | undefined;
+    readonly encoding: SessionHistoryBlobEncoding;
+    readonly hash: string;
+    readonly key: string;
+    readonly rawSize: number | undefined;
+  },
+): Promise<Buffer> {
+  const encodedBuffer = await runtime.get(
+    downloadS3BufferWithMaxBytes(
+      runtime.bucket,
+      args.key,
+      args.encodedSize ?? RESUME_SESSION_HISTORY_MAX_BYTES,
+    ),
+  );
+  const rawBuffer =
+    args.encoding === SESSION_HISTORY_ENCODING_GZIP
+      ? await gunzipSessionHistoryBufferWithMaxBytes(
+          args.key,
+          encodedBuffer,
+          args.rawSize ?? RESUME_SESSION_HISTORY_MAX_BYTES,
+        )
+      : encodedBuffer;
+  return verifySessionHistoryBuffer(args.hash, rawBuffer, args.rawSize);
+}
+
+function verifySessionHistoryBuffer(
+  hash: string,
+  buffer: Buffer,
+  expectedSize: number | undefined,
+): Buffer {
+  if (expectedSize !== undefined && buffer.length !== expectedSize) {
+    throw new Error(
+      `session history size mismatch: expected ${expectedSize} bytes, got ${buffer.length} bytes`,
+    );
+  }
+  const actualHash = createHash("sha256").update(buffer).digest("hex");
+  if (actualHash !== hash) {
+    throw new Error(`session history hash mismatch: expected ${hash}`);
+  }
+  return buffer;
+}
+
 async function collectConversationMessages(
   runtime: ExportRuntime,
   userId: string,
-): Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }> {
+): Promise<{
+  readonly entries: readonly ZipEntry[];
+  readonly threadCount: number;
+  readonly sessionHistoryCount: number;
+}> {
   const entries: ZipEntry[] = [];
+  let threadCount = 0;
+  let sessionHistoryCount = 0;
 
   const threads = await runtime.db
     .select({ id: chatThreads.id, createdAt: chatThreads.createdAt })
@@ -675,10 +779,48 @@ async function collectConversationMessages(
         path: `conversations/chat-thread-${thread.id}.json`,
         content: JSON.stringify(messages, null, 2),
       });
+      threadCount += 1;
     }
   }
 
-  return { entries, count: entries.length };
+  const sessionsWithHistory = await runtime.db
+    .select({
+      id: agentSessions.id,
+      cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
+      cliAgentSessionHistory: conversations.cliAgentSessionHistory,
+      sessionHistoryBlobEncoding: blobs.encoding,
+      sessionHistoryBlobEncodedSize: blobs.encodedSize,
+      sessionHistoryBlobRawSize: blobs.rawSize,
+    })
+    .from(agentSessions)
+    .innerJoin(
+      conversations,
+      eq(conversations.id, agentSessions.conversationId),
+    )
+    .leftJoin(blobs, eq(conversations.cliAgentSessionHistoryHash, blobs.hash))
+    .where(eq(agentSessions.userId, userId))
+    .orderBy(asc(agentSessions.createdAt), asc(agentSessions.id));
+  runtime.signal.throwIfAborted();
+
+  for (const session of sessionsWithHistory) {
+    const history = await resolveSessionHistory(runtime, {
+      hash: session.cliAgentSessionHistoryHash,
+      encoding: session.sessionHistoryBlobEncoding,
+      rawSize: session.sessionHistoryBlobRawSize,
+      encodedSize: session.sessionHistoryBlobEncodedSize,
+      legacyText: session.cliAgentSessionHistory,
+    });
+
+    if (history) {
+      entries.push({
+        path: `conversations/${session.id}-history.jsonl`,
+        content: history,
+      });
+      sessionHistoryCount += 1;
+    }
+  }
+
+  return { entries, threadCount, sessionHistoryCount };
 }
 
 async function collectUserData(
@@ -711,7 +853,8 @@ async function collectUserData(
           agentInstructionFiles: agentInstructions.count,
           workflowFiles: workflows.count,
           memoryFiles: memory.count,
-          conversationThreads: conversationsResult.count,
+          conversationThreads: conversationsResult.threadCount,
+          sessionHistories: conversationsResult.sessionHistoryCount,
         },
       },
       null,

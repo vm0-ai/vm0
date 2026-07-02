@@ -4,6 +4,7 @@ import { singleton } from "../lib/singleton";
 
 export enum Mechanism {
   WaitUntil = "wait_until",
+  BestEffortCleanup = "best_effort_cleanup",
 }
 
 const IN_VITEST = env("VITEST") === "true";

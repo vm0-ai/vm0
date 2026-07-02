@@ -13,12 +13,17 @@ import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
-import { notFound } from "../../lib/error";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { generatePresignedPutUrl, s3ObjectExists } from "../external/s3";
+import {
+  normalizeSessionHistoryBlobEncoding,
+  resumeSessionHistoryBlobKey,
+  SESSION_HISTORY_ENCODING_IDENTITY,
+} from "./session-history-blobs";
 
 type CheckpointCreateBody = z.infer<
   typeof webhookCheckpointsContract.create.body
@@ -55,6 +60,17 @@ interface CheckpointRunContext {
   readonly secretNames: readonly string[] | null;
   readonly sessionId: string;
   readonly vars: unknown;
+}
+
+interface SessionHistoryBlobMetadata {
+  readonly rawSize: number;
+  readonly encoding: string;
+  readonly encodedSize: number;
+}
+
+interface PreparedSessionHistoryBlob {
+  readonly blob: SessionHistoryBlobMetadata;
+  readonly insertedNewBlob: boolean;
 }
 
 const L = logger("webhooks:agent:checkpoints");
@@ -162,6 +178,84 @@ async function loadCheckpointRunContext(
   return run;
 }
 
+async function loadSessionHistoryBlobMetadata(
+  db: Db,
+  hash: string,
+): Promise<SessionHistoryBlobMetadata | undefined> {
+  const [blob] = await db
+    .select({
+      rawSize: blobs.rawSize,
+      encoding: blobs.encoding,
+      encodedSize: blobs.encodedSize,
+    })
+    .from(blobs)
+    .where(eq(blobs.hash, hash))
+    .limit(1);
+  return blob;
+}
+
+async function ensureSessionHistoryBlobMetadata(args: {
+  readonly db: Db;
+  readonly body: PrepareHistoryBody;
+  readonly requestedEncoding: string;
+  readonly signal: AbortSignal;
+}): Promise<PreparedSessionHistoryBlob> {
+  const { db, body, requestedEncoding, signal } = args;
+  const [insertedBlob] = await db
+    .insert(blobs)
+    .values({
+      hash: body.hash,
+      rawSize: body.rawSize,
+      encoding: requestedEncoding,
+      encodedSize: body.encodedSize,
+      refCount: 0,
+    })
+    .onConflictDoNothing()
+    .returning({
+      rawSize: blobs.rawSize,
+      encoding: blobs.encoding,
+      encodedSize: blobs.encodedSize,
+    });
+  signal.throwIfAborted();
+
+  const insertedNewBlob = insertedBlob !== undefined;
+  let blob =
+    insertedBlob ?? (await loadSessionHistoryBlobMetadata(db, body.hash));
+  signal.throwIfAborted();
+
+  if (!blob) {
+    throw new Error("failed to load session history blob metadata");
+  }
+
+  if (blob.rawSize !== 0) {
+    return { blob, insertedNewBlob };
+  }
+
+  const [updatedBlob] = await db
+    .update(blobs)
+    .set({
+      rawSize: body.rawSize,
+      encoding: requestedEncoding,
+      encodedSize: body.encodedSize,
+    })
+    .where(and(eq(blobs.hash, body.hash), eq(blobs.rawSize, 0)))
+    .returning({
+      rawSize: blobs.rawSize,
+      encoding: blobs.encoding,
+      encodedSize: blobs.encodedSize,
+    });
+  signal.throwIfAborted();
+
+  blob = updatedBlob ?? (await loadSessionHistoryBlobMetadata(db, body.hash));
+  signal.throwIfAborted();
+
+  if (!blob) {
+    throw new Error("failed to load session history blob metadata");
+  }
+
+  return { blob, insertedNewBlob };
+}
+
 export const prepareCheckpointHistoryUpload$ = command(
   async (
     { get, set },
@@ -185,24 +279,58 @@ export const prepareCheckpointHistoryUpload$ = command(
       return notFound("Agent run not found");
     }
 
-    const bucketName = env("R2_USER_STORAGES_BUCKET_NAME");
-    const s3Key = `blobs/${input.body.hash}.blob`;
-    const [existingBlob] = await db
-      .select({ hash: blobs.hash })
-      .from(blobs)
-      .where(eq(blobs.hash, input.body.hash))
-      .limit(1);
-    signal.throwIfAborted();
+    const requestedEncoding =
+      input.body.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
+    if (
+      requestedEncoding === SESSION_HISTORY_ENCODING_IDENTITY &&
+      input.body.encodedSize !== input.body.rawSize
+    ) {
+      return badRequestMessage(
+        "Identity session history encodedSize must match rawSize",
+      );
+    }
+    const { blob, insertedNewBlob } = await ensureSessionHistoryBlobMetadata({
+      db,
+      body: input.body,
+      requestedEncoding,
+      signal,
+    });
 
-    if (existingBlob) {
+    if (blob.rawSize !== input.body.rawSize) {
+      return badRequestMessage(
+        "Session history raw size does not match the existing blob",
+      );
+    }
+
+    const encoding = normalizeSessionHistoryBlobEncoding(blob.encoding);
+    if (
+      requestedEncoding === SESSION_HISTORY_ENCODING_IDENTITY &&
+      encoding !== SESSION_HISTORY_ENCODING_IDENTITY
+    ) {
+      return badRequestMessage(
+        "Identity session history upload cannot repair a compressed blob",
+      );
+    }
+    const s3Key = resumeSessionHistoryBlobKey(input.body.hash, encoding);
+    const bucketName = env("R2_USER_STORAGES_BUCKET_NAME");
+    if (!insertedNewBlob) {
       const exists = await get(s3ObjectExists(bucketName, s3Key));
       signal.throwIfAborted();
+
       if (exists) {
         return {
           status: 200 as const,
-          body: { existing: true },
+          body: { existing: true, encoding },
         };
       }
+    }
+    if (
+      requestedEncoding === encoding &&
+      blob.encodedSize !== input.body.encodedSize
+    ) {
+      return badRequestMessage(
+        "Session history encoded size does not match the existing blob",
+      );
     }
 
     const presignedUrl = await get(
@@ -216,20 +344,12 @@ export const prepareCheckpointHistoryUpload$ = command(
     );
     signal.throwIfAborted();
 
-    await db
-      .insert(blobs)
-      .values({ hash: input.body.hash, size: input.body.size, refCount: 0 })
-      .onConflictDoUpdate({
-        target: blobs.hash,
-        set: { size: input.body.size },
-      });
-    signal.throwIfAborted();
-
     return {
       status: 200 as const,
       body: {
         presignedUrl,
         existing: false,
+        encoding,
       },
     };
   },
@@ -259,7 +379,9 @@ export const createAgentCheckpoint$ = command(
       .insert(blobs)
       .values({
         hash: input.body.cliAgentSessionHistoryHash,
-        size: 0,
+        rawSize: 0,
+        encoding: SESSION_HISTORY_ENCODING_IDENTITY,
+        encodedSize: 0,
         refCount: 1,
       })
       .onConflictDoUpdate({

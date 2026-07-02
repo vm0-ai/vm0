@@ -65,6 +65,18 @@ pub mod runners {
     /// Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.
     pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = 134217728;
 
+    /// Wire and blob metadata value for gzip-compressed resume session history.
+    /// Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.
+    pub const SESSION_HISTORY_ENCODING_GZIP: &str = "gzip";
+
+    /// Wire and blob metadata value for uncompressed resume session history.
+    /// Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.
+    pub const SESSION_HISTORY_ENCODING_IDENTITY: &str = "identity";
+
+    /// Minimum raw resume session history size before the guest attempts gzip upload negotiation.
+    /// Smaller histories stay identity-encoded to avoid gzip work when it cannot materially reduce transport size.
+    pub const SESSION_HISTORY_GZIP_MIN_BYTES: u64 = 65536;
+
     /// Runner and guest filesystem path constants shared across Rust and TypeScript.
     pub mod paths {
         /// Canonical home directory path expected for the sandbox user inside runner guests.

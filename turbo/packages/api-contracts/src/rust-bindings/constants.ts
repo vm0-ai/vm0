@@ -6,6 +6,9 @@ import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  SESSION_HISTORY_ENCODING_GZIP,
+  SESSION_HISTORY_ENCODING_IDENTITY,
+  SESSION_HISTORY_GZIP_MIN_BYTES,
 } from "../contracts/runners";
 
 export type RustConstantValue =
@@ -155,6 +158,33 @@ export const rustConstantBindings = [
     rustDoc: [
       "Maximum resume session history blob size accepted by the API, runner, and guest verifier.",
       "Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "SESSION_HISTORY_ENCODING_GZIP",
+    value: rustString(SESSION_HISTORY_ENCODING_GZIP),
+    rustDoc: [
+      "Wire and blob metadata value for gzip-compressed resume session history.",
+      "Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "SESSION_HISTORY_ENCODING_IDENTITY",
+    value: rustString(SESSION_HISTORY_ENCODING_IDENTITY),
+    rustDoc: [
+      "Wire and blob metadata value for uncompressed resume session history.",
+      "Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "SESSION_HISTORY_GZIP_MIN_BYTES",
+    value: rustU64(SESSION_HISTORY_GZIP_MIN_BYTES),
+    rustDoc: [
+      "Minimum raw resume session history size before the guest attempts gzip upload negotiation.",
+      "Smaller histories stay identity-encoded to avoid gzip work when it cannot materially reduce transport size.",
     ],
   },
   {

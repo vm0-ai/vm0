@@ -174,7 +174,7 @@ export const conversations = pgTable("conversations", {
   cliAgentSessionId: varchar("cli_agent_session_id", { length: 255 }).notNull(),
   /** @deprecated Legacy TEXT storage - new records use hash instead */
   cliAgentSessionHistory: text("cli_agent_session_history"),
-  /** SHA-256 hash reference to R2 blob storage */
+  /** SHA-256 hash of the raw session history bytes stored in R2 */
   cliAgentSessionHistoryHash: varchar("cli_agent_session_history_hash", {
     length: 64,
   }),

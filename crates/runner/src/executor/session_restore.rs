@@ -31,7 +31,7 @@ impl RestoredSessionIdentity {
             &session_id,
             history_ref.kind,
             history_ref.hash.clone(),
-            history_ref.size,
+            Some(history_ref.raw_size),
         ))
     }
 }

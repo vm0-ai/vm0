@@ -648,13 +648,10 @@ mod tests {
     }
 
     fn context_with_history_ref(history_hash: &str) -> ExecutionContext {
-        context_with_history_ref_and_size(history_hash, Some(12))
+        context_with_history_ref_and_size(history_hash, 12)
     }
 
-    fn context_with_history_ref_and_size(
-        history_hash: &str,
-        size: Option<u64>,
-    ) -> ExecutionContext {
+    fn context_with_history_ref_and_size(history_hash: &str, size: u64) -> ExecutionContext {
         let mut context = execution_context_for_test(RunId::new_v4());
         context.resume_session = Some(ResumeSession {
             cli_agent_session_id: "sess-restore-plan".into(),
@@ -663,7 +660,9 @@ mod tests {
                     kind: crate::types::ResumeSessionHistoryRefKind::Blob,
                     hash: history_hash.into(),
                     url: "http://127.0.0.1:9/history.blob".into(),
-                    size,
+                    encoding: None,
+                    raw_size: size,
+                    encoded_size: size,
                 },
             },
         });
@@ -811,7 +810,7 @@ mod tests {
     async fn restore_plan_skips_matching_checkpointed_final_identity() {
         let http = test_http_client();
         let history_hash = "a".repeat(64);
-        let context = context_with_history_ref_and_size(&history_hash, Some(12));
+        let context = context_with_history_ref_and_size(&history_hash, 12);
         let metadata_path =
             "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json";
         let runtime_dir = "/home/user/.vm0/guest-agent/runs/previous";
@@ -865,7 +864,9 @@ mod tests {
                     kind: crate::types::ResumeSessionHistoryRefKind::Blob,
                     hash: history_hash.clone(),
                     url: "http://127.0.0.1:9/history.blob".into(),
-                    size: Some(12),
+                    encoding: None,
+                    raw_size: 12,
+                    encoded_size: 12,
                 },
             },
         });
@@ -951,50 +952,6 @@ mod tests {
                 assert_eq!(identity, restored_identity);
             }
             _ => panic!("finalizer-parked restored identity should skip restore"),
-        }
-    }
-
-    #[tokio::test]
-    async fn restore_plan_skips_matching_reused_identity_without_requested_size() {
-        let http = test_http_client();
-        let history_hash = "a".repeat(64);
-        let context = context_with_history_ref_and_size(&history_hash, None);
-        let metadata = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
-            hex::encode(Sha256::digest(b"sess-restore-plan")),
-            FinalSessionHistoryRefKind::Blob,
-            history_hash,
-            12,
-            "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
-        )
-        .unwrap();
-        let restored_identity = RestoredSessionIdentity::from_final_metadata(
-            metadata,
-            "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json",
-            "/home/user/.vm0/guest-agent/runs/previous",
-        )
-        .expect("checkpointed final identity");
-        let reusable_sandbox =
-            reusable_sandbox_with_identity(Some(restored_identity.clone())).await;
-        let cancel = RunCancellationHandle::new();
-        let mut timing = RunnerPreSpawnTiming::start_after_claim();
-
-        let plan = build_session_history_restore_plan(
-            &http,
-            &context,
-            true,
-            &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
-            &mut timing,
-        );
-
-        match plan {
-            SessionHistoryRestorePlan::SkipVerified(identity) => {
-                assert_eq!(identity, restored_identity);
-                assert_eq!(identity.history_size_bytes(), Some(12));
-            }
-            _ => panic!("missing requested size should still allow verified skip"),
         }
     }
 

@@ -97,6 +97,7 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { blobs } from "@vm0/db/schema/blob";
 import { conversations } from "@vm0/db/schema/conversation";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -179,6 +180,10 @@ import {
   loadAgentConnectorScope,
   loadZeroBackedComposeAgent,
 } from "./agent-connector-scope.service";
+import {
+  normalizeSessionHistoryBlobEncoding,
+  SESSION_HISTORY_ENCODING_GZIP,
+} from "./session-history-blobs";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
@@ -3983,8 +3988,13 @@ function loadResumeSession(
           cliAgentSessionId: conversations.cliAgentSessionId,
           cliAgentSessionHistory: conversations.cliAgentSessionHistory,
           cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
+          sessionHistoryBlobEncoding: blobs.encoding,
         })
         .from(conversations)
+        .leftJoin(
+          blobs,
+          eq(conversations.cliAgentSessionHistoryHash, blobs.hash),
+        )
         .where(eq(conversations.id, conversationId))
         .limit(1);
 
@@ -3999,12 +4009,22 @@ function loadResumeSession(
         (): Promise<StoredExecutionContext["resumeSession"] | null> => {
           const cliAgentSessionId = conversation.cliAgentSessionId;
           const hash = conversation.cliAgentSessionHistoryHash;
+          let encoding: typeof SESSION_HISTORY_ENCODING_GZIP | undefined;
+          if (conversation.sessionHistoryBlobEncoding !== null) {
+            const parsedEncoding = normalizeSessionHistoryBlobEncoding(
+              conversation.sessionHistoryBlobEncoding,
+            );
+            if (parsedEncoding === SESSION_HISTORY_ENCODING_GZIP) {
+              encoding = parsedEncoding;
+            }
+          }
           if (hash) {
             return Promise.resolve({
               sessionId: cliAgentSessionId,
               historyRef: {
                 kind: "blob",
                 hash,
+                ...(encoding ? { encoding } : {}),
               },
             });
           }
