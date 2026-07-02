@@ -1117,8 +1117,8 @@ describe("workflow detail page", () => {
     expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/automations`);
     expect(search()).toBe("");
     expect(screen.queryByText("Schedule")).not.toBeInTheDocument();
-    expect(screen.getByText("Last run")).toBeInTheDocument();
-    expect(screen.getByText("Next run")).toBeInTheDocument();
+    expect(screen.getByText("Last")).toBeInTheDocument();
+    expect(screen.getByText("Next")).toBeInTheDocument();
     expect(screen.queryByText("Active")).not.toBeInTheDocument();
     expect(
       screen.getByRole("switch", { name: "Disable Every weekday at 9:00 AM" }),

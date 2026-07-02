@@ -26,6 +26,7 @@ import {
   IconClock,
   IconCopy,
   IconFileText,
+  IconHistory,
   IconInfoCircle,
   IconLink,
   IconLoader2,
@@ -4198,7 +4199,7 @@ function TriggerRow({
     <>
       <div
         className={cn(
-          "group grid min-w-0 grid-cols-1 gap-3 px-5 py-4 transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-gray-50 sm:grid-cols-[minmax(0,1.5fr)_minmax(7.5rem,0.9fr)_minmax(9rem,0.9fr)_auto_7.75rem] sm:items-center sm:gap-4",
+          "group grid min-w-0 grid-cols-1 gap-3 px-5 py-4 transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-gray-50 sm:grid-cols-[minmax(0,1.2fr)_minmax(9rem,0.9fr)_minmax(13.5rem,1.1fr)_auto_7.75rem] sm:items-center sm:gap-4",
           showDivider && "border-b border-border/50",
           !trigger.enabled && "opacity-75",
         )}
@@ -4222,28 +4223,38 @@ function TriggerRow({
           </div>
         </div>
         <div
-          className="min-w-0"
+          className="flex min-w-0 items-center gap-1.5"
           aria-label={`Last run ${formatWorkflowTriggerRun(
             trigger.lastRunAt,
             displayTimezone,
           )}`}
         >
-          <div className="text-xs text-muted-foreground">Last run</div>
-          <div className="mt-0.5 truncate text-sm font-medium text-foreground">
+          <IconHistory
+            size={14}
+            stroke={1.5}
+            className="shrink-0 text-muted-foreground"
+          />
+          <span className="shrink-0 text-sm text-muted-foreground">Last</span>
+          <span className="min-w-0 truncate text-sm font-medium text-foreground">
             {formatWorkflowTriggerRun(trigger.lastRunAt, displayTimezone)}
-          </div>
+          </span>
         </div>
         <div
-          className="min-w-0"
+          className="flex min-w-0 items-center gap-1.5"
           aria-label={`Next run ${formatWorkflowTriggerNextRun(
             trigger.nextRunAt,
             displayTimezone,
           )}`}
         >
-          <div className="text-xs text-muted-foreground">Next run</div>
-          <div className="mt-0.5 truncate text-sm font-medium text-foreground">
+          <IconClock
+            size={14}
+            stroke={1.5}
+            className="shrink-0 text-muted-foreground"
+          />
+          <span className="shrink-0 text-sm text-muted-foreground">Next</span>
+          <span className="min-w-0 truncate text-sm font-medium text-foreground">
             {formatWorkflowTriggerNextRun(trigger.nextRunAt, displayTimezone)}
-          </div>
+          </span>
         </div>
         <TriggerStatusSwitch
           trigger={trigger}
