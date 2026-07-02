@@ -10,8 +10,9 @@ const DEFAULT_LIMIT = 5;
 const EXACT_MATCH_THRESHOLD = 80;
 
 function parseLimit(raw: string): number {
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isFinite(n) || n <= 0) {
+  const trimmed = raw.trim();
+  const n = Number(trimmed);
+  if (!/^\d+$/.test(trimmed) || !Number.isSafeInteger(n) || n <= 0) {
     throw new Error(`--limit must be a positive integer, got "${raw}".`);
   }
   return n;

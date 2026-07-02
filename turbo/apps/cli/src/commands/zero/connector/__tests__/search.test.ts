@@ -268,6 +268,23 @@ describe("zero connector search command", () => {
         ]);
       }).rejects.toThrow();
     });
+
+    it.each(["1abc", "1.5"])(
+      "rejects malformed --limit value %s",
+      async (limit) => {
+        await expect(async () => {
+          await searchCommand.parseAsync([
+            "node",
+            "cli",
+            "github",
+            "--limit",
+            limit,
+          ]);
+        }).rejects.toThrow(
+          `--limit must be a positive integer, got "${limit}"`,
+        );
+      },
+    );
   });
 
   describe("with agent context", () => {
