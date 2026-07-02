@@ -50,9 +50,9 @@ describe("zero workflow list command", () => {
               displayName: "Code Review",
               description: "Reviews code",
               visibility: "private",
-              requestToPublish: false,
               ownerUserId: "user-123",
               canManage: true,
+              canPublish: true,
             },
             {
               id: "33333333-3333-3333-3333-333333333333",
@@ -63,9 +63,9 @@ describe("zero workflow list command", () => {
               displayName: null,
               description: null,
               visibility: "public",
-              requestToPublish: false,
               ownerUserId: "user-123",
               canManage: false,
+              canPublish: false,
             },
           ]);
         }),

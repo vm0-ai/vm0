@@ -1,9 +1,9 @@
 import type { IDBPDatabase } from "idb";
 
 const CHAT_IDB_FULL_CACHE_RESET_VERSION = 4;
-const CHAT_IDB_MESSAGES_ORDER_RESET_VERSION = 5;
+const CHAT_IDB_MESSAGES_ORDER_RESET_VERSION = 6;
 
-export const CHAT_IDB_VERSION = 5;
+export const CHAT_IDB_VERSION = CHAT_IDB_MESSAGES_ORDER_RESET_VERSION;
 export const CHAT_MESSAGES_STORE = "chat_messages";
 export const CHAT_THREAD_META_STORE = "chat_thread_agents";
 export const CHAT_MESSAGES_ORDER_INDEX = "byThreadAndOrder";

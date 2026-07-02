@@ -49,6 +49,7 @@ export enum FeatureSwitchKey {
   MemoryViewer = "memoryViewer",
   HtmlArtifactCommentEditing = "htmlArtifactCommentEditing",
   ComputerUseDelegatedAuthorization = "computerUseDelegatedAuthorization",
+  DesktopX64Download = "desktopX64Download",
   PresentationTemplateRunbook = "presentationTemplateRunbook",
   PresentationImageUnsplashPreferred = "presentationImageUnsplashPreferred",
   AgentUnreadIndicators = "agentUnreadIndicators",

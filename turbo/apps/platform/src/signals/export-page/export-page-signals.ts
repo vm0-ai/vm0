@@ -29,13 +29,13 @@ export const userExportStatus$ = computed(
   },
 );
 
-export const reloadUserExportStatus$ = command(({ set }) => {
+const reloadUserExportStatus$ = command(({ set }) => {
   set(statusReload$, (value) => {
     return value + 1;
   });
 });
 
-export const watchUserExportStatus$ = command(
+const watchUserExportStatus$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     await setLoop(
       async (loopSignal) => {

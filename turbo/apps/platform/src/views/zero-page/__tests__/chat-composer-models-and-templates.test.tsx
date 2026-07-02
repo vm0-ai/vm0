@@ -704,9 +704,9 @@ function workflowSummary({
     displayName,
     description,
     visibility: "public" as const,
-    requestToPublish: false,
     ownerUserId: "user-1",
     canManage: true,
+    canPublish: false,
   };
 }
 
@@ -1979,6 +1979,53 @@ describe("chat composer templates", () => {
         screen.queryByLabelText(`Remove template ${template.title}`),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("keeps the draft visible while send waits for draft attachments", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    context.mocks.upload.pending({
+      id: "upload-send-pending",
+      filename: "launch-notes.txt",
+      contentType: "text/plain",
+      size: 16,
+      url: "https://example.com/launch-notes.txt",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await selectTemplate(user, template);
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!fileInput) {
+      throw new Error("file input not found");
+    }
+    await user.upload(
+      fileInput,
+      new File(["pending notes"], "launch-notes.txt", {
+        type: "text/plain",
+      }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Cancel upload launch-notes.txt"),
+      ).toBeInTheDocument();
+    });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await sendMessageInUI(user, textarea as HTMLTextAreaElement, "Use this");
+
+    expect(textarea).toHaveValue("Use this");
+    expect(
+      screen.getByLabelText("Cancel upload launch-notes.txt"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(`Remove template ${template.title}`),
+    ).toBeInTheDocument();
   });
 
   it("renders presentation template card hover previews from HTML when available", async () => {

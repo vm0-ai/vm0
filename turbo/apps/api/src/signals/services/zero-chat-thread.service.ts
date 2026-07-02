@@ -65,6 +65,14 @@ import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief
 export { insertAssistantEventMessages$ };
 
 const messageRoleSchema = z.enum(["user", "assistant"]);
+const TERMINAL_MESSAGE_ORDER_SEQUENCE = 2_147_483_647;
+
+function chatMessageOrderSequenceSql() {
+  return sql<number>`CASE
+    WHEN ${chatMessages.runLifecycleEvent} IS NOT NULL THEN ${TERMINAL_MESSAGE_ORDER_SEQUENCE}
+    ELSE COALESCE(${chatMessages.sequenceNumber}, -1)
+  END`;
+}
 
 type ChatMessageRow = {
   readonly id: string;
@@ -1361,7 +1369,7 @@ export function zeroChatThreadMessagesPage(args: {
 
     const db = get(db$);
     const threadFilter = eq(chatMessages.chatThreadId, args.threadId);
-    const cursorSequence = sql<number>`COALESCE(${chatMessages.sequenceNumber}, -1)`;
+    const cursorSequence = chatMessageOrderSequenceSql();
     let rows: ChatMessageRow[];
     let hasHistoryBefore = false;
 
@@ -1389,7 +1397,7 @@ export function zeroChatThreadMessagesPage(args: {
         ${chatMessages.id}
       ) > (
         SELECT ${chatMessages.createdAt},
-          COALESCE(${chatMessages.sequenceNumber}, -1),
+          ${chatMessageOrderSequenceSql()},
           ${chatMessages.id}
         FROM ${chatMessages}
         WHERE ${chatMessages.id} = ${cursorId}
@@ -1401,7 +1409,7 @@ export function zeroChatThreadMessagesPage(args: {
         ${chatMessages.id}
       ) < (
         SELECT ${chatMessages.createdAt},
-          COALESCE(${chatMessages.sequenceNumber}, -1),
+          ${chatMessageOrderSequenceSql()},
           ${chatMessages.id}
         FROM ${chatMessages}
         WHERE ${chatMessages.id} = ${cursorId}
