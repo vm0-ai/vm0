@@ -39,7 +39,7 @@ describe("platform entrypoint safe area behavior", () => {
       viewportDirectives.some((directive) => {
         return directive.startsWith("interactive-widget=");
       }),
-    ).toBe(false);
+    ).toBeFalsy();
 
     expect(indexHtml).toMatch(/--zero-viewport-height:\s*100dvh;/);
     expect(indexHtml).toMatch(/--zero-viewport-height:\s*100lvh;/);
