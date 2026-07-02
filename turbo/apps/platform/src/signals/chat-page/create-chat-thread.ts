@@ -56,6 +56,7 @@ import { nowDate } from "../../lib/time.ts";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
+import { chatMessageOrderSequence } from "../chat-message-order.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
@@ -1202,8 +1203,8 @@ function compareServerMessageOrder(
     return createdAtOrder;
   }
 
-  const leftSequence = left.sequenceNumber ?? -1;
-  const rightSequence = right.sequenceNumber ?? -1;
+  const leftSequence = chatMessageOrderSequence(left);
+  const rightSequence = chatMessageOrderSequence(right);
   if (leftSequence !== rightSequence) {
     return leftSequence - rightSequence;
   }
