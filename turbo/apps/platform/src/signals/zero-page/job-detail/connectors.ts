@@ -3,6 +3,10 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroClient$ } from "../../api-client.ts";
 import { withCleanup } from "../../utils.ts";
 import { accept } from "../../../lib/accept.ts";
+import {
+  agentConnectorAuthorizations,
+  reloadAgentConnectorAuthorizations$,
+} from "../agent-connector-authorizations.ts";
 import { agentDetail$ } from "./detail.ts";
 
 // ---------------------------------------------------------------------------
@@ -12,26 +16,15 @@ import { agentDetail$ } from "./detail.ts";
 //    for this agent
 // ---------------------------------------------------------------------------
 
-const authorizedConnectorsReload$ = state(0);
-
-const reloadAgentConnectors$ = command(({ set }) => {
-  set(authorizedConnectorsReload$, (prev) => {
-    return prev + 1;
-  });
-});
-
 const authorizedConnectors$ = computed(async (get): Promise<string[]> => {
-  get(authorizedConnectorsReload$);
   const detail = await get(agentDetail$);
   if (!detail?.agentId) {
     return [];
   }
-  const client = get(zeroClient$)(zeroUserConnectorsContract);
-  const result = await accept(
-    client.get({ params: { id: detail.agentId } }),
-    [200],
+  const authorizations = await get(
+    agentConnectorAuthorizations({ agentId: detail.agentId }),
   );
-  return result.body.enabledTypes;
+  return [...authorizations.enabledTypes];
 });
 
 type AuthorizedConnectorsDraft = {
@@ -140,7 +133,7 @@ export const saveAgentConnectors$ = command(
       })(),
       () => {
         set(clearAgentConnectorDraft$, detail.agentId);
-        set(reloadAgentConnectors$);
+        set(reloadAgentConnectorAuthorizations$);
       },
     );
   },
