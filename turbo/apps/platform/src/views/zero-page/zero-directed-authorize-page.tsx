@@ -1,6 +1,5 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
-  CONNECTOR_TYPES,
   connectorTypeSchema,
   type ConnectorAuthMethodId,
   type ConnectorType,
@@ -12,8 +11,7 @@ import {
   getOnlyAvailableStatusAuthCodeAuthMethod,
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
-  selectedConnectorType$,
-  setSelectedConnectorType$,
+  type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -21,12 +19,15 @@ import {
   directedAuthorizeAgentId$,
   directedAuthorizeAgentName$,
   agentEnabledTypes$,
-  justAuthorizedTypes$,
+  justAuthorizedConnectorAgentKeys$,
   authorizeConnector$,
+  isJustAuthorizedConnectorAgent,
+  directedAuthorizeConnectModalKey$,
+  setDirectedAuthorizeConnectModalKey$,
+  type DirectedAuthorizeConnectModalKey,
 } from "../../signals/connectors-page/directed-authorize-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
-import { shouldShowGoogleSecurityWarningNotice } from "../../lib/google-security-warning.ts";
 import {
   Vm0LogoLink,
   GoogleSecurityWarningNotice,
@@ -118,18 +119,43 @@ function useDirectedAuthorizeCatalogState(connectorType: ConnectorType | null) {
 
 function useDirectedAuthorizePermissionState(
   connectorType: ConnectorType | null,
+  agentId: string | null,
 ) {
-  const justAuthorized = useGet(justAuthorizedTypes$);
+  const justAuthorizedKeys = useGet(justAuthorizedConnectorAgentKeys$);
   const enabledLoadable = useLastLoadable(agentEnabledTypes$);
-  const enabledTypes =
-    enabledLoadable.state === "hasData" ? enabledLoadable.data : [];
+  const enabledData =
+    agentId !== null &&
+    enabledLoadable.state === "hasData" &&
+    enabledLoadable.data.agentId === agentId
+      ? enabledLoadable.data
+      : null;
+  const enabledTypes = enabledData === null ? [] : enabledData.enabledTypes;
   return {
     isAuthorized:
       connectorType !== null &&
-      (justAuthorized.has(connectorType) ||
+      agentId !== null &&
+      (isJustAuthorizedConnectorAgent(justAuthorizedKeys, {
+        connectorType,
+        agentId,
+      }) ||
         enabledTypes.includes(connectorType)),
-    permissionLoading: enabledLoadable.state === "loading",
+    permissionLoading:
+      agentId !== null &&
+      (enabledLoadable.state === "loading" ||
+        (enabledLoadable.state === "hasData" && enabledData === null)),
   };
+}
+
+function useDirectedAuthorizeAgentName(agentId: string | null): string {
+  const agentNameLoadable = useLastLoadable(directedAuthorizeAgentName$);
+  if (
+    agentNameLoadable.state !== "hasData" ||
+    agentNameLoadable.data.agentId !== agentId ||
+    !agentNameLoadable.data.displayName
+  ) {
+    return "Zero";
+  }
+  return agentNameLoadable.data.displayName;
 }
 
 function canAuthorizeConnector(
@@ -141,31 +167,193 @@ function canAuthorizeConnector(
   return isConnected || (item ? item.availableAuthMethods.length > 0 : false);
 }
 
+function shouldShowDirectedAuthorizeGoogleSecurityWarning(args: {
+  readonly isAuthorized: boolean;
+  readonly isConnected: boolean;
+  readonly item: ConnectorTypeWithStatus | undefined;
+}): boolean {
+  return (
+    !args.isAuthorized &&
+    !args.isConnected &&
+    args.item?.connectNotice === "google-security-warning"
+  );
+}
+
+function directedAuthorizeConnectModalOpen(
+  key: DirectedAuthorizeConnectModalKey | null,
+  args: {
+    readonly connectorType: ConnectorType | null;
+    readonly agentId: string | null;
+    readonly signal: AbortSignal;
+  },
+): boolean {
+  return (
+    key?.connectorType === args.connectorType &&
+    key.agentId === args.agentId &&
+    key.signal === args.signal
+  );
+}
+
+function DirectedAuthorizeCardContent({
+  connectorType,
+  connectorLabel,
+  connectorDescription,
+  agentName,
+  isAuthorized,
+  isConnecting,
+  isLoading,
+  canAuthorize,
+  showGoogleSecurityWarningNotice,
+  onAuthorize,
+}: {
+  readonly connectorType: ConnectorType;
+  readonly connectorLabel: string;
+  readonly connectorDescription: string;
+  readonly agentName: string;
+  readonly isAuthorized: boolean;
+  readonly isConnecting: boolean;
+  readonly isLoading: boolean;
+  readonly canAuthorize: boolean;
+  readonly showGoogleSecurityWarningNotice: boolean;
+  readonly onAuthorize: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+      <div className="pointer-events-auto flex w-[430px] max-w-[calc(100%-48px)] flex-col items-center gap-12 rounded-[20px] border border-border bg-background px-6 py-12 text-center">
+        <Vm0LogoLink />
+        <div className="flex w-full flex-col gap-4">
+          <div className="flex flex-col items-center gap-2.5">
+            {isLoading ? (
+              <IconLoader2
+                size={20}
+                className="animate-spin text-muted-foreground"
+              />
+            ) : (
+              <>
+                <h1 className="text-lg font-medium text-foreground">
+                  {isAuthorized
+                    ? `${connectorLabel} authorized`
+                    : `${agentName} needs ${connectorLabel} to proceed`}
+                </h1>
+                <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
+                  <ConnectorIcon type={connectorType} size={20} />
+                </div>
+                <p className="w-60 text-sm text-muted-foreground">
+                  {connectorDescription}
+                </p>
+                {showGoogleSecurityWarningNotice && (
+                  <GoogleSecurityWarningNotice />
+                )}
+              </>
+            )}
+          </div>
+          {!isLoading && (
+            <div className="flex items-center justify-center">
+              <AuthorizeAction
+                isAuthorized={isAuthorized}
+                isConnecting={isConnecting}
+                disabled={!canAuthorize}
+                agentName={agentName}
+                onAuthorize={onAuthorize}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function runDirectedAuthorize(params: {
+  readonly canAuthorize: boolean;
+  readonly isConnected: boolean;
+  readonly item: ConnectorTypeWithStatus | undefined;
+  readonly connectorType: ConnectorType;
+  readonly connectorLabel: string;
+  readonly agentId: string;
+  readonly authMethod: ConnectorAuthMethodId | null;
+  readonly signal: AbortSignal;
+  readonly authorize: (
+    connectorType: ConnectorType,
+    agentId: string,
+    signal: AbortSignal,
+  ) => Promise<void>;
+  readonly connect: (
+    connectorType: ConnectorType,
+    authMethod: ConnectorAuthMethodId,
+    options: { readonly connectorLabel?: string },
+    signal: AbortSignal,
+  ) => Promise<boolean>;
+  readonly openConnectModal: () => void;
+}): void {
+  if (!params.canAuthorize) {
+    return;
+  }
+  if (params.isConnected) {
+    detach(
+      params.authorize(params.connectorType, params.agentId, params.signal),
+      Reason.DomCallback,
+    );
+    return;
+  }
+  const authMethod = params.authMethod;
+  if (authMethod) {
+    detach(
+      (async () => {
+        const connected = await params.connect(
+          params.connectorType,
+          authMethod,
+          { connectorLabel: params.connectorLabel },
+          params.signal,
+        );
+        if (!connected) {
+          return;
+        }
+        await params.authorize(
+          params.connectorType,
+          params.agentId,
+          params.signal,
+        );
+      })(),
+      Reason.DomCallback,
+    );
+    return;
+  }
+  if (params.item && params.item.availableAuthMethods.length > 0) {
+    params.openConnectModal();
+  }
+}
+
 function DirectedAuthorizeCard() {
   const params = useDirectedAuthorizeParams();
-  const agentNameLoadable = useLastLoadable(directedAuthorizeAgentName$);
   const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const authorize = useSet(authorizeConnector$);
   const signal = useGet(pageSignal$);
-  const selectedConnectorType = useGet(selectedConnectorType$);
-  const setSelectedConnectorType = useSet(setSelectedConnectorType$);
+  const connectModalKey = useGet(directedAuthorizeConnectModalKey$);
+  const setDirectedAuthorizeConnectModalKey = useSet(
+    setDirectedAuthorizeConnectModalKey$,
+  );
   const connectorTypeForState = params?.connectorType ?? null;
+  const agentName = useDirectedAuthorizeAgentName(params?.agentId ?? null);
   const { item, isConnected, catalogLoading, unavailable } =
     useDirectedAuthorizeCatalogState(connectorTypeForState);
   const { isAuthorized, permissionLoading } =
-    useDirectedAuthorizePermissionState(connectorTypeForState);
+    useDirectedAuthorizePermissionState(
+      connectorTypeForState,
+      params?.agentId ?? null,
+    );
+  const connectModalOpen = directedAuthorizeConnectModalOpen(connectModalKey, {
+    connectorType: connectorTypeForState,
+    agentId: params?.agentId ?? null,
+    signal,
+  });
 
   if (!params) {
     return null;
   }
 
   const { connectorType, agentId } = params;
-  const config = CONNECTOR_TYPES[connectorType];
-  const agentName =
-    agentNameLoadable.state === "hasData" && agentNameLoadable.data
-      ? agentNameLoadable.data
-      : "Zero";
   const isConnecting = pollingType === connectorType;
   if (unavailable) {
     return null;
@@ -177,88 +365,51 @@ function DirectedAuthorizeCard() {
     ? getOnlyAvailableStatusAuthCodeAuthMethod(item)
     : null;
   const showGoogleSecurityWarningNotice =
-    !isAuthorized &&
-    !isConnected &&
-    shouldShowGoogleSecurityWarningNotice(connectorType);
+    shouldShowDirectedAuthorizeGoogleSecurityWarning({
+      isAuthorized,
+      isConnected,
+      item,
+    });
+  const connectorLabel = item?.label ?? connectorType;
+  const connectorDescription = item?.helpText ?? "";
 
   const handleAuthorize = () => {
-    if (!canAuthorize) {
-      return;
-    }
-    if (isConnected) {
-      detach(authorize(connectorType, agentId, signal), Reason.DomCallback);
-    } else if (selectedAuthMethod) {
-      detach(
-        (async () => {
-          const connected = await connect(
-            connectorType,
-            selectedAuthMethod,
-            {},
-            signal,
-          );
-          if (!connected) {
-            return;
-          }
-          await authorize(connectorType, agentId, signal);
-        })(),
-        Reason.DomCallback,
-      );
-    } else if (item && item.availableAuthMethods.length > 0) {
-      setSelectedConnectorType(connectorType);
-    } else {
-      return;
-    }
+    runDirectedAuthorize({
+      canAuthorize,
+      isConnected,
+      item,
+      connectorType,
+      connectorLabel,
+      agentId,
+      authMethod: selectedAuthMethod,
+      signal,
+      authorize,
+      connect,
+      openConnectModal: () => {
+        setDirectedAuthorizeConnectModalKey({ connectorType, agentId, signal });
+      },
+    });
   };
 
   return (
     <>
-      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-        <div className="pointer-events-auto flex w-[430px] max-w-[calc(100%-48px)] flex-col items-center gap-12 rounded-[20px] border border-border bg-background px-6 py-12 text-center">
-          <Vm0LogoLink />
-          <div className="flex w-full flex-col gap-4">
-            <div className="flex flex-col items-center gap-2.5">
-              {isLoading ? (
-                <IconLoader2
-                  size={20}
-                  className="animate-spin text-muted-foreground"
-                />
-              ) : (
-                <>
-                  <h1 className="text-lg font-medium text-foreground">
-                    {isAuthorized
-                      ? `${config.label} authorized`
-                      : `${agentName} needs ${config.label} to proceed`}
-                  </h1>
-                  <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
-                    <ConnectorIcon type={connectorType} size={20} />
-                  </div>
-                  <p className="w-60 text-sm text-muted-foreground">
-                    {config.helpText}
-                  </p>
-                  {showGoogleSecurityWarningNotice && (
-                    <GoogleSecurityWarningNotice />
-                  )}
-                </>
-              )}
-            </div>
-            {!isLoading && (
-              <div className="flex items-center justify-center">
-                <AuthorizeAction
-                  isAuthorized={isAuthorized}
-                  isConnecting={isConnecting}
-                  disabled={!canAuthorize}
-                  agentName={agentName}
-                  onAuthorize={handleAuthorize}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-      {selectedConnectorType === connectorType && (
+      <DirectedAuthorizeCardContent
+        connectorType={connectorType}
+        connectorLabel={connectorLabel}
+        connectorDescription={connectorDescription}
+        agentName={agentName}
+        isAuthorized={isAuthorized}
+        isConnecting={isConnecting}
+        isLoading={isLoading}
+        canAuthorize={canAuthorize}
+        showGoogleSecurityWarningNotice={showGoogleSecurityWarningNotice}
+        onAuthorize={handleAuthorize}
+      />
+      {connectModalOpen && (
         <ConnectModal
+          selectedType={connectorType}
           onClose={() => {
-            setSelectedConnectorType(null);
+            setDirectedAuthorizeConnectModalKey(null);
           }}
           onSuccess={async () => {
             await authorize(connectorType, agentId, signal);

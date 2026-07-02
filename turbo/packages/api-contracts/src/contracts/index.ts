@@ -1294,7 +1294,9 @@ export {
 export {
   zeroAgentCustomConnectorsContract,
   agentCustomConnectorEnabledIdsSchema,
+  agentCustomConnectorUpdateSchema,
   type AgentCustomConnectorEnabledIds,
+  type AgentCustomConnectorUpdate,
   type ZeroAgentCustomConnectorsContract,
 } from "./zero-agent-custom-connectors";
 export {

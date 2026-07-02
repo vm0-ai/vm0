@@ -313,6 +313,14 @@ describe("AUTH-03 agent user connectors", () => {
     );
     expectApiError(missingUpdate.body);
     expect(missingUpdate.body.error.code).toBe("NOT_FOUND");
+    const missingEmptyUpdate = await cfg.requestUpdateUserConnectors(
+      admin,
+      missingAgentId,
+      [],
+      [404],
+    );
+    expectApiError(missingEmptyUpdate.body);
+    expect(missingEmptyUpdate.body.error.code).toBe("NOT_FOUND");
 
     const crossOrgRead = await cfg.requestReadUserConnectors(
       otherAdmin,
@@ -335,6 +343,54 @@ describe("AUTH-03 agent user connectors", () => {
     expect(patSet.enabledTypes).toStrictEqual(["github"]);
     const readAfterPat = await cfg.readUserConnectors(admin, agent.agentId);
     expect(readAfterPat.enabledTypes).toStrictEqual(["github"]);
+  });
+
+  it("serializes concurrent user-connector replaces for the same agent", async () => {
+    const admin = api.user();
+    await onboardAdmin(admin, { slug: slug("bdd-uc-b1r") });
+    api.acceptAgentStorageWrites();
+    const agent = await api.createAgent(admin, {
+      displayName: "BDD Concurrent Connector Agent",
+    });
+
+    const sameSetUpdates = await Promise.all([
+      cfg.updateUserConnectors(admin, agent.agentId, ["github", "slack"]),
+      cfg.updateUserConnectors(admin, agent.agentId, ["github", "slack"]),
+    ]);
+    for (const update of sameSetUpdates) {
+      expect(new Set(update.enabledTypes)).toStrictEqual(
+        new Set(["github", "slack"]),
+      );
+    }
+
+    await Promise.all([
+      cfg.updateUserConnectors(admin, agent.agentId, ["github"]),
+      cfg.updateUserConnectors(admin, agent.agentId, ["slack"]),
+    ]);
+    const readBack = await cfg.readUserConnectors(admin, agent.agentId);
+    expect(readBack.enabledTypes).toHaveLength(1);
+    const enabledType = readBack.enabledTypes[0];
+    expect(["github", "slack"]).toContain(enabledType);
+
+    await cfg.updateUserConnectors(admin, agent.agentId, [], "replace");
+    await Promise.all([
+      cfg.updateUserConnectors(admin, agent.agentId, ["github"], "add"),
+      cfg.updateUserConnectors(admin, agent.agentId, ["slack"], "add"),
+    ]);
+    const readAfterAdds = await cfg.readUserConnectors(admin, agent.agentId);
+    expect(new Set(readAfterAdds.enabledTypes)).toStrictEqual(
+      new Set(["github", "slack"]),
+    );
+
+    await Promise.all([
+      cfg.updateUserConnectors(admin, agent.agentId, ["github"], "remove"),
+      cfg.updateUserConnectors(admin, agent.agentId, ["slack"], "add"),
+    ]);
+    const readAfterRemoveAdd = await cfg.readUserConnectors(
+      admin,
+      agent.agentId,
+    );
+    expect(readAfterRemoveAdd.enabledTypes).toStrictEqual(["slack"]);
   });
 
   it("recomposes a stale compose-target on user-connector updates through public APIs", async () => {

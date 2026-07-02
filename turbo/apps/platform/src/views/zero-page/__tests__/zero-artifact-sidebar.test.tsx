@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 
 import {
@@ -22,7 +22,10 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import type { ZeroClientFactory } from "../../../signals/api-client.ts";
+import { syncArtifactFileToGoogleDrive } from "../../../signals/chat-page/artifact-google-drive-sync.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { resetSignal } from "../../../signals/utils.ts";
 import {
   artifactPanelWidth$,
   saveCapturedHtmlEditSnapshotDraft$,
@@ -1392,6 +1395,43 @@ describe("zero artifact sidebar", () => {
     await waitFor(() => {
       expect(menuItemByText("Synced to Google Drive")).toBeInTheDocument();
     });
+  });
+
+  it("does not finish a Google Drive upload after the page signal is aborted", async () => {
+    const resetUploadSignal$ = resetSignal();
+    const uploadSignal = context.store.set(resetUploadSignal$, context.signal);
+    const dismissToast = vi.spyOn(toast, "dismiss");
+    const createClient = (() => {
+      return {
+        syncGoogleDrive: () => {
+          context.store.set(resetUploadSignal$, context.signal);
+          return Promise.resolve({
+            status: 200 as const,
+            body: {
+              id: "drive-file-release-notes",
+              name: "drive-release-notes.md",
+              webViewLink: null,
+            },
+          });
+        },
+      };
+    }) as ZeroClientFactory;
+
+    try {
+      await expect(
+        syncArtifactFileToGoogleDrive({
+          createClient,
+          threadId: THREAD_ID,
+          runId: "run-artifact",
+          fileId: "artifact-drive-release-notes",
+          filename: "drive-release-notes.md",
+          signal: uploadSignal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      expect(dismissToast).toHaveBeenCalledTimes(1);
+    } finally {
+      dismissToast.mockRestore();
+    }
   });
 
   it("downloads a presentation artifact as PPTX from the sidebar", async () => {

@@ -27,31 +27,55 @@ export const directedAuthorizeAgentId$ = computed((get): string | null => {
 export const directedAuthorizeAgentName$ = computed(async (get) => {
   const agentId = get(directedAuthorizeAgentId$);
   if (!agentId) {
-    return null;
+    return { agentId: null, displayName: null };
   }
   const agents = await get(agents$);
   const agent = agents.find((a) => {
     return a.id === agentId;
   });
-  return agent?.displayName ?? null;
+  return { agentId, displayName: agent?.displayName ?? null };
 });
 
 /** Fetch enabled connector types for the agent from the API. */
 export const agentEnabledTypes$ = computed(async (get) => {
   const agentId = get(directedAuthorizeAgentId$);
   if (!agentId) {
-    return [];
+    return { agentId: null, enabledTypes: [] };
   }
   const createClient = get(zeroClient$);
   const client = createClient(zeroUserConnectorsContract);
   const result = await accept(client.get({ params: { id: agentId } }), [200]);
-  return result.body.enabledTypes;
+  return { agentId, enabledTypes: result.body.enabledTypes };
 });
+
+export type DirectedAuthorizeConnectModalKey = {
+  readonly connectorType: ConnectorType;
+  readonly agentId: string;
+  readonly signal: AbortSignal;
+};
+
+const internalDirectedAuthorizeConnectModalKey$ =
+  state<DirectedAuthorizeConnectModalKey | null>(null);
+export const directedAuthorizeConnectModalKey$ = computed((get) => {
+  return get(internalDirectedAuthorizeConnectModalKey$);
+});
+export const setDirectedAuthorizeConnectModalKey$ = command(
+  ({ set }, key: DirectedAuthorizeConnectModalKey | null) => {
+    set(internalDirectedAuthorizeConnectModalKey$, key);
+  },
+);
+
+function connectorAgentAuthorizationKey(args: {
+  readonly connectorType: ConnectorType;
+  readonly agentId: string;
+}): string {
+  return `${args.agentId}:${args.connectorType}`;
+}
 
 const internalAuthorized$ = state<Set<string>>(new Set());
 
 /** Whether the connector has just been authorized (optimistic). */
-export const justAuthorizedTypes$ = computed((get) => {
+export const justAuthorizedConnectorAgentKeys$ = computed((get) => {
   return get(internalAuthorized$);
 });
 
@@ -66,35 +90,33 @@ export const authorizeConnector$ = command(
     const createClient = get(zeroClient$);
     const client = createClient(zeroUserConnectorsContract);
 
-    // Get current enabled types for this agent
-    const current = await accept(
-      client.get({
+    await accept(
+      client.update({
         params: { id: agentId },
+        body: { enabledTypes: [connectorType], operation: "add" },
         fetchOptions: { signal },
       }),
       [200],
     );
     signal.throwIfAborted();
 
-    const currentTypes = current.body.enabledTypes;
-
-    // Add the new type if not already present
-    if (!currentTypes.includes(connectorType)) {
-      await accept(
-        client.update({
-          params: { id: agentId },
-          body: { enabledTypes: [...currentTypes, connectorType] },
-          fetchOptions: { signal },
-        }),
-        [200],
-      );
-      signal.throwIfAborted();
-    }
-
     // Optimistic update
     set(internalAuthorized$, (prev) => {
-      return new Set([...prev, connectorType]);
+      return new Set([
+        ...prev,
+        connectorAgentAuthorizationKey({ connectorType, agentId }),
+      ]);
     });
     set(reloadAgentConnectorAuthorizations$);
   },
 );
+
+export function isJustAuthorizedConnectorAgent(
+  justAuthorizedKeys: ReadonlySet<string>,
+  args: {
+    readonly connectorType: ConnectorType;
+    readonly agentId: string;
+  },
+): boolean {
+  return justAuthorizedKeys.has(connectorAgentAuthorizationKey(args));
+}
