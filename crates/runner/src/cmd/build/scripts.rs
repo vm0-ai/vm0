@@ -491,6 +491,18 @@ exit 1
     }
 
     #[test]
+    fn template_installs_and_verifies_ffmpeg() {
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains("sudo ffmpeg \\"),
+            "build-template.sh should install ffmpeg into sandbox templates"
+        );
+        assert!(
+            VERIFY_SCRIPT.contains(r#"check_required_executable "/usr/bin/ffmpeg" "ffmpeg""#),
+            "verify-rootfs.sh should verify ffmpeg is present in sandbox images"
+        );
+    }
+
+    #[test]
     fn verify_script_checks_sandbox_helper_runtime_commands() {
         assert!(
             VERIFY_SCRIPT.contains("resolve_rootfs_path()"),
