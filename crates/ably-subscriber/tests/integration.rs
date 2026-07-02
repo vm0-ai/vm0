@@ -454,10 +454,10 @@ async fn connect_and_receive_message() {
         .await
         .unwrap();
 
-    let event = expect_event(&mut sub, "event").await.unwrap();
+    let event = expect_event(&mut sub, "initial Connected").await.unwrap();
     assert!(matches!(event, Event::Connected));
 
-    let event = expect_event(&mut sub, "event").await.unwrap();
+    let event = expect_event(&mut sub, "greeting message").await.unwrap();
     match event {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("greeting"));
@@ -708,7 +708,7 @@ async fn multiple_messages() {
 
     expect_connected(&mut sub, "Connected event").await.unwrap();
     for i in 0..3 {
-        match expect_event(&mut sub, "event").await.unwrap() {
+        match expect_event(&mut sub, "message in sequence").await.unwrap() {
             Event::Message(msg) => {
                 assert_eq!(msg.name.as_deref(), Some(format!("evt-{i}").as_str()));
             }
@@ -819,7 +819,10 @@ async fn message_with_json_encoding() {
 
     expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    match expect_event(&mut sub, "event").await.unwrap() {
+    match expect_event(&mut sub, "JSON-encoded message")
+        .await
+        .unwrap()
+    {
         Event::Message(msg) => {
             assert_eq!(msg.data, serde_json::json!({"runId": "uuid-123"}));
         }
@@ -1192,7 +1195,7 @@ async fn reconnect_after_server_drop() {
     expect_connected(&mut sub, "Connected event").await.unwrap();
 
     // First message
-    match expect_event(&mut sub, "event").await.unwrap() {
+    match expect_event(&mut sub, "message before drop").await.unwrap() {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("before-drop"));
             before_drop_seen_tx.send(()).unwrap();
@@ -1280,7 +1283,10 @@ async fn reconnect_immediately_after_close_frame() {
 
     expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    match expect_event(&mut sub, "event").await.unwrap() {
+    match expect_event(&mut sub, "message before close")
+        .await
+        .unwrap()
+    {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("before-close"));
             before_close_seen_tx.send(()).unwrap();
@@ -1360,7 +1366,10 @@ async fn reconnect_immediately_after_close_frame_no_reason() {
 
     expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    match expect_event(&mut sub, "event").await.unwrap() {
+    match expect_event(&mut sub, "message before close")
+        .await
+        .unwrap()
+    {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("before-close"));
             before_close_seen_tx.send(()).unwrap();
