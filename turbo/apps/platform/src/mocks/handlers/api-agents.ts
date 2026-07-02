@@ -61,6 +61,7 @@ const DEFAULT_COMPOSES_LIST: ComposeListItem[] = [
 ];
 
 let mockComposesList: ComposeListItem[] = [...DEFAULT_COMPOSES_LIST];
+const mockEnabledConnectorTypesByAgent = new Map<string, string[]>();
 
 export function setMockComposesList(composes: ComposeListItem[]): void {
   mockComposesList = composes;
@@ -70,12 +71,24 @@ export function resetMockComposesList(): void {
   mockComposesList = [...DEFAULT_COMPOSES_LIST];
 }
 
-function mockUserConnectorUpdateResponse(body: {
-  readonly enabledTypes: readonly string[];
-  readonly operation?: "replace" | "add" | "remove";
-}): string[] {
+export function resetMockUserConnectors(): void {
+  mockEnabledConnectorTypesByAgent.clear();
+}
+
+function mockUserConnectorUpdateResponse(
+  current: readonly string[],
+  body: {
+    readonly enabledTypes: readonly string[];
+    readonly operation?: "replace" | "add" | "remove";
+  },
+): string[] {
+  if (body.operation === "add") {
+    return Array.from(new Set([...current, ...body.enabledTypes]));
+  }
   if (body.operation === "remove") {
-    return [];
+    return current.filter((type) => {
+      return !body.enabledTypes.includes(type);
+    });
   }
   return [...body.enabledTypes];
 }
@@ -107,14 +120,21 @@ export const apiAgentsHandlers = [
   }),
 
   // GET /api/zero/agents/:id/user-connectors
-  mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
-    return respond(200, { enabledTypes: [] });
+  mockApi(zeroUserConnectorsContract.get, ({ params, respond }) => {
+    return respond(200, {
+      enabledTypes: mockEnabledConnectorTypesByAgent.get(params.id) ?? [],
+    });
   }),
 
   // PUT /api/zero/agents/:id/user-connectors
-  mockApi(zeroUserConnectorsContract.update, ({ body, respond }) => {
+  mockApi(zeroUserConnectorsContract.update, ({ body, params, respond }) => {
+    const enabledTypes = mockUserConnectorUpdateResponse(
+      mockEnabledConnectorTypesByAgent.get(params.id) ?? [],
+      body,
+    );
+    mockEnabledConnectorTypesByAgent.set(params.id, enabledTypes);
     return respond(200, {
-      enabledTypes: mockUserConnectorUpdateResponse(body),
+      enabledTypes,
     });
   }),
 
