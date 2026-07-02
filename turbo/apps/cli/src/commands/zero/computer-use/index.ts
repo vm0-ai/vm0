@@ -1,4 +1,3 @@
-import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Command } from "commander";
 import type {
@@ -21,6 +20,10 @@ import {
   getComputerUseCommand,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import {
+  computerUseOutputDir,
+  writeComputerUseArtifact,
+} from "./output-artifacts";
 
 interface ComputerUseCommandOptions {
   readonly timeout?: string;
@@ -117,8 +120,6 @@ interface FilesystemSearchFilesOptions extends FilesystemPathOptions {
   readonly excludePattern?: readonly string[];
 }
 
-const COMPUTER_USE_OUTPUT_DIR = "/tmp/vm0/computer-use";
-const COMPUTER_USE_PLUGIN_OUTPUT_DIR = `${COMPUTER_USE_OUTPUT_DIR}/plugins`;
 const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/s;
 const COMPUTER_USE_REQUIRED_CAPABILITY_MESSAGE =
   "Missing required capability: computer-use:write";
@@ -330,12 +331,11 @@ async function writeScreenshotDataUrl(
   const appName = sanitizeFilenamePart(result.app, "app");
   const snapshotId = sanitizeFilenamePart(result.snapshotId, "snapshot");
   const outputPath = join(
-    COMPUTER_USE_OUTPUT_DIR,
+    computerUseOutputDir(),
     `${appName}-${snapshotId}.${extensionForMimeType(mimeType)}`,
   );
 
-  await mkdir(COMPUTER_USE_OUTPUT_DIR, { recursive: true });
-  await writeFile(outputPath, Buffer.from(base64Data, "base64"));
+  await writeComputerUseArtifact(outputPath, Buffer.from(base64Data, "base64"));
   return outputPath;
 }
 
@@ -355,12 +355,11 @@ async function writeScreenshotBytes(
   const appName = sanitizeFilenamePart(result.app, "app");
   const snapshotId = sanitizeFilenamePart(result.snapshotId, "snapshot");
   const outputPath = join(
-    COMPUTER_USE_OUTPUT_DIR,
+    computerUseOutputDir(),
     `${appName}-${snapshotId}.${extensionForMimeType(mimeType)}`,
   );
 
-  await mkdir(COMPUTER_USE_OUTPUT_DIR, { recursive: true });
-  await writeFile(outputPath, buffer);
+  await writeComputerUseArtifact(outputPath, buffer);
   return outputPath;
 }
 
@@ -371,12 +370,11 @@ async function writeAppStateText(
   const appName = sanitizeFilenamePart(result.app, "app");
   const snapshotId = sanitizeFilenamePart(result.snapshotId, "snapshot");
   const outputPath = join(
-    COMPUTER_USE_OUTPUT_DIR,
+    computerUseOutputDir(),
     `${appName}-${snapshotId}.appState.txt`,
   );
 
-  await mkdir(COMPUTER_USE_OUTPUT_DIR, { recursive: true });
-  await writeFile(outputPath, appState, "utf8");
+  await writeComputerUseArtifact(outputPath, appState);
   return outputPath;
 }
 
@@ -469,17 +467,15 @@ async function writePluginContent(
   const pointerFileName = pluginContentFileName(result.pluginContent);
   const directoryName = sanitizeFilenamePart(commandId, "command");
   const outputPath = join(
-    COMPUTER_USE_PLUGIN_OUTPUT_DIR,
+    computerUseOutputDir(),
+    "plugins",
     directoryName,
     sanitizeFilenamePart(
       downloaded.fileName || pointerFileName,
       pointerFileName,
     ),
   );
-  await mkdir(join(COMPUTER_USE_PLUGIN_OUTPUT_DIR, directoryName), {
-    recursive: true,
-  });
-  await writeFile(outputPath, downloaded.buffer);
+  await writeComputerUseArtifact(outputPath, downloaded.buffer);
   return outputPath;
 }
 

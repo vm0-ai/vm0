@@ -1,4 +1,13 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -287,10 +296,19 @@ async function createDaemonDir(): Promise<string> {
   return await mkdtemp(path.join(tmpdir(), "vm0-computer-daemon-"));
 }
 
+function computerUseOutputDir(daemonDir: string): string {
+  return path.join(daemonDir, "computer-use-output");
+}
+
+function fileMode(mode: number): number {
+  return mode & 0o777;
+}
+
 function daemonEnv(daemonDir: string): NodeJS.ProcessEnv {
   return {
     ...process.env,
     VM0_COMPUTER_DAEMON_DIR: daemonDir,
+    VM0_COMPUTER_OUTPUT_DIR: computerUseOutputDir(daemonDir),
     ...(platformShimPath
       ? {
           NODE_OPTIONS: [
@@ -1013,27 +1031,91 @@ describe("computer use native backend", () => {
         { cwd: desktopRoot, env: daemonEnv(daemonDir) },
       );
       const output = JSON.parse(stdout) as Record<string, unknown>;
+      const appStatePath = String(output.appState);
+      const screenshotPath = String(output.screenshot);
       expect(output).toMatchObject({
         status: "succeeded",
         snapshotId: expect.stringMatching(/^desktop_/),
-        appState: expect.stringMatching(
-          /^\/tmp\/vm0\/computer-use\/Safari-desktop_[a-z0-9]+\.appState\.txt$/,
-        ),
-        screenshot: expect.stringMatching(
-          /^\/tmp\/vm0\/computer-use\/Safari-desktop_[a-z0-9]+\.png$/,
-        ),
       });
+      expect(
+        appStatePath.startsWith(`${computerUseOutputDir(daemonDir)}/`),
+      ).toBe(true);
+      expect(path.basename(appStatePath)).toMatch(
+        /^Safari-desktop_[a-z0-9]+\.appState\.txt$/,
+      );
+      expect(
+        screenshotPath.startsWith(`${computerUseOutputDir(daemonDir)}/`),
+      ).toBe(true);
+      expect(path.basename(screenshotPath)).toMatch(
+        /^Safari-desktop_[a-z0-9]+\.png$/,
+      );
       expect(output.result).toBeUndefined();
       expect(output.elements).toBeUndefined();
       expect(output.elementIdsByIndex).toBeUndefined();
       expect(stdout).not.toContain("<app_state>");
       expect(output.screenshot).not.toBe("data:image/png;base64,abc123");
-      await expect(
-        readFile(String(output.appState), "utf8"),
-      ).resolves.toContain("<app_state>");
-      expect(await readFile(String(output.screenshot))).toStrictEqual(
-        screenshotBytes,
+      await expect(readFile(appStatePath, "utf8")).resolves.toContain(
+        "<app_state>",
       );
+      expect(await readFile(screenshotPath)).toStrictEqual(screenshotBytes);
+      expect(fileMode((await stat(computerUseOutputDir(daemonDir))).mode)).toBe(
+        0o700,
+      );
+      expect(fileMode((await stat(appStatePath)).mode)).toBe(0o600);
+      expect(fileMode((await stat(screenshotPath)).mode)).toBe(0o600);
+    } finally {
+      await stopDaemon(daemonDir);
+      await rm(daemonDir, { recursive: true, force: true });
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("purges stale vm0-computer output artifacts when the daemon starts", async () => {
+    const helper = await createSessionHelper();
+    const daemonDir = await createDaemonDir();
+    const outputDir = computerUseOutputDir(daemonDir);
+    const stalePath = path.join(outputDir, "stale.appState.txt");
+    const recentPath = path.join(outputDir, "recent.appState.txt");
+
+    try {
+      await mkdir(outputDir, { recursive: true, mode: 0o777 });
+      await writeFile(stalePath, "stale", { mode: 0o666 });
+      await writeFile(recentPath, "recent", { mode: 0o666 });
+      const staleDate = new Date(Date.now() - 25 * 60 * 60 * 1000);
+      await utimes(stalePath, staleDate, staleDate);
+
+      await startDaemon(helper.helperPath, daemonDir);
+
+      await expect(stat(stalePath)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(readFile(recentPath, "utf8")).resolves.toBe("recent");
+      expect(fileMode((await stat(outputDir)).mode)).toBe(0o700);
+    } finally {
+      await stopDaemon(daemonDir);
+      await rm(daemonDir, { recursive: true, force: true });
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("removes vm0-computer output artifacts when the daemon stops", async () => {
+    const helper = await createSessionHelper();
+    const daemonDir = await createDaemonDir();
+    const outputDir = computerUseOutputDir(daemonDir);
+
+    try {
+      await startDaemon(helper.helperPath, daemonDir);
+      await execFileAsync(
+        process.execPath,
+        [cliPath, "get-app-state", "--app", "Safari"],
+        {
+          cwd: desktopRoot,
+          env: daemonEnv(daemonDir),
+        },
+      );
+      await expect(stat(outputDir)).resolves.toBeDefined();
+
+      await stopDaemon(daemonDir);
+
+      await expect(stat(outputDir)).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
       await stopDaemon(daemonDir);
       await rm(daemonDir, { recursive: true, force: true });
@@ -1067,15 +1149,11 @@ describe("computer use native backend", () => {
         { cwd: desktopRoot, env: daemonEnv(daemonDir) },
       );
       const output = JSON.parse(stdout) as Record<string, unknown>;
+      const appStatePath = String(output.appState);
+      const screenshotPath = String(output.screenshot);
       expect(output).toMatchObject({
         status: "succeeded",
         snapshotId: expect.stringMatching(/^desktop_/),
-        appState: expect.stringMatching(
-          /^\/tmp\/vm0\/computer-use\/Safari-desktop_[a-z0-9]+\.appState\.txt$/,
-        ),
-        screenshot: expect.stringMatching(
-          /^\/tmp\/vm0\/computer-use\/Safari-desktop_[a-z0-9]+\.png$/,
-        ),
         action: {
           app: "Safari",
           elementIndex: 1,
@@ -1086,9 +1164,21 @@ describe("computer use native backend", () => {
       });
       expect(output.result).toBeUndefined();
       expect(stdout).not.toContain("<app_state>");
-      await expect(
-        readFile(String(output.appState), "utf8"),
-      ).resolves.toContain("<app_state>");
+      expect(
+        appStatePath.startsWith(`${computerUseOutputDir(daemonDir)}/`),
+      ).toBe(true);
+      expect(path.basename(appStatePath)).toMatch(
+        /^Safari-desktop_[a-z0-9]+\.appState\.txt$/,
+      );
+      expect(
+        screenshotPath.startsWith(`${computerUseOutputDir(daemonDir)}/`),
+      ).toBe(true);
+      expect(path.basename(screenshotPath)).toMatch(
+        /^Safari-desktop_[a-z0-9]+\.png$/,
+      );
+      await expect(readFile(appStatePath, "utf8")).resolves.toContain(
+        "<app_state>",
+      );
       expect(output.screenshot).not.toBe("data:image/png;base64,abc123");
     } finally {
       await stopDaemon(daemonDir);

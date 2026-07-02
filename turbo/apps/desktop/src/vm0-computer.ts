@@ -13,6 +13,12 @@ import {
   type ComputerUseCommandKind,
 } from "./computer-use-accessibility";
 import { createComputerUseNativeBackend } from "./computer-use-native";
+import {
+  computerUseOutputDir,
+  prepareComputerUseOutputDir,
+  removeComputerUseOutputDir,
+  writeComputerUseArtifact,
+} from "./computer-use-output-artifacts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -101,7 +107,6 @@ const zeroCommands = new Map<string, string>([
   ["press-key", "keyboard.press_key"],
 ]);
 
-const COMPUTER_USE_OUTPUT_DIR = "/tmp/vm0/computer-use";
 const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/s;
 
 function usage(): string {
@@ -415,12 +420,11 @@ async function writeScreenshotDataUrl(
   const appName = sanitizeFilenamePart(result.app, "app");
   const snapshotId = sanitizeFilenamePart(result.snapshotId, "snapshot");
   const outputPath = path.join(
-    COMPUTER_USE_OUTPUT_DIR,
+    computerUseOutputDir(),
     `${appName}-${snapshotId}.${extensionForMimeType(mimeType)}`,
   );
 
-  await mkdir(COMPUTER_USE_OUTPUT_DIR, { recursive: true });
-  await writeFile(outputPath, Buffer.from(base64Data, "base64"));
+  await writeComputerUseArtifact(outputPath, Buffer.from(base64Data, "base64"));
   return outputPath;
 }
 
@@ -431,12 +435,11 @@ async function writeAppStateText(
   const appName = sanitizeFilenamePart(result.app, "app");
   const snapshotId = sanitizeFilenamePart(result.snapshotId, "snapshot");
   const outputPath = path.join(
-    COMPUTER_USE_OUTPUT_DIR,
+    computerUseOutputDir(),
     `${appName}-${snapshotId}.appState.txt`,
   );
 
-  await mkdir(COMPUTER_USE_OUTPUT_DIR, { recursive: true });
-  await writeFile(outputPath, appState, "utf8");
+  await writeComputerUseArtifact(outputPath, appState);
   return outputPath;
 }
 
@@ -807,6 +810,7 @@ async function serveDaemon(
   paths: DaemonPaths,
   helperPath: string,
 ): Promise<void> {
+  await prepareComputerUseOutputDir();
   await mkdir(paths.dir, { recursive: true });
   await rm(paths.socketPath, { force: true });
   const nativeBackend = createComputerUseNativeBackend({ helperPath });
@@ -893,6 +897,14 @@ async function shutdownDaemon(
   });
   await rm(paths.socketPath, { force: true });
   await rm(paths.pidPath, { force: true });
+  try {
+    await removeComputerUseOutputDir();
+  } catch (error) {
+    console.error(
+      "Failed to clean up vm0-computer output artifacts",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
   process.exit(0);
 }
 

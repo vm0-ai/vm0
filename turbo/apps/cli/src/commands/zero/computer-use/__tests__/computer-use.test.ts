@@ -6,7 +6,16 @@
  * Real (internal): Command registration, capability checking
  */
 
-import { readFile, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Command, Help } from "commander";
 import { http, HttpResponse } from "msw";
@@ -17,10 +26,22 @@ import {
 } from "../index";
 import { registerZeroCommands } from "../../../../zero";
 
-const TEST_SCREENSHOT_PATH =
-  "/tmp/vm0/computer-use/Slack-Test-App-desktop_test_snapshot.png";
-const TEST_APP_STATE_PATH =
-  "/tmp/vm0/computer-use/Slack-Test-App-desktop_test_snapshot.appState.txt";
+let testOutputDir = "";
+
+function testScreenshotPath(): string {
+  return path.join(testOutputDir, "Slack-Test-App-desktop_test_snapshot.png");
+}
+
+function testAppStatePath(): string {
+  return path.join(
+    testOutputDir,
+    "Slack-Test-App-desktop_test_snapshot.appState.txt",
+  );
+}
+
+function fileMode(mode: number): number {
+  return mode & 0o777;
+}
 
 function buildZeroToken(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
@@ -62,7 +83,9 @@ describe("computer-use command visibility", () => {
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    testOutputDir = await mkdtemp(path.join(tmpdir(), "computer-use-output-"));
+    vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", testOutputDir);
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
@@ -71,8 +94,7 @@ describe("computer-use command visibility", () => {
 
   afterEach(async () => {
     vi.unstubAllEnvs();
-    await rm(TEST_SCREENSHOT_PATH, { force: true });
-    await rm(TEST_APP_STATE_PATH, { force: true });
+    await rm(testOutputDir, { recursive: true, force: true });
   });
 
   it("should be visible when no ZERO_TOKEN is set", () => {
@@ -228,6 +250,11 @@ describe("computer-use command visibility", () => {
     const screenshotBytes = Buffer.from("test-png-data");
     const screenshotBase64 = screenshotBytes.toString("base64");
     const appState = "snapshot_id=snap_1\nw0 AXWindow";
+    const stalePath = path.join(testOutputDir, "stale.appState.txt");
+    await writeFile(stalePath, "stale", { mode: 0o666 });
+    const staleDate = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    await utimes(stalePath, staleDate, staleDate);
+
     const text = await formatComputerUseResultForConsole(
       {
         app: "Slack/Test App",
@@ -242,15 +269,19 @@ describe("computer-use command visibility", () => {
     const parsed = JSON.parse(text) as Record<string, unknown>;
     expect(parsed.status).toBe("succeeded");
     expect(parsed.snapshotId).toBe("desktop_test_snapshot");
-    expect(parsed.screenshot).toBe(TEST_SCREENSHOT_PATH);
-    expect(parsed.appState).toBe(TEST_APP_STATE_PATH);
+    expect(parsed.screenshot).toBe(testScreenshotPath());
+    expect(parsed.appState).toBe(testAppStatePath());
     expect(text).not.toContain("screenshotSource");
     expect(text).not.toContain(screenshotBase64);
     expect(text).not.toContain("w0 AXWindow");
-    await expect(readFile(TEST_SCREENSHOT_PATH)).resolves.toEqual(
+    await expect(stat(stalePath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(testScreenshotPath())).resolves.toEqual(
       screenshotBytes,
     );
-    await expect(readFile(TEST_APP_STATE_PATH, "utf8")).resolves.toBe(appState);
+    await expect(readFile(testAppStatePath(), "utf8")).resolves.toBe(appState);
+    expect(fileMode((await stat(testOutputDir)).mode)).toBe(0o700);
+    expect(fileMode((await stat(testScreenshotPath())).mode)).toBe(0o600);
+    expect(fileMode((await stat(testAppStatePath())).mode)).toBe(0o600);
   });
 
   it("should print app bundle identifiers in list-apps output", async () => {
@@ -345,16 +376,16 @@ describe("computer-use command visibility", () => {
     const parsed = JSON.parse(output) as Record<string, unknown>;
     expect(parsed.status).toBe("succeeded");
     expect(parsed.snapshotId).toBe("desktop_test_snapshot");
-    expect(parsed.screenshot).toBe(TEST_SCREENSHOT_PATH);
-    expect(parsed.appState).toBe(TEST_APP_STATE_PATH);
+    expect(parsed.screenshot).toBe(testScreenshotPath());
+    expect(parsed.appState).toBe(testAppStatePath());
     expect(parsed.screenshotWidth).toBeUndefined();
     expect(parsed.screenshotHeight).toBeUndefined();
     expect(output).not.toContain(screenshotBase64);
     expect(output).not.toContain("w0 AXWindow");
-    await expect(readFile(TEST_SCREENSHOT_PATH)).resolves.toEqual(
+    await expect(readFile(testScreenshotPath())).resolves.toEqual(
       screenshotBytes,
     );
-    await expect(readFile(TEST_APP_STATE_PATH, "utf8")).resolves.toBe(appState);
+    await expect(readFile(testAppStatePath(), "utf8")).resolves.toBe(appState);
   });
 
   it("should send click snapshot coordinates and mouse options", async () => {
@@ -507,13 +538,13 @@ describe("computer-use command visibility", () => {
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     const parsed = JSON.parse(output) as Record<string, unknown>;
-    expect(parsed.appState).toBe(TEST_APP_STATE_PATH);
-    expect(parsed.screenshot).toBe(TEST_SCREENSHOT_PATH);
+    expect(parsed.appState).toBe(testAppStatePath());
+    expect(parsed.screenshot).toBe(testScreenshotPath());
     expect(output).toContain('"status": "succeeded"');
     expect(output).toContain('"summary": "Clicked elementIndex=7"');
     expect(output).not.toContain("7 button Send");
-    await expect(readFile(TEST_APP_STATE_PATH, "utf8")).resolves.toBe(appState);
-    await expect(readFile(TEST_SCREENSHOT_PATH)).resolves.toEqual(
+    await expect(readFile(testAppStatePath(), "utf8")).resolves.toBe(appState);
+    await expect(readFile(testScreenshotPath())).resolves.toEqual(
       screenshotBytes,
     );
   });
@@ -699,8 +730,8 @@ describe("computer-use command visibility", () => {
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     const parsed = JSON.parse(output) as Record<string, unknown>;
-    expect(parsed.screenshot).toBe(TEST_SCREENSHOT_PATH);
-    await expect(readFile(TEST_SCREENSHOT_PATH)).resolves.toEqual(
+    expect(parsed.screenshot).toBe(testScreenshotPath());
+    await expect(readFile(testScreenshotPath())).resolves.toEqual(
       screenshotBytes,
     );
   });
