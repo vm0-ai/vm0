@@ -839,6 +839,23 @@ mod tests {
     }
 
     #[test]
+    fn bounded_read_rejects_codex_marker_history_over_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions_dir = dir.path().join("sessions");
+        let day_dir = sessions_dir.join("2026").join("07").join("02");
+        std::fs::create_dir_all(&day_dir).unwrap();
+        let thread_id = "019e9154-c304-70f0-adde-36efb1be1701";
+        let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl");
+        std::fs::write(path, b"abcde").unwrap();
+        let payload = codex_marker_payload(&sessions_dir, thread_id);
+
+        let err = read_session_history_from_payload_bounded(&payload, 4)
+            .expect_err("bounded codex marker read must reject over-limit history");
+
+        assert_over_limit(err, 4);
+    }
+
+    #[test]
     fn bounded_read_allows_literal_history_with_u64_max_limit() {
         let dir = tempfile::tempdir().unwrap();
         let path = write_history_file(&dir, "history.jsonl", b"abcde");
