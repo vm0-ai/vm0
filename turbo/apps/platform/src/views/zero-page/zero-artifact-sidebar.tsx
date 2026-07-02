@@ -22,7 +22,14 @@ import {
   useSet,
 } from "ccstate-react";
 import {
+  Button,
   cn,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -36,7 +43,11 @@ import {
   clearHtmlDomEditPending$,
   closeArtifactHtmlEditMode$,
   closeArtifact$,
+  deleteHtmlEditSnapshotDraft$,
+  dismissHtmlEditSnapshotRestoreDraft$,
   discardHtmlDomEditPreviewDraft$,
+  continueHtmlEditSnapshotDraft$,
+  htmlEditSnapshotRestoreDraft$,
   htmlDomEditPreviewHtmlByUrl$,
   htmlDomEditPendingUrl$,
   htmlDomEditPublishingUrl$,
@@ -45,6 +56,8 @@ import {
   openArtifactHtmlEditMode$,
   openPresentationEditor$,
   publishHtmlDomEditPreviewDraft$,
+  saveCapturedHtmlEditSnapshotDraft$,
+  setHtmlEditSnapshotControllerRef$,
   toggleArtifactFullscreen$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import {
@@ -154,6 +167,7 @@ type ArtifactSidebarContentProps = {
 };
 
 type HtmlArtifactHeaderState = "idle" | "editing" | "working" | "preview";
+type HtmlEditState = ReturnType<typeof createHtmlEditState>;
 
 function ArtifactSidebarWithThreadData({
   artifactRef,
@@ -220,6 +234,172 @@ function noop() {
   return undefined;
 }
 
+interface HtmlEditSnapshotRestoreDraftView {
+  readonly threadId: string;
+  readonly updatedAt: string;
+  readonly url: string;
+}
+
+type HtmlEditSnapshotTargetView = {
+  readonly threadId: string;
+  readonly url: string;
+};
+
+function HtmlEditSnapshotController({
+  previewHtml,
+  signal,
+  target,
+}: {
+  readonly previewHtml?: string;
+  readonly signal: AbortSignal;
+  readonly target: HtmlEditSnapshotTargetView | null;
+}) {
+  const restoreDraft = useGet(htmlEditSnapshotRestoreDraft$);
+  const continueHtmlEditSnapshotDraft = useSet(continueHtmlEditSnapshotDraft$);
+  const deleteHtmlEditSnapshotDraft = useSet(deleteHtmlEditSnapshotDraft$);
+  const dismissHtmlEditSnapshotRestoreDraft = useSet(
+    dismissHtmlEditSnapshotRestoreDraft$,
+  );
+  const setHtmlEditSnapshotControllerRef = useSet(
+    setHtmlEditSnapshotControllerRef$,
+  );
+
+  return (
+    <div
+      key={target ? `${target.threadId}\n${target.url}` : "none"}
+      ref={setHtmlEditSnapshotControllerRef}
+      data-html-edit-snapshot-thread-id={target?.threadId}
+      data-html-edit-snapshot-url={target?.url}
+      data-html-edit-snapshot-has-preview={previewHtml ? "1" : undefined}
+    >
+      <HtmlEditSnapshotRestoreDialog
+        restoreDraft={htmlEditSnapshotRestoreDraftForTarget(
+          restoreDraft,
+          target,
+        )}
+        signal={signal}
+        onContinue={continueHtmlEditSnapshotDraft}
+        onDismiss={dismissHtmlEditSnapshotRestoreDraft}
+        onDiscard={(currentDraft) => {
+          detach(
+            deleteHtmlEditSnapshotDraft(
+              {
+                threadId: currentDraft.threadId,
+                url: currentDraft.url,
+              },
+              signal,
+            ),
+            Reason.DomCallback,
+            "discardHtmlEditSnapshotDraft",
+          );
+        }}
+      />
+    </div>
+  );
+}
+
+function htmlEditSnapshotRestoreDraftForTarget(
+  restoreDraft: HtmlEditSnapshotRestoreDraftView | null,
+  target: HtmlEditSnapshotTargetView | null,
+): HtmlEditSnapshotRestoreDraftView | null {
+  return restoreDraft &&
+    target &&
+    restoreDraft.threadId === target.threadId &&
+    restoreDraft.url === target.url
+    ? restoreDraft
+    : null;
+}
+
+function htmlEditSnapshotTargetForDisplay({
+  display,
+  htmlEditEnabled,
+  threadId,
+}: {
+  readonly display: ArtifactDisplay | null;
+  readonly htmlEditEnabled: boolean;
+  readonly threadId?: string;
+}): HtmlEditSnapshotTargetView | null {
+  return threadId &&
+    htmlEditEnabled &&
+    display?.kind === "html" &&
+    display.artifactKind === "hosted-site"
+    ? { threadId, url: display.url }
+    : null;
+}
+
+function HtmlEditSnapshotRestoreDialog({
+  onContinue,
+  onDiscard,
+  onDismiss,
+  restoreDraft,
+  signal,
+}: {
+  readonly onContinue: (
+    args: {
+      readonly threadId: string;
+      readonly url: string;
+    },
+    signal: AbortSignal,
+  ) => Promise<void>;
+  readonly onDiscard: (restoreDraft: HtmlEditSnapshotRestoreDraftView) => void;
+  readonly onDismiss: () => void;
+  readonly restoreDraft: HtmlEditSnapshotRestoreDraftView | null;
+  readonly signal: AbortSignal;
+}) {
+  const open = Boolean(restoreDraft);
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          onDismiss();
+        }
+      }}
+    >
+      <DialogContent data-testid="html-edit-snapshot-restore-dialog">
+        <DialogHeader>
+          <DialogTitle>Resume HTML draft?</DialogTitle>
+          <DialogDescription>
+            A saved HTML draft is available for this artifact.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (restoreDraft) {
+                onDiscard(restoreDraft);
+              }
+            }}
+          >
+            Discard
+          </Button>
+          <Button
+            onClick={() => {
+              if (!restoreDraft) {
+                return;
+              }
+              detach(
+                onContinue(
+                  {
+                    threadId: restoreDraft.threadId,
+                    url: restoreDraft.url,
+                  },
+                  signal,
+                ),
+                Reason.DomCallback,
+                "continueHtmlEditSnapshotDraft",
+              );
+            }}
+          >
+            Resume
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function artifactSidebarSyncTargetForItem({
   agentId,
   item,
@@ -282,6 +462,9 @@ function ArtifactSidebarContent({
   const publishHtmlDomEditPreviewDraft = useSet(
     publishHtmlDomEditPreviewDraft$,
   );
+  const saveCapturedHtmlEditSnapshotDraft = useSet(
+    saveCapturedHtmlEditSnapshotDraft$,
+  );
   const toggleFullscreen = useSet(toggleArtifactFullscreen$);
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const pageSignal = useGet(pageSignal$);
@@ -290,8 +473,14 @@ function ArtifactSidebarContent({
   const features = useLastResolved(featureSwitch$);
 
   const display = resolveArtifactDisplay(artifactRef, item);
+  const htmlEditEnabled = isHtmlEditFeatureEnabled(features);
+  const htmlEditSnapshotTarget = htmlEditSnapshotTargetForDisplay({
+    display,
+    htmlEditEnabled,
+    threadId,
+  });
   const htmlCommentMode =
-    isHtmlEditFeatureEnabled(features) &&
+    htmlEditEnabled &&
     shouldOpenHtmlCommentMode(display, requestedHtmlCommentMode);
   const syncTarget = artifactSidebarSyncTargetForItem({
     agentId,
@@ -299,6 +488,11 @@ function ArtifactSidebarContent({
     onSyncSuccess,
     threadId,
   });
+
+  if (!display) {
+    return null;
+  }
+
   const htmlEditState = createHtmlEditState({
     applyPreview: applyHtmlDomEditPreview,
     clearPending: clearHtmlDomEditPending,
@@ -308,6 +502,8 @@ function ArtifactSidebarContent({
     publishingUrl: htmlDomEditPublishingUrl,
     previewHtmlByUrl: htmlDomEditPreviewHtmlByUrl,
     markPending: markHtmlDomEditPending,
+    saveDraft: saveCapturedHtmlEditSnapshotDraft,
+    snapshotTarget: htmlEditSnapshotTarget,
   });
   const htmlHeaderState = htmlArtifactHeaderState({
     display,
@@ -316,10 +512,72 @@ function ArtifactSidebarContent({
     status: htmlEditState.status,
   });
 
-  if (!display) {
-    return null;
-  }
+  return (
+    <ArtifactSidebarResolvedContent
+      closeHtmlCommentMode={closeHtmlCommentMode}
+      closePreview={closePreview}
+      display={display}
+      fullscreen={fullscreen}
+      htmlCommentMode={htmlCommentMode}
+      htmlEditSnapshotTarget={htmlEditSnapshotTarget}
+      htmlEditState={htmlEditState}
+      htmlHeaderState={htmlHeaderState}
+      imageNavigation={imageNavigation}
+      onBack={onBack}
+      openHtmlCommentMode={openHtmlCommentMode}
+      openPresentationEditor={openPresentationEditor}
+      pageSignal={pageSignal}
+      publishHtmlDomEditPreviewDraft={publishHtmlDomEditPreviewDraft}
+      resetZoomableImageCanvasZoom={resetZoomableImageCanvasZoom}
+      syncTarget={syncTarget}
+      threadId={threadId}
+      toggleFullscreen={toggleFullscreen}
+    />
+  );
+}
 
+function ArtifactSidebarResolvedContent({
+  closeHtmlCommentMode,
+  closePreview,
+  display,
+  fullscreen,
+  htmlCommentMode,
+  htmlEditSnapshotTarget,
+  htmlEditState,
+  htmlHeaderState,
+  imageNavigation,
+  onBack,
+  openHtmlCommentMode,
+  openPresentationEditor,
+  pageSignal,
+  publishHtmlDomEditPreviewDraft,
+  resetZoomableImageCanvasZoom,
+  syncTarget,
+  threadId,
+  toggleFullscreen,
+}: {
+  readonly closeHtmlCommentMode: () => void;
+  readonly closePreview: () => void;
+  readonly display: ArtifactDisplay;
+  readonly fullscreen: boolean;
+  readonly htmlCommentMode: boolean;
+  readonly htmlEditSnapshotTarget: HtmlEditSnapshotTargetView | null;
+  readonly htmlEditState: HtmlEditState;
+  readonly htmlHeaderState: HtmlArtifactHeaderState | undefined;
+  readonly imageNavigation?: ArtifactImageNavigationActions;
+  readonly onBack?: () => void;
+  readonly openHtmlCommentMode: () => void;
+  readonly openPresentationEditor: (url: string) => void;
+  readonly pageSignal: AbortSignal;
+  readonly publishHtmlDomEditPreviewDraft: (
+    args: string | { readonly threadId?: string; readonly url: string },
+    signal: AbortSignal,
+  ) => Promise<void>;
+  readonly resetZoomableImageCanvasZoom: (key: string) => void;
+  readonly syncTarget?: ArtifactDownloadSyncTarget;
+  readonly threadId?: string;
+  readonly toggleFullscreen: () => void;
+}) {
   const applyHtmlStyleEdits = createHtmlStyleEditApplyAction({
     display,
     htmlEditState,
@@ -383,8 +641,14 @@ function ArtifactSidebarContent({
           onHtmlEditRequestFailed={htmlEditState.fail}
           onHtmlEditRequestStarted={htmlEditState.start}
           pageSignal={pageSignal}
+          threadId={threadId}
         />
       </div>
+      <HtmlEditSnapshotController
+        previewHtml={htmlEditState.previewHtml}
+        signal={pageSignal}
+        target={htmlEditSnapshotTarget}
+      />
     </ArtifactSidebarSurface>
   );
 }
@@ -454,6 +718,8 @@ function createHtmlEditState({
   pendingUrl,
   publishingUrl,
   previewHtmlByUrl,
+  saveDraft,
+  snapshotTarget,
 }: {
   applyPreview: (params: {
     readonly url: string;
@@ -461,15 +727,18 @@ function createHtmlEditState({
   }) => void;
   clearPending: (url: string) => void;
   closeCommentMode: () => void;
-  display: ArtifactDisplay | null;
+  display: ArtifactDisplay;
   markPending: (url: string) => void;
   pendingUrl: string | null;
   publishingUrl: string | null;
   previewHtmlByUrl: Readonly<Record<string, string>>;
+  saveDraft: (args: {
+    readonly html: string;
+    readonly threadId: string;
+    readonly url: string;
+  }) => void;
+  snapshotTarget: { readonly threadId: string; readonly url: string } | null;
 }) {
-  if (!display) {
-    return {};
-  }
   const status =
     display.kind === "html" &&
     (pendingUrl === display.url || publishingUrl === display.url)
@@ -479,9 +748,14 @@ function createHtmlEditState({
     display.kind === "html" ? previewHtmlByUrl[display.url] : undefined;
   return {
     apply: (draft: HtmlDomEditDraft) => {
+      // Persist the generated draft (fire-and-forget) so it survives navigation.
+      // Style edits carry no comments and publish immediately, so they skip the
+      // save and let publish success clear any existing snapshot.
+      if (snapshotTarget && draft.comments.length > 0) {
+        saveDraft({ ...snapshotTarget, html: draft.html });
+      }
       applyPreview({ url: display.url, html: draft.html });
       closeCommentMode();
-      return Promise.resolve();
     },
     fail: () => {
       clearPending(display.url);
@@ -490,6 +764,7 @@ function createHtmlEditState({
       markPending(display.url);
     },
     previewHtml,
+    snapshotTarget,
     status,
   };
 }
@@ -503,18 +778,29 @@ function createHtmlStyleEditApplyAction({
   display: ArtifactDisplay;
   htmlEditState: ReturnType<typeof createHtmlEditState>;
   pageSignal: AbortSignal;
-  publishPreviewDraft: (url: string, signal: AbortSignal) => Promise<void>;
+  publishPreviewDraft: (
+    args:
+      | string
+      | {
+          readonly threadId?: string;
+          readonly url: string;
+        },
+    signal: AbortSignal,
+  ) => Promise<void>;
 }) {
-  if (display.kind !== "html" || !htmlEditState.apply) {
+  if (display.kind !== "html") {
     return undefined;
   }
   return async (html: string) => {
-    await htmlEditState.apply({
+    htmlEditState.apply({
       comments: [],
       editRequestId: crypto.randomUUID(),
       html,
     });
-    await publishPreviewDraft(display.url, pageSignal);
+    await publishPreviewDraft(
+      htmlEditState.snapshotTarget ?? display.url,
+      pageSignal,
+    );
   };
 }
 
@@ -1061,6 +1347,7 @@ function ArtifactBody({
   onHtmlEditRequestFailed,
   onHtmlEditRequestStarted,
   pageSignal,
+  threadId,
 }: {
   url: string;
   kind: ArtifactKindForBody;
@@ -1071,11 +1358,12 @@ function ArtifactBody({
   htmlCommentMode: boolean;
   imageNavigation?: ArtifactImageNavigationActions;
   onCloseHtmlCommentMode: () => void;
-  onApplyHtmlEditDraft?: (draft: HtmlDomEditDraft) => Promise<void>;
+  onApplyHtmlEditDraft?: (draft: HtmlDomEditDraft) => void | Promise<void>;
   onApplyHtmlStyleEdits?: (html: string) => Promise<void>;
   onHtmlEditRequestFailed?: () => void;
   onHtmlEditRequestStarted?: () => void;
   pageSignal: AbortSignal;
+  threadId?: string;
 }) {
   if (kind === "markdown") {
     return <ArtifactMarkdownBody url={url} signal={pageSignal} />;
@@ -1126,6 +1414,7 @@ function ArtifactBody({
         artifactKind={artifactKind}
         htmlEditStatus={htmlEditStatus}
         htmlPreviewHtml={htmlPreviewHtml}
+        threadId={threadId}
       />
     );
   }
@@ -1553,6 +1842,7 @@ function ArtifactIframeBody({
   artifactKind,
   htmlEditStatus,
   htmlPreviewHtml,
+  threadId,
 }: {
   url: string;
   kind: "html" | "pdf";
@@ -1560,6 +1850,7 @@ function ArtifactIframeBody({
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   htmlEditStatus?: "working";
   htmlPreviewHtml?: string;
+  threadId?: string;
 }) {
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail
   // (thumbnails / bookmarks) so the embedded preview shows just the page
@@ -1585,6 +1876,11 @@ function ArtifactIframeBody({
     return (
       <div className="relative h-full w-full">
         <AutoFocusedArtifactIframe
+          // Remount on live<->draft switch: swapping `src`<->`srcDoc` on the
+          // same iframe doesn't reliably reload it, leaving the original showing.
+          // (draft->draft updates fine via the srcDoc attribute, so presence is
+          // the only transition that needs a fresh element.)
+          key={htmlPreviewHtml ? "draft" : "live"}
           focusKey={`${versionedSrc}:${fullscreen ? "fullscreen" : "sidebar"}`}
           focusOnMount={fullscreen && !isPresentationHtml}
           {...(htmlPreviewHtml
@@ -1600,11 +1896,15 @@ function ArtifactIframeBody({
           <HtmlEditDraftToolbar
             disabled={htmlEditStatus === "working"}
             onDiscard={() => {
-              discardHtmlDomEditPreviewDraft(url);
+              detach(
+                discardHtmlDomEditPreviewDraft({ threadId, url }, pageSignal),
+                Reason.DomCallback,
+                "discardHtmlDomEditPreviewDraft",
+              );
             }}
             onPublish={() => {
               detach(
-                publishHtmlDomEditPreviewDraft(url, pageSignal),
+                publishHtmlDomEditPreviewDraft({ threadId, url }, pageSignal),
                 Reason.DomCallback,
                 "publishHtmlDomEditPreviewDraft",
               );
