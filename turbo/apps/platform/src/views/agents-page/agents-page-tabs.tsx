@@ -243,6 +243,7 @@ function AgentTabsView({
           membersById={membersById}
           unreadAgentIds={unreadAgentIds}
           unreadIndicatorsEnabled={agentUnreadIndicatorsEnabled}
+          showCreator={activeTab !== "private"}
         />
       ) : activeTab === "private" ? (
         <PrivateEmptyState
@@ -325,11 +326,13 @@ function AgentGrid({
   membersById,
   unreadAgentIds,
   unreadIndicatorsEnabled,
+  showCreator,
 }: {
   agents: AgentProps["agent"][];
   membersById: ReadonlyMap<string, OrgMember>;
   unreadAgentIds: ReadonlySet<string> | undefined;
   unreadIndicatorsEnabled: boolean;
+  showCreator: boolean;
 }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -348,6 +351,7 @@ function AgentGrid({
                 unreadIndicatorsEnabled &&
                 (unreadAgentIds?.has(agent.id) ?? false)
               }
+              showCreator={showCreator}
             />
           </Link>
         );
@@ -588,6 +592,7 @@ type AgentProps = {
   };
   creator: AgentCreator;
   hasUnread: boolean;
+  showCreator: boolean;
 };
 
 interface AgentCreator {
@@ -646,7 +651,7 @@ function AgentUnreadIndicator() {
   );
 }
 
-function AgentCard({ agent, creator, hasUnread }: AgentProps) {
+function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const lead = agent.id === defaultAgentId;
   const displayName = agent.displayName ?? agent.id;
@@ -674,14 +679,16 @@ function AgentCard({ agent, creator, hasUnread }: AgentProps) {
             </p>
           </div>
         </div>
-        <div className="mt-auto flex items-center gap-2 border-t border-border/60 pt-3">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full">
-            <CreatorAvatar creator={creator} />
-          </span>
-          <span className="truncate text-xs text-muted-foreground">
-            Created by {creator.name}
-          </span>
-        </div>
+        {showCreator && (
+          <div className="mt-auto flex items-center gap-2 border-t border-border/60 pt-3">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full">
+              <CreatorAvatar creator={creator} />
+            </span>
+            <span className="truncate text-xs text-muted-foreground">
+              Created by {creator.name}
+            </span>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
