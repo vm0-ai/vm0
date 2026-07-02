@@ -108,11 +108,11 @@ async fn send_event_captures_session_metadata_before_masking() {
     let mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/events")
-            .body_includes(r#""session_id":"ses-secret-123""#);
+            .body_includes(r#""session_id":"ses-session-id-123""#);
         then.status(200);
     });
 
-    let session_id = "ses-secret-123";
+    let session_id = "ses-session-id-123";
     let masker = SecretMasker::from_raw("");
     let event = json!({
         "type": "system",

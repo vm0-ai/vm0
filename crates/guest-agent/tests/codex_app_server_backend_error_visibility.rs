@@ -1,4 +1,4 @@
-//! Error masking coverage for the experimental Codex app-server backend.
+//! Error visibility coverage for the experimental Codex app-server backend.
 //!
 //! This test lives in its own binary to isolate process env, working directory,
 //! and guest runtime path overrides used during setup.
