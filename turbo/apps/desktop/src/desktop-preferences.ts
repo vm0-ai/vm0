@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-export function isDesktopPreferenceRecord(
+function isDesktopPreferenceRecord(
   value: unknown,
 ): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

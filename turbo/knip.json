@@ -73,6 +73,7 @@
       "ignoreDependencies": [
         "@electron-forge/cli",
         "@electron-forge/maker-zip",
+        "@modelcontextprotocol/server-filesystem",
         "oxlint",
         "tsup"
       ],
