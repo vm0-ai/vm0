@@ -83,6 +83,39 @@
       }
     },
     {
+      "name": "greedy plus marker with prefix",
+      "segment": "pre-{rest+}",
+      "expected": {
+        "kind": "param",
+        "prefix": "pre-",
+        "name": "rest",
+        "suffix": "",
+        "greedy": "+"
+      }
+    },
+    {
+      "name": "greedy star marker with suffix",
+      "segment": "{rest*}.json",
+      "expected": {
+        "kind": "param",
+        "prefix": "",
+        "name": "rest",
+        "suffix": ".json",
+        "greedy": "*"
+      }
+    },
+    {
+      "name": "parameter name preserves internal plus marker",
+      "segment": "{na+me}",
+      "expected": {
+        "kind": "param",
+        "prefix": "",
+        "name": "na+me",
+        "suffix": "",
+        "greedy": ""
+      }
+    },
+    {
       "name": "empty parameter name",
       "segment": "{}",
       "expected": {
@@ -125,6 +158,14 @@
     {
       "name": "literal-separated parameters",
       "segment": "{a}.{b}",
+      "expected": {
+        "kind": "error",
+        "reasonIncludes": "literal-separated parameters"
+      }
+    },
+    {
+      "name": "nested braces",
+      "segment": "{{name}}",
       "expected": {
         "kind": "error",
         "reasonIncludes": "literal-separated parameters"
@@ -195,6 +236,11 @@
       "name": "repeated trailing slash",
       "path": "/repos/octocat//",
       "expected": ["repos", "octocat", "", ""]
+    },
+    {
+      "name": "slash-only repeated path",
+      "path": "///",
+      "expected": ["", "", ""]
     }
   ]
 }
