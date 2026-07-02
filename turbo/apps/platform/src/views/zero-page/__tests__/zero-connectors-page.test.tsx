@@ -835,6 +835,50 @@ describe("connectors page", () => {
     });
   });
 
+  it("ignores stale agents when loading connector access rows", async () => {
+    const activeAgentId = "c0000000-0000-4000-a000-000000000001";
+    const staleAgentId = "c0000000-0000-4000-a000-000000000002";
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    context.mocks.data.team([
+      teamAgent(activeAgentId, "Research Agent"),
+      teamAgent(staleAgentId, "Deleted Agent"),
+    ]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+      if (params.id === staleAgentId) {
+        return respond(404, {
+          error: { message: "Agent not found", code: "NOT_FOUND" },
+        });
+      }
+      return respond(200, { enabledTypes: ["github"] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccessManagement]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    });
+    click(
+      within(connectorCardByLabel("GitHub")).getByLabelText(
+        "Manage GitHub access",
+      ),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub access",
+    });
+    expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Deleted Agent")).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("Loading agents..."),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows authorized agent names with an overflow count on connector cards", async () => {
     const agentIds = [
       "c0000000-0000-4000-a000-000000000001",

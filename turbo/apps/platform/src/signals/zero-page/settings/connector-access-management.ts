@@ -96,19 +96,27 @@ export const connectorAgentAuthorizations$ = computed(
     get(internalConnectorAccessManagementReload$);
     const allAgents = await get(agents$);
     const client = get(zeroClient$)(zeroUserConnectorsContract);
-    return await Promise.all(
-      allAgents.map(async (agent) => {
-        const result = await accept(
-          client.get({ params: { id: agent.id } }),
-          [200],
-          { toast: false },
-        );
-        return {
-          agent,
-          enabledTypes: result.body.enabledTypes,
-        };
-      }),
+    const rows = await Promise.all(
+      allAgents.map(
+        async (agent): Promise<ConnectorAgentAuthorizationRow | null> => {
+          const result = await accept(
+            client.get({ params: { id: agent.id } }),
+            [200, 404],
+            { toast: false },
+          );
+          if (result.status === 404) {
+            return null;
+          }
+          return {
+            agent,
+            enabledTypes: result.body.enabledTypes,
+          };
+        },
+      ),
     );
+    return rows.filter((row): row is ConnectorAgentAuthorizationRow => {
+      return row !== null;
+    });
   },
 );
 
