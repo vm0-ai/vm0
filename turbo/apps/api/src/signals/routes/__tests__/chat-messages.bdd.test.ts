@@ -7,9 +7,11 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   chatMessagesContract,
   type AttachFile,
+  type ChatRunOptionsRequest,
   type GenerationTemplateRequest,
   type ModelSelectionRequest,
   type PagedChatMessage,
@@ -41,9 +43,11 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { testChatMessagesStateRoutes } from "../test-chat-messages-state";
 
 /**
@@ -63,6 +67,7 @@ const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const cu = createComputerUseBddApi(context);
+const misc = createMiscRoutesApi(context);
 const routeMocks = createZeroRouteMocks(context);
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
@@ -118,6 +123,39 @@ const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "apiKey",
 ] as const;
 
+function base64UrlEncode(input: string): string {
+  return Buffer.from(input, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function unsignedJwt(payload: Record<string, unknown>): string {
+  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  return `${header}.${base64UrlEncode(JSON.stringify(payload))}.bdd-signature`;
+}
+
+function codexAuthJson(): string {
+  const accessExp = Math.floor(now() / 1000) + 7200;
+  return JSON.stringify({
+    OPENAI_API_KEY: null,
+    tokens: {
+      access_token: unsignedJwt({ exp: accessExp }),
+      refresh_token: "rt_bdd_chat_fast_mode",
+      account_id: "ws_acct_bdd_fast_mode",
+      id_token: unsignedJwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "ws_acct_bdd_fast_mode_id_token",
+          chatgpt_plan_type: "plus",
+          organization: { title: "BDD Chat Fast Mode" },
+        },
+        exp: accessExp,
+      }),
+    },
+  });
+}
+
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
 type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
@@ -136,6 +174,7 @@ interface ChatRunSendBody {
   readonly clientThreadId?: string;
   readonly clientMessageId?: string;
   readonly modelSelection?: ModelSelectionRequest;
+  readonly runOptions?: ChatRunOptionsRequest;
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly attachFiles?: readonly AttachFile[];
   readonly computerUseHostId?: string | null;
@@ -1642,6 +1681,110 @@ describe("CHAT-02: explicit provider pins", () => {
         await api.requestCancelRun(actor, vm0Body.runId, [200]);
       }
     }
+  }, 90_000);
+
+  it("passes Codex fast mode only for feature-enabled ChatGPT subscription GPT-5.5 sends", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    const actorWithOrg = { ...actor, orgId };
+
+    await misc.upsertPersonalModelProvider(
+      actor,
+      {
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+        secrets: { CODEX_AUTH_JSON: codexAuthJson() },
+      },
+      [200, 201],
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+      {
+        model: "gpt-5.4",
+        isDefault: false,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
+
+    const switchOffThreadId = randomUUID();
+    const switchOff = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "run codex fast with switch off",
+        clientThreadId: switchOffThreadId,
+        modelSelection: {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel: "gpt-5.5",
+        },
+        runOptions: { codexServiceTier: "fast" },
+      },
+      [400],
+    );
+    expectApiError(switchOff.body);
+    expect(switchOff.body.error.message).toBe(
+      "Codex fast mode is not enabled for this workspace",
+    );
+    await chat.requestReadThread(actor, switchOffThreadId, [404]);
+
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.CodexFastMode]: true,
+    });
+
+    const fast = await sendChatRun(actor, {
+      agentId,
+      prompt: "run codex fast",
+      modelSelection: {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "gpt-5.5",
+      },
+      runOptions: { codexServiceTier: "fast" },
+    });
+    const { claim } = await claimChatRun(runnerGroup, fast.runId);
+    const environment = claimEnvironment(claim);
+    expect(claim.cliAgentType).toBe("codex");
+    expect(environment.OPENAI_MODEL).toBe("gpt-5.5");
+    expect(environment.VM0_CODEX_SERVICE_TIER).toBe("fast");
+    expect(environment.CHATGPT_ACCESS_TOKEN).toBe(
+      modelProviderSecretPlaceholder(
+        "codex-oauth-token",
+        "CHATGPT_ACCESS_TOKEN",
+      ),
+    );
+    await cancelChatRun(actor, fast.runId);
+
+    const rejectedThreadId = randomUUID();
+    const rejected = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "5.4 cannot fast",
+        clientThreadId: rejectedThreadId,
+        modelSelection: {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel: "gpt-5.4",
+        },
+        runOptions: { codexServiceTier: "fast" },
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 runs",
+    );
+    await chat.requestReadThread(actor, rejectedThreadId, [404]);
   }, 90_000);
 
   it("routes OpenRouter provider pins through runtime model aliases and firewall auth", async () => {

@@ -425,6 +425,24 @@ async fn execute_inner_start_failure_destroy_panic_returns_start_error() {
             .await,
         "start failure should close inline network-log attribution",
     );
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_factory_create",
+        true,
+        None,
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_proxy_register",
+        true,
+        None,
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_start",
+        false,
+        Some("sandbox_start_failed"),
+    );
 }
 
 #[tokio::test]

@@ -6408,6 +6408,7 @@ function ComposerModelPickerSlot({
   modelPicker,
   modelPickerLoading,
   submitBlocker,
+  codexFastModeEnabled,
   modelPickerOpen,
   onModelPickerChange,
   onModelPickerOpenChange,
@@ -6416,6 +6417,7 @@ function ComposerModelPickerSlot({
   modelPicker: ComposerModelPicker | undefined;
   modelPickerLoading: boolean;
   submitBlocker: ZeroChatComposerProps["submitBlocker"];
+  codexFastModeEnabled: boolean;
   modelPickerOpen: boolean;
   onModelPickerChange: (value: ModelProviderSelection | null) => void;
   onModelPickerOpenChange: (open: boolean) => void;
@@ -6450,6 +6452,7 @@ function ComposerModelPickerSlot({
           )}
           compactTrigger
           mobileIconTrigger
+          codexFastModeEnabled={codexFastModeEnabled}
           open={modelPickerOpen}
           onOpenChange={onModelPickerOpenChange}
           disabled={modelPicker.disabled}
@@ -6466,6 +6469,11 @@ function ComposerModelPickerSlot({
 function useWorkflowAutomationEnabled(): boolean {
   const features = useLastResolved(featureSwitch$);
   return features?.[FeatureSwitchKey.WorkflowAutomation] ?? false;
+}
+
+function useCodexFastModeEnabled(): boolean {
+  const features = useLastResolved(featureSwitch$);
+  return features?.[FeatureSwitchKey.CodexFastMode] ?? false;
 }
 
 export function ZeroChatComposer({
@@ -6505,6 +6513,7 @@ export function ZeroChatComposer({
   const setModelPickerOpen = useSet(setModelPickerOpen$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
   const workflowAutomationEnabled = useWorkflowAutomationEnabled();
+  const codexFastModeEnabled = useCodexFastModeEnabled();
 
   const resolved = useResolvedComposerSignals(
     input,
@@ -6973,6 +6982,7 @@ export function ZeroChatComposer({
                     modelPicker={modelPicker}
                     modelPickerLoading={modelPickerLoading}
                     submitBlocker={submitBlocker}
+                    codexFastModeEnabled={codexFastModeEnabled}
                     modelPickerOpen={modelPickerOpen}
                     onModelPickerChange={handleModelPickerChange}
                     onModelPickerOpenChange={setModelPickerOpen}

@@ -5133,16 +5133,21 @@ function shouldRenderThinkingIndicator({
   lastGroup,
   lastIsAssistant,
   running,
+  runStatePending,
   lastAssistantCancelled,
   lastAssistantOnlyThinking,
 }: {
   lastGroup: GroupedChatMessageGroup | undefined;
   lastIsAssistant: boolean;
   running: boolean;
+  runStatePending: boolean;
   lastAssistantCancelled: boolean;
   lastAssistantOnlyThinking: boolean;
 }): boolean {
   if (!lastGroup) {
+    return false;
+  }
+  if (runStatePending && lastIsAssistant) {
     return false;
   }
   if (lastAssistantCancelled && !running) {
@@ -5368,14 +5373,14 @@ interface ThinkingIndicatorState {
   readonly lastAssistantOnlyThinking: boolean;
   readonly isQueued: boolean;
   readonly running: boolean;
+  readonly runStatePending: boolean;
   readonly lastThinkingMessage: ThinkingIndicatorMarkerMessage | undefined;
 }
 
 function getThinkingIndicatorState(args: {
   readonly groups: GroupedChatMessageGroup[];
-  readonly allFinishedResolved: boolean;
-  readonly allFinished: boolean;
-  readonly latestRunStatus: string | null | undefined;
+  readonly messageRunIndicatorState: "running" | "queued" | null | undefined;
+  readonly messageRunIndicatorResolved: boolean;
   readonly initialThinkingEnabled: boolean;
 }): ThinkingIndicatorState {
   const lastGroup = args.groups[args.groups.length - 1];
@@ -5399,20 +5404,20 @@ function getThinkingIndicatorState(args: {
     !lastAssistantHasRenderableMessage;
   const lastAssistantCancelled =
     isCancelledAssistantMessage(lastAssistantMessage);
-  const isQueued = args.latestRunStatus === "queued";
-  const lastThinkingMessage =
-    args.initialThinkingEnabled && !isQueued
-      ? rawLastThinkingMessage
-      : undefined;
+  const lastThinkingMessage = args.initialThinkingEnabled
+    ? rawLastThinkingMessage
+    : undefined;
+  const isQueued = args.messageRunIndicatorState === "queued";
   const runActive =
-    args.allFinishedResolved && !args.allFinished && !lastAssistantCancelled;
+    args.messageRunIndicatorState !== null &&
+    args.messageRunIndicatorState !== undefined &&
+    !lastAssistantCancelled;
   const waitingForAssistant =
     lastGroup?.role === "user" &&
     lastGroup.messages.length > 0 &&
-    (!args.allFinishedResolved ||
-      lastGroup.messages.some((message) => {
-        return message.isOptimisticRun || message.runId !== undefined;
-      }));
+    lastGroup.messages.some((message) => {
+      return message.isOptimisticRun || message.runId !== undefined;
+    });
 
   return {
     lastGroup,
@@ -5421,6 +5426,7 @@ function getThinkingIndicatorState(args: {
     lastAssistantOnlyThinking,
     isQueued,
     running: runActive || waitingForAssistant,
+    runStatePending: !args.messageRunIndicatorResolved,
     lastThinkingMessage,
   };
 }
@@ -5432,9 +5438,6 @@ function ThinkingIndicator({
   thread: ChatThreadSignals;
   groups: GroupedChatMessageGroup[];
 }) {
-  const allFinishedLoadable = useLastLoadable(thread.allFinished$);
-  const allFinishedResolved = allFinishedLoadable.state === "hasData";
-  const allFinished = allFinishedResolved ? allFinishedLoadable.data : false;
   const [c1, c2, c3] = useGet(thread.blockColors$);
   const blockStyle = {
     "--zb-c1": c1,
@@ -5442,15 +5445,21 @@ function ThinkingIndicator({
     "--zb-c3": c3,
   } as CSSProperties;
 
-  const latestRunStatus = useLastResolved(thread.latestRunStatus$);
   const features = useLastResolved(featureSwitch$);
   const initialThinkingEnabled =
     features?.[FeatureSwitchKey.ChatInitialThinkingIndicator] ?? false;
+  const messageRunIndicatorStateLoadable = useLastLoadable(
+    thread.messageRunIndicatorState$,
+  );
+  const messageRunIndicatorResolved =
+    messageRunIndicatorStateLoadable.state === "hasData";
+  const messageRunIndicatorState = messageRunIndicatorResolved
+    ? messageRunIndicatorStateLoadable.data
+    : undefined;
   const indicatorState = getThinkingIndicatorState({
     groups,
-    allFinishedResolved,
-    allFinished,
-    latestRunStatus,
+    messageRunIndicatorState,
+    messageRunIndicatorResolved,
     initialThinkingEnabled,
   });
   const rotatingLabel = useGet(thread.rotatingPhrase$);
@@ -5477,6 +5486,7 @@ function ThinkingIndicator({
       lastGroup: indicatorState.lastGroup,
       lastIsAssistant: indicatorState.lastIsAssistant,
       running: indicatorState.running,
+      runStatePending: indicatorState.runStatePending,
       lastAssistantCancelled: indicatorState.lastAssistantCancelled,
       lastAssistantOnlyThinking: indicatorState.lastAssistantOnlyThinking,
     })

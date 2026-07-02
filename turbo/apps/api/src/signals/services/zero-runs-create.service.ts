@@ -159,6 +159,7 @@ interface CreateZeroRunCommandArgs {
   readonly modelProviderId?: string;
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly selectedModelOverride?: string;
+  readonly codexServiceTier?: "fast";
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly beforeDispatch?: BeforeRunDispatch;
@@ -449,6 +450,7 @@ async function loadZeroAgent(
 function buildZeroRunExtraEnvironment(args: {
   readonly agentId: string;
   readonly chatThreadId: string | undefined;
+  readonly codexServiceTier: "fast" | undefined;
 }): Record<string, string> {
   return {
     ZERO_AGENT_ID: args.agentId,
@@ -456,6 +458,9 @@ function buildZeroRunExtraEnvironment(args: {
     // in-sandbox CLI can bind a newly created automation to it (the create
     // flow reads $ZERO_CHAT_THREAD_ID when no thread is given).
     ...(args.chatThreadId ? { ZERO_CHAT_THREAD_ID: args.chatThreadId } : {}),
+    ...(args.codexServiceTier
+      ? { VM0_CODEX_SERVICE_TIER: args.codexServiceTier }
+      : {}),
   };
 }
 
@@ -758,6 +763,7 @@ function buildZeroCreateAgentRunArgs(args: {
     extraEnvironment: buildZeroRunExtraEnvironment({
       agentId: args.agent.id,
       chatThreadId: command.chatThreadId,
+      codexServiceTier: command.codexServiceTier,
     }),
     callbacks: [
       ...(callbacksForTriggerAgent(args.triggerAgentId) ?? []),
