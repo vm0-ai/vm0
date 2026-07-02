@@ -28,6 +28,7 @@ use crate::executor::{
 use crate::http::HttpClient;
 use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
 use crate::ids::RunId;
+use crate::paths::short_digest;
 use crate::provider::{ClaimedJob, JobCandidate};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::restored_session_identity::{
@@ -410,6 +411,10 @@ async fn prepare_affinity_protected_candidate(
     );
     ctx.spawn_ctx.provider.defer_poll_after(delay).await;
     None
+}
+
+fn diagnostic_session_fingerprint(session_id: &str) -> String {
+    short_digest(session_id)
 }
 
 async fn current_local_held_session_states(
