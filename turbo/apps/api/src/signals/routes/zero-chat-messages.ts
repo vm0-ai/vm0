@@ -1012,6 +1012,8 @@ async function lockActiveRunForQueuedMessage(
     INNER JOIN ${zeroRuns} ON ${zeroRuns.id} = ${agentRuns.id}
     WHERE ${zeroRuns.chatThreadId} = ${threadId}
       AND ${agentRuns.status} IN (${"queued"}, ${"pending"}, ${"running"})
+    ORDER BY ${agentRuns.createdAt}, ${agentRuns.id}
+    LIMIT 1
     FOR UPDATE
   `);
   return runs.rows.length > 0;
@@ -1603,16 +1605,6 @@ function appendUnassociatedUserMessage(params: {
       return { kind: "no-active-run" };
     }
 
-    await tx
-      .update(chatThreads)
-      .set({ draftContent: null, draftAttachments: null })
-      .where(
-        and(
-          eq(chatThreads.id, params.threadId),
-          eq(chatThreads.userId, params.userId),
-        ),
-      );
-
     const explicitId = params.clientMessageId ?? undefined;
     const fileIds = attachFileIds(params.attachFiles);
     const fileMetadata = attachFileMetadata(params.userId, params.attachFiles);
@@ -1636,6 +1628,15 @@ function appendUnassociatedUserMessage(params: {
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
     if (inserted) {
+      await tx
+        .update(chatThreads)
+        .set({ draftContent: null, draftAttachments: null })
+        .where(
+          and(
+            eq(chatThreads.id, params.threadId),
+            eq(chatThreads.userId, params.userId),
+          ),
+        );
       return { kind: "queued", createdAt: inserted.createdAt, inserted: true };
     }
     if (!explicitId) {
