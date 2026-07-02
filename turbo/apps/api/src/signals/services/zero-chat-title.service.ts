@@ -12,7 +12,10 @@ import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
 import { safeJsonParse, settle } from "../utils";
 import { visibleChatMessageCondition } from "./zero-chat-message-shared.service";
-import { normalizeRecommendedFollowups } from "./zero-chat-recommended-followups.service";
+import {
+  RECOMMENDED_FOLLOWUP_LIMIT,
+  normalizeRecommendedFollowups,
+} from "./zero-chat-recommended-followups.service";
 
 const log = logger("api:zero:chat-title");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
@@ -410,7 +413,7 @@ async function generateRecommendedFollowups(
       {
         role: "system",
         content: [
-          "Generate up to three concise follow-up prompts the user may ask next in this chat.",
+          `Generate up to ${RECOMMENDED_FOLLOWUP_LIMIT.toString()} concise follow-up prompts the user may ask next in this chat.`,
           "Make each prompt specific to the latest assistant reply, actionable, and useful. Match the user's language.",
           'Classify each item as kind "talk" for normal discussion, planning, analysis, or refinement, or kind "generate" when the prompt asks VM0 to create one of the supported built-in generation outputs.',
           BUILT_IN_GENERATION_FOLLOWUP_CONTEXT,

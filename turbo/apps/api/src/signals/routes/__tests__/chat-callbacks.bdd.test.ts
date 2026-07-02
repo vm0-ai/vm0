@@ -587,9 +587,7 @@ describe("CHAT-02: completed chat callback", () => {
         titlePrompts.push(body.messages[1]?.content ?? "");
         return "Debugging Node Apps";
       }
-      if (
-        systemContent.includes("Generate up to three concise follow-up prompts")
-      ) {
+      if (systemContent.includes("concise follow-up prompts")) {
         followupPrompts.push(body.messages[1]?.content ?? "");
         return JSON.stringify([
           { prompt: "Turn this into a checklist", kind: "talk" },
@@ -838,9 +836,7 @@ describe("CHAT-02: completed chat callback", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterCompletions((body) => {
       const systemContent = body.messages[0]?.content ?? "";
-      if (
-        systemContent.includes("Generate up to three concise follow-up prompts")
-      ) {
+      if (systemContent.includes("concise follow-up prompts")) {
         followupRequests += 1;
         return [
           "[",
@@ -910,9 +906,7 @@ describe("CHAT-02: completed chat callback", () => {
     chatCallbacks.mockOpenRouterCompletions(async (body) => {
       await openRouterGate.wait();
       const systemContent = body.messages[0]?.content ?? "";
-      if (
-        systemContent.includes("Generate up to three concise follow-up prompts")
-      ) {
+      if (systemContent.includes("concise follow-up prompts")) {
         return JSON.stringify([
           { prompt: "Review the queued result", kind: "talk" },
         ]);

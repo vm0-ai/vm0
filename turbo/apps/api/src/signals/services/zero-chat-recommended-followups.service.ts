@@ -3,7 +3,7 @@ import type {
   ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
 
-const RECOMMENDED_FOLLOWUP_LIMIT = 3;
+export const RECOMMENDED_FOLLOWUP_LIMIT = 3;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

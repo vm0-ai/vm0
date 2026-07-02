@@ -2258,11 +2258,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
           upstreamAuthorization = request.headers.get("authorization");
           const payload = openRouterBodySchema.parse(await request.json());
           const systemContent = payload.messages[0]?.content ?? "";
-          if (
-            systemContent.includes(
-              "Generate up to three concise follow-up prompts",
-            )
-          ) {
+          if (systemContent.includes("concise follow-up prompts")) {
             return HttpResponse.json({
               choices: [
                 {
