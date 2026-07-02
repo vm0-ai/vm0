@@ -1735,21 +1735,33 @@ function appendRecallUserMessage(params: {
       return { ok: true, createdAt: inserted.createdAt };
     }
     const [resolved] = await tx
-      .select({ createdAt: chatMessages.createdAt })
+      .select({
+        role: chatMessages.role,
+        runId: chatMessages.runId,
+        content: chatMessages.content,
+        createdAt: chatMessages.createdAt,
+      })
       .from(chatMessages)
       .where(
         and(
           eq(chatMessages.chatThreadId, params.threadId),
           eq(chatMessages.revokesMessageId, params.revokesMessageId),
-          eq(chatMessages.role, "user"),
-          isNull(chatMessages.runId),
         ),
       )
       .limit(1);
-    if (!resolved) {
-      return { ok: false, message: "Failed to insert recall user message" };
+    if (
+      resolved?.role === "user" &&
+      resolved.runId === null &&
+      resolved.content === null
+    ) {
+      return { ok: true, createdAt: resolved.createdAt };
     }
-    return { ok: true, createdAt: resolved.createdAt };
+    return {
+      ok: false,
+      message: resolved
+        ? "Only queued user messages can be recalled"
+        : "Failed to insert recall user message",
+    };
   });
 }
 
@@ -2547,7 +2559,16 @@ const createNormalChatRun$ = command(
         }
       }
       if (args.body.revokesMessageId) {
-        return conflict("Recommended follow-up has already been used");
+        const revocationError = await validateNormalRevocationTarget({
+          db: prepared.db,
+          threadId: prepared.thread.threadId,
+          revokesMessageId: args.body.revokesMessageId,
+        });
+        signal.throwIfAborted();
+        return (
+          revocationError ??
+          badRequestMessage("Recommended follow-up cannot be queued")
+        );
       }
       return await queueUnassociatedNormalMessage({
         prepared,
