@@ -3,6 +3,7 @@ import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { accept } from "../../lib/accept.ts";
+import { withCleanup } from "../utils.ts";
 import {
   agentConnectorAuthorizations,
   reloadAgentConnectorAuthorizations$,
@@ -59,18 +60,22 @@ const updateAuthorizedConnectors$ = command(
     }
 
     const client = get(zeroClient$)(zeroUserConnectorsContract);
-    await accept(
-      client.update({
-        params: { id: agentId },
-        body: { enabledTypes: [connectorValue], operation },
-        fetchOptions: { signal },
-      }),
-      [200],
+    await withCleanup(
+      accept(
+        client.update({
+          params: { id: agentId },
+          body: { enabledTypes: [connectorValue], operation },
+          fetchOptions: { signal },
+        }),
+        [200],
+      ),
+      () => {
+        set(reloadAgentConnectorAuthorizations$);
+      },
     );
     signal.throwIfAborted();
 
     await set(reloadOnboardingStatus$);
     signal.throwIfAborted();
-    set(reloadAgentConnectorAuthorizations$);
   },
 );

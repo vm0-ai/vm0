@@ -5,6 +5,7 @@ import { zeroClient$ } from "../../api-client.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
+import { withCleanup } from "../../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Agent selection
@@ -58,36 +59,40 @@ export const confirmPermissionDialog$ = command(
     }
     const createClient = get(zeroClient$);
     const client = createClient(zeroUserConnectorsContract);
-    const results = await Promise.allSettled(
-      [...selected].map(async (agentId) => {
-        signal.throwIfAborted();
-        const result = await accept(
-          client.update({
-            params: { id: agentId },
-            body: { enabledTypes: [connectorType], operation: "add" },
-            fetchOptions: { signal },
-          }),
-          [200, 404],
-        );
-        return result.status === 200;
-      }),
+    const results = await withCleanup(
+      Promise.allSettled(
+        [...selected].map(async (agentId) => {
+          signal.throwIfAborted();
+          const result = await accept(
+            client.update({
+              params: { id: agentId },
+              body: { enabledTypes: [connectorType], operation: "add" },
+              fetchOptions: { signal },
+            }),
+            [200, 404],
+          );
+          return result.status === 200;
+        }),
+      ),
+      () => {
+        set(reloadAgentConnectorAuthorizations$);
+      },
     );
     signal.throwIfAborted();
+    const enabledCount = results.filter((result) => {
+      return result.status === "fulfilled" && result.value;
+    }).length;
     const failed = results.find((result): result is PromiseRejectedResult => {
       return result.status === "rejected";
     });
     if (failed) {
       throw failed.reason;
     }
-    const enabledCount = results.filter((result) => {
-      return result.status === "fulfilled" && result.value;
-    }).length;
     if (enabledCount > 0) {
       toast.success(
         `${connectorLabel} enabled for ${enabledCount} agent${enabledCount > 1 ? "s" : ""}`,
       );
     }
-    set(reloadAgentConnectorAuthorizations$);
     onClose();
   },
 );

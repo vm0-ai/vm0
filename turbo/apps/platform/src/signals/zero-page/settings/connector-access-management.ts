@@ -11,7 +11,7 @@ import {
   agentConnectorAuthorizations,
   reloadAgentConnectorAuthorizations$,
 } from "../agent-connector-authorizations.ts";
-import { settle } from "../../utils.ts";
+import { settle, withCleanup } from "../../utils.ts";
 
 export interface ConnectorAgentAccessRow {
   readonly agent: TeamComposeItem;
@@ -211,19 +211,22 @@ export const setConnectorAgentAuthorization$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const client = get(zeroClient$)(zeroUserConnectorsContract);
-    await accept(
-      client.update({
-        params: { id: params.agentId },
-        body: {
-          enabledTypes: [params.connectorType],
-          operation: params.authorized ? "add" : "remove",
-        },
-        fetchOptions: { signal },
-      }),
-      [200],
+    await withCleanup(
+      accept(
+        client.update({
+          params: { id: params.agentId },
+          body: {
+            enabledTypes: [params.connectorType],
+            operation: params.authorized ? "add" : "remove",
+          },
+          fetchOptions: { signal },
+        }),
+        [200],
+      ),
+      () => {
+        set(reloadAgentConnectorAuthorizations$);
+      },
     );
     signal.throwIfAborted();
-
-    set(reloadAgentConnectorAuthorizations$);
   },
 );

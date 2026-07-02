@@ -5,6 +5,7 @@ import { accept } from "../../lib/accept.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agents$ } from "../agent.ts";
+import { withCleanup } from "../utils.ts";
 import {
   agentConnectorAuthorizations,
   reloadAgentConnectorAuthorizations$,
@@ -91,13 +92,18 @@ export const authorizeConnector$ = command(
     const createClient = get(zeroClient$);
     const client = createClient(zeroUserConnectorsContract);
 
-    await accept(
-      client.update({
-        params: { id: agentId },
-        body: { enabledTypes: [connectorType], operation: "add" },
-        fetchOptions: { signal },
-      }),
-      [200],
+    await withCleanup(
+      accept(
+        client.update({
+          params: { id: agentId },
+          body: { enabledTypes: [connectorType], operation: "add" },
+          fetchOptions: { signal },
+        }),
+        [200],
+      ),
+      () => {
+        set(reloadAgentConnectorAuthorizations$);
+      },
     );
     signal.throwIfAborted();
 
@@ -108,7 +114,6 @@ export const authorizeConnector$ = command(
         connectorAgentAuthorizationKey({ connectorType, agentId }),
       ]);
     });
-    set(reloadAgentConnectorAuthorizations$);
   },
 );
 

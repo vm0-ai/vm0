@@ -192,8 +192,8 @@ export const waitForGoogleDriveAndSyncArtifacts$ = command(
           createClient,
           signal: sig,
         });
-        sig.throwIfAborted();
         set(reloadAgentConnectorAuthorizations$);
+        sig.throwIfAborted();
 
         await syncArtifactFilesToGoogleDrive({
           createClient,
