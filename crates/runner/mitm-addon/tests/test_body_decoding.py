@@ -17,6 +17,18 @@ from body_limits import DEFAULT_BODY_DECODE_LIMIT, STREAM_DECODE_CHUNK_LIMIT
 from tests.body_decode_helpers import pseudo_random_ascii, track_brotli_decompressor
 
 
+def _compress_one_shot_body(encoding: str, body: bytes) -> bytes:
+    if encoding == "gzip":
+        return gzip.compress(body)
+    if encoding == "deflate":
+        return zlib.compress(body)
+    if encoding == "br":
+        return brotli.compress(body)
+    if encoding == "zstd":
+        return zstandard.ZstdCompressor().compress(body)
+    raise AssertionError(f"unsupported test encoding: {encoding}")
+
+
 class TestStreamDecodeFeed:
     """Direct tests for the bounded push-style streaming decoder."""
 
@@ -279,6 +291,58 @@ class TestStreamDecodeFeed:
         assert len(proxies) == 1
         assert proxies[0].count == 1
         assert chunks == []
+
+
+class TestDecodeRequestBodyForNetworkLogCapture:
+    def test_unsupported_encoding_returns_none(self, headers):
+        assert (
+            decode_request_body_for_network_log_capture(
+                b"opaque",
+                headers(("Content-Encoding", "x-custom")),
+            )
+            is None
+        )
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd"])
+    def test_invalid_compressed_body_returns_none(self, headers, encoding):
+        assert (
+            decode_request_body_for_network_log_capture(
+                b"not a compressed body",
+                headers(("Content-Encoding", encoding)),
+            )
+            is None
+        )
+
+    def test_identity_and_missing_encoding_return_original_bytes(self, headers):
+        data = b'{"hello":"world"}'
+
+        assert (
+            decode_request_body_for_network_log_capture(
+                data,
+                headers(("Content-Encoding", "identity")),
+            )
+            == data
+        )
+        assert decode_request_body_for_network_log_capture(data, headers()) == data
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd"])
+    def test_valid_empty_compressed_body_returns_empty_bytes(self, headers, encoding):
+        body = decode_request_body_for_network_log_capture(
+            _compress_one_shot_body(encoding, b""),
+            headers(("Content-Encoding", encoding)),
+        )
+
+        assert body is not None
+        assert body == b""
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd"])
+    def test_valid_compressed_body_returns_decoded_bytes(self, headers, encoding):
+        body = decode_request_body_for_network_log_capture(
+            _compress_one_shot_body(encoding, b"hello request"),
+            headers(("Content-Encoding", encoding)),
+        )
+
+        assert body == b"hello request"
 
 
 class TestDecompressBody:
