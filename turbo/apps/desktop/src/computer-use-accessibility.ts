@@ -18,9 +18,6 @@ export const SUPPORTED_COMPUTER_USE_CAPABILITIES = [
   "keyboard.press_key",
 ] as const;
 
-export type ComputerUseCommandKind =
-  (typeof SUPPORTED_COMPUTER_USE_CAPABILITIES)[number];
-
 type AccessibilityElementClickableKind = "mouse" | "pick" | "press" | "select";
 const DEFAULT_FOREGROUND_RECOVERY_POLICY =
   "on-window-unavailable" satisfies ComputerUseNativeForegroundRecoveryPolicy;
