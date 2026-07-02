@@ -21,12 +21,31 @@ const cacheRowSchema = z.object({
   last_requested_at: z.string(),
 });
 
+const storageStateSchema = z.object({
+  s3_prefix: z.string(),
+  size: z.number(),
+  file_count: z.number(),
+  head_version_id: z.string().nullable(),
+});
+
 export const testSystemStoragePresignedUrlCacheStateActionBodySchema =
   z.discriminatedUnion("action", [
     z.object({
       action: z.literal("cleanup"),
       object_key_prefix: z.string(),
-      storage_name_prefix: z.string(),
+    }),
+    z.object({
+      action: z.literal("read-storage-state"),
+      org_id: z.string(),
+      user_id: z.string(),
+      storage_name: z.string(),
+    }),
+    z.object({
+      action: z.literal("restore-storage-state"),
+      org_id: z.string(),
+      user_id: z.string(),
+      storage_name: z.string(),
+      previous: storageStateSchema.nullable(),
     }),
     z.object({
       action: z.literal("seed-storage-version"),
@@ -59,6 +78,7 @@ export const testSystemStoragePresignedUrlCacheStateActionResponseSchema =
   z.object({
     ok: z.literal(true),
     rows: z.array(cacheRowSchema).optional(),
+    storage_state: storageStateSchema.nullable().optional(),
   });
 
 export const testSystemStoragePresignedUrlCacheStateContract = c.router({

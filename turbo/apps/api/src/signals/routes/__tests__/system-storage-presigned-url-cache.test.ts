@@ -41,6 +41,13 @@ interface CacheRow {
   readonly last_requested_at: string;
 }
 
+interface StorageState {
+  readonly s3_prefix: string;
+  readonly size: number;
+  readonly file_count: number;
+  readonly head_version_id: string | null;
+}
+
 function stateRequest(
   body: TestSystemStoragePresignedUrlCacheStateActionBody,
 ): Promise<Response> {
@@ -69,19 +76,16 @@ async function stateAction(
 
 async function cleanupCacheState(args: {
   readonly objectKeyPrefix: string;
-  readonly storageNamePrefix: string;
 }): Promise<void> {
   await stateAction({
     action: "cleanup",
     object_key_prefix: args.objectKeyPrefix,
-    storage_name_prefix: args.storageNamePrefix,
   });
 }
 
 async function withCacheCleanup(
   args: {
     readonly objectKeyPrefix: string;
-    readonly storageNamePrefix: string;
   },
   run: () => Promise<void>,
 ): Promise<void> {
@@ -92,6 +96,55 @@ async function withCacheCleanup(
     },
     async (error: unknown) => {
       await cleanupCacheState(args);
+      throw error;
+    },
+  );
+}
+
+async function readStorageState(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly storageName: string;
+}): Promise<StorageState | null> {
+  const response = await stateAction({
+    action: "read-storage-state",
+    org_id: args.orgId,
+    user_id: args.userId,
+    storage_name: args.storageName,
+  });
+  return response.storage_state ?? null;
+}
+
+async function restoreStorageState(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly storageName: string;
+  readonly previous: StorageState | null;
+}): Promise<void> {
+  await stateAction({
+    action: "restore-storage-state",
+    org_id: args.orgId,
+    user_id: args.userId,
+    storage_name: args.storageName,
+    previous: args.previous,
+  });
+}
+
+async function withStorageStateRestore(
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly storageName: string;
+  },
+  run: () => Promise<void>,
+): Promise<void> {
+  const previous = await readStorageState(args);
+  await run().then(
+    async () => {
+      await restoreStorageState({ ...args, previous });
+    },
+    async (error: unknown) => {
+      await restoreStorageState({ ...args, previous });
       throw error;
     },
   );
@@ -229,56 +282,66 @@ describe("system storage presigned URL cache", () => {
     await withCacheCleanup(
       {
         objectKeyPrefix: skill.s3Prefix,
-        storageNamePrefix: skill.storageName,
       },
       async () => {
-        await seedStorageVersion({
-          orgId: SYSTEM_ORG_ID,
-          userId: VOLUME_ORG_USER_ID,
-          storageName: skill.storageName,
-          versionId: skill.versionId,
-          s3Prefix: skill.s3Prefix,
-          s3Key: skill.s3Key,
-        });
+        await withStorageStateRestore(
+          {
+            orgId: SYSTEM_ORG_ID,
+            userId: VOLUME_ORG_USER_ID,
+            storageName: skill.storageName,
+          },
+          async () => {
+            await seedStorageVersion({
+              orgId: SYSTEM_ORG_ID,
+              userId: VOLUME_ORG_USER_ID,
+              storageName: skill.storageName,
+              versionId: skill.versionId,
+              s3Prefix: skill.s3Prefix,
+              s3Key: skill.s3Key,
+            });
 
-        const firstRun = await api.createRun(actor, {
-          agentId,
-          prompt: "warm the system storage URL cache",
-          modelProvider: "anthropic-api-key",
-        });
-        await api.heartbeatRunner(runnerGroup);
-        const firstClaim = await api.claimRunnerJob(firstRun.runId);
-        const firstSkillEntry = firstClaim.storageManifest?.storages.find(
-          (storage) => {
-            return storage.vasStorageName === skill.storageName;
+            const firstRun = await api.createRun(actor, {
+              agentId,
+              prompt: "warm the system storage URL cache",
+              modelProvider: "anthropic-api-key",
+            });
+            await api.heartbeatRunner(runnerGroup);
+            const firstClaim = await api.claimRunnerJob(firstRun.runId);
+            const firstSkillEntry = firstClaim.storageManifest?.storages.find(
+              (storage) => {
+                return storage.vasStorageName === skill.storageName;
+              },
+            );
+            expect(firstSkillEntry?.archiveUrl).toContain(skill.versionId);
+
+            const rowsAfterFirst = await readCacheRowsByObjectKeyPrefix(
+              skill.s3Prefix,
+            );
+            expect(rowsAfterFirst).toHaveLength(1);
+            expect(rowsAfterFirst[0]?.presigned_url).toBe(
+              firstSkillEntry?.archiveUrl,
+            );
+
+            const secondRun = await api.createRun(actor, {
+              agentId,
+              prompt: "reuse the system storage URL cache",
+              modelProvider: "anthropic-api-key",
+            });
+            await api.heartbeatRunner(runnerGroup);
+            const secondClaim = await api.claimRunnerJob(secondRun.runId);
+            const secondSkillEntry = secondClaim.storageManifest?.storages.find(
+              (storage) => {
+                return storage.vasStorageName === skill.storageName;
+              },
+            );
+
+            expect(secondSkillEntry?.archiveUrl).toBe(
+              firstSkillEntry?.archiveUrl,
+            );
+            await api.requestCancelRun(actor, firstRun.runId, [200]);
+            await api.requestCancelRun(actor, secondRun.runId, [200]);
           },
         );
-        expect(firstSkillEntry?.archiveUrl).toContain(skill.versionId);
-
-        const rowsAfterFirst = await readCacheRowsByObjectKeyPrefix(
-          skill.s3Prefix,
-        );
-        expect(rowsAfterFirst).toHaveLength(1);
-        expect(rowsAfterFirst[0]?.presigned_url).toBe(
-          firstSkillEntry?.archiveUrl,
-        );
-
-        const secondRun = await api.createRun(actor, {
-          agentId,
-          prompt: "reuse the system storage URL cache",
-          modelProvider: "anthropic-api-key",
-        });
-        await api.heartbeatRunner(runnerGroup);
-        const secondClaim = await api.claimRunnerJob(secondRun.runId);
-        const secondSkillEntry = secondClaim.storageManifest?.storages.find(
-          (storage) => {
-            return storage.vasStorageName === skill.storageName;
-          },
-        );
-
-        expect(secondSkillEntry?.archiveUrl).toBe(firstSkillEntry?.archiveUrl);
-        await api.requestCancelRun(actor, firstRun.runId, [200]);
-        await api.requestCancelRun(actor, secondRun.runId, [200]);
       },
     );
   });
@@ -288,7 +351,6 @@ describe("system storage presigned URL cache", () => {
     await withCacheCleanup(
       {
         objectKeyPrefix: prefix,
-        storageNamePrefix: "cache-cron-",
       },
       async () => {
         const now = nowDate();
@@ -343,7 +405,6 @@ describe("system storage presigned URL cache", () => {
     await withCacheCleanup(
       {
         objectKeyPrefix: prefix,
-        storageNamePrefix: "cache-inactive-",
       },
       async () => {
         const now = nowDate();
