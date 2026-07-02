@@ -1,81 +1,113 @@
-import { openDB, type IDBPDatabase } from "idb";
+import {
+  openDB,
+  type DBSchema,
+  type IDBPDatabase,
+  type OpenDBCallbacks,
+} from "idb";
 import { logger } from "../log.ts";
 import { CHAT_IDB_VERSION, upgradeChatIdb } from "./chat-idb-schema.ts";
 
 const L = logger("ChatIdbStore");
+
+type OpenChatIdbDatabase = <DBTypes extends DBSchema | unknown = unknown>(
+  name: string,
+  version?: number,
+  callbacks?: OpenDBCallbacks<DBTypes>,
+) => Promise<IDBPDatabase<DBTypes>>;
 
 interface ChatIdbStoreState {
   readonly dbPromises: Map<string, Promise<IDBPDatabase>>;
   reloadTriggered: boolean;
 }
 
-function createChatIdbStoreState(): ChatIdbStoreState {
-  return {
-    dbPromises: new Map(),
-    reloadTriggered: false,
-  };
+interface ChatIdbStoreOptions {
+  readonly openDatabase?: OpenChatIdbDatabase;
+  readonly reload?: () => void;
 }
 
-const chatIdbStoreState = createChatIdbStoreState();
+interface ChatIdbStore {
+  readonly openChatIdb: (
+    userId: string,
+    orgId: string,
+  ) => Promise<IDBPDatabase>;
+}
 
 function chatIdbName(userId: string, orgId: string): string {
   return `vm0-chat-${userId}-${orgId}`;
 }
 
-function handleVersionChange(
-  dbName: string,
-  db: IDBPDatabase,
-  event: IDBVersionChangeEvent,
-): void {
-  L.warn("versionchange", {
-    dbName,
-    currentVersion: event.oldVersion,
-    nextVersion: event.newVersion,
-  });
-  db.close();
-  chatIdbStoreState.dbPromises.delete(dbName);
+export function createChatIdbStore(
+  options: ChatIdbStoreOptions = {},
+): ChatIdbStore {
+  const openDatabase = options.openDatabase ?? openDB;
+  const reload =
+    options.reload ??
+    (() => {
+      window.location.reload();
+    });
+  const state: ChatIdbStoreState = {
+    dbPromises: new Map(),
+    reloadTriggered: false,
+  };
 
-  if (chatIdbStoreState.reloadTriggered) {
-    return;
-  }
-  chatIdbStoreState.reloadTriggered = true;
-  window.location.reload();
-}
+  function handleVersionChange(
+    dbName: string,
+    db: IDBPDatabase,
+    event: IDBVersionChangeEvent,
+  ): void {
+    L.warn("versionchange", {
+      dbName,
+      currentVersion: event.oldVersion,
+      nextVersion: event.newVersion,
+    });
+    db.close();
+    state.dbPromises.delete(dbName);
 
-export function openChatIdb(
-  userId: string,
-  orgId: string,
-): Promise<IDBPDatabase> {
-  if (chatIdbStoreState.reloadTriggered) {
-    return Promise.reject(
-      new Error("Chat IndexedDB is closing for a page reload"),
-    );
-  }
-
-  const dbName = chatIdbName(userId, orgId);
-  const existing = chatIdbStoreState.dbPromises.get(dbName);
-  if (existing !== undefined) {
-    return existing;
+    if (state.reloadTriggered) {
+      return;
+    }
+    state.reloadTriggered = true;
+    reload();
   }
 
-  L.debug("openDB", { dbName });
-  const promise = openChatIdbConnection(dbName);
-  chatIdbStoreState.dbPromises.set(dbName, promise);
-  return promise;
-}
+  async function openChatIdbConnection(dbName: string): Promise<IDBPDatabase> {
+    const db = await openDatabase(dbName, CHAT_IDB_VERSION, {
+      upgrade(db, oldVersion) {
+        L.debug("openDB:upgrade", { dbName });
+        upgradeChatIdb(db, oldVersion);
+      },
+      blocked(currentVersion, blockedVersion) {
+        L.warn("openDB:blocked", { dbName, currentVersion, blockedVersion });
+      },
+    });
+    db.addEventListener("versionchange", (event) => {
+      handleVersionChange(dbName, db, event);
+    });
+    return db;
+  }
 
-async function openChatIdbConnection(dbName: string): Promise<IDBPDatabase> {
-  const db = await openDB(dbName, CHAT_IDB_VERSION, {
-    upgrade(db, oldVersion) {
-      L.debug("openDB:upgrade", { dbName });
-      upgradeChatIdb(db, oldVersion);
+  return {
+    openChatIdb(userId, orgId) {
+      if (state.reloadTriggered) {
+        return Promise.reject(
+          new Error("Chat IndexedDB is closing for a page reload"),
+        );
+      }
+
+      const dbName = chatIdbName(userId, orgId);
+      const existing = state.dbPromises.get(dbName);
+      if (existing !== undefined) {
+        return existing;
+      }
+
+      L.debug("openDB", { dbName });
+      const promise = openChatIdbConnection(dbName);
+      state.dbPromises.set(dbName, promise);
+      return promise;
     },
-    blocked(currentVersion, blockedVersion) {
-      L.warn("openDB:blocked", { dbName, currentVersion, blockedVersion });
-    },
-  });
-  db.addEventListener("versionchange", (event) => {
-    handleVersionChange(dbName, db, event);
-  });
-  return db;
+  };
 }
+
+const defaultChatIdbStore = createChatIdbStore();
+
+export const openChatIdb = defaultChatIdbStore.openChatIdb;

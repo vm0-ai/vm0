@@ -1,16 +1,11 @@
-import type { DBSchema, IDBPDatabase, OpenDBCallbacks } from "idb";
+import type { DBSchema, IDBPDatabase, OpenDBCallbacks, openDB } from "idb";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import {
   CHAT_IDB_VERSION,
   CHAT_MESSAGES_STORE,
   CHAT_THREAD_META_STORE,
 } from "./chat-idb-schema.ts";
-
-vi.mock("idb", () => {
-  return {
-    openDB: vi.fn(),
-  };
-});
+import { createChatIdbStore } from "./chat-idb-store.ts";
 
 type VersionChangeListener = (event: IDBVersionChangeEvent) => void;
 
@@ -91,10 +86,7 @@ function fakeSchemaDb(): FakeSchemaDb {
   };
 }
 
-async function setupSubject(dbs: readonly FakeDb[]) {
-  vi.resetModules();
-  const idb = await import("idb");
-  const openDB = vi.mocked(idb.openDB);
+function setupSubject(dbs: readonly FakeDb[]) {
   const calls: OpenCall[] = [];
   const dbQueue = [...dbs];
 
@@ -115,12 +107,13 @@ async function setupSubject(dbs: readonly FakeDb[]) {
     return Promise.resolve(next.db as IDBPDatabase<DBTypes>);
   }
 
-  openDB.mockImplementation(openDbImplementation);
-  const reload = vi.spyOn(window.location, "reload").mockImplementation(() => {
+  const openDatabaseMock = vi.fn(openDbImplementation);
+  const openDatabase = openDatabaseMock as unknown as typeof openDB;
+  const reload = vi.fn(() => {
     return undefined;
   });
-  const subject = await import("./chat-idb-store.ts");
-  return { calls, openDB, reload, subject };
+  const subject = createChatIdbStore({ openDatabase, reload });
+  return { calls, openDatabaseMock, reload, subject };
 }
 
 afterEach(() => {
@@ -130,7 +123,7 @@ afterEach(() => {
 describe("openChatIdb", () => {
   it("reuses the same open promise for the same user and org", async () => {
     const db = fakeDb();
-    const { calls, subject } = await setupSubject([db]);
+    const { calls, subject } = setupSubject([db]);
 
     const first = subject.openChatIdb("user_1", "org_1");
     const second = subject.openChatIdb("user_1", "org_1");
@@ -144,7 +137,7 @@ describe("openChatIdb", () => {
   it("uses separate open promises for different chat databases", async () => {
     const firstDb = fakeDb();
     const secondDb = fakeDb();
-    const { calls, subject } = await setupSubject([firstDb, secondDb]);
+    const { calls, subject } = setupSubject([firstDb, secondDb]);
 
     const first = subject.openChatIdb("user_1", "org_1");
     const second = subject.openChatIdb("user_1", "org_2");
@@ -161,7 +154,7 @@ describe("openChatIdb", () => {
 
   it("registers the shared upgrade callback", async () => {
     const db = fakeDb();
-    const { calls, subject } = await setupSubject([db]);
+    const { calls, subject } = setupSubject([db]);
 
     await subject.openChatIdb("user_1", "org_1");
 
@@ -195,7 +188,7 @@ describe("openChatIdb", () => {
 
   it("closes, invalidates, reloads once, and prevents stale reopen after version change", async () => {
     const firstDb = fakeDb();
-    const { openDB, reload, subject } = await setupSubject([firstDb]);
+    const { openDatabaseMock, reload, subject } = setupSubject([firstDb]);
 
     await subject.openChatIdb("user_1", "org_1");
 
@@ -212,13 +205,13 @@ describe("openChatIdb", () => {
     await expect(subject.openChatIdb("user_1", "org_1")).rejects.toThrow(
       "Chat IndexedDB is closing for a page reload",
     );
-    expect(openDB).toHaveBeenCalledTimes(1);
+    expect(openDatabaseMock).toHaveBeenCalledTimes(1);
   });
 
   it("prevents reusing another cached database after reload is pending", async () => {
     const firstDb = fakeDb();
     const secondDb = fakeDb();
-    const { openDB, subject } = await setupSubject([firstDb, secondDb]);
+    const { openDatabaseMock, subject } = setupSubject([firstDb, secondDb]);
 
     await subject.openChatIdb("user_1", "org_1");
     await subject.openChatIdb("user_1", "org_2");
@@ -230,12 +223,12 @@ describe("openChatIdb", () => {
     await expect(subject.openChatIdb("user_1", "org_2")).rejects.toThrow(
       "Chat IndexedDB is closing for a page reload",
     );
-    expect(openDB).toHaveBeenCalledTimes(2);
+    expect(openDatabaseMock).toHaveBeenCalledTimes(2);
   });
 
   it("does not close or reload when this open request is blocked", async () => {
     const db = fakeDb();
-    const { calls, reload, subject } = await setupSubject([db]);
+    const { calls, reload, subject } = setupSubject([db]);
 
     await subject.openChatIdb("user_1", "org_1");
     calls[0]?.callbacks?.blocked?.(
