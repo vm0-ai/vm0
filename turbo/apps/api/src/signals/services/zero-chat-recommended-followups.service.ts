@@ -37,12 +37,13 @@ function isJsonSyntaxPromptFragment(prompt: string): boolean {
     prompt === "]" ||
     prompt === "{" ||
     prompt === "}" ||
+    prompt === "]," ||
     prompt === "},"
   ) {
     return true;
   }
 
-  return /^"?(?:prompt|kind|generationType)"\s*:/.test(prompt);
+  return /^,?[{[]?\s*"?(?:prompt|kind|generationType)"\s*:/.test(prompt);
 }
 
 export function normalizeRecommendedFollowups(
