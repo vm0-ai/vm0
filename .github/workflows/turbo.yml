@@ -2015,13 +2015,14 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: ./.github/actions/toolchain-init
 
       - name: Download online runtime API schema
         env:
           GH_TOKEN: ${{ github.token }}
           SCHEMA_RELEASE_TAG: runtime-api-schema-prod
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/runtime-api-schema
@@ -2042,6 +2043,7 @@ jobs:
 
       - name: Check runtime API compatibility (report only)
         working-directory: turbo
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/runtime-api-schema
@@ -2061,7 +2063,7 @@ jobs:
 
       - name: Upload runtime API compatibility report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: runtime-api-compat-report
           path: |
