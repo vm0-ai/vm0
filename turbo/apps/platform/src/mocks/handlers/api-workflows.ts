@@ -39,6 +39,7 @@ function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
     ownerUserId: workflow.ownerUserId,
     ownerUserDisplayName: "Test User",
     ownerUserImageUrl: null,
+    createdAt: workflow.createdAt,
     canManage: workflow.canManage,
     canPublish: workflow.canPublish,
   };
