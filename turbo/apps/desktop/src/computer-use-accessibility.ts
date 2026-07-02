@@ -1033,6 +1033,16 @@ function missingField(field: string): ComputerUseCommandFailure {
   };
 }
 
+function countSnapshotElements(
+  elements: readonly AccessibilityElementSnapshot[],
+): number {
+  let count = 0;
+  for (const element of elements) {
+    count += 1 + countSnapshotElements(element.children ?? []);
+  }
+  return count;
+}
+
 function indexAccessibilitySnapshot(
   snapshot: AccessibilityAppStateSnapshot,
 ): IndexedAccessibilitySnapshot {
@@ -1488,17 +1498,31 @@ function publicAppStateSnapshot(
   return result;
 }
 
+interface ComputerUseAppStateMetrics {
+  readonly helperDurationMs: number;
+  readonly settle: boolean;
+  readonly rawNodeCount: number;
+  readonly nodeCount: number;
+}
+
 function buildComputerUseAppStateResult(
   snapshot: AccessibilityAppStateSnapshot,
   screenshot: ComputerUseAppStateScreenshot,
+  metrics: ComputerUseAppStateMetrics,
 ): Record<string, unknown> {
   const visibleElements = collectAccessibilityVisibleElements(
     snapshot,
     screenshot.sourceBounds,
   );
+  const appState = renderAccessibilityTree(snapshot);
   return {
     ...publicAppStateSnapshot(snapshot),
-    appState: renderAccessibilityTree(snapshot),
+    appState,
+    metrics: {
+      ...metrics,
+      appStateChars: appState.length,
+      visibleElementCount: visibleElements.length,
+    },
     visibleTextSource: "accessibility",
     visibleText: renderAccessibilityVisibleText(visibleElements),
     visibleElements,
@@ -1596,9 +1620,10 @@ async function getAppState(
   settle = false,
 ): Promise<ComputerUseCommandExecutionResult> {
   const id = snapshotId();
-  const snapshot = normalizeAccessibilitySnapshot(
-    await nativeBackend.getAppState(app, id, settle),
-  );
+  const helperStartedAt = Date.now();
+  const rawSnapshot = await nativeBackend.getAppState(app, id, settle);
+  const helperDurationMs = Date.now() - helperStartedAt;
+  const snapshot = normalizeAccessibilitySnapshot(rawSnapshot);
   const indexed = indexedAccessibilitySnapshot(snapshot);
   const screenshot = nativeAppStateScreenshot(indexed.snapshot);
   if ("status" in screenshot) {
@@ -1627,7 +1652,12 @@ async function getAppState(
   });
   return {
     status: "succeeded",
-    result: buildComputerUseAppStateResult(indexed.snapshot, screenshot),
+    result: buildComputerUseAppStateResult(indexed.snapshot, screenshot, {
+      helperDurationMs,
+      settle,
+      rawNodeCount: countSnapshotElements(rawSnapshot.elements),
+      nodeCount: countSnapshotElements(indexed.snapshot.elements),
+    }),
   };
 }
 

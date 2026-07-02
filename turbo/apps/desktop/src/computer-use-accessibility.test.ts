@@ -324,6 +324,14 @@ describe("executeComputerUseCommand", () => {
       "The focused UI element is 1 button Open.",
     );
     expect(result.result.visibleText).toContain("1 AXButton [AXTitle] Open");
+    expect(result.result.metrics).toMatchObject({
+      settle: false,
+      rawNodeCount: 2,
+      nodeCount: 2,
+      appStateChars: String(result.result.appState).length,
+      visibleElementCount: 2,
+      helperDurationMs: expect.any(Number),
+    });
     expect(result.result.elements).toStrictEqual([
       {
         index: 0,
