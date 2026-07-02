@@ -5,7 +5,8 @@
  *
  * Grammar mirrors crates/runner/mitm-addon/src/matching.py::parse_segment —
  * keep both implementations in lockstep. Any change to accepted or rejected
- * forms must land in both languages at once.
+ * forms must land in both languages and the shared contract fixture at once:
+ * testdata/firewall-semantics-contract.json.
  *
  * Accepted forms:
  *   - Plain literal (no braces).
