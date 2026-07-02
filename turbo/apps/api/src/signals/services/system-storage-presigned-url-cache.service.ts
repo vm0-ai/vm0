@@ -149,6 +149,9 @@ async function upsertCacheValues(
   if (values.length === 0) {
     return;
   }
+  const orderedValues = [...values].sort((left, right) => {
+    return left.cacheKey.localeCompare(right.cacheKey);
+  });
   const set = {
     bucket: sql`excluded.bucket`,
     objectKey: sql`excluded.object_key`,
@@ -166,7 +169,7 @@ async function upsertCacheValues(
   await db
     .insert(systemStoragePresignedUrlCache)
     .values(
-      values.map((value) => {
+      orderedValues.map((value) => {
         return {
           cacheKey: value.cacheKey,
           bucket: value.bucket,
