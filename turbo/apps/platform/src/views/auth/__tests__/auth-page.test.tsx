@@ -13,11 +13,14 @@ function setBrowserUrl(url: string): void {
 async function withProductionDeployment<T>(
   callback: () => T | Promise<T>,
 ): Promise<T> {
+  const previousVercelEnv = import.meta.env.VITE_VERCEL_ENV as
+    | string
+    | undefined;
   vi.stubEnv("VITE_VERCEL_ENV", "production");
   try {
     return await callback();
   } finally {
-    vi.stubEnv("VITE_VERCEL_ENV", "");
+    vi.stubEnv("VITE_VERCEL_ENV", previousVercelEnv);
   }
 }
 

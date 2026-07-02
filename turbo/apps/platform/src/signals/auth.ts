@@ -399,7 +399,7 @@ function buildVm0OnboardingEntryUrl(paramsInit?: URLSearchParams): string {
     params.set("vm0_experiment", VM0_ONBOARDING_EXPERIMENT);
   }
   setCurrentLandingContext(params);
-  const url = new URL(VM0_ONBOARDING_PATH, onboardingBaseUrl());
+  const url = new URL(`${onboardingBaseUrl()}${VM0_ONBOARDING_PATH}`);
   url.search = params.toString();
   appendDomainOverrideParam(url);
   return url.toString();
