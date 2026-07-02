@@ -259,6 +259,20 @@ describe("AUTH-03 agent user connectors", () => {
       new Set(["github", "slack"]),
     );
 
+    const added = await cfg.updateUserConnectors(
+      admin,
+      agent.agentId,
+      ["linear"],
+      "add",
+    );
+    expect(new Set(added.enabledTypes)).toStrictEqual(
+      new Set(["github", "slack", "linear"]),
+    );
+    const readAfterAdd = await cfg.readUserConnectors(admin, agent.agentId);
+    expect(new Set(readAfterAdd.enabledTypes)).toStrictEqual(
+      new Set(["github", "slack", "linear"]),
+    );
+
     const replaced = await cfg.updateUserConnectors(admin, agent.agentId, [
       "linear",
     ]);

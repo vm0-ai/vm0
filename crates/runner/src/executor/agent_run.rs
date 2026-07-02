@@ -209,25 +209,30 @@ fn record_session_history_download_timings(
     telemetry: &mut JobTelemetry,
     timings: &SessionHistoryDownloadTimings,
 ) {
+    let encoding = timings.encoding();
     record_session_history_download_phase(
         telemetry,
         "session_history_download_request_status",
         timings.request_status(),
+        encoding,
     );
     record_session_history_download_phase(
         telemetry,
         "session_history_download_body_read",
         timings.body_read(),
+        encoding,
     );
     record_session_history_download_phase(
         telemetry,
         "session_history_download_validation",
         timings.validation(),
+        encoding,
     );
     record_session_history_download_phase(
         telemetry,
         "session_history_download_hash_verification",
         timings.hash_verification(),
+        encoding,
     );
 }
 
@@ -235,13 +240,15 @@ fn record_session_history_download_phase(
     telemetry: &mut JobTelemetry,
     action_type: &'static str,
     phase: Option<SessionHistoryDownloadPhaseTiming>,
+    encoding: Option<&'static str>,
 ) {
     if let Some(phase) = phase {
-        telemetry.record(
+        telemetry.record_with_encoding(
             action_type,
             phase.elapsed(),
             phase.success(),
             (!phase.success()).then_some(SESSION_HISTORY_DOWNLOAD_PHASE_TELEMETRY_ERROR),
+            encoding,
         );
     }
 }
@@ -252,23 +259,26 @@ fn record_session_history_materializer_state(
     completed_before_restore: bool,
     wait: Duration,
     success: bool,
+    encoding: Option<&'static str>,
 ) {
     if !was_downloading {
         return;
     }
     if completed_before_restore {
-        telemetry.record(
+        telemetry.record_with_encoding(
             "session_history_materializer_completed_before_restore",
             Duration::ZERO,
             success,
             (!success).then_some(SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR),
+            encoding,
         );
     } else {
-        telemetry.record(
+        telemetry.record_with_encoding(
             "session_history_materializer_waited_at_restore",
             wait,
             success,
             (!success).then_some(SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR),
+            encoding,
         );
     }
 }
@@ -941,16 +951,24 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     materializer_completed_before_restore,
                     materialization_wait,
                     true,
+                    timings.encoding(),
                 );
                 if should_record_materialization_wait {
-                    telemetry.record(
+                    telemetry.record_with_encoding(
                         "session_history_materialization_wait",
                         materialization_wait,
                         true,
                         None,
+                        timings.encoding(),
                     );
                 }
-                telemetry.record("session_history_download", elapsed, true, None);
+                telemetry.record_with_encoding(
+                    "session_history_download",
+                    elapsed,
+                    true,
+                    None,
+                    timings.encoding(),
+                );
                 record_session_history_download_timings(telemetry, &timings);
                 Some(session)
             }
@@ -965,20 +983,23 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     materializer_completed_before_restore,
                     materialization_wait,
                     false,
+                    timings.encoding(),
                 );
                 if should_record_materialization_wait {
-                    telemetry.record(
+                    telemetry.record_with_encoding(
                         "session_history_materialization_wait",
                         materialization_wait,
                         false,
                         Some(SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR),
+                        timings.encoding(),
                     );
                 }
-                telemetry.record(
+                telemetry.record_with_encoding(
                     "session_history_download",
                     elapsed,
                     false,
                     Some(SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR),
+                    timings.encoding(),
                 );
                 record_session_history_download_timings(telemetry, &timings);
                 return Err(error);
