@@ -44,8 +44,10 @@ WORKSPACE_HOLDER_KILL_GRACE_SECONDS=1
 WORKSPACE_HOLDER_TERM_GRACE_SECONDS=1
 
 holder_record_dir="$(mktemp -d)"
-holder_records="$holder_record_dir/fast"
-remaining_holder_records="$holder_record_dir/fast-remaining"
+direct_holder_records="$holder_record_dir/direct"
+remaining_direct_holder_records="$holder_record_dir/direct-remaining"
+fd_holder_records="$holder_record_dir/fd"
+remaining_fd_holder_records="$holder_record_dir/fd-remaining"
 maps_holder_records="$holder_record_dir/maps"
 cleanup_workspace_holder_records() {
   rm -rf -- "$holder_record_dir"
@@ -142,10 +144,25 @@ scan_proc_maps() {
   return 0
 }
 
-scan_workspace_fast_holder_refs() {
+is_scannable_holder_pid() {
+  pid=$1
+  [ -d "/proc/$pid" ] || return 1
+  [ "$pid" != "$$" ] || return 1
+  [ "$pid" != "1" ] || return 1
+  return 0
+}
+
+scan_workspace_direct_holder_refs() {
   for proc_dir in /proc/[0-9]*; do
     pid=${proc_dir#/proc/}
-    scan_proc_fast_holder_refs "$pid"
+    scan_proc_direct_holder_refs "$pid"
+  done
+}
+
+scan_workspace_fd_holder_refs() {
+  for proc_dir in /proc/[0-9]*; do
+    pid=${proc_dir#/proc/}
+    scan_proc_fd_holder_refs "$pid"
   done
 }
 
@@ -156,16 +173,21 @@ scan_workspace_maps_holder_refs() {
   done
 }
 
-scan_proc_fast_holder_refs() {
+scan_proc_direct_holder_refs() {
   pid=$1
+  is_scannable_holder_pid "$pid" || return 0
   proc_dir="/proc/$pid"
-  [ -d "$proc_dir" ] || return 0
-  [ "$pid" != "$$" ] || return 0
-  [ "$pid" != "1" ] || return 0
 
   scan_proc_ref "$pid" cwd "$proc_dir/cwd"
   scan_proc_ref "$pid" root "$proc_dir/root"
   scan_proc_ref "$pid" exe "$proc_dir/exe"
+}
+
+scan_proc_fd_holder_refs() {
+  pid=$1
+  is_scannable_holder_pid "$pid" || return 0
+  proc_dir="/proc/$pid"
+
   for fd_ref in "$proc_dir"/fd/*; do
     [ -L "$fd_ref" ] || [ -e "$fd_ref" ] || continue
     scan_proc_ref "$pid" fd "$fd_ref"
@@ -174,21 +196,10 @@ scan_proc_fast_holder_refs() {
 
 scan_proc_maps_holder_refs() {
   pid=$1
+  is_scannable_holder_pid "$pid" || return 0
   proc_dir="/proc/$pid"
-  [ -d "$proc_dir" ] || return 0
-  [ "$pid" != "$$" ] || return 0
-  [ "$pid" != "1" ] || return 0
 
   scan_proc_maps "$pid" "$proc_dir/maps"
-}
-
-workspace_fast_holder_pids() {
-  for proc_dir in /proc/[0-9]*; do
-    pid=${proc_dir#/proc/}
-    if pid_has_fast_workspace_ref "$pid"; then
-      printf '%s\n' "$pid"
-    fi
-  done | sort -u
 }
 
 proc_path_has_workspace_ref() {
@@ -216,12 +227,10 @@ proc_maps_has_workspace_ref() {
   return 1
 }
 
-pid_has_fast_workspace_ref() {
+pid_has_direct_workspace_ref() {
   pid=$1
+  is_scannable_holder_pid "$pid" || return 1
   proc_dir="/proc/$pid"
-  [ -d "$proc_dir" ] || return 1
-  [ "$pid" != "$$" ] || return 1
-  [ "$pid" != "1" ] || return 1
 
   if proc_path_has_workspace_ref "$proc_dir/cwd"; then
     return 0
@@ -232,6 +241,15 @@ pid_has_fast_workspace_ref() {
   if proc_path_has_workspace_ref "$proc_dir/exe"; then
     return 0
   fi
+
+  return 1
+}
+
+pid_has_fd_workspace_ref() {
+  pid=$1
+  is_scannable_holder_pid "$pid" || return 1
+  proc_dir="/proc/$pid"
+
   for fd_ref in "$proc_dir"/fd/*; do
     [ -L "$fd_ref" ] || [ -e "$fd_ref" ] || continue
     if proc_path_has_workspace_ref "$fd_ref"; then
@@ -244,16 +262,39 @@ pid_has_fast_workspace_ref() {
 
 pid_has_maps_workspace_ref() {
   pid=$1
+  is_scannable_holder_pid "$pid" || return 1
   proc_dir="/proc/$pid"
-  [ -d "$proc_dir" ] || return 1
-  [ "$pid" != "$$" ] || return 1
-  [ "$pid" != "1" ] || return 1
 
   if proc_maps_has_workspace_ref "$proc_dir/maps"; then
     return 0
   fi
 
   return 1
+}
+
+pid_has_cleanup_workspace_ref() {
+  pid=$1
+  ref_mode=$2
+  case "$ref_mode" in
+    direct|fd)
+      if pid_has_direct_workspace_ref "$pid"; then
+        return 0
+      fi
+      pid_has_fd_workspace_ref "$pid"
+      return $?
+      ;;
+    maps)
+      if pid_has_direct_workspace_ref "$pid"; then
+        return 0
+      fi
+      if pid_has_fd_workspace_ref "$pid"; then
+        return 0
+      fi
+      pid_has_maps_workspace_ref "$pid"
+      return $?
+      ;;
+    *) return 1 ;;
+  esac
 }
 
 collect_and_log_workspace_holders() {
@@ -289,10 +330,9 @@ holder_record_pid_count() {
 
 term_workspace_holder_record_pids() {
   records_file=$1
+  ref_mode=$2
   for pid in $(holder_record_pids "$records_file"); do
-    [ "$pid" != "$$" ] || continue
-    [ "$pid" != "1" ] || continue
-    pid_has_fast_workspace_ref "$pid" || continue
+    pid_has_cleanup_workspace_ref "$pid" "$ref_mode" || continue
     kill -TERM "$pid" 2>/dev/null || true
   done
 }
@@ -301,58 +341,38 @@ kill_workspace_holder_record_pids() {
   records_file=$1
   ref_mode=$2
   for pid in $(holder_record_pids "$records_file"); do
-    [ "$pid" != "$$" ] || continue
-    [ "$pid" != "1" ] || continue
-    case "$ref_mode" in
-      fast) pid_has_fast_workspace_ref "$pid" || continue ;;
-      maps) pid_has_maps_workspace_ref "$pid" || continue ;;
-      *) continue ;;
-    esac
+    pid_has_cleanup_workspace_ref "$pid" "$ref_mode" || continue
     kill -KILL "$pid" 2>/dev/null || true
   done
 }
 
-wait_for_fast_workspace_holders_to_clear() {
-  grace_seconds=$1
-  attempts=$((grace_seconds * 10))
-  [ "$attempts" -gt 0 ] || attempts=1
-
-  while [ "$attempts" -gt 0 ]; do
-    if [ -z "$(workspace_fast_holder_pids)" ]; then
-      return 0
-    fi
-    attempts=$((attempts - 1))
-    sleep 0.1
-  done
-
-  [ -z "$(workspace_fast_holder_pids)" ]
-}
-
-holder_records_have_maps_workspace_ref() {
+holder_records_have_workspace_ref() {
   records_file=$1
+  ref_mode=$2
   for pid in $(holder_record_pids "$records_file"); do
-    if pid_has_maps_workspace_ref "$pid"; then
+    if pid_has_cleanup_workspace_ref "$pid" "$ref_mode"; then
       return 0
     fi
   done
   return 1
 }
 
-wait_for_maps_workspace_holders_to_clear() {
+wait_for_workspace_holder_records_to_clear() {
   records_file=$1
-  grace_seconds=$2
+  ref_mode=$2
+  grace_seconds=$3
   attempts=$((grace_seconds * 10))
   [ "$attempts" -gt 0 ] || attempts=1
 
   while [ "$attempts" -gt 0 ]; do
-    if ! holder_records_have_maps_workspace_ref "$records_file"; then
+    if ! holder_records_have_workspace_ref "$records_file" "$ref_mode"; then
       return 0
     fi
     attempts=$((attempts - 1))
     sleep 0.1
   done
 
-  ! holder_records_have_maps_workspace_ref "$records_file"
+  ! holder_records_have_workspace_ref "$records_file" "$ref_mode"
 }
 
 retry_workspace_unmount() {
@@ -370,38 +390,72 @@ retry_workspace_unmount() {
 }
 
 echo "workspace drive unmount failed; diagnosing holders under $workspace_dir" >&2
-echo "workspace holder cleanup: fast scan started" >&2
-scan_workspace_fast_holder_refs | collect_and_log_workspace_holders "$holder_records" fast
-holder_pid_count="$(holder_record_pid_count "$holder_records")"
-echo "workspace holder cleanup: fast scan holder_pid_count=$holder_pid_count" >&2
-if [ "$holder_pid_count" -eq 0 ]; then
-  echo "no fast workspace holder processes found" >&2
+echo "workspace holder cleanup: direct scan started" >&2
+scan_workspace_direct_holder_refs | collect_and_log_workspace_holders "$direct_holder_records" direct
+direct_holder_pid_count="$(holder_record_pid_count "$direct_holder_records")"
+echo "workspace holder cleanup: direct scan holder_pid_count=$direct_holder_pid_count" >&2
+if [ "$direct_holder_pid_count" -eq 0 ]; then
+  echo "no direct workspace holder processes found" >&2
 else
-  echo "workspace holder cleanup: TERM started holder_pid_count=$holder_pid_count" >&2
-  term_workspace_holder_record_pids "$holder_records"
-  wait_for_fast_workspace_holders_to_clear "$WORKSPACE_HOLDER_TERM_GRACE_SECONDS" || true
-  echo "workspace holder cleanup: TERM completed" >&2
+  echo "workspace holder cleanup: direct TERM started holder_pid_count=$direct_holder_pid_count" >&2
+  term_workspace_holder_record_pids "$direct_holder_records" direct
+  wait_for_workspace_holder_records_to_clear "$direct_holder_records" direct "$WORKSPACE_HOLDER_TERM_GRACE_SECONDS" || true
+  echo "workspace holder cleanup: direct TERM completed" >&2
 fi
 
-if retry_workspace_unmount "fast cleanup"; then
+if retry_workspace_unmount "direct cleanup"; then
   exit 0
 fi
 
-echo "workspace holder cleanup: fast rescan started" >&2
-scan_workspace_fast_holder_refs | collect_and_log_workspace_holders "$remaining_holder_records" fast-remaining
-remaining_holder_pid_count="$(holder_record_pid_count "$remaining_holder_records")"
-echo "workspace holder cleanup: fast rescan holder_pid_count=$remaining_holder_pid_count" >&2
-if [ "$remaining_holder_pid_count" -gt 0 ]; then
-  echo "workspace holder cleanup: KILL started holder_pid_count=$remaining_holder_pid_count" >&2
-  kill_workspace_holder_record_pids "$remaining_holder_records" fast
-  wait_for_fast_workspace_holders_to_clear "$WORKSPACE_HOLDER_KILL_GRACE_SECONDS" || true
-  echo "workspace holder cleanup: KILL completed" >&2
+echo "workspace holder cleanup: direct rescan started" >&2
+scan_workspace_direct_holder_refs | collect_and_log_workspace_holders "$remaining_direct_holder_records" direct-remaining
+remaining_direct_holder_pid_count="$(holder_record_pid_count "$remaining_direct_holder_records")"
+echo "workspace holder cleanup: direct rescan holder_pid_count=$remaining_direct_holder_pid_count" >&2
+if [ "$remaining_direct_holder_pid_count" -gt 0 ]; then
+  echo "workspace holder cleanup: direct KILL started holder_pid_count=$remaining_direct_holder_pid_count" >&2
+  kill_workspace_holder_record_pids "$remaining_direct_holder_records" direct
+  wait_for_workspace_holder_records_to_clear "$remaining_direct_holder_records" direct "$WORKSPACE_HOLDER_KILL_GRACE_SECONDS" || true
+  echo "workspace holder cleanup: direct KILL completed" >&2
 
-  if retry_workspace_unmount "fast KILL cleanup"; then
+  if retry_workspace_unmount "direct KILL cleanup"; then
     exit 0
   fi
 else
-  echo "no remaining fast workspace holder processes found" >&2
+  echo "no remaining direct workspace holder processes found" >&2
+fi
+
+echo "workspace holder cleanup: fd scan started" >&2
+scan_workspace_fd_holder_refs | collect_and_log_workspace_holders "$fd_holder_records" fd
+fd_holder_pid_count="$(holder_record_pid_count "$fd_holder_records")"
+echo "workspace holder cleanup: fd scan holder_pid_count=$fd_holder_pid_count" >&2
+if [ "$fd_holder_pid_count" -eq 0 ]; then
+  echo "no fd workspace holder processes found" >&2
+else
+  echo "workspace holder cleanup: fd TERM started holder_pid_count=$fd_holder_pid_count" >&2
+  term_workspace_holder_record_pids "$fd_holder_records" fd
+  wait_for_workspace_holder_records_to_clear "$fd_holder_records" fd "$WORKSPACE_HOLDER_TERM_GRACE_SECONDS" || true
+  echo "workspace holder cleanup: fd TERM completed" >&2
+fi
+
+if retry_workspace_unmount "fd cleanup"; then
+  exit 0
+fi
+
+echo "workspace holder cleanup: fd rescan started" >&2
+scan_workspace_fd_holder_refs | collect_and_log_workspace_holders "$remaining_fd_holder_records" fd-remaining
+remaining_fd_holder_pid_count="$(holder_record_pid_count "$remaining_fd_holder_records")"
+echo "workspace holder cleanup: fd rescan holder_pid_count=$remaining_fd_holder_pid_count" >&2
+if [ "$remaining_fd_holder_pid_count" -gt 0 ]; then
+  echo "workspace holder cleanup: fd KILL started holder_pid_count=$remaining_fd_holder_pid_count" >&2
+  kill_workspace_holder_record_pids "$remaining_fd_holder_records" fd
+  wait_for_workspace_holder_records_to_clear "$remaining_fd_holder_records" fd "$WORKSPACE_HOLDER_KILL_GRACE_SECONDS" || true
+  echo "workspace holder cleanup: fd KILL completed" >&2
+
+  if retry_workspace_unmount "fd KILL cleanup"; then
+    exit 0
+  fi
+else
+  echo "no remaining fd workspace holder processes found" >&2
 fi
 
 echo "workspace holder cleanup: slow maps scan started" >&2
@@ -411,7 +465,7 @@ echo "workspace holder cleanup: slow maps scan holder_pid_count=$maps_holder_pid
 if [ "$maps_holder_pid_count" -gt 0 ]; then
   echo "workspace holder cleanup: maps KILL started holder_pid_count=$maps_holder_pid_count" >&2
   kill_workspace_holder_record_pids "$maps_holder_records" maps
-  wait_for_maps_workspace_holders_to_clear "$maps_holder_records" "$WORKSPACE_HOLDER_KILL_GRACE_SECONDS" || true
+  wait_for_workspace_holder_records_to_clear "$maps_holder_records" maps "$WORKSPACE_HOLDER_KILL_GRACE_SECONDS" || true
   echo "workspace holder cleanup: maps KILL completed" >&2
 else
   echo "no workspace maps holder processes found" >&2
