@@ -103,16 +103,23 @@ enum DiscoveryWakeup {
     Poll(PollDue),
 }
 
-fn poll_held_session_states(states: &[HeldSessionState]) -> Cow<'_, [HeldSessionState]> {
+fn request_held_session_states<'a>(
+    states: &'a [HeldSessionState],
+    required_session_id: Option<&str>,
+) -> Cow<'a, [HeldSessionState]> {
     if states.len() <= MAX_HELD_SESSION_STATES {
         return Cow::Borrowed(states);
     }
 
     let mut capped = states.to_vec();
     capped.sort_unstable_by(|a, b| {
-        b.last_completed_at
-            .cmp(&a.last_completed_at)
-            .then_with(|| a.session_id.cmp(&b.session_id))
+        let a_required = required_session_id == Some(a.session_id.as_str());
+        let b_required = required_session_id == Some(b.session_id.as_str());
+        b_required.cmp(&a_required).then_with(|| {
+            b.last_completed_at
+                .cmp(&a.last_completed_at)
+                .then_with(|| a.session_id.cmp(&b.session_id))
+        })
     });
     capped.truncate(MAX_HELD_SESSION_STATES);
     Cow::Owned(capped)
@@ -652,9 +659,9 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             ClaimCapability::ResumeSessionHistoryRef,
             ClaimCapability::ResumeSessionHistoryCompressedRef,
         ],
-        held_session_states: candidate
-            .claim_held_session_states()
-            .map(|states| states.to_vec()),
+        held_session_states: candidate.claim_held_session_states().map(|states| {
+            request_held_session_states(states, candidate.cli_agent_session_id()).into_owned()
+        }),
     }
 }
 
@@ -677,7 +684,7 @@ fn poll_request_body(
             "pollReason": poll_reason_value(reason),
         },
     });
-    let held_session_states = poll_held_session_states(held_session_states);
+    let held_session_states = request_held_session_states(held_session_states, None);
     if !held_session_states.is_empty()
         && let Some(obj) = body.as_object_mut()
     {
@@ -1251,6 +1258,47 @@ mod tests {
         );
     }
 
+    #[test]
+    fn claim_request_body_caps_held_session_states_and_keeps_claim_session() {
+        let required_session_id = "sess-required";
+        let states: Vec<HeldSessionState> = (0..=MAX_HELD_SESSION_STATES)
+            .map(|index| HeldSessionState {
+                session_id: if index == 0 {
+                    required_session_id.to_string()
+                } else {
+                    format!("sess-{index:03}")
+                },
+                last_completed_at: format!(
+                    "2026-05-28T00:{:02}:{:02}.000Z",
+                    index / 60,
+                    index % 60
+                ),
+            })
+            .collect();
+        let mut candidate =
+            JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
+                .with_affinity_metadata(
+                    Some(required_session_id.to_string()),
+                    Some("2999-01-01T00:00:00.000Z".to_string()),
+                );
+        candidate.set_claim_held_session_states(states);
+
+        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
+        let held_session_states = body["heldSessionStates"].as_array().unwrap();
+
+        assert_eq!(held_session_states.len(), MAX_HELD_SESSION_STATES);
+        assert!(held_session_states.iter().any(|state| {
+            state["sessionId"]
+                .as_str()
+                .is_some_and(|session_id| session_id == required_session_id)
+        }));
+        assert!(held_session_states.iter().any(|state| {
+            state["sessionId"]
+                .as_str()
+                .is_some_and(|session_id| session_id == "sess-1024")
+        }));
+    }
+
     async fn write_poll_job_response(socket: &mut tokio::net::TcpStream, run_id: RunId) {
         let body = serde_json::json!({
             "job": {
@@ -1712,7 +1760,7 @@ mod tests {
     }
 
     #[test]
-    fn poll_held_session_states_caps_to_newest_contract_limit() {
+    fn request_held_session_states_caps_to_newest_contract_limit() {
         let states: Vec<HeldSessionState> = (0..=MAX_HELD_SESSION_STATES)
             .map(|index| HeldSessionState {
                 session_id: format!("sess-{index:03}"),
@@ -1724,7 +1772,7 @@ mod tests {
             })
             .collect();
 
-        let capped = poll_held_session_states(&states);
+        let capped = request_held_session_states(&states, None);
         let capped_sessions: Vec<&str> = capped
             .iter()
             .map(|state| state.session_id.as_str())
