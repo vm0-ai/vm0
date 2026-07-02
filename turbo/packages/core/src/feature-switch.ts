@@ -173,7 +173,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.DataExport]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the data export option in account menu",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
