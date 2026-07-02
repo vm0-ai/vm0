@@ -3805,6 +3805,41 @@ function lastRunThinkingMessageForIndicator(
   return runHasAssistantText ? undefined : lastMessage;
 }
 
+type LoadedMessageRunState = "running" | "finished" | null;
+
+function loadedMessageRunState(
+  groups: readonly GroupedChatMessageGroup[],
+): LoadedMessageRunState {
+  const messages = groups.flatMap((group) => {
+    return group.messages.filter((message) => {
+      return (
+        !message.isQueued &&
+        !(message.role === "assistant" && message.usage !== undefined)
+      );
+    });
+  });
+  const terminatedRunIds = terminatedRunIdsForCompletedWork(messages);
+
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]!;
+    if (
+      message.role === "assistant" &&
+      message.runLifecycleEvent !== undefined
+    ) {
+      return "finished";
+    }
+    if (message.interruptsRunId !== undefined) {
+      return "finished";
+    }
+    if (message.runId === undefined) {
+      continue;
+    }
+    return terminatedRunIds.has(message.runId) ? "finished" : "running";
+  }
+
+  return null;
+}
+
 function terminatedRunIdsForCompletedWork(
   messages: readonly EnrichedChatMessage[],
 ): Set<string> {
@@ -5373,8 +5408,6 @@ interface ThinkingIndicatorState {
 
 function getThinkingIndicatorState(args: {
   readonly groups: GroupedChatMessageGroup[];
-  readonly allFinishedResolved: boolean;
-  readonly allFinished: boolean;
   readonly latestRunStatus: string | null | undefined;
   readonly initialThinkingEnabled: boolean;
 }): ThinkingIndicatorState {
@@ -5399,20 +5432,23 @@ function getThinkingIndicatorState(args: {
     !lastAssistantHasRenderableMessage;
   const lastAssistantCancelled =
     isCancelledAssistantMessage(lastAssistantMessage);
-  const isQueued = args.latestRunStatus === "queued";
-  const lastThinkingMessage =
-    args.initialThinkingEnabled && !isQueued
-      ? rawLastThinkingMessage
-      : undefined;
+  const lastThinkingMessage = args.initialThinkingEnabled
+    ? rawLastThinkingMessage
+    : undefined;
+  const isQueued =
+    args.latestRunStatus === "queued" && lastThinkingMessage === undefined;
+  const messageRunState = loadedMessageRunState(args.groups);
+  const externalRunActive =
+    args.latestRunStatus === "running" || args.latestRunStatus === "queued";
   const runActive =
-    args.allFinishedResolved && !args.allFinished && !lastAssistantCancelled;
+    (messageRunState === "running" || externalRunActive) &&
+    !lastAssistantCancelled;
   const waitingForAssistant =
     lastGroup?.role === "user" &&
     lastGroup.messages.length > 0 &&
-    (!args.allFinishedResolved ||
-      lastGroup.messages.some((message) => {
-        return message.isOptimisticRun || message.runId !== undefined;
-      }));
+    lastGroup.messages.some((message) => {
+      return message.isOptimisticRun || message.runId !== undefined;
+    });
 
   return {
     lastGroup,
@@ -5432,9 +5468,6 @@ function ThinkingIndicator({
   thread: ChatThreadSignals;
   groups: GroupedChatMessageGroup[];
 }) {
-  const allFinishedLoadable = useLastLoadable(thread.allFinished$);
-  const allFinishedResolved = allFinishedLoadable.state === "hasData";
-  const allFinished = allFinishedResolved ? allFinishedLoadable.data : false;
   const [c1, c2, c3] = useGet(thread.blockColors$);
   const blockStyle = {
     "--zb-c1": c1,
@@ -5442,14 +5475,16 @@ function ThinkingIndicator({
     "--zb-c3": c3,
   } as CSSProperties;
 
-  const latestRunStatus = useLastResolved(thread.latestRunStatus$);
+  const latestRunStatusLoadable = useLastLoadable(thread.latestRunStatus$);
+  const latestRunStatus =
+    latestRunStatusLoadable.state === "hasData"
+      ? latestRunStatusLoadable.data
+      : undefined;
   const features = useLastResolved(featureSwitch$);
   const initialThinkingEnabled =
     features?.[FeatureSwitchKey.ChatInitialThinkingIndicator] ?? false;
   const indicatorState = getThinkingIndicatorState({
     groups,
-    allFinishedResolved,
-    allFinished,
     latestRunStatus,
     initialThinkingEnabled,
   });

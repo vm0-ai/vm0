@@ -1359,6 +1359,39 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("shows thinking from loaded messages before thread metadata resolves", async () => {
+    const threadGate = context.mocks.deferred<void>();
+    mockChatLifecycle(context, {
+      threadId: "thread-message-list-thinking-pending-metadata",
+      activeRunIds: ["run-message-list-thinking-pending-metadata"],
+      threadGate: threadGate.promise,
+      chatMessages: [
+        {
+          id: "msg-message-list-assistant-pending-metadata",
+          role: "assistant",
+          content: "I am still working on this.",
+          runId: "run-message-list-thinking-pending-metadata",
+          runEventId: "event-message-list-assistant-text-pending-metadata",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-message-list-thinking-pending-metadata",
+    });
+
+    await screen.findByText("I am still working on this.");
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+
+    threadGate.resolve();
+  });
+
   it("clears thinking when the same run completes even with stale active run ids", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-message-list-completed",
