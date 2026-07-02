@@ -11,6 +11,7 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { modelSelectionRequestFromSelection } from "./model-selection-request.ts";
 import { setAblyLoop$, setAblyPayloadLoop$ } from "../realtime.ts";
 import {
   createDeferredPromise,
@@ -88,7 +89,9 @@ const patchModelSelection$ = command(
     await accept(
       client.update({
         params: { id: threadId },
-        body: { modelSelection },
+        body: {
+          modelSelection: modelSelectionRequestFromSelection(modelSelection),
+        },
         fetchOptions: { signal },
       }),
       [204],

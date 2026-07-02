@@ -10,6 +10,7 @@ import {
 import {
   chatMessagesContract,
   type AttachFile,
+  type ChatRunOptionsRequest,
   type GenerationTemplateRequest,
   type ModelSelectionRequest,
   type PagedChatMessage,
@@ -136,6 +137,7 @@ interface ChatRunSendBody {
   readonly clientThreadId?: string;
   readonly clientMessageId?: string;
   readonly modelSelection?: ModelSelectionRequest;
+  readonly runOptions?: ChatRunOptionsRequest;
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly attachFiles?: readonly AttachFile[];
   readonly computerUseHostId?: string | null;
@@ -1643,6 +1645,102 @@ describe("CHAT-02: explicit provider pins", () => {
         await api.requestCancelRun(actor, vm0Body.runId, [200]);
       }
     }
+  }, 90_000);
+
+  it("passes Codex fast mode only for ChatGPT subscription GPT-5.5 and GPT-5.4 sends", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const fw = createFirewallApi(context);
+
+    await fw.seedOrgCodexProvider(actor, {
+      accessToken: "chatgpt-access",
+      refreshToken: "chatgpt-refresh",
+      accountId: "workspace-id",
+      idToken: "chatgpt-id-token",
+      expiresIn: 3600,
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+      {
+        model: "gpt-5.4-mini",
+        isDefault: false,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+      {
+        model: "gpt-5.4",
+        isDefault: false,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
+
+    const fast = await sendChatRun(actor, {
+      agentId,
+      prompt: "run codex fast",
+      modelSelection: {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "gpt-5.5",
+      },
+      runOptions: { codexServiceTier: "fast" },
+    });
+    const { claim } = await claimChatRun(runnerGroup, fast.runId);
+    const environment = claimEnvironment(claim);
+    expect(claim.cliAgentType).toBe("codex");
+    expect(environment.OPENAI_MODEL).toBe("gpt-5.5");
+    expect(environment.VM0_CODEX_SERVICE_TIER).toBe("fast");
+    expect(environment.CHATGPT_ACCESS_TOKEN).toBe(
+      modelProviderPlaceholder("codex-oauth-token", "CHATGPT_ACCESS_TOKEN"),
+    );
+    await cancelChatRun(actor, fast.runId);
+
+    const fastGpt54 = await sendChatRun(actor, {
+      agentId,
+      prompt: "run codex fast 5.4",
+      modelSelection: {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "gpt-5.4",
+      },
+      runOptions: { codexServiceTier: "fast" },
+    });
+    const { claim: gpt54Claim } = await claimChatRun(
+      runnerGroup,
+      fastGpt54.runId,
+    );
+    const gpt54Environment = claimEnvironment(gpt54Claim);
+    expect(gpt54Claim.cliAgentType).toBe("codex");
+    expect(gpt54Environment.OPENAI_MODEL).toBe("gpt-5.4");
+    expect(gpt54Environment.VM0_CODEX_SERVICE_TIER).toBe("fast");
+    await cancelChatRun(actor, fastGpt54.runId);
+
+    const rejectedThreadId = randomUUID();
+    const rejected = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "mini cannot fast",
+        clientThreadId: rejectedThreadId,
+        modelSelection: {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel: "gpt-5.4-mini",
+        },
+        runOptions: { codexServiceTier: "fast" },
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 or GPT-5.4 runs",
+    );
+    await chat.requestReadThread(actor, rejectedThreadId, [404]);
   }, 90_000);
 
   it("routes OpenRouter provider pins through runtime model aliases and firewall auth", async () => {

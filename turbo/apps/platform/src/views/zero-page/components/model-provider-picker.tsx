@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
-import { IconCpu } from "@tabler/icons-react";
+import { IconBolt, IconCpu } from "@tabler/icons-react";
 import {
   Select,
   SelectContent,
@@ -10,6 +10,7 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
+  Switch,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -25,6 +26,7 @@ import {
   type ModelProviderType,
   type OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
+import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies";
 import { userModelPreference$ } from "../../../signals/external/user-model-preference";
 import { billingStatusAsync$ } from "../../../signals/zero-page/billing";
@@ -46,6 +48,7 @@ const MODEL_FIRST_SELECTION_PROVIDER_ID =
 export interface ModelProviderSelection {
   modelProviderId: string;
   selectedModel: string;
+  codexServiceTier?: CodexServiceTier;
 }
 
 interface ModelProviderPickerProps {
@@ -87,6 +90,8 @@ const INHERIT_SENTINEL = "__inherit_default__";
 // the disabled variant to stop the measuring item from bleeding through.
 const MEASURABLE_HIDDEN_SELECT_ITEM_CLASS =
   "absolute left-0 top-0 h-8 w-px overflow-hidden opacity-0 data-[disabled]:opacity-0 pointer-events-none";
+
+const CODEX_FAST_SERVICE_TIER_MODELS = new Set(["gpt-5.5", "gpt-5.4"]);
 
 function PriceTierBadge({ tier }: { tier: Vm0ModelPriceTier }) {
   return (
@@ -254,12 +259,47 @@ function selectionAllowedValue(
     : null;
 }
 
+function codexFastModeAvailableForModel(
+  policies: OrgModelPolicy[],
+  selectedModel: string | null | undefined,
+): boolean {
+  if (!selectedModel || !CODEX_FAST_SERVICE_TIER_MODELS.has(selectedModel)) {
+    return false;
+  }
+  const policy = policies.find((candidate) => {
+    return candidate.model === selectedModel;
+  });
+  return (
+    policy?.routeStatus === "valid" &&
+    policy.defaultProviderType === "codex-oauth-token"
+  );
+}
+
+function selectionWithCodexServiceTier(
+  selection: ModelProviderSelection | null,
+  current: ModelProviderSelection | null,
+  policies: OrgModelPolicy[],
+): ModelProviderSelection | null {
+  if (!selection) {
+    return null;
+  }
+  if (
+    current?.codexServiceTier === "fast" &&
+    codexFastModeAvailableForModel(policies, selection.selectedModel)
+  ) {
+    return { ...selection, codexServiceTier: "fast" };
+  }
+  return selection;
+}
+
 function ModelFirstTriggerLabel({
   selectedModel,
+  codexServiceTier,
   placeholder,
   mobileIcon,
 }: {
   selectedModel: string | null;
+  codexServiceTier?: CodexServiceTier;
   placeholder: string;
   mobileIcon: boolean;
 }) {
@@ -278,8 +318,16 @@ function ModelFirstTriggerLabel({
       mobileIcon={mobileIcon}
       iconType={iconType}
       label={
-        <span className="truncate">
-          {getCanonicalModelDisplayName(selectedModel)}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate">
+            {getCanonicalModelDisplayName(selectedModel)}
+          </span>
+          {codexServiceTier === "fast" && (
+            <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded bg-amber-500/10 px-1.5 text-[11px] font-medium leading-none text-amber-700 dark:text-amber-300">
+              <IconBolt size={12} stroke={1.8} />
+              Fast
+            </span>
+          )}
         </span>
       }
     />
@@ -323,6 +371,7 @@ function ModelFirstDisabledPickerLabel({
     >
       <ModelFirstTriggerLabel
         selectedModel={selectedModel}
+        codexServiceTier={resolved?.codexServiceTier}
         placeholder={placeholder}
         mobileIcon={mobileIconTrigger}
       />
@@ -432,6 +481,46 @@ function ModelFirstPolicyItems({
   );
 }
 
+function CodexFastModeControl({
+  checked,
+  onCheckedChange,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <>
+      <SelectSeparator className="my-0" />
+      <div className="px-2 py-2">
+        <div className="flex min-w-0 items-center gap-3 rounded-md px-1.5 py-1">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300">
+            <IconBolt size={16} stroke={1.8} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium text-foreground">
+              Fast mode
+            </span>
+            <span className="block truncate text-xs text-muted-foreground">
+              Faster responses, higher Codex credit use
+            </span>
+          </span>
+          <Switch
+            checked={checked}
+            aria-label="Fast mode"
+            onCheckedChange={onCheckedChange}
+            onClick={(event) => {
+              event.stopPropagation();
+            }}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+            }}
+          />
+        </div>
+      </div>
+    </>
+  );
+}
+
 function ModelFirstModelPicker({
   value,
   onChange,
@@ -468,6 +557,13 @@ function ModelFirstModelPicker({
     selectablePolicies,
   );
   const selectedModel = resolved?.selectedModel ?? null;
+  const codexFastModeAvailable = codexFastModeAvailableForModel(
+    selectablePolicies,
+    selectedModel,
+  );
+  const codexServiceTier = codexFastModeAvailable
+    ? value?.codexServiceTier
+    : undefined;
   const explicitSelectedModel = selectableValue?.selectedModel ?? null;
   const selectValue =
     selectableValue?.selectedModel ?? selectedModel ?? INHERIT_SENTINEL;
@@ -506,7 +602,13 @@ function ModelFirstModelPicker({
           openComparePlans();
           return;
         }
-        onChange(modelFirstSelectionFromRaw(raw));
+        onChange(
+          selectionWithCodexServiceTier(
+            modelFirstSelectionFromRaw(raw),
+            value,
+            selectablePolicies,
+          ),
+        );
       }}
       open={open}
       onOpenChange={onOpenChange}
@@ -518,6 +620,7 @@ function ModelFirstModelPicker({
         <SelectValue placeholder={placeholder}>
           <ModelFirstTriggerLabel
             selectedModel={selectedModel}
+            codexServiceTier={codexServiceTier}
             placeholder={placeholder}
             mobileIcon={mobileIconTrigger}
           />
@@ -540,6 +643,18 @@ function ModelFirstModelPicker({
           limitedFree1={limitedFree1}
           showSeparator={false}
         />
+        {codexFastModeAvailable && selectedModel && (
+          <CodexFastModeControl
+            checked={codexServiceTier === "fast"}
+            onCheckedChange={(checked) => {
+              onChange({
+                modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+                selectedModel,
+                ...(checked ? { codexServiceTier: "fast" as const } : {}),
+              });
+            }}
+          />
+        )}
       </SelectContent>
     </Select>
   );

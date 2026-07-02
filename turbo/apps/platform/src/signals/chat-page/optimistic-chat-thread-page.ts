@@ -66,6 +66,11 @@ import { resolveModelFirstUserDefaultSelection } from "../zero-page/model-defaul
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { logger } from "../log.ts";
+import {
+  modelSelectionRequestFromSelection,
+  runOptionsFromModelProviderSelection,
+} from "./model-selection-request.ts";
+import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 
 export type { OptimisticChatPane };
 export { optimisticChatThread$ };
@@ -101,7 +106,7 @@ const writeThreadAgentToCache$ = command(
 interface SendNewThreadMessageRequest {
   agentId: string;
   prompt: string;
-  modelSelection: ModelSelectionRequest | null;
+  modelSelection: ModelProviderSelection | null;
   generationTemplate: GenerationTemplateRequest | undefined;
   computerUseHostId?: string | null;
 }
@@ -134,17 +139,19 @@ function newThreadSendBody({
   threadId: string;
   clientMessageId: string;
   prepared: PreparedNewThreadPayload;
-  modelSelection: ModelSelectionRequest | null;
+  modelSelection: ModelProviderSelection | null;
   generationTemplate: GenerationTemplateRequest | undefined;
   computerUseHostId?: string | null;
 }) {
+  const runOptions = runOptionsFromModelProviderSelection(modelSelection);
   return {
     agentId,
     prompt: prepared.prompt,
     clientThreadId: threadId,
     hasTextContent: prepared.hasTextContent,
     clientMessageId,
-    modelSelection,
+    modelSelection: modelSelectionRequestFromSelection(modelSelection),
+    ...(runOptions ? { runOptions } : {}),
     generationTemplate,
     ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
     attachFiles: prepared.attachFiles,
@@ -709,7 +716,8 @@ const sendNewThreadMessage$ = command(
         createClient,
         threadId: result.body.threadId,
         agentId,
-        modelSelection: replayModelSelection,
+        modelSelection:
+          modelSelectionRequestFromSelection(replayModelSelection),
         computerUseHostId:
           computerUseHostId === undefined ? undefined : replayComputerUseHostId,
         entries: queuedMessages,

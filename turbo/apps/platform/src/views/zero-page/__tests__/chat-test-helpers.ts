@@ -13,6 +13,7 @@ import {
   chatThreadComputerUseHostContract,
   chatThreadMessagesContract,
   chatMessagesContract,
+  type ChatRunOptionsRequest,
   type GenerationTemplateRequest,
   type ModelSelectionRequest,
   type PagedChatMessage,
@@ -436,6 +437,7 @@ export function mockChatLifecycle(
       hasTextContent?: boolean;
       generationTemplate?: GenerationTemplateRequest;
       modelSelection?: ModelSelectionRequest | null;
+      runOptions?: ChatRunOptionsRequest;
       computerUseHostId?: string | null;
       revokesMessageId?: string;
     }) => void;
@@ -657,6 +659,7 @@ export function mockChatLifecycle(
     hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
     modelSelection?: ModelSelectionRequest | null;
+    runOptions?: ChatRunOptionsRequest;
     computerUseHostId?: string | null;
     revokesMessageId?: string;
   }) => {

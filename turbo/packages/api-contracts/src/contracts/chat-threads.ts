@@ -386,6 +386,12 @@ const modelSelectionRequestSchema = z
     }
   });
 
+const codexServiceTierSchema = z.enum(["fast"]);
+
+const chatRunOptionsRequestSchema = z.object({
+  codexServiceTier: codexServiceTierSchema.optional(),
+});
+
 /**
  * Chat threads list route contract (/api/chat-threads)
  */
@@ -786,6 +792,7 @@ export const chatMessagesContract = c.router({
          * thread override and fall back to agent/org defaults.
          */
         modelSelection: modelSelectionRequestSchema.nullable().optional(),
+        runOptions: chatRunOptionsRequestSchema.optional(),
         generationTemplate: generationTemplateRequestSchema.optional(),
         computerUseHostId: z.string().uuid().nullable().optional(),
         // Optional for backward compatibility: older clients that omit this field
@@ -815,6 +822,7 @@ export const chatMessagesContract = c.router({
         clientThreadId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
+        runOptions: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
@@ -832,6 +840,7 @@ export const chatMessagesContract = c.router({
         clientThreadId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
+        runOptions: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
@@ -1106,6 +1115,7 @@ export {
   chatThreadDetailSchema,
   chatThreadMetadataSchema,
   modelSelectionRequestSchema,
+  chatRunOptionsRequestSchema,
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
   videoGenerationTemplateRequestSchema,
@@ -1125,6 +1135,8 @@ export {
 };
 
 export type ModelSelectionRequest = z.infer<typeof modelSelectionRequestSchema>;
+export type CodexServiceTier = z.infer<typeof codexServiceTierSchema>;
+export type ChatRunOptionsRequest = z.infer<typeof chatRunOptionsRequestSchema>;
 export type GenerationTemplateRequest = z.infer<
   typeof generationTemplateRequestSchema
 >;

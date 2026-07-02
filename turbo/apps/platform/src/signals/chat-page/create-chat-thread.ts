@@ -46,11 +46,14 @@ import {
   type AttachFile,
   type GenerationTemplateRequest,
   type ChatThreadArtifactRun,
-  type ModelSelectionRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
+import {
+  modelSelectionRequestFromSelection,
+  runOptionsFromModelProviderSelection,
+} from "./model-selection-request.ts";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
@@ -2567,7 +2570,7 @@ function createSendMessage(deps: SendMessageDeps) {
     async (
       { get, set },
       prompt: string,
-      modelSelection: ModelSelectionRequest | null,
+      modelSelection: ModelProviderSelection | null,
       options: SendMessageOptions | undefined,
       signal: AbortSignal,
     ) => {
@@ -2638,6 +2641,7 @@ function createSendMessage(deps: SendMessageDeps) {
       );
 
       const client = get(zeroClient$)(chatMessagesContract);
+      const runOptions = runOptionsFromModelProviderSelection(modelSelection);
       const [, sendResult] = await Promise.all([
         set(flushDraftClear$, signal),
         accept(
@@ -2648,7 +2652,9 @@ function createSendMessage(deps: SendMessageDeps) {
               threadId: threadId,
               hasTextContent: result.hasTextContent,
               clientMessageId,
-              modelSelection,
+              modelSelection:
+                modelSelectionRequestFromSelection(modelSelection),
+              ...(runOptions ? { runOptions } : {}),
               generationTemplate,
               ...(options && "computerUseHostId" in options
                 ? { computerUseHostId: options.computerUseHostId ?? null }

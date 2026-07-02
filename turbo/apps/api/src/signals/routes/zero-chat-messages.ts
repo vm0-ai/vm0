@@ -105,6 +105,9 @@ interface NormalSendBody {
     readonly modelProviderId: string;
     readonly selectedModel: string;
   } | null;
+  readonly runOptions?: {
+    readonly codexServiceTier?: "fast";
+  };
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly hasTextContent?: boolean;
   readonly attachFiles?: AttachFile[];
@@ -137,6 +140,8 @@ interface AgentForChatSend {
 }
 
 type ThreadModelPin = ModelFirstPin;
+
+const CODEX_FAST_SERVICE_TIER_MODELS = new Set(["gpt-5.5", "gpt-5.4"]);
 
 interface ResolvedThread {
   readonly threadId: string;
@@ -1277,6 +1282,74 @@ async function validateModelSelection(params: {
   return undefined;
 }
 
+async function resolveCodexServiceTierValidationPin(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly body: NormalSendBody;
+}): Promise<
+  | ThreadModelPin
+  | ReturnType<typeof providerDeleted>
+  | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof insufficientCredits>
+> {
+  if (params.body.modelSelection) {
+    return await resolveModelSelectionPin({
+      db: params.db,
+      orgId: params.orgId,
+      userId: params.userId,
+      modelSelection: params.body.modelSelection,
+    });
+  }
+  if (params.body.modelSelection === undefined && params.body.threadId) {
+    const existing = await existingModelFirstThreadPin(
+      params.db,
+      params.body.threadId,
+    );
+    if (existing) {
+      return await resolveStoredModelFirstPin({
+        db: params.db,
+        orgId: params.orgId,
+        userId: params.userId,
+        pin: existing,
+      });
+    }
+  }
+  return await resolveDefaultModelFirstPin(
+    params.db,
+    params.orgId,
+    params.userId,
+  );
+}
+
+async function validateCodexServiceTierBeforeThread(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly body: NormalSendBody;
+}): Promise<NormalSendFailure | undefined> {
+  if (!codexFastServiceTierRequested(params.body)) {
+    return undefined;
+  }
+  const modelPin = await resolveCodexServiceTierValidationPin(params);
+  if ("status" in modelPin) {
+    return modelPin;
+  }
+  const providerAdmission = await resolveModelFirstProviderAdmission({
+    db: params.db,
+    orgId: params.orgId,
+    userId: params.userId,
+    modelPin,
+    requestedModelProvider: requestedModelProviderFor(params.body),
+  });
+  const codexServiceTierError = validateCodexServiceTier({
+    body: params.body,
+    modelPin,
+    providerAdmission,
+  });
+  return codexServiceTierError ?? providerAdmission.error ?? undefined;
+}
+
 async function updateUserModelPreference(
   db: Db,
   orgId: string,
@@ -2109,6 +2182,16 @@ const prepareNormalSend$ = command(
     if (modelError) {
       return modelError;
     }
+    const codexServiceTierError = await validateCodexServiceTierBeforeThread({
+      db,
+      orgId: args.orgId,
+      userId: args.userId,
+      body: args.body,
+    });
+    signal.throwIfAborted();
+    if (codexServiceTierError) {
+      return codexServiceTierError;
+    }
     if (args.body.generationTemplate) {
       const validation = buildGenerationTemplatePrompt(
         args.body.generationTemplate,
@@ -2497,6 +2580,50 @@ async function resolveTimedProviderAdmission(params: {
   );
 }
 
+function codexFastServiceTierRequested(body: NormalSendBody): boolean {
+  return body.runOptions?.codexServiceTier === "fast";
+}
+
+function isCodexFastServiceTierModel(
+  model: string | null | undefined,
+): boolean {
+  const bareModel = model?.startsWith("openai/")
+    ? model.slice("openai/".length)
+    : model;
+  return CODEX_FAST_SERVICE_TIER_MODELS.has(bareModel ?? "");
+}
+
+function validateCodexServiceTier(params: {
+  readonly body: NormalSendBody;
+  readonly modelPin: ThreadModelPin;
+  readonly providerAdmission: ModelFirstProviderAdmission;
+}): ReturnType<typeof badRequestMessage> | undefined {
+  if (!codexFastServiceTierRequested(params.body)) {
+    return undefined;
+  }
+  if (
+    params.providerAdmission.effectiveModelProvider === "codex-oauth-token" &&
+    isCodexFastServiceTierModel(params.modelPin.selectedModel)
+  ) {
+    return undefined;
+  }
+  return badRequestMessage(
+    "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 or GPT-5.4 runs",
+  );
+}
+
+function codexServiceTierForRun(params: {
+  readonly body: NormalSendBody;
+  readonly modelPin: ThreadModelPin;
+  readonly providerAdmission: ModelFirstProviderAdmission;
+}): "fast" | undefined {
+  return codexFastServiceTierRequested(params.body) &&
+    params.providerAdmission.effectiveModelProvider === "codex-oauth-token" &&
+    isCodexFastServiceTierModel(params.modelPin.selectedModel)
+    ? "fast"
+    : undefined;
+}
+
 function buildCreateZeroRunArgs(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
@@ -2514,6 +2641,11 @@ function buildCreateZeroRunArgs(params: {
     modelProviderCredentialScope:
       modelPin.modelProviderCredentialScope ?? undefined,
     selectedModelOverride: modelPin.selectedModel ?? undefined,
+    codexServiceTier: codexServiceTierForRun({
+      body: args.body,
+      modelPin,
+      providerAdmission,
+    }),
     callbacks: [
       {
         internalKind: "chat" as const,
@@ -2598,6 +2730,15 @@ const createNormalChatRun$ = command(
         userId: args.userId,
         orgId: args.orgId,
       });
+    }
+
+    const codexServiceTierError = validateCodexServiceTier({
+      body: args.body,
+      modelPin,
+      providerAdmission,
+    });
+    if (codexServiceTierError) {
+      return codexServiceTierError;
     }
 
     const createRunArgs = await buildTimedCreateZeroRunArgs({

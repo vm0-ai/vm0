@@ -1105,6 +1105,72 @@ describe("chat composer models", () => {
     await expectComposerModel("Claude Opus 4.7");
   });
 
+  it("sends Codex fast mode as a run option from the model picker", async () => {
+    const user = userEvent.setup({ delay: null });
+    const codexProvider = buildProvider({
+      id: "00000000-0000-4000-a000-000000000912",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: null,
+      authMethod: "auth_json",
+      secretNames: ["CODEX_AUTH_JSON"],
+    });
+    let sentBody:
+      | {
+          modelSelection?: {
+            modelProviderId: string;
+            selectedModel: string;
+          } | null;
+          runOptions?: { codexServiceTier?: "fast" };
+        }
+      | undefined;
+
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000911",
+        model: "gpt-5.5",
+        modelLabel: "GPT-5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([codexProvider]);
+    mockAgent();
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        sentBody = body;
+      },
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    click(await findComposerModel("GPT-5.5"));
+    await expect(screen.findByText("Fast mode")).resolves.toBeInTheDocument();
+    click(screen.getByLabelText("Fast mode"));
+    await expect(screen.findByText("Fast")).resolves.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    });
+
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Use fast mode",
+    );
+
+    await waitFor(() => {
+      expect(sentBody?.modelSelection).toStrictEqual({
+        modelProviderId: "00000000-0000-4000-8000-000000000000",
+        selectedModel: "gpt-5.5",
+      });
+      expect(sentBody?.runOptions).toStrictEqual({
+        codexServiceTier: "fast",
+      });
+    });
+  });
+
   it("keeps the agent chat model picker open while user model preference refreshes", async () => {
     const user = userEvent.setup({ delay: null });
     const pendingPreferenceReload = context.mocks.deferred<void>();
