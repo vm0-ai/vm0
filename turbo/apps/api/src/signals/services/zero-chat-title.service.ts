@@ -1,8 +1,6 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
-  type ChatMessageRecommendedFollowup,
-  type ChatMessageRecommendedFollowupGenerationType,
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -14,6 +12,10 @@ import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
 import { safeJsonParse, settle } from "../utils";
 import { visibleChatMessageCondition } from "./zero-chat-message-shared.service";
+import {
+  RECOMMENDED_FOLLOWUP_LIMIT,
+  normalizeRecommendedFollowups,
+} from "./zero-chat-recommended-followups.service";
 
 const log = logger("api:zero:chat-title");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
@@ -23,7 +25,6 @@ const TITLE_CONTEXT_CHAR_CAP = 150;
 const TITLE_PRIOR_MESSAGE_CAP = 10;
 const FOLLOWUP_CONTEXT_CHAR_CAP = 700;
 const FOLLOWUP_CONTEXT_MESSAGE_CAP = 8;
-const FOLLOWUP_LIMIT = 3;
 const BUILT_IN_GENERATION_FOLLOWUP_CONTEXT = [
   "Supported VM0 built-in generation tasks:",
   "- image: create or edit images and visual assets.",
@@ -346,59 +347,6 @@ export function generateChatNotificationSummary(
   );
 }
 
-function sanitizeFollowup(raw: string): string | null {
-  const text = raw
-    .replace(/^\s*(?:[-*]|\d+[.)])\s+/, "")
-    .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
-    .trim();
-  if (text.length === 0) {
-    return null;
-  }
-  return text.length > 120 ? `${text.slice(0, 117).trim()}...` : text;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isRecommendedFollowupGenerationType(
-  value: unknown,
-): value is ChatMessageRecommendedFollowupGenerationType {
-  return (
-    value === "image" ||
-    value === "video" ||
-    value === "presentation" ||
-    value === "website"
-  );
-}
-
-function recommendedFollowupFromUnknown(
-  value: unknown,
-): ChatMessageRecommendedFollowup | null {
-  const prompt = sanitizeFollowup(
-    typeof value === "string"
-      ? value
-      : isRecord(value) && typeof value.prompt === "string"
-        ? value.prompt
-        : "",
-  );
-  if (prompt === null) {
-    return null;
-  }
-
-  if (!isRecord(value) || value.kind !== "generate") {
-    return { prompt, kind: "talk" };
-  }
-
-  return {
-    prompt,
-    kind: "generate",
-    ...(isRecommendedFollowupGenerationType(value.generationType)
-      ? { generationType: value.generationType }
-      : {}),
-  };
-}
-
 function parseRecommendedFollowups(
   text: string,
 ): ChatMessageRecommendedFollowups {
@@ -408,29 +356,7 @@ function parseRecommendedFollowups(
     .replace(/\s*```$/i, "")
     .trim();
 
-  const fromJson = (() => {
-    const parsed = safeJsonParse(unfenced);
-    if (Array.isArray(parsed)) {
-      return parsed;
-    }
-    return null;
-  })();
-
-  const candidates = fromJson ?? unfenced.split("\n");
-  const seen = new Set<string>();
-  const suggestions: ChatMessageRecommendedFollowups = [];
-  for (const candidate of candidates) {
-    const suggestion = recommendedFollowupFromUnknown(candidate);
-    if (suggestion === null || seen.has(suggestion.prompt)) {
-      continue;
-    }
-    seen.add(suggestion.prompt);
-    suggestions.push(suggestion);
-    if (suggestions.length >= FOLLOWUP_LIMIT) {
-      break;
-    }
-  }
-  return suggestions;
+  return normalizeRecommendedFollowups(safeJsonParse(unfenced));
 }
 
 async function getLatestFollowupContextMessages(
@@ -487,7 +413,7 @@ async function generateRecommendedFollowups(
       {
         role: "system",
         content: [
-          "Generate up to three concise follow-up prompts the user may ask next in this chat.",
+          `Generate up to ${RECOMMENDED_FOLLOWUP_LIMIT.toString()} concise follow-up prompts the user may ask next in this chat.`,
           "Make each prompt specific to the latest assistant reply, actionable, and useful. Match the user's language.",
           'Classify each item as kind "talk" for normal discussion, planning, analysis, or refinement, or kind "generate" when the prompt asks VM0 to create one of the supported built-in generation outputs.',
           BUILT_IN_GENERATION_FOLLOWUP_CONTEXT,

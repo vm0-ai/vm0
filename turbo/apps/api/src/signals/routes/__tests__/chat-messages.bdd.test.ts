@@ -627,6 +627,69 @@ describe("CHAT-02: chat thread message pagination", () => {
     );
     expect(crossThreadRead.status).toBe(404);
   });
+
+  it("filters historical raw JSON syntax follow-up prompts when reading messages", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const threadId = randomUUID();
+    await chat.createThread(actor, {
+      agentId,
+      title: "Historical follow-up cleanup",
+      clientThreadId: threadId,
+    });
+
+    const markerId = randomUUID();
+    await seedThreadMessages(threadId, [
+      {
+        id: markerId,
+        role: "assistant",
+        content: null,
+        created_at: "2026-06-09T10:00:00.000Z",
+        sequence_number: null,
+        run_lifecycle_event: "completed",
+        recommended_followups: [
+          { prompt: "[", kind: "talk" },
+          { prompt: "{", kind: "talk" },
+          { prompt: '"prompt": "Investigate this",', kind: "talk" },
+          {
+            prompt: '{"prompt": "Investigate this", "kind": "talk"},',
+            kind: "talk",
+          },
+          {
+            prompt: '[{"prompt": "Investigate this", "kind": "talk"}',
+            kind: "talk",
+          },
+          { prompt: "}]", kind: "talk" },
+          { prompt: "}, {", kind: "talk" },
+          {
+            prompt: '}, {"prompt": "Investigate this", "kind": "talk"}',
+            kind: "talk",
+          },
+          { prompt: "Review the valid suggestion", kind: "talk" },
+          {
+            prompt: "Generate a follow-up website",
+            kind: "generate",
+            generationType: "website",
+          },
+        ],
+      },
+    ]);
+
+    const marker = await chat.getThreadMessage(actor, threadId, markerId);
+    expect(marker).toMatchObject({
+      id: markerId,
+      role: "assistant",
+      content: null,
+      runLifecycleEvent: "completed",
+      recommendedFollowups: [
+        { prompt: "Review the valid suggestion", kind: "talk" },
+        {
+          prompt: "Generate a follow-up website",
+          kind: "generate",
+          generationType: "website",
+        },
+      ],
+    });
+  });
 });
 
 /** Org-admin model provider upsert through the public route. */
@@ -2194,11 +2257,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
           upstreamAuthorization = request.headers.get("authorization");
           const payload = openRouterBodySchema.parse(await request.json());
           const systemContent = payload.messages[0]?.content ?? "";
-          if (
-            systemContent.includes(
-              "Generate up to three concise follow-up prompts",
-            )
-          ) {
+          if (systemContent.includes("concise follow-up prompts")) {
             return HttpResponse.json({
               choices: [
                 {

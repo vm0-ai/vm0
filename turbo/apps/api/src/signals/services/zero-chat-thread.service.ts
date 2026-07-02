@@ -22,7 +22,6 @@ import {
   type ChatMessageUsagePayload,
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
-  type ChatMessageRecommendedFollowupGenerationType,
   type ChatMessageRecommendedFollowups,
   type ChatMessageAutomationSnapshot,
   type ChatMessageGoalEvent,
@@ -58,6 +57,7 @@ import {
   resolveAttachFileUrls,
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
+import { normalizeRecommendedFollowups } from "./zero-chat-recommended-followups.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
@@ -513,55 +513,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isRecommendedFollowupGenerationType(
-  value: unknown,
-): value is ChatMessageRecommendedFollowupGenerationType {
-  return (
-    value === "image" ||
-    value === "video" ||
-    value === "presentation" ||
-    value === "website"
-  );
-}
-
-function normalizeRecommendedFollowups(
-  value: unknown,
-): ChatMessageRecommendedFollowups | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-
-  const seen = new Set<string>();
-  const followups: ChatMessageRecommendedFollowups = [];
-  for (const item of value) {
-    const prompt =
-      typeof item === "string"
-        ? item.trim()
-        : isRecord(item) && typeof item.prompt === "string"
-          ? item.prompt.trim()
-          : "";
-    if (prompt.length === 0 || seen.has(prompt)) {
-      continue;
-    }
-    seen.add(prompt);
-
-    if (!isRecord(item) || item.kind !== "generate") {
-      followups.push({ prompt, kind: "talk" });
-      continue;
-    }
-
-    followups.push({
-      prompt,
-      kind: "generate",
-      ...(isRecommendedFollowupGenerationType(item.generationType)
-        ? { generationType: item.generationType }
-        : {}),
-    });
-  }
-
-  return followups.length > 0 ? followups : undefined;
-}
-
 function normalizeUsagePayload(
   value: ChatMessageUsagePayload | null,
 ): PagedChatMessage["usage"] {
@@ -658,14 +609,16 @@ function toPagedMessage(
         automationSnapshot: row.automationSnapshot ?? undefined,
       };
     }
+    const recommendedFollowups = normalizeRecommendedFollowups(
+      row.recommendedFollowups,
+    );
     return {
       ...message,
       role: "assistant" as const,
       thinking: row.thinking ?? undefined,
       runLifecycleEvent: lifecycleEventOrUndefined(row.runLifecycleEvent),
-      recommendedFollowups: normalizeRecommendedFollowups(
-        row.recommendedFollowups,
-      ),
+      recommendedFollowups:
+        recommendedFollowups.length > 0 ? recommendedFollowups : undefined,
     };
   });
 }
