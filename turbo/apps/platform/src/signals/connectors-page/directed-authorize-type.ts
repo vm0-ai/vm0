@@ -5,7 +5,10 @@ import { accept } from "../../lib/accept.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agents$ } from "../agent.ts";
-import { reloadAgentConnectorAuthorizations$ } from "../zero-page/agent-connector-authorizations.ts";
+import {
+  agentConnectorAuthorizations,
+  reloadAgentConnectorAuthorizations$,
+} from "../zero-page/agent-connector-authorizations.ts";
 
 /**
  * Connector type extracted from `/connectors/:type/authorize` route params.
@@ -42,10 +45,8 @@ export const agentEnabledTypes$ = computed(async (get) => {
   if (!agentId) {
     return { agentId: null, enabledTypes: [] };
   }
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroUserConnectorsContract);
-  const result = await accept(client.get({ params: { id: agentId } }), [200]);
-  return { agentId, enabledTypes: result.body.enabledTypes };
+  const authorizations = await get(agentConnectorAuthorizations({ agentId }));
+  return { agentId, enabledTypes: [...authorizations.enabledTypes] };
 });
 
 export type DirectedAuthorizeConnectModalKey = {

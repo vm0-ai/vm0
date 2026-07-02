@@ -38,6 +38,7 @@ import { setFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { reloadAgentConnectorAuthorizations$ } from "../../../signals/zero-page/agent-connector-authorizations.ts";
 
 const context = testContext();
 
@@ -675,6 +676,36 @@ describe("connectors page", () => {
     });
     expect(search()).toContain("connection=agent");
     expect(search()).toContain(agentId);
+  });
+
+  it("refreshes agent-filtered connectors when authorizations reload", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000010";
+    let enabledTypes = ["github"];
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+      return respond(200, {
+        enabledTypes: params.id === agentId ? enabledTypes : [],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/connectors?connection=agent:${agentId}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.queryByText("Asana")).not.toBeInTheDocument();
+    });
+
+    enabledTypes = ["github", "asana"];
+    await context.store.set(reloadAgentConnectorAuthorizations$);
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Asana")).toBeInTheDocument();
+    });
   });
 
   it("hydrates connector search from URL keywords", async () => {

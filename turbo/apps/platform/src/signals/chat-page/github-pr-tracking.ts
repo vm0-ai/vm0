@@ -4,7 +4,6 @@ import {
   chatThreadGithubPrsContract,
   type ChatThreadGithubPr,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -12,7 +11,7 @@ import {
   allConnectorTypes$,
   connectorCurrentConnectionStatus,
 } from "../zero-page/settings/connectors.ts";
-import { agentConnectorAuthorizationsReload$ } from "../zero-page/agent-connector-authorizations.ts";
+import { isAgentConnectorAuthorized } from "../zero-page/agent-connector-authorizations.ts";
 import { detach, Reason, resetSignal } from "../utils.ts";
 
 const GITHUB_PR_TRACKING_POLL_INTERVAL_MS = 15_000;
@@ -86,13 +85,9 @@ function createAgentGithubPrTrackingAvailableFactory(): (
         return false;
       }
 
-      get(agentConnectorAuthorizationsReload$);
-      const client = get(zeroClient$)(zeroUserConnectorsContract);
-      const result = await accept(
-        client.get({ params: { id: agentId } }),
-        [200],
+      return await get(
+        isAgentConnectorAuthorized({ agentId, connectorType: "github" }),
       );
-      return result.body.enabledTypes.includes("github");
     });
 
     cache.set(agentId, atom$);

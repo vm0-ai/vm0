@@ -7,7 +7,10 @@ import { zeroClient$ } from "../../api-client.ts";
 import { agents$ } from "../../agent.ts";
 import { ApiError, accept } from "../../../lib/accept.ts";
 import { userPermissionGrantsByAgent } from "../../permission-allow/permission-allow-signals.ts";
-import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
+import {
+  agentConnectorAuthorizations,
+  reloadAgentConnectorAuthorizations$,
+} from "../agent-connector-authorizations.ts";
 import { settle } from "../../utils.ts";
 
 export interface ConnectorAgentAccessRow {
@@ -31,7 +34,6 @@ interface SetConnectorAgentAuthorizationParams {
   readonly authorized: boolean;
 }
 
-const internalConnectorAccessManagementReload$ = state(0);
 const managedConnectorAccessTypeState$ = state<ConnectorType | null>(null);
 const connectorAccessManagementSearchState$ = state("");
 const connectorAccessManagementSavingAgentIdState$ = state<string | null>(null);
@@ -53,12 +55,6 @@ export const connectorAccessManagementSavingAgentId$ = computed((get) => {
 
 export const connectorAccessManagementPermissionAgentId$ = computed((get) => {
   return get(connectorAccessManagementPermissionAgentIdState$);
-});
-
-const reloadConnectorAccessManagement$ = command(({ set }) => {
-  set(internalConnectorAccessManagementReload$, (value) => {
-    return value + 1;
-  });
 });
 
 export const setManagedConnectorAccessType$ = command(
@@ -94,23 +90,22 @@ export const setConnectorAccessManagementPermissionAgentId$ = command(
 
 export const connectorAgentAuthorizations$ = computed(
   async (get): Promise<readonly ConnectorAgentAuthorizationRow[]> => {
-    get(internalConnectorAccessManagementReload$);
     const allAgents = await get(agents$);
-    const client = get(zeroClient$)(zeroUserConnectorsContract);
     const rows = await Promise.all(
       allAgents.map(
         async (agent): Promise<ConnectorAgentAuthorizationRow | null> => {
-          const result = await accept(
-            client.get({ params: { id: agent.id } }),
-            [200, 404],
-            { toast: false },
+          const authorizations = await get(
+            agentConnectorAuthorizations({
+              agentId: agent.id,
+              missing: "null",
+            }),
           );
-          if (result.status === 404) {
+          if (!authorizations) {
             return null;
           }
           return {
             agent,
-            enabledTypes: result.body.enabledTypes,
+            enabledTypes: authorizations.enabledTypes,
           };
         },
       ),
@@ -229,7 +224,6 @@ export const setConnectorAgentAuthorization$ = command(
     );
     signal.throwIfAborted();
 
-    set(reloadConnectorAccessManagement$);
     set(reloadAgentConnectorAuthorizations$);
   },
 );
