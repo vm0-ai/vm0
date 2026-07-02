@@ -10,6 +10,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
+import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
@@ -71,7 +72,12 @@ async function entitledLinkedActor(): Promise<LinkedAgentPhoneActor> {
   return { actor, phone, runnerGroup, sends, storage };
 }
 
-async function claimDispatchedRun(runnerGroup: string): Promise<{
+async function claimDispatchedRun(
+  runnerGroup: string,
+  heldSessionStates?: ReturnType<
+    typeof heldAgentPhoneCliAgentSession
+  >["heldSessionStates"],
+): Promise<{
   readonly runId: string;
   readonly sandboxToken: string;
   readonly prompt: string;
@@ -83,7 +89,10 @@ async function claimDispatchedRun(runnerGroup: string): Promise<{
   let runId: string | undefined;
   await expect
     .poll(async () => {
-      const poll = await runs.pollRunner(runnerGroup);
+      const poll = await runs.pollRunner(
+        runnerGroup,
+        heldSessionStates === undefined ? {} : { heldSessionStates },
+      );
       runId = poll.body.job?.runId;
       return runId ?? null;
     })
@@ -91,7 +100,10 @@ async function claimDispatchedRun(runnerGroup: string): Promise<{
   if (!runId) {
     throw new Error("Expected an AgentPhone run to be dispatched");
   }
-  const claim = await runs.claimRunnerJob(runId);
+  const claim = await runs.claimRunnerJob(
+    runId,
+    heldSessionStates === undefined ? {} : { heldSessionStates },
+  );
   return {
     runId,
     sandboxToken: claim.sandboxToken,
@@ -101,7 +113,12 @@ async function claimDispatchedRun(runnerGroup: string): Promise<{
   };
 }
 
-async function pollDispatchedJob(runnerGroup: string): Promise<{
+async function pollDispatchedJob(
+  runnerGroup: string,
+  heldSessionStates?: ReturnType<
+    typeof heldAgentPhoneCliAgentSession
+  >["heldSessionStates"],
+): Promise<{
   readonly runId: string;
   readonly appendSystemPrompt: string;
 }> {
@@ -112,7 +129,10 @@ async function pollDispatchedJob(runnerGroup: string): Promise<{
     | undefined;
   await expect
     .poll(async () => {
-      const poll = await runs.pollRunner(runnerGroup);
+      const poll = await runs.pollRunner(
+        runnerGroup,
+        heldSessionStates === undefined ? {} : { heldSessionStates },
+      );
       job = poll.body.job;
       return job?.runId ?? null;
     })
@@ -121,6 +141,21 @@ async function pollDispatchedJob(runnerGroup: string): Promise<{
     throw new Error("Expected an AgentPhone run to be dispatched");
   }
   return { runId: job.runId, appendSystemPrompt: job.appendSystemPrompt ?? "" };
+}
+
+function agentPhoneCliAgentSessionIdForRun(runId: string): string {
+  return `bdd-agentphone-cli-${runId}`;
+}
+
+function heldAgentPhoneCliAgentSession(runId: string) {
+  return {
+    heldSessionStates: [
+      {
+        sessionId: agentPhoneCliAgentSessionIdForRun(runId),
+        lastCompletedAt: new Date(now()).toISOString(),
+      },
+    ],
+  };
 }
 
 async function completeSandboxRun(
@@ -137,7 +172,7 @@ async function completeSandboxRun(
       {
         runId,
         cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-agentphone-cli-${runId}`,
+        cliAgentSessionId: agentPhoneCliAgentSessionIdForRun(runId),
         cliAgentSessionHistoryHash: createHash("sha256")
           .update(`bdd agentphone history ${runId}`)
           .digest("hex"),
@@ -357,7 +392,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       conversationId,
       isGroup: false,
     });
-    const run2 = await claimDispatchedRun(runnerGroup);
+    const run2 = await claimDispatchedRun(
+      runnerGroup,
+      heldAgentPhoneCliAgentSession(run1.runId).heldSessionStates,
+    );
     expect(run2.appendSystemPrompt).toContain("# AgentPhone Message Context");
     expect(run2.appendSystemPrompt).toContain("RELATIVE_INDEX");
     expect(run2.appendSystemPrompt).toContain(`MSG_ID: ${messageId1}`);
@@ -402,7 +440,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       conversationId,
       isGroup: false,
     });
-    const run4 = await claimDispatchedRun(runnerGroup);
+    const run4 = await claimDispatchedRun(
+      runnerGroup,
+      heldAgentPhoneCliAgentSession(run3.runId).heldSessionStates,
+    );
     const beforeRun4Completion = sends.messages.length;
     await completeSandboxRun(
       run4.sandboxToken,
@@ -459,7 +500,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
         { direction: "inbound" },
       ],
     });
-    const run2 = await claimDispatchedRun(runnerGroup);
+    const run2 = await claimDispatchedRun(
+      runnerGroup,
+      heldAgentPhoneCliAgentSession(run1.runId).heldSessionStates,
+    );
     expect(run2.appendSystemPrompt).toContain("# AgentPhone Message Context");
     expect(run2.appendSystemPrompt).toContain("MSG_ID: rh-full");
     expect(run2.appendSystemPrompt).toContain("prior context from provider");
@@ -626,7 +670,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       conversationId,
       isGroup: true,
     });
-    const job2 = await pollDispatchedJob(runnerGroup);
+    const job2 = await pollDispatchedJob(
+      runnerGroup,
+      heldAgentPhoneCliAgentSession(run1.runId).heldSessionStates,
+    );
     expect(job2.appendSystemPrompt).toContain("# AgentPhone Message Context");
     expect(job2.appendSystemPrompt).toContain(`SENDER: {id: ${phone}}`);
     expect(job2.appendSystemPrompt).toContain("SENDER: {id: BOT}");
