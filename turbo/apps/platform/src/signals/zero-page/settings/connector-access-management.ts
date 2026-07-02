@@ -5,9 +5,10 @@ import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroClient$ } from "../../api-client.ts";
 import { agents$ } from "../../agent.ts";
-import { accept } from "../../../lib/accept.ts";
+import { ApiError, accept } from "../../../lib/accept.ts";
 import { userPermissionGrantsByAgent } from "../../permission-allow/permission-allow-signals.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
+import { settle } from "../../utils.ts";
 
 export interface ConnectorAgentAccessRow {
   readonly agent: TeamComposeItem;
@@ -162,19 +163,40 @@ function createConnectorAgentAccessRowsFactory(): (
     const atom$ = computed(
       async (get): Promise<readonly ConnectorAgentAccessRow[]> => {
         const authorizations = await get(connectorAgentAuthorizations$);
-        return await Promise.all(
-          authorizations.map(async ({ agent, enabledTypes }) => {
-            const authorized = enabledTypes.includes(params.connectorType);
-            const grants = authorized
-              ? await get(userPermissionGrantsByAgent({ agentId: agent.id }))
-              : [];
-            return {
+        const rows = await Promise.all(
+          authorizations.map(
+            async ({
               agent,
-              authorized,
-              grants,
-            };
-          }),
+              enabledTypes,
+            }): Promise<ConnectorAgentAccessRow | null> => {
+              const authorized = enabledTypes.includes(params.connectorType);
+              let grants: readonly UserPermissionGrantResponse[] = [];
+              if (authorized) {
+                const grantsResult = await settle(
+                  get(userPermissionGrantsByAgent({ agentId: agent.id })),
+                );
+                if (!grantsResult.ok) {
+                  if (
+                    grantsResult.error instanceof ApiError &&
+                    grantsResult.error.status === 404
+                  ) {
+                    return null;
+                  }
+                  throw grantsResult.error;
+                }
+                grants = grantsResult.value;
+              }
+              return {
+                agent,
+                authorized,
+                grants,
+              };
+            },
+          ),
         );
+        return rows.filter((row): row is ConnectorAgentAccessRow => {
+          return row !== null;
+        });
       },
     );
     cache.set(params.connectorType, atom$);

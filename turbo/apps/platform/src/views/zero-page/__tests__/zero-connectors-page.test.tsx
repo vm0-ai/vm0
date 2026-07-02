@@ -879,6 +879,56 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("ignores stale authorized agents when loading connector access grants", async () => {
+    const activeAgentId = "c0000000-0000-4000-a000-000000000001";
+    const staleAgentId = "c0000000-0000-4000-a000-000000000002";
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    context.mocks.data.team([
+      teamAgent(activeAgentId, "Research Agent"),
+      teamAgent(staleAgentId, "Deleted Agent"),
+    ]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: ["github"] });
+    });
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.list,
+      ({ query, respond }) => {
+        if (query.agentId === staleAgentId) {
+          return respond(404, {
+            error: { message: "Agent not found", code: "NOT_FOUND" },
+          });
+        }
+        return respond(200, []);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccessManagement]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    });
+    click(
+      within(connectorCardByLabel("GitHub")).getByLabelText(
+        "Manage GitHub access",
+      ),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub access",
+    });
+    expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Deleted Agent")).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("Loading agents..."),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows authorized agent names with an overflow count on connector cards", async () => {
     const agentIds = [
       "c0000000-0000-4000-a000-000000000001",
