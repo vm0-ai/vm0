@@ -7,6 +7,7 @@ import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -323,6 +324,7 @@ async function claimFollowUpInThread(args: {
   readonly runnerGroup: string;
   readonly threadId: string;
   readonly activityId: string;
+  readonly heldCliAgentSessionId?: string;
 }) {
   const followUpRunId = await dispatchTeamsRun({
     fixture: args.fixture,
@@ -333,6 +335,16 @@ async function claimFollowUpInThread(args: {
   await runsApi.heartbeatRunner(args.runnerGroup);
   return await runsApi.claimRunnerJob(followUpRunId, {
     capabilities: ["resumeSessionHistoryRef"],
+    ...(args.heldCliAgentSessionId
+      ? {
+          heldSessionStates: [
+            {
+              sessionId: args.heldCliAgentSessionId,
+              lastCompletedAt: new Date(now()).toISOString(),
+            },
+          ],
+        }
+      : {}),
   });
 }
 
@@ -396,6 +408,7 @@ describe("Teams org internal callbacks", () => {
       runnerGroup: teams.runnerGroup,
       threadId: "root-completed",
       activityId: "activity-completed-follow-up",
+      heldCliAgentSessionId: cliAgentSessionId,
     });
     expect(followUpClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
   });
