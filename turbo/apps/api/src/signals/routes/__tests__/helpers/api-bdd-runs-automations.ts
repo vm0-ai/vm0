@@ -1053,11 +1053,22 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
     },
 
-    async pollRunner(group?: string) {
+    async pollRunner(
+      group?: string,
+      args: {
+        readonly heldSessionStates?: RunnerPollBody["heldSessionStates"];
+      } = {},
+    ) {
       return await accept(
         runsAutomationApp(context)(runnersPollContract).poll({
           headers: runnerHeaders(true),
-          body: { group: group ?? "vm0/test", profiles: ["vm0/default"] },
+          body: {
+            group: group ?? "vm0/test",
+            profiles: ["vm0/default"],
+            ...(args.heldSessionStates === undefined
+              ? {}
+              : { heldSessionStates: args.heldSessionStates }),
+          },
         }),
         [200],
       );
@@ -1081,12 +1092,13 @@ export function createRunsAutomationsApi(context: TestContext) {
       validAuth: boolean,
       runId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+      body: RunnerJobClaimRequest = {},
     ) {
       return await accept(
         runsAutomationApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(validAuth),
           params: { id: runId },
-          body: {},
+          body,
         }),
         statuses,
       );

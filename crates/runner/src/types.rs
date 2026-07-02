@@ -28,6 +28,10 @@ pub struct Job {
     pub run_id: RunId,
     #[serde(default)]
     pub experimental_profile: Option<String>,
+    #[serde(default)]
+    pub cli_agent_session_id: Option<String>,
+    #[serde(default)]
+    pub affinity_protected_until: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

@@ -430,7 +430,7 @@ async function publishPromotedQueueSideEffects(
   }
 
   if (args.runnerNotification) {
-    await tapError(notifyRunnerJob(db, args.runnerNotification), (error) => {
+    await tapError(notifyRunnerJob(args.runnerNotification), (error) => {
       L.error("Failed to notify runner after queued run promotion", {
         runId: args.runnerNotification?.runId,
         runnerGroup: args.runnerNotification?.runnerGroup,

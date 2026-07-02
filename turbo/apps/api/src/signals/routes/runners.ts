@@ -54,6 +54,7 @@ import {
   SESSION_HISTORY_ENCODING_GZIP,
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
+import { affinityProtectedUntil } from "../services/runner-session-affinity";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
 
@@ -382,18 +383,6 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const pollBody$ = bodyResultOf(runnersPollContract.poll);
 
-function uniqueHeldCliAgentSessionIds(
-  states: readonly HeldSessionState[] | undefined,
-): string[] {
-  return [
-    ...new Set(
-      states?.map((state) => {
-        return state.sessionId;
-      }) ?? [],
-    ),
-  ];
-}
-
 function recordPollTimingMetrics(args: {
   readonly runId: string;
   readonly runnerGroup: string;
@@ -464,11 +453,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const { group, profiles } = body.data;
-  const heldSessionStates = canonicalizeHeldSessionStates(
-    body.data.heldSessionStates,
-  );
-  const heldCliAgentSessionIds =
-    uniqueHeldCliAgentSessionIds(heldSessionStates);
   const whereConditions: SQL<unknown>[] = [
     eq(runnerJobQueue.runnerGroup, group),
     isNull(runnerJobQueue.claimedAt),
@@ -490,20 +474,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (profiles && profiles.length > 0) {
     whereConditions.push(inArray(runnerJobQueue.profile, profiles));
   }
-
-  const orderClauses =
-    heldCliAgentSessionIds.length > 0
-      ? [
-          sql`CASE WHEN ${runnerJobQueue.cliAgentSessionId} IN (${sql.join(
-            heldCliAgentSessionIds.map((cliAgentSessionId) => {
-              return sql`${cliAgentSessionId}`;
-            }),
-            sql`, `,
-          )}) THEN 0 ELSE 1 END`,
-          runnerJobQueue.createdAt,
-        ]
-      : [runnerJobQueue.createdAt];
-
   const db = set(writeDb$);
   const pendingJobLookupStartedAtMs = now();
   const [pendingJob] = await db
@@ -515,12 +485,13 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       vars: agentRuns.vars,
       resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
       profile: runnerJobQueue.profile,
+      cliAgentSessionId: runnerJobQueue.cliAgentSessionId,
       createdAt: runnerJobQueue.createdAt,
     })
     .from(runnerJobQueue)
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
     .where(and(...whereConditions))
-    .orderBy(...orderClauses)
+    .orderBy(runnerJobQueue.createdAt)
     .limit(1);
   signal.throwIfAborted();
   const pendingJobLookupFinishedAtMs = now();
@@ -530,6 +501,10 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const pollResponseAtMs = now();
+  const protectedUntil = affinityProtectedUntil(
+    pendingJob.cliAgentSessionId,
+    pendingJob.createdAt,
+  );
   recordPollTimingMetrics({
     runId: pendingJob.runId,
     runnerGroup: group,
@@ -554,6 +529,8 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         vars: (pendingJob.vars as Record<string, string>) ?? null,
         checkpointId: pendingJob.resumedFromCheckpointId ?? null,
         experimentalProfile: pendingJob.profile,
+        cliAgentSessionId: pendingJob.cliAgentSessionId,
+        affinityProtectedUntil: protectedUntil?.toISOString() ?? null,
       },
     },
   };
@@ -1924,10 +1901,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     claimRouteTiming,
   });
 
-  return {
-    status: 200 as const,
-    body: responseBody,
-  };
+  return { status: 200 as const, body: responseBody };
 });
 
 const runnerRealtimeTokenBody$ = bodyResultOf(

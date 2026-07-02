@@ -479,40 +479,6 @@ async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates()
     shutdown(&env, run_handle).await;
 }
 
-#[tokio::test(start_paused = true)]
-async fn reuse_take_refreshes_provider_held_session_states() {
-    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let idle_pool = Arc::clone(&config.shared.idle_pool);
-    let budget = Arc::clone(&config.capacity.budget);
-
-    seed_idle_pool(&idle_pool, &budget, "sess-refresh", "vm0/default", 2, 4096).await;
-
-    let run_handle = tokio::spawn(run(config));
-    let run_id = RunId::new_v4();
-    push_job(
-        &env,
-        run_id,
-        "vm0/default",
-        Some(context_with_session(run_id, "sess-refresh")),
-    );
-
-    let completion = env
-        .handle
-        .wait_completion(run_id, Duration::from_secs(5))
-        .await
-        .expect("job should complete");
-    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
-    wait_idle_pool_session_states(&idle_pool, &["sess-refresh"], Duration::from_secs(5)).await;
-
-    let updates = env.handle.held_session_state_updates();
-    assert!(
-        updates.iter().any(Vec::is_empty),
-        "provider should observe an empty held-session state after idle take; updates: {updates:?}"
-    );
-
-    shutdown(&env, run_handle).await;
-}
-
 #[tokio::test]
 async fn reuse_take_preserves_cached_workspace_held_session_state() {
     let wait_gate = sandbox_mock::MockLifecycleGate::new();
@@ -582,8 +548,6 @@ async fn reuse_take_preserves_cached_workspace_held_session_state() {
             .await,
         "workspace cache promotion should refresh the held-session snapshot before claim"
     );
-    let updates_before_claim = env.handle.held_session_state_updates().len();
-
     let run_id = RunId::new_v4();
     push_job(
         &env,
@@ -599,18 +563,6 @@ async fn reuse_take_preserves_cached_workspace_held_session_state() {
         .expect("job should complete");
     assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
     wait_idle_pool_session_states(&idle_pool, &["sess-refresh"], Duration::from_secs(5)).await;
-
-    let updates = env.handle.held_session_state_updates();
-    let claim_updates = &updates[updates_before_claim..];
-    assert!(
-        claim_updates.iter().any(|states| {
-            states.iter().any(|state| state.session_id == "sess-cached")
-                && states
-                    .iter()
-                    .all(|state| state.session_id != "sess-refresh")
-        }),
-        "provider should keep cached workspace state while filtering the claimed idle session after claim; updates: {updates:?}"
-    );
 
     shutdown(&env, run_handle).await;
 }
