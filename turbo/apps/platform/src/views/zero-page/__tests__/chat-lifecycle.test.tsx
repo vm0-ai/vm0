@@ -1582,6 +1582,35 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("keeps thinking when an older active run is outside the loaded message window", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-active-run-outside-loaded-window",
+      activeRunIds: ["run-active-outside-window"],
+      chatMessages: [
+        {
+          id: "msg-window-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-window-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-active-run-outside-loaded-window",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+  });
+
   it("keeps interleaved run messages grouped by run turn", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-interleaved-run-turns",
