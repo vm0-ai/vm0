@@ -572,6 +572,15 @@ function expectApiDispatchTimingEventsNotToLeak(
   }
 }
 
+function s3CommandName(command: unknown): string | undefined {
+  return (command as { readonly constructor?: { readonly name?: string } })
+    .constructor?.name;
+}
+
+function s3CommandKey(command: unknown): string | undefined {
+  return (command as { readonly input?: { readonly Key?: string } }).input?.Key;
+}
+
 function mockSessionHistoryBlob(hash: string, history: string): void {
   context.mocks.s3.send.mockImplementation((command: unknown) => {
     const input = (command as { readonly input?: { readonly Key?: string } })
@@ -1154,6 +1163,103 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     await api.requestCancelRun(actor, created.runId, [200]);
     await api.requestCancelRun(actor, initialized.runId, [200]);
+  });
+
+  it("keeps a committed artifact head when stale empty initialization finishes later", async () => {
+    const api = createRunsAutomationsApi(context);
+    const storages = createStoragesBddApi(context);
+    const { actor } = await entitledRunActor();
+    const composeName = `bdd-artifact-head-race-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const headVersionId = await readAutomationComposeHeadVersion(
+      context,
+      compose.composeId,
+    );
+
+    let releaseEmptyUploads = (): void => {};
+    const emptyUploadsGate = new Promise<void>((resolve) => {
+      releaseEmptyUploads = resolve;
+    });
+    let markEmptyUploadStarted = (): void => {};
+    const emptyUploadStarted = new Promise<void>((resolve) => {
+      markEmptyUploadStarted = resolve;
+    });
+    onTestFinished(() => {
+      releaseEmptyUploads();
+    });
+
+    let blockedEmptyPutCount = 0;
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (
+        s3CommandName(command) === "PutObjectCommand" &&
+        s3CommandKey(command)?.includes("/artifact/memory/")
+      ) {
+        blockedEmptyPutCount += 1;
+        markEmptyUploadStarted();
+        return emptyUploadsGate.then(() => {
+          return {};
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    const staleInitializerRun = api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt: "stale empty artifact initialization must not overwrite head",
+    });
+    await emptyUploadStarted;
+
+    const artifactFile = storageTextFile(
+      "artifact.txt",
+      `committed artifact ${randomUUID()}`,
+    );
+    const prepared = await storages.prepareStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      files: [artifactFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      versionId: prepared.versionId,
+      files: [artifactFile],
+    });
+    await expect(
+      storages.downloadStorage(actor, {
+        name: "memory",
+        type: "artifact",
+      }),
+    ).resolves.toStrictEqual(
+      expect.objectContaining({
+        versionId: prepared.versionId,
+        fileCount: 1,
+      }),
+    );
+
+    releaseEmptyUploads();
+    const created = await staleInitializerRun;
+    expect(blockedEmptyPutCount).toBe(2);
+    await expect(
+      storages.downloadStorage(actor, {
+        name: "memory",
+        type: "artifact",
+      }),
+    ).resolves.toStrictEqual(
+      expect.objectContaining({
+        versionId: prepared.versionId,
+        fileCount: 1,
+      }),
+    );
+
+    await api.requestCancelRun(actor, created.runId, [200]);
   });
 
   it("keeps a direct launch claimable when run-context ingest fails", async () => {

@@ -14,7 +14,7 @@ import {
 import { MIN_VERSION_PREFIX_LENGTH } from "@vm0/core/version-id";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { computed, type Computed } from "ccstate";
-import { and, eq, inArray, like } from "drizzle-orm";
+import { and, eq, inArray, isNull, like } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { generatePresignedGetUrl, putS3Object } from "../external/s3";
@@ -1021,12 +1021,12 @@ async function insertInitialArtifactVersion(args: {
   readonly versionId: string;
   readonly s3Key: string;
   readonly timing?: StorageManifestArtifactEnsureTiming;
-}): Promise<void> {
-  await measureStorageManifestArtifactEnsure(
+}): Promise<boolean> {
+  return await measureStorageManifestArtifactEnsure(
     args.timing,
     "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
     async () => {
-      await args.db.transaction(async (tx) => {
+      return await args.db.transaction(async (tx) => {
         await tx
           .insert(storageVersions)
           .values({
@@ -1039,7 +1039,7 @@ async function insertInitialArtifactVersion(args: {
             createdBy: args.userId,
           })
           .onConflictDoNothing();
-        await tx
+        const [updated] = await tx
           .update(storages)
           .set({
             headVersionId: args.versionId,
@@ -1047,7 +1047,14 @@ async function insertInitialArtifactVersion(args: {
             fileCount: 0,
             updatedAt: nowDate(),
           })
-          .where(eq(storages.id, args.storage.id));
+          .where(
+            and(
+              eq(storages.id, args.storage.id),
+              isNull(storages.headVersionId),
+            ),
+          )
+          .returning({ id: storages.id });
+        return updated !== undefined;
       });
     },
   );
@@ -1062,7 +1069,7 @@ async function initializeEmptyArtifactStorage(
   const versionId = computeContentHashFromHashes(storage.id, []);
   const s3Key = `${storage.s3Prefix}/${versionId}`;
   await uploadEmptyArtifactObjects(get, args, s3Key);
-  await insertInitialArtifactVersion({
+  const initializedHead = await insertInitialArtifactVersion({
     db: args.db,
     userId: args.userId,
     storage,
@@ -1070,7 +1077,9 @@ async function initializeEmptyArtifactStorage(
     s3Key,
     timing: args.timing,
   });
-  args.stats?.recordArtifactEnsureInitializedEmptyVersion();
+  if (initializedHead) {
+    args.stats?.recordArtifactEnsureInitializedEmptyVersion();
+  }
 }
 
 function ensureArtifactStorage(
