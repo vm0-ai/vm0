@@ -300,10 +300,6 @@ import {
   dismissFeedback$,
 } from "../../signals/zero-page/chat-feedback.ts";
 import {
-  setThreadGenerationTemplate$,
-  threadGenerationTemplate$,
-} from "../../signals/zero-page/zero-chat-composer.ts";
-import {
   computerUseHosts$,
   selectedComputerUseHostId as resolveSelectedComputerUseHostId,
   visibleComputerUseHosts,
@@ -4900,33 +4896,19 @@ function useChatThreadComposerSendState({
   modelSelection,
   computerUseHostIdForSend,
   clearComputerUseHostOverride,
-  setInput,
 }: {
   thread: ChatThreadSignals;
   modelSelection: ModelProviderSelection | null;
   computerUseHostIdForSend: string | null | undefined;
   clearComputerUseHostOverride: () => void;
-  setInput: (text: string) => void;
 }) {
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
   const [, queueMessage] = useLoadableSet(thread.queueMessage$);
   const rootSignal = useGet(rootSignal$);
-  const generationTemplateState = useGet(threadGenerationTemplate$);
-  const generationTemplate =
-    generationTemplateState?.threadId === thread.threadId
-      ? generationTemplateState.value
-      : undefined;
-  const setGenerationTemplate = useSet(setThreadGenerationTemplate$);
-  const clearGenerationTemplate = () => {
-    setGenerationTemplate(thread.threadId, undefined);
-  };
+  const generationTemplate = useGet(thread.draft.generationTemplate$);
+  const setGenerationTemplate = useSet(thread.draft.setGenerationTemplate$);
 
-  const handleSend = (
-    text: string,
-    selectedGenerationTemplate: GenerationTemplateRequest | undefined,
-  ) => {
-    setInput("");
-    clearGenerationTemplate();
+  const handleSend = (text: string) => {
     detach(
       (async () => {
         const computerUsePatch =
@@ -4937,9 +4919,6 @@ function useChatThreadComposerSendState({
           text,
           modelSelection,
           {
-            ...(selectedGenerationTemplate
-              ? { generationTemplate: selectedGenerationTemplate }
-              : {}),
             ...computerUsePatch,
           },
           rootSignal,
@@ -4950,21 +4929,11 @@ function useChatThreadComposerSendState({
     );
   };
 
-  const handleQueue = (
-    text: string,
-    selectedGenerationTemplate: GenerationTemplateRequest | undefined,
-  ) => {
-    setInput("");
-    clearGenerationTemplate();
+  const handleQueue = (text: string) => {
     detach(
       (async () => {
         const computerUseHostId = computerUseHostIdForSend;
-        await queueMessage(
-          text,
-          selectedGenerationTemplate,
-          computerUseHostId,
-          rootSignal,
-        );
+        await queueMessage(text, computerUseHostId, rootSignal);
         clearComputerUseHostOverride();
       })(),
       Reason.DomCallback,
@@ -4978,7 +4947,7 @@ function useChatThreadComposerSendState({
     templatePicker: {
       value: generationTemplate,
       onChange: (value: GenerationTemplateRequest | undefined) => {
-        setGenerationTemplate(thread.threadId, value);
+        setGenerationTemplate(value);
       },
     },
   };
@@ -5050,14 +5019,6 @@ function useChatThreadComposerFeedback(
   const dismiss = useSet(dismissFeedback$);
   const [, sendMessage] = useLoadableSet(thread.sendMessage$);
   const rootSignal = useGet(rootSignal$);
-  // A feedback turn can also carry the composer's template + attachments, so
-  // read the same per-thread template selection the normal send path uses.
-  const generationTemplateState = useGet(threadGenerationTemplate$);
-  const generationTemplate =
-    generationTemplateState?.threadId === thread.threadId
-      ? generationTemplateState.value
-      : undefined;
-  const setGenerationTemplate = useSet(setThreadGenerationTemplate$);
 
   // Feedback is owned by the thread it was drafted in; other threads keep their
   // own composer textarea so a draft never bleeds across chats.
@@ -5084,13 +5045,11 @@ function useChatThreadComposerFeedback(
           modelSelection,
           {
             includeDraftAttachments: true,
-            ...(generationTemplate ? { generationTemplate } : {}),
           },
           rootSignal,
         ),
         Reason.DomCallback,
       );
-      setGenerationTemplate(thread.threadId, undefined);
       dismiss();
     },
     onDismiss: () => {
@@ -5151,7 +5110,6 @@ function ChatThreadComposer({
       modelSelection,
       computerUseHostIdForSend,
       clearComputerUseHostOverride,
-      setInput,
     });
   const sending = (allFinishedResolved && !allFinished) || sendLoading;
   const skeletonVisible = useGet(thread.skeletonVisible$);

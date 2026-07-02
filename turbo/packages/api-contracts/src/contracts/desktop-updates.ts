@@ -6,7 +6,7 @@ const c = initContract();
 
 const desktopUpdateChannelSchema = z.enum(["stable"]);
 const desktopUpdatePlatformSchema = z.enum(["darwin"]);
-const desktopUpdateArchitectureSchema = z.enum(["arm64"]);
+const desktopUpdateArchitectureSchema = z.enum(["arm64", "x64"]);
 
 export type DesktopUpdateChannel = z.infer<typeof desktopUpdateChannelSchema>;
 export type DesktopUpdatePlatform = z.infer<typeof desktopUpdatePlatformSchema>;

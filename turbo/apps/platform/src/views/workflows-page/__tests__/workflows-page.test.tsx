@@ -39,7 +39,7 @@ const OTHER_AGENT_ID = "c0000000-0000-4000-a000-000000000102";
 const SALES_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000201";
 const OPS_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000202";
 const OTHER_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000203";
-const PENDING_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000204";
+const CHECKLIST_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000204";
 const COPIED_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000205";
 const GMAIL_TRIGGER_ID = "workflow-trigger-gmail-new-message";
 const GMAIL_LABEL_TRIGGER_ID = "workflow-trigger-gmail-label-applied";
@@ -324,9 +324,9 @@ function salesResearch(): ZeroWorkflowDetailResponse {
     displayName: "Sales Research",
     description: "Collects account context before outreach.",
     visibility: "public",
-    requestToPublish: false,
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
+    canPublish: false,
     createdByUserId: CURRENT_USER_ID,
     updatedByUserId: UPDATED_USER_ID,
     createdAt: "2026-06-17T13:52:00.000Z",
@@ -360,9 +360,9 @@ function opsPlaybook(): ZeroWorkflowDetailResponse {
     displayName: "Ops Playbook",
     description: null,
     visibility: "private",
-    requestToPublish: false,
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
+    canPublish: true,
     createdByUserId: CURRENT_USER_ID,
     updatedByUserId: CURRENT_USER_ID,
     createdAt: "2026-06-15T12:00:00.000Z",
@@ -374,9 +374,9 @@ function opsPlaybook(): ZeroWorkflowDetailResponse {
   };
 }
 
-function pendingReviewWorkflow(): ZeroWorkflowDetailResponse {
+function launchChecklistWorkflow(): ZeroWorkflowDetailResponse {
   return {
-    id: PENDING_WORKFLOW_ID,
+    id: CHECKLIST_WORKFLOW_ID,
     agentId: AGENT_ID,
     agentName: "research-bot",
     agentDisplayName: "Research Bot",
@@ -384,9 +384,9 @@ function pendingReviewWorkflow(): ZeroWorkflowDetailResponse {
     displayName: "Launch Checklist",
     description: "Prepares release approvals.",
     visibility: "private",
-    requestToPublish: true,
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
+    canPublish: true,
     createdByUserId: CURRENT_USER_ID,
     updatedByUserId: CURRENT_USER_ID,
     createdAt: "2026-06-18T12:00:00.000Z",
@@ -408,9 +408,9 @@ function otherAgentWorkflow(): ZeroWorkflowDetailResponse {
     displayName: "Support Intake",
     description: "Sorts incoming support requests.",
     visibility: "public",
-    requestToPublish: false,
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
+    canPublish: false,
     createdByUserId: CURRENT_USER_ID,
     updatedByUserId: CURRENT_USER_ID,
     createdAt: "2026-06-16T12:00:00.000Z",
@@ -446,11 +446,11 @@ function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
     displayName: workflow.displayName,
     description: workflow.description,
     visibility: workflow.visibility,
-    requestToPublish: workflow.requestToPublish,
     ownerUserId: workflow.ownerUserId,
     ownerUserDisplayName: "Test User",
     ownerUserImageUrl: null,
     canManage: workflow.canManage,
+    canPublish: workflow.canPublish,
   };
 }
 
@@ -932,7 +932,7 @@ describe("workflows routes", () => {
     mockWorkflowApis([
       salesResearch(),
       opsPlaybook(),
-      pendingReviewWorkflow(),
+      launchChecklistWorkflow(),
       otherAgentWorkflow(),
     ]);
 
@@ -1066,7 +1066,7 @@ describe("workflows routes", () => {
     mockWorkflowApis([
       salesResearch(),
       opsPlaybook(),
-      pendingReviewWorkflow(),
+      launchChecklistWorkflow(),
       otherAgentWorkflow(),
     ]);
 
@@ -1153,6 +1153,7 @@ describe("workflow detail page", () => {
     const workflow = {
       ...salesResearch(),
       canManage: false,
+      canPublish: false,
     };
     context.store.set(setWorkflowFileDraft$, {
       workflowId: SALES_WORKFLOW_ID,
@@ -1175,6 +1176,31 @@ describe("workflow detail page", () => {
     expect(
       screen.queryByText("You have unsaved changes"),
     ).not.toBeInTheDocument();
+  });
+
+  it("disables publishing when the workflow owner lacks agent write permission", async () => {
+    const workflow = {
+      ...opsPlaybook(),
+      canManage: true,
+      canPublish: false,
+    };
+    mockWorkflowApis([workflow]);
+
+    detachedSetupPage({
+      context,
+      path: `/workflows/${OPS_WORKFLOW_ID}/info`,
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
+    });
+
+    const publishSwitch = await screen.findByRole("switch", {
+      name: "Make workflow public",
+    });
+    expect(publishSwitch).toBeDisabled();
+    expect(
+      screen.getByText(
+        "Publishing a workflow under an agent you do not own requires org admin permissions.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("opens the shared workflow chat thread with the workflow slash command", async () => {
@@ -1475,6 +1501,7 @@ describe("workflow detail page", () => {
     const workflow = {
       ...salesResearch(),
       canManage: false,
+      canPublish: false,
     };
     context.store.set(patchWorkflowMetadataForm$, {
       workflowId: SALES_WORKFLOW_ID,
