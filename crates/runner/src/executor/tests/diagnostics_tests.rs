@@ -449,6 +449,29 @@ async fn read_guest_cli_agent_session_id_bounds_invalid_diagnostic_field() {
 }
 
 #[tokio::test]
+async fn read_guest_cli_agent_session_id_truncates_invalid_diagnostic_at_char_boundary() {
+    let raw_id = "€".repeat(50);
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_read_file_result(Ok(Some(raw_id.as_bytes().to_vec())));
+
+    let (session_id, events) =
+        capture_diagnostics_events(read_guest_cli_agent_session_id(&sandbox, RunId::nil())).await;
+
+    assert!(session_id.is_none());
+    let event = captured_event(&events, "ignoring invalid guest session ID");
+    let field = event
+        .fields
+        .get("session_id")
+        .expect("invalid session id diagnostic field should be present");
+    assert!(field.contains("\\u{20ac}"), "got: {field}");
+    assert!(field.ends_with("...[truncated 24 bytes]"), "got: {field}");
+    assert!(
+        !field.contains(&raw_id),
+        "diagnostic field should not contain the full invalid id: {field}"
+    );
+}
+
+#[tokio::test]
 async fn read_guest_failure_diagnostic_file_returns_valid_diagnostic() {
     let sandbox = MockSandbox::new("test");
     let diagnostic = FailureDiagnostic::new(
