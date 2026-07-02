@@ -20,6 +20,7 @@ import {
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
   type ChatThreadListItem,
+  type ChatRunOptionsRequest,
   type GenerationTemplateRequest,
   type ModelSelectionRequest,
   type PagedChatMessage,
@@ -158,6 +159,7 @@ type BddSendMessageBody =
       readonly clientThreadId?: string;
       readonly modelProvider?: string;
       readonly modelSelection?: ModelSelectionRequest | null;
+      readonly runOptions?: ChatRunOptionsRequest;
       readonly generationTemplate?: GenerationTemplateRequest;
       readonly hasTextContent?: boolean;
       readonly attachFiles?: readonly AttachFile[];
@@ -1096,6 +1098,9 @@ export function createChatFilesBddApi(context: TestContext) {
               ...(body.modelSelection === undefined
                 ? {}
                 : { modelSelection: body.modelSelection }),
+              ...(body.runOptions === undefined
+                ? {}
+                : { runOptions: body.runOptions }),
               ...(body.generationTemplate === undefined
                 ? {}
                 : { generationTemplate: body.generationTemplate }),
