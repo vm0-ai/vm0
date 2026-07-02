@@ -3,13 +3,16 @@ import {
   IconArrowLeft,
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
+  IconBackground,
   IconChevronLeft,
   IconChevronRight,
+  IconDownload,
   IconDots,
   IconEye,
   IconExternalLink,
   IconLoader2,
   IconPencil,
+  IconSparkles,
   IconUpload,
   IconZoomReset,
   IconX,
@@ -62,12 +65,19 @@ import {
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import {
   CsvPreviewTable,
+  downloadAttachmentUrl,
   parseCsvRows,
   publicAttachmentUrl,
   TextPreviewLoader,
 } from "./zero-attachment-chips.tsx";
 import { artifactPreviewUrlsMatch } from "./zero-attachment-url.ts";
 import { lightboxDialogVisible$ } from "../../signals/zero-page/zero-attachment-chips.ts";
+import {
+  artifactImageEditMode$,
+  imageEditProcessing$,
+  runImageEdit$,
+  type ImageEditOperation,
+} from "../../signals/zero-page/zero-image-edit.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
@@ -77,6 +87,11 @@ import {
   type ZoomableImageControls,
   zoomableArtifactImageKey,
 } from "./zero-zoomable-image-canvas.tsx";
+import { EditableArtifactImageCanvas } from "./zero-editable-image-canvas.tsx";
+import {
+  editableImageArtifactCanvasKey,
+  type EditableImageCanvasItem,
+} from "../../signals/zero-page/zero-editable-image-canvas.ts";
 import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -451,6 +466,7 @@ function ArtifactSidebarContent({
 }: ArtifactSidebarContentProps) {
   const fullscreen = useGet(artifactFullscreen$);
   const requestedHtmlCommentMode = useGet(artifactHtmlEditMode$);
+  const requestedImageEditMode = useGet(artifactImageEditMode$);
   const htmlDomEditPreviewHtmlByUrl = useGet(htmlDomEditPreviewHtmlByUrl$);
   const htmlDomEditPendingUrl = useGet(htmlDomEditPendingUrl$);
   const htmlDomEditPublishingUrl = useGet(htmlDomEditPublishingUrl$);
@@ -494,6 +510,10 @@ function ArtifactSidebarContent({
     return null;
   }
 
+  const imageEditEnabled = Boolean(features?.[FeatureSwitchKey.ImageEditing]);
+  const imageEditActive =
+    display.kind === "image" && requestedImageEditMode && imageEditEnabled;
+
   const htmlEditState = createHtmlEditState({
     applyPreview: applyHtmlDomEditPreview,
     clearPending: clearHtmlDomEditPending,
@@ -523,6 +543,7 @@ function ArtifactSidebarContent({
       htmlEditSnapshotTarget={htmlEditSnapshotTarget}
       htmlEditState={htmlEditState}
       htmlHeaderState={htmlHeaderState}
+      imageEditActive={imageEditActive}
       imageNavigation={imageNavigation}
       onBack={onBack}
       openHtmlCommentMode={openHtmlCommentMode}
@@ -546,6 +567,7 @@ function ArtifactSidebarResolvedContent({
   htmlEditSnapshotTarget,
   htmlEditState,
   htmlHeaderState,
+  imageEditActive,
   imageNavigation,
   onBack,
   openHtmlCommentMode,
@@ -565,6 +587,7 @@ function ArtifactSidebarResolvedContent({
   readonly htmlEditSnapshotTarget: HtmlEditSnapshotTargetView | null;
   readonly htmlEditState: HtmlEditState;
   readonly htmlHeaderState: HtmlArtifactHeaderState | undefined;
+  readonly imageEditActive: boolean;
   readonly imageNavigation?: ArtifactImageNavigationActions;
   readonly onBack?: () => void;
   readonly openHtmlCommentMode: () => void;
@@ -614,6 +637,7 @@ function ArtifactSidebarResolvedContent({
         url={display.url}
         fullscreen={fullscreen}
         htmlState={htmlHeaderState}
+        imageEditActive={imageEditActive}
         onEditPresentation={editPresentation}
         onEditHtml={editHtml}
         onExitHtmlEdit={exitHtmlEdit}
@@ -998,6 +1022,7 @@ function ArtifactSidebarHeader({
   url,
   fullscreen,
   htmlState,
+  imageEditActive,
   onBack,
   onEditHtml,
   onEditPresentation,
@@ -1013,6 +1038,7 @@ function ArtifactSidebarHeader({
   url?: string;
   fullscreen: boolean;
   htmlState?: HtmlArtifactHeaderState;
+  imageEditActive: boolean;
   onBack?: () => void;
   onEditHtml?: () => void;
   onEditPresentation?: () => void;
@@ -1051,6 +1077,7 @@ function ArtifactSidebarHeader({
         artifactKind={artifactKind}
         fullscreen={fullscreen}
         htmlState={htmlState}
+        imageEditActive={imageEditActive}
         kind={kind}
         onClose={onClose}
         onEditHtml={onEditHtml}
@@ -1070,6 +1097,7 @@ function ArtifactSidebarActions({
   compactActions,
   fullscreen,
   htmlState,
+  imageEditActive,
   kind,
   onClose,
   onEditHtml,
@@ -1084,6 +1112,7 @@ function ArtifactSidebarActions({
   compactActions: boolean;
   fullscreen: boolean;
   htmlState?: HtmlArtifactHeaderState;
+  imageEditActive: boolean;
   kind?: ArtifactKindForBody;
   onClose: () => void;
   onEditHtml?: () => void;
@@ -1103,6 +1132,7 @@ function ArtifactSidebarActions({
     Boolean(features?.[FeatureSwitchKey.HtmlArtifactCommentEditing]) &&
     htmlState !== undefined;
   const htmlEditActive = showHtmlControls && htmlState !== "idle";
+  const hideArtifactActions = htmlEditActive || imageEditActive;
   const htmlExitAction =
     htmlState === "editing" && onExitHtmlEdit ? onExitHtmlEdit : undefined;
 
@@ -1110,7 +1140,7 @@ function ArtifactSidebarActions({
     <div className="flex shrink-0 items-center gap-1">
       {url && (
         <>
-          {!htmlEditActive && (
+          {!hideArtifactActions && (
             <>
               {kind === "html" && <ArtifactOpenExternalAction url={url} />}
               <ArtifactShareButton ariaLabel="Share artifact" url={url} />
@@ -1377,10 +1407,11 @@ function ArtifactBody({
   }
   if (kind === "image") {
     return (
-      <ArtifactImageBody
+      <ArtifactImageBodyDispatch
         imageNavigation={imageNavigation}
         url={url}
         filename={filename}
+        pageSignal={pageSignal}
       />
     );
   }
@@ -1652,6 +1683,39 @@ function ArtifactCsvBody({
   );
 }
 
+function ArtifactImageBodyDispatch({
+  imageNavigation,
+  url,
+  filename,
+  pageSignal,
+}: {
+  imageNavigation?: ArtifactImageNavigationActions;
+  url: string;
+  filename: string;
+  pageSignal: AbortSignal;
+}) {
+  const editMode = useGet(artifactImageEditMode$);
+  const features = useLastResolved(featureSwitch$);
+  const imageEditEnabled = Boolean(features?.[FeatureSwitchKey.ImageEditing]);
+  if (editMode && imageEditEnabled) {
+    return (
+      <ArtifactImageEditBody
+        imageNavigation={imageNavigation}
+        url={url}
+        filename={filename}
+        pageSignal={pageSignal}
+      />
+    );
+  }
+  return (
+    <ArtifactImageBody
+      imageNavigation={imageNavigation}
+      url={url}
+      filename={filename}
+    />
+  );
+}
+
 function ArtifactImageBody({
   imageNavigation,
   url,
@@ -1689,6 +1753,191 @@ function ArtifactImageBody({
             }}
           </ZoomableArtifactImageCanvas>
           <ArtifactImageNavigationControls navigation={imageNavigation} />
+        </div>
+      </ArtifactStageCard>
+    </ArtifactStageShell>
+  );
+}
+
+function ArtifactImageEditToolbarButton({
+  activeOperation,
+  icon,
+  label,
+  onClick,
+  operation,
+  testId,
+}: {
+  activeOperation: ImageEditOperation | null;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  operation: ImageEditOperation;
+  testId: string;
+}) {
+  const processing = activeOperation !== null;
+  const active = activeOperation === operation;
+  return (
+    <ArtifactActionTooltip label={label} side="top">
+      <span className="inline-flex">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground"
+          disabled={processing}
+          data-testid={testId}
+          aria-label={label}
+          title={label}
+          onClick={onClick}
+        >
+          {active ? <IconLoader2 size={17} className="animate-spin" /> : icon}
+        </Button>
+      </span>
+    </ArtifactActionTooltip>
+  );
+}
+
+function ArtifactImageEditSelectionToolbar({
+  activeOperation,
+  item,
+  onDownload,
+  onOperation,
+}: {
+  activeOperation: ImageEditOperation | null;
+  item: EditableImageCanvasItem;
+  onDownload: (item: EditableImageCanvasItem) => void;
+  onOperation: (
+    operation: ImageEditOperation,
+    item: EditableImageCanvasItem,
+  ) => void;
+}) {
+  return (
+    <div
+      data-testid="image-edit-toolbar"
+      className="flex items-center gap-2 rounded-2xl border border-border/70 bg-gray-50/95 px-2 py-2 shadow-lg backdrop-blur"
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
+    >
+      <ArtifactImageEditToolbarButton
+        activeOperation={activeOperation}
+        icon={<IconBackground size={18} stroke={1.8} />}
+        label="Remove background"
+        onClick={() => {
+          onOperation("removeBackground", item);
+        }}
+        operation="removeBackground"
+        testId="image-edit-remove-background"
+      />
+      <ArtifactImageEditToolbarButton
+        activeOperation={activeOperation}
+        icon={<IconSparkles size={18} stroke={1.8} />}
+        label="Enhance"
+        onClick={() => {
+          onOperation("enhance", item);
+        }}
+        operation="enhance"
+        testId="image-edit-enhance"
+      />
+      <ArtifactActionTooltip label="Download" side="top">
+        <span className="inline-flex">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground"
+            disabled={activeOperation !== null}
+            data-testid="image-edit-download"
+            aria-label="Download"
+            title="Download"
+            onClick={() => {
+              onDownload(item);
+            }}
+          >
+            <IconDownload size={18} stroke={1.8} />
+          </Button>
+        </span>
+      </ArtifactActionTooltip>
+    </div>
+  );
+}
+
+function ArtifactImageEditBody({
+  imageNavigation,
+  url,
+  filename,
+  pageSignal,
+}: {
+  imageNavigation?: ArtifactImageNavigationActions;
+  url: string;
+  filename: string;
+  pageSignal: AbortSignal;
+}) {
+  const fullscreen = useGet(artifactFullscreen$);
+  const modalOpen = useGet(lightboxDialogVisible$);
+  const activeOperation = useGet(imageEditProcessing$);
+  const runImageEdit = useSet(runImageEdit$);
+  const canvasSrc = publicAttachmentUrl(url);
+  const canvasKey = editableImageArtifactCanvasKey(url);
+
+  const onOperation = (
+    operation: ImageEditOperation,
+    item: EditableImageCanvasItem,
+  ) => {
+    detach(
+      runImageEdit(
+        {
+          canvasKey,
+          canvasSrc,
+          operation,
+          sourceItemId: item.id,
+          url: item.src,
+        },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+      "runImageEdit",
+    );
+  };
+  const onDownload = (item: EditableImageCanvasItem) => {
+    detach(
+      downloadAttachmentUrl(item.src, pageSignal, filename),
+      Reason.DomCallback,
+      "downloadEditableImageCanvasItem",
+    );
+  };
+
+  return (
+    <ArtifactStageShell flush scrollable={false}>
+      <ArtifactStageCard fillHeight>
+        <div className="relative h-full min-h-0">
+          <ArtifactSidebarImageNavigationKeydown
+            fullscreen={fullscreen}
+            modalOpen={modalOpen}
+            navigation={imageNavigation}
+          />
+          <EditableArtifactImageCanvas
+            src={canvasSrc}
+            alt={filename}
+            canvasKey={canvasKey}
+            imageTestId="artifact-sidebar-body-image"
+            canvasTestId="artifact-sidebar-image-edit-canvas"
+            viewportKey={fullscreen ? "fullscreen" : "sidebar"}
+            renderSelectionToolbar={(item) => {
+              return (
+                <ArtifactImageEditSelectionToolbar
+                  activeOperation={activeOperation}
+                  item={item}
+                  onDownload={onDownload}
+                  onOperation={onOperation}
+                />
+              );
+            }}
+          >
+            {(controls) => {
+              return <ArtifactImageZoomControls controls={controls} />;
+            }}
+          </EditableArtifactImageCanvas>
         </div>
       </ArtifactStageCard>
     </ArtifactStageShell>

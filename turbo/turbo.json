@@ -77,8 +77,6 @@
     "NEXT_PUBLIC_APP_URL",
     "ONBOARDING_URL",
     "NEXT_PUBLIC_ONBOARDING_URL",
-    "VITE_ONBOARDING_URL",
-    "VITE_ONBOARDING_DOMAIN",
     "APP_PORT",
     "PLAUSIBLE_SCRIPT_URL",
     "NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL",
@@ -273,6 +271,10 @@
     },
     "lint": {
       "dependsOn": ["^lint"]
+    },
+    "lint-runtime-api-compat": {
+      "cache": false,
+      "outputs": []
     },
     "check-types": {
       "dependsOn": ["^check-types", "^build"]

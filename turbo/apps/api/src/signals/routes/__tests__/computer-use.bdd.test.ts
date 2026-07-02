@@ -895,6 +895,17 @@ describe("FILE-03 desktop computer-use runtime", () => {
           dispatchMode: "accessibility_action",
           dispatchTarget: "element",
           inputRisk: "targeted_app_action",
+          appState: "Computer Use state\n<app_state>\n</app_state>",
+          truncated: true,
+          truncationReasons: ["max_nodes"],
+          metrics: {
+            helperDurationMs: 42,
+            settle: true,
+            rawNodeCount: 5,
+            nodeCount: 3,
+            appStateChars: 43,
+            visibleElementCount: 2,
+          },
         },
       },
     );
@@ -916,8 +927,22 @@ describe("FILE-03 desktop computer-use runtime", () => {
         dispatchMode: "accessibility_action",
         dispatchTarget: "element",
         inputRisk: "targeted_app_action",
+        appStateLength: 43,
+        truncated: true,
+        truncationReasons: ["max_nodes"],
+        metrics: {
+          helperDurationMs: 42,
+          settle: true,
+          rawNodeCount: 5,
+          nodeCount: 3,
+          appStateChars: 43,
+          visibleElementCount: 2,
+        },
       },
     });
+    expect(JSON.stringify(audit.auditEvents[0]?.redactedResult)).not.toContain(
+      "<app_state>",
+    );
 
     mockNow(base + 182_000);
     const idleB = await api.claimNextComputerUseCommand(hostB.hostToken);

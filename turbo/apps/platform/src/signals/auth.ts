@@ -10,12 +10,6 @@ const ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 const HOMEPAGE_ATTRIBUTION_VALUE = "homepage";
 const VM0_ONBOARDING_PATH = "/onboarding/491858";
 const VM0_ONBOARDING_EXPERIMENT = "491858";
-const DEFAULT_ONBOARDING_URL = "https://www.vm0.ai";
-const VM0_ROOT_DOMAIN = "vm0.ai";
-const LOCAL_VM7_SO_HOSTNAME = "so.vm7.ai";
-const LOCAL_VM7_API_HOSTNAME = "api.vm7.ai";
-const LOCAL_VM7_SERVICE_PORT = "8443";
-const LOCAL_VM7_MARKETING_DEV_PORT = "8441";
 
 const AD_ATTRIBUTION_PARAMS = [
   "gclid",
@@ -39,35 +33,59 @@ const AD_TRAFFIC_MARKERS = [
   "utm_campaign",
 ] as const;
 
-/**
- * Resolve the hosted auth/onboarding origin.
- * Prefer the configured onboarding origin; the app/platform -> www derivation
- * remains a fallback for older environments.
- */
-export function resolveWebOrigin(): string {
-  const configuredUrl = import.meta.env.VITE_ONBOARDING_URL as
-    | string
-    | undefined;
-  if (configuredUrl) {
-    return new URL(configuredUrl).origin;
+type PublicService = "www" | "app" | "api";
+
+const SERVICE_LABELS = ["www", "app", "api", "platform"] as const;
+
+function replaceServiceLabel(hostname: string, service: PublicService): string {
+  const labels = hostname.split(".");
+  const firstLabel = labels[0];
+  if (!firstLabel) {
+    return hostname;
   }
 
+  if ((SERVICE_LABELS as readonly string[]).includes(firstLabel)) {
+    labels[0] = service;
+    return labels.join(".");
+  }
+
+  for (const label of SERVICE_LABELS) {
+    const suffix = `-${label}`;
+    if (firstLabel.endsWith(suffix)) {
+      labels[0] = `${firstLabel.slice(0, -label.length)}${service}`;
+      return labels.join(".");
+    }
+  }
+
+  // No recognizable service label (e.g. the apex domain): prefix one.
+  return `${service}.${hostname}`;
+}
+
+// Derive a sibling service origin from a public origin, keeping protocol and
+// port: https://app.vm7.ai:8443 + "www" -> https://www.vm7.ai:8443. No
+// environment fallback — a wrong-environment URL is silent and sticks, while
+// an error here surfaces the actual bug.
+export function deriveServiceOrigin(
+  currentOrigin: string,
+  service: PublicService,
+): string {
+  const url = new URL(currentOrigin);
+  url.hostname = replaceServiceLabel(url.hostname, service);
+  return url.origin;
+}
+
+// The marketing/onboarding (www) origin sibling of the current host.
+export function resolveWebOrigin(): string {
   const origin = location.origin;
   if (!origin || origin === "null") {
-    return "";
+    throw new Error("Cannot resolve the www origin without a browser origin");
   }
-  const url = new URL(origin);
-  url.hostname = url.hostname.replace(/(^|-)(platform|app)\./, "$1www.");
-  return url.origin;
+  return deriveServiceOrigin(origin, "www");
 }
 
 export function resolveAppOrigin(): string {
   const origin = location.origin;
   return !origin || origin === "null" ? "" : origin;
-}
-
-function hasVm6Suffix(hostname: string): boolean {
-  return hostname === "vm6.ai" || hostname.endsWith(".vm6.ai");
 }
 
 function parseUrl(value: string): URL | null {
@@ -77,158 +95,8 @@ function parseUrl(value: string): URL | null {
   return new URL(value);
 }
 
-function parseDomainOverrideUrl(value: string): URL | null {
-  return parseUrl(value.includes("://") ? value : `https://${value}`);
-}
-
-function getVm6OriginFromDomainParam(value: string | null): string | null {
-  const trimmed = value?.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const url = parseDomainOverrideUrl(trimmed);
-  if (!url) {
-    return null;
-  }
-
-  if (
-    url.protocol !== "https:" ||
-    url.username ||
-    url.password ||
-    url.port ||
-    url.pathname !== "/" ||
-    url.search ||
-    url.hash ||
-    !hasVm6Suffix(url.hostname)
-  ) {
-    return null;
-  }
-
-  return url.origin;
-}
-
-function getLocalVm7OriginFromDomainParam(value: string | null): string | null {
-  const trimmed = value?.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const url = parseDomainOverrideUrl(trimmed);
-  if (!url) {
-    return null;
-  }
-
-  if (
-    url.protocol !== "https:" ||
-    url.username ||
-    url.password ||
-    url.hostname !== LOCAL_VM7_API_HOSTNAME ||
-    url.port !== LOCAL_VM7_SERVICE_PORT ||
-    url.pathname !== "/" ||
-    url.search ||
-    url.hash
-  ) {
-    return null;
-  }
-
-  return url.origin;
-}
-
-function getDomainOverrideHostFromSearch(): string | null {
-  const domainParam = new URLSearchParams(location.search).get("domain");
-  const vm6Origin = getVm6OriginFromDomainParam(domainParam);
-  if (vm6Origin) {
-    return new URL(vm6Origin).host;
-  }
-
-  const localVm7Origin = getLocalVm7OriginFromDomainParam(domainParam);
-  return localVm7Origin ? new URL(localVm7Origin).host : null;
-}
-
-function replaceVm0ServiceLabel(
-  hostname: string,
-  service: "api" | "app" | "www",
-): string | null {
-  const labels = hostname.split(".");
-  const firstLabel = labels[0];
-  if (!firstLabel) {
-    return null;
-  }
-
-  if (
-    firstLabel === "api" ||
-    firstLabel === "app" ||
-    firstLabel === "so" ||
-    firstLabel === "www"
-  ) {
-    labels[0] = service;
-    return labels.join(".");
-  }
-
-  for (const label of ["api", "app", "so", "www"]) {
-    const suffix = `-${label}`;
-    if (firstLabel.endsWith(suffix)) {
-      labels[0] = `${firstLabel.slice(0, -label.length)}${service}`;
-      return labels.join(".");
-    }
-  }
-
-  return null;
-}
-
-function resolveDomainOverride(): string | null {
-  if (import.meta.env.VITE_VERCEL_ENV !== "production") {
-    const configuredDomain = import.meta.env.VITE_ONBOARDING_DOMAIN as
-      | string
-      | undefined;
-    if (configuredDomain) {
-      return configuredDomain;
-    }
-  }
-
-  const origin = location.origin;
-  if (!origin || origin === "null") {
-    return null;
-  }
-  const url = new URL(origin);
-  if (!url.hostname.endsWith(".vm6.ai")) {
-    return null;
-  }
-  const apiHostname = url.hostname.replace(
-    /(^|-)(platform|app|www)\./,
-    "$1api.",
-  );
-  return apiHostname === url.hostname ? null : apiHostname;
-}
-
-function resolveUrlFromDomainOverride(
-  service: "api" | "app" | "www",
-): string | null {
-  const domainOverride = getDomainOverrideHostFromSearch();
-  if (!domainOverride) {
-    return null;
-  }
-
-  const hostname = replaceVm0ServiceLabel(domainOverride, service);
-  return hostname ? `https://${hostname}` : null;
-}
-
-export function resolveAppUrlFromDomainOverride(): string | null {
-  return resolveUrlFromDomainOverride("app");
-}
-
-function resolveApiUrlFromDomainOverride(): string | null {
-  const domainOverride = getDomainOverrideHostFromSearch();
-  return domainOverride ? `https://${domainOverride}` : null;
-}
-
-function resolveWebUrlFromDomainOverride(): string | null {
-  return resolveUrlFromDomainOverride("www");
-}
-
 export function resolveAppUrl(): string {
-  return resolveAppUrlFromDomainOverride() ?? resolveAppOrigin();
+  return resolveAppOrigin();
 }
 
 export function resolveWebAuthUrl(
@@ -240,10 +108,6 @@ export function resolveWebAuthUrl(
     return path;
   }
   const url = new URL(path, webOrigin);
-  const domainOverride = resolveDomainOverride();
-  if (domainOverride) {
-    url.searchParams.set("domain", domainOverride);
-  }
   if (options.redirectUrl) {
     url.searchParams.set("redirect_url", options.redirectUrl);
   }
@@ -259,99 +123,30 @@ export function resolveAppAuthUrl(
     return path;
   }
   const url = new URL(path, appOrigin);
-  const domainOverride = resolveDomainOverride();
-  if (domainOverride) {
-    url.searchParams.set("domain", domainOverride);
-  }
   if (options.redirectUrl) {
     url.searchParams.set("redirect_url", options.redirectUrl);
   }
   return url.toString();
 }
 
-function paidOnboardingUrl(): string | undefined {
-  const configuredUrl = import.meta.env.VITE_ONBOARDING_URL as
-    | string
-    | undefined;
-  return configuredUrl || undefined;
-}
-
-function isVm6Origin(origin: string): boolean {
-  const url = parseUrl(origin);
-  if (!url) {
-    return false;
-  }
-  return url.hostname.endsWith(".vm6.ai");
-}
-
+// Clerk allowedRedirectOrigins for the current host: this app plus its www
+// and api siblings.
 export function getAllowedAuthRedirectOrigins(): string[] {
-  const appUrl = resolveAppUrl();
-  const onboardingUrl = paidOnboardingUrl();
-  const origins = onboardingUrl ? [appUrl, onboardingUrl] : [appUrl];
-
-  if (origins.some(isVm6Origin)) {
-    origins.push("https://*.vm6.ai");
-  }
-
-  return [...new Set(origins.filter(Boolean))];
-}
-
-export function getAllowedAuthRedirectOriginsFromDomainOverride(): string[] {
-  if (!getDomainOverrideHostFromSearch()) {
+  const self = resolveAppOrigin();
+  if (!self) {
     return [];
   }
-
-  const origins = [
-    resolveWebUrlFromDomainOverride(),
-    resolveApiUrlFromDomainOverride(),
-    resolveAppUrlFromDomainOverride(),
-    resolveAppOrigin(),
-  ];
-
   return [
-    ...new Set(
-      origins.filter((origin): origin is string => {
-        return Boolean(origin);
-      }),
-    ),
+    ...new Set([
+      self,
+      deriveServiceOrigin(self, "www"),
+      deriveServiceOrigin(self, "api"),
+    ]),
   ];
-}
-
-export function getAllowedAuthRedirectOriginsFromCurrentRedirectUrl(): string[] {
-  const rawRedirectUrl = new URLSearchParams(location.search).get(
-    "redirect_url",
-  );
-  if (!rawRedirectUrl) {
-    return [];
-  }
-
-  const redirectUrl = parseUrl(rawRedirectUrl);
-  if (!redirectUrl) {
-    return [];
-  }
-
-  if (
-    redirectUrl.protocol !== "https:" ||
-    redirectUrl.hostname !== LOCAL_VM7_SO_HOSTNAME ||
-    (redirectUrl.port !== LOCAL_VM7_SERVICE_PORT &&
-      redirectUrl.port !== LOCAL_VM7_MARKETING_DEV_PORT) ||
-    (redirectUrl.pathname !== "/onboarding" &&
-      !redirectUrl.pathname.startsWith("/onboarding/"))
-  ) {
-    return [];
-  }
-
-  return [redirectUrl.origin];
 }
 
 export function getAllowedAuthRedirectOriginsForCurrentPage(): string[] {
-  return [
-    ...new Set([
-      ...getAllowedAuthRedirectOrigins(),
-      ...getAllowedAuthRedirectOriginsFromDomainOverride(),
-      ...getAllowedAuthRedirectOriginsFromCurrentRedirectUrl(),
-    ]),
-  ];
+  return getAllowedAuthRedirectOrigins();
 }
 
 function hasAdTraffic(params: URLSearchParams): boolean {
@@ -374,7 +169,7 @@ function appendHomepageAttributionParams(
 }
 
 function onboardingBaseUrl(): string {
-  return (paidOnboardingUrl() || DEFAULT_ONBOARDING_URL).replace(/\/+$/u, "");
+  return resolveWebOrigin();
 }
 
 function setCurrentLandingContext(params: URLSearchParams): void {
@@ -396,57 +191,11 @@ function buildVm0OnboardingEntryUrl(paramsInit?: URLSearchParams): string {
   return `${onboardingBaseUrl()}${VM0_ONBOARDING_PATH}${query ? `?${query}` : ""}`;
 }
 
-function isKnownStagingOnboardingRedirect(redirectUrl: URL): boolean {
-  return (
-    redirectUrl.protocol === "https:" &&
-    (redirectUrl.hostname === "staging-so.vm6.ai" ||
-      redirectUrl.hostname === "staging-www.vm6.ai" ||
-      redirectUrl.hostname.endsWith("-so.vm6.ai") ||
-      redirectUrl.hostname.endsWith("-www.vm6.ai")) &&
-    (redirectUrl.pathname === "/onboarding" ||
-      redirectUrl.pathname.startsWith("/onboarding/"))
-  );
-}
-
-function isVm0ProductionOrigin(url: URL): boolean {
-  return url.hostname === VM0_ROOT_DOMAIN || url.hostname.endsWith(".vm0.ai");
-}
-
-function normalizeOnboardingRedirectUrl(
-  redirectUrl: URL,
-  onboardingUrl: string | undefined,
-): URL {
-  if (!onboardingUrl || !isKnownStagingOnboardingRedirect(redirectUrl)) {
-    return redirectUrl;
-  }
-
-  const paidUrl = parseUrl(onboardingUrl);
-  if (!paidUrl) {
-    return redirectUrl;
-  }
-  if (isVm0ProductionOrigin(paidUrl)) {
-    return redirectUrl;
-  }
-
-  const normalized = new URL(redirectUrl.toString());
-  normalized.protocol = paidUrl.protocol;
-  normalized.host = paidUrl.host;
-  return normalized;
-}
-
 function isAllowedRedirectOrigin(
   redirectUrl: URL,
   allowedRedirectOrigins: readonly string[],
 ): boolean {
   return allowedRedirectOrigins.some((allowedOrigin) => {
-    if (allowedOrigin.startsWith("https://*.")) {
-      const suffix = allowedOrigin.slice("https://*.".length);
-      return (
-        redirectUrl.protocol === "https:" &&
-        redirectUrl.hostname.endsWith(`.${suffix}`)
-      );
-    }
-
     const url = parseUrl(allowedOrigin);
     if (!url) {
       return false;
@@ -458,18 +207,16 @@ function isAllowedRedirectOrigin(
 function readAllowedRedirectUrl(
   params: URLSearchParams,
   allowedRedirectOrigins: readonly string[],
-  onboardingUrl: string | undefined,
 ): string | null {
   const rawRedirectUrl = params.get("redirect_url");
   if (!rawRedirectUrl) {
     return null;
   }
 
-  const rawUrl = parseUrl(rawRedirectUrl);
-  if (!rawUrl) {
+  const redirectUrl = parseUrl(rawRedirectUrl);
+  if (!redirectUrl) {
     return null;
   }
-  const redirectUrl = normalizeOnboardingRedirectUrl(rawUrl, onboardingUrl);
   return isAllowedRedirectOrigin(redirectUrl, allowedRedirectOrigins)
     ? redirectUrl.toString()
     : null;
@@ -481,12 +228,7 @@ export function buildSignupRedirectUrl(
 ): string {
   const appUrl = resolveAppUrl();
   const params = new URLSearchParams(signUpSearch);
-  const onboardingUrl = paidOnboardingUrl();
-  const redirectUrl = readAllowedRedirectUrl(
-    params,
-    allowedRedirectOrigins,
-    onboardingUrl,
-  );
+  const redirectUrl = readAllowedRedirectUrl(params, allowedRedirectOrigins);
   if (redirectUrl) {
     return redirectUrl;
   }
@@ -505,11 +247,7 @@ export function buildSignInRedirectUrl(
   allowedRedirectOrigins: readonly string[] = getAllowedAuthRedirectOriginsForCurrentPage(),
 ): string {
   const params = new URLSearchParams(signInSearch);
-  const redirectUrl = readAllowedRedirectUrl(
-    params,
-    allowedRedirectOrigins,
-    paidOnboardingUrl(),
-  );
+  const redirectUrl = readAllowedRedirectUrl(params, allowedRedirectOrigins);
 
   return redirectUrl ?? resolveAppUrl();
 }

@@ -74,12 +74,10 @@ setTimeout(() => {
   console.log("   Marketing: https://www.vm7.ai:8443");
   console.log("   App:       https://app.vm7.ai:8443");
   console.log("   API:       https://api.vm7.ai:8443");
-  console.log("   SO:        https://so.vm7.ai:8443");
   console.log("\n💡 Make sure your applications are running:");
   console.log("   App:       pnpm --filter @vm0/app dev (port 3002)");
   console.log("   API:       pnpm --filter api dev (port 3001)");
   console.log("   Marketing is proxied to staging-www.vm6.ai");
-  console.log("   SO is proxied to staging-so.vm6.ai");
   console.log(
     "\n🔐 Certificates are provisioned automatically via Let's Encrypt.",
   );

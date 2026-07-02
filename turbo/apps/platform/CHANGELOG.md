@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.531.0](https://github.com/vm0-ai/vm0/compare/app-v0.530.0...app-v0.531.0) (2026-07-02)
+
+
+### Features
+
+* move workflow prompt action to composer ([#19855](https://github.com/vm0-ai/vm0/issues/19855)) ([146234d](https://github.com/vm0-ai/vm0/commit/146234d2bcc6d2fa912f5af95d8b4c423c415740))
+* remove public agent counter and align create button size ([#19830](https://github.com/vm0-ai/vm0/issues/19830)) ([90f7698](https://github.com/vm0-ai/vm0/commit/90f7698e23b89a53d1763b89940446eb33e8ff89))
+
+
+### Bug Fixes
+
+* avoid async thread list reads in chat shortcuts ([#19858](https://github.com/vm0-ai/vm0/issues/19858)) ([9c17df9](https://github.com/vm0-ai/vm0/commit/9c17df94236ce60dbdd5c3abc9fa6290a50ef55a))
+* refresh agent connector authorization reads ([#19828](https://github.com/vm0-ai/vm0/issues/19828)) ([243856e](https://github.com/vm0-ai/vm0/commit/243856e1afa8fe9c6a3eeebf30904a83863c6ddf))
+
+
+### Refactoring
+
+* **platform:** derive service origins from the current host ([#19870](https://github.com/vm0-ai/vm0/issues/19870)) ([a55a2eb](https://github.com/vm0-ai/vm0/commit/a55a2eb0ced36e10d0902361efc223dd8b32fae5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.1
+    * @vm0/core bumped to 8.388.0
+
 ## [0.530.0](https://github.com/vm0-ai/vm0/compare/app-v0.529.3...app-v0.530.0) (2026-07-02)
 
 
