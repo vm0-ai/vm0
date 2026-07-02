@@ -1,6 +1,7 @@
 import type { DBSchema, IDBPDatabase, OpenDBCallbacks } from "idb";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import {
+  CHAT_IDB_VERSION,
   CHAT_MESSAGES_STORE,
   CHAT_THREAD_META_STORE,
 } from "./chat-idb-schema.ts";
@@ -164,7 +165,7 @@ describe("openChatIdb", () => {
 
     await subject.openChatIdb("user_1", "org_1");
 
-    expect(calls[0]?.version).toBe(6);
+    expect(calls[0]?.version).toBe(CHAT_IDB_VERSION);
     const upgrade = calls[0]?.callbacks?.upgrade;
     expect(upgrade).toBeTypeOf("function");
     if (upgrade === undefined) {
@@ -174,7 +175,13 @@ describe("openChatIdb", () => {
     const schemaDb = fakeSchemaDb();
     type UpgradeCallback = NonNullable<OpenDBCallbacks<unknown>["upgrade"]>;
     const transaction = {} as Parameters<UpgradeCallback>[3];
-    upgrade(schemaDb.db, 0, 6, transaction, versionChangeEvent(0, 6));
+    upgrade(
+      schemaDb.db,
+      0,
+      CHAT_IDB_VERSION,
+      transaction,
+      versionChangeEvent(0, CHAT_IDB_VERSION),
+    );
 
     expect(schemaDb.createObjectStore).toHaveBeenCalledWith(
       CHAT_MESSAGES_STORE,
@@ -193,8 +200,12 @@ describe("openChatIdb", () => {
     await subject.openChatIdb("user_1", "org_1");
 
     expect(firstDb.versionChangeListeners).toHaveLength(1);
-    firstDb.versionChangeListeners[0]?.(versionChangeEvent(6, 7));
-    firstDb.versionChangeListeners[0]?.(versionChangeEvent(6, 7));
+    firstDb.versionChangeListeners[0]?.(
+      versionChangeEvent(CHAT_IDB_VERSION, CHAT_IDB_VERSION + 1),
+    );
+    firstDb.versionChangeListeners[0]?.(
+      versionChangeEvent(CHAT_IDB_VERSION, CHAT_IDB_VERSION + 1),
+    );
 
     expect(firstDb.close).toHaveBeenCalledTimes(2);
     expect(reload).toHaveBeenCalledTimes(1);
@@ -209,7 +220,11 @@ describe("openChatIdb", () => {
     const { calls, reload, subject } = await setupSubject([db]);
 
     await subject.openChatIdb("user_1", "org_1");
-    calls[0]?.callbacks?.blocked?.(5, 6, versionChangeEvent(5, 6));
+    calls[0]?.callbacks?.blocked?.(
+      CHAT_IDB_VERSION - 1,
+      CHAT_IDB_VERSION,
+      versionChangeEvent(CHAT_IDB_VERSION - 1, CHAT_IDB_VERSION),
+    );
 
     expect(db.close).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();
