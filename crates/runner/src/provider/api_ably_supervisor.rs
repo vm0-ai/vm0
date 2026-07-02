@@ -497,7 +497,7 @@ impl PollWakeups {
     }
 
     #[cfg(test)]
-    async fn snapshot(&self) -> PollWakeupsSnapshot {
+    pub(super) async fn snapshot(&self) -> PollWakeupsSnapshot {
         let inner = self.inner.lock().await;
         PollWakeupsSnapshot {
             ably_connected: inner.ably_connected,
@@ -511,12 +511,12 @@ impl PollWakeups {
 
 #[cfg(test)]
 #[derive(Debug)]
-struct PollWakeupsSnapshot {
-    ably_connected: bool,
-    poll_now: bool,
-    deferred_poll_at: Option<tokio::time::Instant>,
-    deferred_poll_cap_at: Option<tokio::time::Instant>,
-    wakeup_retry_at: Option<tokio::time::Instant>,
+pub(super) struct PollWakeupsSnapshot {
+    pub(super) ably_connected: bool,
+    pub(super) poll_now: bool,
+    pub(super) deferred_poll_at: Option<tokio::time::Instant>,
+    pub(super) deferred_poll_cap_at: Option<tokio::time::Instant>,
+    pub(super) wakeup_retry_at: Option<tokio::time::Instant>,
 }
 
 pub(super) struct AblySupervisor {

@@ -91,6 +91,8 @@ const POLL_SLOW: Duration = Duration::from_secs(30);
 const POLL_FAST: Duration = Duration::from_secs(5);
 /// Retry delay after a job-notification wakeup reaches poll but poll fails.
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
+/// Small retry backoff when the API says a claim is still affinity-protected.
+const AFFINITY_PROTECTED_RETRY_JITTER: Duration = Duration::from_millis(50);
 const DIRECT_CANDIDATE_QUEUE_CAPACITY: usize = 128;
 
 enum DiscoveryWakeup {
@@ -386,6 +388,7 @@ impl JobProvider for ApiProvider {
             }
             Err(RunnerError::AffinityProtected) => {
                 if let Some(delay) = candidate.affinity_protection_remaining() {
+                    let delay = delay.saturating_add(AFFINITY_PROTECTED_RETRY_JITTER);
                     info!(
                         run_id = %run_id,
                         delay_ms = delay.as_millis(),
@@ -395,9 +398,12 @@ impl JobProvider for ApiProvider {
                 } else {
                     info!(
                         run_id = %run_id,
-                        "claim rejected by affinity protection without active local deadline"
+                        delay_ms = AFFINITY_PROTECTED_RETRY_JITTER.as_millis(),
+                        "claim rejected by affinity protection without active local deadline, deferring poll"
                     );
-                    self.poll_wakeups.request_immediate_poll().await;
+                    self.poll_wakeups
+                        .request_deferred_poll_after(AFFINITY_PROTECTED_RETRY_JITTER)
+                        .await;
                 }
                 None
             }
@@ -2070,6 +2076,45 @@ mod tests {
             .await;
 
         assert!(claimed.is_none());
+        claim_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_claim_affinity_protected_conflict_defers_poll() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(409).json_body(serde_json::json!({
+                    "error": {
+                        "message": "Job is protected",
+                        "code": "AFFINITY_PROTECTED"
+                    }
+                }));
+            })
+            .await;
+        let wakeups = Arc::new(PollWakeups::new(false));
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::clone(&wakeups),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await;
+
+        assert!(claimed.is_none());
+        let snapshot = wakeups.snapshot().await;
+        assert!(
+            snapshot.deferred_poll_at.is_some(),
+            "affinity-protected claim conflicts should defer instead of hot-polling"
+        );
         claim_mock.assert_calls_async(1).await;
     }
 
