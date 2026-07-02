@@ -147,7 +147,6 @@ pub(super) struct CompletionReady {
     payload: CompletionPayload,
     budget: BudgetOwnership,
     session_affinity_changed: bool,
-    session_affinity_refresh_sent: bool,
 }
 
 impl CompletionReady {
@@ -156,7 +155,6 @@ impl CompletionReady {
             payload,
             budget,
             session_affinity_changed: false,
-            session_affinity_refresh_sent: false,
         }
     }
 
@@ -165,14 +163,8 @@ impl CompletionReady {
         self
     }
 
-    pub(super) fn with_session_affinity_refresh_sent(mut self) -> Self {
-        self.session_affinity_changed = true;
-        self.session_affinity_refresh_sent = true;
-        self
-    }
-
-    pub(super) fn needs_session_affinity_refresh(&self) -> bool {
-        self.session_affinity_changed && !self.session_affinity_refresh_sent
+    pub(super) fn session_affinity_changed(&self) -> bool {
+        self.session_affinity_changed
     }
 
     pub(super) async fn complete_and_release(
