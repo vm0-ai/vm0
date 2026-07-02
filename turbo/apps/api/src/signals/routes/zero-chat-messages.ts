@@ -11,6 +11,7 @@ import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
   type ChatMessageAutomationSnapshot,
+  type ChatMessageGenerationTemplate,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
@@ -84,8 +85,14 @@ import { bestEffort } from "../utils";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { RouteEntry } from "../route-entry";
-import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
-import { resolveThreadGenerationTemplatePrompt } from "./thread-generation-template";
+import {
+  buildGenerationTemplatePrompt,
+  describeGenerationTemplateSelection,
+} from "./generation-template-prompt";
+import {
+  fallbackGenerationTemplateNote,
+  resolveThreadGenerationTemplatePrompt,
+} from "./thread-generation-template";
 
 type SendBody = z.infer<typeof chatMessagesContract.send.body>;
 
@@ -145,6 +152,7 @@ interface WebChatPriorRunMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
   readonly attachFiles: readonly string[] | null;
+  readonly generationTemplate: ChatMessageGenerationTemplate | null;
 }
 
 interface WebChatPriorRun {
@@ -164,6 +172,7 @@ interface WebChatIncompleteRoundMessage {
   readonly content: string | null;
   readonly error: string | null;
   readonly attachFiles: readonly string[] | null;
+  readonly generationTemplate: ChatMessageGenerationTemplate | null;
 }
 
 interface WebChatIncompleteRound {
@@ -560,10 +569,31 @@ function formatAttachFileIds(
     .join("\n");
 }
 
+// Generation templates are one-shot (see resolveThreadGenerationTemplatePrompt) —
+// there is no thread-sticky DB default, so a later turn only learns a selection
+// happened here by seeing this marker in the replayed text.
+function generationTemplateReplayMarker(
+  role: "user" | "assistant",
+  generationTemplate: ChatMessageGenerationTemplate | null,
+): string {
+  // Workflow templates are one-shot by design (never sticky, see
+  // resolveThreadGenerationTemplatePrompt) — a "stays in effect" marker would
+  // misrepresent that, so only illustration/video/presentation get one.
+  if (role !== "user" || generationTemplate?.type === "workflow") {
+    return "";
+  }
+  const description = describeGenerationTemplateSelection(generationTemplate);
+  return description ? `[Selected a template — ${description}.]\n` : "";
+}
+
 function formatPriorRunMessage(message: WebChatPriorRunMessage): string {
   const roleLabel = message.role === "user" ? "User" : "Assistant";
+  const marker = generationTemplateReplayMarker(
+    message.role,
+    message.generationTemplate,
+  );
   const attach = formatAttachFileIds(message.attachFiles);
-  const body = `${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
+  const body = `${marker}${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
   return attach ? `${body}\n${attach}` : body;
 }
 
@@ -623,11 +653,17 @@ function formatIncompleteMessage(
 ): string {
   const attach = formatAttachFileIds(message.attachFiles);
   if (message.role === "user") {
+    const marker = generationTemplateReplayMarker(
+      message.role,
+      message.generationTemplate,
+    );
     const body =
       message.content !== null && message.content !== ""
         ? truncateIncomplete(message.content)
         : "[empty message]";
-    return attach ? `User: ${body}\n${attach}` : `User: ${body}`;
+    return attach
+      ? `${marker}User: ${body}\n${attach}`
+      : `${marker}User: ${body}`;
   }
   if (message.content !== null && message.content !== "") {
     return `Assistant (partial): ${truncateIncomplete(message.content)}`;
@@ -697,6 +733,7 @@ function groupIncompleteRoundsByRunId(
       content: row.content,
       error: row.error,
       attachFiles: row.attachFiles,
+      generationTemplate: row.generationTemplate,
     });
   }
   return order.map((runId) => {
@@ -835,6 +872,7 @@ async function getLatestRunsByThreadId(
       attachFiles: chatMessages.attachFiles,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
+      generationTemplate: chatMessages.generationTemplate,
     })
     .from(chatMessages)
     .where(
@@ -862,6 +900,7 @@ async function getLatestRunsByThreadId(
       role: row.role,
       content: row.content,
       attachFiles: row.attachFiles,
+      generationTemplate: row.generationTemplate,
     });
     messagesByRunId.set(row.runId, existing);
   }
@@ -891,6 +930,7 @@ async function getIncompleteRoundsSinceLastSuccess(
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
       runStatus: agentRuns.status,
+      generationTemplate: chatMessages.generationTemplate,
     })
     .from(chatMessages)
     .innerJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
@@ -940,6 +980,7 @@ async function getIncompleteRoundsSinceLastSuccess(
       attachFiles: row.attachFiles,
       createdAt: row.createdAt,
       sequenceNumber: row.sequenceNumber,
+      generationTemplate: row.generationTemplate,
     });
   }
 
@@ -2132,17 +2173,30 @@ const prepareNormalSend$ = command(
       FeatureSwitchKey.PresentationTemplateRunbook,
       featureSwitchContext,
     );
-    const initialThinkingEnabled = isFeatureEnabled(
-      FeatureSwitchKey.ChatInitialThinkingIndicator,
-      featureSwitchContext,
-    );
-    const generationTemplatePrompt =
-      await resolveThreadGenerationTemplatePrompt({
-        db,
-        threadId: thread.threadId,
-        explicit: args.body.generationTemplate,
-        presentationRunbookEnabled,
-      });
+    const initialThinkingEnabled =
+      isFeatureEnabled(
+        FeatureSwitchKey.ChatInitialThinkingIndicator,
+        featureSwitchContext,
+      ) && args.zeroPreCreateSource === undefined;
+    const liveGenerationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
+      explicit: args.body.generationTemplate,
+      presentationRunbookEnabled,
+    });
+    const fallbackNote = await fallbackGenerationTemplateNote({
+      db,
+      threadId: thread.threadId,
+      explicit: args.body.generationTemplate,
+      replaySuppressed: priorContext.length === 0 && !thread.isNewThread,
+    });
+    signal.throwIfAborted();
+    const generationTemplatePrompt = [
+      liveGenerationTemplatePrompt,
+      fallbackNote,
+    ]
+      .filter((part) => {
+        return part.length > 0;
+      })
+      .join("\n\n");
     signal.throwIfAborted();
     const persistedExplicitSelection =
       await maybePersistExplicitModelFirstSelection({

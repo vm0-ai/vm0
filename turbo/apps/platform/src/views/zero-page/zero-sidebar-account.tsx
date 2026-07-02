@@ -34,6 +34,10 @@ import {
   currentUserInfo$,
   resolveAppAuthUrl,
 } from "../../signals/auth.ts";
+import {
+  reloadAccountMenuSubscriptionUsageRows$,
+  type AccountMenuSubscriptionUsageRowsCacheKey,
+} from "../../signals/zero-page/account-menu-subscriptions.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   handleZeroNavSelect$,
@@ -41,7 +45,6 @@ import {
   type ZeroAccountAction,
 } from "../../signals/zero-page/zero-nav.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { reloadPersonalModelProviders$ } from "../../signals/external/personal-model-providers.ts";
 import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
@@ -119,6 +122,18 @@ interface AccountDisplay {
   email: string;
   initial: string;
   imageUrl: string | undefined;
+}
+
+function subscriptionRowsCacheKeyFrom({
+  clerk,
+  current,
+  user,
+}: {
+  clerk: { session?: { id?: string } | null } | null;
+  current: SessionAccount | undefined;
+  user: { id: string } | undefined;
+}): AccountMenuSubscriptionUsageRowsCacheKey {
+  return clerk?.session?.id ?? current?.sessionId ?? user?.id ?? null;
 }
 
 function accountDisplayFrom(
@@ -206,9 +221,11 @@ function CurrentAccountHeader({
 
 function AccountUsageGroup({
   onOpenCreditBalance,
+  subscriptionRowsCacheKey,
   subscriptionsEnabled,
 }: {
   onOpenCreditBalance: () => void;
+  subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
   subscriptionsEnabled: boolean;
 }) {
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
@@ -217,9 +234,14 @@ function AccountUsageGroup({
 
   if (subscriptionsEnabled) {
     return isAdmin ? (
-      <AccountUsageGroupWithCredit onOpenCreditBalance={onOpenCreditBalance} />
+      <AccountUsageGroupWithCredit
+        onOpenCreditBalance={onOpenCreditBalance}
+        subscriptionRowsCacheKey={subscriptionRowsCacheKey}
+      />
     ) : (
-      <AccountSubscriptionsGroup />
+      <AccountSubscriptionsGroup
+        subscriptionRowsCacheKey={subscriptionRowsCacheKey}
+      />
     );
   }
 
@@ -261,11 +283,15 @@ function AccountCreditBalanceGroup({
 
 function AccountUsageGroupWithCredit({
   onOpenCreditBalance,
+  subscriptionRowsCacheKey,
 }: {
   onOpenCreditBalance: () => void;
+  subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
 }) {
   const billingLoadable = useLastLoadable(billingStatusAsync$);
-  const { loading: subscriptionsLoading, rows } = useSubscriptionUsageRows();
+  const { loading: subscriptionsLoading, rows } = useSubscriptionUsageRows({
+    cacheKey: subscriptionRowsCacheKey,
+  });
   const credits =
     billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
   const creditLoading = billingLoadable.state === "loading" && credits === null;
@@ -301,8 +327,14 @@ function AccountUsageGroupWithCredit({
   );
 }
 
-function AccountSubscriptionsGroup() {
-  const { loading, rows } = useSubscriptionUsageRows();
+function AccountSubscriptionsGroup({
+  subscriptionRowsCacheKey,
+}: {
+  subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
+}) {
+  const { loading, rows } = useSubscriptionUsageRows({
+    cacheKey: subscriptionRowsCacheKey,
+  });
   const showSubscriptions = loading || rows.length > 0;
 
   if (!showSubscriptions) {
@@ -528,12 +560,17 @@ export function AccountDropdown({
     features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
   const selectNav = useSet(handleZeroNavSelect$);
   const openSettings = useSet(openSettingsDialogAt$);
-  const reloadSubscriptions = useSet(reloadPersonalModelProviders$);
+  const reloadSubscriptions = useSet(reloadAccountMenuSubscriptionUsageRows$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
   const pageSignal = useGet(pageSignal$);
 
   const current = accounts.find((a) => {
     return a.isActive;
+  });
+  const subscriptionRowsCacheKey = subscriptionRowsCacheKeyFrom({
+    clerk,
+    current,
+    user,
   });
   const accountDisplay = accountDisplayFrom(user, current);
   const others = accounts.filter((a) => {
@@ -593,13 +630,11 @@ export function AccountDropdown({
       return;
     }
 
-    queueMicrotask(() => {
-      detach(
-        reloadSubscriptions(),
-        Reason.DomCallback,
-        "reload account menu subscriptions",
-      );
-    });
+    detach(
+      reloadSubscriptions(subscriptionRowsCacheKey, pageSignal),
+      Reason.DomCallback,
+      "reload account menu subscriptions",
+    );
   };
 
   return (
@@ -621,6 +656,7 @@ export function AccountDropdown({
         {!hidePreferences && (
           <AccountUsageGroup
             onOpenCreditBalance={handleOpenCreditBalance}
+            subscriptionRowsCacheKey={subscriptionRowsCacheKey}
             subscriptionsEnabled={subscriptionsEnabled}
           />
         )}
