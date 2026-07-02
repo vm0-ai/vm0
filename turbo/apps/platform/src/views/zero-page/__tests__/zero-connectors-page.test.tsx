@@ -19,15 +19,13 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorAuthMethodConfig,
-  type ConnectorAuthMethodId,
-  type ConnectorType,
+import type {
+  ConnectorAuthMethodId,
+  ConnectorType,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   click,
@@ -384,14 +382,6 @@ async function expectConnectorCardsVisible(expected: {
 }
 
 describe("connectors page", () => {
-  const restoreConnectorRegistry: (() => void)[] = [];
-
-  afterEach(() => {
-    while (restoreConnectorRegistry.length > 0) {
-      restoreConnectorRegistry.pop()?.();
-    }
-  });
-
   it("lets users browse connectors by grouped categories", async () => {
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
 
@@ -1266,54 +1256,9 @@ describe("connectors page", () => {
     });
   });
 
-  it("hides Stripe when all its auth methods are statically hidden", async () => {
+  it("hides Stripe when public catalog status omits it", async () => {
     mockConnectors([]);
-    const authMethods = CONNECTOR_TYPES.stripe.authMethods;
-    const originalOauth = authMethods.oauth;
-    const originalApiToken = authMethods["api-token"];
-    const originalCli = authMethods.cli;
-
-    restoreConnectorRegistry.push(() => {
-      Object.defineProperty(authMethods, "oauth", {
-        value: originalOauth,
-        configurable: true,
-        enumerable: true,
-      });
-      Object.defineProperty(authMethods, "api-token", {
-        value: originalApiToken,
-        configurable: true,
-        enumerable: true,
-      });
-      Object.defineProperty(authMethods, "cli", {
-        value: originalCli,
-        configurable: true,
-        enumerable: true,
-      });
-    });
-    Object.defineProperty(authMethods, "oauth", {
-      value: {
-        ...originalOauth,
-        visible: false,
-      } satisfies ConnectorAuthMethodConfig,
-      configurable: true,
-      enumerable: true,
-    });
-    Object.defineProperty(authMethods, "api-token", {
-      value: {
-        ...originalApiToken,
-        visible: false,
-      } satisfies ConnectorAuthMethodConfig,
-      configurable: true,
-      enumerable: true,
-    });
-    Object.defineProperty(authMethods, "cli", {
-      value: {
-        ...originalCli,
-        visible: false,
-      } satisfies ConnectorAuthMethodConfig,
-      configurable: true,
-      enumerable: true,
-    });
+    mockPublicConnectorStatus([]);
 
     detachedSetupPage({
       context,
