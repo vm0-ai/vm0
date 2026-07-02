@@ -7,7 +7,7 @@ import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForNavigation } from "../api-base.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { onRef } from "../utils.ts";
+import { onRef, settle } from "../utils.ts";
 
 const ZERO_DESKTOP_DMG_DOWNLOAD_PATH =
   "/api/zero/desktop/updates/stable/darwin/arm64/dmg";
@@ -16,6 +16,86 @@ export const ZERO_DESKTOP_DOWNLOAD_URL = new URL(
   ZERO_DESKTOP_DMG_DOWNLOAD_PATH,
   resolveApiBaseForNavigation("api"),
 ).toString();
+
+export const ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL =
+  "Requires Apple Silicon Mac";
+
+export type ZeroDesktopDownloadSupportStatus =
+  | "available"
+  | "unsupported-intel-mac";
+
+interface UserAgentDataValues {
+  readonly architecture?: string;
+  readonly platform?: string;
+}
+
+interface ZeroDesktopNavigator {
+  readonly platform?: string;
+  readonly userAgent?: string;
+  readonly userAgentData?: {
+    readonly platform?: string;
+    readonly getHighEntropyValues?: (
+      hints: readonly string[],
+    ) => Promise<UserAgentDataValues>;
+  };
+}
+
+function isMacPlatform(
+  platform: string | undefined,
+  userAgent: string | undefined,
+): boolean {
+  return (
+    Boolean(platform?.toLowerCase().includes("mac")) ||
+    /Macintosh/i.test(userAgent ?? "")
+  );
+}
+
+function isIntelArchitecture(architecture: string | undefined): boolean {
+  const normalized = architecture?.toLowerCase();
+  return (
+    normalized === "x86" ||
+    normalized === "x86_64" ||
+    normalized === "amd64" ||
+    normalized === "ia32"
+  );
+}
+
+export async function isUnsupportedIntelMacForZeroDesktop(
+  navigatorRef: ZeroDesktopNavigator | null | undefined = typeof navigator ===
+  "undefined"
+    ? undefined
+    : navigator,
+): Promise<boolean> {
+  const userAgentData = navigatorRef?.userAgentData;
+  if (!navigatorRef || !userAgentData?.getHighEntropyValues) {
+    return false;
+  }
+
+  const highEntropyValuesResult = await settle(
+    userAgentData.getHighEntropyValues(["architecture", "platform"]),
+  );
+  if (!highEntropyValuesResult.ok) {
+    return false;
+  }
+  const highEntropyValues = highEntropyValuesResult.value;
+
+  const platform =
+    highEntropyValues.platform ??
+    userAgentData.platform ??
+    navigatorRef.platform;
+  return (
+    isMacPlatform(platform, navigatorRef.userAgent) &&
+    isIntelArchitecture(highEntropyValues.architecture)
+  );
+}
+
+export const zeroDesktopDownloadSupportStatus$ = computed(
+  async (): Promise<ZeroDesktopDownloadSupportStatus> => {
+    return (await isUnsupportedIntelMacForZeroDesktop())
+      ? "unsupported-intel-mac"
+      : "available";
+  },
+);
 
 const computerUseHostsReload$ = state(0);
 

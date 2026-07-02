@@ -68,6 +68,34 @@ const FOLLOWUP_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
 const HISTORY_THREAD_ID = "b0000000-0000-4000-a000-000000000705";
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
+function replaceNavigatorProperty(property: string, value: unknown): void {
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, property);
+  Object.defineProperty(navigator, property, {
+    configurable: true,
+    value,
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      if (descriptor) {
+        Object.defineProperty(navigator, property, descriptor);
+        return;
+      }
+      Reflect.deleteProperty(navigator, property);
+    },
+    { once: true },
+  );
+}
+
+function mockMacUserAgentData(architecture: string): void {
+  replaceNavigatorProperty("userAgentData", {
+    platform: "macOS",
+    getHighEntropyValues: () => {
+      return Promise.resolve({ architecture, platform: "macOS" });
+    },
+  });
+}
+
 function computerUsePermissions() {
   return {
     accessibility: true,
@@ -839,6 +867,14 @@ function linkByText(text: string): HTMLElement {
     throw new Error(`${text} link not found`);
   }
   return link;
+}
+
+function queryLinkByText(text: string): HTMLElement | null {
+  return (
+    queryAllByRoleFast("link").find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+    }) ?? null
+  );
 }
 
 function queryButtonByText(text: string): HTMLElement | null {
@@ -5560,12 +5596,39 @@ describe("chat lifecycle", () => {
         "So Zero can work in your browser and apps for you, even ones with no connector like LinkedIn or Reddit.",
       ),
     ).toBeInTheDocument();
-    expect(linkByText("Download for macOS")).toHaveAttribute(
+    const downloadLink = await waitFor(() => {
+      return linkByText("Download for macOS");
+    });
+    expect(downloadLink).toHaveAttribute(
       "href",
       expect.stringContaining(
         "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
       ),
     );
+  });
+
+  it("blocks the Computer Use download dialog on Intel Macs", async () => {
+    mockMacUserAgentData("x86");
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-download-intel";
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await screen.findByText("Connect my computer"));
+
+    const requiredButton = await waitFor(() => {
+      return buttonByText("Requires Apple Silicon Mac");
+    });
+    expect(requiredButton).toBeDisabled();
+    expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
   });
 
   it("does not auto-select the only online Computer Use host", async () => {
