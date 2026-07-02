@@ -3600,7 +3600,7 @@ describe("chat lifecycle", () => {
     }
     sideThreadRegion.focus();
     fireEvent.keyDown(sideThreadRegion, {
-      key: "1",
+      key: "!",
       code: "Digit1",
       shiftKey: true,
     });
@@ -3683,7 +3683,7 @@ describe("chat lifecycle", () => {
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
     fireEvent.keyDown(threadRegion, {
-      key: "1",
+      key: "!",
       code: "Digit1",
       shiftKey: true,
     });
@@ -3865,7 +3865,7 @@ describe("chat lifecycle", () => {
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
     fireEvent.keyDown(threadRegion, {
-      key: "0",
+      key: ")",
       code: "Digit0",
       shiftKey: true,
     });
@@ -3903,7 +3903,7 @@ describe("chat lifecycle", () => {
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
     fireEvent.keyDown(threadRegion, {
-      key: "0",
+      key: ")",
       code: "Digit0",
       shiftKey: true,
     });
