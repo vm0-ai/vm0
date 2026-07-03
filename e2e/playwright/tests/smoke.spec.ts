@@ -1,33 +1,45 @@
 import { clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { signInThroughHostedAuth } from "../lib/auth";
-import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
+import { refreshClerkSessionToken, signInThroughHostedAuth } from "../lib/auth";
+import { routeOnboardingApiToPreview } from "../lib/onboarding";
+import {
+  deriveAppUrl,
+  deriveOnboardingUrl,
+  deriveServiceOrigin,
+  STORAGE_STATE,
+} from "../playwright.config";
 
 test("sign in through onboarding handoff to chat page", async ({ page }) => {
   test.setTimeout(240_000);
 
   const email = process.env.E2E_CLERK_USER_EMAIL!;
-  const appUrl = deriveAppUrl(process.env.VM0_API_URL!);
+  const orgId = process.env.E2E_CLERK_ORG_ID!;
+  const apiUrl = process.env.VM0_API_URL!;
+  const appUrl = deriveAppUrl(apiUrl);
+  const onboardingUrl = deriveOnboardingUrl(apiUrl);
+  const onboardingAuthAppUrl = deriveServiceOrigin(onboardingUrl, "app");
+  const onboardingApiUrl = deriveServiceOrigin(onboardingUrl, "api");
 
   await clerkSetup();
   await setupClerkTestingToken({ page });
 
-  await signInThroughHostedAuth(page, email, appUrl);
-
-  // Navigate to app - should land on the onboarding handoff or agents
-  await page.goto(appUrl);
-  await page.waitForURL(
-    (url) => {
-      const p = url.pathname;
-      return p.includes("/onboarding") || p.includes("/agents/");
+  const session = await signInThroughHostedAuth(
+    page,
+    email,
+    onboardingAuthAppUrl,
+    {
+      followRedirect: false,
+      activeOrganizationId: orgId,
+      mirrorStorageToUrls: [onboardingUrl, onboardingApiUrl, appUrl],
     },
-    { timeout: 30_000 },
   );
-
-  // Follow the external onboarding handoff if needed.
-  if (page.url().includes("/onboarding")) {
-    await completeOnboardingThroughExploreOwn(page);
-  }
+  await routeOnboardingApiToPreview(page, onboardingUrl, apiUrl, {
+    authorizationToken: session.token,
+  });
+  await page.goto(onboardingUrl, { waitUntil: "domcontentloaded" });
+  await refreshClerkSessionToken(page, { activeOrganizationId: orgId });
+  await completeOnboardingThroughExploreOwn(page);
+  await page.goto(appUrl, { waitUntil: "domcontentloaded" });
 
   // Verify: landed on chat page
   await page.waitForURL("**/agents/*/chat", {
@@ -63,8 +75,6 @@ async function completeOnboardingThroughExploreOwn(page: Page): Promise<void> {
 
   const response = await completionResponse;
   if (response.status() !== 200) {
-    throw new Error(
-      `limited-free onboarding failed with ${response.status()}: ${await response.text()}`,
-    );
+    throw new Error(`limited-free onboarding failed with ${response.status()}`);
   }
 }
