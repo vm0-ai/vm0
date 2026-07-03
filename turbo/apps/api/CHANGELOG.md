@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.218.3](https://github.com/vm0-ai/vm0/compare/api-v1.218.2...api-v1.218.3) (2026-07-03)
+
+
+### Refactoring
+
+* remove legacy automation poller, mutating routes, and the cli command ([#20103](https://github.com/vm0-ai/vm0/issues/20103)) ([2245f83](https://github.com/vm0-ai/vm0/commit/2245f83430aefa545077e5da1e8929d9c4968628))
+* serve connector category metadata from catalog api ([#20089](https://github.com/vm0-ai/vm0/issues/20089)) ([99bafd7](https://github.com/vm0-ai/vm0/commit/99bafd7d276f1ae151c4cd7b409e8268a8487848))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.150.3
+    * @vm0/connectors bumped to 1.132.3
+    * @vm0/core bumped to 8.394.6
+    * @vm0/db bumped to 1.88.6
+
 ## [1.218.2](https://github.com/vm0-ai/vm0/compare/api-v1.218.1...api-v1.218.2) (2026-07-03)
 
 
