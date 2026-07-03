@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, or } from "drizzle-orm";
+import { and, asc, eq, sql, type SQL } from "drizzle-orm";
 import type {
   ChatThreadEvent,
   ChatThreadSnapshotProjection,
@@ -120,18 +120,12 @@ export async function getChatThreadEventsSince(
     }
   | { readonly kind: "expired" }
 > {
-  let cursor:
-    | {
-        readonly id: string;
-        readonly createdAt: Date;
-      }
-    | undefined;
+  let hasCursor = false;
 
   if (args.sinceEventId !== undefined) {
     const [row] = await db
       .select({
         id: chatThreadEvents.id,
-        createdAt: chatThreadEvents.createdAt,
       })
       .from(chatThreadEvents)
       .where(
@@ -145,22 +139,23 @@ export async function getChatThreadEventsSince(
     if (!row) {
       return { kind: "expired" };
     }
-    cursor = row;
+    hasCursor = true;
   }
 
-  const filters = [
+  const filters: SQL[] = [
     eq(chatThreadEvents.userId, args.userId),
     eq(chatThreadEvents.orgId, args.orgId),
   ];
-  if (cursor) {
+  if (hasCursor && args.sinceEventId !== undefined) {
     filters.push(
-      or(
-        gt(chatThreadEvents.createdAt, cursor.createdAt),
-        and(
-          eq(chatThreadEvents.createdAt, cursor.createdAt),
-          gt(chatThreadEvents.id, cursor.id),
-        ),
-      )!,
+      sql`(${chatThreadEvents.createdAt}, ${chatThreadEvents.id}) > (
+        SELECT marker.created_at, marker.id
+        FROM ${chatThreadEvents} AS marker
+        WHERE marker.user_id = ${args.userId}
+          AND marker.org_id = ${args.orgId}
+          AND marker.id = ${args.sinceEventId}
+        LIMIT 1
+      )`,
     );
   }
 
