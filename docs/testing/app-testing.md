@@ -4,15 +4,18 @@ This document describes the testing patterns for `turbo/apps/platform`.
 
 ## Test Category
 
-App Vitest tests are page-level tests only:
+App Vitest tests should be page-level by default:
 
-| Type       | Location | Suffix                 | Purpose                             |
-| ---------- | -------- | ---------------------- | ----------------------------------- |
-| Page Tests | `views/` | `.test.tsx`/`.test.ts` | Test user interactions and UI state |
+| Type                   | Location     | Suffix                 | Purpose                                |
+| ---------------------- | ------------ | ---------------------- | -------------------------------------- |
+| Page Tests             | `views/`     | `.test.tsx`/`.test.ts` | Test user interactions and UI state    |
+| Signal Bootstrap Tests | `signals/**` | `.test.ts`             | Test bootstrapped state without a page |
 
-Do not add signal, parser, helper, static config, or component-only unit tests
-under `turbo/apps/platform`. Cover behavior through a rendered page. If behavior
-has no user-visible page surface, do not add a platform Vitest test for it.
+Do not add parser, helper, static config, or component-only unit tests under
+`turbo/apps/platform`. Cover behavior through a rendered page whenever there is
+a user-visible page surface. Use a signal bootstrap test only when the behavior
+has no page-visible surface and needs the same platform bootstrap path as
+production.
 
 ## Page Tests
 
@@ -56,6 +59,11 @@ describe("ComponentName", () => {
 Setup helpers always render the page. Page setup may start long polling flows,
 so tests should call `detachedSetupPage` without awaiting it and then wait for
 the rendered page state that matters to the story.
+
+Signal bootstrap tests should use `setupPage({ withoutRender: true })`, await
+setup completion, and assert state transitions that cannot be observed through
+a rendered page. They should still configure API and browser behavior through
+`context.mocks` before setup.
 
 ## Mock Infrastructure
 

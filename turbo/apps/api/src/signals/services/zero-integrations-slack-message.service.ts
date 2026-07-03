@@ -86,9 +86,8 @@ async function resolveUserMention(
 /**
  * Resolve the audit footer text appended to user-initiated Slack messages.
  *
- * Mirrors apps/web/app/api/zero/integrations/slack/message/route.ts
- * `resolveFooterParts`. Each resolver swallows its own errors so any single
- * lookup failure degrades the footer gracefully.
+ * Mirrors the Slack message route footer resolver. Each resolver swallows its
+ * own errors so any single lookup failure degrades the footer gracefully.
  */
 export function slackMessageSendFooterText(args: {
   readonly authRunId: string | undefined;
