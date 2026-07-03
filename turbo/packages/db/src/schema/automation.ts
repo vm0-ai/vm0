@@ -72,6 +72,12 @@ export const automations = pgTable(
 
     enabled: boolean("enabled").default(true).notNull(),
 
+    // Provenance marker for the automation -> workflow migration (#19959).
+    // Set by the cutover migration to the migrated zero_workflows.id (which
+    // reuses this automation's id). Plain uuid, no FK: legacy rows are frozen
+    // read-only provenance data and must not couple to workflow deletion.
+    migratedToWorkflowId: uuid("migrated_to_workflow_id"),
+
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
