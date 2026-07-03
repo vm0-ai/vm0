@@ -454,13 +454,8 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       enabled: true,
     });
 
-    const initialState = await readAutomationsState(context, {
-      automationId: created.automation.id,
-      automationIds: [created.automation.id],
-    });
-    const [initialTrigger] = initialState.triggers;
-    expect(initialTrigger?.enabled).toBeTruthy();
-    expect(initialTrigger?.next_run_at).not.toBeNull();
+    expect(created.automation.enabled).toBeTruthy();
+    expect(created.automation.nextRunAt).not.toBeNull();
 
     api.verifyNextClerkWebhook({
       type: "organizationMembership.deleted",
@@ -474,6 +469,9 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     expect(response.body).toBe("OK");
     await flushWaitUntilForTest();
 
+    // The webhook removes the owner's org membership, so no production user API
+    // can read this automation after cleanup. Keep this state read scoped to the
+    // infrastructure-only suspension side effect.
     const storedState = await readAutomationsState(context, {
       automationId: created.automation.id,
       automationIds: [created.automation.id],
@@ -4001,11 +3999,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       timezone: "UTC",
       enabled: true,
     });
-    const initialState = await readAutomationsState(context, {
-      automationId: created.automation.id,
-      automationIds: [created.automation.id],
-    });
-    expect(initialState.triggers[0]?.next_run_at).not.toBeNull();
+    expect(created.automation.nextRunAt).not.toBeNull();
 
     context.mocks.stripe.subscriptions.list.mockResolvedValue({
       data: [],
@@ -4028,6 +4022,8 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     );
     expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
 
+    // Once Clerk reports the user banned, the normal user-facing automation
+    // endpoints are no longer a valid observation surface for this owner.
     const storedState = await readAutomationsState(context, {
       automationId: created.automation.id,
       automationIds: [created.automation.id],

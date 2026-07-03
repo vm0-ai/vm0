@@ -5,7 +5,6 @@ import type {
   TestAutomationsStatePostBody,
   TestAutomationsStatePostResponse,
   TestAutomationsStateReadResponse,
-  TestAutomationsStateTriggerRow,
 } from "@vm0/api-contracts/contracts/test-automations-state";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
@@ -46,8 +45,6 @@ export interface AutomationsFixture {
   readonly composeId: string;
   readonly automationIds: readonly string[];
 }
-
-type AutomationTriggerRow = TestAutomationsStateTriggerRow;
 
 function requestAutomationsState(
   context: TestContext,
@@ -195,16 +192,6 @@ export async function readAutomationsState(
   return await readJson<TestAutomationsStateReadResponse>(response);
 }
 
-export async function findAutomationTriggerRows(
-  context: TestContext,
-  automationId: string,
-): Promise<readonly AutomationTriggerRow[]> {
-  const state = await readAutomationsState(context, {
-    automationIds: [automationId],
-  });
-  return state.triggers;
-}
-
 export async function patchAutomationTriggerState(
   context: TestContext,
   body: Omit<TestAutomationsStatePatchBody, "at_time" | "next_run_at"> & {
@@ -264,25 +251,6 @@ export async function deleteExtraCompose(
     action: "delete-compose",
     compose_id: composeId,
   });
-}
-
-export async function seedAutomationRun(
-  context: TestContext,
-  fixture: AutomationsFixture,
-  options: { readonly status?: string; readonly prompt?: string } = {},
-): Promise<string> {
-  const response = await postAction(context, {
-    action: "seed-run",
-    org_id: fixture.orgId,
-    user_id: fixture.userId,
-    compose_id: fixture.composeId,
-    status: options.status,
-    prompt: options.prompt,
-  });
-  if (!response.run_id) {
-    throw new Error("seedAutomationRun did not return run_id");
-  }
-  return response.run_id;
 }
 
 export async function deleteOrgMembership(
