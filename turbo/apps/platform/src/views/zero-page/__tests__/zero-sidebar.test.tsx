@@ -990,7 +990,13 @@ describe("zero sidebar", () => {
       }),
     ]);
 
-    detachedSetupPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      // The legacy automations delete-check only renders when the globally-on
+      // workflowAutomation switch is overridden off (#19959).
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
+    });
 
     await waitFor(() => {
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
@@ -1283,7 +1289,13 @@ describe("zero sidebar", () => {
       return respond(200, splitChatThreadListResponse([]));
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      // Pin the legacy composer (workflowAutomation overridden off) so the
+      // plain-textarea placeholder targeted below stays rendered.
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
+    });
 
     const composer = await screen.findByPlaceholderText(PLACEHOLDER);
     composer.focus();
@@ -1699,6 +1711,8 @@ describe("zero sidebar", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
+      // Globally enabled since #19959; disabling now requires a user override.
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
     });
 
     const nav = await waitFor(() => {
