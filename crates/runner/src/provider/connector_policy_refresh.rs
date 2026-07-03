@@ -256,6 +256,11 @@ impl ConnectorPolicyRefreshCore {
                 response_connector_ref = response.connector_ref,
                 "connector policy refresh returned mismatched connector"
             );
+            if trigger.fail_closed_on_error()
+                && let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await
+            {
+                fail_closed_connector_policy(run_id, &connector_ref, snapshot).await;
+            }
             return;
         }
 
@@ -459,9 +464,12 @@ fn abort_tasks(tasks: impl IntoIterator<Item = tokio::task::JoinHandle<()>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use httpmock::MockServer;
+    use httpmock::{Method::POST, MockServer};
+    use serde_json::json;
 
     use crate::http::{HttpClient, HttpClientConfig};
+    use crate::proxy::{ProxyRegistryHandle, VmRegistration};
+    use crate::types::FirewallEntry;
 
     fn api_client_for_server(server: &MockServer) -> ApiClient {
         ApiClient::new(
@@ -485,5 +493,112 @@ mod tests {
 
         let worker_task = handle.worker_task.lock().await;
         assert!(worker_task.is_none());
+    }
+
+    #[tokio::test]
+    async fn scheduled_mismatched_connector_refresh_fails_closed() {
+        let server = MockServer::start();
+        let run_id = RunId::nil();
+        server.mock(|when, then| {
+            when.method(POST).path(format!(
+                "/api/runners/runs/{run_id}/connector-policy-refresh"
+            ));
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "connectorRef": "github",
+                    "networkPolicy": {
+                        "allow": ["repos:read"],
+                        "deny": [],
+                        "ask": [],
+                        "unknownPolicy": "allow",
+                    },
+                    "nextRefreshAt": null,
+                }));
+        });
+
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let registry_path = dir.path().join("proxy-registry.json");
+        tokio::fs::write(&registry_path, br#"{"vms":{},"updatedAt":0}"#)
+            .await
+            .expect("empty registry should be written");
+        let registry =
+            ProxyRegistryHandle::new(registry_path.clone(), dir.path().join("registry.lock"));
+        let source_ip = "10.200.0.2";
+        let firewalls = vec![FirewallEntry::Builtin {
+            name: "slack".to_string(),
+            base_url_vars: None,
+        }];
+        let mut network_policies = HashMap::new();
+        network_policies.insert(
+            "slack".to_string(),
+            NetworkPolicy {
+                allow: vec!["chat:write".to_string()],
+                deny: vec!["files:write".to_string()],
+                ask: vec!["channels:read".to_string()],
+                unknown_policy: "allow".to_string(),
+            },
+        );
+        let billable_firewalls = Vec::new();
+        let run_id_string = run_id.to_string();
+        let network_log_path = dir.path().join("network.jsonl");
+        let proxy_log_path = dir.path().join("proxy.log");
+        registry
+            .register_vm(
+                source_ip,
+                &VmRegistration {
+                    run_id: &run_id_string,
+                    cli_agent_type: "codex",
+                    sandbox_token: "sandbox-token",
+                    network_log_path: &network_log_path,
+                    proxy_log_path: &proxy_log_path,
+                    firewalls: Some(&firewalls),
+                    network_policies: Some(&network_policies),
+                    encrypted_secrets: None,
+                    secret_connector_map: None,
+                    secret_connector_metadata_map: None,
+                    vars: None,
+                    capture_network_bodies: false,
+                    billable_firewalls: &billable_firewalls,
+                    model_usage_provider: None,
+                },
+            )
+            .await
+            .expect("vm should be registered");
+
+        let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
+        handle
+            .core
+            .register_run(ConnectorPolicyRefreshRegistration {
+                run_id,
+                source_ip,
+                registry: registry.clone(),
+                connector_refs: HashSet::from(["slack".to_string()]),
+                initial_refresh_connector_refs: HashSet::new(),
+                refreshes: None,
+            })
+            .await;
+
+        handle
+            .core
+            .refresh_connector_now(run_id, "slack".to_string(), RefreshTrigger::Scheduled)
+            .await;
+
+        let registry_json: serde_json::Value = serde_json::from_str(
+            &tokio::fs::read_to_string(&registry_path)
+                .await
+                .expect("registry should be readable"),
+        )
+        .expect("registry should be valid JSON");
+        let policy = &registry_json["vms"][source_ip]["networkPolicies"]["slack"];
+        assert_eq!(policy["allow"], json!([]));
+        assert_eq!(
+            policy["deny"],
+            json!(["channels:read", "chat:write", "files:write"])
+        );
+        assert_eq!(policy["ask"], json!([]));
+        assert_eq!(policy["unknownPolicy"], json!("deny"));
+
+        handle.shutdown().await;
     }
 }

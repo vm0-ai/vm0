@@ -625,6 +625,28 @@ function applyPermissionGrantResponseScope(
   return { agentId: requireAgentGrantApply(args.apply).agentId };
 }
 
+async function applyRowsAndPublishConnectorPolicyRefreshes(
+  db: Db,
+  args: ApplyUserPermissionGrantsArgs,
+): Promise<readonly StoredPermissionGrantRow[] | NotFoundResponse> {
+  const rows = await applyVisibleGrantRows(db, args);
+  if ("status" in rows) {
+    return rows;
+  }
+
+  const responseScope = applyPermissionGrantResponseScope(args);
+  await publishActiveConnectorPolicyRefreshes(
+    db,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      agentId: responseScope.agentId,
+    },
+    args.apply.connectorRef,
+  );
+  return rows;
+}
+
 export const listUserPermissionGrants$ = command(
   async (
     { get },
@@ -669,23 +691,16 @@ export const applyUserPermissionGrants$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const rows = await applyVisibleGrantRows(writeDb, args);
+    const rows = await applyRowsAndPublishConnectorPolicyRefreshes(
+      writeDb,
+      args,
+    );
     signal.throwIfAborted();
 
     if ("status" in rows) {
       return rows;
     }
     const responseScope = applyPermissionGrantResponseScope(args);
-    await publishActiveConnectorPolicyRefreshes(
-      writeDb,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        agentId: responseScope.agentId,
-      },
-      args.apply.connectorRef,
-    );
-    signal.throwIfAborted();
 
     return {
       kind: "ok" as const,
