@@ -48,6 +48,7 @@ import {
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
+import emptyWorkflowImg from "../zero-page/assets/empty-workflow.webp";
 import {
   CreateWorkflowAutomationDialog,
   humanReadableTriggerRuleLabel,
@@ -623,7 +624,14 @@ export function WorkflowListPanel({
         )
       ) : (
         <div className="zero-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
-          <p className="text-sm font-medium text-foreground">No workflows</p>
+          <img
+            src={emptyWorkflowImg}
+            alt="No workflows"
+            className="h-24 w-24 object-contain opacity-80"
+          />
+          <p className="mt-3 text-sm font-medium text-foreground">
+            No workflows
+          </p>
           <p className="mt-1 text-sm text-muted-foreground">
             {emptyDescription}
           </p>
