@@ -356,8 +356,8 @@ const CHAT_SHORTCUT_SECTIONS = [
       { key: "mod+shift+a", label: "Open agent list" },
       { key: "f2", label: "Rename chat" },
       { key: "shift+f2", label: "Change icon" },
-      { key: "shift+1", label: "Set icon (shift+1-9)" },
-      { key: "shift+0", label: "Clear icon" },
+      { key: "ctrl+shift+1", label: "Set icon (Ctrl+Shift+1-9)" },
+      { key: "ctrl+shift+0", label: "Clear icon" },
     ],
   },
   {
@@ -379,7 +379,7 @@ const CHAT_SHORTCUT_SECTIONS = [
 ] as const;
 
 function isChatThreadEmojiShortcutKey(key: string): boolean {
-  return key === "shift+f2" || key === "shift+1" || key === "shift+0";
+  return key === "shift+f2" || key === "ctrl+shift+1" || key === "ctrl+shift+0";
 }
 
 function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
@@ -1275,11 +1275,11 @@ function ChatThreadEmojiMenuButton({
           }}
         >
           {CHAT_THREAD_EMOJI_OPTIONS.map((option, index) => {
-            const shortcut = `shift+${index + 1}`;
+            const shortcut = `ctrl+shift+${index + 1}`;
             return (
               <UiDropdownMenuItem
                 key={option.emoji}
-                aria-label={`${option.label} icon Shift ${index + 1}`}
+                aria-label={`${option.label} icon Ctrl Shift ${index + 1}`}
                 className="justify-between gap-4"
                 onSelect={() => {
                   selectEmoji(option.emoji);
@@ -1294,14 +1294,14 @@ function ChatThreadEmojiMenuButton({
           })}
           <UiDropdownMenuSeparator />
           <UiDropdownMenuItem
-            aria-label="Clear icon Shift 0"
+            aria-label="Clear icon Ctrl Shift 0"
             className="justify-between gap-4"
             onSelect={() => {
               clearEmoji();
             }}
           >
             <span className="whitespace-nowrap">Clear icon</span>
-            <ChatThreadIconShortcutHint shortcut="shift+0" />
+            <ChatThreadIconShortcutHint shortcut="ctrl+shift+0" />
           </UiDropdownMenuItem>
         </UiDropdownMenuContent>
       </UiDropdownMenu>
