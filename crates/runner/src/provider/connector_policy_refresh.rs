@@ -39,7 +39,13 @@ struct ActiveRunPolicyState {
     registry: ProxyRegistryHandle,
     connector_refs: HashSet<String>,
     cancel: CancellationToken,
-    refresh_tasks: HashMap<String, tokio::task::JoinHandle<()>>,
+    refresh_tasks: HashMap<String, ScheduledRefreshTask>,
+    next_refresh_task_id: u64,
+}
+
+struct ScheduledRefreshTask {
+    id: u64,
+    handle: tokio::task::JoinHandle<()>,
 }
 
 #[derive(Clone)]
@@ -139,7 +145,7 @@ impl ConnectorPolicyRefreshCore {
         let old_runs = std::mem::take(&mut *self.inner.active_runs.lock().await);
         for old in old_runs.into_values() {
             old.cancel.cancel();
-            abort_tasks(old.refresh_tasks.into_values());
+            abort_tasks(old.refresh_tasks.into_values().map(|task| task.handle));
         }
     }
 
@@ -166,7 +172,7 @@ impl ConnectorPolicyRefreshCore {
             }
             if let Some(old) = active_runs.remove(&registration.run_id) {
                 old.cancel.cancel();
-                old_tasks.extend(old.refresh_tasks.into_values());
+                old_tasks.extend(old.refresh_tasks.into_values().map(|task| task.handle));
             }
 
             active_runs.insert(
@@ -177,6 +183,7 @@ impl ConnectorPolicyRefreshCore {
                     connector_refs: registration.connector_refs,
                     cancel: CancellationToken::new(),
                     refresh_tasks: HashMap::new(),
+                    next_refresh_task_id: 0,
                 },
             );
         }
@@ -207,7 +214,7 @@ impl ConnectorPolicyRefreshCore {
         let old = self.inner.active_runs.lock().await.remove(&run_id);
         if let Some(old) = old {
             old.cancel.cancel();
-            abort_tasks(old.refresh_tasks.into_values());
+            abort_tasks(old.refresh_tasks.into_values().map(|task| task.handle));
         }
     }
 
@@ -393,12 +400,14 @@ impl ConnectorPolicyRefreshCore {
         }
 
         if let Some(old) = active.refresh_tasks.remove(connector_ref) {
-            old.abort();
+            old.handle.abort();
         }
         let Some(deadline) = deadline else {
             return;
         };
 
+        let task_id = active.next_refresh_task_id;
+        active.next_refresh_task_id += 1;
         let cancel = active.cancel.clone();
         let global_cancel = self.inner.cancel.clone();
         let connector_ref = connector_ref.to_string();
@@ -410,6 +419,9 @@ impl ConnectorPolicyRefreshCore {
                 () = cancel.cancelled() => {}
                 () = tokio::time::sleep_until(deadline) => {
                     handle
+                        .clear_completed_schedule(run_id, &task_connector_ref, task_id)
+                        .await;
+                    handle
                         .enqueue_refresh(RefreshRequest {
                             run_id,
                             connector_ref: task_connector_ref,
@@ -419,7 +431,27 @@ impl ConnectorPolicyRefreshCore {
                 }
             }
         });
-        active.refresh_tasks.insert(connector_ref, task);
+        active.refresh_tasks.insert(
+            connector_ref,
+            ScheduledRefreshTask {
+                id: task_id,
+                handle: task,
+            },
+        );
+    }
+
+    async fn clear_completed_schedule(&self, run_id: RunId, connector_ref: &str, task_id: u64) {
+        let mut active_runs = self.inner.active_runs.lock().await;
+        let Some(active) = active_runs.get_mut(&run_id) else {
+            return;
+        };
+        if active
+            .refresh_tasks
+            .get(connector_ref)
+            .is_some_and(|task| task.id == task_id)
+        {
+            active.refresh_tasks.remove(connector_ref);
+        }
     }
 }
 
@@ -687,6 +719,17 @@ mod tests {
         assert_eq!(policy["unknownPolicy"], json!("allow"));
     }
 
+    fn active_run_policy_state(registry: ProxyRegistryHandle) -> ActiveRunPolicyState {
+        ActiveRunPolicyState {
+            source_ip: "10.200.0.2".to_string(),
+            registry,
+            connector_refs: HashSet::from(["slack".to_string()]),
+            cancel: CancellationToken::new(),
+            refresh_tasks: HashMap::new(),
+            next_refresh_task_id: 0,
+        }
+    }
+
     #[tokio::test]
     async fn shutdown_awaits_refresh_worker_task() {
         let server = MockServer::start();
@@ -750,16 +793,11 @@ mod tests {
             dir.path().join("proxy-registry.json"),
             dir.path().join("proxy-registry.lock"),
         );
-        core.inner.active_runs.lock().await.insert(
-            run_id,
-            ActiveRunPolicyState {
-                source_ip: "10.200.0.2".to_string(),
-                registry,
-                connector_refs: HashSet::from(["slack".to_string()]),
-                cancel: CancellationToken::new(),
-                refresh_tasks: HashMap::new(),
-            },
-        );
+        core.inner
+            .active_runs
+            .lock()
+            .await
+            .insert(run_id, active_run_policy_state(registry));
 
         core.notify_permission_refresh(run_id, "slack".to_string())
             .await;
@@ -782,16 +820,11 @@ mod tests {
             dir.path().join("proxy-registry.json"),
             dir.path().join("proxy-registry.lock"),
         );
-        core.inner.active_runs.lock().await.insert(
-            run_id,
-            ActiveRunPolicyState {
-                source_ip: "10.200.0.2".to_string(),
-                registry,
-                connector_refs: HashSet::from(["slack".to_string()]),
-                cancel: CancellationToken::new(),
-                refresh_tasks: HashMap::new(),
-            },
-        );
+        core.inner
+            .active_runs
+            .lock()
+            .await
+            .insert(run_id, active_run_policy_state(registry));
         for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
             core.request_tx
                 .try_send(RefreshRequest {
@@ -816,6 +849,43 @@ mod tests {
             queued += 1;
         }
         assert_eq!(queued, REFRESH_REQUEST_QUEUE_CAPACITY);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn scheduled_refresh_task_clears_itself_after_firing() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let registry = ProxyRegistryHandle::new(
+            dir.path().join("proxy-registry.json"),
+            dir.path().join("proxy-registry.lock"),
+        );
+        core.inner
+            .active_runs
+            .lock()
+            .await
+            .insert(run_id, active_run_policy_state(registry));
+
+        core.replace_schedule(
+            run_id,
+            "slack",
+            Some("1970-01-01T00:00:00.000Z".to_string()),
+        )
+        .await;
+        tokio::task::yield_now().await;
+
+        let request = requests
+            .try_recv()
+            .expect("scheduled refresh should enqueue request");
+        assert_eq!(request.run_id, run_id);
+        assert_eq!(request.connector_ref, "slack");
+        assert!(matches!(request.trigger, RefreshTrigger::Scheduled));
+        let active_runs = core.inner.active_runs.lock().await;
+        let active = active_runs
+            .get(&run_id)
+            .expect("run should remain active after scheduled refresh fires");
+        assert!(active.refresh_tasks.is_empty());
     }
 
     #[tokio::test]
