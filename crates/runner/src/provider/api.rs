@@ -390,7 +390,7 @@ pub(super) struct ApiClient {
 }
 
 impl ApiClient {
-    fn new(http: HttpClient, token: String) -> Self {
+    pub(super) fn new(http: HttpClient, token: String) -> Self {
         Self { http, token }
     }
 

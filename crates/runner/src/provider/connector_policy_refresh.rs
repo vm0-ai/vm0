@@ -18,6 +18,12 @@ const REFRESH_REQUEST_QUEUE_CAPACITY: usize = 256;
 
 #[derive(Clone)]
 pub(crate) struct ConnectorPolicyRefreshHandle {
+    core: ConnectorPolicyRefreshCore,
+    worker_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+}
+
+#[derive(Clone)]
+struct ConnectorPolicyRefreshCore {
     inner: Arc<ConnectorPolicyRefreshState>,
     request_tx: mpsc::Sender<RefreshRequest>,
 }
@@ -71,7 +77,7 @@ impl RefreshTrigger {
 impl ConnectorPolicyRefreshHandle {
     pub(super) fn new(api: ApiClient) -> Self {
         let (request_tx, request_rx) = mpsc::channel(REFRESH_REQUEST_QUEUE_CAPACITY);
-        let handle = Self {
+        let core = ConnectorPolicyRefreshCore {
             inner: Arc::new(ConnectorPolicyRefreshState {
                 api,
                 active_runs: Mutex::new(HashMap::new()),
@@ -79,11 +85,43 @@ impl ConnectorPolicyRefreshHandle {
             }),
             request_tx,
         };
-        tokio::spawn(run_refresh_worker(handle.clone(), request_rx));
-        handle
+        let worker_task = tokio::spawn(run_refresh_worker(core.clone(), request_rx));
+        Self {
+            core,
+            worker_task: Arc::new(Mutex::new(Some(worker_task))),
+        }
     }
 
     pub(crate) async fn shutdown(&self) {
+        self.core.shutdown_active_runs().await;
+        let worker_task = {
+            let mut worker_task = self.worker_task.lock().await;
+            worker_task.take()
+        };
+        if let Some(worker_task) = worker_task
+            && let Err(error) = worker_task.await
+        {
+            warn!(error = %error, "connector policy refresh worker failed during shutdown");
+        }
+    }
+
+    pub(crate) async fn register_run(&self, registration: ConnectorPolicyRefreshRegistration<'_>) {
+        self.core.register_run(registration).await;
+    }
+
+    pub(crate) async fn unregister_run(&self, run_id: RunId) {
+        self.core.unregister_run(run_id).await;
+    }
+
+    pub(crate) async fn notify_permission_refresh(&self, run_id: RunId, connector_ref: String) {
+        self.core
+            .notify_permission_refresh(run_id, connector_ref)
+            .await;
+    }
+}
+
+impl ConnectorPolicyRefreshCore {
+    async fn shutdown_active_runs(&self) {
         self.inner.cancel.cancel();
         let old_runs = std::mem::take(&mut *self.inner.active_runs.lock().await);
         for old in old_runs.into_values() {
@@ -92,7 +130,7 @@ impl ConnectorPolicyRefreshHandle {
         }
     }
 
-    pub(crate) async fn register_run(&self, registration: ConnectorPolicyRefreshRegistration<'_>) {
+    async fn register_run(&self, registration: ConnectorPolicyRefreshRegistration<'_>) {
         if registration.connector_refs.is_empty() {
             self.unregister_run(registration.run_id).await;
             return;
@@ -141,7 +179,7 @@ impl ConnectorPolicyRefreshHandle {
         }
     }
 
-    pub(crate) async fn unregister_run(&self, run_id: RunId) {
+    async fn unregister_run(&self, run_id: RunId) {
         let old = self.inner.active_runs.lock().await.remove(&run_id);
         if let Some(old) = old {
             old.cancel.cancel();
@@ -149,7 +187,7 @@ impl ConnectorPolicyRefreshHandle {
         }
     }
 
-    pub(crate) async fn notify_permission_refresh(&self, run_id: RunId, connector_ref: String) {
+    async fn notify_permission_refresh(&self, run_id: RunId, connector_ref: String) {
         self.enqueue_refresh(RefreshRequest {
             run_id,
             connector_ref,
@@ -159,8 +197,13 @@ impl ConnectorPolicyRefreshHandle {
     }
 
     async fn enqueue_refresh(&self, request: RefreshRequest) {
-        if let Err(error) = self.request_tx.send(request).await {
-            warn!(error = %error, "connector policy refresh queue closed");
+        tokio::select! {
+            result = self.request_tx.send(request) => {
+                if let Err(error) = result {
+                    warn!(error = %error, "connector policy refresh queue closed");
+                }
+            }
+            () = self.inner.cancel.cancelled() => {}
         }
     }
 
@@ -306,7 +349,7 @@ impl ConnectorPolicyRefreshHandle {
 }
 
 async fn run_refresh_worker(
-    handle: ConnectorPolicyRefreshHandle,
+    handle: ConnectorPolicyRefreshCore,
     mut request_rx: mpsc::Receiver<RefreshRequest>,
 ) {
     loop {
@@ -318,9 +361,16 @@ async fn run_refresh_worker(
                 let Some(request) = request else {
                     break;
                 };
-                handle
-                    .refresh_connector_now(request.run_id, request.connector_ref, request.trigger)
-                    .await;
+                tokio::select! {
+                    () = handle.inner.cancel.cancelled() => {
+                        break;
+                    }
+                    () = handle.refresh_connector_now(
+                        request.run_id,
+                        request.connector_ref,
+                        request.trigger,
+                    ) => {}
+                }
             }
         }
     }
@@ -398,5 +448,37 @@ fn parse_refresh_deadline(value: &str) -> Option<tokio::time::Instant> {
 fn abort_tasks(tasks: impl IntoIterator<Item = tokio::task::JoinHandle<()>>) {
     for task in tasks {
         task.abort();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use httpmock::MockServer;
+
+    use crate::http::{HttpClient, HttpClientConfig};
+
+    fn api_client_for_server(server: &MockServer) -> ApiClient {
+        ApiClient::new(
+            HttpClient::new(HttpClientConfig {
+                api_url: server.base_url(),
+                vercel_bypass: None,
+            })
+            .expect("test API URL should be valid"),
+            "runner-token".to_string(),
+        )
+    }
+
+    #[tokio::test]
+    async fn shutdown_awaits_refresh_worker_task() {
+        let server = MockServer::start();
+        let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
+
+        tokio::time::timeout(Duration::from_secs(1), handle.shutdown())
+            .await
+            .expect("connector policy refresh shutdown timed out");
+
+        let worker_task = handle.worker_task.lock().await;
+        assert!(worker_task.is_none());
     }
 }
