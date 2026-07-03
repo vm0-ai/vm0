@@ -88,7 +88,9 @@ const PYTHON_MODULE_HASH_LENGTH = 12;
 const PYTHON_JSON_PART_ASSIGNMENT_PREFIX = "JSON_PART = ";
 const DIAGNOSTIC_JSON_ASSIGNMENT_PREFIX =
   "MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS = json.loads(";
-const ARABIC_SCRIPT_PATTERN = /^\p{Script=Arabic}$/u;
+// Scripts that Node URL accepts directly but Python's bidi validation can reject.
+const RUNTIME_BIDI_RTL_SCRIPT_PATTERN =
+  /^(?:\p{Script=Arabic}|\p{Script=Old_Uyghur})$/u;
 const ASCII_LETTER_PATTERN = /^[A-Za-z]$/;
 const ASCII_PUNCTUATION_PATTERN =
   /^[\u0021-\u002f\u003a-\u0040\u005b-\u0060\u007b-\u007e]$/;
@@ -571,17 +573,22 @@ function hasForbiddenRuntimeHostLabelChars(value: string): boolean {
   return false;
 }
 
-function hasRuntimeIncompatibleArabicBidiLabel(value: string): boolean {
+function hasRuntimeLeadingUnicodeMarkLabel(value: string): boolean {
+  const firstChar = [...value.normalize("NFKD").normalize("NFC")][0];
+  return firstChar !== undefined && UNICODE_MARK_PATTERN.test(firstChar);
+}
+
+function hasRuntimeIncompatibleBidiLabel(value: string): boolean {
   const chars = [...value];
-  const firstArabicIndex = chars.findIndex((char) => {
-    return ARABIC_SCRIPT_PATTERN.test(char);
+  const firstRtlIndex = chars.findIndex((char) => {
+    return RUNTIME_BIDI_RTL_SCRIPT_PATTERN.test(char);
   });
-  if (firstArabicIndex === -1) {
+  if (firstRtlIndex === -1) {
     return false;
   }
 
-  const prefix = chars.slice(0, firstArabicIndex);
-  const suffix = chars.slice(firstArabicIndex + 1);
+  const prefix = chars.slice(0, firstRtlIndex);
+  const suffix = chars.slice(firstRtlIndex + 1);
   const prefixHasAsciiLetter = prefix.some((char) => {
     return ASCII_LETTER_PATTERN.test(char);
   });
@@ -654,7 +661,8 @@ function runtimeCompatibleHostname(
     if (
       hasForbiddenRuntimeHostLabelChars(rawLabel) ||
       hasUnsafeUts46MappingChars(rawLabel) ||
-      hasRuntimeIncompatibleArabicBidiLabel(rawLabel)
+      hasRuntimeLeadingUnicodeMarkLabel(rawLabel) ||
+      hasRuntimeIncompatibleBidiLabel(rawLabel)
     ) {
       return false;
     }

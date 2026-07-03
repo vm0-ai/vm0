@@ -1070,6 +1070,25 @@ describe("Python builtin firewall catalog renderer", () => {
         ],
       }),
       connectorEntry({
+        name: "leading-mark-host",
+        apis: [
+          {
+            base: "https://\u0c3ca.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.LEADING_MARK_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "leading-mark-host:read",
+                rules: ["GET /leading-mark-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
         name: "arabic-bidi-host",
         apis: [
           {
@@ -1083,6 +1102,26 @@ describe("Python builtin firewall catalog renderer", () => {
               {
                 name: "arabic-bidi-host:read",
                 rules: ["GET /arabic-bidi-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "old-uyghur-bidi-host",
+        apis: [
+          {
+            base: "https://a\u{10f70}b.example.com/api",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.OLD_UYGHUR_BIDI_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "old-uyghur-bidi-host:read",
+                rules: ["GET /old-uyghur-bidi-host/{id}"],
               },
             ],
           },
