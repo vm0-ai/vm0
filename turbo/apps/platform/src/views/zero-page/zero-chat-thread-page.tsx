@@ -5738,14 +5738,6 @@ function ComputerUseAuthorizationCard({
 }: {
   block: ComputerUseAuthorizationBlock;
 }) {
-  const features = useLastResolved(featureSwitch$);
-  const enabled =
-    features?.[FeatureSwitchKey.ComputerUseDelegatedAuthorization] ?? false;
-
-  if (!enabled) {
-    return null;
-  }
-
   return (
     <div
       data-testid="computer-use-authorization-card"
