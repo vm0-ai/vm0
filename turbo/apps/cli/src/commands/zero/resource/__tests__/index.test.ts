@@ -3,22 +3,22 @@ import { describe, expect, it } from "vitest";
 import { findRegistryResourceForPull } from "../index";
 
 describe("zero resource pull registry resolver", () => {
-  it("resolves a presentation color system archive", () => {
-    expect(findRegistryResourceForPull("color-system:carnival")).toEqual(
+  it("resolves presentation runtime tools", () => {
+    expect(findRegistryResourceForPull("tool:presentation-deck-tools")).toEqual(
       expect.objectContaining({
-        id: "color-system:carnival",
-        kind: "color-system",
+        id: "tool:presentation-deck-tools",
+        kind: "tool",
         source: expect.objectContaining({
-          path: "presentation-color-system/carnival",
+          path: "presentation-runtime/html-ppt-deck-tools",
           archive: expect.objectContaining({ type: "tar.gz" }),
         }),
       }),
     );
   });
 
-  it("canonicalizes unprefixed presentation color system ids", () => {
-    expect(findRegistryResourceForPull("carnival")?.id).toBe(
-      "color-system:carnival",
+  it("canonicalizes unprefixed presentation runtime tool ids", () => {
+    expect(findRegistryResourceForPull("presentation-deck-tools")?.id).toBe(
+      "tool:presentation-deck-tools",
     );
   });
 });
