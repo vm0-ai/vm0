@@ -1214,20 +1214,22 @@ export type GenerationTemplateRequest = z.infer<
   typeof generationTemplateRequestSchema
 >;
 export type GenerationTemplateType = GenerationTemplateRequest["type"];
-export type StickyGenerationTemplateType = Exclude<
+export type LegacyThreadGenerationTemplateType = Exclude<
   GenerationTemplateType,
   "workflow"
 >;
 /**
- * Per-thread sticky generation templates, keyed by template type so a single
- * thread can keep an illustration style, a video preset, and a presentation
- * design active at the same time. Workflow templates are intentionally omitted
- * because they are one-shot context for the current run.
+ * Legacy generation template shape retained for older thread-level storage.
+ * Current prompt injection uses the generation template attached to the current
+ * message only.
  */
 export type ThreadGenerationTemplates = Partial<
   Record<
-    StickyGenerationTemplateType,
-    Extract<GenerationTemplateRequest, { type: StickyGenerationTemplateType }>
+    LegacyThreadGenerationTemplateType,
+    Extract<
+      GenerationTemplateRequest,
+      { type: LegacyThreadGenerationTemplateType }
+    >
   >
 >;
 export type PresentationGenerationTemplateRequest = z.infer<
