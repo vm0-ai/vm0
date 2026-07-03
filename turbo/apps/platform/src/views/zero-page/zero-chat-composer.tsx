@@ -4750,7 +4750,7 @@ function TemplatePickerDialog({
         ) : (
           <>
             <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
-              <DialogTitle>Templates</DialogTitle>
+              <DialogTitle>Create with template</DialogTitle>
             </DialogHeader>
             <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 pt-3 sm:flex-row sm:items-start sm:justify-between">
               <TemplatePickerTabs
