@@ -239,26 +239,34 @@ impl ConnectorPolicyRefreshCore {
         connector_ref: String,
         cancel: Option<&CancellationToken>,
     ) {
-        if !self.has_active_connector(run_id, &connector_ref).await {
+        let Some(run_cancel) = self.active_connector_cancel(run_id, &connector_ref).await else {
             return;
-        }
+        };
         let request = RefreshRequest {
             run_id,
             connector_ref,
             trigger: RefreshTrigger::Notification,
         };
         if let Some(cancel) = cancel {
-            self.enqueue_refresh_until_cancelled(request, cancel).await;
+            self.enqueue_refresh_until_either_cancelled(request, &run_cancel, cancel)
+                .await;
         } else {
-            self.enqueue_refresh(request).await;
+            self.enqueue_refresh_until_cancelled(request, &run_cancel)
+                .await;
         }
     }
 
-    async fn has_active_connector(&self, run_id: RunId, connector_ref: &str) -> bool {
+    async fn active_connector_cancel(
+        &self,
+        run_id: RunId,
+        connector_ref: &str,
+    ) -> Option<CancellationToken> {
         let active_runs = self.inner.active_runs.lock().await;
-        active_runs
-            .get(&run_id)
-            .is_some_and(|active| active.connector_refs.contains(connector_ref))
+        let active = active_runs.get(&run_id)?;
+        active
+            .connector_refs
+            .contains(connector_ref)
+            .then(|| active.cancel.clone())
     }
 
     async fn enqueue_refresh(&self, request: RefreshRequest) {
@@ -285,6 +293,24 @@ impl ConnectorPolicyRefreshCore {
             }
             () = self.inner.cancel.cancelled() => {}
             () = cancel.cancelled() => {}
+        }
+    }
+
+    async fn enqueue_refresh_until_either_cancelled(
+        &self,
+        request: RefreshRequest,
+        cancel: &CancellationToken,
+        other_cancel: &CancellationToken,
+    ) {
+        tokio::select! {
+            result = self.request_tx.send(request) => {
+                if let Err(error) = result {
+                    warn!(error = %error, "connector policy refresh queue closed");
+                }
+            }
+            () = self.inner.cancel.cancelled() => {}
+            () = cancel.cancelled() => {}
+            () = other_cancel.cancelled() => {}
         }
     }
 
@@ -847,6 +873,52 @@ mod tests {
         )
         .await
         .expect("cancelled notification should not wait for queue capacity");
+
+        let mut queued = 0;
+        while requests.try_recv().is_ok() {
+            queued += 1;
+        }
+        assert_eq!(queued, REFRESH_REQUEST_QUEUE_CAPACITY);
+    }
+
+    #[tokio::test]
+    async fn unregister_cancels_permission_notification_waiting_for_queue_capacity() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let registry = ProxyRegistryHandle::new(
+            dir.path().join("proxy-registry.json"),
+            dir.path().join("proxy-registry.lock"),
+        );
+        core.inner
+            .active_runs
+            .lock()
+            .await
+            .insert(run_id, active_run_policy_state(registry));
+        for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
+            core.request_tx
+                .try_send(RefreshRequest {
+                    run_id,
+                    connector_ref: "slack".to_string(),
+                    trigger: RefreshTrigger::Scheduled,
+                })
+                .expect("refresh queue should accept request");
+        }
+
+        let notify_core = core.clone();
+        let notify_task = tokio::spawn(async move {
+            notify_core
+                .notify_permission_refresh(run_id, "slack".to_string())
+                .await;
+        });
+        tokio::task::yield_now().await;
+
+        core.unregister_run(run_id).await;
+        tokio::time::timeout(Duration::from_secs(1), notify_task)
+            .await
+            .expect("unregister should cancel notification waiting for queue capacity")
+            .expect("notification task should not panic");
 
         let mut queued = 0;
         while requests.try_recv().is_ok() {
