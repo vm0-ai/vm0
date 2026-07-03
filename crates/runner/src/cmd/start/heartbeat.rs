@@ -210,6 +210,32 @@ fn merge_held_session_states(
     states
 }
 
+fn available_profiles_for_heartbeat(
+    profiles: &BTreeMap<String, ProfileConfig>,
+    budget: &ResourceBudget,
+    idle_pool: &IdlePool,
+    mode: RunnerMode,
+) -> Vec<String> {
+    if mode != RunnerMode::Running {
+        return Vec::new();
+    }
+
+    let mut available: std::collections::BTreeSet<String> = profiles
+        .iter()
+        .filter_map(|(name, profile)| {
+            budget
+                .can_afford(profile.vcpu, profile.memory_mb)
+                .then(|| name.clone())
+        })
+        .collect();
+    for profile_name in idle_pool.held_session_profile_names() {
+        if profiles.contains_key(&profile_name) {
+            available.insert(profile_name);
+        }
+    }
+    available.into_iter().collect()
+}
+
 /// Collect current runner state for heartbeat reporting.
 pub(super) fn collect_heartbeat_state(
     runner_id: &str,
@@ -247,6 +273,7 @@ pub(super) fn collect_heartbeat_state(
         allocated_vcpu,
         allocated_memory_mb,
         running_count,
+        available_profiles: available_profiles_for_heartbeat(profiles, budget, idle_pool, mode),
         held_session_states: idle_pool.held_session_states(),
         mode: match mode {
             RunnerMode::Running => "running".to_string(),
@@ -388,6 +415,91 @@ mod tests {
             RunnerMode::Running,
         );
         assert_eq!(state.running_count, 2);
+    }
+
+    #[test]
+    fn heartbeat_available_profiles_match_current_budget() {
+        let budget = Arc::new(ResourceBudget::new(4, 8192, 1.0, 2));
+        let _lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let mut profiles = test_profiles();
+        profiles.insert(
+            "vm0/large".to_string(),
+            config::ProfileConfig {
+                rootfs_hash: "hash".into(),
+                snapshot_hash: "snap".into(),
+                vcpu: 4,
+                memory_mb: 8192,
+                rootfs_disk_mb: 8192,
+                workspace_disk_mb: 10240,
+            },
+        );
+        let pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+
+        let state = collect_heartbeat_state(
+            "r1",
+            "runner-1",
+            "vm0/test",
+            &profiles,
+            &budget,
+            &pool,
+            RunnerMode::Running,
+        );
+
+        assert_eq!(state.available_profiles, vec!["vm0/default"]);
+    }
+
+    #[test]
+    fn heartbeat_available_profiles_include_parked_reusable_profiles() {
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 1));
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        let candidate = ParkedIdleCandidateBuilder::new(
+            "sess-idle",
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+        )
+        .with_last_completed_at("2026-06-01T00:00:00.000Z")
+        .build();
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+        let profiles = test_profiles();
+
+        let state = collect_heartbeat_state(
+            "r1",
+            "runner-1",
+            "vm0/test",
+            &profiles,
+            &budget,
+            &pool,
+            RunnerMode::Running,
+        );
+
+        assert_eq!(state.available_profiles, vec!["vm0/default"]);
+    }
+
+    #[test]
+    fn heartbeat_available_profiles_empty_when_not_running() {
+        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
+        let pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        let profiles = test_profiles();
+
+        let state = collect_heartbeat_state(
+            "r1",
+            "runner-1",
+            "vm0/test",
+            &profiles,
+            &budget,
+            &pool,
+            RunnerMode::Draining,
+        );
+
+        assert!(state.available_profiles.is_empty());
     }
 
     #[tokio::test(flavor = "current_thread")]

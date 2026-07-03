@@ -1,0 +1,1 @@
+ALTER TABLE "runner_state" ADD COLUMN "available_profiles" jsonb DEFAULT '[]'::jsonb NOT NULL;

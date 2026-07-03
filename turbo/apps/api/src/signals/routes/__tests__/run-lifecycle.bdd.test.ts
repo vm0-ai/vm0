@@ -23,7 +23,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { v5 as uuidv5 } from "uuid";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { mockNow, now, nowDate } from "../../../lib/time";
+import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import {
@@ -1729,6 +1729,78 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       [200],
     );
 
+    async function heartbeatHolder(args: {
+      readonly availableProfiles?: string[];
+      readonly mode?: "running" | "draining" | "stopping";
+    }): Promise<void> {
+      await api.requestHeartbeatRunner(true, [200], {
+        group: runnerGroup,
+        availableProfiles: args.availableProfiles,
+        heldSessionStates: [
+          {
+            sessionId: cliAgentSessionId,
+            lastCompletedAt: nowDate().toISOString(),
+          },
+        ],
+        mode: args.mode,
+      });
+    }
+
+    async function pollFollowUp(prompt: string, cancelAfterPoll = true) {
+      const run = await api.createRun(actor, {
+        agentId,
+        sessionId: first.sessionId,
+        prompt,
+        modelProvider: "anthropic-api-key",
+      });
+      const poll = await api.requestPollRunner(
+        true,
+        { group: runnerGroup, profiles: ["vm0/default"] },
+        [200],
+      );
+      if (poll.status !== 200) {
+        throw new Error("Expected affinity poll to return 200");
+      }
+      expect(poll.body.job?.runId).toBe(run.runId);
+      if (cancelAfterPoll) {
+        await api.requestCancelRun(actor, run.runId, [200]);
+      }
+      return { run, job: poll.body.job };
+    }
+
+    await heartbeatHolder({ availableProfiles: [] });
+    const unavailableHolder = await pollFollowUp(
+      "continue when holder is full",
+      false,
+    );
+    expect(unavailableHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(unavailableHolder.job?.affinityProtectedUntil).toBeNull();
+    const unavailableClaim = await api.claimRunnerJob(
+      unavailableHolder.run.runId,
+    );
+    expect(unavailableClaim.prompt).toBe("continue when holder is full");
+    await api.requestCancelRun(actor, unavailableHolder.run.runId, [200]);
+
+    mockNow(now() - 60_000);
+    await heartbeatHolder({ availableProfiles: ["vm0/default"] });
+    clearMockNow();
+    const staleHolder = await pollFollowUp(
+      "continue after holder heartbeat is stale",
+    );
+    expect(staleHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(staleHolder.job?.affinityProtectedUntil).toBeNull();
+
+    await heartbeatHolder({
+      availableProfiles: ["vm0/default"],
+      mode: "draining",
+    });
+    const drainingHolder = await pollFollowUp(
+      "continue while holder is draining",
+    );
+    expect(drainingHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(drainingHolder.job?.affinityProtectedUntil).toBeNull();
+
+    await heartbeatHolder({ availableProfiles: ["vm0/default"] });
     const protectedFollowUp = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,

@@ -1,26 +1,35 @@
 import { publishRunnerJobNotification } from "../external/realtime";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { now, nowDate } from "../external/time";
-import { affinityProtectedUntil } from "./runner-session-affinity";
+import type { Db } from "../external/db";
+import { runnerSessionAffinityProtection } from "./runner-session-affinity";
 
-export async function notifyRunnerJob(args: {
-  readonly runnerGroup: string;
-  readonly runId: string;
-  readonly profile: string;
-  readonly cliAgentSessionId: string | null;
-}): Promise<boolean> {
+export async function notifyRunnerJob(
+  db: Pick<Db, "select">,
+  args: {
+    readonly runnerGroup: string;
+    readonly runId: string;
+    readonly profile: string;
+    readonly cliAgentSessionId: string | null;
+  },
+): Promise<boolean> {
   const publishStartedAt = now();
-  const protectedUntil = affinityProtectedUntil(
-    args.cliAgentSessionId,
-    nowDate(),
-  );
+  const currentDate = nowDate();
+  const affinity = await runnerSessionAffinityProtection({
+    db,
+    runnerGroup: args.runnerGroup,
+    profile: args.profile,
+    cliAgentSessionId: args.cliAgentSessionId,
+    createdAt: currentDate,
+    currentDate,
+  });
   const published = await publishRunnerJobNotification(
     args.runnerGroup,
     args.runId,
     args.profile,
     {
       cliAgentSessionId: args.cliAgentSessionId,
-      affinityProtectedUntil: protectedUntil?.toISOString() ?? null,
+      affinityProtectedUntil: affinity.protectedUntil?.toISOString() ?? null,
     },
   );
   const publishFinishedAt = now();
@@ -29,6 +38,7 @@ export async function notifyRunnerJob(args: {
     runner_group: args.runnerGroup,
     profile: args.profile,
     notification_target: "broadcast",
+    session_affinity: affinity.status,
   };
   recordSandboxOperations([
     {
