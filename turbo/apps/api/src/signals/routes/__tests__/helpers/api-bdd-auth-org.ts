@@ -29,7 +29,6 @@ import type {
 } from "@vm0/api-contracts/contracts/org-members";
 import {
   onboardingCompleteContract,
-  onboardingCompleteLimitedFreeContract,
   onboardingSetupContract,
   onboardingStatusContract,
   type OnboardingStatusResponse,
@@ -125,7 +124,6 @@ import { zeroCustomConnectorsUpdateRoutes } from "../../zero-custom-connectors-u
 import { zeroCustomConnectorValuesRoutes } from "../../zero-custom-connectors-values";
 import { zeroDefaultAgentRoutes } from "../../zero-default-agent";
 import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
-import { zeroOnboardingCompleteLimitedFreeRoutes } from "../../zero-onboarding-complete-limited-free";
 import { zeroOnboardingSetupRoutes } from "../../zero-onboarding-setup";
 import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
 import { zeroOrgDeleteRoutes } from "../../zero-org-delete";
@@ -256,7 +254,6 @@ const authOrgRoutes = [
   ...zeroOnboardingStatusRoutes,
   ...zeroOnboardingCompleteRoutes,
   ...zeroOnboardingSetupRoutes,
-  ...zeroOnboardingCompleteLimitedFreeRoutes,
   ...zeroSecretsRoutes,
   ...zeroUserPreferencesRoutes,
   ...zeroOrgReadRoutes,
@@ -869,24 +866,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
           body,
         }),
         [200, 403, 409, 422],
-      );
-    },
-
-    async completeLimitedFreeOnboarding(
-      actor: ApiTestUser,
-      body: z.input<
-        typeof onboardingCompleteLimitedFreeContract.complete.body
-      > = {},
-    ) {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        onboardingCompleteLimitedFreeContract,
-      );
-      return await accept(
-        client.complete({
-          headers: authenticate(actor),
-          body,
-        }),
-        [200, 403, 409],
       );
     },
 

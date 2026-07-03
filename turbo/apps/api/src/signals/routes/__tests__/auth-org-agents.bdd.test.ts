@@ -155,49 +155,14 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       onboardingPaymentPending: true,
     });
 
-    const forgedLimitedFree = await api.requestRawJson(
+    const removedLimitedFreeEndpoint = await api.requestRawJson(
       admin,
       "/api/zero/onboarding/complete-limited-free",
       "POST",
-      { credits: 999_999 },
-      [400],
+      {},
+      [404],
     );
-    expectApiError(forgedLimitedFree.body);
-    expect(forgedLimitedFree.body.error.code).toBe("BAD_REQUEST");
-
-    const completeLimitedFree = await api.completeLimitedFreeOnboarding(admin, {
-      credits: 1000,
-      expiresAt: null,
-    });
-    expect(completeLimitedFree.status).toBe(200);
-    expect(completeLimitedFree.body).toStrictEqual({
-      agentId: defaultAgentId,
-      tier: "limited-free-1",
-      needsOnboarding: false,
-    });
-
-    const afterLimitedFree = await api.readOnboardingStatus(admin);
-    expect(afterLimitedFree.needsOnboarding).toBeFalsy();
-    expect(afterLimitedFree.onboardingComplete).toBeTruthy();
-    expect(afterLimitedFree.defaultAgentId).toBe(defaultAgentId);
-
-    const limitedFreeBilling = await runsApi.readBillingStatus(admin);
-    expect(limitedFreeBilling).toMatchObject({
-      credits: 3000,
-      tier: "limited-free-1",
-      onboardingPaymentPending: false,
-    });
-    const onboardingCreditGrant = limitedFreeBilling.creditGrants.find(
-      (grant) => {
-        return grant.source === "onboarding";
-      },
-    );
-    expect(onboardingCreditGrant).toMatchObject({
-      source: "onboarding",
-      amount: 3000,
-      remaining: 3000,
-    });
-    expectExpiresAboutThirtyDaysFromNow(onboardingCreditGrant?.expiresAt);
+    expect(removedLimitedFreeEndpoint.status).toBe(404);
 
     const afterRepeatedSetup = await api.listAgents(admin);
     expect(
