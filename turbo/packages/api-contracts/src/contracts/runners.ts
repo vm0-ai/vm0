@@ -446,10 +446,10 @@ export const runnersJobClaimContract = c.router({
   },
 });
 
-export const runnersConnectorPolicyRefreshContract = c.router({
+export const runnersConnectorNetworkPolicyContract = c.router({
   refresh: {
     method: "POST",
-    path: "/api/runners/runs/:runId/connector-policy-refresh",
+    path: "/api/runners/runs/:runId/connector-network-policy",
     headers: authHeadersSchema,
     pathParams: z.object({
       runId: z.uuid(),
@@ -469,7 +469,7 @@ export const runnersConnectorPolicyRefreshContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Refresh one active run connector policy",
+    summary: "Refresh one active run connector network policy",
   },
 });
 
@@ -531,8 +531,8 @@ export const runnersHeartbeatContract = c.router({
 
 export type RunnersPollContract = typeof runnersPollContract;
 export type RunnersJobClaimContract = typeof runnersJobClaimContract;
-export type RunnersConnectorPolicyRefreshContract =
-  typeof runnersConnectorPolicyRefreshContract;
+export type RunnersConnectorNetworkPolicyContract =
+  typeof runnersConnectorNetworkPolicyContract;
 export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;
 export type Job = z.infer<typeof jobSchema>;
 export type HeldSessionState = z.infer<typeof heldSessionStateSchema>;

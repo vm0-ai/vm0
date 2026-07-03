@@ -2,9 +2,9 @@ import { command } from "ccstate";
 import {
   elapsedSinceApiStartMs,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  runnersConnectorNetworkPolicyContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
-  runnersConnectorPolicyRefreshContract,
   runnersPollContract,
   storedExecutionContextSchema,
   type ExecutionContext,
@@ -543,8 +543,8 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const claimBody$ = bodyResultOf(runnersJobClaimContract.claim);
-const connectorPolicyRefreshBody$ = bodyResultOf(
-  runnersConnectorPolicyRefreshContract.refresh,
+const connectorNetworkPolicyBody$ = bodyResultOf(
+  runnersConnectorNetworkPolicyContract.refresh,
 );
 
 interface ClaimableJob {
@@ -1839,7 +1839,7 @@ const runnerRealtimeTokenBody$ = bodyResultOf(
   runnerRealtimeTokenContract.create,
 );
 
-const connectorPolicyRefreshInner$ = command(
+const connectorNetworkPolicyInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = await set(runnerAuth$, get(authorization$), signal);
     signal.throwIfAborted();
@@ -1847,14 +1847,14 @@ const connectorPolicyRefreshInner$ = command(
       return unauthorizedAuthenticationRequired;
     }
 
-    const body = await get(connectorPolicyRefreshBody$);
+    const body = await get(connectorNetworkPolicyBody$);
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
     }
 
     const runId = get(
-      pathParamsOf(runnersConnectorPolicyRefreshContract.refresh),
+      pathParamsOf(runnersConnectorNetworkPolicyContract.refresh),
     ).runId;
     const db = set(writeDb$);
     const run = await getActiveRunPolicyScope(db, runId, signal);
@@ -1936,8 +1936,8 @@ export const runnersRoutes: readonly RouteEntry[] = [
     handler: claimInner$,
   },
   {
-    route: runnersConnectorPolicyRefreshContract.refresh,
-    handler: connectorPolicyRefreshInner$,
+    route: runnersConnectorNetworkPolicyContract.refresh,
+    handler: connectorNetworkPolicyInner$,
   },
   {
     route: runnerRealtimeTokenContract.create,

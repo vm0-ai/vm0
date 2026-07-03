@@ -84,33 +84,33 @@ pub mod runners {
     pub mod runs {
         /// Generated route bindings under `runners::runs::by_run_id`.
         pub mod by_run_id {
-            /// Generated route bindings under `runners::runs::by_run_id::connector_policy_refresh`.
-            pub mod connector_policy_refresh {
-                /// Refresh one active run connector policy.
-                /// Route contract: `POST /api/runners/runs/:runId/connector-policy-refresh`.
+            /// Generated route bindings under `runners::runs::by_run_id::connector_network_policy`.
+            pub mod connector_network_policy {
+                /// Refresh one active run connector network policy.
+                /// Route contract: `POST /api/runners/runs/:runId/connector-network-policy`.
                 pub const REFRESH: crate::RouteTemplate = crate::RouteTemplate {
                     method: crate::Method::Post,
-                    path: "/api/runners/runs/:runId/connector-policy-refresh",
+                    path: "/api/runners/runs/:runId/connector-network-policy",
                 };
 
-                /// Path parameters for `POST /api/runners/runs/:runId/connector-policy-refresh`.
+                /// Path parameters for `POST /api/runners/runs/:runId/connector-network-policy`.
                 #[derive(Debug, Clone, Copy)]
                 pub struct Params<'a> {
                     /// Value for the `:runId` path parameter.
                     pub run_id: &'a str,
                 }
 
-                /// Build the concrete path for `POST /api/runners/runs/:runId/connector-policy-refresh`.
+                /// Build the concrete path for `POST /api/runners/runs/:runId/connector-network-policy`.
                 /// Percent-encodes each path parameter as a URL path segment.
                 #[must_use]
                 pub fn path(params: Params<'_>) -> String {
                     format!(
-                        "/api/runners/runs/{}/connector-policy-refresh",
+                        "/api/runners/runs/{}/connector-network-policy",
                         crate::route::encode_path_segment(params.run_id),
                     )
                 }
 
-                /// Build a resolved route for `POST /api/runners/runs/:runId/connector-policy-refresh`.
+                /// Build a resolved route for `POST /api/runners/runs/:runId/connector-network-policy`.
                 #[must_use]
                 pub fn route(params: Params<'_>) -> crate::ResolvedRoute {
                     crate::ResolvedRoute::new(REFRESH.method, path(params))

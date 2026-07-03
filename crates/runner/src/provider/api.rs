@@ -536,8 +536,8 @@ impl ApiClient {
         let resp = send_api(
             self.http
                 .request_resolved_route(
-                    routes::runners::runs::by_run_id::connector_policy_refresh::route(
-                        routes::runners::runs::by_run_id::connector_policy_refresh::Params {
+                    routes::runners::runs::by_run_id::connector_network_policy::route(
+                        routes::runners::runs::by_run_id::connector_network_policy::Params {
                             run_id: run_id.as_str(),
                         },
                     ),

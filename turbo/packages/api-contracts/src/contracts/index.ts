@@ -835,7 +835,7 @@ export {
 export {
   runnersPollContract,
   runnersJobClaimContract,
-  runnersConnectorPolicyRefreshContract,
+  runnersConnectorNetworkPolicyContract,
   runnersHeartbeatContract,
   heartbeatBodySchema,
   runnerGroupSchema,
@@ -855,7 +855,7 @@ export {
   resumeSessionSchema,
   type RunnersPollContract,
   type RunnersJobClaimContract,
-  type RunnersConnectorPolicyRefreshContract,
+  type RunnersConnectorNetworkPolicyContract,
   type RunnersHeartbeatContract,
   type Job,
   type ExecutionContext,

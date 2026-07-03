@@ -1171,7 +1171,7 @@ mod tests {
         let run_id = RunId::nil();
         server.mock(|when, then| {
             when.method(POST).path(format!(
-                "/api/runners/runs/{run_id}/connector-policy-refresh"
+                "/api/runners/runs/{run_id}/connector-network-policy"
             ));
             then.status(500)
                 .header("content-type", "application/json")
@@ -1203,7 +1203,7 @@ mod tests {
         let run_id = RunId::nil();
         server.mock(|when, then| {
             when.method(POST).path(format!(
-                "/api/runners/runs/{run_id}/connector-policy-refresh"
+                "/api/runners/runs/{run_id}/connector-network-policy"
             ));
             then.status(200)
                 .header("content-type", "application/json")
