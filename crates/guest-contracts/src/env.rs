@@ -42,13 +42,13 @@ pub const SANDBOX_ID_ENV: &str = "VM0_SANDBOX_ID";
 /// `noSessionId`.
 pub const SANDBOX_REUSE_RESULT_ENV: &str = "VM0_SANDBOX_REUSE_RESULT";
 
-/// User prompt payload sent to the guest-agent.
+/// Legacy env key and logical run-payload field name for the user prompt.
 pub const PROMPT_ENV: &str = "VM0_PROMPT";
 
-/// Optional extra system prompt text.
+/// Legacy env key and logical run-payload field name for optional extra system
+/// prompt text.
 ///
-/// The runner omits this key when the append-system-prompt value is absent or
-/// empty.
+/// Unset or empty means there is no extra system prompt.
 pub const APPEND_SYSTEM_PROMPT_ENV: &str = "VM0_APPEND_SYSTEM_PROMPT";
 
 /// Sensitive Vercel protection bypass secret for guest API calls.
@@ -71,28 +71,31 @@ pub const RESUME_SESSION_ID_ENV: &str = "VM0_RESUME_SESSION_ID";
 /// The runner emits an empty string when the timestamp is unavailable.
 pub const API_START_TIME_ENV: &str = "VM0_API_START_TIME";
 
-/// Sensitive values used by the guest-agent masker.
+/// Legacy env key and logical run-payload field name for sensitive values used
+/// by the guest-agent masker.
 ///
 /// The payload is a comma-separated list of base64-encoded secret values, not
 /// secret names. The runner includes the sandbox token so event payloads and
 /// CLI diagnostics can redact it.
 pub const SECRET_VALUES_ENV: &str = "VM0_SECRET_VALUES";
 
-/// Comma-separated Claude Code tool names that should be disallowed.
+/// Legacy env key and logical run-payload field name for comma-separated Claude
+/// Code tool names that should be disallowed.
 ///
 /// Unset or empty means there is no explicit deny list.
 pub const DISALLOWED_TOOLS_ENV: &str = "VM0_DISALLOWED_TOOLS";
 
-/// Comma-separated Claude Code tool names that should be allowed.
+/// Legacy env key and logical run-payload field name for comma-separated Claude
+/// Code tool names that should be allowed.
 ///
 /// Unset or empty means there is no explicit allow list.
 pub const TOOLS_ENV: &str = "VM0_TOOLS";
 
-/// Raw Claude Code settings payload passed to the guest-agent.
+/// Legacy env key and logical run-payload field name for the raw Claude Code
+/// settings payload passed to the guest-agent.
 ///
-/// The runner treats this as an opaque string and currently emits JSON from
-/// the API execution context. Unset or empty means there is no settings
-/// override.
+/// The runner treats this as an opaque string. Unset or empty means there is no
+/// settings override.
 pub const SETTINGS_ENV: &str = "VM0_SETTINGS";
 
 /// CLI framework selector, for example `claude-code` or `codex`.
@@ -124,16 +127,18 @@ pub const RUN_PAYLOAD_PRIVATE_DIR_NAME: &str = "run-payload";
 /// Private runtime filename used by [`RUN_PAYLOAD_FILE_ENV`].
 pub const RUN_PAYLOAD_FILENAME: &str = "payload.json";
 
-/// JSON array describing artifact mounts prepared by the runner.
+/// Legacy env key and logical run-payload field name for the JSON array
+/// describing artifact mounts prepared by the runner.
 ///
 /// Each entry uses camelCase wire keys: `name`, `mountPath`, `storageId`,
 /// `versionId`, and optional `missingRootPolicy`. Unset or empty means there
 /// are no artifact mounts.
 pub const ARTIFACTS_ENV: &str = "VM0_ARTIFACTS";
 
-/// JSON map of feature flag names to enabled states.
+/// Legacy env key and logical run-payload field name for the JSON map of
+/// feature flag names to enabled states.
 ///
-/// The runner omits this key when there are no feature flags.
+/// Unset or empty means there are no feature flags.
 pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
 
 /// Runner-owned variable-length run payload sent through

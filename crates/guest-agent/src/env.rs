@@ -100,15 +100,15 @@ fn bounded_duration_secs_value_or(
 // ---------------------------------------------------------------------------
 // Artifacts (multi-mount)
 //
-// The runner emits a single `VM0_ARTIFACTS` env var containing a JSON array
-// of `{name, mountPath, storageId, versionId, missingRootPolicy?}` entries —
-// one per artifact mounted at boot. If the env var is unset or empty, there
-// are no artifacts.
+// The runner supplies a JSON array of
+// `{name, mountPath, storageId, versionId, missingRootPolicy?}` entries through
+// the run payload, with legacy `VM0_ARTIFACTS` env fallback. If the value is
+// unset or empty, there are no artifacts.
 // ---------------------------------------------------------------------------
 
-/// One artifact mount described by the runner-provided `VM0_ARTIFACTS` JSON array.
+/// One artifact mount described by the runner-provided artifact JSON array.
 ///
-/// The environment value is encoded as camelCase JSON, so this struct expects
+/// The wire value is encoded as camelCase JSON, so this struct expects
 /// `mountPath`, `storageId`, and `versionId` keys at the guest-agent boundary.
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
