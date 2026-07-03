@@ -2,7 +2,6 @@
 // (SKILL.md is never shown), automations, visibility controls, metadata
 // editing, slash use, copy, and delete.
 import type { FormEvent, ReactNode } from "react";
-import { useMemo, useState } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type {
@@ -121,9 +120,13 @@ import {
   updateWorkflowScheduleTrigger$,
   updateWorkflow$,
   workflowActionDialog$,
+  setWorkflowTriggerPickerCategory$,
+  setWorkflowTriggerPickerOpen$,
   workflowCopyForm$,
   workflowDetailActiveTab$,
   workflowTriggerCreateDialog$,
+  workflowTriggerPickerCategory$,
+  workflowTriggerPickerOpen$,
   workflowFileDraft$,
   workflowDetail,
   type WorkflowCopyFormState,
@@ -2502,23 +2505,16 @@ function TriggerCreateMenu({
   readonly googleMeetTriggersEnabled: boolean;
   readonly webhookTriggersEnabled: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const [activeKey, setActiveKey] = useState<TriggerCategoryKey>("schedule");
-  const categories = useMemo(
-    () =>
-      buildTriggerCreateCategories({
-        githubLabelTriggersEnabled,
-        googleCalendarTriggersEnabled,
-        googleMeetTriggersEnabled,
-        webhookTriggersEnabled,
-      }),
-    [
-      githubLabelTriggersEnabled,
-      googleCalendarTriggersEnabled,
-      googleMeetTriggersEnabled,
-      webhookTriggersEnabled,
-    ],
-  );
+  const open = useGet(workflowTriggerPickerOpen$);
+  const setOpen = useSet(setWorkflowTriggerPickerOpen$);
+  const activeKey = useGet(workflowTriggerPickerCategory$);
+  const setActiveKey = useSet(setWorkflowTriggerPickerCategory$);
+  const categories = buildTriggerCreateCategories({
+    githubLabelTriggersEnabled,
+    googleCalendarTriggersEnabled,
+    googleMeetTriggersEnabled,
+    webhookTriggersEnabled,
+  });
   const activeCategory =
     categories.find((category) => category.key === activeKey) ?? categories[0];
   const activeChip = activeCategory
@@ -2526,15 +2522,7 @@ function TriggerCreateMenu({
     : "";
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (next) {
-          setActiveKey("schedule");
-        }
-      }}
-    >
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <button
           type="button"
