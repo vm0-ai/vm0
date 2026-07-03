@@ -478,7 +478,7 @@ async function main(): Promise<void> {
       }
     } catch (error) {
       stats.errors += 1;
-      console.error(`  [error] ${automation.id}:`, error);
+      console.error("  [error]", automation.id, error);
     }
   }
 
