@@ -130,6 +130,9 @@ _CONNECTOR_DIAGNOSTIC_PROXY_ENTRY_LOGGED = "_connector_diagnostic_proxy_entry_lo
 _CONNECTOR_INTENT_HEADER: Final = "X-VM0-Connector-Intent"
 _CONNECTOR_INTENT_VALUE = "_connector_intent_value"
 _CONNECTOR_INTENT_STATUS = "_connector_intent_status"
+_CONNECTOR_DIAGNOSTIC_OWNERSHIP_REASON = "_connector_diagnostic_ownership_reason"
+_CONNECTOR_DIAGNOSTIC_OWNERSHIP_CANDIDATES = "_connector_diagnostic_ownership_candidates"
+_CONNECTOR_DIAGNOSTIC_OWNERSHIP_HINT_STATUS = "_connector_diagnostic_ownership_hint_status"
 _EMPTY_RESPONSE_STREAM_CHUNKS: tuple[bytes, ...] = ()
 _GENERIC_AUTH_HEADER_NAMES = frozenset(
     (
@@ -1513,6 +1516,18 @@ def _log_connector_diagnostic_proxy_entry(
     if candidate is None:
         return
     safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
+    extra: dict[str, object] = {}
+    ownership_reason = flow.metadata.get(_CONNECTOR_DIAGNOSTIC_OWNERSHIP_REASON)
+    if isinstance(ownership_reason, str) and ownership_reason:
+        extra["ownership_reason"] = ownership_reason
+    ownership_candidates = flow.metadata.get(_CONNECTOR_DIAGNOSTIC_OWNERSHIP_CANDIDATES)
+    if isinstance(ownership_candidates, tuple) and all(
+        isinstance(candidate, str) for candidate in ownership_candidates
+    ):
+        extra["ownership_candidates"] = list(ownership_candidates)
+    ownership_hint_status = flow.metadata.get(_CONNECTOR_DIAGNOSTIC_OWNERSHIP_HINT_STATUS)
+    if isinstance(ownership_hint_status, str) and ownership_hint_status:
+        extra["ownership_hint_status"] = ownership_hint_status
     log_proxy_entry(
         flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, ""),
         "warn",
@@ -1522,6 +1537,7 @@ def _log_connector_diagnostic_proxy_entry(
         reason=candidate.reason,
         upstream_status=upstream_status,
         url=original_url,
+        **extra,
     )
     flow.metadata[_CONNECTOR_DIAGNOSTIC_PROXY_ENTRY_LOGGED] = True
 
@@ -1597,6 +1613,9 @@ def _maybe_make_firewall_allow_connector_diagnostic_local_response(
 
     _start_request_timing(flow)
     _set_connector_diagnostic_failure_metadata(flow, candidate)
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_OWNERSHIP_REASON] = resolution.reason
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_OWNERSHIP_CANDIDATES] = resolution.candidate_connector_types
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_OWNERSHIP_HINT_STATUS] = resolution.hint_status
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.response = http.Response.make(
         _HTTP_STATUS_FAILED_DEPENDENCY,

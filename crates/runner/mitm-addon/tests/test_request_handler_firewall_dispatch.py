@@ -1416,6 +1416,11 @@ async def test_shared_base_unknown_endpoint_diagnoses_inactive_sibling_before_au
     assert "Authorization" not in flow.request.headers
     assert "X-VM0-Connector-Intent" not in flow.request.headers
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+    [proxy_log_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert proxy_log_entry["type"] == "connector_diagnostic"
+    assert proxy_log_entry["ownership_reason"] == "route_owner"
+    assert proxy_log_entry["ownership_candidates"] == ["active-shared", "inactive-shared"]
+    assert proxy_log_entry["ownership_hint_status"] == "ignored"
 
 
 async def test_shared_base_connector_intent_diagnoses_inside_candidate_set_before_auth(
@@ -1445,6 +1450,11 @@ async def test_shared_base_connector_intent_diagnoses_inside_candidate_set_befor
     assert "Authorization" not in flow.request.headers
     assert "X-VM0-Connector-Intent" not in flow.request.headers
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+    [proxy_log_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert proxy_log_entry["type"] == "connector_diagnostic"
+    assert proxy_log_entry["ownership_reason"] == "hint_owner"
+    assert proxy_log_entry["ownership_candidates"] == ["active-shared", "inactive-shared"]
+    assert proxy_log_entry["ownership_hint_status"] == "used"
 
 
 async def test_shared_base_unknown_endpoint_with_user_auth_keeps_active_auth_path(
