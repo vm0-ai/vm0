@@ -1,11 +1,12 @@
 import {
+  buildPresentationRunbookInstructionLines,
   findColorSystem,
   findDesignSystem,
   findImageStyle,
   findPresentationRunbookPackage,
   findTemplate,
   findVideoTemplate,
-  presentationColorSystemToken,
+  resolvePresentationRunbookColorToken,
   type PresentationRunbookPackage,
 } from "@vm0/core/resource-registry";
 import { findWorkflowTemplateItem } from "@vm0/core/workflow-template-items";
@@ -132,11 +133,7 @@ function buildPresentationGenerationTemplatePrompt(
     generationTemplate.selection.templateId,
   );
   if (runbookPackage) {
-    return buildPresentationRunbookPrompt(
-      generationTemplate,
-      template,
-      runbookPackage,
-    );
+    return buildPresentationRunbookPrompt(generationTemplate, runbookPackage);
   }
 
   const designSystem = findDesignSystem(
@@ -199,38 +196,27 @@ function buildPresentationGenerationTemplatePrompt(
 
 function buildPresentationRunbookPrompt(
   generationTemplate: PresentationGenerationTemplateInput,
-  template: {
-    readonly name: string;
-    readonly id: string;
-    readonly description: string;
-  },
   runbookPackage: PresentationRunbookPackage,
 ): GenerationTemplatePromptResult {
-  const { colorSystemId } = generationTemplate.selection;
-  const colorSystemToken = colorSystemId
-    ? presentationColorSystemToken(colorSystemId)
-    : runbookPackage.defaultColorSystem;
-  if (colorSystemId && !colorSystemToken) {
+  const color = resolvePresentationRunbookColorToken(
+    runbookPackage,
+    generationTemplate.selection.colorSystemId,
+  );
+  if ("error" in color) {
     return {
       status: "invalid",
       message: "Unknown generation template color system",
     };
   }
 
-  const slug = runbookPackage.slug;
   return {
     status: "resolved",
     prompt: [
       ...templateFraming("a presentation"),
-      `Selected presentation template: ${template.name} (${template.id})`,
-      `Color system token: ${colorSystemToken}`,
-      "",
-      "To produce the presentation:",
-      `- Pull the package: zero resource pull ${runbookPackage.resourceId} --dir ./generated/resources`,
-      `- Follow ./generated/resources/${slug}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
-      "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
-      "- Host the finished deck: zero host <output-dir> --site <slug> --artifact-kind presentation-html",
-      "- Return only the generated HTML deck as the final deliverable.",
+      ...buildPresentationRunbookInstructionLines({
+        runbookPackage,
+        colorSystemToken: color.token,
+      }),
     ].join("\n"),
   };
 }
