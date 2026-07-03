@@ -226,6 +226,10 @@ function stripUrlQueryAndFragment(url: string): string {
   return url.slice(0, end);
 }
 
+function stripTrailingSlash(value: string): string {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
 function rawPathFromDeniedUrl(url: string): string {
   const urlWithoutQuery = stripUrlQueryAndFragment(url);
   const schemeEnd = urlWithoutQuery.indexOf("://");
@@ -316,9 +320,10 @@ function routesForMatchedBase(
   }[],
   apiBase: string,
 ): readonly FirewallRoutingPermissionRoute[] {
+  const normalizedApiBase = stripTrailingSlash(apiBase);
   const routes: FirewallRoutingPermissionRoute[] = [];
   for (const api of apis) {
-    if (api.base === apiBase) {
+    if (stripTrailingSlash(api.base) === normalizedApiBase) {
       routes.push(...api.routes);
     }
   }

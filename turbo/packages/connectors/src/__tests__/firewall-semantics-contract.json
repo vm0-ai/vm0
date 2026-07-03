@@ -824,6 +824,46 @@
       }
     },
     {
+      "name": "asked permission blocks like denied permission",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "items.write",
+                  "rules": ["POST /items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": [],
+          "deny": [],
+          "ask": ["items.write"],
+          "unknownPolicy": "allow"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/items/123",
+        "reason": "permission_denied",
+        "permissions": ["items.write"]
+      }
+    },
+    {
       "name": "unknown endpoint follows deny policy",
       "firewalls": [
         {

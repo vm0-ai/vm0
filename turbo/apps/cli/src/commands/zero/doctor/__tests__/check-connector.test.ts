@@ -1454,6 +1454,75 @@ describe("zero doctor check-connector command", () => {
       expect(output).not.toContain("unknown endpoint policy applies: deny");
     });
 
+    it("should not describe unsafe paths as unknown endpoints", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        stubAvailableConnectors(["test-oauth"]),
+        http.get("https://app.vm0.ai/api/zero/connectors/test-oauth", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            type: "test-oauth",
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["test-oauth"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                name: "test-oauth",
+                apis: [
+                  {
+                    base: "https://tenant-123.{pr}.vm6.ai/api/test/oauth-provider",
+                    permissions: [
+                      {
+                        name: "full",
+                        rules: ["ANY /{path+}"],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            networkPolicies: {
+              "test-oauth": {
+                allow: ["full"],
+                deny: [],
+                ask: [],
+                unknownPolicy: "allow" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://tenant-123.pr-123.vm6.ai/api/test/oauth-provider/users/%2e%2e/admin",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain(
+        "Permission matching could not complete because the request path contains unsafe path syntax.",
+      );
+      expect(output).toContain(
+        "Result: The request path contains unsafe path syntax, so the request is blocked.",
+      );
+      expect(output).not.toContain(
+        "falls through to the unknown-endpoint policy",
+      );
+    });
+
     it("should fail for unrecognized URL", async () => {
       await expect(async () => {
         await checkConnectorCommand.parseAsync([

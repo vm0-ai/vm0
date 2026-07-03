@@ -653,6 +653,53 @@ function matchedPermissionsFromDecision(
   return [];
 }
 
+function printMatchedPermissionsSummary(
+  method: string,
+  relativePath: string,
+  decision: FirewallRequestDecision,
+): void {
+  const matchedPermissions = matchedPermissionsFromDecision(decision);
+  if (matchedPermissions.length > 0) {
+    console.log(`Matched permissions: [${matchedPermissions.join(", ")}]`);
+    return;
+  }
+
+  if (
+    decision.kind === "allow" ||
+    (decision.kind === "block" && decision.reason === "unknown_endpoint")
+  ) {
+    console.log(
+      `No named permission matches ${method} ${relativePath}. This request falls through to the unknown-endpoint policy.`,
+    );
+    return;
+  }
+
+  if (decision.kind === "no_match") {
+    console.log(
+      "No connector firewall base matched this request during final permission evaluation.",
+    );
+    return;
+  }
+
+  if (decision.reason === "malformed_firewall_config") {
+    console.log(
+      "Permission matching could not complete because the matched firewall config is malformed.",
+    );
+    return;
+  }
+
+  if (decision.reason === "malformed_network_policy") {
+    console.log(
+      "Permission matching could not complete because the matched network policy is malformed.",
+    );
+    return;
+  }
+
+  console.log(
+    "Permission matching could not complete because the request path contains unsafe path syntax.",
+  );
+}
+
 function printAllowedPermissionResult(
   permission: string,
   connectorPolicies: NetworkPolicies[string],
@@ -777,15 +824,7 @@ async function resolvePermissionFromUrl(
     url,
     networkPolicies,
   );
-  const matchedPermissions = matchedPermissionsFromDecision(decision);
-
-  if (matchedPermissions.length === 0) {
-    console.log(
-      `No named permission matches ${method} ${relativePath}. This request falls through to the unknown-endpoint policy.`,
-    );
-  } else {
-    console.log(`Matched permissions: [${matchedPermissions.join(", ")}]`);
-  }
+  printMatchedPermissionsSummary(method, relativePath, decision);
   console.log("");
 
   if (!networkPolicies) {
