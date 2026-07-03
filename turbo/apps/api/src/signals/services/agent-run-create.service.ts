@@ -1255,6 +1255,8 @@ interface SingleSecretModelProviderConfig {
   readonly defaultModel?: string;
 }
 
+const EMPTY_MODEL_PROVIDER_ENV_BINDINGS: ModelProviderEnvBindings = {};
+
 function isSingleSecretModelProviderConfig(
   value: unknown,
 ): value is SingleSecretModelProviderConfig {
@@ -1266,6 +1268,30 @@ function isSingleSecretModelProviderConfig(
     "envBindings" in value &&
     typeof (value as { readonly secretName: unknown }).secretName === "string"
   );
+}
+
+function envBindingsRequireModel(
+  envBindings: ModelProviderEnvBindings,
+): boolean {
+  return Object.values(envBindings).some((value) => {
+    return value.includes("$model");
+  });
+}
+
+function resolveModelProviderModel(args: {
+  readonly type: ModelProviderType;
+  readonly selectedModel: string | null;
+  readonly defaultModel: string | undefined;
+  readonly envBindings: ModelProviderEnvBindings;
+}): string | null {
+  let model = args.selectedModel;
+  if (model === null && args.defaultModel !== undefined) {
+    model = args.defaultModel;
+  }
+  if (envBindingsRequireModel(args.envBindings) && !model) {
+    throw new Error(`Missing model for model provider ${args.type}`);
+  }
+  return model === "" ? null : model;
 }
 
 function modelProviderEnvironmentSecretValue(
@@ -1341,7 +1367,15 @@ function modelProviderEnvironment(args: {
   if (!hasFirewallAuth && args.secretValue === undefined) {
     throw new Error(`Missing eager secret for model provider ${args.type}`);
   }
-  const model = args.selectedModel ?? args.config.defaultModel ?? "";
+  const envBindings =
+    getModelProviderEnvBindings(args.type, args.featureStates) ??
+    args.config.envBindings;
+  const model = resolveModelProviderModel({
+    type: args.type,
+    selectedModel: args.selectedModel,
+    defaultModel: args.config.defaultModel,
+    envBindings,
+  });
   const runtimeModel = model ? getProviderRuntimeModel(args.type, model) : "";
   const environmentSecret = modelProviderEnvironmentSecretValue(
     args.type,
@@ -1349,9 +1383,6 @@ function modelProviderEnvironment(args: {
     args.secretValue ?? "",
     args.featureStates,
   );
-  const envBindings =
-    getModelProviderEnvBindings(args.type, args.featureStates) ??
-    args.config.envBindings;
   const environment: Record<string, string> = {};
   for (const [key, value] of Object.entries(envBindings)) {
     environment[key] = value
@@ -1367,7 +1398,7 @@ function modelProviderEnvironment(args: {
     secrets: hasFirewallAuth
       ? {}
       : { [args.config.secretName]: args.secretValue ?? "" },
-    selectedModel: model || null,
+    selectedModel: model,
     firewall,
     inlineFirewall: shouldInlineModelProviderFirewall(
       args.type,
@@ -1401,7 +1432,12 @@ function providerEnvironmentFromSecretRefs(
     };
   }
 
-  const model = selectedModel ?? MODEL_PROVIDER_TYPES[type].defaultModel ?? "";
+  const model = resolveModelProviderModel({
+    type,
+    selectedModel,
+    defaultModel: getDefaultModel(type),
+    envBindings,
+  });
   const environment: Record<string, string> = {};
   for (const [key, value] of Object.entries(envBindings)) {
     if (value === "$secret") {
@@ -1456,7 +1492,12 @@ function providerEnvironmentFromSecretMap(
   }
 
   const fallbackSecret = Object.entries(providerSecrets)[0];
-  const model = selectedModel ?? getDefaultModel(type) ?? "";
+  const model = resolveModelProviderModel({
+    type,
+    selectedModel,
+    defaultModel: getDefaultModel(type),
+    envBindings,
+  });
   const environment: Record<string, string> = {};
   for (const [key, value] of Object.entries(envBindings)) {
     if (value === "$secret") {
@@ -1564,8 +1605,19 @@ async function multiAuthModelProviderEnvironment(
     }
   }
 
-  const selectedModel =
-    args.selectedModel ?? getDefaultModel(args.type) ?? null;
+  const selectedModelEnvBindings = getModelProviderEnvBindings(
+    args.type,
+    featureStates,
+  );
+  const selectedModel = resolveModelProviderModel({
+    type: args.type,
+    selectedModel: args.selectedModel,
+    defaultModel: getDefaultModel(args.type),
+    envBindings:
+      selectedModelEnvBindings === undefined
+        ? EMPTY_MODEL_PROVIDER_ENV_BINDINGS
+        : selectedModelEnvBindings,
+  });
   const runtimeModel = selectedModel
     ? getProviderRuntimeModel(args.type, selectedModel)
     : null;
@@ -1667,7 +1719,8 @@ interface ModelProviderEnvironmentRow {
   readonly encryptedValue: string | null;
 }
 
-interface ResolvableModelProviderEnvironmentRow extends ModelProviderEnvironmentRow {
+interface ResolvableModelProviderEnvironmentRow
+  extends ModelProviderEnvironmentRow {
   readonly type: ModelProviderType;
 }
 

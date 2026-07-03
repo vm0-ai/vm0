@@ -555,8 +555,7 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return permissionError;
   }
 
-  const nextVisibility =
-    body.data.visibility ?? existing.visibility ?? "public";
+  const nextVisibility = body.data.visibility ?? existing.visibility;
   const visibilityError = await validateAgentVisibilityUpdate({
     writeDb,
     orgId: auth.orgId,
