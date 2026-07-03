@@ -263,9 +263,9 @@ const openFocusedThreadEmojiMenu$ = command(
     if (!(get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false)) {
       return;
     }
-    const threadData = await get(args.thread.threadData$);
+    const threadMeta = await get(args.thread.threadMeta$);
     signal.throwIfAborted();
-    const title = args.title !== undefined ? args.title : threadData?.title;
+    const title = args.title !== undefined ? args.title : threadMeta?.title;
     set(openChatThreadEmojiMenu$, { threadId: args.thread.threadId, title });
   },
 );

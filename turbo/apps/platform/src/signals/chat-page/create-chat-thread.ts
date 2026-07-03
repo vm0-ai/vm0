@@ -89,6 +89,10 @@ import {
 } from "./parse-body-blocks.ts";
 import { getChatThreadTitleParts } from "./chat-thread-title.ts";
 import {
+  eventDrivenChatThreadMeta,
+  type ThreadMeta,
+} from "./chat-thread-event-sourcing.ts";
+import {
   previousRunGroupVisualWindowStartIndex,
   runGroupVisualWindowStartIndex,
 } from "./run-group-folding.ts";
@@ -491,12 +495,38 @@ function createThreadData(dataSource: ChatThreadDataSource) {
   };
 }
 
-function createThreadTitleParts(
+function threadMetaFromThreadData(threadData: ChatThread): ThreadMeta {
+  return {
+    threadId: threadData.id,
+    agentId: threadData.agentId,
+    title: threadData.title,
+  };
+}
+
+function createThreadMeta(
+  threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
 ) {
-  const threadTitleParts$ = computed(async (get) => {
+  const eventDrivenThreadMeta$ = eventDrivenChatThreadMeta(threadId);
+  return computed(async (get): Promise<ThreadMeta | null> => {
+    if (
+      get(featureSwitch$)[FeatureSwitchKey.ChatThreadEventSourcing] ??
+      false
+    ) {
+      return await get(eventDrivenThreadMeta$);
+    }
+
     const threadData = await get(threadData$);
-    return getChatThreadTitleParts(threadData?.title);
+    return threadData ? threadMetaFromThreadData(threadData) : null;
+  });
+}
+
+function createThreadTitleParts(
+  threadMeta$: Computed<Promise<ThreadMeta | null>>,
+) {
+  const threadTitleParts$ = computed(async (get) => {
+    const threadMeta = await get(threadMeta$);
+    return getChatThreadTitleParts(threadMeta?.title);
   });
   const threadTitleEmoji$ = computed(async (get) => {
     return (await get(threadTitleParts$)).emoji;
@@ -3441,8 +3471,9 @@ export function createChatThreadSignals(
   dataSource: ChatThreadDataSource = createRemoteChatThreadDataSource(threadId),
 ): ChatThreadSignals {
   const { threadData$, reloadThread$ } = createThreadData(dataSource);
+  const threadMeta$ = createThreadMeta(threadId, threadData$);
   const { threadTitleEmoji$, threadTitleText$ } =
-    createThreadTitleParts(threadData$);
+    createThreadTitleParts(threadMeta$);
   const { modelSelection$, setModelSelection$ } = createModelSelection(
     threadId,
     threadData$,
@@ -3519,6 +3550,7 @@ export function createChatThreadSignals(
   return {
     threadId,
     threadData$,
+    threadMeta$,
     reloadThread$,
     threadTitleEmoji$,
     threadTitleText$,
