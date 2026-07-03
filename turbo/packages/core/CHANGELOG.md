@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.392.0](https://github.com/vm0-ai/vm0/compare/core-v8.391.4...core-v8.392.0) (2026-07-03)
+
+
+### Features
+
+* migrate legacy automations to workflow schedule triggers globally ([#20033](https://github.com/vm0-ai/vm0/issues/20033)) ([eeb91c2](https://github.com/vm0-ai/vm0/commit/eeb91c258a50f67b05a341ebbbbb7e1b872d0030))
+
 ## [8.391.4](https://github.com/vm0-ai/vm0/compare/core-v8.391.3...core-v8.391.4) (2026-07-03)
 
 

@@ -10,21 +10,16 @@ async function openBillingSettings(page: Page): Promise<void> {
   await expect(page.getByRole("dialog")).toBeVisible({ timeout: 30_000 });
 }
 
-// Since #20029, Clerk org creation bootstraps a limited-free workspace and
-// the onboarding-only Pro trial checkout never runs for fresh users, so
-// billing settings reflect the limited-free default instead of a Pro trial.
-test("billing settings reflects the limited-free bootstrap", async ({
-  page,
-}) => {
+test("billing settings reflects the smoke Pro checkout", async ({ page }) => {
   await openBillingSettings(page);
 
-  await expect(page.getByRole("heading", { name: "Billing" })).toBeVisible({
+  await expect(page.getByText(/^Pro plan$/)).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByText("No active plan")).toBeVisible();
-  await expect(page.getByText("No active subscription")).toBeVisible();
+  await expect(page.getByText(/^Renews /)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Downgrade" })).toBeVisible();
+  await expect(page.getByText("No active subscription")).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Compare all plans" }),
-  ).toBeVisible();
-  await expect(page.getByText(/^Pro plan$/)).toHaveCount(0);
+    page.getByRole("button", { name: "Upgrade to Pro" }),
+  ).toHaveCount(0);
 });

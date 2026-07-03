@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.132.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.3...runner-rs-v0.132.4) (2026-07-03)
+
+
+### Bug Fixes
+
+* move runner bootstrap payloads out of env ([#19989](https://github.com/vm0-ai/vm0/issues/19989)) ([847d8d2](https://github.com/vm0-ai/vm0/commit/847d8d24372d84568133007db87c44a0ebd72b95))
+
 ## [0.132.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.2...runner-rs-v0.132.3) (2026-07-03)
 
 ## [0.132.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.1...runner-rs-v0.132.2) (2026-07-03)

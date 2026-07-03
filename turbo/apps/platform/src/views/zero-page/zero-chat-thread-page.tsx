@@ -3586,7 +3586,7 @@ function resolveRunGroupFoldPlacements({
       };
       const embeddedGroupId = control.expanded
         ? undefined
-        : assistantGroupIdForCollapsedRunGroupFold(groups, index);
+        : inlineGroupIdForCollapsedRunGroupFold(groups, index);
       const target = embeddedGroupId
         ? embeddedRunGroupFolds
         : externalRunGroupFolds;
@@ -3601,6 +3601,23 @@ function resolveRunGroupFoldPlacements({
   }
 
   return { embeddedRunGroupFolds, externalRunGroupFolds };
+}
+
+function inlineGroupIdForCollapsedRunGroupFold(
+  groups: readonly GroupedChatMessageGroup[],
+  index: number,
+): string | undefined {
+  const group = groups[index];
+  if (!group || group.role !== "user") {
+    return undefined;
+  }
+  if (firstRunIdForMessages(group.messages) === undefined) {
+    return undefined;
+  }
+  return (
+    assistantGroupIdForCollapsedRunGroupFold(groups, index) ??
+    group.beginMessageId
+  );
 }
 
 function assistantGroupIdForCollapsedRunGroupFold(
@@ -6741,7 +6758,13 @@ function PagedGroupRow({
   };
 }) {
   if (group.role === "user") {
-    return <PagedUserGroup group={group} thread={thread} />;
+    return (
+      <PagedUserGroup
+        group={group}
+        thread={thread}
+        runGroupFolds={runGroupFolds}
+      />
+    );
   }
   return (
     <PagedAssistantGroup
@@ -6756,14 +6779,19 @@ function PagedGroupRow({
 function PagedUserGroup({
   group,
   thread,
+  runGroupFolds,
 }: {
   group: GroupedChatMessageGroup;
   thread: ChatThreadSignals;
+  runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
   return (
     <>
       {group.messages.map((msg) => {
         return <PagedUserMessage key={msg.id} message={msg} thread={thread} />;
+      })}
+      {runGroupFolds?.map((fold) => {
+        return <RunGroupFoldRow key={fold.fold.key} control={fold} />;
       })}
     </>
   );

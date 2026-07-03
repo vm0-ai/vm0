@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.46.1...guest-agent-v0.46.2) (2026-07-03)
+
+
+### Bug Fixes
+
+* move runner bootstrap payloads out of env ([#19989](https://github.com/vm0-ai/vm0/issues/19989)) ([847d8d2](https://github.com/vm0-ai/vm0/commit/847d8d24372d84568133007db87c44a0ebd72b95))
+
 ## [0.46.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.46.0...guest-agent-v0.46.1) (2026-07-03)
 
 ## [0.46.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.45.3...guest-agent-v0.46.0) (2026-07-02)

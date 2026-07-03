@@ -29,6 +29,7 @@ const api = createAuthOrgAgentsBddApi(context);
 const bdd = createBddApi(context);
 const runsApi = createRunsAutomationsApi(context);
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
 
 function shortId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 10);
@@ -130,10 +131,12 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     expect(after.defaultAgentMetadata).toMatchObject({
       displayName: "BDD Default Agent",
       sound: "calm",
+      avatarUrl: DEFAULT_AGENT_AVATAR_URL,
     });
 
     const defaultAgent = await api.readAgent(admin, defaultAgentId);
     expect(defaultAgent.displayName).toBe("BDD Default Agent");
+    expect(defaultAgent.avatarUrl).toBe(DEFAULT_AGENT_AVATAR_URL);
 
     const repeatedSetup = await api.setupOnboarding(admin, {
       displayName: "BDD Default Agent Repeated",
@@ -629,6 +632,7 @@ describe("ORG-03 onboarding status mapping", () => {
       defaultAgentMetadata: {
         displayName: "Zero",
         sound: "professional",
+        avatarUrl: DEFAULT_AGENT_AVATAR_URL,
       },
     });
     expect(adminBeforeSetup.defaultAgentId).toBeTruthy();
@@ -668,6 +672,7 @@ describe("ORG-03 onboarding status mapping", () => {
       defaultAgentMetadata: {
         displayName: "Zero",
         sound: "professional",
+        avatarUrl: DEFAULT_AGENT_AVATAR_URL,
       },
     });
 
@@ -682,6 +687,7 @@ describe("ORG-03 onboarding status mapping", () => {
       defaultAgentMetadata: {
         displayName: "Zero",
         sound: "professional",
+        avatarUrl: DEFAULT_AGENT_AVATAR_URL,
       },
     });
 
@@ -695,6 +701,7 @@ describe("ORG-03 onboarding status mapping", () => {
       defaultAgentMetadata: {
         displayName: "Zero",
         sound: "professional",
+        avatarUrl: DEFAULT_AGENT_AVATAR_URL,
       },
     });
     expect(orphaned.defaultAgentId).toBeTruthy();
