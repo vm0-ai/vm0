@@ -321,7 +321,7 @@ fn validate_agent_bootstrap_exec_boundary(
     agent_cmd: &str,
     env_pairs: &[(String, String)],
 ) -> RunnerResult<()> {
-    let mut values = Vec::with_capacity(env_pairs.len() + 2);
+    let mut values = Vec::with_capacity(env_pairs.len() + 3);
     values.push(guest_contracts::exec_limits::ExecBoundaryValue::arg(
         "argv[0]",
         "/bin/bash",
