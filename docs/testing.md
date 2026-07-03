@@ -56,6 +56,21 @@ E2E tests are expensive. Each `vm0 run` takes about 15 seconds, involves real ne
 
 Error cases and edge cases belong in integration tests, where we can control the environment and test reliably.
 
+### Deployment Compatibility Tests
+
+When a change touches a deployable boundary, tests must cover the relevant
+old/new version combination. Frontend, backend, and runner deploy independently:
+open browser pages may keep running already-loaded frontend code until
+navigation or refresh, the service worker may update on its own browser
+lifecycle, and old runners may briefly overlap before draining already claimed
+runs.
+
+For API contracts, runner protocols, queue payloads, and persisted state, include
+tests for the previous request or data shape whenever the old version can still
+talk to the new version during rollout. See
+[deployment-compatibility.md](./deployment-compatibility.md) for the full
+deployment compatibility contract.
+
 ## The Mock Boundary
 
 The most important decision in testing is: **what do you mock?**
@@ -85,7 +100,8 @@ Here's a quick heuristic: **if the path in `vi.mock()` starts with `../` or `../
 
 ```typescript
 // ✅ Good: External packages
-vi.mock("@clerk/nextjs");
+vi.mock("@clerk/backend");
+vi.mock("@clerk/clerk-js");
 vi.mock("@aws-sdk/client-s3");
 
 // ❌ Bad: Internal code
@@ -254,29 +270,31 @@ Use API calls for setup and verification. Do not create API test state by
 writing database rows, importing DB schemas, importing route handlers, or calling
 internal services.
 
-### Web Route Compatibility
+### Frontend Route Compatibility
 
-`apps/web` no longer hosts API route handlers, so all endpoint behavior is
-tested in `apps/api` (see [api-testing.md](./testing/api-testing.md)). Web-side
-tests cover only routing compatibility: exact rewrites, middleware bypass, and
-security headers around proxied paths.
+Frontend apps do not host API route handlers, so all endpoint behavior is
+tested in `apps/api` (see [api-testing.md](./testing/api-testing.md)).
+Frontend-side tests cover only routing compatibility: explicit Vercel rewrites,
+service-worker behavior, and security headers around proxied paths.
 
 ### Platform UI
 
 Test through the same initialization flow as production:
 
 ```typescript
-await setupPage({
+detachedSetupPage({
   context,
   path: "/dashboard",
 });
 
-await user.click(screen.getByRole("button", { name: "Create" }));
+await user.click(await screen.findByRole("button", { name: "Create" }));
 
-expect(screen.getByText("Created successfully")).toBeInTheDocument();
+expect(await screen.findByText("Created successfully")).toBeInTheDocument();
 ```
 
-Don't render components directly—use `setupPage()` which mirrors `main.ts` startup.
+Don't render components directly. For view tests, use `detachedSetupPage()`,
+which mirrors `main.ts` startup and lets tests wait for the rendered state they
+care about.
 
 ## Reference
 
@@ -290,15 +308,15 @@ Don't render components directly—use `setupPage()` which mirrors `main.ts` sta
 
 ### App-Specific Guides
 
-| App                                  | Guide                                                    |
-| ------------------------------------ | -------------------------------------------------------- |
-| CLI commands                         | [cli-testing.md](./testing/cli-testing.md)               |
-| CLI E2E (BATS)                       | [cli-e2e-testing.md](./testing/cli-e2e-testing.md)       |
-| API routes                           | [api-testing.md](./testing/api-testing.md)               |
-| Web rewrite/middleware compatibility | [api-testing.md](./testing/api-testing.md)               |
-| App UI                               | [app-testing.md](./testing/app-testing.md)               |
-| Desktop app                          | [desktop-testing.md](./testing/desktop-testing.md)       |
-| Rust crates                          | [rust-testing.md](./testing/rust-testing.md)             |
-| Python addon                         | [mitm-addon-testing.md](./testing/mitm-addon-testing.md) |
+| App                          | Guide                                                    |
+| ---------------------------- | -------------------------------------------------------- |
+| CLI commands                 | [cli-testing.md](./testing/cli-testing.md)               |
+| CLI E2E (BATS)               | [cli-e2e-testing.md](./testing/cli-e2e-testing.md)       |
+| API routes                   | [api-testing.md](./testing/api-testing.md)               |
+| Frontend route compatibility | [api-testing.md](./testing/api-testing.md)               |
+| App UI                       | [app-testing.md](./testing/app-testing.md)               |
+| Desktop app                  | [desktop-testing.md](./testing/desktop-testing.md)       |
+| Rust crates                  | [rust-testing.md](./testing/rust-testing.md)             |
+| Python addon                 | [mitm-addon-testing.md](./testing/mitm-addon-testing.md) |
 
 For general code quality rules (no `any`, no lint suppressions, etc.), see [bad-smell.md](./bad-smell.md).
