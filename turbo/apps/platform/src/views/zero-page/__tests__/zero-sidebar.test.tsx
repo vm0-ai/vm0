@@ -164,6 +164,18 @@ function sidebar(): HTMLElement {
   return screen.getByRole("navigation", { name: "Sidebar" });
 }
 
+function setupSidebarPage(
+  options: Parameters<typeof detachedSetupPage>[0],
+): void {
+  detachedSetupPage({
+    ...options,
+    featureSwitches: {
+      [FeatureSwitchKey.ChatThreadEventSourcing]: false,
+      ...options.featureSwitches,
+    },
+  });
+}
+
 function threadRowByTitle(title: string): HTMLElement {
   const link = threadLinkByTitle(title);
   const row = link.parentElement;
@@ -354,7 +366,7 @@ describe("zero sidebar", () => {
       });
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     const newChatButton = await waitFor(() => {
       expect(screen.getByText("Existing conversation")).toBeInTheDocument();
@@ -410,7 +422,7 @@ describe("zero sidebar", () => {
       return never();
     });
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: { [FeatureSwitchKey.ChatThreadEventSourcing]: true },
@@ -492,7 +504,7 @@ describe("zero sidebar", () => {
       });
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     const newChatButton = await waitFor(() => {
       expect(
@@ -572,7 +584,7 @@ describe("zero sidebar", () => {
       });
     });
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}?artifact=${artifactUrl}`,
     });
@@ -662,7 +674,7 @@ describe("zero sidebar", () => {
       });
     });
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
@@ -704,7 +716,7 @@ describe("zero sidebar", () => {
       return respond(200, { unreads: [] });
     });
 
-    detachedSetupPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
+    setupSidebarPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
 
     await waitFor(() => {
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
@@ -758,7 +770,7 @@ describe("zero sidebar", () => {
       return respond(200, { unreads: [] });
     });
 
-    detachedSetupPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
+    setupSidebarPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
 
     await waitFor(() => {
       expect(
@@ -820,7 +832,7 @@ describe("zero sidebar", () => {
       },
     );
 
-    detachedSetupPage({ context, path: `/chats/${INCIDENT_THREAD_ID}` });
+    setupSidebarPage({ context, path: `/chats/${INCIDENT_THREAD_ID}` });
 
     await waitFor(() => {
       expect(markReadCalls).toBe(1);
@@ -857,7 +869,7 @@ describe("zero sidebar", () => {
       });
     });
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}?sidebar=detached-thread`,
     });
@@ -923,7 +935,7 @@ describe("zero sidebar", () => {
       },
     );
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
     });
@@ -960,7 +972,7 @@ describe("zero sidebar", () => {
       createThread(INCIDENT_THREAD_ID, "Incident notes"),
     ]);
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
     });
@@ -992,7 +1004,7 @@ describe("zero sidebar", () => {
       },
     );
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
     });
@@ -1044,7 +1056,7 @@ describe("zero sidebar", () => {
       }),
     ]);
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
       // The legacy automations delete-check only renders when the globally-on
@@ -1123,7 +1135,7 @@ describe("zero sidebar", () => {
       return respond(200, { automations: [] });
     });
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
@@ -1161,7 +1173,7 @@ describe("zero sidebar", () => {
       createThread(INCIDENT_THREAD_ID, "Incident notes"),
     ]);
 
-    detachedSetupPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
+    setupSidebarPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
 
     await waitFor(() => {
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
@@ -1227,7 +1239,7 @@ describe("zero sidebar", () => {
       });
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     const sidebar = await waitFor(() => {
       return screen.getByRole("navigation", { name: "Sidebar" });
@@ -1320,7 +1332,7 @@ describe("zero sidebar", () => {
       return respond(200, splitChatThreadListResponse([]));
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     await waitFor(() => {
       expect(sidebar()).toBeInTheDocument();
@@ -1343,7 +1355,7 @@ describe("zero sidebar", () => {
       return respond(200, splitChatThreadListResponse([]));
     });
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
       // Pin the legacy composer (workflowAutomation overridden off) so the
@@ -1414,7 +1426,7 @@ describe("zero sidebar", () => {
       return respond(200, splitChatThreadListResponse([]));
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     await waitFor(() => {
       expect(sidebar()).toBeInTheDocument();
@@ -1440,7 +1452,7 @@ describe("zero sidebar", () => {
       return respond(200, splitChatThreadListResponse([]));
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     await waitFor(() => {
       expect(sidebar()).toBeInTheDocument();
@@ -1493,7 +1505,7 @@ describe("zero sidebar", () => {
       return respond(200, { agentIds: unreadAgentIds });
     });
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
@@ -1605,7 +1617,7 @@ describe("zero sidebar", () => {
       },
     );
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
@@ -1657,7 +1669,7 @@ describe("zero sidebar", () => {
       },
     );
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
@@ -1698,7 +1710,7 @@ describe("zero sidebar", () => {
       return respond(200, splitChatThreadListResponse([]));
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     click(
       await waitFor(() => {
@@ -1721,7 +1733,7 @@ describe("zero sidebar", () => {
       return respond(200, splitChatThreadListResponse([]));
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     const nav = await waitFor(() => {
       const current = sidebar();
@@ -1783,7 +1795,7 @@ describe("zero sidebar", () => {
       return respond(200, splitChatThreadListResponse([]));
     });
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
@@ -1809,7 +1821,7 @@ describe("zero sidebar", () => {
       return respond(200, splitChatThreadListResponse([]));
     });
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
       // Globally enabled since #19959; disabling now requires a user override.

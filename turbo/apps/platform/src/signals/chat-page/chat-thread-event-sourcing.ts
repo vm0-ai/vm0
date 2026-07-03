@@ -203,6 +203,13 @@ const refreshEventDrivenActiveRunChatThreadIds$ = command(
       return;
     }
 
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    if (!clerk.user || !clerk.organization) {
+      set(activeRunChatThreadIdsState$, new Set());
+      return;
+    }
+
     set(activeRunChatThreadIdsRefreshInFlightState$, true);
     await withCleanup(
       (async () => {
@@ -227,6 +234,13 @@ const refreshEventDrivenActiveRunChatThreadIds$ = command(
 export const subscribeEventDrivenChatThreads$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     if (!get(featureSwitch$)[FeatureSwitchKey.ChatThreadEventSourcing]) {
+      return;
+    }
+
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    if (!clerk.user || !clerk.organization) {
+      set(activeRunChatThreadIdsState$, new Set());
       return;
     }
 

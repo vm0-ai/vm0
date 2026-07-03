@@ -45,7 +45,7 @@ import {
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
-  detachedSetupPage,
+  detachedSetupPage as baseDetachedSetupPage,
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
@@ -61,6 +61,18 @@ import {
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../workflow-chat-prompts.ts";
 
 const context = testContext();
+
+function detachedSetupPage(
+  options: Parameters<typeof baseDetachedSetupPage>[0],
+): void {
+  baseDetachedSetupPage({
+    ...options,
+    featureSwitches: {
+      [FeatureSwitchKey.ChatThreadEventSourcing]: false,
+      ...options.featureSwitches,
+    },
+  });
+}
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000701";
@@ -7604,14 +7616,20 @@ describe("initial thinking indicator", () => {
     });
 
     const label = await screen.findByLabelText(thinking);
+    const sawFollowUpLine = () => {
+      if (label.textContent) {
+        displayedLabels.add(label.textContent);
+      }
+      return Array.from(displayedLabels).some((value) => {
+        return value === "D" || value === "DE" || value === "DEF";
+      });
+    };
+    await waitFor(() => {
+      expect(sawFollowUpLine()).toBeTruthy();
+    });
     await waitFor(() => {
       expect(label).toHaveTextContent(/^G$/);
     });
-    expect(
-      Array.from(displayedLabels).some((value) => {
-        return value === "D" || value === "DE" || value === "DEF";
-      }),
-    ).toBeTruthy();
     expect(displayedLabels.has("...EFG")).toBeFalsy();
     expect(label).not.toHaveTextContent(thinking);
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
