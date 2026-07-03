@@ -36,7 +36,6 @@ interface HtmlArtifactAuthoringPacket {
     readonly outputDir: string;
   };
   readonly selection: {
-    readonly requiredResources: readonly string[];
     readonly candidates: ResourceCandidateSlice["candidates"];
     readonly outputSchema: {
       readonly skills: "string[]";
@@ -112,9 +111,6 @@ export function createHtmlArtifactAuthoringPacket(
   }`;
   const title = titleForKind(options.kind);
   const candidateSlice = selectResourceCandidates(options.kind);
-  // Presentation generation no longer injects a shared deck-tools resource;
-  // runbook packages are self-contained and freeform decks author standalone.
-  const requiredResources: readonly string[] = [];
   const selectionSchema = {
     skills: "string[]",
     template: "string",
@@ -170,24 +166,8 @@ export function createHtmlArtifactAuthoringPacket(
     "- Select one template, one or more skills, zero or one design system, and optional media/style resources when relevant.",
     "- Choose only IDs present in this packet; do not invent registry IDs.",
     "- Prefer compatible resources, but the user prompt is the highest-priority signal.",
-    ...(requiredResources.length > 0
-      ? [
-          "- The required resources listed below are mandatory and do not need to be re-selected.",
-        ]
-      : []),
     "- Treat the selection JSON as internal working state, then continue to authoring.",
     "",
-    ...(requiredResources.length > 0
-      ? [
-          "## Required Resources",
-          "Resolve these resources before authoring:",
-          "",
-          "```json",
-          JSON.stringify(requiredResources, null, 2),
-          "```",
-          "",
-        ]
-      : []),
     "## Selection Output Schema",
     "```json",
     JSON.stringify(selectionSchema, null, 2),
@@ -269,7 +249,6 @@ export function createHtmlArtifactAuthoringPacket(
     registryVersion: candidateSlice.registryVersion,
     artifact,
     selection: {
-      requiredResources,
       candidates: candidateSlice.candidates,
       outputSchema: selectionSchema,
     },
