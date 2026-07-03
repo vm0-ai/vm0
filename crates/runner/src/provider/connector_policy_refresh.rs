@@ -180,6 +180,7 @@ impl ConnectorPolicyRefreshCore {
             .cloned()
             .collect();
 
+        let run_cancel = CancellationToken::new();
         let mut old_tasks = Vec::new();
         {
             let mut active_runs = self.inner.active_runs.lock().await;
@@ -197,7 +198,7 @@ impl ConnectorPolicyRefreshCore {
                     source_ip: registration.source_ip.to_string(),
                     registry: registration.registry,
                     connector_refs: registration.connector_refs,
-                    cancel: CancellationToken::new(),
+                    cancel: run_cancel.clone(),
                     refresh_tasks: HashMap::new(),
                     next_refresh_task_id: 0,
                 },
@@ -217,11 +218,14 @@ impl ConnectorPolicyRefreshCore {
         }
 
         for connector_ref in initial_refresh_connector_refs {
-            self.enqueue_refresh(RefreshRequest {
-                run_id: registration.run_id,
-                connector_ref,
-                trigger: RefreshTrigger::Initial,
-            })
+            self.enqueue_refresh_until_cancelled(
+                RefreshRequest {
+                    run_id: registration.run_id,
+                    connector_ref,
+                    trigger: RefreshTrigger::Initial,
+                },
+                &run_cancel,
+            )
             .await;
         }
     }
@@ -283,18 +287,6 @@ impl ConnectorPolicyRefreshCore {
             .connector_refs
             .contains(connector_ref)
             .then(|| active.cancel.clone())
-    }
-
-    async fn enqueue_refresh(&self, request: RefreshRequest) {
-        tokio::select! {
-            biased;
-            () = self.inner.cancel.cancelled() => {}
-            result = self.request_tx.send(request) => {
-                if let Err(error) = result {
-                    warn!(error = %error, "connector policy refresh queue closed");
-                }
-            }
-        }
     }
 
     async fn enqueue_refresh_until_cancelled(
@@ -993,6 +985,52 @@ mod tests {
         )
         .await
         .expect("cancelled notification should not wait for queue capacity");
+
+        let mut queued = 0;
+        while requests.try_recv().is_ok() {
+            queued += 1;
+        }
+        assert_eq!(queued, REFRESH_REQUEST_QUEUE_CAPACITY);
+    }
+
+    #[tokio::test]
+    async fn unregister_cancels_initial_refresh_waiting_for_queue_capacity() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let registry = ProxyRegistryHandle::new(
+            dir.path().join("proxy-registry.json"),
+            dir.path().join("proxy-registry.lock"),
+        );
+        for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
+            core.request_tx
+                .try_send(RefreshRequest {
+                    run_id,
+                    connector_ref: "slack".to_string(),
+                    trigger: RefreshTrigger::Scheduled,
+                })
+                .expect("refresh queue should accept request");
+        }
+
+        let register = core.register_run(ConnectorPolicyRefreshRegistration {
+            run_id,
+            source_ip: "10.200.0.2",
+            registry,
+            connector_refs: HashSet::from(["slack".to_string()]),
+            initial_refresh_connector_refs: HashSet::from(["slack".to_string()]),
+            refreshes: None,
+        });
+        tokio::pin!(register);
+        assert!(
+            matches!(poll_once(register.as_mut()), Poll::Pending),
+            "initial refresh should wait for refresh queue capacity before unregister"
+        );
+
+        core.unregister_run(run_id).await;
+        tokio::time::timeout(Duration::from_secs(1), register.as_mut())
+            .await
+            .expect("unregister should cancel initial refresh waiting for queue capacity");
 
         let mut queued = 0;
         while requests.try_recv().is_ok() {
