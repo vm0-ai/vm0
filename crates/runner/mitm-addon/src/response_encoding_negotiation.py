@@ -8,6 +8,7 @@ _ACCEPT_ENCODING = "Accept-Encoding"
 _IDENTITY = "identity"
 _WILDCARD = "*"
 _SAFE_ENCODINGS = frozenset(("gzip", "deflate", _IDENTITY))
+_INVALID_Q_VALUE = Decimal(-1)
 _MIN_Q_VALUE = Decimal(0)
 _MAX_Q_VALUE = Decimal(1)
 
@@ -50,13 +51,20 @@ def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> bool
             if name in _SAFE_ENCODINGS and accepted and name not in accepted_safe:
                 accepted_safe[name] = q_text
 
+    identity_rejected = identity_disallowed or (
+        wildcard_disallows_identity and not identity_accepted
+    )
+
     if accepted_safe:
+        if identity_rejected and _IDENTITY not in accepted_safe:
+            # Removing "*" would otherwise make identity implicitly acceptable again.
+            accepted_safe[_IDENTITY] = "0"
         rewritten = ", ".join(
             _format_coding(name, q_text) for name, q_text in accepted_safe.items()
         )
         return _set_if_changed(headers, values, rewritten)
 
-    if identity_disallowed or (wildcard_disallows_identity and not identity_accepted):
+    if identity_rejected:
         return False
 
     return _set_if_changed(headers, values, _IDENTITY)
@@ -76,9 +84,9 @@ def _parse_q_value(parameters: list[str]) -> Decimal | None:
             try:
                 q_value = Decimal(value.strip())
             except InvalidOperation:
-                return _MIN_Q_VALUE
+                return _INVALID_Q_VALUE
             if not q_value.is_finite() or q_value < _MIN_Q_VALUE or q_value > _MAX_Q_VALUE:
-                return _MIN_Q_VALUE
+                return _INVALID_Q_VALUE
             return q_value
     return None
 

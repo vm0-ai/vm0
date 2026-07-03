@@ -41,6 +41,18 @@ _BROWSER_USER_AGENT = (
             id="drops-safe-q-zero",
         ),
         pytest.param(
+            [("Accept-Encoding", "gzip, identity;q=0, zstd")],
+            True,
+            ["gzip, identity;q=0"],
+            id="preserves-explicit-identity-rejection-with-safe-coding",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip, *;q=0, zstd")],
+            True,
+            ["gzip, identity;q=0"],
+            id="preserves-wildcard-identity-rejection-with-safe-coding",
+        ),
+        pytest.param(
             [("Accept-Encoding", "zstd, br, *")],
             True,
             ["identity"],
@@ -75,6 +87,12 @@ _BROWSER_USER_AGENT = (
             True,
             ["identity"],
             id="invalid-q-value-not-readvertised",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "identity;q=bogus, zstd")],
+            True,
+            ["identity"],
+            id="malformed-identity-q-is-not-explicit-rejection",
         ),
     ],
 )
@@ -211,6 +229,32 @@ async def test_observable_model_provider_request_normalizes_accept_encoding_befo
     auth_fetch.assert_awaited_once()
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
     assert flow.request.headers["Authorization"] == "Bearer x"
+
+
+async def test_observable_model_provider_without_accept_encoding_sets_identity(
+    tmp_path: Path,
+    real_flow: Callable[..., http.HTTPFlow],
+    headers: Callable[..., http.Headers],
+    mitm_ctx,
+    fake_firewall_headers,
+) -> None:
+    reg_path = _model_provider_registry(tmp_path)
+    flow = _request_flow(
+        real_flow,
+        headers,
+        host=_MODEL_PROVIDER_HOST,
+        path=_MODEL_PROVIDER_PATH,
+        method="POST",
+        accept_encoding=None,
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.request.headers[_ACCEPT_ENCODING] == "identity"
 
 
 async def test_billable_connector_with_response_parser_normalizes_accept_encoding(
