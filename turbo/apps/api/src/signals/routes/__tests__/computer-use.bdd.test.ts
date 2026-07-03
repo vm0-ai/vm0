@@ -60,22 +60,6 @@ function requireOrg(actor: ApiTestUser): string {
   return actor.orgId;
 }
 
-async function enableComputerUseDelegatedAuthorization(
-  actor: ApiTestUser,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(
-    context,
-    {
-      userId: actor.userId,
-      orgId: requireOrg(actor),
-      orgRole: actor.orgRole,
-    },
-    {
-      [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: true,
-    },
-  );
-}
-
 async function enableComputerUseDesktopPlugins(
   actor: ApiTestUser,
 ): Promise<void> {
@@ -193,33 +177,9 @@ describe("FILE-03 desktop computer-use runtime", () => {
     expect(response.status).toBe(404);
   });
 
-  it("keeps delegated computer-use authorization requests behind the feature switch", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const actor = bdd.user({ orgId });
-    const run = await seedZeroRun({ actor, triggerSource: "web" });
-    mockClerkMembership(context, actor, "org:admin");
-
-    const token = zeroComputerUseToken({
-      userId: actor.userId,
-      orgId,
-      runId: run.runId,
-      capabilities: ["connector:read"],
-    }).token;
-
-    const response = await api.requestCreateComputerUseAuthorizationRequest(
-      { bearer: token },
-      [403],
-    );
-    expectApiError(response.body);
-    expect(response.body.error.message).toBe(
-      "Computer Use delegated authorization is not enabled",
-    );
-  });
-
   it("creates a delegated authorization link and applies the selected host to the chat thread", async () => {
     const orgId = `org_${randomUUID()}`;
     const actor = bdd.user({ orgId });
-    await enableComputerUseDelegatedAuthorization(actor);
     const run = await seedZeroRun({ actor, triggerSource: "web" });
     if (!run.threadId) {
       throw new Error("Expected web run fixture to create a chat thread");
@@ -283,7 +243,6 @@ describe("FILE-03 desktop computer-use runtime", () => {
   it("only exposes online hosts for delegated authorization requests", async () => {
     const orgId = `org_${randomUUID()}`;
     const actor = bdd.user({ orgId });
-    await enableComputerUseDelegatedAuthorization(actor);
     const run = await seedZeroRun({ actor, triggerSource: "web" });
     if (!run.threadId) {
       throw new Error("Expected web run fixture to create a chat thread");
@@ -364,7 +323,6 @@ describe("FILE-03 desktop computer-use runtime", () => {
   it("creates a delegated authorization link and applies the selected host to the Slack thread", async () => {
     const orgId = `org_${randomUUID()}`;
     const actor = bdd.user({ orgId });
-    await enableComputerUseDelegatedAuthorization(actor);
     const run = await seedZeroRun({ actor, triggerSource: "slack" });
 
     const host = await api.startComputerUseHost(actor, {

@@ -49,7 +49,6 @@ export enum FeatureSwitchKey {
   ChatThreadEmoji = "chatThreadEmoji",
   MemoryViewer = "memoryViewer",
   HtmlArtifactCommentEditing = "htmlArtifactCommentEditing",
-  ComputerUseDelegatedAuthorization = "computerUseDelegatedAuthorization",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   DesktopX64Download = "desktopX64Download",
   PresentationTemplateRunbook = "presentationTemplateRunbook",

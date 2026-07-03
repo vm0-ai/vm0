@@ -277,13 +277,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the HTML artifact comment-editing workflow for collecting DOM comments and preparing instrumented working-copy edits.",
     enabled: false,
   },
-  [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Enable short-lived Computer Use authorization links for agent runs that need a user to bind a Desktop host to the current chat or Slack thread.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ComputerUseDesktopPlugins]: {
     maintainer: "lancy@vm0.ai",
     description:

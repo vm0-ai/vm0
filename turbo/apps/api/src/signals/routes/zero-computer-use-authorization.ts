@@ -1,12 +1,9 @@
 import { command } from "ccstate";
 import { zeroComputerUseAuthorizationRequestsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   applyComputerUseAuthorizationRequest$,
   createComputerUseAuthorizationRequest$,
@@ -14,18 +11,6 @@ import {
 } from "../services/zero-computer-use-authorization.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
-
-function featureDisabled() {
-  return {
-    status: 403 as const,
-    body: {
-      error: {
-        message: "Computer Use delegated authorization is not enabled",
-        code: "FORBIDDEN",
-      },
-    },
-  };
-}
 
 function expired() {
   return {
@@ -67,18 +52,6 @@ const computerUseAuthorizationCreateAuthOptions = {
   accept: ["zero", "sandbox"],
 } as const;
 
-function featureEnabled(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly overrides: Record<string, boolean>;
-}): boolean {
-  return isFeatureEnabled(FeatureSwitchKey.ComputerUseDelegatedAuthorization, {
-    orgId: args.orgId,
-    userId: args.userId,
-    overrides: args.overrides,
-  });
-}
-
 const createAuthorizationRequestInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -86,20 +59,6 @@ const createAuthorizationRequestInner$ = command(
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
-    }
-
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !featureEnabled({
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return featureDisabled();
     }
 
     if (auth.tokenType !== "zero" && auth.tokenType !== "sandbox") {
@@ -137,20 +96,6 @@ const getAuthorizationRequestInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(getParams$);
-
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !featureEnabled({
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return featureDisabled();
-    }
 
     const result = await set(
       readComputerUseAuthorizationRequest$,
@@ -191,20 +136,6 @@ const applyAuthorizationRequestInner$ = command(
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
-    }
-
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !featureEnabled({
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return featureDisabled();
     }
 
     const result = await set(
