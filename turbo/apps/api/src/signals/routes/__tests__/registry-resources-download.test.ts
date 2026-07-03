@@ -76,11 +76,6 @@ const deleteStorageFixtures$ = command(
 
 const PRIVATE_ARCHIVE_FIXTURES = [
   {
-    id: "tool:presentation-deck-tools",
-    versionId:
-      "3c4f3323dcf5d8a03a9780c3a46906706efbdc9f845d50c0d882e05d5ff1828f",
-  },
-  {
     id: "color-system:bauhaus-primary",
     versionId:
       "26c34a2a33a5c7b751b6741da5e4013020d5dbe138e60f5b3a444f4a5d3a351b",
