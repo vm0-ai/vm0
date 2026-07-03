@@ -453,7 +453,9 @@ function workflowNextRunBucket(
 function WorkflowSectionHeader({ label }: { readonly label: string }) {
   return (
     <div className="px-5 pb-1.5 pt-4">
-      <span className="text-xs font-semibold text-foreground/80">{label}</span>
+      <span className="text-[13px] font-medium leading-4 text-foreground/50">
+        {label}
+      </span>
     </div>
   );
 }
