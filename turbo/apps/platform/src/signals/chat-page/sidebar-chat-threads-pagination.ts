@@ -5,8 +5,12 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { currentChatAgentId$ } from "../agent-chat.ts";
+import {
+  chatThreadEventSourcingEnabled$,
+  currentChatAgentId$,
+} from "../agent-chat.ts";
 import { reloadChatThreadsCounter$ } from "../chat-thread-list-reload.ts";
+import { loadMoreEventDrivenChatThreads$ } from "./chat-thread-event-sourcing.ts";
 import { chatThreadOnlyUnread$ } from "./chat-thread-only-unread.ts";
 
 interface ExtraPage {
@@ -47,6 +51,11 @@ function matchesKey<T extends PaginationKey>(
 
 export const loadMoreSidebarChatThreads$ = command(
   async ({ get, set }, cursor: string, signal: AbortSignal): Promise<void> => {
+    if (get(chatThreadEventSourcingEnabled$)) {
+      set(loadMoreEventDrivenChatThreads$);
+      return;
+    }
+
     const agentId = await get(currentChatAgentId$);
     signal.throwIfAborted();
     const reloadKey = get(reloadChatThreadsCounter$);
@@ -103,6 +112,9 @@ export const loadMoreSidebarChatThreads$ = command(
 );
 
 export const sidebarChatThreadsExtraThreads$ = computed(async (get) => {
+  if (get(chatThreadEventSourcingEnabled$)) {
+    return [];
+  }
   const agentId = await get(currentChatAgentId$);
   const onlyUnread = get(chatThreadOnlyUnread$);
   const reloadKey = get(reloadChatThreadsCounter$);
@@ -116,6 +128,9 @@ export const sidebarChatThreadsExtraThreads$ = computed(async (get) => {
 });
 
 export const sidebarChatThreadsHasLoadedExtraPages$ = computed(async (get) => {
+  if (get(chatThreadEventSourcingEnabled$)) {
+    return false;
+  }
   const agentId = await get(currentChatAgentId$);
   const onlyUnread = get(chatThreadOnlyUnread$);
   const reloadKey = get(reloadChatThreadsCounter$);
@@ -126,6 +141,9 @@ export const sidebarChatThreadsHasLoadedExtraPages$ = computed(async (get) => {
 });
 
 export const sidebarChatThreadsLatestCursor$ = computed(async (get) => {
+  if (get(chatThreadEventSourcingEnabled$)) {
+    return null;
+  }
   const agentId = await get(currentChatAgentId$);
   const onlyUnread = get(chatThreadOnlyUnread$);
   const reloadKey = get(reloadChatThreadsCounter$);
@@ -140,6 +158,9 @@ export const sidebarChatThreadsLatestCursor$ = computed(async (get) => {
 });
 
 export const sidebarChatThreadsExtraHasMore$ = computed(async (get) => {
+  if (get(chatThreadEventSourcingEnabled$)) {
+    return false;
+  }
   const agentId = await get(currentChatAgentId$);
   const onlyUnread = get(chatThreadOnlyUnread$);
   const reloadKey = get(reloadChatThreadsCounter$);

@@ -98,6 +98,7 @@ interface NormalSendBody {
   readonly prompt: string;
   readonly threadId?: string;
   readonly clientThreadId?: string;
+  readonly chatThreadEventId?: string;
   readonly modelProvider?: string;
   readonly modelSelection?: {
     readonly modelProviderId: string;
@@ -1539,6 +1540,7 @@ async function createChatThread(
     readonly orgId: string;
     readonly agentId: string;
     readonly clientThreadId: string | undefined;
+    readonly chatThreadEventId: string | undefined;
     readonly pin: ThreadModelPin;
   },
 ): Promise<CreateChatThreadResult> {
@@ -1565,6 +1567,7 @@ async function createChatThread(
           orgId: args.orgId,
           chatThreadId: thread.id,
           agentComposeId: args.agentId,
+          eventId: args.chatThreadEventId,
           title: null,
           createdAt: thread.createdAt,
         });
@@ -1609,6 +1612,7 @@ async function createChatThread(
       orgId: args.orgId,
       chatThreadId: thread.id,
       agentComposeId: args.agentId,
+      eventId: args.chatThreadEventId,
       title: null,
       createdAt: thread.createdAt,
     });
@@ -1623,6 +1627,7 @@ async function resolveThread(params: {
   readonly agentId: string;
   readonly existingThreadId: string | undefined;
   readonly clientThreadId: string | undefined;
+  readonly chatThreadEventId: string | undefined;
   readonly initialPin: ThreadModelPin;
   readonly modelSelection: IncomingModelSelection;
 }): Promise<ResolvedThread | ReturnType<typeof notFound>> {
@@ -1632,6 +1637,7 @@ async function resolveThread(params: {
       orgId: params.orgId,
       agentId: params.agentId,
       clientThreadId: params.clientThreadId,
+      chatThreadEventId: params.chatThreadEventId,
       pin: params.initialPin,
     });
     if ("status" in thread) {
@@ -2267,6 +2273,7 @@ const prepareNormalSend$ = command(
       agentId: args.body.agentId,
       existingThreadId: args.body.threadId,
       clientThreadId: args.body.clientThreadId,
+      chatThreadEventId: args.body.chatThreadEventId,
       initialPin: emptyModelFirstThreadPin(),
       modelSelection: args.body.modelSelection,
     });

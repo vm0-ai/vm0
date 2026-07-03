@@ -3,7 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CHAT_MESSAGES_ORDER_INDEX,
   CHAT_MESSAGES_STORE,
+  CHAT_THREAD_EVENTS_ORDER_INDEX,
+  CHAT_THREAD_EVENTS_STORE,
+  CHAT_THREAD_EVENT_SYNC_STORE,
   CHAT_THREAD_META_STORE,
+  CHAT_THREAD_SNAPSHOT_STORE,
   upgradeChatIdb,
 } from "./chat-idb-schema.ts";
 
@@ -64,6 +68,18 @@ describe("upgradeChatIdb", () => {
     expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_META_STORE, {
       keyPath: "threadId",
     });
+    expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_SNAPSHOT_STORE, {
+      keyPath: "id",
+    });
+    expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_STORE, {
+      keyPath: "id",
+    });
+    expect(createObjectStore).toHaveBeenCalledWith(
+      CHAT_THREAD_EVENT_SYNC_STORE,
+      {
+        keyPath: "id",
+      },
+    );
     expect(
       createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
     ).toHaveBeenCalledWith("byThreadAndTime", ["threadId", "createdAt"]);
@@ -75,6 +91,9 @@ describe("upgradeChatIdb", () => {
       "orderSequence",
       "id",
     ]);
+    expect(
+      createdStores.get(CHAT_THREAD_EVENTS_STORE)?.createIndex,
+    ).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_ORDER_INDEX, ["createdAt", "id"]);
   });
 
   it("keeps thread metadata when resetting v4 messages for the order index", () => {
@@ -87,10 +106,22 @@ describe("upgradeChatIdb", () => {
 
     expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
     expect(deleteObjectStore).not.toHaveBeenCalledWith(CHAT_THREAD_META_STORE);
-    expect(createObjectStore).toHaveBeenCalledTimes(1);
+    expect(createObjectStore).toHaveBeenCalledTimes(4);
     expect(createObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE, {
       keyPath: "id",
     });
+    expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_SNAPSHOT_STORE, {
+      keyPath: "id",
+    });
+    expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_STORE, {
+      keyPath: "id",
+    });
+    expect(createObjectStore).toHaveBeenCalledWith(
+      CHAT_THREAD_EVENT_SYNC_STORE,
+      {
+        keyPath: "id",
+      },
+    );
     expect(
       createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
     ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, [
@@ -99,6 +130,9 @@ describe("upgradeChatIdb", () => {
       "orderSequence",
       "id",
     ]);
+    expect(
+      createdStores.get(CHAT_THREAD_EVENTS_STORE)?.createIndex,
+    ).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_ORDER_INDEX, ["createdAt", "id"]);
   });
 
   it("keeps thread metadata when resetting v5 messages for terminal marker ordering", () => {
@@ -111,10 +145,22 @@ describe("upgradeChatIdb", () => {
 
     expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
     expect(deleteObjectStore).not.toHaveBeenCalledWith(CHAT_THREAD_META_STORE);
-    expect(createObjectStore).toHaveBeenCalledTimes(1);
+    expect(createObjectStore).toHaveBeenCalledTimes(4);
     expect(createObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE, {
       keyPath: "id",
     });
+    expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_SNAPSHOT_STORE, {
+      keyPath: "id",
+    });
+    expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_STORE, {
+      keyPath: "id",
+    });
+    expect(createObjectStore).toHaveBeenCalledWith(
+      CHAT_THREAD_EVENT_SYNC_STORE,
+      {
+        keyPath: "id",
+      },
+    );
     expect(
       createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
     ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, [
@@ -123,5 +169,8 @@ describe("upgradeChatIdb", () => {
       "orderSequence",
       "id",
     ]);
+    expect(
+      createdStores.get(CHAT_THREAD_EVENTS_STORE)?.createIndex,
+    ).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_ORDER_INDEX, ["createdAt", "id"]);
   });
 });
