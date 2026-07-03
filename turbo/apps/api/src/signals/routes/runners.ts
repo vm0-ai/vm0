@@ -464,15 +464,29 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return { status: 200 as const, body: { job: null } };
   }
 
-  const affinity = await runnerSessionAffinityProtection({
-    db,
-    runnerGroup: group,
-    profile: pendingJob.profile,
-    cliAgentSessionId: pendingJob.cliAgentSessionId,
-    createdAt: pendingJob.createdAt,
-    currentDate: nowDate(),
-  });
+  const affinityResult = await settle(
+    runnerSessionAffinityProtection({
+      db,
+      runnerGroup: group,
+      profile: pendingJob.profile,
+      cliAgentSessionId: pendingJob.cliAgentSessionId,
+      createdAt: pendingJob.createdAt,
+      currentDate: nowDate(),
+    }),
+    signal,
+  );
   signal.throwIfAborted();
+  const affinity = affinityResult.ok
+    ? affinityResult.value
+    : { protectedUntil: null, status: "lookup_error" };
+  if (!affinityResult.ok) {
+    L.warn("Failed to resolve runner session affinity for poll response", {
+      runId: pendingJob.runId,
+      runnerGroup: group,
+      profile: pendingJob.profile,
+      error: affinityResult.error,
+    });
+  }
   const pollResponseAtMs = now();
   recordPollTimingMetrics({
     runId: pendingJob.runId,
