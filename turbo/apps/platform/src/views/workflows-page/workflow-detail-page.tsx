@@ -4191,6 +4191,8 @@ function TriggerRow({
   const editing = editingTriggerId === trigger.id;
   const title = workflowScheduleTitle(trigger, displayTimezone);
   const subtitle = workflowTriggerSubtitle(trigger);
+  const hasLastRun = hasValidRunTimestamp(trigger.lastRunAt);
+  const hasNextRun = hasValidRunTimestamp(trigger.nextRunAt);
 
   return (
     <>
@@ -4203,13 +4205,13 @@ function TriggerRow({
       >
         <div className="flex min-w-0 items-center gap-3">
           <span
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-gray-50 text-muted-foreground group-hover:bg-background"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground group-hover:bg-background"
             aria-hidden="true"
           >
             <IconRepeat size={15} stroke={1.5} />
           </span>
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-foreground">
+            <div className="truncate text-sm font-medium text-foreground">
               {title}
             </div>
             {subtitle ? (
@@ -4232,7 +4234,14 @@ function TriggerRow({
             className="shrink-0 text-muted-foreground"
           />
           <span className="shrink-0 text-sm text-muted-foreground">Last</span>
-          <span className="min-w-0 truncate text-sm font-medium text-foreground">
+          <span
+            className={cn(
+              "min-w-0 truncate text-sm",
+              hasLastRun
+                ? "font-medium text-foreground"
+                : "text-muted-foreground",
+            )}
+          >
             {formatWorkflowTriggerRun(trigger.lastRunAt, displayTimezone)}
           </span>
         </div>
@@ -4249,7 +4258,14 @@ function TriggerRow({
             className="shrink-0 text-muted-foreground"
           />
           <span className="shrink-0 text-sm text-muted-foreground">Next</span>
-          <span className="min-w-0 truncate text-sm font-medium text-foreground">
+          <span
+            className={cn(
+              "min-w-0 truncate text-sm",
+              hasNextRun
+                ? "font-medium text-foreground"
+                : "text-muted-foreground",
+            )}
+          >
             {formatWorkflowTriggerNextRun(trigger.nextRunAt, displayTimezone)}
           </span>
         </div>
@@ -4294,6 +4310,14 @@ function workflowTriggerSubtitle(
     return trigger.webhookUrl;
   }
   return triggerKindLabel(trigger);
+}
+
+function hasValidRunTimestamp(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+
+  return !Number.isNaN(new Date(value).getTime());
 }
 
 function formatWorkflowTriggerRun(
