@@ -43,6 +43,7 @@ from url_syntax import (
 )
 
 firewall_base_config_is_valid = _firewall_base_url.firewall_base_config_is_valid
+static_firewall_base_config_key = _firewall_base_url.static_firewall_base_config_key
 match_base_url = _firewall_base_url.match_base_url
 
 CompiledPathPattern: _TypeAlias = _firewall_patterns.CompiledPathPattern

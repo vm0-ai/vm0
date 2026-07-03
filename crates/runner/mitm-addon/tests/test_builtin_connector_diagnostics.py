@@ -275,3 +275,35 @@ def test_shared_base_ownership_route_specific_active_overrides_conflicting_inten
     assert resolution.candidate is None
     assert resolution.reason == "active_route_owner"
     assert resolution.hint_status == "ignored"
+
+
+def test_shared_base_ownership_normalizes_static_base_keys(monkeypatch):
+    _patch_connector_diagnostics(
+        monkeypatch,
+        [
+            _shared_base_firewall(
+                "active",
+                "ACTIVE_TOKEN",
+                base="https://Shared.Example.com:443/api/",
+                permissions=[{"name": "active-read", "rules": ["GET /active/{id}"]}],
+            ),
+            _shared_base_firewall(
+                "inactive",
+                "INACTIVE_TOKEN",
+                base="https://shared.example.com/api",
+                permissions=[{"name": "inactive-read", "rules": ["GET /messages/{id}"]}],
+            ),
+        ],
+    )
+
+    resolution = builtin_connector_diagnostics.resolve_shared_base_ownership(
+        "https://shared.example.com/api/messages/123",
+        "GET",
+        active_firewall_names={"active"},
+        matched_firewall_name="active",
+    )
+
+    assert resolution is not None
+    assert resolution.reason == "route_owner"
+    assert resolution.candidate is not None
+    assert resolution.candidate.connector_type == "inactive"

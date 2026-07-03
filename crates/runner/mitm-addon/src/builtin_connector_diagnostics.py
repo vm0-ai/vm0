@@ -326,15 +326,7 @@ def _manifest_str_tuple(value: object) -> tuple[str, ...]:
 def _diagnostic_static_base_key(raw_base: str) -> str | None:
     if _has_dynamic_base_marker(raw_base):
         return None
-    if not matching.firewall_base_config_is_valid(raw_base):
-        return None
-    try:
-        parsed = urllib.parse.urlparse(raw_base)
-    except ValueError:
-        return None
-    if not parsed.scheme or not parsed.netloc:
-        return None
-    return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}{parsed.path.rstrip('/')}"
+    return matching.static_firewall_base_config_key(raw_base)
 
 
 def _shared_route_aware_base_keys(firewalls: object) -> frozenset[str]:

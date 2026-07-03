@@ -405,6 +405,20 @@ def firewall_base_config_is_valid(raw_base: str) -> bool:
     )
 
 
+def static_firewall_base_config_key(raw_base: str) -> str | None:
+    """Return the normalized key used to compare valid static firewall bases."""
+    if _has_base_url_params(raw_base) or not firewall_base_config_is_valid(raw_base):
+        return None
+    parts = _split_base_match_url(
+        strip_optional_terminal_slash(raw_base),
+        allow_malformed_authority=True,
+        allow_unsafe_runtime_url_syntax=True,
+    )
+    if parts is None:
+        return None
+    return f"{parts.scheme.lower()}://{parts.authority}{parts.path.rstrip('/')}"
+
+
 def _compiled_base_is_invalid_for_match_base_url(base: _CompiledBase) -> bool:
     return (
         base.has_query_or_fragment
