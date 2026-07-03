@@ -13,6 +13,11 @@ import {
 import { materializePresentationThemeSwitcherDefaults } from "./presentation-html-edit-protocol.ts";
 
 const EXPORT_FONT_READY_TIMEOUT_MS = 800;
+// dom-to-pptx embeds fonts from a fetchable ttf/otf/woff URL (never woff2). Deck
+// families are resolved from the live render and mapped to a Fontsource woff on
+// jsDelivr when the page itself only ships woff2 (e.g. Google Fonts <link>).
+const FONT_EMBED_CDN_TEMPLATE =
+  "https://cdn.jsdelivr.net/fontsource/fonts/{slug}@latest/latin-{weight}-normal.woff";
 const METADATA_SCRIPT_ID = "vm0-deck-metadata";
 const CONTENT_TYPES_PATH = "[Content_Types].xml";
 const PRESENTATION_PATH = "ppt/presentation.xml";
@@ -579,6 +584,155 @@ function createExportReadinessScript(): string {
 `;
 }
 
+function createExportFontScript(): string {
+  return `
+  const fontEmbedCdnTemplate = ${JSON.stringify(FONT_EMBED_CDN_TEMPLATE)};
+  const genericFontFamilies = new Set([
+    "serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui",
+    "ui-sans-serif", "ui-serif", "ui-monospace", "ui-rounded", "math", "emoji",
+    "fangsong", "-apple-system", "blinkmacsystemfont",
+  ]);
+
+  const fontFamilySlug = (family) => {
+    return family
+      .trim()
+      .toLowerCase()
+      .replace(/['"]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  };
+
+  const normalizeFontWeight = (weight) => {
+    if (weight === "normal") return 400;
+    if (weight === "bold") return 700;
+    const numeric = Number.parseInt(weight, 10);
+    if (!Number.isFinite(numeric)) return 400;
+    return Math.min(900, Math.max(100, Math.round(numeric / 100) * 100));
+  };
+
+  // Ground truth for "which fonts are used" is the live render's computed style,
+  // not the deck's theme script — so this stays correct across any template. Keep
+  // the weight of the largest text per family (the reflow-sensitive headline).
+  const collectUsedFontFamilies = (nodes) => {
+    const byFamily = new Map();
+    const visit = (node) => {
+      if (node.nodeType === 1) {
+        const style = window.getComputedStyle(node);
+        const primary = (style.fontFamily.split(",")[0] || "")
+          .trim()
+          .replace(/['"]/g, "");
+        const key = primary.toLowerCase();
+        if (primary && !genericFontFamilies.has(key)) {
+          const size = Number.parseFloat(style.fontSize) || 0;
+          const weight = normalizeFontWeight(style.fontWeight);
+          const current = byFamily.get(key);
+          if (!current || size > current.size) {
+            byFamily.set(key, { name: primary, weight, size });
+          }
+        }
+      }
+      for (const child of node.childNodes) {
+        visit(child);
+      }
+    };
+    for (const node of nodes) {
+      visit(node);
+    }
+    return Array.from(byFamily.values());
+  };
+
+  const localFontUrlFromSrc = (src) => {
+    const matches = src.match(/url\\((['"]?)([^'")]+)\\1\\)/gi) || [];
+    for (const match of matches) {
+      const parsed = /url\\((['"]?)([^'")]+)\\1\\)/i.exec(match);
+      if (!parsed) continue;
+      const rawUrl = parsed[2].trim();
+      const extension = rawUrl.split(/[?#]/)[0].split(".").pop().toLowerCase();
+      if (extension === "ttf" || extension === "otf" || extension === "woff") {
+        try {
+          return new URL(rawUrl, document.baseURI).href;
+        } catch {
+          return rawUrl;
+        }
+      }
+    }
+    return null;
+  };
+
+  // Same-origin / inline @font-face only; cross-origin sheets (Google Fonts)
+  // throw on cssRules access and are skipped, falling back to the CDN template.
+  const indexLocalFontFaces = () => {
+    const index = new Map();
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue;
+      }
+      if (!rules) continue;
+      for (const rule of Array.from(rules)) {
+        if (
+          typeof CSSFontFaceRule === "undefined" ||
+          !(rule instanceof CSSFontFaceRule)
+        ) {
+          continue;
+        }
+        const family = (rule.style.getPropertyValue("font-family") || "")
+          .trim()
+          .replace(/['"]/g, "")
+          .toLowerCase();
+        const url = localFontUrlFromSrc(
+          rule.style.getPropertyValue("src") || "",
+        );
+        if (!family || !url) continue;
+        const weight = normalizeFontWeight(
+          (rule.style.getPropertyValue("font-weight") || "400")
+            .trim()
+            .split(/\\s+/)[0],
+        );
+        const list = index.get(family) || [];
+        list.push({ weight, url });
+        index.set(family, list);
+      }
+    }
+    return index;
+  };
+
+  const nearestByWeight = (candidates, target) => {
+    return candidates.reduce((best, candidate) => {
+      return Math.abs(candidate.weight - target) <
+        Math.abs(best.weight - target)
+        ? candidate
+        : best;
+    }, candidates[0]);
+  };
+
+  const resolveEmbeddableFonts = (nodes) => {
+    const localIndex = indexLocalFontFaces();
+    const fonts = [];
+    for (const family of collectUsedFontFamilies(nodes)) {
+      const local = localIndex.get(family.name.toLowerCase());
+      let url = null;
+      if (local && local.length > 0) {
+        url = nearestByWeight(local, family.weight).url;
+      } else {
+        const slug = fontFamilySlug(family.name);
+        if (slug) {
+          url = fontEmbedCdnTemplate
+            .replace("{slug}", slug)
+            .replace("{weight}", String(family.weight));
+        }
+      }
+      if (url) {
+        fonts.push({ name: family.name, url });
+      }
+    }
+    return fonts;
+  };
+`;
+}
+
 function createExportRunnerScript(): string {
   return `
   void (async () => {
@@ -593,7 +747,9 @@ function createExportRunnerScript(): string {
     revealSlideNodes(nodes);
     copyInheritedSlideBackgrounds(nodes);
     await waitForExportReadiness(nodes);
-    const blob = await window.domToPptx.exportToPptx(nodes, options);
+    const fonts = resolveEmbeddableFonts(nodes);
+    const exportOptions = fonts.length > 0 ? { ...options, fonts } : options;
+    const blob = await window.domToPptx.exportToPptx(nodes, exportOptions);
     post({ status: "success", blob });
   })().catch((error) => {
     post({
@@ -610,6 +766,7 @@ function createExportScript(options: DomToPptxOptions): string {
     createExportBootstrapScript(options),
     createExportSlideScript(),
     createExportReadinessScript(),
+    createExportFontScript(),
     createExportRunnerScript(),
   ].join("");
 }

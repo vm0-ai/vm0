@@ -78,4 +78,52 @@ describe("buildPresentationHtmlPptxExportHtml", () => {
     expect(scriptText).not.toContain("var MONO");
     expect(scriptText).toContain("vm0-presentation-pptx-export");
   });
+
+  it("injects live-render font resolution and merges embedded fonts into the export options", async () => {
+    const exportHtml = await buildPresentationHtmlPptxExportHtml({
+      baseUrl: "https://presentation.example.test/index.html",
+      html: `
+        <!doctype html>
+        <html>
+          <head>
+            <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+          </head>
+          <body>
+            <div class="slide" data-slide-id="slide-1">
+              <div class="stage" data-vm0-slide>
+                <h1 style="font-family:'Poppins',sans-serif">Slide</h1>
+              </div>
+            </div>
+          </body>
+        </html>
+      `,
+      options: {
+        fileName: "deck.pptx",
+        layout: "LAYOUT_WIDE",
+        skipDownload: true,
+        svgAsVector: true,
+      },
+      signal: AbortSignal.any([]),
+    });
+    const doc = new DOMParser().parseFromString(exportHtml, "text/html");
+    const scriptText = Array.from(doc.querySelectorAll("script"))
+      .map((script) => {
+        return script.textContent ?? "";
+      })
+      .join("\n");
+
+    // Fonts are detected from the live render (computed style), so the resolver
+    // is injected and its result is spread into the dom-to-pptx options.
+    expect(scriptText).toContain("resolveEmbeddableFonts");
+    expect(scriptText).toContain("collectUsedFontFamilies");
+    expect(scriptText).toContain(
+      "https://cdn.jsdelivr.net/fontsource/fonts/{slug}@latest/latin-{weight}-normal.woff",
+    );
+    expect(scriptText).toContain(
+      "const exportOptions = fonts.length > 0 ? { ...options, fonts } : options;",
+    );
+    expect(scriptText).toContain(
+      "window.domToPptx.exportToPptx(nodes, exportOptions)",
+    );
+  });
 });
