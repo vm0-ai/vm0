@@ -13,7 +13,7 @@ import { backendBuildInfo$ } from "../../../../signals/zero-page/settings/build-
 
 const UNAVAILABLE_VALUE = "Unavailable";
 
-function formatCommitSha(value: string | null | undefined): string {
+function formatBuildInfoValue(value: string | null | undefined): string {
   return value ?? UNAVAILABLE_VALUE;
 }
 
@@ -39,7 +39,7 @@ function BuildInfoTarget({
             {title}
           </div>
         </div>
-        <code className="zero-badge inline-flex max-w-[11rem] shrink-0 truncate rounded-md px-2 py-0.5 text-xs font-medium text-foreground">
+        <code className="zero-badge min-w-0 rounded-md px-2 py-0.5 text-right text-xs font-medium text-foreground break-all">
           {version}
         </code>
       </div>
@@ -60,14 +60,14 @@ export function BuildInfoBlock() {
     backendBuildInfoLoadable.state === "hasData"
       ? backendBuildInfoLoadable.data
       : null;
-  const frontendCommitSha = formatCommitSha(getBuildCommitSha());
-  const frontendVersion = formatCommitSha(getBuildVersion());
+  const frontendCommitSha = formatBuildInfoValue(getBuildCommitSha());
+  const frontendVersion = formatBuildInfoValue(getBuildVersion());
   const backendCommitSha = loading
     ? "Loading"
-    : formatCommitSha(backendBuildInfo?.backendCommitSha);
+    : formatBuildInfoValue(backendBuildInfo?.backendCommitSha);
   const backendVersion = loading
     ? "Loading"
-    : formatCommitSha(backendBuildInfo?.backendVersion);
+    : formatBuildInfoValue(backendBuildInfo?.backendVersion);
 
   return (
     <div className="flex items-start gap-4 rounded-xl bg-card p-4 zero-border">
