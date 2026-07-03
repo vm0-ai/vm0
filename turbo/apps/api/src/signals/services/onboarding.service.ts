@@ -23,11 +23,6 @@ import {
   unavailableUserConnectorTypes,
   userConnectorAvailability,
 } from "./connector-availability.service";
-import {
-  grantOnboardingCredits,
-  LIMITED_FREE_ONBOARDING_CREDITS,
-  onboardingCreditsExpiresAt,
-} from "./onboarding-credit-grants.service";
 import { updateUserConnectors } from "./user-connectors.service";
 import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
 import { DEFAULT_AGENT_AVATAR_URL } from "./default-agent-profile";
@@ -76,25 +71,6 @@ type OnboardingSetupForbiddenResponse = Extract<
   { readonly status: 403 }
 >;
 
-type CompleteLimitedFreeOnboardingResponse =
-  | {
-      readonly status: 200;
-      readonly body: {
-        readonly agentId: string;
-        readonly tier: "limited-free-1";
-        readonly needsOnboarding: false;
-      };
-    }
-  | {
-      readonly status: 409;
-      readonly body: {
-        readonly error: {
-          readonly message: string;
-          readonly code: "DEFAULT_AGENT_REQUIRED";
-        };
-      };
-    };
-
 type CompleteOnboardingResponse = {
   readonly status: 200;
   readonly body: {
@@ -102,12 +78,6 @@ type CompleteOnboardingResponse = {
     readonly needsOnboarding: false;
   };
 };
-
-interface CompleteLimitedFreeOnboardingArgs {
-  readonly orgId: string;
-  readonly credits: number;
-  readonly expiresAt: string | null;
-}
 
 function unavailableSelectedConnectorsError(
   unavailableTypes: readonly ConnectorType[],
@@ -476,6 +446,12 @@ async function completeExistingDefaultAgentSetup(
   });
   signal.throwIfAborted();
 
+  await upsertSetupMemberRole(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+  });
+  signal.throwIfAborted();
+
   if (args.onboardingPaymentPending !== undefined) {
     await updateOnboardingPaymentPending(
       db,
@@ -741,7 +717,6 @@ export const setupOnboarding$ = command(
     return { status: 200 as const, body: { agentId: composeResult.composeId } };
   },
 );
-
 export const completeOnboarding$ = command(
   async (
     { set },
@@ -756,70 +731,6 @@ export const completeOnboarding$ = command(
       status: 200,
       body: {
         onboardingComplete: true,
-        needsOnboarding: false,
-      },
-    };
-  },
-);
-
-export const completeLimitedFreeOnboarding$ = command(
-  async (
-    { set },
-    args: CompleteLimitedFreeOnboardingArgs,
-    signal: AbortSignal,
-  ): Promise<CompleteLimitedFreeOnboardingResponse> => {
-    const writeDb = set(writeDb$);
-    const agentId = await existingDefaultAgentId(writeDb, args.orgId);
-    signal.throwIfAborted();
-
-    if (!agentId) {
-      return {
-        status: 409,
-        body: {
-          error: {
-            message: "A default agent is required before completing onboarding",
-            code: "DEFAULT_AGENT_REQUIRED",
-          },
-        },
-      };
-    }
-
-    await writeDb.transaction(async (tx) => {
-      await tx
-        .insert(orgMetadata)
-        .values({
-          orgId: args.orgId,
-          defaultAgentId: agentId,
-          tier: "limited-free-1",
-          onboardingPaymentPending: false,
-          onboardingComplete: true,
-          updatedAt: nowDate(),
-        })
-        .onConflictDoUpdate({
-          target: orgMetadata.orgId,
-          set: {
-            defaultAgentId: agentId,
-            tier: "limited-free-1",
-            onboardingPaymentPending: false,
-            onboardingComplete: true,
-            updatedAt: nowDate(),
-          },
-        });
-
-      await grantOnboardingCredits(
-        tx,
-        args.orgId,
-        LIMITED_FREE_ONBOARDING_CREDITS,
-        onboardingCreditsExpiresAt(nowDate()),
-      );
-    });
-    signal.throwIfAborted();
-
-    return {
-      status: 200,
-      body: {
-        agentId,
-        tier: "limited-free-1",
         needsOnboarding: false,
       },
     };

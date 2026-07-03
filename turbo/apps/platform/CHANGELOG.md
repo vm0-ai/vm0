@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.543.0](https://github.com/vm0-ai/vm0/compare/app-v0.542.0...app-v0.543.0) (2026-07-03)
+
+
+### Features
+
+* add onboarding completion marker ([#20055](https://github.com/vm0-ai/vm0/issues/20055)) ([6d5bf36](https://github.com/vm0-ai/vm0/commit/6d5bf3630093c7a9120ce91b2b746eedf299171d))
+* rename workflows list section header from on event to on automation ([#20044](https://github.com/vm0-ai/vm0/issues/20044)) ([57b1f28](https://github.com/vm0-ai/vm0/commit/57b1f2805a07753110a8aca18f9de97d7e26d184))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.149.0
+    * @vm0/core bumped to 8.394.0
+
 ## [0.542.0](https://github.com/vm0-ai/vm0/compare/app-v0.541.0...app-v0.542.0) (2026-07-03)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.394.0](https://github.com/vm0-ai/vm0/compare/core-v8.393.0...core-v8.394.0) (2026-07-03)
+
+
+### Features
+
+* add onboarding completion marker ([#20055](https://github.com/vm0-ai/vm0/issues/20055)) ([6d5bf36](https://github.com/vm0-ai/vm0/commit/6d5bf3630093c7a9120ce91b2b746eedf299171d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.149.0
+
 ## [8.393.0](https://github.com/vm0-ai/vm0/compare/core-v8.392.0...core-v8.393.0) (2026-07-03)
 
 
