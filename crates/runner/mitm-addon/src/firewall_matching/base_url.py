@@ -21,7 +21,11 @@ from firewall_matching.patterns import (
     _parse_segment,
     _split_path_segments,
 )
-from host_normalization import normalize_idna_hostname
+from host_normalization import (
+    normalize_hostname_separators,
+    normalize_idna_hostname,
+    translate_idna_dot_separators,
+)
 from url_syntax import (
     has_raw_whitespace,
     has_unsafe_runtime_url_syntax,
@@ -31,13 +35,6 @@ from url_syntax import (
 
 _MIN_HOST_SEGMENTS = 2
 _ASCII_MAX = 0x7F
-_IDNA_DOT_TRANSLATION = str.maketrans(
-    {
-        "\u3002": ".",
-        "\uff0e": ".",
-        "\uff61": ".",
-    }
-)
 _FORBIDDEN_AUTHORITY_HOST_CHARS = frozenset("#%/<>?@[\\]^|[]")
 _FORBIDDEN_RUNTIME_AUTHORITY_HOST_CHARS = _FORBIDDEN_AUTHORITY_HOST_CHARS | frozenset("{}")
 _PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS = frozenset("{}*.\u3002\uff0e\uff61")
@@ -99,7 +96,7 @@ def _percent_decode_authority_host(host: str) -> tuple[str, bool]:
     if decoded.invalid_encoding:
         return decoded.value, True
     if decoded.decoded_syntax:
-        return decoded.value.translate(_IDNA_DOT_TRANSLATION), True
+        return translate_idna_dot_separators(decoded.value), True
     if ":" in decoded.value:
         return decoded.value, True
     return decoded.value, False
@@ -129,21 +126,12 @@ def _extract_raw_hostname(netloc: str) -> _RawAuthorityHost | None:
     return _RawAuthorityHost(authority, bracketed=False)
 
 
-def _normalize_host_pattern_dots(host: str) -> str:
-    normalized = host.translate(_IDNA_DOT_TRANSLATION)
-    if normalized.endswith("."):
-        normalized = normalized[:-1]
-        if not normalized or normalized.endswith("."):
-            raise UnicodeError("empty IDNA label")
-    return normalized
-
-
 def _format_param_segment(parsed: SegmentParam) -> str:
     return f"{parsed.prefix.lower()}{{{parsed.name}{parsed.greedy}}}{parsed.suffix.lower()}"
 
 
 def _normalize_parameterized_authority_host(host: str) -> tuple[str, bool]:
-    normalized = _normalize_host_pattern_dots(host)
+    normalized = normalize_hostname_separators(host)
     labels: list[str] = []
     malformed = False
 
