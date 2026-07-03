@@ -212,6 +212,7 @@ def _model_provider_registry(
     *,
     model_usage_provider: object = "claude-sonnet-4-6",
     capture_network_bodies: bool = False,
+    rule_method: str = "POST",
 ) -> Path:
     vm_fields: dict[str, object] = {}
     if model_usage_provider is not None:
@@ -227,7 +228,9 @@ def _model_provider_registry(
             api_entry={
                 "base": f"https://{_MODEL_PROVIDER_HOST}",
                 "auth": {"headers": {"x-api-key": "test-key"}},
-                "permissions": [{"name": "messages", "rules": [f"POST {_MODEL_PROVIDER_PATH}"]}],
+                "permissions": [
+                    {"name": "messages", "rules": [f"{rule_method} {_MODEL_PROVIDER_PATH}"]}
+                ],
             },
             network_policy={
                 "allow": ["messages"],
@@ -507,6 +510,42 @@ async def test_model_provider_websocket_upgrade_keeps_accept_encoding(
         await mitm_addon.request(flow)
 
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
+
+
+@pytest.mark.parametrize(
+    ("method", "rule_method"),
+    [
+        pytest.param("HEAD", "HEAD", id="head"),
+        pytest.param("CONNECT", "ANY", id="connect"),
+    ],
+)
+async def test_response_bodyless_usage_inspected_methods_keep_accept_encoding(
+    tmp_path: Path,
+    real_flow: Callable[..., http.HTTPFlow],
+    headers: Callable[..., http.Headers],
+    mitm_ctx,
+    fake_firewall_headers,
+    method: str,
+    rule_method: str,
+) -> None:
+    reg_path = _model_provider_registry(tmp_path, rule_method=rule_method)
+    flow = _request_flow(
+        real_flow,
+        headers,
+        host=_MODEL_PROVIDER_HOST,
+        path=_MODEL_PROVIDER_PATH,
+        method=method,
+        accept_encoding="gzip, zstd, br",
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
+    assert flow.request.headers["Authorization"] == "Bearer x"
 
 
 @pytest.mark.parametrize(

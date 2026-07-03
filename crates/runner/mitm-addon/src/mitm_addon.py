@@ -161,6 +161,7 @@ _AUTH_SCHEMES_REQUIRING_CREDENTIAL = frozenset(
     )
 )
 _AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD"))
+_HTTP_RESPONSE_BODYLESS_METHODS = frozenset(("CONNECT", "HEAD"))
 # Network log size fields are consumed as JavaScript numbers downstream.
 _MAX_SAFE_NETWORK_LOG_SIZE = 9_007_199_254_740_991
 _MAX_SAFE_NETWORK_LOG_SIZE_DIGITS = len(str(_MAX_SAFE_NETWORK_LOG_SIZE))
@@ -2937,6 +2938,8 @@ def _expects_http_response_body_usage_inspection(
     allow: matching.FirewallAllow,
     vm_info: dict,
 ) -> bool:
+    if flow.request.method.upper() in _HTTP_RESPONSE_BODYLESS_METHODS:
+        return False
     if _is_websocket_upgrade_request(flow):
         return False
     if _is_model_provider_usage_observable(allow.name, vm_info):
