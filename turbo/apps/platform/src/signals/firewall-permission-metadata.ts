@@ -12,6 +12,15 @@ interface FirewallPermissionMetadataParams {
   readonly connectorRef: string;
 }
 
+const FIREWALL_PERMISSION_METADATA_CACHE_LIMIT = 256;
+
+function evictOldestCacheEntry<K, V>(cache: Map<K, V>): void {
+  const oldest = cache.keys().next();
+  if (!oldest.done) {
+    cache.delete(oldest.value);
+  }
+}
+
 function createFirewallPermissionMetadataFactory(): (
   params: FirewallPermissionMetadataParams,
 ) => Computed<Promise<PublicConnectorCatalogPermissionDetail | null>> {
@@ -43,6 +52,9 @@ function createFirewallPermissionMetadataFactory(): (
       }
       return result.body.permissions;
     });
+    if (cache.size >= FIREWALL_PERMISSION_METADATA_CACHE_LIMIT) {
+      evictOldestCacheEntry(cache);
+    }
     cache.set(key, atom$);
     return atom$;
   };
