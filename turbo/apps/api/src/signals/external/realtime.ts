@@ -142,6 +142,34 @@ export async function publishChatThreadMessageCreatedSafely(
 }
 
 /**
+ * Notify a chat thread's UI that an existing message row changed. Payload
+ * carries the row identity so clients can fetch and upsert the exact message
+ * instead of treating the update as an append.
+ *
+ * Best-effort: a failed publish must not fail the mutation that triggered it.
+ */
+export async function publishChatThreadMessageUpdatedSafely(args: {
+  readonly userId: string;
+  readonly threadId: string;
+  readonly messageId: string;
+}): Promise<void> {
+  await tapError(
+    publishUserSignal(
+      [args.userId],
+      `chatThreadMessageUpdated:${args.threadId}`,
+      { messageId: args.messageId },
+    ),
+    (error) => {
+      L.warn("Failed to publish chat thread message updated signal", {
+        threadId: args.threadId,
+        messageId: args.messageId,
+        error,
+      });
+    },
+  );
+}
+
+/**
  * Notify a chat thread's UI that its linked automation set changed (created,
  * deleted, enabled, or disabled). The chat-thread header automation menu
  * subscribes to this topic and refetches its thread-scoped list.
@@ -211,7 +239,10 @@ export async function publishRunnerJobNotification(
   group: string,
   runId: string,
   profile: string,
-  targetRunnerId: string | null = null,
+  affinity?: {
+    readonly cliAgentSessionId: string | null;
+    readonly affinityProtectedUntil: string | null;
+  },
 ): Promise<boolean> {
   const result = await settle(
     (async () => {
@@ -219,12 +250,14 @@ export async function publishRunnerJobNotification(
       await channel.publish("job", {
         runId,
         profile,
-        ...(targetRunnerId ? { targetRunnerId } : {}),
+        ...(affinity?.cliAgentSessionId
+          ? { cliAgentSessionId: affinity.cliAgentSessionId }
+          : {}),
+        ...(affinity?.affinityProtectedUntil
+          ? { affinityProtectedUntil: affinity.affinityProtectedUntil }
+          : {}),
       });
-      L.debug(
-        `Published job ${runId} to runner-group:${group}` +
-          (targetRunnerId ? ` (target: ${targetRunnerId})` : " (broadcast)"),
-      );
+      L.debug(`Published job ${runId} to runner-group:${group} (broadcast)`);
     })(),
   );
   if (result.ok) {

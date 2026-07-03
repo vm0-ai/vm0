@@ -1,7 +1,8 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 
 import {
@@ -21,8 +22,16 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import type { ZeroClientFactory } from "../../../signals/api-client.ts";
+import { syncArtifactFileToGoogleDrive } from "../../../signals/chat-page/artifact-google-drive-sync.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { artifactPanelWidth$ } from "../../../signals/zero-page/zero-artifact-sidebar.ts";
+import { resetSignal } from "../../../signals/utils.ts";
+import {
+  artifactPanelWidth$,
+  saveCapturedHtmlEditSnapshotDraft$,
+} from "../../../signals/zero-page/zero-artifact-sidebar.ts";
+import { ARTIFACT_HTML_EDIT_PARAM } from "../../../signals/zero-page/right-sidebar-search-params.ts";
+import { searchParams$ } from "../../../signals/route.ts";
 
 const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
@@ -44,11 +53,19 @@ const SLIDE_REL_TYPE = `${OFFICE_RELATIONSHIPS_NS}/slide`;
 
 function setupChatThread({
   artifactFiles,
+  attachFiles,
   content,
   featureSwitches,
   path = THREAD_PATH,
 }: {
   artifactFiles?: ChatThreadArtifactFile[];
+  attachFiles?: {
+    id: string;
+    filename: string;
+    contentType: string;
+    size: number;
+    url: string;
+  }[];
   content: string;
   featureSwitches?: Parameters<typeof detachedSetupPage>[0]["featureSwitches"];
   path?: string;
@@ -74,6 +91,7 @@ function setupChatThread({
       content: "Show me the artifact",
       runId: "run-artifact",
       createdAt: "2026-03-10T00:00:00Z",
+      ...(attachFiles ? { attachFiles } : {}),
     },
     {
       id: "msg-artifact-assistant",
@@ -347,6 +365,36 @@ function setupPresentationArtifactThread(
   });
 }
 
+function setupHostedSiteArtifactThread(
+  siteUrl: string,
+  html = "<!doctype html><html><body><h1>Original site</h1></body></html>",
+  artifactUrl = siteUrl,
+): void {
+  const filename =
+    new URL(artifactUrl).pathname.split("/").pop() || "site.html";
+  context.mocks.http.get(siteUrl, () => {
+    return new Response(html, {
+      headers: { "Content-Type": "text/html" },
+    });
+  });
+  setupChatThread({
+    artifactFiles: [
+      artifactFile(artifactUrl, {
+        id: "artifact-hosted-site",
+        filename,
+        contentType: "text/html",
+        artifactKind: "hosted-site",
+        size: html.length,
+      }),
+    ],
+    content: `[Hosted site](${siteUrl})`,
+    featureSwitches: {
+      [FeatureSwitchKey.HtmlArtifactCommentEditing]: true,
+    },
+    path: `${THREAD_PATH}?artifact=${encodeURIComponent(siteUrl)}`,
+  });
+}
+
 function assetBackedPresentationHtml(assetUrl: string): string {
   return `<!doctype html>
 <html>
@@ -566,6 +614,297 @@ describe("zero artifact sidebar", () => {
     });
   });
 
+  it("shows hosted-site edit action when the sidebar URL has a root trailing slash", async () => {
+    const artifactUrl = "https://root-launch-site.sites.vm7.io";
+    const siteUrl = `${artifactUrl}/`;
+    setupHostedSiteArtifactThread(siteUrl, undefined, artifactUrl);
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    await waitFor(() => {
+      expect(within(sidebar).getByLabelText("Edit page")).toBeInTheDocument();
+      expect(within(sidebar).queryByLabelText("Edit presentation")).toBeNull();
+    });
+  });
+
+  it("offers to resume a saved HTML edit snapshot", async () => {
+    const user = userEvent.setup({ delay: null });
+    const siteUrl = "https://resume-draft.sites.vm7.io/index.html";
+    const snapshotUrl =
+      "https://cdn.vm7.io/artifacts/html-edit-drafts/resume-draft.html?v=1";
+    const restoredHtml =
+      "<!doctype html><html><body><h1>Saved draft</h1></body></html>";
+    const deletedUrls: string[] = [];
+    const savedBodies: string[] = [];
+    let contentFetches = 0;
+
+    context.mocks.api(
+      chatThreadArtifactsContract.getHtmlEditSnapshot,
+      ({ query, respond }) => {
+        expect(query.url).toBe(siteUrl);
+        return respond(200, {
+          snapshot: {
+            artifactUrl: siteUrl,
+            snapshotUrl,
+            updatedAt: "2026-03-10T00:05:00Z",
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      chatThreadArtifactsContract.deleteHtmlEditSnapshot,
+      ({ query, respond }) => {
+        deletedUrls.push(query.url);
+        return respond(204);
+      },
+    );
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
+      expect(new URL(request.url).searchParams.get("url")).toBe(snapshotUrl);
+      contentFetches += 1;
+      return new Response(restoredHtml, {
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    context.mocks.api(
+      chatThreadArtifactsContract.upsertHtmlEditSnapshot,
+      ({ body, respond }) => {
+        savedBodies.push(body.html);
+        return respond(200, {
+          artifactUrl: body.url,
+          snapshotUrl,
+          updatedAt: "2026-03-10T00:06:00Z",
+        });
+      },
+    );
+    setupHostedSiteArtifactThread(siteUrl);
+
+    // Content is prefetched once when the draft is detected, before Resume.
+    await waitFor(() => {
+      expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
+      expect(contentFetches).toBe(1);
+    });
+    await user.click(screen.getByText("Resume"));
+
+    await waitFor(() => {
+      // Resume applies the draft as a publishable preview, not the comment editor.
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "srcdoc",
+        expect.stringContaining("Saved draft"),
+      );
+      expect(screen.getByTestId("html-dom-draft-toolbar")).toBeInTheDocument();
+      expect(deletedUrls).toStrictEqual([siteUrl]);
+    });
+    // Resume reused the prefetched content instead of fetching again.
+    expect(contentFetches).toBe(1);
+    expect(
+      screen.queryByTestId("html-dom-comment-editor"),
+    ).not.toBeInTheDocument();
+    expect(
+      context.store.get(searchParams$).get(ARTIFACT_HTML_EDIT_PARAM),
+    ).toBeNull();
+    expect(savedBodies).toStrictEqual([]);
+  });
+
+  it("applies the resumed draft as a publishable preview state", async () => {
+    const user = userEvent.setup({ delay: null });
+    const siteUrl = "https://resume-apply.sites.vm7.io/index.html";
+    const snapshotUrl =
+      "https://cdn.vm7.io/artifacts/html-edit-drafts/resume-apply.html?v=1";
+    const restoredHtml =
+      "<!doctype html><html><body><h1>Saved draft</h1></body></html>";
+    let redeployedHtml: string | null = null;
+
+    context.mocks.api(
+      chatThreadArtifactsContract.getHtmlEditSnapshot,
+      ({ respond }) => {
+        return respond(200, {
+          snapshot: {
+            artifactUrl: siteUrl,
+            snapshotUrl,
+            updatedAt: "2026-03-10T00:05:00Z",
+          },
+        });
+      },
+    );
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(restoredHtml, {
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    context.mocks.api(
+      chatThreadArtifactsContract.deleteHtmlEditSnapshot,
+      ({ respond }) => {
+        return respond(204);
+      },
+    );
+    context.mocks.api(zeroHostContract.redeployHtml, ({ body, respond }) => {
+      redeployedHtml = body.html;
+      return respond(200, {
+        siteId: "7c82da29-6280-4d65-b078-e233c8ad14bf",
+        deploymentId: "dc8b4d42-5dc1-4769-ad8b-17bdf1ad035a",
+        publicSlug: "resume-apply",
+        url: body.url,
+        status: "ready",
+      });
+    });
+    setupHostedSiteArtifactThread(siteUrl);
+
+    await waitFor(() => {
+      expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Resume"));
+
+    await waitFor(() => {
+      // Resume lands directly on the publishable draft preview.
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "srcdoc",
+        expect.stringContaining("Saved draft"),
+      );
+      expect(screen.getByTestId("html-dom-draft-toolbar")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId("html-dom-draft-publish"));
+
+    await waitFor(() => {
+      expect(redeployedHtml).toBe(restoredHtml);
+    });
+  });
+
+  it("persists the generated HTML draft even without an active edit target", async () => {
+    const siteUrl = "https://send-draft.sites.vm7.io/index.html";
+    const generatedHtml =
+      "<!doctype html><html><body><h1>Generated draft</h1></body></html>";
+    const savedBodies: string[] = [];
+
+    context.mocks.api(
+      chatThreadArtifactsContract.upsertHtmlEditSnapshot,
+      ({ body, params, respond }) => {
+        expect(params.threadId).toBe(THREAD_ID);
+        expect(body.url).toBe(siteUrl);
+        savedBodies.push(body.html);
+        return respond(200, {
+          artifactUrl: body.url,
+          snapshotUrl:
+            "https://cdn.vm7.io/artifacts/html-edit-drafts/send-draft.html?v=1",
+          updatedAt: "2026-03-10T00:06:00Z",
+        });
+      },
+    );
+
+    // No active target is set (mimics the agent returning after the user has
+    // switched away): the save must still persist using the captured values.
+    context.store.set(saveCapturedHtmlEditSnapshotDraft$, {
+      html: generatedHtml,
+      threadId: THREAD_ID,
+      url: siteUrl,
+    });
+    await waitFor(() => {
+      expect(savedBodies).toStrictEqual([generatedHtml]);
+    });
+  });
+
+  it("discards a saved HTML edit snapshot from the restore dialog", async () => {
+    const user = userEvent.setup({ delay: null });
+    const siteUrl = "https://discard-draft.sites.vm7.io/index.html";
+    const snapshotUrl =
+      "https://cdn.vm7.io/artifacts/html-edit-drafts/discard-draft.html?v=1";
+    const deletedUrls: string[] = [];
+
+    context.mocks.api(
+      chatThreadArtifactsContract.getHtmlEditSnapshot,
+      ({ respond }) => {
+        return respond(200, {
+          snapshot: {
+            artifactUrl: siteUrl,
+            snapshotUrl,
+            updatedAt: "2026-03-10T00:05:00Z",
+          },
+        });
+      },
+    );
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(
+        "<!doctype html><html><body><h1>Discarded</h1></body></html>",
+        { headers: { "Content-Type": "text/html" } },
+      );
+    });
+    context.mocks.api(
+      chatThreadArtifactsContract.deleteHtmlEditSnapshot,
+      ({ query, respond }) => {
+        deletedUrls.push(query.url);
+        return respond(204);
+      },
+    );
+    setupHostedSiteArtifactThread(siteUrl);
+
+    await waitFor(() => {
+      expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Discard"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
+      expect(deletedUrls).toStrictEqual([siteUrl]);
+    });
+    expect(
+      screen.queryByTestId("html-dom-draft-toolbar"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("artifact-sidebar-body-html"),
+    ).not.toHaveAttribute("srcdoc");
+  });
+
+  it("dismisses the restore dialog with Escape without deleting the draft", async () => {
+    const user = userEvent.setup({ delay: null });
+    const siteUrl = "https://dismiss-draft.sites.vm7.io/index.html";
+    const snapshotUrl =
+      "https://cdn.vm7.io/artifacts/html-edit-drafts/dismiss-draft.html?v=1";
+    const deletedUrls: string[] = [];
+
+    context.mocks.api(
+      chatThreadArtifactsContract.getHtmlEditSnapshot,
+      ({ respond }) => {
+        return respond(200, {
+          snapshot: {
+            artifactUrl: siteUrl,
+            snapshotUrl,
+            updatedAt: "2026-03-10T00:05:00Z",
+          },
+        });
+      },
+    );
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(
+        "<!doctype html><html><body><h1>Dismissed</h1></body></html>",
+        { headers: { "Content-Type": "text/html" } },
+      );
+    });
+    context.mocks.api(
+      chatThreadArtifactsContract.deleteHtmlEditSnapshot,
+      ({ query, respond }) => {
+        deletedUrls.push(query.url);
+        return respond(204);
+      },
+    );
+    setupHostedSiteArtifactThread(siteUrl);
+
+    await waitFor(() => {
+      expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
+    });
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
+    });
+    // Dismiss keeps the draft in the DB (no delete) and shows the original.
+    expect(deletedUrls).toStrictEqual([]);
+    expect(
+      screen.queryByTestId("html-dom-draft-toolbar"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("artifact-sidebar-body-html"),
+    ).not.toHaveAttribute("srcdoc");
+  });
+
   it("resizes the artifact preview pane and persists the width", async () => {
     const markdownUrl =
       "https://cdn.vm7.io/artifacts/test/run-1/release-notes.md";
@@ -678,6 +1017,270 @@ describe("zero artifact sidebar", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
     });
+  });
+
+  it("navigates sidebar image artifacts within the current run", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-image-navigation/first.png";
+    const notesUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-image-navigation/notes.md";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-image-navigation/second.png";
+    // A generated image artifact in the same run that was NOT attached to the
+    // message. It must be excluded from message-scoped navigation.
+    const generatedArtifactUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-image-navigation/generated.png";
+    setupChatThread({
+      artifactFiles: [
+        artifactFile(firstImageUrl, {
+          id: "artifact-sidebar-first-image",
+          filename: "first.png",
+          contentType: "image/png",
+          size: 128,
+        }),
+        artifactFile(notesUrl, {
+          id: "artifact-sidebar-notes",
+          filename: "notes.md",
+          contentType: "text/markdown",
+          size: 64,
+        }),
+        artifactFile(secondImageUrl, {
+          id: "artifact-sidebar-second-image",
+          filename: "second.png",
+          contentType: "image/png",
+          size: 256,
+        }),
+        artifactFile(generatedArtifactUrl, {
+          id: "artifact-sidebar-generated-image",
+          filename: "generated.png",
+          contentType: "image/png",
+          size: 512,
+        }),
+      ],
+      attachFiles: [
+        {
+          id: "artifact-sidebar-first-image",
+          filename: "first.png",
+          contentType: "image/png",
+          size: 128,
+          url: firstImageUrl,
+        },
+        {
+          id: "artifact-sidebar-notes",
+          filename: "notes.md",
+          contentType: "text/markdown",
+          size: 64,
+          url: notesUrl,
+        },
+        {
+          id: "artifact-sidebar-second-image",
+          filename: "second.png",
+          contentType: "image/png",
+          size: 256,
+          url: secondImageUrl,
+        },
+      ],
+      content: "Image artifacts are ready.",
+      featureSwitches: {
+        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
+      },
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(firstImageUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+    expect(screen.queryByLabelText("Previous image artifact")).toBeNull();
+    expect(screen.getByLabelText("Next image artifact")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+      "alt",
+      "first.png",
+    );
+
+    await user.click(screen.getByLabelText("Next image artifact"));
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "second.png",
+      );
+    });
+    expect(
+      screen.getByLabelText("Previous image artifact"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Next image artifact")).toBeNull();
+
+    // While an editable control is focused (e.g. the chat composer), arrow keys
+    // keep moving the caret instead of navigating images in the non-fullscreen
+    // sidebar.
+    const editable = document.createElement("input");
+    document.body.appendChild(editable);
+    editable.focus();
+    fireEvent.keyDown(editable, { key: "ArrowLeft" });
+    expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+      "alt",
+      "second.png",
+    );
+
+    // With focus released, arrow keys navigate again.
+    editable.remove();
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+  });
+
+  it("keeps the sidebar fullscreen state while navigating images", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-fullscreen-navigation/first.png";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-fullscreen-navigation/second.png";
+    setupChatThread({
+      artifactFiles: [
+        artifactFile(firstImageUrl, {
+          id: "artifact-sidebar-fs-first-image",
+          filename: "first.png",
+          contentType: "image/png",
+          size: 128,
+        }),
+        artifactFile(secondImageUrl, {
+          id: "artifact-sidebar-fs-second-image",
+          filename: "second.png",
+          contentType: "image/png",
+          size: 256,
+        }),
+      ],
+      attachFiles: [
+        {
+          id: "artifact-sidebar-fs-first-image",
+          filename: "first.png",
+          contentType: "image/png",
+          size: 128,
+          url: firstImageUrl,
+        },
+        {
+          id: "artifact-sidebar-fs-second-image",
+          filename: "second.png",
+          contentType: "image/png",
+          size: 256,
+          url: secondImageUrl,
+        },
+      ],
+      content: "Image artifacts are ready.",
+      featureSwitches: {
+        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
+      },
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(firstImageUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+
+    await user.click(screen.getByLabelText("Enter fullscreen"));
+    expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+
+    // In fullscreen the sidebar is immersive: arrow keys navigate even when a
+    // control is focused, and fullscreen is preserved.
+    const shareButton = screen.getByLabelText("Share artifact");
+    shareButton.focus();
+    fireEvent.keyDown(shareButton, { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "second.png",
+      );
+    });
+    // Navigating between images must not collapse fullscreen.
+    expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Enter fullscreen")).toBeNull();
+  });
+
+  it("lets the lightbox modal own arrow keys while the sidebar stays put", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-modal-coexist/first.png";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-modal-coexist/second.png";
+    setupChatThread({
+      artifactFiles: [
+        artifactFile(firstImageUrl, {
+          id: "artifact-coexist-first-image",
+          filename: "first.png",
+          contentType: "image/png",
+          size: 128,
+        }),
+        artifactFile(secondImageUrl, {
+          id: "artifact-coexist-second-image",
+          filename: "second.png",
+          contentType: "image/png",
+          size: 256,
+        }),
+      ],
+      attachFiles: [
+        {
+          id: "artifact-coexist-first-image",
+          filename: "first.png",
+          contentType: "image/png",
+          size: 128,
+          url: firstImageUrl,
+        },
+        {
+          id: "artifact-coexist-second-image",
+          filename: "second.png",
+          contentType: "image/png",
+          size: 256,
+          url: secondImageUrl,
+        },
+      ],
+      content: "Image artifacts are ready.",
+      featureSwitches: {
+        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
+      },
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(firstImageUrl)}`,
+    });
+
+    // The sidebar shows the first image.
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+
+    // Open the lightbox modal (on the first image) from the chat attachment.
+    await user.click(screen.getByLabelText("Preview first.png"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+
+    // Arrow keys drive the modal; the underlying sidebar must not also advance.
+    fireEvent.keyDown(document, { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "second.png",
+      );
+    });
+    expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+      "alt",
+      "first.png",
+    );
   });
 
   it("hides the sidebar for unsupported artifact deep links", async () => {
@@ -806,6 +1409,43 @@ describe("zero artifact sidebar", () => {
     await waitFor(() => {
       expect(menuItemByText("Synced to Google Drive")).toBeInTheDocument();
     });
+  });
+
+  it("does not finish a Google Drive upload after the page signal is aborted", async () => {
+    const resetUploadSignal$ = resetSignal();
+    const uploadSignal = context.store.set(resetUploadSignal$, context.signal);
+    const dismissToast = vi.spyOn(toast, "dismiss");
+    const createClient = (() => {
+      return {
+        syncGoogleDrive: () => {
+          context.store.set(resetUploadSignal$, context.signal);
+          return Promise.resolve({
+            status: 200 as const,
+            body: {
+              id: "drive-file-release-notes",
+              name: "drive-release-notes.md",
+              webViewLink: null,
+            },
+          });
+        },
+      };
+    }) as ZeroClientFactory;
+
+    try {
+      await expect(
+        syncArtifactFileToGoogleDrive({
+          createClient,
+          threadId: THREAD_ID,
+          runId: "run-artifact",
+          fileId: "artifact-drive-release-notes",
+          filename: "drive-release-notes.md",
+          signal: uploadSignal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      expect(dismissToast).toHaveBeenCalledTimes(1);
+    } finally {
+      dismissToast.mockRestore();
+    }
   });
 
   it("downloads a presentation artifact as PPTX from the sidebar", async () => {

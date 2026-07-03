@@ -11,7 +11,7 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 import { env } from "../../lib/env";
-import { settle } from "../utils";
+import { detach, Mechanism, settle } from "../utils";
 
 interface S3Object {
   readonly key: string;
@@ -245,6 +245,38 @@ function isAsyncIterableByteStream(
   return typeof iterator === "function";
 }
 
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const then = (value as { then?: unknown }).then;
+  return typeof then === "function";
+}
+
+function closeS3Body(body: unknown): void {
+  if (!body || typeof body !== "object") {
+    return;
+  }
+
+  const destroy = (body as { destroy?: () => void }).destroy;
+  if (typeof destroy === "function") {
+    destroy.call(body);
+    return;
+  }
+
+  const cancel = (body as { cancel?: () => unknown }).cancel;
+  if (typeof cancel === "function") {
+    const result = cancel.call(body);
+    if (isPromiseLike(result)) {
+      detach(
+        Promise.resolve(result),
+        Mechanism.BestEffortCleanup,
+        "s3 body cancel",
+      );
+    }
+  }
+}
+
 function downloadS3BufferWithClient(
   client$: Computed<S3Client>,
   bucket: string,
@@ -260,6 +292,7 @@ function downloadS3BufferWithClient(
       throw new Error("S3 object body is empty");
     }
     if (!isAsyncIterableByteStream(response.Body)) {
+      closeS3Body(response.Body);
       throw new Error("S3 object body is not an async byte stream");
     }
     if (
@@ -267,6 +300,7 @@ function downloadS3BufferWithClient(
       response.ContentLength !== undefined &&
       response.ContentLength > options.maxBytes
     ) {
+      closeS3Body(response.Body);
       throw new S3ObjectSizeLimitError(
         key,
         response.ContentLength,
@@ -277,10 +311,12 @@ function downloadS3BufferWithClient(
     let totalLength = 0;
     for await (const chunk of response.Body) {
       if (!(chunk instanceof Uint8Array)) {
+        closeS3Body(response.Body);
         throw new Error("S3 object body yielded a non-byte chunk");
       }
       totalLength += chunk.length;
       if (options.maxBytes !== undefined && totalLength > options.maxBytes) {
+        closeS3Body(response.Body);
         throw new S3ObjectSizeLimitError(key, totalLength, options.maxBytes);
       }
       chunks.push(chunk);
@@ -491,6 +527,58 @@ export function downloadManifest(
   });
 }
 
+export function s3ObjectContentLength(
+  bucket: string,
+  key: string,
+  maxBytes?: number,
+): Computed<Promise<number | undefined>> {
+  return s3ObjectContentLengthWithClient(
+    s3ClientForBucket(bucket),
+    bucket,
+    key,
+    maxBytes,
+  );
+}
+
+function isS3NotFoundError(error: unknown): boolean {
+  const candidate = error as {
+    readonly name?: string;
+    readonly $metadata?: { readonly httpStatusCode?: number };
+  };
+  return (
+    candidate.name === "NotFound" || candidate.$metadata?.httpStatusCode === 404
+  );
+}
+
+function s3ObjectContentLengthWithClient(
+  client$: Computed<S3Client>,
+  bucket: string,
+  key: string,
+  maxBytes: number | undefined,
+): Computed<Promise<number | undefined>> {
+  return computed(async (get): Promise<number | undefined> => {
+    const client = get(client$);
+    const result = await settle(
+      client.send(new HeadObjectCommand({ Bucket: bucket, Key: key })),
+    );
+    if (!result.ok) {
+      if (isS3NotFoundError(result.error)) {
+        return undefined;
+      }
+      throw result.error;
+    }
+
+    const contentLength = result.value.ContentLength;
+    if (contentLength === undefined) {
+      return undefined;
+    }
+    if (maxBytes !== undefined && contentLength > maxBytes) {
+      throw new S3ObjectSizeLimitError(key, contentLength, maxBytes);
+    }
+    return contentLength;
+  });
+}
+
 export function s3ObjectExists(
   bucket: string,
   key: string,
@@ -514,14 +602,7 @@ function s3ObjectExistsWithClient(
       return true;
     }
 
-    const candidate = result.error as {
-      readonly name?: string;
-      readonly $metadata?: { readonly httpStatusCode?: number };
-    };
-    if (
-      candidate.name === "NotFound" ||
-      candidate.$metadata?.httpStatusCode === 404
-    ) {
+    if (isS3NotFoundError(result.error)) {
       return false;
     }
     throw result.error;

@@ -1,7 +1,6 @@
 import type {
   CSSProperties,
   FormEvent,
-  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   ReactNode,
@@ -57,13 +56,13 @@ import {
 } from "@tabler/icons-react";
 import {
   cn,
-  isEditableTarget,
-  matchShortcut,
   Button,
   Skeleton,
+  getShortcutParts,
   DropdownMenu as UiDropdownMenu,
   DropdownMenuContent as UiDropdownMenuContent,
   DropdownMenuItem as UiDropdownMenuItem,
+  DropdownMenuSeparator as UiDropdownMenuSeparator,
   DropdownMenuTrigger as UiDropdownMenuTrigger,
   Dialog,
   DialogContent,
@@ -114,7 +113,7 @@ import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { Markdown } from "../components/markdown.tsx";
-import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import {
   captureRecommendedFollowupSelected,
   captureRecommendedFollowupsShown,
@@ -269,13 +268,10 @@ import {
   type PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
 import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
-import {
-  openRenameChatThreadDialogFromThreadData$,
-  reloadChatThreadDataForId$,
-} from "../../signals/chat-page/chat-thread-rename.ts";
+import { reloadChatThreadDataForId$ } from "../../signals/chat-page/chat-thread-rename.ts";
 import {
   applyChatThreadEmoji,
-  chatThreadEmojiShortcutIndex,
+  removeChatThreadEmoji,
   CHAT_THREAD_EMOJI_OPTIONS,
 } from "../../signals/chat-page/chat-thread-title.ts";
 import type { ChatThread } from "../../signals/agent-chat.ts";
@@ -295,10 +291,6 @@ import {
   submitFeedback$,
   dismissFeedback$,
 } from "../../signals/zero-page/chat-feedback.ts";
-import {
-  setThreadGenerationTemplate$,
-  threadGenerationTemplate$,
-} from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   computerUseHosts$,
   selectedComputerUseHostId as resolveSelectedComputerUseHostId,
@@ -343,12 +335,10 @@ import {
   currentRightThread$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
 import {
-  navigateToAdjacentThread$,
-  scrollCurrentThread$,
+  focusChatThreadContainer$,
   setChatKeyboardScrollRoot$,
   setMainChatThreadKeyboardFocusRef$,
 } from "../../signals/chat-page/chat-keyboard.ts";
-import { sidebarChatThreads$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 
@@ -365,7 +355,9 @@ const CHAT_SHORTCUT_SECTIONS = [
       { key: "mod+shift+o", label: "New chat" },
       { key: "mod+shift+a", label: "Open agent list" },
       { key: "f2", label: "Rename chat" },
-      { key: "shift+f2", label: "Change emoji" },
+      { key: "shift+f2", label: "Change icon" },
+      { key: "shift+1", label: "Set icon (shift+1-9)" },
+      { key: "shift+0", label: "Clear icon" },
     ],
   },
   {
@@ -385,6 +377,10 @@ const CHAT_SHORTCUT_SECTIONS = [
     ],
   },
 ] as const;
+
+function isChatThreadEmojiShortcutKey(key: string): boolean {
+  return key === "shift+f2" || key === "shift+1" || key === "shift+0";
+}
 
 function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
   return <ArtifactsButtonInner thread={thread} />;
@@ -1103,15 +1099,6 @@ function GithubPrTrackingDock({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function focusChatThreadContainer(threadId: string) {
-  const threadContainer = Array.from(
-    document.querySelectorAll<HTMLElement>("[data-chat-thread-container-id]"),
-  ).find((candidate) => {
-    return candidate.dataset.chatThreadContainerId === threadId;
-  });
-  threadContainer?.focus({ preventScroll: true });
-}
-
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const threadDataLoadable = useLastLoadable(thread.threadData$);
   const threadTitleEmoji = useLastResolved(thread.threadTitleEmoji$);
@@ -1164,12 +1151,10 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatThreadEmojiMenuButton({
-  emoji,
+function useChatThreadEmojiMenuActions({
   threadId,
   title,
 }: {
-  emoji: string | null | undefined;
   threadId: string;
   title: string | null | undefined;
 }) {
@@ -1179,6 +1164,7 @@ function ChatThreadEmojiMenuButton({
   const closeChatThreadEmojiMenu = useSet(closeChatThreadEmojiMenu$);
   const renameChatThread = useSet(renameChatThread$);
   const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
+  const focusChatThreadContainer = useSet(focusChatThreadContainer$);
   const pageSignal = useGet(pageSignal$);
   const open = emojiMenuThreadId === threadId;
 
@@ -1213,6 +1199,44 @@ function ChatThreadEmojiMenuButton({
     );
   }
 
+  function clearEmoji() {
+    const activeThreadId = emojiMenuThreadId;
+    if (!activeThreadId) {
+      return;
+    }
+    const nextTitle = removeChatThreadEmoji(emojiMenuTitle ?? title);
+    if (!nextTitle) {
+      closeMenu();
+      return;
+    }
+    detach(
+      (async () => {
+        await renameChatThread(
+          { threadId: activeThreadId, title: nextTitle },
+          pageSignal,
+        );
+        reloadChatThreadDataForId(activeThreadId);
+        closeMenu();
+      })(),
+      Reason.DomCallback,
+    );
+  }
+
+  return { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji };
+}
+
+function ChatThreadEmojiMenuButton({
+  emoji,
+  threadId,
+  title,
+}: {
+  emoji: string | null | undefined;
+  threadId: string;
+  title: string | null | undefined;
+}) {
+  const { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji } =
+    useChatThreadEmojiMenuActions({ threadId, title });
+
   return (
     <TooltipProvider delayDuration={200}>
       <UiDropdownMenu
@@ -1230,7 +1254,7 @@ function ChatThreadEmojiMenuButton({
             <UiDropdownMenuTrigger asChild>
               <button
                 type="button"
-                aria-label="Change emoji"
+                aria-label="Change icon"
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 {emoji && (
@@ -1245,44 +1269,60 @@ function ChatThreadEmojiMenuButton({
         </Tooltip>
         <UiDropdownMenuContent
           align="start"
-          className="w-40"
+          className="w-48"
           onCloseAutoFocus={(event) => {
             event.preventDefault();
           }}
-          onKeyDown={(event) => {
-            const index = chatThreadEmojiShortcutIndex(event);
-            if (index === null) {
-              return;
-            }
-            event.preventDefault();
-            const option = CHAT_THREAD_EMOJI_OPTIONS[index];
-            if (option) {
-              selectEmoji(option.emoji);
-            }
-          }}
         >
           {CHAT_THREAD_EMOJI_OPTIONS.map((option, index) => {
+            const shortcut = `shift+${index + 1}`;
             return (
               <UiDropdownMenuItem
                 key={option.emoji}
-                aria-label={`${option.label} ${option.emoji}`}
+                aria-label={`${option.label} icon Shift ${index + 1}`}
+                className="justify-between gap-4"
                 onSelect={() => {
                   selectEmoji(option.emoji);
                 }}
               >
-                <span className="mr-2 text-base leading-none" aria-hidden>
+                <span className="text-base leading-none" aria-hidden>
                   {option.emoji}
                 </span>
-                <span>{option.label}</span>
-                <span className="ml-auto text-xs text-muted-foreground">
-                  {index + 1}
-                </span>
+                <ChatThreadIconShortcutHint shortcut={shortcut} />
               </UiDropdownMenuItem>
             );
           })}
+          <UiDropdownMenuSeparator />
+          <UiDropdownMenuItem
+            aria-label="Clear icon Shift 0"
+            className="justify-between gap-4"
+            onSelect={() => {
+              clearEmoji();
+            }}
+          >
+            <span className="whitespace-nowrap">Clear icon</span>
+            <ChatThreadIconShortcutHint shortcut="shift+0" />
+          </UiDropdownMenuItem>
         </UiDropdownMenuContent>
       </UiDropdownMenu>
     </TooltipProvider>
+  );
+}
+
+function ChatThreadIconShortcutHint({ shortcut }: { shortcut: string }) {
+  return (
+    <span aria-hidden="true" className="ml-4 flex shrink-0 items-center gap-1">
+      {getShortcutParts(shortcut).map((part) => {
+        return (
+          <kbd
+            key={part}
+            className='inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-md bg-background px-1.5 text-[11px] font-medium text-foreground shadow-[inset_0_-1px_0_hsl(var(--border)),0_0_0_1px_hsl(var(--border))] font-["-apple-system",BlinkMacSystemFont,"Segoe_UI",system-ui,sans-serif]'
+          >
+            {part}
+          </kbd>
+        );
+      })}
+    </span>
   );
 }
 
@@ -2993,78 +3033,31 @@ function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
 
 function ChatThread({
   thread,
-  onKeyDown,
   onFocusFallbackRef,
 }: {
   thread: ChatThreadSignals;
-  onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
-  onFocusFallbackRef?: (el: HTMLElement | null) => void;
+  onFocusFallbackRef?: (el: HTMLElement | null) => (() => void) | undefined;
 }) {
-  const openRenameDialog = useOpenCurrentChatThreadRenameDialog(thread);
-  const openEmojiMenu = useOpenCurrentChatThreadEmojiMenu(thread);
-  const features = useLastResolved(featureSwitch$);
-  const chatThreadEmojiEnabled =
-    features?.[FeatureSwitchKey.ChatThreadEmoji] ?? false;
-  const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (event.defaultPrevented) {
-      return;
-    }
-    if (chatThreadEmojiEnabled && matchShortcut("shift+f2", event)) {
-      event.preventDefault();
-      openEmojiMenu();
-      return;
-    }
-    if (matchShortcut("f2", event)) {
-      event.preventDefault();
-      openRenameDialog();
-      return;
-    }
-    onKeyDown(event);
-  };
+  const setContainerRef = useSet(thread.setContainerRef$);
 
   return (
     <section
       aria-label="Chat thread"
       className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
       data-chat-thread-container-id={thread.threadId}
-      onKeyDown={handleKeyDown}
-      ref={onFocusFallbackRef}
+      ref={(el) => {
+        const cleanupContainerRef = setContainerRef(el);
+        const cleanupFocusFallbackRef = onFocusFallbackRef?.(el);
+        return () => {
+          cleanupFocusFallbackRef?.();
+          cleanupContainerRef?.();
+        };
+      }}
       tabIndex={-1}
     >
       <ChatThreadContent thread={thread} />
     </section>
   );
-}
-
-function useOpenCurrentChatThreadRenameDialog(thread: ChatThreadSignals) {
-  const openRenameChatThreadDialog = useSet(
-    openRenameChatThreadDialogFromThreadData$,
-  );
-  const pageSignal = useGet(pageSignal$);
-  return () => {
-    detach(
-      openRenameChatThreadDialog(thread.threadId, pageSignal),
-      Reason.DomCallback,
-    );
-  };
-}
-
-function useOpenCurrentChatThreadEmojiMenu(thread: ChatThreadSignals) {
-  const openChatThreadEmojiMenu = useSet(openChatThreadEmojiMenu$);
-  const title = useCurrentChatThreadDialogTitle(thread);
-  return () => {
-    openChatThreadEmojiMenu({
-      threadId: thread.threadId,
-      title,
-    });
-  };
-}
-
-function useCurrentChatThreadDialogTitle(
-  thread: ChatThreadSignals,
-): string | null | undefined {
-  const threadData = useLastResolved(thread.threadData$);
-  return threadData?.title;
 }
 
 // Drag the divider to resize the artifact preview against the chat thread.
@@ -3166,12 +3159,6 @@ function ChatThreadArea({
   const setMainThreadKeyboardFocusRef = useSet(
     setMainChatThreadKeyboardFocusRef$,
   );
-  // Lifted from ChatThread so the keyboard handler's sidebarChatThreads$
-  // snapshot survives keyed ChatThread remounts during thread navigation.
-  // Otherwise a second mod+shift+arrow press lands on a freshly mounted
-  // ChatThread whose useLastResolved has no cached value yet, leading to an
-  // empty threads list and a silently dropped keypress.
-  const makeChatThreadKeyDown = useChatThreadKeyDownFactory();
 
   return (
     <div
@@ -3188,18 +3175,13 @@ function ChatThreadArea({
             <ChatThread
               key={leftThread.threadId}
               thread={leftThread}
-              onKeyDown={makeChatThreadKeyDown(leftThread)}
               onFocusFallbackRef={setMainThreadKeyboardFocusRef}
             />
           )}
           {rightThread && (
             <>
               <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-              <ChatThread
-                key={rightThread.threadId}
-                thread={rightThread}
-                onKeyDown={makeChatThreadKeyDown(rightThread)}
-              />
+              <ChatThread key={rightThread.threadId} thread={rightThread} />
             </>
           )}
         </>
@@ -3258,7 +3240,7 @@ export function ZeroChatThreadPage() {
         return {
           ...section,
           shortcuts: section.shortcuts.filter((shortcut) => {
-            return shortcut.key !== "shift+f2";
+            return !isChatThreadEmojiShortcutKey(shortcut.key);
           }),
         };
       });
@@ -3772,6 +3754,57 @@ function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   );
 }
 
+function isThinkingOnlyAssistantMessage(message: EnrichedChatMessage): boolean {
+  return (
+    message.role === "assistant" &&
+    message.content === null &&
+    message.error === undefined &&
+    typeof message.thinking === "string" &&
+    message.thinking.trim().length > 0
+  );
+}
+
+type ThinkingIndicatorMarkerMessage = EnrichedChatMessage & {
+  readonly role: "assistant";
+  readonly content: null;
+  readonly error?: undefined;
+  readonly runId: string;
+  readonly thinking: string;
+};
+
+function isThinkingIndicatorMarkerMessage(
+  message: EnrichedChatMessage,
+): message is ThinkingIndicatorMarkerMessage {
+  return (
+    message.role === "assistant" &&
+    message.content === null &&
+    message.error === undefined &&
+    typeof message.thinking === "string" &&
+    message.thinking.trim().length > 0 &&
+    message.runId !== undefined
+  );
+}
+
+function lastRunThinkingMessageForIndicator(
+  groups: readonly GroupedChatMessageGroup[],
+): ThinkingIndicatorMarkerMessage | undefined {
+  const messages = groups.flatMap((group) => {
+    return group.messages.filter((message) => {
+      return !message.isQueued;
+    });
+  });
+  const lastMessage = messages[messages.length - 1];
+  if (!lastMessage || !isThinkingIndicatorMarkerMessage(lastMessage)) {
+    return undefined;
+  }
+
+  const runId = lastMessage.runId;
+  const runHasAssistantText = messages.some((message) => {
+    return message.runId === runId && isRenderableAssistantMessage(message);
+  });
+  return runHasAssistantText ? undefined : lastMessage;
+}
+
 function terminatedRunIdsForCompletedWork(
   messages: readonly EnrichedChatMessage[],
 ): Set<string> {
@@ -3834,7 +3867,9 @@ function buildCompletedWorkFolding(
     const precedingMessages =
       finalMessageIndex > 0 ? runMessages.slice(0, finalMessageIndex) : [];
     const hiddenMessages = precedingMessages.filter((message) => {
-      return message.role !== "user";
+      return (
+        message.role !== "user" && !isThinkingOnlyAssistantMessage(message)
+      );
     });
     const trailingMessages =
       finalMessageIndex >= 0 ? runMessages.slice(finalMessageIndex + 1) : [];
@@ -4163,67 +4198,6 @@ function ChatThreadSkeletonOverlay({
   );
 }
 
-// Lifted to ZeroChatThreadPage so the useLastResolved(sidebarChatThreads$)
-// snapshot survives keyed ChatThread remounts during thread navigation.
-function useChatThreadKeyDownFactory() {
-  const pageSignal = useGet(pageSignal$);
-  const scrollCurrentThread = useSet(scrollCurrentThread$);
-  const navigateToAdjacentThread = useSet(navigateToAdjacentThread$);
-  const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
-  // Snapshot the sidebar list on the read side so the keyboard command stays
-  // sync — awaiting `sidebarChatThreads$` inside the command would block the
-  // keypress on whatever async work that signal is currently doing
-  // (e.g. an IDB miss + remote refetch).
-  const sidebarThreads = useLastResolved(sidebarChatThreads$) ?? [];
-
-  return (thread: ChatThreadSignals) => {
-    return onDomEventFn(async (event: ReactKeyboardEvent<HTMLElement>) => {
-      if (event.defaultPrevented) {
-        return;
-      }
-      if (matchShortcut("mod+arrowup", event)) {
-        event.preventDefault();
-        scrollCurrentThread(thread, "top");
-        return;
-      }
-      if (matchShortcut("mod+arrowdown", event)) {
-        event.preventDefault();
-        scrollCurrentThread(thread, "bottom");
-        return;
-      }
-      if (matchShortcut("mod+shift+arrowup", event)) {
-        event.preventDefault();
-        await navigateToAdjacentThread(
-          {
-            currentThreadId: thread.threadId,
-            direction: "prev",
-            threads: sidebarThreads,
-          },
-          pageSignal,
-        );
-        return;
-      }
-      if (matchShortcut("mod+shift+arrowdown", event)) {
-        event.preventDefault();
-        await navigateToAdjacentThread(
-          {
-            currentThreadId: thread.threadId,
-            direction: "next",
-            threads: sidebarThreads,
-          },
-          pageSignal,
-        );
-        return;
-      }
-
-      if (matchShortcut("shift+/", event) && !isEditableTarget(event.target)) {
-        event.preventDefault();
-        setShortcutHelpOpen(true);
-      }
-    });
-  };
-}
-
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
   const renderedGroupsLoadable = useLastLoadable(
@@ -4346,8 +4320,11 @@ function latestRecommendedFollowups(
 ): RecommendedFollowupSource | null {
   for (let groupIndex = groups.length - 1; groupIndex >= 0; groupIndex -= 1) {
     const group = groups[groupIndex];
-    if (!group || group.role !== "assistant") {
+    if (!group) {
       continue;
+    }
+    if (group.role !== "assistant") {
+      return null;
     }
 
     for (
@@ -4685,12 +4662,13 @@ function useChatComposerModel(
     disabled: false,
     defaultSelection: defaultModelSelection,
   });
-  // Skeleton only on cold start (nothing has ever resolved). Once we have any
-  // resolved value, refetches reuse the cached value instead of flashing.
+  // Explicit thread selections can render before default model selection
+  // resolves; only inherited selections need that fallback before showing.
   const modelPickerLoading =
     threadDataResolved === undefined ||
     modelSelectionResolved === undefined ||
-    defaultModelSelectionResolved === undefined;
+    (modelSelectionResolved === null &&
+      defaultModelSelectionResolved === undefined);
   const submitBlockerProps = resolveChatComposerSubmitBlocker({
     state: modelFirstOauthState,
     modelSelection,
@@ -4710,33 +4688,19 @@ function useChatThreadComposerSendState({
   modelSelection,
   computerUseHostIdForSend,
   clearComputerUseHostOverride,
-  setInput,
 }: {
   thread: ChatThreadSignals;
   modelSelection: ModelProviderSelection | null;
   computerUseHostIdForSend: string | null | undefined;
   clearComputerUseHostOverride: () => void;
-  setInput: (text: string) => void;
 }) {
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
   const [, queueMessage] = useLoadableSet(thread.queueMessage$);
   const rootSignal = useGet(rootSignal$);
-  const generationTemplateState = useGet(threadGenerationTemplate$);
-  const generationTemplate =
-    generationTemplateState?.threadId === thread.threadId
-      ? generationTemplateState.value
-      : undefined;
-  const setGenerationTemplate = useSet(setThreadGenerationTemplate$);
-  const clearGenerationTemplate = () => {
-    setGenerationTemplate(thread.threadId, undefined);
-  };
+  const generationTemplate = useGet(thread.draft.generationTemplate$);
+  const setGenerationTemplate = useSet(thread.draft.setGenerationTemplate$);
 
-  const handleSend = (
-    text: string,
-    selectedGenerationTemplate: GenerationTemplateRequest | undefined,
-  ) => {
-    setInput("");
-    clearGenerationTemplate();
+  const handleSend = (text: string) => {
     detach(
       (async () => {
         const computerUsePatch =
@@ -4747,9 +4711,6 @@ function useChatThreadComposerSendState({
           text,
           modelSelection,
           {
-            ...(selectedGenerationTemplate
-              ? { generationTemplate: selectedGenerationTemplate }
-              : {}),
             ...computerUsePatch,
           },
           rootSignal,
@@ -4760,21 +4721,11 @@ function useChatThreadComposerSendState({
     );
   };
 
-  const handleQueue = (
-    text: string,
-    selectedGenerationTemplate: GenerationTemplateRequest | undefined,
-  ) => {
-    setInput("");
-    clearGenerationTemplate();
+  const handleQueue = (text: string) => {
     detach(
       (async () => {
         const computerUseHostId = computerUseHostIdForSend;
-        await queueMessage(
-          text,
-          selectedGenerationTemplate,
-          computerUseHostId,
-          rootSignal,
-        );
+        await queueMessage(text, computerUseHostId, rootSignal);
         clearComputerUseHostOverride();
       })(),
       Reason.DomCallback,
@@ -4788,7 +4739,7 @@ function useChatThreadComposerSendState({
     templatePicker: {
       value: generationTemplate,
       onChange: (value: GenerationTemplateRequest | undefined) => {
-        setGenerationTemplate(thread.threadId, value);
+        setGenerationTemplate(value);
       },
     },
   };
@@ -4860,14 +4811,6 @@ function useChatThreadComposerFeedback(
   const dismiss = useSet(dismissFeedback$);
   const [, sendMessage] = useLoadableSet(thread.sendMessage$);
   const rootSignal = useGet(rootSignal$);
-  // A feedback turn can also carry the composer's template + attachments, so
-  // read the same per-thread template selection the normal send path uses.
-  const generationTemplateState = useGet(threadGenerationTemplate$);
-  const generationTemplate =
-    generationTemplateState?.threadId === thread.threadId
-      ? generationTemplateState.value
-      : undefined;
-  const setGenerationTemplate = useSet(setThreadGenerationTemplate$);
 
   // Feedback is owned by the thread it was drafted in; other threads keep their
   // own composer textarea so a draft never bleeds across chats.
@@ -4894,18 +4837,106 @@ function useChatThreadComposerFeedback(
           modelSelection,
           {
             includeDraftAttachments: true,
-            ...(generationTemplate ? { generationTemplate } : {}),
           },
           rootSignal,
         ),
         Reason.DomCallback,
       );
-      setGenerationTemplate(thread.threadId, undefined);
       dismiss();
     },
     onDismiss: () => {
       dismiss();
     },
+  };
+}
+
+function useChatThreadComposerWorkflowPrompt({
+  thread,
+  input,
+  pageSignal,
+}: {
+  thread: ChatThreadSignals;
+  input: string;
+  pageSignal: AbortSignal;
+}): {
+  onCreateWorkflowPrompt: (() => void) | undefined;
+  replaceDraftDialogOpen: boolean;
+  onConfirmReplaceDraft: () => void;
+  onReplaceDialogOpenChange: (open: boolean) => void;
+} {
+  const attachments = useGet(thread.draft.attachments$);
+  const setInput = useSet(thread.draft.setInput$);
+  const clearDraft = useSet(thread.draft.clear$);
+  const queueDraftSync = useSet(thread.queueDraftSync$);
+  const focusComposer = useSet(thread.focusInput$);
+  const features = useGet(featureSwitch$);
+  const replaceDraftTarget = useGet(replaceWorkflowPromptDraftTarget$);
+  const setReplaceDraftTarget = useSet(setReplaceWorkflowPromptDraftTarget$);
+  const workflowAutomationEnabled =
+    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
+  const workflowPromptDraftTarget = `composer:${thread.threadId}`;
+  const hasComposerDraft = input.trim().length > 0 || attachments.length > 0;
+  const replaceDraftDialogOpen =
+    replaceDraftTarget === workflowPromptDraftTarget;
+
+  const applyWorkflowPrompt = () => {
+    clearDraft();
+    setInput(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
+    detach(queueDraftSync(pageSignal), Reason.DomCallback);
+    focusComposer();
+  };
+
+  const handleCreateWorkflowPrompt = () => {
+    if (hasComposerDraft) {
+      setReplaceDraftTarget(workflowPromptDraftTarget);
+      return;
+    }
+    applyWorkflowPrompt();
+  };
+
+  const handleConfirmReplaceDraft = () => {
+    setReplaceDraftTarget(null);
+    applyWorkflowPrompt();
+  };
+
+  const handleReplaceDialogOpenChange = (open: boolean) => {
+    setReplaceDraftTarget(open ? workflowPromptDraftTarget : null);
+  };
+
+  return {
+    onCreateWorkflowPrompt: workflowAutomationEnabled
+      ? handleCreateWorkflowPrompt
+      : undefined,
+    replaceDraftDialogOpen,
+    onConfirmReplaceDraft: handleConfirmReplaceDraft,
+    onReplaceDialogOpenChange: handleReplaceDialogOpenChange,
+  };
+}
+
+function resolveChatThreadComposerActivity({
+  groups,
+  sending,
+}: {
+  groups: readonly GroupedChatMessageGroup[];
+  sending: boolean;
+}): {
+  composerSending: boolean;
+  queueWhileSending: boolean;
+} {
+  const lastGroup = groups[groups.length - 1];
+  const lastIsAssistant = lastGroup?.role === "assistant";
+  const lastAssistantMessage =
+    lastIsAssistant && lastGroup
+      ? lastGroup.messages[lastGroup.messages.length - 1]
+      : undefined;
+  const lastAssistantCancelled =
+    isCancelledAssistantMessage(lastAssistantMessage);
+  const composerSending = sending && !lastAssistantCancelled;
+  return {
+    composerSending,
+    queueWhileSending: canQueueMessage({
+      sending: composerSending,
+    }),
   };
 }
 
@@ -4921,12 +4952,8 @@ function ChatThreadComposer({
   const hasMessages = groups.length > 0;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   // useLastResolved (not useLastLoadable) so refetches keep the previously
-  // resolved value instead of flipping `sending` and the placeholder. Before
-  // the first resolution, avoid showing a Stop button for a thread that may
-  // already be idle.
-  const allFinishedResolvedValue = useLastResolved(thread.allFinished$);
-  const allFinishedResolved = allFinishedResolvedValue !== undefined;
-  const allFinished = allFinishedResolvedValue ?? false;
+  // resolved value instead of flipping `sending` and the placeholder.
+  const allFinished = useLastResolved(thread.allFinished$)!;
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);
@@ -4961,22 +4988,14 @@ function ChatThreadComposer({
       modelSelection,
       computerUseHostIdForSend,
       clearComputerUseHostOverride,
-      setInput,
     });
-  const sending = (allFinishedResolved && !allFinished) || sendLoading;
+  const sending = !allFinished || sendLoading;
   const skeletonVisible = useGet(thread.skeletonVisible$);
-  const lastGroup = groups[groups.length - 1];
-  const lastIsAssistant = lastGroup?.role === "assistant";
-  const lastAssistantMessage =
-    lastIsAssistant && lastGroup
-      ? lastGroup.messages[lastGroup.messages.length - 1]
-      : undefined;
-  const lastAssistantCancelled =
-    isCancelledAssistantMessage(lastAssistantMessage);
-  const composerSending = sending && !lastAssistantCancelled;
-  const queueWhileSending = canQueueMessage({
-    sending: composerSending,
-  });
+  const { composerSending, queueWhileSending } =
+    resolveChatThreadComposerActivity({
+      groups,
+      sending,
+    });
 
   const handleInputChange = (text: string) => {
     setInput(text);
@@ -4988,6 +5007,11 @@ function ChatThreadComposer({
   };
 
   const feedback = useChatThreadComposerFeedback(thread, modelSelection);
+  const workflowPrompt = useChatThreadComposerWorkflowPrompt({
+    thread,
+    input,
+    pageSignal,
+  });
 
   return (
     <footer
@@ -5007,7 +5031,7 @@ function ChatThreadComposer({
             sending={composerSending}
             queueWhileSending={queueWhileSending}
             onCancel={
-              allFinishedResolved
+              !allFinished || sendLoading
                 ? () => {
                     detach(cancelRun(pageSignal), Reason.DomCallback);
                   }
@@ -5028,6 +5052,7 @@ function ChatThreadComposer({
             actionsLoading={skeletonVisible}
             modelPicker={modelPicker}
             templatePicker={templatePicker}
+            onCreateWorkflowPrompt={workflowPrompt.onCreateWorkflowPrompt}
             computerUse={computerUse}
             modelPickerLoading={modelPickerLoading}
             submitBlocker={submitBlockerProps}
@@ -5036,6 +5061,11 @@ function ChatThreadComposer({
             activeGoal={activeGoal}
             onCancelActiveGoal={onCancelActiveGoal}
             feedback={feedback}
+          />
+          <ReplaceComposerDraftDialog
+            open={workflowPrompt.replaceDraftDialogOpen}
+            onOpenChange={workflowPrompt.onReplaceDialogOpenChange}
+            onConfirm={workflowPrompt.onConfirmReplaceDraft}
           />
           <PersonalClaudeCodeDeviceAuthDialog />
           <PersonalCodexDeviceAuthDialog />
@@ -5099,35 +5129,56 @@ function shouldRenderThinkingIndicator({
   lastGroup,
   lastIsAssistant,
   running,
+  runStatePending,
   lastAssistantCancelled,
+  lastAssistantOnlyThinking,
 }: {
   lastGroup: GroupedChatMessageGroup | undefined;
   lastIsAssistant: boolean;
   running: boolean;
+  runStatePending: boolean;
   lastAssistantCancelled: boolean;
+  lastAssistantOnlyThinking: boolean;
 }): boolean {
   if (!lastGroup) {
+    return false;
+  }
+  if (runStatePending && lastIsAssistant) {
     return false;
   }
   if (lastAssistantCancelled && !running) {
     return false;
   }
+  if (lastAssistantOnlyThinking && !running) {
+    return false;
+  }
   return lastIsAssistant || running;
+}
+
+interface ServerThinkingLabel {
+  readonly displayedText: string;
+  readonly fullText: string;
+  readonly id: string;
+  readonly setRef: (
+    el: HTMLParagraphElement | null,
+  ) => (() => void) | undefined;
 }
 
 function ThinkingLabel({
   isQueued,
   rotatingLabel,
+  serverThinkingLabel,
 }: {
   isQueued: boolean;
   rotatingLabel: string;
+  serverThinkingLabel?: ServerThinkingLabel;
 }) {
   const openQueueDrawer = useSet(openQueueDrawer$);
   const pageSignal = useGet(pageSignal$);
 
   if (isQueued) {
     return (
-      <p className="zero-shimmer-text text-[0.8125rem] truncate">
+      <p className="zero-shimmer-text min-w-0 flex-1 text-[0.8125rem] truncate">
         Waiting in{" "}
         <button
           type="button"
@@ -5142,8 +5193,21 @@ function ThinkingLabel({
     );
   }
 
+  if (serverThinkingLabel) {
+    return (
+      <p
+        key={serverThinkingLabel.id}
+        ref={serverThinkingLabel.setRef}
+        className="zero-shimmer-text min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem]"
+        aria-label={serverThinkingLabel.fullText}
+      >
+        {serverThinkingLabel.displayedText || "\u00a0"}
+      </p>
+    );
+  }
+
   return (
-    <p className="zero-shimmer-text text-[0.8125rem] truncate">
+    <p className="zero-shimmer-text min-w-0 flex-1 text-[0.8125rem] truncate">
       {rotatingLabel}
     </p>
   );
@@ -5153,10 +5217,12 @@ function InlineThinkingRow({
   blockStyle,
   isQueued,
   rotatingLabel,
+  serverThinkingLabel,
 }: {
   blockStyle: CSSProperties;
   isQueued: boolean;
   rotatingLabel: string;
+  serverThinkingLabel?: ServerThinkingLabel;
 }) {
   return (
     <div className="flex items-center gap-2 h-5">
@@ -5165,7 +5231,11 @@ function InlineThinkingRow({
         <span />
         <span />
       </span>
-      <ThinkingLabel isQueued={isQueued} rotatingLabel={rotatingLabel} />
+      <ThinkingLabel
+        isQueued={isQueued}
+        rotatingLabel={rotatingLabel}
+        serverThinkingLabel={serverThinkingLabel}
+      />
     </div>
   );
 }
@@ -5200,11 +5270,13 @@ function WaitingForAssistantResponse({
   blockStyle,
   isQueued,
   rotatingLabel,
+  serverThinkingLabel,
 }: {
   thread: ChatThreadSignals;
   blockStyle: CSSProperties;
   isQueued: boolean;
   rotatingLabel: string;
+  serverThinkingLabel?: ServerThinkingLabel;
 }) {
   return (
     <div
@@ -5221,7 +5293,11 @@ function WaitingForAssistantResponse({
               <span />
               <span />
             </span>
-            <ThinkingLabel isQueued={isQueued} rotatingLabel={rotatingLabel} />
+            <ThinkingLabel
+              isQueued={isQueued}
+              rotatingLabel={rotatingLabel}
+              serverThinkingLabel={serverThinkingLabel}
+            />
           </div>
         </div>
       </div>
@@ -5241,6 +5317,7 @@ function AssistantThinkingStatusRow({
   blockStyle,
   isQueued,
   rotatingLabel,
+  serverThinkingLabel,
   thread,
   doneLabel,
   recommendedFollowupSource,
@@ -5249,6 +5326,7 @@ function AssistantThinkingStatusRow({
   blockStyle: CSSProperties;
   isQueued: boolean;
   rotatingLabel: string;
+  serverThinkingLabel?: ServerThinkingLabel;
   thread: ChatThreadSignals;
   doneLabel: string;
   recommendedFollowupSource: RecommendedFollowupSource | null;
@@ -5270,6 +5348,7 @@ function AssistantThinkingStatusRow({
             blockStyle={blockStyle}
             isQueued={isQueued}
             rotatingLabel={rotatingLabel}
+            serverThinkingLabel={serverThinkingLabel}
           />
         ) : (
           <FinishedRunRow
@@ -5283,6 +5362,72 @@ function AssistantThinkingStatusRow({
   );
 }
 
+interface ThinkingIndicatorState {
+  readonly lastGroup: GroupedChatMessageGroup | undefined;
+  readonly lastIsAssistant: boolean;
+  readonly lastAssistantCancelled: boolean;
+  readonly lastAssistantOnlyThinking: boolean;
+  readonly isQueued: boolean;
+  readonly running: boolean;
+  readonly runStatePending: boolean;
+  readonly lastThinkingMessage: ThinkingIndicatorMarkerMessage | undefined;
+}
+
+function getThinkingIndicatorState(args: {
+  readonly groups: GroupedChatMessageGroup[];
+  readonly messageRunIndicatorState: "running" | "queued" | null | undefined;
+  readonly messageRunIndicatorResolved: boolean;
+  readonly initialThinkingEnabled: boolean;
+}): ThinkingIndicatorState {
+  const lastGroup = args.groups[args.groups.length - 1];
+  const lastIsAssistant = lastGroup?.role === "assistant";
+  const lastAssistantMessage =
+    lastIsAssistant && lastGroup
+      ? lastGroup.messages[lastGroup.messages.length - 1]
+      : undefined;
+  const rawLastThinkingMessage = lastRunThinkingMessageForIndicator(
+    args.groups,
+  );
+  const lastAssistantHasRenderableMessage =
+    lastIsAssistant &&
+    lastGroup !== undefined &&
+    lastGroup.messages.some((message) => {
+      return isRenderableAssistantMessage(message);
+    });
+  const lastAssistantOnlyThinking =
+    lastIsAssistant &&
+    rawLastThinkingMessage !== undefined &&
+    !lastAssistantHasRenderableMessage;
+  const lastAssistantCancelled =
+    isCancelledAssistantMessage(lastAssistantMessage);
+  const isQueued = args.messageRunIndicatorState === "queued";
+  const lastThinkingMessage =
+    args.initialThinkingEnabled && !isQueued
+      ? rawLastThinkingMessage
+      : undefined;
+  const runActive =
+    (args.messageRunIndicatorState === "running" || isQueued) &&
+    !lastAssistantCancelled;
+  const waitingForAssistant =
+    runActive &&
+    lastGroup?.role === "user" &&
+    lastGroup.messages.length > 0 &&
+    lastGroup.messages.some((message) => {
+      return message.isOptimisticRun || message.runId !== undefined;
+    });
+
+  return {
+    lastGroup,
+    lastIsAssistant,
+    lastAssistantCancelled,
+    lastAssistantOnlyThinking,
+    isQueued,
+    running: runActive || waitingForAssistant,
+    runStatePending: !args.messageRunIndicatorResolved,
+    lastThinkingMessage,
+  };
+}
+
 function ThinkingIndicator({
   thread,
   groups,
@@ -5290,9 +5435,6 @@ function ThinkingIndicator({
   thread: ChatThreadSignals;
   groups: GroupedChatMessageGroup[];
 }) {
-  const allFinishedLoadable = useLastLoadable(thread.allFinished$);
-  const allFinishedResolved = allFinishedLoadable.state === "hasData";
-  const allFinished = allFinishedResolved ? allFinishedLoadable.data : false;
   const [c1, c2, c3] = useGet(thread.blockColors$);
   const blockStyle = {
     "--zb-c1": c1,
@@ -5300,50 +5442,68 @@ function ThinkingIndicator({
     "--zb-c3": c3,
   } as CSSProperties;
 
-  const lastGroup = groups[groups.length - 1];
-  const lastIsAssistant = lastGroup?.role === "assistant";
-  const lastAssistantMessage =
-    lastIsAssistant && lastGroup
-      ? lastGroup.messages[lastGroup.messages.length - 1]
-      : undefined;
-  const lastAssistantCancelled =
-    isCancelledAssistantMessage(lastAssistantMessage);
-  const runActive =
-    allFinishedResolved && !allFinished && !lastAssistantCancelled;
-  const waitingForAssistant =
-    lastGroup?.role === "user" &&
-    lastGroup.messages.length > 0 &&
-    (!allFinishedResolved ||
-      lastGroup.messages.some((message) => {
-        return message.isOptimisticRun || message.runId !== undefined;
-      }));
-  const running = runActive || waitingForAssistant;
+  const features = useLastResolved(featureSwitch$);
+  const initialThinkingEnabled =
+    features?.[FeatureSwitchKey.ChatInitialThinkingIndicator] ?? false;
+  const messageRunIndicatorStateLoadable = useLastLoadable(
+    thread.messageRunIndicatorState$,
+  );
+  const messageRunIndicatorResolved =
+    messageRunIndicatorStateLoadable.state === "hasData";
+  const messageRunIndicatorState = messageRunIndicatorResolved
+    ? messageRunIndicatorStateLoadable.data
+    : undefined;
+  const indicatorState = getThinkingIndicatorState({
+    groups,
+    messageRunIndicatorState,
+    messageRunIndicatorResolved,
+    initialThinkingEnabled,
+  });
   const rotatingLabel = useGet(thread.rotatingPhrase$);
   const donePhrase = useGet(thread.donePhrase$);
-  const latestRunStatus = useLastResolved(thread.latestRunStatus$);
-  const isQueued = latestRunStatus === "queued";
+  const displayedThinkingText =
+    useLastResolved(thread.displayedThinkingText$) ?? "";
+  const setThinkingIndicatorTextRef = useSet(
+    thread.setThinkingIndicatorTextRef$,
+  );
+  const serverThinkingLabel =
+    indicatorState.lastThinkingMessage && indicatorState.running
+      ? {
+          displayedText: displayedThinkingText,
+          fullText: indicatorState.lastThinkingMessage.thinking.trim(),
+          id: indicatorState.lastThinkingMessage.id,
+          setRef: setThinkingIndicatorTextRef,
+        }
+      : undefined;
   const recommendedFollowupSource = latestRecommendedFollowups(groups);
   const doneLabel = recommendedFollowupSource ? "Keep going" : donePhrase;
 
   if (
     !shouldRenderThinkingIndicator({
-      lastGroup,
-      lastIsAssistant,
-      running,
-      lastAssistantCancelled,
+      lastGroup: indicatorState.lastGroup,
+      lastIsAssistant: indicatorState.lastIsAssistant,
+      running: indicatorState.running,
+      runStatePending: indicatorState.runStatePending,
+      lastAssistantCancelled: indicatorState.lastAssistantCancelled,
+      lastAssistantOnlyThinking: indicatorState.lastAssistantOnlyThinking,
     })
   ) {
     return null;
   }
 
   // Shared inline row with fixed h-5 to prevent layout jump on transition
-  if (lastIsAssistant || !running) {
+  if (
+    (indicatorState.lastIsAssistant &&
+      !indicatorState.lastAssistantOnlyThinking) ||
+    !indicatorState.running
+  ) {
     return (
       <AssistantThinkingStatusRow
-        running={running}
+        running={indicatorState.running}
         blockStyle={blockStyle}
-        isQueued={isQueued}
+        isQueued={indicatorState.isQueued}
         rotatingLabel={rotatingLabel}
+        serverThinkingLabel={serverThinkingLabel}
         thread={thread}
         doneLabel={doneLabel}
         recommendedFollowupSource={recommendedFollowupSource}
@@ -5356,8 +5516,9 @@ function ThinkingIndicator({
     <WaitingForAssistantResponse
       thread={thread}
       blockStyle={blockStyle}
-      isQueued={isQueued}
+      isQueued={indicatorState.isQueued}
       rotatingLabel={rotatingLabel}
+      serverThinkingLabel={serverThinkingLabel}
     />
   );
 }
@@ -7541,16 +7702,12 @@ function PagedGroupPrimaryActions({
   usage,
   copied,
   onCopy,
-  workflowAutomationEnabled,
-  onCreateWorkflow,
 }: {
   firstRunId: string | undefined;
   hasContent: boolean;
   usage: ChatMessageUsagePayload | undefined;
   copied: boolean;
   onCopy: () => void;
-  workflowAutomationEnabled: boolean;
-  onCreateWorkflow: () => void;
 }) {
   return (
     <div className="flex items-center gap-1" data-testid="chat-message-actions">
@@ -7595,19 +7752,6 @@ function PagedGroupPrimaryActions({
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
-      )}
-      {workflowAutomationEnabled && (
-        <button
-          type="button"
-          onClick={onCreateWorkflow}
-          className="inline-flex h-[26px] items-center overflow-hidden rounded-md p-1 text-muted-foreground/60 transition-colors duration-150 hover:bg-accent hover:text-foreground [&:focus-visible>span]:ml-1.5 [&:focus-visible>span]:max-w-24 [&:focus-visible>span]:opacity-100 [&:hover>span]:ml-1.5 [&:hover>span]:max-w-24 [&:hover>span]:opacity-100"
-          aria-label="Create workflow"
-        >
-          <IconRoute size={18} stroke={1.5} className="shrink-0" />
-          <span className="ml-0 max-w-0 overflow-hidden whitespace-nowrap text-xs font-medium opacity-0 transition-all duration-150">
-            Create workflow
-          </span>
-        </button>
       )}
       {usage && firstRunId && <RunUsageChip runId={firstRunId} usage={usage} />}
     </div>
@@ -7665,26 +7809,12 @@ function PagedGroupActions({
   const copiedId = useGet(thread.copiedMessageId$);
   const copied = copiedId === group.beginMessageId;
   const copyMessage = useSet(thread.copyMessage$);
-  const composerInput = useGet(thread.draft.input$);
-  const composerAttachments = useGet(thread.draft.attachments$);
-  const setComposerInput = useSet(thread.draft.setInput$);
-  const clearComposerDraft = useSet(thread.draft.clear$);
-  const queueDraftSync = useSet(thread.queueDraftSync$);
-  const focusComposer = useSet(thread.focusInput$);
-  const features = useGet(featureSwitch$);
-  const replaceDraftTarget = useGet(replaceWorkflowPromptDraftTarget$);
-  const setReplaceDraftTarget = useSet(setReplaceWorkflowPromptDraftTarget$);
 
   const firstRunId = group.messages.find((m) => {
     return m.runId;
   })?.runId;
   const usage = group.usage;
   const hasContent = content.length > 0;
-  const workflowAutomationEnabled =
-    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
-  const hasComposerDraft =
-    composerInput.trim().length > 0 || composerAttachments.length > 0;
-  const replaceDraftDialogOpen = replaceDraftTarget === group.beginMessageId;
 
   if (group.role === "user") {
     return null;
@@ -7704,51 +7834,18 @@ function PagedGroupActions({
     );
   };
 
-  const applyWorkflowPrompt = () => {
-    clearComposerDraft();
-    setComposerInput(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
-    detach(queueDraftSync(pageSignal), Reason.DomCallback);
-    focusComposer();
-  };
-
-  const handleCreateWorkflow = () => {
-    if (hasComposerDraft) {
-      setReplaceDraftTarget(group.beginMessageId);
-      return;
-    }
-    applyWorkflowPrompt();
-  };
-
-  const handleConfirmReplaceDraft = () => {
-    setReplaceDraftTarget(null);
-    applyWorkflowPrompt();
-  };
-
-  const handleReplaceDialogOpenChange = (open: boolean) => {
-    setReplaceDraftTarget(open ? group.beginMessageId : null);
-  };
-
   return (
-    <>
-      <div className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
-        <div className="hidden @[900px]:block" />
-        <div className="flex items-center justify-between pt-2 pb-1 gap-2 -ml-1">
-          <PagedGroupPrimaryActions
-            firstRunId={firstRunId}
-            hasContent={hasContent}
-            usage={usage}
-            copied={copied}
-            onCopy={handleCopy}
-            workflowAutomationEnabled={workflowAutomationEnabled}
-            onCreateWorkflow={handleCreateWorkflow}
-          />
-        </div>
+    <div className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
+      <div className="hidden @[900px]:block" />
+      <div className="flex items-center justify-between pt-2 pb-1 gap-2 -ml-1">
+        <PagedGroupPrimaryActions
+          firstRunId={firstRunId}
+          hasContent={hasContent}
+          usage={usage}
+          copied={copied}
+          onCopy={handleCopy}
+        />
       </div>
-      <ReplaceComposerDraftDialog
-        open={replaceDraftDialogOpen}
-        onOpenChange={handleReplaceDialogOpenChange}
-        onConfirm={handleConfirmReplaceDraft}
-      />
-    </>
+    </div>
   );
 }

@@ -173,7 +173,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.DataExport]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the data export option in account menu",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
@@ -238,6 +238,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.CodexFastMode]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable Codex fast mode for ChatGPT subscription GPT-5.5 web chat runs.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -277,10 +284,17 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ConnectorAccessManagement]: {
-    maintainer: "ethan@vm0.ai",
+  [FeatureSwitchKey.ComputerUseDesktopPlugins]: {
+    maintainer: "lancy@vm0.ai",
     description:
-      "Show connected connector filtering and per-agent connector access management on connected connector cards.",
+      "Enable Zero Desktop Computer Use plugins for local resources, starting with the bundled filesystem plugin gateway.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.DesktopX64Download]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Show Intel Mac download links for Zero Computer Use after darwin-x64 release artifacts are available.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -291,11 +305,24 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.PresentationImageUnsplashPreferred]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Prefer Unsplash for presentation image resolution, falling back to Pexels when Unsplash has no result or is unconfigured. When off, presentation images are resolved directly from Pexels.",
+    enabled: false,
+  },
   [FeatureSwitchKey.AgentUnreadIndicators]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
     enabled: false,
+  },
+  [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable left/right keyboard and button navigation between image artifacts within the same chat message, in both the lightbox modal and the artifact sidebar.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.AgentsPageRedesign]: {
     maintainer: "ming@vm0.ai",
@@ -307,6 +334,33 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show Codex and Claude Code personal subscription usage in the Zero sidebar footer.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatInitialThinkingIndicator]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show fast generated status text in the web chat thinking indicator.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.TeamsIntegration]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show standalone Microsoft Teams integration settings, connect flows, and Works page entry points.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.BytePlusVoiceInputStt]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Route voice input speech-to-text requests through BytePlus Seed ASR flash mode instead of OpenAI.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ImageEditing]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable in-canvas image editing (remove background, enhance) from the image preview and artifact sidebar.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

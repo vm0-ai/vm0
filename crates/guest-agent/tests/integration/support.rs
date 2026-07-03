@@ -10,21 +10,26 @@ use tokio::sync::Notify;
 
 pub(crate) use crate::common::SystemLogOverrideGuard;
 
-/// Shared mock server - env vars are set once before any `LazyLock` in the
-/// library is accessed, so environment-backed guest-agent state resolves to
-/// test values.
+pub(crate) const TEST_RUN_ID: &str = "test-run-001";
+
+pub(crate) static MOCK_RUNTIME_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
+    crate::common::unique_temp_path("vm0-guest-agent-integration")
+        .join("runs")
+        .join(TEST_RUN_ID)
+});
+
+/// Shared mock server - env vars are set once so process-env runtime captures
+/// in this integration binary resolve to test values.
 pub(crate) static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
     let server = MockServer::start();
     unsafe {
         crate::common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("VM0_API_URL", server.base_url());
         std::env::set_var("VM0_API_TOKEN", "test-token-abc123");
-        std::env::set_var("VM0_RUN_ID", "test-run-001");
+        std::env::set_var("VM0_RUN_ID", TEST_RUN_ID);
         std::env::set_var(
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-            crate::common::unique_temp_path("vm0-guest-agent-integration")
-                .join("runs")
-                .join("test-run-001"),
+            MOCK_RUNTIME_DIR.as_os_str(),
         );
         std::env::set_var("VM0_PROMPT", "test prompt");
         std::env::set_var("VERCEL_PROTECTION_BYPASS", "test-bypass-value");
@@ -117,6 +122,37 @@ pub(crate) fn test_http_client(retry_delay: Duration) -> guest_agent::http::Http
         retry_delay,
     )
     .expect("build test http client")
+}
+
+pub(crate) fn shared_guest_paths() -> guest_agent::paths::GuestPaths {
+    let _server = &*MOCK_SERVER;
+    guest_agent::paths::GuestPaths::from_runtime_dir(MOCK_RUNTIME_DIR.as_path())
+}
+
+pub(crate) fn shared_guest_config() -> Result<guest_agent::env::GuestConfig, String> {
+    let server = &*MOCK_SERVER;
+    guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
+        run_id: TEST_RUN_ID.to_string(),
+        api_url: server.base_url(),
+        api_token: "test-token-abc123".to_string(),
+        sandbox_id: "00000000-0000-4000-8000-000000000abc".to_string(),
+        sandbox_reuse_result: "reused".to_string(),
+        prompt: "test prompt".to_string(),
+        vercel_bypass: "test-bypass-value".to_string(),
+        cli_agent_type: "claude-code".to_string(),
+        home: Some(shared_guest_home_dir().to_string_lossy().into_owned()),
+        guest_runtime_dir: Some(MOCK_RUNTIME_DIR.clone()),
+        ..Default::default()
+    })
+}
+
+fn shared_guest_home_dir() -> PathBuf {
+    MOCK_RUNTIME_DIR
+        .parent()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("home")
 }
 
 pub(crate) fn http_status(status: u16) -> HttpMockResponse {
@@ -219,12 +255,13 @@ impl MockCallObserver {
 }
 
 fn cleanup_session_checkpoint_files() {
-    let _ = std::fs::remove_file(guest_agent::paths::session_id_file());
-    let _ = std::fs::remove_file(guest_agent::paths::session_history_path_file());
-    let _ = std::fs::remove_file(guest_agent::paths::final_session_history_identity_file());
-    let _ = std::fs::remove_file(guest_agent::paths::checkpoint_error_file());
-    let _ = std::fs::remove_file(guest_agent::paths::failure_diagnostic_file());
-    let _ = std::fs::remove_file(guest_agent::paths::event_error_flag());
+    let paths = shared_guest_paths();
+    let _ = std::fs::remove_file(paths.session_id_file());
+    let _ = std::fs::remove_file(paths.session_history_path_file());
+    let _ = std::fs::remove_file(paths.final_session_history_identity_file());
+    let _ = std::fs::remove_file(paths.checkpoint_error_file());
+    let _ = std::fs::remove_file(paths.failure_diagnostic_file());
+    let _ = std::fs::remove_file(paths.event_error_flag());
 }
 
 pub(crate) struct SessionCheckpointFilesGuard;

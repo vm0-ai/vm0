@@ -5,6 +5,11 @@ import {
   currentRightThread$,
 } from "./chat-thread-panes.ts";
 import { openRenameChatThreadDialog$ } from "../zero-page/zero-sidebar-state.ts";
+import { renameChatThread$ } from "./chat-message.ts";
+import {
+  applyChatThreadEmoji,
+  removeChatThreadEmoji,
+} from "./chat-thread-title.ts";
 
 function paneThreadForId(
   threadId: string,
@@ -46,5 +51,55 @@ export const reloadChatThreadDataForId$ = command(
     if (rightThread?.threadId === threadId) {
       set(rightThread.reloadThread$);
     }
+  },
+);
+
+export const setChatThreadEmojiFromThreadData$ = command(
+  async (
+    { get, set },
+    {
+      threadId,
+      emoji,
+      title,
+    }: { threadId: string; emoji: string; title?: string | null },
+    signal: AbortSignal,
+  ) => {
+    const thread = paneThreadForId(
+      threadId,
+      get(currentLeftThread$),
+      get(currentRightThread$),
+    );
+    const threadData = thread ? await get(thread.threadData$) : null;
+    signal.throwIfAborted();
+    const currentTitle = title !== undefined ? title : threadData?.title;
+    await set(
+      renameChatThread$,
+      { threadId, title: applyChatThreadEmoji(currentTitle, emoji) },
+      signal,
+    );
+    set(reloadChatThreadDataForId$, threadId);
+  },
+);
+
+export const clearChatThreadEmojiFromThreadData$ = command(
+  async (
+    { get, set },
+    { threadId, title }: { threadId: string; title?: string | null },
+    signal: AbortSignal,
+  ) => {
+    const thread = paneThreadForId(
+      threadId,
+      get(currentLeftThread$),
+      get(currentRightThread$),
+    );
+    const threadData = thread ? await get(thread.threadData$) : null;
+    signal.throwIfAborted();
+    const currentTitle = title !== undefined ? title : threadData?.title;
+    const nextTitle = removeChatThreadEmoji(currentTitle);
+    if (!nextTitle) {
+      return;
+    }
+    await set(renameChatThread$, { threadId, title: nextTitle }, signal);
+    set(reloadChatThreadDataForId$, threadId);
   },
 );

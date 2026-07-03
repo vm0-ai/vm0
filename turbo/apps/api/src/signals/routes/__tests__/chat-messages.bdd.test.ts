@@ -7,9 +7,11 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   chatMessagesContract,
   type AttachFile,
+  type ChatRunOptionsRequest,
   type GenerationTemplateRequest,
   type ModelSelectionRequest,
   type PagedChatMessage,
@@ -41,9 +43,11 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { testChatMessagesStateRoutes } from "../test-chat-messages-state";
 
 /**
@@ -63,6 +67,7 @@ const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const cu = createComputerUseBddApi(context);
+const misc = createMiscRoutesApi(context);
 const routeMocks = createZeroRouteMocks(context);
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
@@ -118,6 +123,39 @@ const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "apiKey",
 ] as const;
 
+function base64UrlEncode(input: string): string {
+  return Buffer.from(input, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function unsignedJwt(payload: Record<string, unknown>): string {
+  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  return `${header}.${base64UrlEncode(JSON.stringify(payload))}.bdd-signature`;
+}
+
+function codexAuthJson(): string {
+  const accessExp = Math.floor(now() / 1000) + 7200;
+  return JSON.stringify({
+    OPENAI_API_KEY: null,
+    tokens: {
+      access_token: unsignedJwt({ exp: accessExp }),
+      refresh_token: "rt_bdd_chat_fast_mode",
+      account_id: "ws_acct_bdd_fast_mode",
+      id_token: unsignedJwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "ws_acct_bdd_fast_mode_id_token",
+          chatgpt_plan_type: "plus",
+          organization: { title: "BDD Chat Fast Mode" },
+        },
+        exp: accessExp,
+      }),
+    },
+  });
+}
+
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
 type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
@@ -136,6 +174,7 @@ interface ChatRunSendBody {
   readonly clientThreadId?: string;
   readonly clientMessageId?: string;
   readonly modelSelection?: ModelSelectionRequest;
+  readonly runOptions?: ChatRunOptionsRequest;
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly attachFiles?: readonly AttachFile[];
   readonly computerUseHostId?: string | null;
@@ -351,9 +390,8 @@ async function completeChatRunOk(
   sandboxHeaders: { readonly authorization: string },
   options: { readonly lastEventSequence?: number } = {},
 ): Promise<void> {
-  const historyHash = createHash("sha256")
-    .update(`bdd chat session history ${runId}`)
-    .digest("hex");
+  const history = `bdd chat session history ${runId}`;
+  const historyHash = createHash("sha256").update(history).digest("hex");
   await webhooks.requestAgentCheckpoint(
     {
       runId,
@@ -482,12 +520,215 @@ async function postChatMessagesStateAction(
   return (await response.json()) as TestChatMessagesStateActionResponse;
 }
 
+type SeedThreadMessage = Extract<
+  TestChatMessagesStateActionBody,
+  { action: "seed-thread-messages" }
+>["messages"][number];
+
+async function seedThreadMessages(
+  threadId: string,
+  messages: readonly SeedThreadMessage[],
+): Promise<void> {
+  await postChatMessagesStateAction({
+    action: "seed-thread-messages",
+    thread_id: threadId,
+    messages: [...messages],
+  });
+}
+
 function sessionHeaders(actor: ApiTestUser): {
   readonly authorization: string;
 } {
   routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
   return { authorization: "Bearer clerk-session" };
 }
+
+describe("CHAT-02: chat thread message pagination", () => {
+  it("uses message id as the cursor tie-breaker and scopes cursors to the thread", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const threadId = randomUUID();
+    const otherThreadId = randomUUID();
+    await chat.createThread(actor, {
+      agentId,
+      title: "Cursor ties",
+      clientThreadId: threadId,
+    });
+    await chat.createThread(actor, {
+      agentId,
+      title: "Other cursor thread",
+      clientThreadId: otherThreadId,
+    });
+
+    const createdAt = "2026-06-09T10:00:00.000Z";
+    const ids = [
+      randomUUID(),
+      randomUUID(),
+      randomUUID(),
+      randomUUID(),
+    ].sort() as [string, string, string, string];
+
+    await seedThreadMessages(threadId, [
+      {
+        id: ids[0],
+        role: "user",
+        content: "first tied message",
+        created_at: createdAt,
+        sequence_number: null,
+      },
+      {
+        id: ids[1],
+        role: "assistant",
+        content: "second tied message",
+        created_at: createdAt,
+        sequence_number: null,
+      },
+      {
+        id: ids[2],
+        role: "assistant",
+        content: "third tied message",
+        created_at: createdAt,
+        sequence_number: null,
+      },
+      {
+        id: ids[3],
+        role: "assistant",
+        content: null,
+        created_at: createdAt,
+        sequence_number: null,
+        run_lifecycle_event: "completed",
+        recommended_followups: [
+          { prompt: "Turn this into a checklist", kind: "talk" },
+        ],
+      },
+    ]);
+
+    const otherMessageId = randomUUID();
+    await seedThreadMessages(otherThreadId, [
+      {
+        id: otherMessageId,
+        role: "user",
+        content: "other thread cursor",
+        created_at: "2026-06-09T09:59:59.000Z",
+        sequence_number: null,
+      },
+    ]);
+
+    const initial = await chat.listThreadMessages(actor, threadId, {
+      limit: 2,
+    });
+    expect(
+      initial.messages.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual([ids[2], ids[3]]);
+    expect(initial.hasHistoryBefore).toBeTruthy();
+
+    const afterFirst = await chat.listThreadMessages(actor, threadId, {
+      sinceId: ids[0],
+    });
+    expect(
+      afterFirst.messages.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual([ids[1], ids[2], ids[3]]);
+
+    const beforeLast = await chat.listThreadMessages(actor, threadId, {
+      beforeId: ids[3],
+    });
+    expect(
+      beforeLast.messages.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual([ids[0], ids[1], ids[2]]);
+
+    const foreignCursor = await chat.listThreadMessages(actor, threadId, {
+      sinceId: otherMessageId,
+    });
+    expect(foreignCursor.messages).toStrictEqual([]);
+
+    const marker = await chat.getThreadMessage(actor, threadId, ids[3]);
+    expect(marker).toMatchObject({
+      id: ids[3],
+      role: "assistant",
+      content: null,
+      runLifecycleEvent: "completed",
+      recommendedFollowups: [
+        { prompt: "Turn this into a checklist", kind: "talk" },
+      ],
+    });
+
+    const crossThreadRead = await chat.requestGetThreadMessage(
+      actor,
+      otherThreadId,
+      ids[3],
+      [404],
+    );
+    expect(crossThreadRead.status).toBe(404);
+  });
+
+  it("filters historical raw JSON syntax follow-up prompts when reading messages", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const threadId = randomUUID();
+    await chat.createThread(actor, {
+      agentId,
+      title: "Historical follow-up cleanup",
+      clientThreadId: threadId,
+    });
+
+    const markerId = randomUUID();
+    await seedThreadMessages(threadId, [
+      {
+        id: markerId,
+        role: "assistant",
+        content: null,
+        created_at: "2026-06-09T10:00:00.000Z",
+        sequence_number: null,
+        run_lifecycle_event: "completed",
+        recommended_followups: [
+          { prompt: "[", kind: "talk" },
+          { prompt: "{", kind: "talk" },
+          { prompt: '"prompt": "Investigate this",', kind: "talk" },
+          {
+            prompt: '{"prompt": "Investigate this", "kind": "talk"},',
+            kind: "talk",
+          },
+          {
+            prompt: '[{"prompt": "Investigate this", "kind": "talk"}',
+            kind: "talk",
+          },
+          { prompt: "}]", kind: "talk" },
+          { prompt: "}, {", kind: "talk" },
+          {
+            prompt: '}, {"prompt": "Investigate this", "kind": "talk"}',
+            kind: "talk",
+          },
+          { prompt: "Review the valid suggestion", kind: "talk" },
+          {
+            prompt: "Generate a follow-up website",
+            kind: "generate",
+            generationType: "website",
+          },
+        ],
+      },
+    ]);
+
+    const marker = await chat.getThreadMessage(actor, threadId, markerId);
+    expect(marker).toMatchObject({
+      id: markerId,
+      role: "assistant",
+      content: null,
+      runLifecycleEvent: "completed",
+      recommendedFollowups: [
+        { prompt: "Review the valid suggestion", kind: "talk" },
+        {
+          prompt: "Generate a follow-up website",
+          kind: "generate",
+          generationType: "website",
+        },
+      ],
+    });
+  });
+});
 
 /** Org-admin model provider upsert through the public route. */
 async function upsertOrgModelProvider(
@@ -1056,6 +1297,62 @@ describe("CHAT-02: queueing and recalling messages", () => {
 });
 
 describe("CHAT-02: org queue markers", () => {
+  it("drains queued chat runs when an interrupt request aborts post-cancel", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    const controller = new AbortController();
+
+    const blocker = await chat.requestSendMessage(
+      actor,
+      { agentId, prompt: "occupy org concurrency before interrupt abort" },
+      [201],
+    );
+    if (blocker.status !== 201 || blocker.body.runId === null) {
+      throw new Error("Expected the blocking send to create a run");
+    }
+    expect(blocker.body.status).toBe("pending");
+
+    const queued = await chat.requestSendMessage(
+      actor,
+      { agentId, prompt: "drain after interrupt abort" },
+      [201],
+    );
+    if (queued.status !== 201 || queued.body.runId === null) {
+      throw new Error("Expected the second send to create a queued run");
+    }
+    expect(queued.body.status).toBe("queued");
+
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        const error = new Error("abort after interrupt cancel commit");
+        error.name = "AbortError";
+        controller.abort(error);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: blocker.body.threadId,
+        interruptsRunId: blocker.body.runId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+      controller.signal,
+    );
+
+    await waitForRunStatus(actor, blocker.body.runId, "cancelled");
+    await waitForRunStatus(actor, queued.body.runId, "pending");
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(queued.body.runId);
+    expect(claim.prompt).toBe("drain after interrupt abort");
+
+    await api.requestCancelRun(actor, queued.body.runId, [200]);
+  });
+
   it("marks queued chat runs and revokes the marker on dequeue", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -1384,6 +1681,110 @@ describe("CHAT-02: explicit provider pins", () => {
         await api.requestCancelRun(actor, vm0Body.runId, [200]);
       }
     }
+  }, 90_000);
+
+  it("passes Codex fast mode only for feature-enabled ChatGPT subscription GPT-5.5 sends", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    const actorWithOrg = { ...actor, orgId };
+
+    await misc.upsertPersonalModelProvider(
+      actor,
+      {
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+        secrets: { CODEX_AUTH_JSON: codexAuthJson() },
+      },
+      [200, 201],
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+      {
+        model: "gpt-5.4",
+        isDefault: false,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
+
+    const switchOffThreadId = randomUUID();
+    const switchOff = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "run codex fast with switch off",
+        clientThreadId: switchOffThreadId,
+        modelSelection: {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel: "gpt-5.5",
+        },
+        runOptions: { codexServiceTier: "fast" },
+      },
+      [400],
+    );
+    expectApiError(switchOff.body);
+    expect(switchOff.body.error.message).toBe(
+      "Codex fast mode is not enabled for this workspace",
+    );
+    await chat.requestReadThread(actor, switchOffThreadId, [404]);
+
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.CodexFastMode]: true,
+    });
+
+    const fast = await sendChatRun(actor, {
+      agentId,
+      prompt: "run codex fast",
+      modelSelection: {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "gpt-5.5",
+      },
+      runOptions: { codexServiceTier: "fast" },
+    });
+    const { claim } = await claimChatRun(runnerGroup, fast.runId);
+    const environment = claimEnvironment(claim);
+    expect(claim.cliAgentType).toBe("codex");
+    expect(environment.OPENAI_MODEL).toBe("gpt-5.5");
+    expect(environment.VM0_CODEX_SERVICE_TIER).toBe("fast");
+    expect(environment.CHATGPT_ACCESS_TOKEN).toBe(
+      modelProviderSecretPlaceholder(
+        "codex-oauth-token",
+        "CHATGPT_ACCESS_TOKEN",
+      ),
+    );
+    await cancelChatRun(actor, fast.runId);
+
+    const rejectedThreadId = randomUUID();
+    const rejected = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "5.4 cannot fast",
+        clientThreadId: rejectedThreadId,
+        modelSelection: {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel: "gpt-5.4",
+        },
+        runOptions: { codexServiceTier: "fast" },
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 runs",
+    );
+    await chat.requestReadThread(actor, rejectedThreadId, [404]);
   }, 90_000);
 
   it("routes OpenRouter provider pins through runtime model aliases and firewall auth", async () => {
@@ -1916,6 +2317,74 @@ describe("CHAT-02: incomplete-round context", () => {
   }, 90_000);
 });
 
+describe("CHAT-02: initial thinking indicator", () => {
+  it("persists a fast assistant thinking marker with paragraphs for active web chat runs", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
+
+    let upstreamAuthorization: string | null = null;
+    let promptPayload = "";
+    const thinkingResponse =
+      "Reviewing the launch request and recent context.\n\nOrganizing the checklist into practical sections before the main response starts.";
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          upstreamAuthorization = request.headers.get("authorization");
+          const payload = openRouterBodySchema.parse(await request.json());
+          promptPayload = payload.messages
+            .map((message) => {
+              return message.content;
+            })
+            .join("\n\n");
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: thinkingResponse },
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "Draft a launch checklist",
+    });
+
+    const page = await waitForThreadMessages(actor, run.threadId, (items) => {
+      return assistantMessages(items).some((message) => {
+        return (
+          message.runId === run.runId &&
+          message.content === null &&
+          message.thinking === thinkingResponse
+        );
+      });
+    });
+    const marker = assistantMessages(page.messages).find((message) => {
+      return (
+        message.runId === run.runId && message.thinking === thinkingResponse
+      );
+    });
+    expect(marker).toMatchObject({
+      role: "assistant",
+      content: null,
+      runId: run.runId,
+      runEventId: "thinking:initial",
+      thinking: thinkingResponse,
+    });
+    expect(upstreamAuthorization).toBe("Bearer thinking-key");
+    expect(promptPayload).toContain("few short paragraphs");
+    expect(promptPayload).toContain("Match the current user's language");
+    expect(promptPayload).toContain("Draft a launch checklist");
+
+    await cancelChatRun(actor, run.runId);
+  });
+});
+
 describe("CHAT-02: prior rounds and thread titles", () => {
   it("carries prior completed rounds, generates the thread title, and rejects lifecycle follow-up revokes", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -1930,11 +2399,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
           upstreamAuthorization = request.headers.get("authorization");
           const payload = openRouterBodySchema.parse(await request.json());
           const systemContent = payload.messages[0]?.content ?? "";
-          if (
-            systemContent.includes(
-              "Generate up to three concise follow-up prompts",
-            )
-          ) {
+          if (systemContent.includes("concise follow-up prompts")) {
             return HttpResponse.json({
               choices: [
                 {
@@ -2125,7 +2590,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, video.runId);
   }, 90_000);
 
-  it("keeps an attached illustration style sticky across follow-ups and clears it for new threads", async () => {
+  it("is one-shot: a follow-up without re-attaching the style relies on the replayed marker, not a live block", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
@@ -2133,7 +2598,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       throw new Error("Expected a registered illustration style");
     }
 
-    // Turn 1: the user explicitly attaches the style.
+    // Turn 1: the user explicitly attaches the style — the live block is present.
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "draw a fox",
@@ -2161,8 +2626,10 @@ describe("CHAT-02: generation templates and attachments", () => {
       });
     });
 
-    // Turn 2: a follow-up in the same thread without re-attaching the style
-    // still gets it — inherited from thread-sticky state (vm0-ai/vm0#17525).
+    // Turn 2: a follow-up without re-attaching the style gets no live block —
+    // there is no thread-sticky DB default (see resolveThreadGenerationTemplatePrompt).
+    // It only sees the selection via the marker replayed inside "# Web Chat Run
+    // Context" for turn 1's message.
     const second = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
@@ -2170,12 +2637,14 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const secondPrompt = (await api.readRun(actor, second.runId))
       .appendSystemPrompt;
-    expect(secondPrompt).toContain("# Artifact Template Context");
+    expect(secondPrompt).not.toContain("# Artifact Template Context");
+    expect(secondPrompt).toContain("# Web Chat Run Context");
+    expect(secondPrompt).toContain("Selected a template");
     expect(secondPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, second.runId);
 
-    // Turn 3: attaching a video preset in the same thread keeps it alongside the
-    // illustration style — multiple template types coexist per thread.
+    // Turn 3: attaching a video preset now only resolves the video template live
+    // — templates no longer merge across types via thread-sticky DB state.
     const videoTemplate = VIDEO_TEMPLATE_ITEMS.find((item) => {
       return item.id === "video-template:epic-grandeur";
     });
@@ -2193,21 +2662,27 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const thirdPrompt = (await api.readRun(actor, third.runId))
       .appendSystemPrompt;
-    // Both template types coexist in the thread, so the combined prompt carries
-    // each type's distinguishing command and facts.
     expect(thirdPrompt).toContain(
       `Template: ${videoTemplate.title} (${videoTemplate.id})`,
     );
     expect(thirdPrompt).toContain(
       `zero generate video --provider built-in --template ${videoTemplate.id}`,
     );
-    expect(thirdPrompt).toContain(
+    // The illustration style is gone entirely for this turn: it's not live
+    // (explicit selection this turn is video, not illustration), and turn 2's
+    // cancellation put an incomplete round in the thread, which suppresses the
+    // general "# Web Chat Run Context" replay (turn 1's marker included) in
+    // favor of resuming the existing session. An explicit selection this turn
+    // means there's nothing to fall back to either — see the "no explicit
+    // selection" case covered by the workflow test below.
+    expect(thirdPrompt).not.toContain(
       `zero generate image --provider built-in --style ${style.illustrationStyleId}`,
     );
-    expect(thirdPrompt).toContain(style.illustrationStyleId);
+    expect(thirdPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, third.runId);
 
-    // A brand-new thread starts clean: neither template carries over.
+    // A brand-new thread starts clean: neither template carries over — there is
+    // no DB-backed cross-thread state and no prior turns to replay a marker from.
     const fresh = await sendChatRun(actor, { agentId, prompt: "draw a cat" });
     const freshPrompt = (await api.readRun(actor, fresh.runId))
       .appendSystemPrompt;
@@ -2221,7 +2696,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, fresh.runId);
   }, 120_000);
 
-  it("injects workflow templates as one-shot context without merging sticky artifact templates", async () => {
+  it("injects workflow templates as one-shot context, independent of illustration template markers", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
@@ -2265,7 +2740,13 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(workflowPrompt).toContain("Use the workflow-setup skill");
     expect(workflowPrompt).toContain("Gmail label-applied automation");
     expect(workflowPrompt).not.toContain("# Artifact Template Context");
-    expect(workflowPrompt).not.toContain(style.illustrationStyleId);
+    // The "sticky" run was cancelled, so it's now an incomplete round replayed
+    // via "# Incomplete Rounds Context" — its illustration marker legitimately
+    // shows up there. That's independent of (and doesn't contaminate) the live
+    // workflow block asserted above: workflow selections never get their own
+    // replay marker (checked below), so nothing here merges the two types.
+    expect(workflowPrompt).toContain("# Incomplete Rounds Context");
+    expect(workflowPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, workflow.runId);
 
     const followUp = await sendChatRun(actor, {
@@ -2275,9 +2756,19 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const followUpPrompt = (await api.readRun(actor, followUp.runId))
       .appendSystemPrompt;
+    // No explicit selection this turn, so there is no live block for either
+    // type. Both "sticky" and "workflow" were cancelled, so the general
+    // "# Web Chat Run Context" replay is suppressed in favor of resuming the
+    // existing session (see prepareRecentChatContext) — the illustration
+    // selection surfaces instead via the incomplete round replay's own
+    // marker. Workflow selections never get a marker at all (one-shot by
+    // design), so nothing carries the workflow template forward.
     expect(followUpPrompt).not.toContain("# Workflow Template Context");
     expect(followUpPrompt).not.toContain(workflowTemplate.id);
-    expect(followUpPrompt).toContain("# Artifact Template Context");
+    expect(followUpPrompt).not.toContain("# Artifact Template Context");
+    expect(followUpPrompt).not.toContain("# Web Chat Run Context");
+    expect(followUpPrompt).toContain("# Incomplete Rounds Context");
+    expect(followUpPrompt).toContain("Selected a template");
     expect(followUpPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, followUp.runId);
   }, 120_000);

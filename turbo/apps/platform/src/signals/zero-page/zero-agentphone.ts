@@ -148,8 +148,10 @@ export const watchAgentPhoneConnection$ = command(
     set(internalAgentPhoneStatus$, current);
     await set(
       setAblyLoop$,
-      "agentphone:changed",
-      refreshAgentPhoneFromChange$,
+      {
+        topic: "agentphone:changed",
+        loopCommand$: refreshAgentPhoneFromChange$,
+      },
       signal,
     );
   },

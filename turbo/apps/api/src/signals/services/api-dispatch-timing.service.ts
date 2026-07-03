@@ -6,6 +6,9 @@ import { onRejection } from "../utils";
 
 type ApiDispatchTimingSpanKind = "top_level" | "nested";
 export type ApiDispatchTimingDimensions = Readonly<Record<string, string>>;
+export type ApiDispatchTimingDimensionsInput =
+  | ApiDispatchTimingDimensions
+  | (() => ApiDispatchTimingDimensions | undefined);
 
 export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_agent_run"
@@ -30,6 +33,18 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_zero_web_chat_resolve_model_pin"
   | "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission"
   | "api_dispatch_pre_create_zero_web_chat_build_create_run_args"
+  | "api_dispatch_pre_create_zero_slack_entrypoint_gap"
+  | "api_dispatch_pre_create_zero_slack_background_start_gap"
+  | "api_dispatch_pre_create_zero_slack_resolve_message"
+  | "api_dispatch_pre_create_zero_slack_set_thread_status"
+  | "api_dispatch_pre_create_zero_slack_build_run_params"
+  | "api_dispatch_pre_create_zero_slack_create_run"
+  | "api_dispatch_pre_create_zero_workflow_trigger_entrypoint_gap"
+  | "api_dispatch_pre_create_zero_workflow_trigger_check_active_run"
+  | "api_dispatch_pre_create_zero_workflow_trigger_check_target_access"
+  | "api_dispatch_pre_create_zero_workflow_trigger_resolve_model_context"
+  | "api_dispatch_pre_create_zero_workflow_trigger_build_run_input"
+  | "api_dispatch_pre_create_zero_workflow_trigger_create_run"
   | "api_dispatch_check_org_tier"
   | "api_dispatch_prepare_run_context"
   | "api_dispatch_prepare_context_feature_switches"
@@ -81,10 +96,18 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_update_run_runner_group"
   | "api_dispatch_admission_lock_wait"
   | "api_dispatch_check_concurrency_limit"
+  | "api_dispatch_concurrency_preflight_lock_wait"
+  | "api_dispatch_concurrency_preflight_check"
   | "api_dispatch_insert_run_record"
   | "api_dispatch_prepare_storage_manifest"
   | "api_dispatch_prepare_storage_manifest_resolve_inputs"
   | "api_dispatch_prepare_storage_manifest_ensure_artifacts"
+  | "api_dispatch_prepare_storage_manifest_ensure_artifact_lookup_storage"
+  | "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage"
+  | "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage"
+  | "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized"
+  | "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects"
+  | "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version"
   | "api_dispatch_prepare_storage_manifest_load_storage_index"
   | "api_dispatch_prepare_storage_manifest_build_entries"
   | "api_dispatch_prepare_storage_manifest_build_compose_entries"
@@ -115,14 +138,14 @@ export class ApiDispatchTimingCollector {
     spanKind: ApiDispatchTimingSpanKind,
     startedAt: number,
     finishedAt: number = now(),
-    dimensions?: ApiDispatchTimingDimensions,
+    dimensions?: ApiDispatchTimingDimensionsInput,
   ): void {
     this.records.push({
       actionType,
       spanKind,
       durationMs: Math.max(0, finishedAt - startedAt),
       timestamp: new Date(finishedAt).toISOString(),
-      dimensions,
+      dimensions: resolveApiDispatchTimingDimensions(dimensions),
     });
   }
 
@@ -130,7 +153,7 @@ export class ApiDispatchTimingCollector {
     actionType: ApiDispatchTimingActionType,
     spanKind: ApiDispatchTimingSpanKind,
     operation: () => T | Promise<T>,
-    dimensions?: ApiDispatchTimingDimensions,
+    dimensions?: ApiDispatchTimingDimensionsInput,
   ): Promise<T> {
     const startedAt = now();
     const result = await onRejection(
@@ -185,10 +208,16 @@ export async function measureApiDispatchTiming<T>(
   actionType: ApiDispatchTimingActionType,
   spanKind: ApiDispatchTimingSpanKind,
   operation: () => T | Promise<T>,
-  dimensions?: ApiDispatchTimingDimensions,
+  dimensions?: ApiDispatchTimingDimensionsInput,
 ): Promise<T> {
   if (!collector) {
     return await operation();
   }
   return await collector.measure(actionType, spanKind, operation, dimensions);
+}
+
+function resolveApiDispatchTimingDimensions(
+  dimensions: ApiDispatchTimingDimensionsInput | undefined,
+): ApiDispatchTimingDimensions | undefined {
+  return typeof dimensions === "function" ? dimensions() : dimensions;
 }

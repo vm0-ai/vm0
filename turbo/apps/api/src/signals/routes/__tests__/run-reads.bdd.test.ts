@@ -1,9 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
+import { gzipSync } from "node:zlib";
 
-import {
-  CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
-  RESUME_SESSION_HISTORY_MAX_BYTES,
-} from "@vm0/api-contracts/contracts/runners";
+import { CANONICAL_CLAUDE_MEMORY_MOUNT_PATH } from "@vm0/api-contracts/contracts/runners";
 import { delay } from "signal-timers";
 import { describe, expect, it } from "vitest";
 
@@ -97,6 +95,11 @@ function s3CommandKey(command: unknown): string | undefined {
   return (command as { readonly input?: { readonly Key?: string } }).input?.Key;
 }
 
+function s3CommandName(command: unknown): string | undefined {
+  return (command as { readonly constructor?: { readonly name?: string } })
+    .constructor?.name;
+}
+
 interface S3NotFoundError extends Error {
   Code: string;
   $metadata: { httpStatusCode: number };
@@ -113,7 +116,10 @@ function s3ObjectNotFoundError(): S3NotFoundError {
 function countSessionHistoryBlobReads(hash: string): number {
   const blobKey = `blobs/${hash}.blob`;
   return context.mocks.s3.send.mock.calls.filter(([command]) => {
-    return s3CommandKey(command) === blobKey;
+    return (
+      s3CommandName(command) === "GetObjectCommand" &&
+      s3CommandKey(command) === blobKey
+    );
   }).length;
 }
 
@@ -133,46 +139,12 @@ function hasManifestPresign(keys: readonly (string | undefined)[]): boolean {
   });
 }
 
-function s3TextBody(text: string): AsyncIterable<Buffer> {
+function s3BytesBody(bytes: Buffer): AsyncIterable<Buffer> {
   return {
     async *[Symbol.asyncIterator]() {
-      yield Buffer.from(text, "utf8");
+      yield bytes;
     },
   };
-}
-
-async function createHashBackedResumeRun(
-  actor: ApiTestUser,
-  composeId: string,
-  historyHash: string,
-  prefix: string,
-): Promise<{ readonly runId: string }> {
-  const first = await api.createDirectRun(actor, {
-    agentComposeId: composeId,
-    prompt: `${prefix} first run`,
-  });
-  const firstClaim = await api.claimRunnerJob(first.runId);
-  const checkpoint = await webhooks.requestAgentCheckpoint(
-    {
-      runId: first.runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `bdd-cli-${first.runId}`,
-      cliAgentSessionHistoryHash: historyHash,
-    },
-    sandboxHeaders(firstClaim.sandboxToken),
-    [200],
-  );
-  mustOk(checkpoint, "checkpoint webhook");
-  await webhooks.requestAgentComplete(
-    { runId: first.runId, exitCode: 0 },
-    sandboxHeaders(firstClaim.sandboxToken),
-    [200],
-  );
-
-  return await api.createDirectRun(actor, {
-    checkpointId: checkpoint.body.checkpointId,
-    prompt: `${prefix} resume run`,
-  });
 }
 
 /**
@@ -978,6 +950,175 @@ describe("RUN-04: session and checkpoint reads", () => {
 });
 
 describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning", () => {
+  it("returns compressed resume history refs", async () => {
+    const actor = await entitledActor();
+    const composeName = `bdd-gzip-resume-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const history = `{"type":"init"}\n{"type":"human","text":"compressed-${randomUUID()}"}\n`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const compressedHistory = gzipSync(Buffer.from(history, "utf8"));
+    const compressedKey = `blobs/${historyHash}.blob.gz`;
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (s3CommandKey(command) === compressedKey) {
+        return Promise.resolve({
+          ContentLength: compressedHistory.length,
+          Body: s3BytesBody(compressedHistory),
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "create compressed checkpoint",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const headers = sandboxHeaders(claim.sandboxToken);
+    const prepared = await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: historyHash,
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: compressedHistory.length,
+        encoding: "gzip",
+      },
+      headers,
+      [200],
+    );
+    expect(prepared.body).toMatchObject({
+      existing: false,
+      encoding: "gzip",
+    });
+    const duplicatePrepared =
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash: historyHash,
+          rawSize: Buffer.byteLength(history, "utf8"),
+          encodedSize: compressedHistory.length + 1,
+          encoding: "gzip",
+        },
+        headers,
+        [200],
+      );
+    expect(duplicatePrepared.body).toStrictEqual({
+      existing: true,
+      encoding: "gzip",
+    });
+    const checkpointed = await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${run.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      headers,
+      [200],
+    );
+    mustOk(checkpointed, "compressed resume checkpoint");
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0 },
+      headers,
+      [200],
+    );
+
+    const compressedResume = await api.createDirectRun(actor, {
+      checkpointId: checkpointed.body.checkpointId,
+      prompt: "resume with compressed ref",
+    });
+    const compressedClaim = await api.claimRunnerJob(compressedResume.runId);
+    expect(compressedClaim.resumeSession).toMatchObject({
+      sessionId: `bdd-cli-${run.runId}`,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: expect.any(String),
+        encoding: "gzip",
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: compressedHistory.length,
+      },
+    });
+    await api.requestCancelRun(actor, compressedResume.runId, [200]);
+  });
+
+  it("rejects identity repair for a missing compressed session history blob", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-gzip-repair");
+    const history = `{"type":"init"}\n{"type":"human","text":"repair-${randomUUID()}"}\n`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const compressedKey = `blobs/${historyHash}.blob.gz`;
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (s3CommandKey(command) === compressedKey) {
+        return Promise.reject(s3ObjectNotFoundError());
+      }
+      return Promise.resolve({});
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "create missing compressed blob metadata",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const headers = sandboxHeaders(claim.sandboxToken);
+    const compressedPrepare =
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash: historyHash,
+          rawSize: Buffer.byteLength(history, "utf8"),
+          encodedSize: gzipSync(Buffer.from(history, "utf8")).length,
+          encoding: "gzip",
+        },
+        headers,
+        [200],
+      );
+    expect(compressedPrepare.body).toMatchObject({
+      existing: false,
+      encoding: "gzip",
+    });
+
+    const mismatchedEncodedSize =
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash: historyHash,
+          rawSize: Buffer.byteLength(history, "utf8"),
+          encodedSize: gzipSync(Buffer.from(history, "utf8")).length + 1,
+          encoding: "gzip",
+        },
+        headers,
+        [400],
+      );
+    expectApiError(mismatchedEncodedSize.body);
+    expect(mismatchedEncodedSize.body.error.message).toBe(
+      "Session history encoded size does not match the existing blob",
+    );
+
+    const identityRepair = await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: historyHash,
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: Buffer.byteLength(history, "utf8"),
+        encoding: "identity",
+      },
+      headers,
+      [400],
+    );
+    expectApiError(identityRepair.body);
+    expect(identityRepair.body.error.message).toBe(
+      "Identity session history upload cannot repair a compressed blob",
+    );
+  });
+
   it("restores volumes, memory, and conversation state when resuming checkpoints", async () => {
     const storages = createStoragesBddApi(context);
     const actor = await entitledActor();
@@ -1022,6 +1163,11 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       const input = (command as { readonly input?: { readonly Key?: string } })
         .input;
       if (input?.Key === `blobs/${historyHash}.blob`) {
+        if (s3CommandName(command) === "HeadObjectCommand") {
+          return Promise.resolve({
+            ContentLength: Buffer.byteLength(history, "utf8"),
+          });
+        }
         return Promise.resolve({
           Body: {
             async *[Symbol.asyncIterator]() {
@@ -1066,12 +1212,13 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       hasManifestPresign(presignedUrlKeysSince(presignCallsBeforeRun)),
     ).toBeFalsy();
 
+    const cliAgentSessionId = `bdd-cli-${r1.runId}`;
     const headers1 = sandboxHeaders(claim1.sandboxToken);
     const checkpointed = await webhooks.requestAgentCheckpoint(
       {
         runId: r1.runId,
         cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-cli-${r1.runId}`,
+        cliAgentSessionId,
         cliAgentSessionHistoryHash: historyHash,
         artifactSnapshots: [
           {
@@ -1104,40 +1251,48 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     expect(countSessionHistoryBlobReads(historyHash)).toBe(
       readsBeforeRefResumeCreate,
     );
-    const refClaim = await api.claimRunnerJob(refResumed.runId, {
-      capabilities: ["resumeSessionHistoryRef"],
-    });
+    const refClaim = await api.claimRunnerJob(refResumed.runId);
     expect(countSessionHistoryBlobReads(historyHash)).toBe(
       readsBeforeRefResumeCreate,
     );
     expect(refClaim.resumeSession).toStrictEqual({
-      sessionId: `bdd-cli-${r1.runId}`,
+      sessionId: cliAgentSessionId,
       historyRef: {
         kind: "blob",
         hash: historyHash,
         url: "https://r2.example.com/storages/presigned?sig=bdd",
+        encoding: "identity",
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: Buffer.byteLength(history, "utf8"),
       },
     });
     await api.requestCancelRun(actor, refResumed.runId, [200]);
 
-    const readsBeforeInlineResumeCreate =
+    const readsBeforeStorageResumeCreate =
       countSessionHistoryBlobReads(historyHash);
     const resumed = await api.createDirectRun(actor, {
       checkpointId,
       prompt: "resume from the checkpoint",
     });
     expect(countSessionHistoryBlobReads(historyHash)).toBe(
-      readsBeforeInlineResumeCreate,
+      readsBeforeStorageResumeCreate,
     );
     const claim2 = await api.claimRunnerJob(resumed.runId);
     expect(countSessionHistoryBlobReads(historyHash)).toBe(
-      readsBeforeInlineResumeCreate + 1,
+      readsBeforeStorageResumeCreate,
     );
     expect(claim2.checkpointId).toBe(checkpointId);
     expect(claim2.vars).toStrictEqual({ VOL_VERSION: versionPrefix });
     expect(claim2.resumeSession).toStrictEqual({
       sessionId: `bdd-cli-${r1.runId}`,
-      sessionHistory: history,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: "https://r2.example.com/storages/presigned?sig=bdd",
+        encoding: "identity",
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: Buffer.byteLength(history, "utf8"),
+      },
     });
     expect(claim2.storageManifest?.storages).toMatchObject([
       { name: "data", vasVersionId: volumeVersion },
@@ -1263,7 +1418,14 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     const continuedClaim = await api.claimRunnerJob(continued.runId);
     expect(continuedClaim.resumeSession).toStrictEqual({
       sessionId: `bdd-cli-${r1.runId}`,
-      sessionHistory: history,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: "https://r2.example.com/storages/presigned?sig=bdd",
+        encoding: "identity",
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: Buffer.byteLength(history, "utf8"),
+      },
     });
     const continuedMemory = continuedClaim.storageManifest?.artifacts.find(
       (artifact) => {
@@ -1275,151 +1437,6 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       missingRootPolicy: "preserveParentVersion",
     });
     await api.requestCancelRun(actor, continued.runId, [200]);
-  });
-
-  it("fails a hash-backed resume run instead of leaving old runner claims pending when history is missing", async () => {
-    const actor = await entitledActor();
-    const compose = await createClaudeCompose(actor, "bdd-missing-history");
-    const missingHistoryHash = createHash("sha256")
-      .update(`missing resume history ${randomUUID()}`)
-      .digest("hex");
-
-    context.mocks.s3.send.mockImplementation((command: unknown) => {
-      if (s3CommandKey(command) === `blobs/${missingHistoryHash}.blob`) {
-        return Promise.reject(s3ObjectNotFoundError());
-      }
-      return Promise.resolve({});
-    });
-
-    const resumed = await createHashBackedResumeRun(
-      actor,
-      compose.composeId,
-      missingHistoryHash,
-      "missing history",
-    );
-    const failedClaim = await api.requestClaimRunnerJob(
-      true,
-      resumed.runId,
-      [400],
-    );
-    expectApiError(failedClaim.body);
-    expect(failedClaim.body.error.message).toBe(
-      "Runner job missing resume session history",
-    );
-
-    const failedRun = await api.readRun(actor, resumed.runId);
-    expect(failedRun.status).toBe("failed");
-    expect(failedRun.error).toBe("Runner job missing resume session history");
-    await api.requestClaimRunnerJob(true, resumed.runId, [404]);
-  });
-
-  it("keeps a hash-backed resume run pending when old runner history read fails transiently", async () => {
-    const actor = await entitledActor();
-    const compose = await createClaudeCompose(actor, "bdd-transient-history");
-    const historyHash = createHash("sha256")
-      .update(`transient resume history ${randomUUID()}`)
-      .digest("hex");
-
-    context.mocks.s3.send.mockImplementation((command: unknown) => {
-      if (s3CommandKey(command) === `blobs/${historyHash}.blob`) {
-        return Promise.reject(new Error("transient S3 timeout"));
-      }
-      return Promise.resolve({});
-    });
-
-    const resumed = await createHashBackedResumeRun(
-      actor,
-      compose.composeId,
-      historyHash,
-      "transient history",
-    );
-    await api.requestClaimRunnerJob(true, resumed.runId, [500]);
-
-    const pendingRun = await api.readRun(actor, resumed.runId);
-    expect(pendingRun.status).toBe("pending");
-    expect(pendingRun.error).toBeUndefined();
-    await api.requestCancelRun(actor, resumed.runId, [200]);
-  });
-
-  it("fails a hash-backed resume run when old runner history hash validation fails", async () => {
-    const actor = await entitledActor();
-    const compose = await createClaudeCompose(actor, "bdd-bad-history-hash");
-    const historyHash = createHash("sha256")
-      .update(`expected resume history ${randomUUID()}`)
-      .digest("hex");
-
-    context.mocks.s3.send.mockImplementation((command: unknown) => {
-      if (s3CommandKey(command) === `blobs/${historyHash}.blob`) {
-        return Promise.resolve({
-          Body: s3TextBody(`corrupt resume history ${randomUUID()}`),
-        });
-      }
-      return Promise.resolve({});
-    });
-
-    const resumed = await createHashBackedResumeRun(
-      actor,
-      compose.composeId,
-      historyHash,
-      "bad history hash",
-    );
-    const failedClaim = await api.requestClaimRunnerJob(
-      true,
-      resumed.runId,
-      [400],
-    );
-    expectApiError(failedClaim.body);
-    expect(failedClaim.body.error.message).toBe(
-      "Runner job has invalid resume session history",
-    );
-
-    const failedRun = await api.readRun(actor, resumed.runId);
-    expect(failedRun.status).toBe("failed");
-    expect(failedRun.error).toBe(
-      "Runner job has invalid resume session history",
-    );
-    await api.requestClaimRunnerJob(true, resumed.runId, [404]);
-  });
-
-  it("fails a hash-backed resume run when old runner history is oversized", async () => {
-    const actor = await entitledActor();
-    const compose = await createClaudeCompose(actor, "bdd-oversized-history");
-    const historyHash = createHash("sha256")
-      .update(`oversized resume history ${randomUUID()}`)
-      .digest("hex");
-
-    context.mocks.s3.send.mockImplementation((command: unknown) => {
-      if (s3CommandKey(command) === `blobs/${historyHash}.blob`) {
-        return Promise.resolve({
-          ContentLength: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
-          Body: s3TextBody(""),
-        });
-      }
-      return Promise.resolve({});
-    });
-
-    const resumed = await createHashBackedResumeRun(
-      actor,
-      compose.composeId,
-      historyHash,
-      "oversized history",
-    );
-    const failedClaim = await api.requestClaimRunnerJob(
-      true,
-      resumed.runId,
-      [400],
-    );
-    expectApiError(failedClaim.body);
-    expect(failedClaim.body.error.message).toBe(
-      "Runner job has invalid resume session history",
-    );
-
-    const failedRun = await api.readRun(actor, resumed.runId);
-    expect(failedRun.status).toBe("failed");
-    expect(failedRun.error).toBe(
-      "Runner job has invalid resume session history",
-    );
-    await api.requestClaimRunnerJob(true, resumed.runId, [404]);
   });
 });
 

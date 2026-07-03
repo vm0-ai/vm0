@@ -22,6 +22,7 @@ import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
 import { setupAgentPhoneConnectPage$ } from "./zero-page/agentphone-connect-page.ts";
 import { setupGithubConnectPage$ } from "./zero-page/github-connect-page.ts";
+import { setupTeamsConnectPage$ } from "./zero-page/teams-connect-page.ts";
 import { setupTelegramConnectPage$ } from "./zero-page/telegram-connect-page.ts";
 import { setupTelegramSettingsPage$ } from "./zero-page/telegram-settings-page.ts";
 import { setupActivityPage$ } from "./activity-page/activity-page-setup.ts";
@@ -56,6 +57,7 @@ import { setupReportErrorPage$ } from "./report-error/report-error-page-setup.ts
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
 import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
+import { setupExportPage$ } from "./export-page/export-page-setup.ts";
 import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { hideAppSkeleton$, startSkeletonCycling$ } from "./app-skeleton.ts";
@@ -225,6 +227,10 @@ const ROUTE_CONFIG = [
     setup: setupAuthSidebarPageWrapper(setupSlackConnectPage$),
   },
   {
+    path: ROUTES.settingsTeams,
+    setup: setupAuthSidebarPageWrapper(setupTeamsConnectPage$),
+  },
+  {
     path: ROUTES.settingsTelegram,
     setup: setupAuthSidebarPageWrapper(setupTelegramSettingsPage$),
   },
@@ -283,6 +289,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.usage,
     setup: setupAuthSidebarPageWrapper(setupUsagePage$),
+  },
+  {
+    path: ROUTES.exportData,
+    setup: setupAuthPageWrapper(setupExportPage$),
   },
   {
     path: ROUTES.onboarding,

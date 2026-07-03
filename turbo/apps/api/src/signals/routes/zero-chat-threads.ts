@@ -23,6 +23,7 @@ import {
   zeroChatSearch,
   zeroChatThreadArtifacts,
   zeroChatThreadDetail,
+  zeroChatThreadMessageById,
   zeroChatThreadDraftIds,
   zeroChatThreadList,
   zeroChatThreadMessagesPage,
@@ -37,6 +38,7 @@ import { zeroChatThreadComputerUseHostRoutes } from "./zero-chat-threads-compute
 import { zeroChatThreadCreateRoutes } from "./zero-chat-threads-create";
 import { zeroChatThreadDeleteRoutes } from "./zero-chat-threads-delete";
 import { zeroChatThreadGetRoutes } from "./zero-chat-threads-get";
+import { zeroChatThreadsHtmlArtifactEditSnapshotRoutes } from "./zero-chat-threads-html-artifact-edit-snapshot";
 import { zeroChatThreadMarkAgentReadRoutes } from "./zero-chat-threads-mark-agent-read";
 import { zeroChatThreadMarkReadRoutes } from "./zero-chat-threads-mark-read";
 import { zeroChatThreadModelSelectionRoutes } from "./zero-chat-threads-model-selection";
@@ -112,6 +114,24 @@ const listChatThreadMessagesInner$ = computed(async (get) => {
       hasHistoryBefore: page.hasHistoryBefore,
     },
   };
+});
+
+const getChatThreadMessageInner$ = computed(async (get) => {
+  const auth = get(authContext$);
+  const params = get(pathParamsOf(chatThreadMessagesContract.get));
+
+  const message = await get(
+    zeroChatThreadMessageById({
+      threadId: params.threadId,
+      userId: auth.userId,
+      messageId: params.messageId,
+    }),
+  );
+  if (!message) {
+    return chatThreadNotFound();
+  }
+
+  return { status: 200 as const, body: message };
 });
 
 const listChatThreadsInner$ = computed(async (get) => {
@@ -321,6 +341,7 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     route: chatThreadArtifactsContract.list,
     handler: authRoute({}, listChatThreadArtifactsInner$),
   },
+  ...zeroChatThreadsHtmlArtifactEditSnapshotRoutes,
   {
     route: chatThreadGithubPrsContract.list,
     handler: authRoute(
@@ -331,6 +352,10 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadMessagesContract.list,
     handler: authRoute({}, listChatThreadMessagesInner$),
+  },
+  {
+    route: chatThreadMessagesContract.get,
+    handler: authRoute({}, getChatThreadMessageInner$),
   },
   {
     route: chatSearchContract.search,

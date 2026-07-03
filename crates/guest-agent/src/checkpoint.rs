@@ -6,27 +6,111 @@ use crate::content_hash;
 use crate::env;
 use crate::error::AgentError;
 use crate::http::HttpClient;
-use crate::paths;
 use crate::run_context::GuestRuntime;
 use crate::session_history;
 use crate::session_history_identity::{
     FinalSessionHistoryIdentityBuildError, build_final_session_history_identity,
 };
+use api_contracts::generated::constants::runners::{
+    RESUME_SESSION_HISTORY_MAX_BYTES, SESSION_HISTORY_ENCODING_GZIP,
+    SESSION_HISTORY_ENCODING_IDENTITY, SESSION_HISTORY_GZIP_MIN_BYTES,
+};
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 use bytes::Bytes;
+use flate2::{Compression, write::GzEncoder};
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use std::io::ErrorKind;
+use std::borrow::Cow;
+use std::io::{ErrorKind, Write};
 use std::time::Duration;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-
 #[derive(Clone, Copy)]
 enum CheckpointMode {
     Success,
     Recovery,
+}
+
+enum SessionHistoryUploadBody {
+    Identity(Vec<u8>),
+    Gzip { raw: Vec<u8>, gzip: Vec<u8> },
+}
+
+struct SessionHistoryUpload {
+    raw_size: u64,
+    body: SessionHistoryUploadBody,
+}
+
+impl SessionHistoryUpload {
+    fn requested_encoding(&self) -> &'static str {
+        match self.body {
+            SessionHistoryUploadBody::Identity(_) => SESSION_HISTORY_ENCODING_IDENTITY,
+            SessionHistoryUploadBody::Gzip { .. } => SESSION_HISTORY_ENCODING_GZIP,
+        }
+    }
+
+    fn encoded_size(&self) -> u64 {
+        match &self.body {
+            SessionHistoryUploadBody::Identity(raw) => raw.len() as u64,
+            SessionHistoryUploadBody::Gzip { gzip, .. } => gzip.len() as u64,
+        }
+    }
+
+    fn into_server_accepted_bytes(self, accepted_encoding: Option<&str>) -> (&'static str, Bytes) {
+        match self.body {
+            SessionHistoryUploadBody::Identity(raw) => {
+                (SESSION_HISTORY_ENCODING_IDENTITY, Bytes::from(raw))
+            }
+            SessionHistoryUploadBody::Gzip { raw: _, gzip }
+                if accepted_encoding == Some(SESSION_HISTORY_ENCODING_GZIP) =>
+            {
+                (SESSION_HISTORY_ENCODING_GZIP, Bytes::from(gzip))
+            }
+            SessionHistoryUploadBody::Gzip { raw, .. } => {
+                (SESSION_HISTORY_ENCODING_IDENTITY, Bytes::from(raw))
+            }
+        }
+    }
+}
+
+fn gzip_session_history(history_bytes: &[u8]) -> Result<Vec<u8>, AgentError> {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+    encoder
+        .write_all(history_bytes)
+        .map_err(|error| AgentError::Checkpoint(format!("gzip session history: {error}")))?;
+    encoder
+        .finish()
+        .map_err(|error| AgentError::Checkpoint(format!("finish gzip session history: {error}")))
+}
+
+fn build_session_history_upload(
+    history_bytes: Vec<u8>,
+) -> Result<SessionHistoryUpload, AgentError> {
+    let raw_size = history_bytes.len() as u64;
+    if history_bytes.len() < SESSION_HISTORY_GZIP_MIN_BYTES as usize {
+        return Ok(SessionHistoryUpload {
+            raw_size,
+            body: SessionHistoryUploadBody::Identity(history_bytes),
+        });
+    }
+
+    let gzip_bytes = gzip_session_history(&history_bytes)?;
+    if gzip_bytes.len() >= history_bytes.len() {
+        return Ok(SessionHistoryUpload {
+            raw_size,
+            body: SessionHistoryUploadBody::Identity(history_bytes),
+        });
+    }
+
+    Ok(SessionHistoryUpload {
+        raw_size,
+        body: SessionHistoryUploadBody::Gzip {
+            raw: history_bytes,
+            gzip: gzip_bytes,
+        },
+    })
 }
 
 impl CheckpointMode {
@@ -103,9 +187,9 @@ struct CheckpointInputs<'a> {
     framework: env::Framework,
     home_dir: &'a str,
     artifact_entries: &'a [env::ArtifactEnv],
-    session_id_file: &'a str,
-    session_history_path_file: &'a str,
-    final_session_history_identity_file: &'a str,
+    session_id_file: Cow<'a, str>,
+    session_history_path_file: Cow<'a, str>,
+    final_session_history_identity_file: Cow<'a, str>,
 }
 
 impl<'a> CheckpointInputs<'a> {
@@ -115,23 +199,11 @@ impl<'a> CheckpointInputs<'a> {
             framework: runtime.config.framework,
             home_dir: &runtime.config.home_dir,
             artifact_entries: &runtime.config.artifacts,
-            session_id_file: runtime.paths.session_id_file(),
-            session_history_path_file: runtime.paths.session_history_path_file(),
-            final_session_history_identity_file: runtime
-                .paths
-                .final_session_history_identity_file(),
-        }
-    }
-
-    fn from_legacy_env() -> Self {
-        Self {
-            run_id: env::run_id(),
-            framework: env::Framework::from_env(),
-            home_dir: env::home_dir(),
-            artifact_entries: env::artifacts(),
-            session_id_file: paths::session_id_file(),
-            session_history_path_file: paths::session_history_path_file(),
-            final_session_history_identity_file: paths::final_session_history_identity_file(),
+            session_id_file: Cow::Borrowed(runtime.paths.session_id_file()),
+            session_history_path_file: Cow::Borrowed(runtime.paths.session_history_path_file()),
+            final_session_history_identity_file: Cow::Borrowed(
+                runtime.paths.final_session_history_identity_file(),
+            ),
         }
     }
 }
@@ -144,18 +216,21 @@ async fn upload_session_history(
     http: &HttpClient,
     run_id: &str,
     history_hash: &str,
-    history_size: u64,
-    history_bytes: Vec<u8>,
+    history_upload: SessionHistoryUpload,
 ) -> Result<(), AgentError> {
     let prep_start = std::time::Instant::now();
     let url = http.checkpoint_prepare_history_url()?;
+    let requested_encoding = history_upload.requested_encoding();
+    let encoded_size = history_upload.encoded_size();
     let prep_resp = match http
         .post_json(
             url,
             &json!({
                 "runId": run_id,
                 "hash": history_hash,
-                "size": history_size,
+                "rawSize": history_upload.raw_size,
+                "encodedSize": encoded_size,
+                "encoding": requested_encoding,
             }),
             constants::HTTP_MAX_RETRIES,
         )
@@ -181,10 +256,12 @@ async fn upload_session_history(
         .get("existing")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let response_encoding = prep_resp.get("encoding").and_then(|v| v.as_str());
     if existing {
+        let accepted_encoding = response_encoding.unwrap_or(SESSION_HISTORY_ENCODING_IDENTITY);
         log_info!(
             LOG_TAG,
-            "Session history already exists in S3 (deduplicated)"
+            "Session history already exists in S3 (deduplicated, encoding={accepted_encoding})"
         );
         return Ok(());
     }
@@ -196,14 +273,24 @@ async fn upload_session_history(
             AgentError::Checkpoint("No presignedUrl in prepare-history response".into())
         })?;
 
-    log_info!(LOG_TAG, "Uploading session history to S3...");
+    let (upload_encoding, upload_bytes) =
+        history_upload.into_server_accepted_bytes(response_encoding);
+    if requested_encoding == SESSION_HISTORY_ENCODING_GZIP
+        && upload_encoding == SESSION_HISTORY_ENCODING_IDENTITY
+    {
+        log_info!(
+            LOG_TAG,
+            "Prepare-history response did not acknowledge gzip; uploading identity session history"
+        );
+    }
+
+    log_info!(
+        LOG_TAG,
+        "Uploading session history to S3 (encoding={upload_encoding})..."
+    );
     let upload_start = std::time::Instant::now();
     if let Err(e) = http
-        .put_presigned(
-            presigned_url,
-            Bytes::from(history_bytes),
-            "application/octet-stream",
-        )
+        .put_presigned(presigned_url, upload_bytes, "application/octet-stream")
         .await
     {
         record_sandbox_op(
@@ -222,6 +309,16 @@ async fn upload_session_history(
     );
     log_info!(LOG_TAG, "Session history uploaded to S3");
     Ok(())
+}
+
+async fn build_and_upload_session_history(
+    http: &HttpClient,
+    run_id: &str,
+    history_hash: &str,
+    history_bytes: Vec<u8>,
+) -> Result<(), AgentError> {
+    let history_upload = build_session_history_upload(history_bytes)?;
+    upload_session_history(http, run_id, history_hash, history_upload).await
 }
 
 /// Snapshot artifact entries. Memory rides in `VM0_ARTIFACTS` post-#10602, so
@@ -361,22 +458,10 @@ async fn snapshot_artifact_entries(
     Ok(Some(serde_json::Value::Array(results)))
 }
 
-/// Create a checkpoint after a successful run.
-pub async fn create_checkpoint(http: &HttpClient) -> Result<(), AgentError> {
-    let inputs = CheckpointInputs::from_legacy_env();
-    create_checkpoint_with_inputs(http, &inputs).await
-}
-
 /// Create a checkpoint after a successful run using the explicit runtime snapshot.
 pub async fn create_checkpoint_for_runtime(runtime: &GuestRuntime) -> Result<(), AgentError> {
     let inputs = CheckpointInputs::from_runtime(runtime);
     create_checkpoint_with_inputs(&runtime.http, &inputs).await
-}
-
-/// Create a best-effort recovery checkpoint after an abnormal CLI exit.
-pub async fn create_recovery_checkpoint(http: &HttpClient) -> Result<(), AgentError> {
-    let inputs = CheckpointInputs::from_legacy_env();
-    create_recovery_checkpoint_with_inputs(http, &inputs).await
 }
 
 /// Create a best-effort recovery checkpoint using the explicit runtime snapshot.
@@ -428,7 +513,7 @@ async fn create_checkpoint_impl(
     // directly — an explicit `exists()` check would be a redundant stat plus a
     // TOCTOU race between check and read.
     let session_id_start = std::time::Instant::now();
-    let cli_agent_session_id = match std::fs::read_to_string(inputs.session_id_file) {
+    let cli_agent_session_id = match std::fs::read_to_string(inputs.session_id_file.as_ref()) {
         Ok(s) => s.trim().to_string(),
         Err(e) if e.kind() == ErrorKind::NotFound => {
             return Err(fail(
@@ -464,7 +549,7 @@ async fn create_checkpoint_impl(
     let history_marker_payload = match crate::session_metadata::resolve_history_marker_payload_from(
         inputs.framework,
         inputs.home_dir,
-        inputs.session_history_path_file,
+        inputs.session_history_path_file.as_ref(),
         &cli_agent_session_id,
     ) {
         Ok(payload) => payload,
@@ -477,18 +562,21 @@ async fn create_checkpoint_impl(
             ));
         }
     };
-    let history_bytes =
-        match session_history::read_session_history_from_payload(&history_marker_payload) {
-            Ok(b) => b,
-            Err(e) => {
-                return Err(fail(
-                    mode,
-                    "session_history_read",
-                    history_read_start,
-                    e.to_string(),
-                ));
-            }
-        };
+    let history_bytes = match session_history::read_session_history_from_payload_bounded(
+        &history_marker_payload,
+        RESUME_SESSION_HISTORY_MAX_BYTES,
+    ) {
+        Ok(b) => b,
+        Err(e) => {
+            return Err(fail(
+                mode,
+                "session_history_read",
+                history_read_start,
+                e.to_string(),
+            ));
+        }
+    };
+    let history_size = history_bytes.len() as u64;
 
     let session_history_text = match std::str::from_utf8(&history_bytes) {
         Ok(s) => Some(s),
@@ -539,7 +627,6 @@ async fn create_checkpoint_impl(
 
     // Compute SHA-256 hash of session history for presigned URL upload
     let history_hash = hex::encode(Sha256::digest(&history_bytes));
-    let history_size = history_bytes.len() as u64;
     log_info!(
         LOG_TAG,
         "Session history hash={}, size={history_size}",
@@ -551,15 +638,9 @@ async fn create_checkpoint_impl(
     // path is web-API bound (prepare + S3 PUT); the artifact path is VAS-bound
     // (prepare + HEAD update). Serial, wall time was dominated by whichever
     // was longer plus the other; concurrent, it's just the longer one.
-    let (_, artifact_snapshots) = tokio::try_join!(
-        upload_session_history(
-            http,
-            inputs.run_id,
-            &history_hash,
-            history_size,
-            history_bytes
-        ),
+    let (artifact_snapshots, _) = tokio::try_join!(
         snapshot_artifact_entries(http, inputs.run_id, inputs.artifact_entries),
+        build_and_upload_session_history(http, inputs.run_id, &history_hash, history_bytes),
     )?;
 
     // Build and send checkpoint payload (session history hash only, content uploaded to S3)
@@ -605,7 +686,7 @@ async fn create_checkpoint_impl(
             history_size,
             &history_marker_payload,
             inputs.framework,
-            inputs.final_session_history_identity_file,
+            inputs.final_session_history_identity_file.as_ref(),
         );
         log_info!(LOG_TAG, "{} created successfully: {id}", mode.log_label());
         record_sandbox_op("checkpoint_api_call", api_start.elapsed(), true, None);
@@ -672,7 +753,7 @@ fn write_final_session_history_identity(
             return;
         }
     };
-    match paths::write_private(final_session_history_identity_file, bytes) {
+    match crate::paths::write_private(final_session_history_identity_file, bytes) {
         Ok(()) => {
             record_sandbox_op(
                 "session_history_identity_written",
@@ -726,24 +807,28 @@ mod tests {
     use httpmock::prelude::*;
     use std::time::Duration;
 
-    struct CheckpointFilesGuard;
+    struct CheckpointFilesGuard {
+        guest_paths: crate::paths::GuestPaths,
+    }
 
     impl CheckpointFilesGuard {
-        fn new() -> Self {
-            cleanup_checkpoint_files();
-            Self
+        fn new(guest_paths: &crate::paths::GuestPaths) -> Self {
+            cleanup_checkpoint_files(guest_paths);
+            Self {
+                guest_paths: guest_paths.clone(),
+            }
         }
     }
 
     impl Drop for CheckpointFilesGuard {
         fn drop(&mut self) {
-            cleanup_checkpoint_files();
+            cleanup_checkpoint_files(&self.guest_paths);
         }
     }
 
-    fn cleanup_checkpoint_files() {
-        let _ = std::fs::remove_file(paths::session_id_file());
-        let _ = std::fs::remove_file(paths::session_history_path_file());
+    fn cleanup_checkpoint_files(guest_paths: &crate::paths::GuestPaths) {
+        let _ = std::fs::remove_file(guest_paths.session_id_file());
+        let _ = std::fs::remove_file(guest_paths.session_history_path_file());
     }
 
     #[test]
@@ -989,19 +1074,18 @@ mod tests {
     async fn checkpoint_missing_mount_fails_before_final_checkpoint_api_call() {
         let server = MockServer::start();
         let dir = tempfile::tempdir().unwrap();
-        unsafe {
-            std::env::set_var("VM0_RUN_ID", "checkpoint-missing-mount");
-            std::env::set_var(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-                dir.path().join("runtime"),
-            );
-        }
-        let _files_guard = CheckpointFilesGuard::new();
+        let guest_paths = crate::paths::GuestPaths::from_runtime_dir(dir.path().join("runtime"));
+        let _files_guard = CheckpointFilesGuard::new(&guest_paths);
         let history_path = dir.path().join("history.jsonl");
+        let home_dir = dir.path().join("home").to_string_lossy().into_owned();
         std::fs::write(&history_path, r#"{"type":"system"}"#).unwrap();
-        paths::write_private(paths::session_id_file(), "session-with-missing-artifact").unwrap();
-        paths::write_private(
-            paths::session_history_path_file(),
+        crate::paths::write_private(
+            guest_paths.session_id_file(),
+            "session-with-missing-artifact",
+        )
+        .unwrap();
+        crate::paths::write_private(
+            guest_paths.session_history_path_file(),
             history_path.to_string_lossy().as_ref(),
         )
         .unwrap();
@@ -1040,11 +1124,13 @@ mod tests {
         let inputs = CheckpointInputs {
             run_id: "checkpoint-missing-mount",
             framework: env::Framework::ClaudeCode,
-            home_dir: env::home_dir(),
+            home_dir: &home_dir,
             artifact_entries: &entries,
-            session_id_file: paths::session_id_file(),
-            session_history_path_file: paths::session_history_path_file(),
-            final_session_history_identity_file: paths::final_session_history_identity_file(),
+            session_id_file: guest_paths.session_id_file().into(),
+            session_history_path_file: guest_paths.session_history_path_file().into(),
+            final_session_history_identity_file: guest_paths
+                .final_session_history_identity_file()
+                .into(),
         };
 
         let err = create_checkpoint_impl(&http, CheckpointMode::Success, &inputs)

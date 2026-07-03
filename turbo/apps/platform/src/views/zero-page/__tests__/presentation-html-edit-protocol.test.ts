@@ -61,6 +61,66 @@ describe("previewPresentationHtml", () => {
     expect(injectedCss).toContain("--fb:'Quicksand'");
   });
 
+  it("materializes theme applied via setPalette/setFont calls", () => {
+    const previewHtml = previewPresentationHtml({
+      activeSlideId: "slide-1",
+      html: `
+        <!doctype html>
+        <html>
+          <head>
+            <style>
+              :root {
+                --bg:#FFFFFF;
+                --accent:#7257E6;
+                --s1:#FF6B4A;
+                --s2:#AEE63E;
+                --s3:#3FA9F5;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="slide" data-slide-id="slide-1">
+              <div class="stage">
+                <h1 style="color:var(--accent)">Slide</h1>
+              </div>
+            </div>
+            <script>
+              var MONO={
+                "Warm Sand":["#FFFDF8","#FFFFFF","#262626","#5A5A5A","#ECECEC",["#F19B3A","#8DACE5","#DDB8D9","#516049"]]
+              };
+              var VIB={
+                "Prism":["#FFFFFF","#F7F7FA","#1A1726","#5C5870","#ECECF2",["#7257E6","#FF6B4A","#AEE63E","#3FA9F5"]]
+              };
+              var FONTS={
+                "Archivo / Manrope":["Archivo","Manrope"]
+              };
+              function setPalette(v){}
+              function setFont(n){}
+              var sp={value:'V:Prism'},sf={value:'Poppins / Figtree'};
+              sp.value='M:Warm Sand';sf.value='Archivo / Manrope';
+              setPalette(sp.value);setFont(sf.value);
+            </script>
+          </body>
+        </html>
+      `,
+    });
+    const doc = new DOMParser().parseFromString(previewHtml, "text/html");
+    const injectedCss = Array.from(doc.querySelectorAll("style"))
+      .map((style) => {
+        return style.textContent ?? "";
+      })
+      .join("\n");
+
+    expect(doc.querySelector("script")).toBeNull();
+    expect(injectedCss).toContain("--bg:#FFFDF8");
+    expect(injectedCss).toContain("--accent:#F19B3A");
+    expect(injectedCss).toContain("--s1:#8DACE5");
+    expect(injectedCss).toContain("--s2:#DDB8D9");
+    expect(injectedCss).toContain("--s3:#516049");
+    expect(injectedCss).toContain("--fd:'Archivo'");
+    expect(injectedCss).toContain("--fb:'Manrope'");
+  });
+
   it("normalizes nested slide stages to fill the preview frame", () => {
     const previewHtml = previewPresentationHtml({
       activeSlideId: "slide-1",

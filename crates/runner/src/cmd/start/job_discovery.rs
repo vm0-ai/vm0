@@ -28,7 +28,7 @@ use crate::executor::{
 use crate::http::HttpClient;
 use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
 use crate::ids::RunId;
-use crate::paths::diagnostic_session_fingerprint;
+use crate::paths::short_digest;
 use crate::provider::{ClaimedJob, JobCandidate};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::restored_session_identity::{
@@ -36,7 +36,7 @@ use crate::restored_session_identity::{
 };
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
 use crate::status::{RunnerMode, StatusTracker};
-use crate::types::{ExecutionContext, SandboxReuseResult};
+use crate::types::{ExecutionContext, HeldSessionState, SandboxReuseResult};
 
 pub(super) struct DiscoveredJob {
     pub(super) candidate: JobCandidate,
@@ -306,12 +306,13 @@ async fn publish_active_run_status(
 }
 
 async fn claim_with_local_admission(
-    mut candidate: JobCandidate,
+    candidate: JobCandidate,
     run_id: RunId,
     job_vcpu: u32,
     job_memory: u32,
     ctx: &DiscoveredJobContext<'_>,
 ) -> Option<AdmittedClaim> {
+    let mut candidate = prepare_affinity_protected_candidate(candidate, ctx).await?;
     candidate.mark_local_admission_started();
 
     // Reserve resources before claiming so we don't waste a job that another
@@ -379,6 +380,61 @@ async fn claim_with_local_admission(
     Some(admission.into_admitted(claimed))
 }
 
+async fn prepare_affinity_protected_candidate(
+    candidate: JobCandidate,
+    ctx: &DiscoveredJobContext<'_>,
+) -> Option<JobCandidate> {
+    if !candidate.is_affinity_protected() {
+        return Some(candidate);
+    }
+    let Some(cli_agent_session_id) = candidate.cli_agent_session_id().map(str::to_owned) else {
+        return Some(candidate);
+    };
+
+    let held_session_states = current_local_held_session_states(ctx).await;
+    if held_session_states
+        .iter()
+        .any(|state| state.session_id == cli_agent_session_id)
+    {
+        return Some(candidate);
+    }
+
+    let delay = candidate
+        .affinity_protection_remaining()
+        .unwrap_or_default();
+    let session_fingerprint = diagnostic_session_fingerprint(&cli_agent_session_id);
+    info!(
+        run_id = %candidate.run_id(),
+        session_fingerprint = %session_fingerprint,
+        delay_ms = delay.as_millis(),
+        "same-session affinity protected by another runner, deferring claim"
+    );
+    ctx.spawn_ctx.provider.defer_poll_after(delay).await;
+    None
+}
+
+fn diagnostic_session_fingerprint(session_id: &str) -> String {
+    short_digest(session_id)
+}
+
+async fn current_local_held_session_states(
+    ctx: &DiscoveredJobContext<'_>,
+) -> Vec<HeldSessionState> {
+    let idle_states = {
+        let pool = ctx.idle_pool.lock().await;
+        pool.held_session_states()
+    };
+    if let Some(workspace_cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref() {
+        let cache_states = workspace_cache.held_session_states().await;
+        ctx.spawn_ctx
+            .held_session_snapshot
+            .update_workspace_cache_states(cache_states);
+    }
+    ctx.spawn_ctx
+        .held_session_snapshot
+        .current_held_session_states(idle_states, &ctx.spawn_ctx.active_cli_agent_sessions, None)
+}
+
 async fn try_reuse_from_pool(
     run_id: RunId,
     request: ReuseAdmissionRequest<'_>,
@@ -421,16 +477,13 @@ async fn try_reuse_from_pool(
             false,
         );
     };
-    let session_fingerprint = diagnostic_session_fingerprint(cli_agent_session_id);
-
     // Take the entry under the pool lock, then drop the lock before any awaits
     // so unpark does not block other take/park operations.
-    let (taken, snapshot, held_session_states) = {
+    let (taken, snapshot) = {
         let mut pool = ctx.idle_pool.lock().await;
         let taken = pool.take(cli_agent_session_id);
         let snapshot = taken.as_ref().map(|_| pool.status_snapshot());
-        let held_session_states = pool.held_session_states();
-        (taken, snapshot, held_session_states)
+        (taken, snapshot)
     };
     let took_idle_session = taken.is_some();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
@@ -440,23 +493,8 @@ async fn try_reuse_from_pool(
             .spawn_ctx
             .held_session_snapshot
             .might_contain_workspace_cache_session(cli_agent_session_id);
-    let held_session_states = ctx
-        .spawn_ctx
-        .held_session_snapshot
-        .current_held_session_states(
-            held_session_states,
-            &ctx.spawn_ctx.active_cli_agent_sessions,
-            Some(cli_agent_session_id),
-        );
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::HeldSessionStateRefresh, started_at);
-    let started_at = Instant::now();
-    ctx.spawn_ctx
-        .provider
-        .set_held_session_states(held_session_states)
-        .await;
     let needs_session_affinity_refresh = took_idle_session || claimed_workspace_cache_session;
-    pre_spawn_timing
-        .record_phase_elapsed(RunnerPreSpawnPhase::ProviderHeldSessionUpdate, started_at);
     match taken {
         Some(entry)
             if entry.profile_name() == profile_name
@@ -476,7 +514,7 @@ async fn try_reuse_from_pool(
                 if let Err(mismatch) = validation {
                     warn!(
                         run_id = %run_id,
-                        session_fingerprint = %session_fingerprint,
+                        session_id = %cli_agent_session_id,
                         profile = %profile_name,
                         mismatch = mismatch.as_str(),
                         "workspace promotion identity mismatch, destroying idle VM and falling through to fresh create"
@@ -505,7 +543,7 @@ async fn try_reuse_from_pool(
                 } => {
                     info!(
                         run_id = %run_id,
-                        session_fingerprint = %session_fingerprint,
+                        session_id = %cli_agent_session_id,
                         "reusing idle VM for session"
                     );
                     // Idle entry already holds budget. Drop the speculative
@@ -523,7 +561,7 @@ async fn try_reuse_from_pool(
                 IdleUnparkResult::Failed { destroy_job, error } => {
                     warn!(
                         run_id = %run_id,
-                        session_fingerprint = %session_fingerprint,
+                        session_id = %cli_agent_session_id,
                         error = %error,
                         "unpark failed, destroying idle VM and falling through to fresh create"
                     );
@@ -541,7 +579,7 @@ async fn try_reuse_from_pool(
         Some(stale) if stale.profile_name() == profile_name => {
             info!(
                 run_id = %run_id,
-                session_fingerprint = %session_fingerprint,
+                session_id = %cli_agent_session_id,
                 profile = %profile_name,
                 "idle VM device rate limiter mismatch, destroying"
             );
@@ -561,7 +599,7 @@ async fn try_reuse_from_pool(
         Some(stale) => {
             info!(
                 run_id = %run_id,
-                session_fingerprint = %session_fingerprint,
+                session_id = %cli_agent_session_id,
                 old_profile = %stale.profile_name(),
                 new_profile = %profile_name,
                 "idle VM profile mismatch, destroying"
@@ -582,7 +620,7 @@ async fn try_reuse_from_pool(
         None => {
             info!(
                 run_id = %run_id,
-                session_fingerprint = %session_fingerprint,
+                session_id = %cli_agent_session_id,
                 "no idle VM found for session"
             );
             (
@@ -651,13 +689,10 @@ mod tests {
     }
 
     fn context_with_history_ref(history_hash: &str) -> ExecutionContext {
-        context_with_history_ref_and_size(history_hash, Some(12))
+        context_with_history_ref_and_size(history_hash, 12)
     }
 
-    fn context_with_history_ref_and_size(
-        history_hash: &str,
-        size: Option<u64>,
-    ) -> ExecutionContext {
+    fn context_with_history_ref_and_size(history_hash: &str, size: u64) -> ExecutionContext {
         let mut context = execution_context_for_test(RunId::new_v4());
         context.resume_session = Some(ResumeSession {
             cli_agent_session_id: "sess-restore-plan".into(),
@@ -666,7 +701,9 @@ mod tests {
                     kind: crate::types::ResumeSessionHistoryRefKind::Blob,
                     hash: history_hash.into(),
                     url: "http://127.0.0.1:9/history.blob".into(),
-                    size,
+                    encoding: None,
+                    raw_size: size,
+                    encoded_size: size,
                 },
             },
         });
@@ -814,7 +851,7 @@ mod tests {
     async fn restore_plan_skips_matching_checkpointed_final_identity() {
         let http = test_http_client();
         let history_hash = "a".repeat(64);
-        let context = context_with_history_ref_and_size(&history_hash, Some(12));
+        let context = context_with_history_ref_and_size(&history_hash, 12);
         let metadata_path =
             "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json";
         let runtime_dir = "/home/user/.vm0/guest-agent/runs/previous";
@@ -868,7 +905,9 @@ mod tests {
                     kind: crate::types::ResumeSessionHistoryRefKind::Blob,
                     hash: history_hash.clone(),
                     url: "http://127.0.0.1:9/history.blob".into(),
-                    size: Some(12),
+                    encoding: None,
+                    raw_size: 12,
+                    encoded_size: 12,
                 },
             },
         });
@@ -954,50 +993,6 @@ mod tests {
                 assert_eq!(identity, restored_identity);
             }
             _ => panic!("finalizer-parked restored identity should skip restore"),
-        }
-    }
-
-    #[tokio::test]
-    async fn restore_plan_skips_matching_reused_identity_without_requested_size() {
-        let http = test_http_client();
-        let history_hash = "a".repeat(64);
-        let context = context_with_history_ref_and_size(&history_hash, None);
-        let metadata = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
-            hex::encode(Sha256::digest(b"sess-restore-plan")),
-            FinalSessionHistoryRefKind::Blob,
-            history_hash,
-            12,
-            "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
-        )
-        .unwrap();
-        let restored_identity = RestoredSessionIdentity::from_final_metadata(
-            metadata,
-            "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json",
-            "/home/user/.vm0/guest-agent/runs/previous",
-        )
-        .expect("checkpointed final identity");
-        let reusable_sandbox =
-            reusable_sandbox_with_identity(Some(restored_identity.clone())).await;
-        let cancel = RunCancellationHandle::new();
-        let mut timing = RunnerPreSpawnTiming::start_after_claim();
-
-        let plan = build_session_history_restore_plan(
-            &http,
-            &context,
-            true,
-            &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
-            &mut timing,
-        );
-
-        match plan {
-            SessionHistoryRestorePlan::SkipVerified(identity) => {
-                assert_eq!(identity, restored_identity);
-                assert_eq!(identity.history_size_bytes(), Some(12));
-            }
-            _ => panic!("missing requested size should still allow verified skip"),
         }
     }
 

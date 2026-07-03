@@ -1,5 +1,10 @@
 //! Guest filesystem paths and derived runtime-file paths.
 //!
+//! [`GuestPaths`] is the owned path model for one guest-agent run. It is built
+//! from the runtime directory captured at bootstrap and then passed explicitly
+//! through callers. Avoid adding zero-argument facade readers that derive paths
+//! from process-global environment state.
+//!
 //! Naming conventions:
 //! - "system log" = guest-agent's own stderr (matches TS `SYSTEM_LOG_FILE` and API `systemLog`)
 //! - "agent log" = AI agent (Claude Code) stdout output
@@ -12,10 +17,6 @@ pub use api_contracts::generated::constants::runners::paths::{
 };
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
-
-static GUEST_PATHS: LazyLock<GuestPaths> =
-    LazyLock::new(|| GuestPaths::from_runtime_dir(default_run_dir()));
 
 /// Immutable run-scoped guest paths derived from one runtime directory.
 #[derive(Clone, Debug)]
@@ -171,13 +172,6 @@ impl GuestPaths {
     }
 }
 
-#[allow(clippy::panic)]
-fn default_run_dir() -> PathBuf {
-    let run_id = std::env::var(guest_contracts::env::RUN_ID_ENV).unwrap_or_default();
-    guest_contracts::runtime_paths::run_dir_from_env(&run_id)
-        .unwrap_or_else(|error| panic!("failed to resolve guest runtime directory: {error}"))
-}
-
 fn resolve_run_dir_from_captured_env(
     run_id: &str,
     runtime_dir: Option<&Path>,
@@ -196,10 +190,6 @@ fn resolve_run_dir_from_captured_env(
     guest_contracts::runtime_paths::run_dir_for_home(home, run_id)
 }
 
-pub fn runtime_dir() -> &'static Path {
-    GUEST_PATHS.runtime_dir()
-}
-
 fn path_to_string(path: PathBuf) -> String {
     path.to_string_lossy().into_owned()
 }
@@ -210,62 +200,6 @@ pub fn ensure_parent_dir(path: impl AsRef<Path>) -> io::Result<()> {
 
 pub fn write_private(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io::Result<()> {
     guest_contracts::runtime_paths::write_private(path, bytes)
-}
-
-// ---------------------------------------------------------------------------
-// Session
-// ---------------------------------------------------------------------------
-
-pub fn session_id_file() -> &'static str {
-    GUEST_PATHS.session_id_file()
-}
-pub fn session_history_path_file() -> &'static str {
-    GUEST_PATHS.session_history_path_file()
-}
-
-// ---------------------------------------------------------------------------
-// Log files
-// ---------------------------------------------------------------------------
-
-pub fn event_error_flag() -> &'static str {
-    GUEST_PATHS.event_error_flag()
-}
-pub fn checkpoint_error_file() -> &'static str {
-    GUEST_PATHS.checkpoint_error_file()
-}
-pub fn final_session_history_identity_file() -> &'static str {
-    GUEST_PATHS.final_session_history_identity_file()
-}
-pub fn failure_diagnostic_file() -> &'static str {
-    GUEST_PATHS.failure_diagnostic_file()
-}
-pub fn system_log_file() -> &'static str {
-    GUEST_PATHS.system_log_file()
-}
-pub fn agent_log_file() -> &'static str {
-    GUEST_PATHS.agent_log_file()
-}
-pub fn metrics_log_file() -> &'static str {
-    GUEST_PATHS.metrics_log_file()
-}
-
-/// Re-export sandbox ops log path from guest-common for consistent access.
-pub fn sandbox_ops_file() -> &'static str {
-    guest_common::telemetry::sandbox_ops_log()
-}
-
-// ---------------------------------------------------------------------------
-// Telemetry position tracking
-// ---------------------------------------------------------------------------
-
-pub fn telemetry_system_log_pos_file() -> &'static str {
-    GUEST_PATHS.telemetry_system_log_pos_file()
-}
-pub fn telemetry_metrics_pos_file() -> &'static str {
-    GUEST_PATHS.telemetry_metrics_pos_file()
-}
-pub fn telemetry_sandbox_ops_pos_file() -> &'static str {
-    GUEST_PATHS.telemetry_sandbox_ops_pos_file()
 }
 
 #[cfg(test)]

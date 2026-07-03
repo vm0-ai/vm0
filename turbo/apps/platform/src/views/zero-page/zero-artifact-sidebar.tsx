@@ -3,11 +3,16 @@ import {
   IconArrowLeft,
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
+  IconBackground,
+  IconChevronLeft,
+  IconChevronRight,
+  IconDownload,
   IconDots,
   IconEye,
   IconExternalLink,
   IconLoader2,
   IconPencil,
+  IconSparkles,
   IconUpload,
   IconZoomReset,
   IconX,
@@ -20,7 +25,14 @@ import {
   useSet,
 } from "ccstate-react";
 import {
+  Button,
   cn,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -34,22 +46,38 @@ import {
   clearHtmlDomEditPending$,
   closeArtifactHtmlEditMode$,
   closeArtifact$,
+  deleteHtmlEditSnapshotDraft$,
+  dismissHtmlEditSnapshotRestoreDraft$,
   discardHtmlDomEditPreviewDraft$,
+  continueHtmlEditSnapshotDraft$,
+  htmlEditSnapshotRestoreDraft$,
   htmlDomEditPreviewHtmlByUrl$,
   htmlDomEditPendingUrl$,
   htmlDomEditPublishingUrl$,
   markHtmlDomEditPending$,
+  navigateArtifactSidebarImage$,
   openArtifactHtmlEditMode$,
   openPresentationEditor$,
   publishHtmlDomEditPreviewDraft$,
+  saveCapturedHtmlEditSnapshotDraft$,
+  setHtmlEditSnapshotControllerRef$,
   toggleArtifactFullscreen$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import {
   CsvPreviewTable,
+  downloadAttachmentUrl,
   parseCsvRows,
   publicAttachmentUrl,
   TextPreviewLoader,
 } from "./zero-attachment-chips.tsx";
+import { artifactPreviewUrlsMatch } from "./zero-attachment-url.ts";
+import { lightboxDialogVisible$ } from "../../signals/zero-page/zero-attachment-chips.ts";
+import {
+  artifactImageEditMode$,
+  imageEditProcessing$,
+  runImageEdit$,
+  type ImageEditOperation,
+} from "../../signals/zero-page/zero-image-edit.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
@@ -59,6 +87,11 @@ import {
   type ZoomableImageControls,
   zoomableArtifactImageKey,
 } from "./zero-zoomable-image-canvas.tsx";
+import { EditableArtifactImageCanvas } from "./zero-editable-image-canvas.tsx";
+import {
+  editableImageArtifactCanvasKey,
+  type EditableImageCanvasItem,
+} from "../../signals/zero-page/zero-editable-image-canvas.ts";
 import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -72,6 +105,11 @@ import {
   artifactFallbackSubtitle,
   artifactTitleSubtitle,
 } from "./zero-artifact-display.ts";
+import {
+  currentMessageImageArtifactNavigation,
+  type ImageArtifactNavigationItem,
+  shouldIgnoreImageArtifactNavigationKey,
+} from "./zero-artifact-image-navigation.ts";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
@@ -128,9 +166,15 @@ type ArtifactSidebarItem = {
   file: ChatThreadArtifactFile;
 };
 
+type ArtifactImageNavigationActions = {
+  readonly onNext?: () => void;
+  readonly onPrevious?: () => void;
+};
+
 type ArtifactSidebarContentProps = {
   agentId?: string | null;
   artifactRef: ArtifactRef;
+  imageNavigation?: ArtifactImageNavigationActions;
   item?: ArtifactSidebarItem;
   onBack?: () => void;
   onClose?: () => void;
@@ -139,6 +183,7 @@ type ArtifactSidebarContentProps = {
 };
 
 type HtmlArtifactHeaderState = "idle" | "editing" | "working" | "preview";
+type HtmlEditState = ReturnType<typeof createHtmlEditState>;
 
 function ArtifactSidebarWithThreadData({
   artifactRef,
@@ -148,16 +193,48 @@ function ArtifactSidebarWithThreadData({
 }: ArtifactSidebarProps & { thread: ChatThreadSignals }) {
   const loadable = useLastLoadable(thread.artifacts$);
   const agentId = useLastResolved(thread.agentId$);
+  const messageGroups = useLastResolved(thread.groupedChatMessages$);
+  const features = useLastResolved(featureSwitch$);
+  const imageNavigationEnabled = Boolean(
+    features?.[FeatureSwitchKey.ImageArtifactKeyboardNavigation],
+  );
+  const navigateArtifactSidebarImage = useSet(navigateArtifactSidebarImage$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const item =
     artifactRef.source === "url" && loadable.state === "hasData"
       ? findArtifactItemForUrl(loadable.data, artifactRef.url)
       : undefined;
+  const imageNavigation =
+    imageNavigationEnabled &&
+    artifactRef.source === "url" &&
+    loadable.state === "hasData"
+      ? currentMessageImageArtifactNavigation(
+          loadable.data,
+          (messageGroups ?? []).flatMap((group) => {
+            return group.messages;
+          }),
+          artifactRef.url,
+        )
+      : {};
+  const imageNavigationAction = (
+    navigationItem: ImageArtifactNavigationItem | undefined,
+  ) => {
+    if (!navigationItem) {
+      return undefined;
+    }
+    return () => {
+      navigateArtifactSidebarImage(navigationItem.url);
+    };
+  };
 
   return (
     <ArtifactSidebarContent
       agentId={agentId}
       artifactRef={artifactRef}
+      imageNavigation={{
+        onNext: imageNavigationAction(imageNavigation.next),
+        onPrevious: imageNavigationAction(imageNavigation.previous),
+      }}
       item={item}
       onBack={onBack}
       onClose={onClose}
@@ -171,6 +248,172 @@ function ArtifactSidebarWithThreadData({
 
 function noop() {
   return undefined;
+}
+
+interface HtmlEditSnapshotRestoreDraftView {
+  readonly threadId: string;
+  readonly updatedAt: string;
+  readonly url: string;
+}
+
+type HtmlEditSnapshotTargetView = {
+  readonly threadId: string;
+  readonly url: string;
+};
+
+function HtmlEditSnapshotController({
+  previewHtml,
+  signal,
+  target,
+}: {
+  readonly previewHtml?: string;
+  readonly signal: AbortSignal;
+  readonly target: HtmlEditSnapshotTargetView | null;
+}) {
+  const restoreDraft = useGet(htmlEditSnapshotRestoreDraft$);
+  const continueHtmlEditSnapshotDraft = useSet(continueHtmlEditSnapshotDraft$);
+  const deleteHtmlEditSnapshotDraft = useSet(deleteHtmlEditSnapshotDraft$);
+  const dismissHtmlEditSnapshotRestoreDraft = useSet(
+    dismissHtmlEditSnapshotRestoreDraft$,
+  );
+  const setHtmlEditSnapshotControllerRef = useSet(
+    setHtmlEditSnapshotControllerRef$,
+  );
+
+  return (
+    <div
+      key={target ? `${target.threadId}\n${target.url}` : "none"}
+      ref={setHtmlEditSnapshotControllerRef}
+      data-html-edit-snapshot-thread-id={target?.threadId}
+      data-html-edit-snapshot-url={target?.url}
+      data-html-edit-snapshot-has-preview={previewHtml ? "1" : undefined}
+    >
+      <HtmlEditSnapshotRestoreDialog
+        restoreDraft={htmlEditSnapshotRestoreDraftForTarget(
+          restoreDraft,
+          target,
+        )}
+        signal={signal}
+        onContinue={continueHtmlEditSnapshotDraft}
+        onDismiss={dismissHtmlEditSnapshotRestoreDraft}
+        onDiscard={(currentDraft) => {
+          detach(
+            deleteHtmlEditSnapshotDraft(
+              {
+                threadId: currentDraft.threadId,
+                url: currentDraft.url,
+              },
+              signal,
+            ),
+            Reason.DomCallback,
+            "discardHtmlEditSnapshotDraft",
+          );
+        }}
+      />
+    </div>
+  );
+}
+
+function htmlEditSnapshotRestoreDraftForTarget(
+  restoreDraft: HtmlEditSnapshotRestoreDraftView | null,
+  target: HtmlEditSnapshotTargetView | null,
+): HtmlEditSnapshotRestoreDraftView | null {
+  return restoreDraft &&
+    target &&
+    restoreDraft.threadId === target.threadId &&
+    restoreDraft.url === target.url
+    ? restoreDraft
+    : null;
+}
+
+function htmlEditSnapshotTargetForDisplay({
+  display,
+  htmlEditEnabled,
+  threadId,
+}: {
+  readonly display: ArtifactDisplay | null;
+  readonly htmlEditEnabled: boolean;
+  readonly threadId?: string;
+}): HtmlEditSnapshotTargetView | null {
+  return threadId &&
+    htmlEditEnabled &&
+    display?.kind === "html" &&
+    display.artifactKind === "hosted-site"
+    ? { threadId, url: display.url }
+    : null;
+}
+
+function HtmlEditSnapshotRestoreDialog({
+  onContinue,
+  onDiscard,
+  onDismiss,
+  restoreDraft,
+  signal,
+}: {
+  readonly onContinue: (
+    args: {
+      readonly threadId: string;
+      readonly url: string;
+    },
+    signal: AbortSignal,
+  ) => Promise<void>;
+  readonly onDiscard: (restoreDraft: HtmlEditSnapshotRestoreDraftView) => void;
+  readonly onDismiss: () => void;
+  readonly restoreDraft: HtmlEditSnapshotRestoreDraftView | null;
+  readonly signal: AbortSignal;
+}) {
+  const open = Boolean(restoreDraft);
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          onDismiss();
+        }
+      }}
+    >
+      <DialogContent data-testid="html-edit-snapshot-restore-dialog">
+        <DialogHeader>
+          <DialogTitle>Resume HTML draft?</DialogTitle>
+          <DialogDescription>
+            A saved HTML draft is available for this artifact.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (restoreDraft) {
+                onDiscard(restoreDraft);
+              }
+            }}
+          >
+            Discard
+          </Button>
+          <Button
+            onClick={() => {
+              if (!restoreDraft) {
+                return;
+              }
+              detach(
+                onContinue(
+                  {
+                    threadId: restoreDraft.threadId,
+                    url: restoreDraft.url,
+                  },
+                  signal,
+                ),
+                Reason.DomCallback,
+                "continueHtmlEditSnapshotDraft",
+              );
+            }}
+          >
+            Resume
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function artifactSidebarSyncTargetForItem({
@@ -214,6 +457,7 @@ function isHtmlEditFeatureEnabled(
 function ArtifactSidebarContent({
   agentId,
   artifactRef,
+  imageNavigation,
   item,
   onBack,
   onClose,
@@ -222,6 +466,7 @@ function ArtifactSidebarContent({
 }: ArtifactSidebarContentProps) {
   const fullscreen = useGet(artifactFullscreen$);
   const requestedHtmlCommentMode = useGet(artifactHtmlEditMode$);
+  const requestedImageEditMode = useGet(artifactImageEditMode$);
   const htmlDomEditPreviewHtmlByUrl = useGet(htmlDomEditPreviewHtmlByUrl$);
   const htmlDomEditPendingUrl = useGet(htmlDomEditPendingUrl$);
   const htmlDomEditPublishingUrl = useGet(htmlDomEditPublishingUrl$);
@@ -234,6 +479,9 @@ function ArtifactSidebarContent({
   const publishHtmlDomEditPreviewDraft = useSet(
     publishHtmlDomEditPreviewDraft$,
   );
+  const saveCapturedHtmlEditSnapshotDraft = useSet(
+    saveCapturedHtmlEditSnapshotDraft$,
+  );
   const toggleFullscreen = useSet(toggleArtifactFullscreen$);
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const pageSignal = useGet(pageSignal$);
@@ -242,8 +490,14 @@ function ArtifactSidebarContent({
   const features = useLastResolved(featureSwitch$);
 
   const display = resolveArtifactDisplay(artifactRef, item);
+  const htmlEditEnabled = isHtmlEditFeatureEnabled(features);
+  const htmlEditSnapshotTarget = htmlEditSnapshotTargetForDisplay({
+    display,
+    htmlEditEnabled,
+    threadId,
+  });
   const htmlCommentMode =
-    isHtmlEditFeatureEnabled(features) &&
+    htmlEditEnabled &&
     shouldOpenHtmlCommentMode(display, requestedHtmlCommentMode);
   const syncTarget = artifactSidebarSyncTargetForItem({
     agentId,
@@ -251,6 +505,15 @@ function ArtifactSidebarContent({
     onSyncSuccess,
     threadId,
   });
+
+  if (!display) {
+    return null;
+  }
+
+  const imageEditEnabled = Boolean(features?.[FeatureSwitchKey.ImageEditing]);
+  const imageEditActive =
+    display.kind === "image" && requestedImageEditMode && imageEditEnabled;
+
   const htmlEditState = createHtmlEditState({
     applyPreview: applyHtmlDomEditPreview,
     clearPending: clearHtmlDomEditPending,
@@ -260,6 +523,8 @@ function ArtifactSidebarContent({
     publishingUrl: htmlDomEditPublishingUrl,
     previewHtmlByUrl: htmlDomEditPreviewHtmlByUrl,
     markPending: markHtmlDomEditPending,
+    saveDraft: saveCapturedHtmlEditSnapshotDraft,
+    snapshotTarget: htmlEditSnapshotTarget,
   });
   const htmlHeaderState = htmlArtifactHeaderState({
     display,
@@ -268,10 +533,75 @@ function ArtifactSidebarContent({
     status: htmlEditState.status,
   });
 
-  if (!display) {
-    return null;
-  }
+  return (
+    <ArtifactSidebarResolvedContent
+      closeHtmlCommentMode={closeHtmlCommentMode}
+      closePreview={closePreview}
+      display={display}
+      fullscreen={fullscreen}
+      htmlCommentMode={htmlCommentMode}
+      htmlEditSnapshotTarget={htmlEditSnapshotTarget}
+      htmlEditState={htmlEditState}
+      htmlHeaderState={htmlHeaderState}
+      imageEditActive={imageEditActive}
+      imageNavigation={imageNavigation}
+      onBack={onBack}
+      openHtmlCommentMode={openHtmlCommentMode}
+      openPresentationEditor={openPresentationEditor}
+      pageSignal={pageSignal}
+      publishHtmlDomEditPreviewDraft={publishHtmlDomEditPreviewDraft}
+      resetZoomableImageCanvasZoom={resetZoomableImageCanvasZoom}
+      syncTarget={syncTarget}
+      threadId={threadId}
+      toggleFullscreen={toggleFullscreen}
+    />
+  );
+}
 
+function ArtifactSidebarResolvedContent({
+  closeHtmlCommentMode,
+  closePreview,
+  display,
+  fullscreen,
+  htmlCommentMode,
+  htmlEditSnapshotTarget,
+  htmlEditState,
+  htmlHeaderState,
+  imageEditActive,
+  imageNavigation,
+  onBack,
+  openHtmlCommentMode,
+  openPresentationEditor,
+  pageSignal,
+  publishHtmlDomEditPreviewDraft,
+  resetZoomableImageCanvasZoom,
+  syncTarget,
+  threadId,
+  toggleFullscreen,
+}: {
+  readonly closeHtmlCommentMode: () => void;
+  readonly closePreview: () => void;
+  readonly display: ArtifactDisplay;
+  readonly fullscreen: boolean;
+  readonly htmlCommentMode: boolean;
+  readonly htmlEditSnapshotTarget: HtmlEditSnapshotTargetView | null;
+  readonly htmlEditState: HtmlEditState;
+  readonly htmlHeaderState: HtmlArtifactHeaderState | undefined;
+  readonly imageEditActive: boolean;
+  readonly imageNavigation?: ArtifactImageNavigationActions;
+  readonly onBack?: () => void;
+  readonly openHtmlCommentMode: () => void;
+  readonly openPresentationEditor: (url: string) => void;
+  readonly pageSignal: AbortSignal;
+  readonly publishHtmlDomEditPreviewDraft: (
+    args: string | { readonly threadId?: string; readonly url: string },
+    signal: AbortSignal,
+  ) => Promise<void>;
+  readonly resetZoomableImageCanvasZoom: (key: string) => void;
+  readonly syncTarget?: ArtifactDownloadSyncTarget;
+  readonly threadId?: string;
+  readonly toggleFullscreen: () => void;
+}) {
   const applyHtmlStyleEdits = createHtmlStyleEditApplyAction({
     display,
     htmlEditState,
@@ -307,18 +637,17 @@ function ArtifactSidebarContent({
         url={display.url}
         fullscreen={fullscreen}
         htmlState={htmlHeaderState}
+        imageEditActive={imageEditActive}
         onEditPresentation={editPresentation}
         onEditHtml={editHtml}
         onExitHtmlEdit={exitHtmlEdit}
         onBack={onBack}
-        onToggleFullscreen={() => {
-          resetArtifactSidebarImageZoom({
-            display,
-            fullscreen,
-            resetZoomableImageCanvasZoom,
-          });
-          toggleFullscreen();
-        }}
+        onToggleFullscreen={artifactSidebarFullscreenToggleAction({
+          display,
+          fullscreen,
+          resetZoomableImageCanvasZoom,
+          toggleFullscreen,
+        })}
         onClose={closePreview}
       />
       <div className="min-h-0 flex-1 overflow-hidden bg-background">
@@ -330,15 +659,78 @@ function ArtifactSidebarContent({
           htmlEditStatus={htmlEditState.status}
           htmlPreviewHtml={htmlEditState.previewHtml}
           htmlCommentMode={htmlCommentMode}
+          imageNavigation={imageNavigation}
           onCloseHtmlCommentMode={closeHtmlCommentMode}
           onApplyHtmlEditDraft={htmlEditState.apply}
           onApplyHtmlStyleEdits={applyHtmlStyleEdits}
           onHtmlEditRequestFailed={htmlEditState.fail}
           onHtmlEditRequestStarted={htmlEditState.start}
           pageSignal={pageSignal}
+          threadId={threadId}
         />
       </div>
+      <HtmlEditSnapshotController
+        previewHtml={htmlEditState.previewHtml}
+        signal={pageSignal}
+        target={htmlEditSnapshotTarget}
+      />
     </ArtifactSidebarSurface>
+  );
+}
+
+function ArtifactSidebarImageNavigationKeydown({
+  fullscreen,
+  modalOpen,
+  navigation,
+}: {
+  fullscreen: boolean;
+  modalOpen: boolean;
+  navigation?: ArtifactImageNavigationActions;
+}) {
+  let cleanup: (() => void) | null = null;
+
+  return (
+    <span
+      ref={(node) => {
+        cleanup?.();
+        cleanup = null;
+        if (!node || (!navigation?.onPrevious && !navigation?.onNext)) {
+          return;
+        }
+
+        const onKeyDown = (event: KeyboardEvent) => {
+          // When the lightbox modal is open it owns arrow-key navigation; the
+          // sidebar must not also react.
+          if (modalOpen) {
+            return;
+          }
+          // Focus is only considered in the non-fullscreen sidebar, where the
+          // chat composer and other controls remain reachable. In fullscreen
+          // the sidebar is immersive, so arrow keys always navigate.
+          if (
+            shouldIgnoreImageArtifactNavigationKey(event, {
+              considerFocus: !fullscreen,
+            })
+          ) {
+            return;
+          }
+          if (event.key === "ArrowLeft" && navigation.onPrevious) {
+            event.preventDefault();
+            navigation.onPrevious();
+          }
+          if (event.key === "ArrowRight" && navigation.onNext) {
+            event.preventDefault();
+            navigation.onNext();
+          }
+        };
+
+        document.addEventListener("keydown", onKeyDown);
+        cleanup = () => {
+          document.removeEventListener("keydown", onKeyDown);
+        };
+      }}
+      hidden
+    />
   );
 }
 
@@ -351,6 +743,8 @@ function createHtmlEditState({
   pendingUrl,
   publishingUrl,
   previewHtmlByUrl,
+  saveDraft,
+  snapshotTarget,
 }: {
   applyPreview: (params: {
     readonly url: string;
@@ -358,15 +752,18 @@ function createHtmlEditState({
   }) => void;
   clearPending: (url: string) => void;
   closeCommentMode: () => void;
-  display: ArtifactDisplay | null;
+  display: ArtifactDisplay;
   markPending: (url: string) => void;
   pendingUrl: string | null;
   publishingUrl: string | null;
   previewHtmlByUrl: Readonly<Record<string, string>>;
+  saveDraft: (args: {
+    readonly html: string;
+    readonly threadId: string;
+    readonly url: string;
+  }) => void;
+  snapshotTarget: { readonly threadId: string; readonly url: string } | null;
 }) {
-  if (!display) {
-    return {};
-  }
   const status =
     display.kind === "html" &&
     (pendingUrl === display.url || publishingUrl === display.url)
@@ -376,9 +773,14 @@ function createHtmlEditState({
     display.kind === "html" ? previewHtmlByUrl[display.url] : undefined;
   return {
     apply: (draft: HtmlDomEditDraft) => {
+      // Persist the generated draft (fire-and-forget) so it survives navigation.
+      // Style edits carry no comments and publish immediately, so they skip the
+      // save and let publish success clear any existing snapshot.
+      if (snapshotTarget && draft.comments.length > 0) {
+        saveDraft({ ...snapshotTarget, html: draft.html });
+      }
       applyPreview({ url: display.url, html: draft.html });
       closeCommentMode();
-      return Promise.resolve();
     },
     fail: () => {
       clearPending(display.url);
@@ -387,6 +789,7 @@ function createHtmlEditState({
       markPending(display.url);
     },
     previewHtml,
+    snapshotTarget,
     status,
   };
 }
@@ -400,18 +803,29 @@ function createHtmlStyleEditApplyAction({
   display: ArtifactDisplay;
   htmlEditState: ReturnType<typeof createHtmlEditState>;
   pageSignal: AbortSignal;
-  publishPreviewDraft: (url: string, signal: AbortSignal) => Promise<void>;
+  publishPreviewDraft: (
+    args:
+      | string
+      | {
+          readonly threadId?: string;
+          readonly url: string;
+        },
+    signal: AbortSignal,
+  ) => Promise<void>;
 }) {
-  if (display.kind !== "html" || !htmlEditState.apply) {
+  if (display.kind !== "html") {
     return undefined;
   }
   return async (html: string) => {
-    await htmlEditState.apply({
+    htmlEditState.apply({
       comments: [],
       editRequestId: crypto.randomUUID(),
       html,
     });
-    await publishPreviewDraft(display.url, pageSignal);
+    await publishPreviewDraft(
+      htmlEditState.snapshotTarget ?? display.url,
+      pageSignal,
+    );
   };
 }
 
@@ -480,6 +894,27 @@ function resetArtifactSidebarImageZoom({
   );
 }
 
+function artifactSidebarFullscreenToggleAction({
+  display,
+  fullscreen,
+  resetZoomableImageCanvasZoom,
+  toggleFullscreen,
+}: {
+  display: ArtifactDisplay;
+  fullscreen: boolean;
+  resetZoomableImageCanvasZoom: (key: string) => void;
+  toggleFullscreen: () => void;
+}) {
+  return () => {
+    resetArtifactSidebarImageZoom({
+      display,
+      fullscreen,
+      resetZoomableImageCanvasZoom,
+    });
+    toggleFullscreen();
+  };
+}
+
 function ArtifactSidebarSurface({
   children,
   fullscreen,
@@ -528,7 +963,7 @@ function findArtifactItemForUrl(
 ): ArtifactSidebarItem | undefined {
   for (const run of runs) {
     const file = run.files.find((candidate) => {
-      return candidate.url === url;
+      return artifactPreviewUrlsMatch(candidate.url, url);
     });
     if (file) {
       return { runId: run.runId, file };
@@ -587,6 +1022,7 @@ function ArtifactSidebarHeader({
   url,
   fullscreen,
   htmlState,
+  imageEditActive,
   onBack,
   onEditHtml,
   onEditPresentation,
@@ -602,6 +1038,7 @@ function ArtifactSidebarHeader({
   url?: string;
   fullscreen: boolean;
   htmlState?: HtmlArtifactHeaderState;
+  imageEditActive: boolean;
   onBack?: () => void;
   onEditHtml?: () => void;
   onEditPresentation?: () => void;
@@ -640,6 +1077,7 @@ function ArtifactSidebarHeader({
         artifactKind={artifactKind}
         fullscreen={fullscreen}
         htmlState={htmlState}
+        imageEditActive={imageEditActive}
         kind={kind}
         onClose={onClose}
         onEditHtml={onEditHtml}
@@ -659,6 +1097,7 @@ function ArtifactSidebarActions({
   compactActions,
   fullscreen,
   htmlState,
+  imageEditActive,
   kind,
   onClose,
   onEditHtml,
@@ -673,6 +1112,7 @@ function ArtifactSidebarActions({
   compactActions: boolean;
   fullscreen: boolean;
   htmlState?: HtmlArtifactHeaderState;
+  imageEditActive: boolean;
   kind?: ArtifactKindForBody;
   onClose: () => void;
   onEditHtml?: () => void;
@@ -692,12 +1132,15 @@ function ArtifactSidebarActions({
     Boolean(features?.[FeatureSwitchKey.HtmlArtifactCommentEditing]) &&
     htmlState !== undefined;
   const htmlEditActive = showHtmlControls && htmlState !== "idle";
+  const hideArtifactActions = htmlEditActive || imageEditActive;
+  const htmlExitAction =
+    htmlState === "editing" && onExitHtmlEdit ? onExitHtmlEdit : undefined;
 
   return (
     <div className="flex shrink-0 items-center gap-1">
       {url && (
         <>
-          {!htmlEditActive && (
+          {!hideArtifactActions && (
             <>
               {kind === "html" && <ArtifactOpenExternalAction url={url} />}
               <ArtifactShareButton ariaLabel="Share artifact" url={url} />
@@ -722,9 +1165,6 @@ function ArtifactSidebarActions({
           {showHtmlControls && (
             <>
               <ArtifactHtmlEditStatus state={htmlState} />
-              {htmlState === "editing" && onExitHtmlEdit && (
-                <ArtifactExitHtmlEditAction onClick={onExitHtmlEdit} />
-              )}
               {onEditHtml && <ArtifactEditHtmlAction onClick={onEditHtml} />}
               <ArtifactActionSeparator />
             </>
@@ -735,12 +1175,13 @@ function ArtifactSidebarActions({
         fullscreen={fullscreen}
         onToggleFullscreen={onToggleFullscreen}
       />
-      {!htmlEditActive &&
-        (compactActions ? (
-          <ArtifactMoreActions onClose={onClose} />
-        ) : (
-          <ArtifactCloseAction onClose={onClose} />
-        ))}
+      {htmlExitAction ? (
+        <ArtifactExitHtmlEditAction onClick={htmlExitAction} />
+      ) : compactActions ? (
+        <ArtifactMoreActions onClose={onClose} />
+      ) : (
+        <ArtifactCloseAction onClose={onClose} />
+      )}
     </div>
   );
 }
@@ -778,15 +1219,15 @@ function ArtifactEditHtmlAction({ onClick }: { onClick: () => void }) {
 
 function ArtifactExitHtmlEditAction({ onClick }: { onClick: () => void }) {
   return (
-    <ArtifactActionTooltip label="Exit editing and keep preview open">
+    <ArtifactActionTooltip label="Exit editing">
       <button
         type="button"
         onClick={onClick}
-        aria-label="Exit editing and keep preview open"
+        aria-label="Exit editing"
         data-testid="artifact-sidebar-exit-html-edit"
-        className="inline-flex h-8 items-center rounded-full border border-border/80 bg-background px-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted/60"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
       >
-        Exit
+        <IconX size={16} />
       </button>
     </ArtifactActionTooltip>
   );
@@ -914,7 +1355,7 @@ function ArtifactCloseAction({ onClose }: { onClose: () => void }) {
         onClick={onClose}
         aria-label="Close artifact"
         data-testid="artifact-sidebar-close"
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       >
         <IconX size={16} />
       </button>
@@ -930,12 +1371,14 @@ function ArtifactBody({
   htmlEditStatus,
   htmlPreviewHtml,
   htmlCommentMode,
+  imageNavigation,
   onCloseHtmlCommentMode,
   onApplyHtmlEditDraft,
   onApplyHtmlStyleEdits,
   onHtmlEditRequestFailed,
   onHtmlEditRequestStarted,
   pageSignal,
+  threadId,
 }: {
   url: string;
   kind: ArtifactKindForBody;
@@ -944,12 +1387,14 @@ function ArtifactBody({
   htmlEditStatus?: "working";
   htmlPreviewHtml?: string;
   htmlCommentMode: boolean;
+  imageNavigation?: ArtifactImageNavigationActions;
   onCloseHtmlCommentMode: () => void;
-  onApplyHtmlEditDraft?: (draft: HtmlDomEditDraft) => Promise<void>;
+  onApplyHtmlEditDraft?: (draft: HtmlDomEditDraft) => void | Promise<void>;
   onApplyHtmlStyleEdits?: (html: string) => Promise<void>;
   onHtmlEditRequestFailed?: () => void;
   onHtmlEditRequestStarted?: () => void;
   pageSignal: AbortSignal;
+  threadId?: string;
 }) {
   if (kind === "markdown") {
     return <ArtifactMarkdownBody url={url} signal={pageSignal} />;
@@ -961,7 +1406,14 @@ function ArtifactBody({
     return <ArtifactCsvBody url={url} signal={pageSignal} />;
   }
   if (kind === "image") {
-    return <ArtifactImageBody url={url} filename={filename} />;
+    return (
+      <ArtifactImageBodyDispatch
+        imageNavigation={imageNavigation}
+        url={url}
+        filename={filename}
+        pageSignal={pageSignal}
+      />
+    );
   }
   if (kind === "video") {
     return <ArtifactVideoBody url={url} filename={filename} />;
@@ -994,6 +1446,7 @@ function ArtifactBody({
         artifactKind={artifactKind}
         htmlEditStatus={htmlEditStatus}
         htmlPreviewHtml={htmlPreviewHtml}
+        threadId={threadId}
       />
     );
   }
@@ -1230,35 +1683,303 @@ function ArtifactCsvBody({
   );
 }
 
+function ArtifactImageBodyDispatch({
+  imageNavigation,
+  url,
+  filename,
+  pageSignal,
+}: {
+  imageNavigation?: ArtifactImageNavigationActions;
+  url: string;
+  filename: string;
+  pageSignal: AbortSignal;
+}) {
+  const editMode = useGet(artifactImageEditMode$);
+  const features = useLastResolved(featureSwitch$);
+  const imageEditEnabled = Boolean(features?.[FeatureSwitchKey.ImageEditing]);
+  if (editMode && imageEditEnabled) {
+    return (
+      <ArtifactImageEditBody
+        imageNavigation={imageNavigation}
+        url={url}
+        filename={filename}
+        pageSignal={pageSignal}
+      />
+    );
+  }
+  return (
+    <ArtifactImageBody
+      imageNavigation={imageNavigation}
+      url={url}
+      filename={filename}
+    />
+  );
+}
+
 function ArtifactImageBody({
+  imageNavigation,
   url,
   filename,
 }: {
+  imageNavigation?: ArtifactImageNavigationActions;
   url: string;
   filename: string;
 }) {
   const fullscreen = useGet(artifactFullscreen$);
+  const modalOpen = useGet(lightboxDialogVisible$);
 
   return (
     <ArtifactStageShell flush scrollable={false}>
       <ArtifactStageCard fillHeight>
-        <ZoomableArtifactImageCanvas
-          src={publicAttachmentUrl(url)}
-          alt={filename}
-          zoomKey={zoomableArtifactImageKey(
-            "artifact-sidebar",
-            url,
-            fullscreen ? "fullscreen" : "sidebar",
-          )}
-          imageTestId="artifact-sidebar-body-image"
-          contentClassName="p-6"
-        >
-          {(controls) => {
-            return <ArtifactImageZoomControls controls={controls} />;
-          }}
-        </ZoomableArtifactImageCanvas>
+        <div className="relative h-full min-h-0">
+          <ArtifactSidebarImageNavigationKeydown
+            fullscreen={fullscreen}
+            modalOpen={modalOpen}
+            navigation={imageNavigation}
+          />
+          <ZoomableArtifactImageCanvas
+            src={publicAttachmentUrl(url)}
+            alt={filename}
+            zoomKey={zoomableArtifactImageKey(
+              "artifact-sidebar",
+              url,
+              fullscreen ? "fullscreen" : "sidebar",
+            )}
+            imageTestId="artifact-sidebar-body-image"
+            contentClassName="p-6"
+          >
+            {(controls) => {
+              return <ArtifactImageZoomControls controls={controls} />;
+            }}
+          </ZoomableArtifactImageCanvas>
+          <ArtifactImageNavigationControls navigation={imageNavigation} />
+        </div>
       </ArtifactStageCard>
     </ArtifactStageShell>
+  );
+}
+
+function ArtifactImageEditToolbarButton({
+  activeOperation,
+  icon,
+  label,
+  onClick,
+  operation,
+  testId,
+}: {
+  activeOperation: ImageEditOperation | null;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  operation: ImageEditOperation;
+  testId: string;
+}) {
+  const processing = activeOperation !== null;
+  const active = activeOperation === operation;
+  return (
+    <ArtifactActionTooltip label={label} side="top">
+      <span className="inline-flex">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground"
+          disabled={processing}
+          data-testid={testId}
+          aria-label={label}
+          title={label}
+          onClick={onClick}
+        >
+          {active ? <IconLoader2 size={17} className="animate-spin" /> : icon}
+        </Button>
+      </span>
+    </ArtifactActionTooltip>
+  );
+}
+
+function ArtifactImageEditSelectionToolbar({
+  activeOperation,
+  item,
+  onDownload,
+  onOperation,
+}: {
+  activeOperation: ImageEditOperation | null;
+  item: EditableImageCanvasItem;
+  onDownload: (item: EditableImageCanvasItem) => void;
+  onOperation: (
+    operation: ImageEditOperation,
+    item: EditableImageCanvasItem,
+  ) => void;
+}) {
+  return (
+    <div
+      data-testid="image-edit-toolbar"
+      className="flex items-center gap-2 rounded-2xl border border-border/70 bg-gray-50/95 px-2 py-2 shadow-lg backdrop-blur"
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
+    >
+      <ArtifactImageEditToolbarButton
+        activeOperation={activeOperation}
+        icon={<IconBackground size={18} stroke={1.8} />}
+        label="Remove background"
+        onClick={() => {
+          onOperation("removeBackground", item);
+        }}
+        operation="removeBackground"
+        testId="image-edit-remove-background"
+      />
+      <ArtifactImageEditToolbarButton
+        activeOperation={activeOperation}
+        icon={<IconSparkles size={18} stroke={1.8} />}
+        label="Enhance"
+        onClick={() => {
+          onOperation("enhance", item);
+        }}
+        operation="enhance"
+        testId="image-edit-enhance"
+      />
+      <ArtifactActionTooltip label="Download" side="top">
+        <span className="inline-flex">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground"
+            disabled={activeOperation !== null}
+            data-testid="image-edit-download"
+            aria-label="Download"
+            title="Download"
+            onClick={() => {
+              onDownload(item);
+            }}
+          >
+            <IconDownload size={18} stroke={1.8} />
+          </Button>
+        </span>
+      </ArtifactActionTooltip>
+    </div>
+  );
+}
+
+function ArtifactImageEditBody({
+  imageNavigation,
+  url,
+  filename,
+  pageSignal,
+}: {
+  imageNavigation?: ArtifactImageNavigationActions;
+  url: string;
+  filename: string;
+  pageSignal: AbortSignal;
+}) {
+  const fullscreen = useGet(artifactFullscreen$);
+  const modalOpen = useGet(lightboxDialogVisible$);
+  const activeOperation = useGet(imageEditProcessing$);
+  const runImageEdit = useSet(runImageEdit$);
+  const canvasSrc = publicAttachmentUrl(url);
+  const canvasKey = editableImageArtifactCanvasKey(url);
+
+  const onOperation = (
+    operation: ImageEditOperation,
+    item: EditableImageCanvasItem,
+  ) => {
+    detach(
+      runImageEdit(
+        {
+          canvasKey,
+          canvasSrc,
+          operation,
+          sourceItemId: item.id,
+          url: item.src,
+        },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+      "runImageEdit",
+    );
+  };
+  const onDownload = (item: EditableImageCanvasItem) => {
+    detach(
+      downloadAttachmentUrl(item.src, pageSignal, filename),
+      Reason.DomCallback,
+      "downloadEditableImageCanvasItem",
+    );
+  };
+
+  return (
+    <ArtifactStageShell flush scrollable={false}>
+      <ArtifactStageCard fillHeight>
+        <div className="relative h-full min-h-0">
+          <ArtifactSidebarImageNavigationKeydown
+            fullscreen={fullscreen}
+            modalOpen={modalOpen}
+            navigation={imageNavigation}
+          />
+          <EditableArtifactImageCanvas
+            src={canvasSrc}
+            alt={filename}
+            canvasKey={canvasKey}
+            imageTestId="artifact-sidebar-body-image"
+            canvasTestId="artifact-sidebar-image-edit-canvas"
+            viewportKey={fullscreen ? "fullscreen" : "sidebar"}
+            renderSelectionToolbar={(item) => {
+              return (
+                <ArtifactImageEditSelectionToolbar
+                  activeOperation={activeOperation}
+                  item={item}
+                  onDownload={onDownload}
+                  onOperation={onOperation}
+                />
+              );
+            }}
+          >
+            {(controls) => {
+              return <ArtifactImageZoomControls controls={controls} />;
+            }}
+          </EditableArtifactImageCanvas>
+        </div>
+      </ArtifactStageCard>
+    </ArtifactStageShell>
+  );
+}
+
+function ArtifactImageNavigationControls({
+  navigation,
+}: {
+  navigation?: ArtifactImageNavigationActions;
+}) {
+  if (!navigation?.onPrevious && !navigation?.onNext) {
+    return null;
+  }
+
+  return (
+    <>
+      {navigation.onPrevious && (
+        <button
+          type="button"
+          onClick={navigation.onPrevious}
+          aria-label="Previous image artifact"
+          title="Previous image artifact"
+          data-testid="artifact-sidebar-previous-image"
+          className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
+        >
+          <IconChevronLeft size={22} stroke={1.8} />
+        </button>
+      )}
+      {navigation.onNext && (
+        <button
+          type="button"
+          onClick={navigation.onNext}
+          aria-label="Next image artifact"
+          title="Next image artifact"
+          data-testid="artifact-sidebar-next-image"
+          className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
+        >
+          <IconChevronRight size={22} stroke={1.8} />
+        </button>
+      )}
+    </>
   );
 }
 
@@ -1371,6 +2092,7 @@ function ArtifactIframeBody({
   artifactKind,
   htmlEditStatus,
   htmlPreviewHtml,
+  threadId,
 }: {
   url: string;
   kind: "html" | "pdf";
@@ -1378,6 +2100,7 @@ function ArtifactIframeBody({
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   htmlEditStatus?: "working";
   htmlPreviewHtml?: string;
+  threadId?: string;
 }) {
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail
   // (thumbnails / bookmarks) so the embedded preview shows just the page
@@ -1403,6 +2126,11 @@ function ArtifactIframeBody({
     return (
       <div className="relative h-full w-full">
         <AutoFocusedArtifactIframe
+          // Remount on live<->draft switch: swapping `src`<->`srcDoc` on the
+          // same iframe doesn't reliably reload it, leaving the original showing.
+          // (draft->draft updates fine via the srcDoc attribute, so presence is
+          // the only transition that needs a fresh element.)
+          key={htmlPreviewHtml ? "draft" : "live"}
           focusKey={`${versionedSrc}:${fullscreen ? "fullscreen" : "sidebar"}`}
           focusOnMount={fullscreen && !isPresentationHtml}
           {...(htmlPreviewHtml
@@ -1418,11 +2146,15 @@ function ArtifactIframeBody({
           <HtmlEditDraftToolbar
             disabled={htmlEditStatus === "working"}
             onDiscard={() => {
-              discardHtmlDomEditPreviewDraft(url);
+              detach(
+                discardHtmlDomEditPreviewDraft({ threadId, url }, pageSignal),
+                Reason.DomCallback,
+                "discardHtmlDomEditPreviewDraft",
+              );
             }}
             onPublish={() => {
               detach(
-                publishHtmlDomEditPreviewDraft(url, pageSignal),
+                publishHtmlDomEditPreviewDraft({ threadId, url }, pageSignal),
                 Reason.DomCallback,
                 "publishHtmlDomEditPreviewDraft",
               );

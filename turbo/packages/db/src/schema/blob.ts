@@ -8,17 +8,23 @@ import {
 } from "drizzle-orm/pg-core";
 
 /**
- * Blobs table
- * Content-addressable storage for file deduplication
- * Each blob is identified by its SHA-256 hash
+ * Blobs table.
+ *
+ * Content-addressable storage keyed by the raw, unencoded bytes. Encoded storage
+ * formats such as gzip keep the same content hash and raw size while recording
+ * the physical object size separately.
  */
 export const blobs = pgTable(
   "blobs",
   {
-    /** SHA-256 hash of the file content */
+    /** SHA-256 hash of the raw content bytes */
     hash: varchar("hash", { length: 64 }).primaryKey(),
-    /** File size in bytes */
-    size: bigint("size", { mode: "number" }).notNull(),
+    /** Raw content size in bytes */
+    rawSize: bigint("raw_size", { mode: "number" }).notNull(),
+    /** Physical storage encoding for this raw-content hash */
+    encoding: varchar("encoding", { length: 16 }).notNull(),
+    /** Encoded object size in bytes */
+    encodedSize: bigint("encoded_size", { mode: "number" }).notNull(),
     /** Reference count for garbage collection */
     refCount: integer("ref_count").notNull().default(1),
     /** Timestamp when the blob was first uploaded */

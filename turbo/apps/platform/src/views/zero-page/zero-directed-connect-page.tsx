@@ -1,13 +1,9 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
-  CONNECTOR_TYPES,
   connectorTypeSchema,
-  type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
-  type ConnectorManualGrantConfig,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { Input } from "@vm0/ui/components/ui/input";
 import {
   Dialog,
@@ -24,15 +20,17 @@ import {
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
   pollingOAuthDeviceAuthConnectorType$,
-  selectedConnectorType$,
-  setSelectedConnectorType$,
   submitManualGrant$,
   manualGrantFormSubmitting$,
   setManualGrantFormValue$,
   clearManualGrantForm$,
   manualGrantFormValuesFor$,
   setManualGrantFormSubmitting$,
+  getOnlyManualConnectorStatusAuthMethod,
+  hasConnectorStatusProviderDrivenConnectMethod,
+  manualGrantInputValuesForMethod,
   type ConnectorTypeWithStatus,
+  type ConnectorStatusAuthMethodDetail,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { hasTokenInputValue } from "../../signals/zero-page/settings/token-input.ts";
 import {
@@ -40,81 +38,29 @@ import {
   detach,
   onDomEventFn,
   Reason,
+  withCleanup,
 } from "../../signals/utils.ts";
 import {
   directedConnectType$,
   directedConnectAgentId$,
   directedConnectAgentName$,
-  manualGrantDialogOpen$,
-  setManualGrantDialogOpen$,
+  manualGrantDialogKey$,
+  setManualGrantDialogKey$,
+  directedConnectModalKey$,
+  setDirectedConnectModalKey$,
+  type DirectedConnectModalKey,
+  type DirectedConnectManualGrantDialogKey,
 } from "../../signals/connectors-page/directed-connect-type.ts";
 import { authorizeConnector$ } from "../../signals/connectors-page/directed-authorize-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
-import { shouldShowGoogleSecurityWarningNotice } from "../../lib/google-security-warning.ts";
 import {
   Vm0LogoLink,
   GoogleSecurityWarningNotice,
 } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import type { FormEvent } from "react";
-
-type ManualGrantMethod = {
-  readonly authMethod: ConnectorAuthMethodId;
-  readonly method: ConnectorAuthMethodConfig;
-  readonly grant: ConnectorManualGrantConfig;
-};
-
-function getOnlyManualGrantMethod(
-  connectorType: ConnectorType,
-  authMethods: readonly ConnectorAuthMethodId[],
-): ManualGrantMethod | null {
-  let manualGrantMethod: ManualGrantMethod | null = null;
-  for (const authMethod of authMethods) {
-    const method = getConnectorAuthMethod(connectorType, authMethod);
-    switch (method?.grant.kind) {
-      case "manual": {
-        if (manualGrantMethod) {
-          return null;
-        }
-        manualGrantMethod = {
-          authMethod,
-          method,
-          grant: method.grant,
-        };
-        continue;
-      }
-      case "auth-code":
-      case "device-auth":
-      case "managed":
-      case undefined: {
-        continue;
-      }
-    }
-  }
-  return manualGrantMethod;
-}
-
-function hasProviderDrivenConnectMethod(
-  connectorType: ConnectorType,
-  authMethods: readonly ConnectorAuthMethodId[],
-): boolean {
-  return authMethods.some((authMethod) => {
-    const method = getConnectorAuthMethod(connectorType, authMethod);
-    switch (method?.grant.kind) {
-      case "auth-code":
-      case "device-auth":
-      case "managed": {
-        return true;
-      }
-      case "manual":
-      case undefined: {
-        return false;
-      }
-    }
-    return false;
-  });
-}
+import { ConnectorHelpText } from "./components/settings/connector-help-text.tsx";
 
 function runDirectedConnect(params: {
   item: ConnectorTypeWithStatus;
@@ -123,7 +69,10 @@ function runDirectedConnect(params: {
   connect: (
     type: ConnectorType,
     authMethod: ConnectorAuthMethodId,
-    options: { readonly showPermissionDialog?: boolean },
+    options: {
+      readonly showPermissionDialog?: boolean;
+      readonly connectorLabel?: string;
+    },
     signal: AbortSignal,
   ) => Promise<boolean>;
   onConnected: () => Promise<void>;
@@ -133,19 +82,13 @@ function runDirectedConnect(params: {
   const launchMode = getConnectorStatusConnectLaunchMode(params.item);
   if (
     launchMode === "modal" &&
-    hasProviderDrivenConnectMethod(
-      params.connectorType,
-      params.item.availableAuthMethods,
-    )
+    hasConnectorStatusProviderDrivenConnectMethod(params.item)
   ) {
     params.openConnectModal();
     return;
   }
 
-  const manualGrantMethod = getOnlyManualGrantMethod(
-    params.connectorType,
-    params.item.availableAuthMethods,
-  );
+  const manualGrantMethod = getOnlyManualConnectorStatusAuthMethod(params.item);
 
   if (launchMode === "modal" && manualGrantMethod) {
     params.openManualGrantDialog();
@@ -168,7 +111,7 @@ function runDirectedConnect(params: {
       connected = await params.connect(
         params.connectorType,
         authMethod,
-        {},
+        { connectorLabel: params.item.label },
         params.signal,
       );
       if (connected) {
@@ -179,31 +122,16 @@ function runDirectedConnect(params: {
   );
 }
 
-// Only intended for trusted, source-controlled help text from
-// `CONNECTOR_TYPES[*].authMethods.*.helpText`. Do NOT feed user-supplied
-// strings into this renderer — the `[text]` and `**bold**` captures are
-// verbatim-injected and would permit HTML smuggling.
-function renderMarkdown(text: string): string {
-  return text
-    .replace(
-      // Only http(s) URLs are turned into anchors; other schemes fall through
-      // as literal text. `"` is also excluded from the href charclass so a
-      // stray quote cannot break out of the href attribute and inject
-      // siblings like `onclick` when feeding `dangerouslySetInnerHTML`.
-      /\[([^\]]+)\]\((https?:\/\/[^)"]+)\)/g,
-      '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-primary underline">$1</a>',
-    )
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-}
-
 function ManualGrantForm({
   type,
+  connectorLabel,
   manualGrantMethod,
   onSuccess,
 }: {
   type: ConnectorType;
-  manualGrantMethod: ManualGrantMethod;
-  onSuccess: () => void;
+  connectorLabel: string;
+  manualGrantMethod: ConnectorStatusAuthMethodDetail;
+  onSuccess: () => void | Promise<void>;
 }) {
   const submit = useSet(submitManualGrant$);
   const setFormValue = useSet(setManualGrantFormValue$);
@@ -214,9 +142,8 @@ function ManualGrantForm({
   const setSubmitting = useSet(setManualGrantFormSubmitting$);
   const submitting = submittingType === type;
 
-  const fieldEntries = Object.entries(manualGrantMethod.grant.fields);
-  const allFilled = fieldEntries.every(([name, cfg]) => {
-    return !cfg.required || hasTokenInputValue(fieldValues[name]);
+  const allFilled = manualGrantMethod.manualFields.every((field) => {
+    return !field.required || hasTokenInputValue(fieldValues[field.id]);
   });
 
   const handleSubmit = onDomEventFn(
@@ -226,22 +153,32 @@ function ManualGrantForm({
         return;
       }
       setSubmitting(type);
-      await bestEffort(
-        (async () => {
-          await submit(
-            {
-              type,
-              authMethod: manualGrantMethod.authMethod,
-              inputValues: fieldValues,
-              options: {},
-            },
-            pageSignal,
-          );
-          clearForm(type);
-          onSuccess();
-        })(),
+      await withCleanup(
+        bestEffort(
+          (async () => {
+            const connected = await submit(
+              {
+                type,
+                authMethod: manualGrantMethod.id,
+                inputValues: manualGrantInputValuesForMethod(
+                  manualGrantMethod,
+                  fieldValues,
+                ),
+                options: { connectorLabel },
+              },
+              pageSignal,
+            );
+            if (!connected) {
+              return;
+            }
+            await onSuccess();
+            clearForm(type);
+          })(),
+        ),
+        () => {
+          setSubmitting(null);
+        },
       );
-      setSubmitting(null);
     },
   );
 
@@ -250,26 +187,21 @@ function ManualGrantForm({
       className="flex w-full flex-col gap-3 text-left"
       onSubmit={handleSubmit}
     >
-      {manualGrantMethod.method.helpText && (
-        <div
-          className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
-          dangerouslySetInnerHTML={{
-            __html: renderMarkdown(manualGrantMethod.method.helpText),
-          }}
-        />
+      {manualGrantMethod.description && (
+        <ConnectorHelpText text={manualGrantMethod.description} />
       )}
-      {fieldEntries.map(([name, fieldConfig]) => {
+      {manualGrantMethod.manualFields.map((fieldConfig) => {
         return (
-          <div key={name} className="flex flex-col gap-1.5">
+          <div key={fieldConfig.id} className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-foreground">
               {fieldConfig.label}
             </label>
             <Input
-              type="password"
-              placeholder={fieldConfig.placeholder}
-              value={fieldValues[name] ?? ""}
+              type={fieldConfig.inputType}
+              placeholder={fieldConfig.placeholder ?? undefined}
+              value={fieldValues[fieldConfig.id] ?? ""}
               onChange={(e) => {
-                return setFormValue(type, name, e.target.value);
+                return setFormValue(type, fieldConfig.id, e.target.value);
               }}
             />
           </div>
@@ -289,18 +221,19 @@ function ManualGrantForm({
 
 function ManualGrantDialog({
   type,
+  connectorLabel,
   manualGrantMethod,
   open,
   onOpenChange,
   onConnected,
 }: {
   type: ConnectorType;
-  manualGrantMethod: ManualGrantMethod | null;
+  connectorLabel: string;
+  manualGrantMethod: ConnectorStatusAuthMethodDetail | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConnected?: () => void;
+  onConnected?: () => void | Promise<void>;
 }) {
-  const config = CONNECTOR_TYPES[type];
   if (!manualGrantMethod) {
     return null;
   }
@@ -310,15 +243,16 @@ function ManualGrantDialog({
         <DialogHeader>
           <div className="flex items-center gap-3">
             <ConnectorIcon type={type} size={20} />
-            <DialogTitle>{config.label}</DialogTitle>
+            <DialogTitle>{connectorLabel}</DialogTitle>
           </div>
         </DialogHeader>
         <ManualGrantForm
           type={type}
+          connectorLabel={connectorLabel}
           manualGrantMethod={manualGrantMethod}
-          onSuccess={() => {
+          onSuccess={async () => {
+            await onConnected?.();
             onOpenChange(false);
-            onConnected?.();
           }}
         />
       </DialogContent>
@@ -371,57 +305,63 @@ function ConnectActions({
 
 function DirectedConnectModal({
   open,
+  connectorType,
   onClose,
   onSuccess,
 }: {
   readonly open: boolean;
+  readonly connectorType: ConnectorType;
   readonly onClose: () => void;
   readonly onSuccess: () => Promise<void>;
 }) {
   if (!open) {
     return null;
   }
-  return <ConnectModal onClose={onClose} onSuccess={onSuccess} />;
+  return (
+    <ConnectModal
+      selectedType={connectorType}
+      onClose={onClose}
+      onSuccess={onSuccess}
+    />
+  );
 }
 
 function DirectedConnectDialogs({
   connectorType,
+  connectorLabel,
   manualGrantMethod,
   manualGrantDialogOpen,
   setManualGrantDialogOpen,
   agentId,
   runPostConnectActions,
-  selectedConnectorType,
-  setSelectedConnectorType,
+  connectModalOpen,
+  setConnectModalOpen,
 }: {
   readonly connectorType: ConnectorType;
-  readonly manualGrantMethod: ManualGrantMethod | null;
+  readonly connectorLabel: string;
+  readonly manualGrantMethod: ConnectorStatusAuthMethodDetail | null;
   readonly manualGrantDialogOpen: boolean;
   readonly setManualGrantDialogOpen: (open: boolean) => void;
   readonly agentId: string | null | undefined;
   readonly runPostConnectActions: () => Promise<void>;
-  readonly selectedConnectorType: ConnectorType | null;
-  readonly setSelectedConnectorType: (type: ConnectorType | null) => void;
+  readonly connectModalOpen: boolean;
+  readonly setConnectModalOpen: (open: boolean) => void;
 }) {
   return (
     <>
       <ManualGrantDialog
         type={connectorType}
+        connectorLabel={connectorLabel}
         manualGrantMethod={manualGrantMethod}
         open={manualGrantDialogOpen}
         onOpenChange={setManualGrantDialogOpen}
-        onConnected={
-          agentId
-            ? () => {
-                detach(runPostConnectActions(), Reason.DomCallback);
-              }
-            : undefined
-        }
+        onConnected={agentId ? runPostConnectActions : undefined}
       />
       <DirectedConnectModal
-        open={selectedConnectorType === connectorType}
+        open={connectModalOpen}
+        connectorType={connectorType}
         onClose={() => {
-          setSelectedConnectorType(null);
+          setConnectModalOpen(false);
         }}
         onSuccess={runPostConnectActions}
       />
@@ -439,19 +379,152 @@ function useDirectedConnectConnectorType(): ConnectorType | null {
 }
 
 function ConnectorConnectNotices({
-  connectorType,
+  connectNotice,
   isConnected,
 }: {
-  readonly connectorType: ConnectorType;
+  readonly connectNotice: ConnectorTypeWithStatus["connectNotice"] | null;
   readonly isConnected: boolean;
 }) {
   if (isConnected) {
     return null;
   }
-  if (shouldShowGoogleSecurityWarningNotice(connectorType)) {
+  if (connectNotice === "google-security-warning") {
     return <GoogleSecurityWarningNotice />;
   }
   return null;
+}
+
+function useDirectedConnectCatalogState(connectorType: ConnectorType | null): {
+  readonly item: ConnectorTypeWithStatus | undefined;
+  readonly isConnected: boolean;
+  readonly isLoading: boolean;
+  readonly unavailable: boolean;
+} {
+  const justConnected = useGet(justConnectedTypes$);
+  const allLoadable = useLastLoadable(allConnectorTypes$);
+  const catalogLoaded = allLoadable.state === "hasData";
+  const allData = catalogLoaded ? allLoadable.data : [];
+  const item = connectorType
+    ? allData.find((connector) => {
+        return connector.type === connectorType;
+      })
+    : undefined;
+  const optimisticallyConnected =
+    connectorType !== null && justConnected.has(connectorType);
+  const isConnected = optimisticallyConnected || (item?.connected ?? false);
+  return {
+    item,
+    isConnected,
+    isLoading:
+      connectorType !== null &&
+      !optimisticallyConnected &&
+      allLoadable.state === "loading",
+    unavailable:
+      connectorType !== null &&
+      catalogLoaded &&
+      !item &&
+      !optimisticallyConnected,
+  };
+}
+
+function directedConnectManualGrantDialogOpen(
+  key: DirectedConnectManualGrantDialogKey | null,
+  args: {
+    readonly connectorType: ConnectorType | null;
+    readonly agentId: string | null;
+    readonly signal: AbortSignal;
+  },
+): boolean {
+  return (
+    key?.connectorType === args.connectorType &&
+    key.agentId === args.agentId &&
+    key.signal === args.signal
+  );
+}
+
+function directedConnectModalOpen(
+  key: DirectedConnectModalKey | null,
+  args: {
+    readonly connectorType: ConnectorType | null;
+    readonly agentId: string | null;
+    readonly signal: AbortSignal;
+  },
+): boolean {
+  return (
+    key?.connectorType === args.connectorType &&
+    key.agentId === args.agentId &&
+    key.signal === args.signal
+  );
+}
+
+function DirectedConnectCardContent({
+  connectorType,
+  connectorLabel,
+  connectorDescription,
+  connectNotice,
+  agentName,
+  isLoading,
+  isConnected,
+  isConnecting,
+  canConnect,
+  onConnect,
+}: {
+  readonly connectorType: ConnectorType;
+  readonly connectorLabel: string;
+  readonly connectorDescription: string;
+  readonly connectNotice: ConnectorTypeWithStatus["connectNotice"] | null;
+  readonly agentName: string;
+  readonly isLoading: boolean;
+  readonly isConnected: boolean;
+  readonly isConnecting: boolean;
+  readonly canConnect: boolean;
+  readonly onConnect: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+      <div className="pointer-events-auto flex w-[430px] max-w-[calc(100%-48px)] flex-col items-center gap-12 rounded-[20px] border border-border bg-background px-6 py-12 text-center">
+        <Vm0LogoLink />
+        <div className="flex w-full flex-col gap-4">
+          <div className="flex flex-col items-center gap-2.5">
+            {isLoading ? (
+              <IconLoader2
+                size={20}
+                className="animate-spin text-muted-foreground"
+              />
+            ) : (
+              <>
+                <h1 className="text-lg font-medium text-foreground">
+                  {isConnected
+                    ? `${connectorLabel} connected`
+                    : `${agentName} needs ${connectorLabel} to proceed`}
+                </h1>
+                <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
+                  <ConnectorIcon type={connectorType} size={20} />
+                </div>
+                <p className="w-60 text-sm text-muted-foreground">
+                  {connectorDescription}
+                </p>
+                <ConnectorConnectNotices
+                  connectNotice={connectNotice}
+                  isConnected={isConnected}
+                />
+              </>
+            )}
+          </div>
+          {!isLoading && (
+            <div className="flex flex-col items-center justify-center gap-2">
+              <ConnectActions
+                isConnected={isConnected}
+                isConnecting={isConnecting}
+                disabled={!canConnect}
+                onConnect={onConnect}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function DirectedConnectCard() {
@@ -463,45 +536,45 @@ function DirectedConnectCard() {
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const authorize = useSet(authorizeConnector$);
   const signal = useGet(pageSignal$);
-  const justConnected = useGet(justConnectedTypes$);
-  const allLoadable = useLastLoadable(allConnectorTypes$);
-  const manualGrantDialogOpen = useGet(manualGrantDialogOpen$);
-  const setManualGrantDialogOpen = useSet(setManualGrantDialogOpen$);
-  const selectedConnectorType = useGet(selectedConnectorType$);
-  const setSelectedConnectorType = useSet(setSelectedConnectorType$);
+  const { item, isConnected, isLoading, unavailable } =
+    useDirectedConnectCatalogState(connectorType);
+  const manualGrantDialogKey = useGet(manualGrantDialogKey$);
+  const setManualGrantDialogKey = useSet(setManualGrantDialogKey$);
+  const connectModalKey = useGet(directedConnectModalKey$);
+  const setDirectedConnectModalKey = useSet(setDirectedConnectModalKey$);
+  const manualGrantDialogOpen = directedConnectManualGrantDialogOpen(
+    manualGrantDialogKey,
+    { connectorType, agentId, signal },
+  );
+  const connectModalOpen = directedConnectModalOpen(connectModalKey, {
+    connectorType,
+    agentId,
+    signal,
+  });
 
   if (!connectorType) {
     return null;
   }
 
-  const config = CONNECTOR_TYPES[connectorType];
   const agentName =
-    agentNameLoadable.state === "hasData" && agentNameLoadable.data
-      ? agentNameLoadable.data
+    agentNameLoadable.state === "hasData" &&
+    agentNameLoadable.data.agentId === agentId &&
+    agentNameLoadable.data.displayName
+      ? agentNameLoadable.data.displayName
       : "Zero";
   const isConnecting =
     pollingAuthCodeType === connectorType ||
     pollingDeviceAuthType === connectorType;
-  const isLoading =
-    !justConnected.has(connectorType) && allLoadable.state === "loading";
-  const catalogLoaded = allLoadable.state === "hasData";
-  const allData = catalogLoaded ? allLoadable.data : [];
-  const item = allData.find((c) => {
-    return c.type === connectorType;
-  });
-  const unavailable =
-    catalogLoaded && !item && !justConnected.has(connectorType);
   if (unavailable) {
     return null;
   }
-  const isConnected =
-    justConnected.has(connectorType) || (item?.connected ?? false);
   const authMethods = item?.availableAuthMethods ?? [];
-  const manualGrantMethod = getOnlyManualGrantMethod(
-    connectorType,
-    authMethods,
-  );
+  const manualGrantMethod = item
+    ? getOnlyManualConnectorStatusAuthMethod(item)
+    : null;
   const canConnect = authMethods.length > 0;
+  const connectorLabel = item?.label ?? connectorType;
+  const connectorDescription = item?.helpText ?? "";
 
   const runPostConnectActions = async () => {
     if (agentId) {
@@ -520,68 +593,46 @@ function DirectedConnectCard() {
       connect,
       onConnected: runPostConnectActions,
       openManualGrantDialog: () => {
-        return setManualGrantDialogOpen(true);
+        return setManualGrantDialogKey({ connectorType, agentId, signal });
       },
       openConnectModal: () => {
-        setSelectedConnectorType(connectorType);
+        setDirectedConnectModalKey({ connectorType, agentId, signal });
       },
     });
   };
 
   return (
     <>
-      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-        <div className="pointer-events-auto flex w-[430px] max-w-[calc(100%-48px)] flex-col items-center gap-12 rounded-[20px] border border-border bg-background px-6 py-12 text-center">
-          <Vm0LogoLink />
-          <div className="flex w-full flex-col gap-4">
-            <div className="flex flex-col items-center gap-2.5">
-              {isLoading ? (
-                <IconLoader2
-                  size={20}
-                  className="animate-spin text-muted-foreground"
-                />
-              ) : (
-                <>
-                  <h1 className="text-lg font-medium text-foreground">
-                    {isConnected
-                      ? `${config.label} connected`
-                      : `${agentName} needs ${config.label} to proceed`}
-                  </h1>
-                  <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
-                    <ConnectorIcon type={connectorType} size={20} />
-                  </div>
-                  <p className="w-60 text-sm text-muted-foreground">
-                    {config.helpText}
-                  </p>
-                  <ConnectorConnectNotices
-                    connectorType={connectorType}
-                    isConnected={isConnected}
-                  />
-                </>
-              )}
-            </div>
-            {!isLoading && (
-              <div className="flex flex-col items-center justify-center gap-2">
-                <ConnectActions
-                  isConnected={isConnected}
-                  isConnecting={isConnecting}
-                  disabled={!canConnect}
-                  onConnect={handleConnect}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <DirectedConnectCardContent
+        connectorType={connectorType}
+        connectorLabel={connectorLabel}
+        connectorDescription={connectorDescription}
+        connectNotice={item?.connectNotice ?? null}
+        agentName={agentName}
+        isLoading={isLoading}
+        isConnected={isConnected}
+        isConnecting={isConnecting}
+        canConnect={canConnect}
+        onConnect={handleConnect}
+      />
       <DirectedConnectDialogs
         connectorType={connectorType}
+        connectorLabel={connectorLabel}
         manualGrantMethod={manualGrantMethod}
         manualGrantDialogOpen={manualGrantDialogOpen}
-        setManualGrantDialogOpen={setManualGrantDialogOpen}
+        setManualGrantDialogOpen={(open) => {
+          setManualGrantDialogKey(
+            open ? { connectorType, agentId, signal } : null,
+          );
+        }}
         agentId={agentId}
         runPostConnectActions={runPostConnectActions}
-        selectedConnectorType={selectedConnectorType}
-        setSelectedConnectorType={setSelectedConnectorType}
+        connectModalOpen={connectModalOpen}
+        setConnectModalOpen={(open) => {
+          setDirectedConnectModalKey(
+            open ? { connectorType, agentId, signal } : null,
+          );
+        }}
       />
     </>
   );

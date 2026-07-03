@@ -1,5 +1,88 @@
 # Changelog
 
+## [0.131.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.19...runner-rs-v0.131.20) (2026-07-02)
+
+
+### Bug Fixes
+
+* prioritize direct workspace holder cleanup ([#19881](https://github.com/vm0-ai/vm0/issues/19881)) ([a381f6c](https://github.com/vm0-ai/vm0/commit/a381f6c787f395339ca9d6abdb9f655182cb2713))
+
+
+### Performance Improvements
+
+* split fresh sandbox preparation telemetry ([#19898](https://github.com/vm0-ai/vm0/issues/19898)) ([c55b78d](https://github.com/vm0-ai/vm0/commit/c55b78dceeb2c7671fb8f30906f0ab9f9010a442))
+
+## [0.131.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.18...runner-rs-v0.131.19) (2026-07-02)
+
+## [0.131.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.17...runner-rs-v0.131.18) (2026-07-02)
+
+
+### Bug Fixes
+
+* protect same-session runner affinity claims ([#19764](https://github.com/vm0-ai/vm0/issues/19764)) ([5bbd286](https://github.com/vm0-ai/vm0/commit/5bbd2862e2eceb51a71ba681a24d64b87894d712))
+
+## [0.131.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.16...runner-rs-v0.131.17) (2026-07-02)
+
+## [0.131.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.15...runner-rs-v0.131.16) (2026-07-02)
+
+
+### Refactoring
+
+* **mitm-addon:** separate body decode policies ([#19818](https://github.com/vm0-ai/vm0/issues/19818)) ([2cceb77](https://github.com/vm0-ai/vm0/commit/2cceb77c50ae250bdce23e6ff652d51a43789ea5))
+
+
+### Performance Improvements
+
+* **mitm-addon:** adapt zstd stream input chunks ([#19856](https://github.com/vm0-ai/vm0/issues/19856)) ([7be6db8](https://github.com/vm0-ai/vm0/commit/7be6db8324af2bae96ac78c10d73317a59271edb))
+
+## [0.131.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.14...runner-rs-v0.131.15) (2026-07-02)
+
+
+### Refactoring
+
+* **mitm-addon:** factor sigv4 firewall auth tests ([#19822](https://github.com/vm0-ai/vm0/issues/19822)) ([ff28409](https://github.com/vm0-ai/vm0/commit/ff28409deb61751273b5a6f207234d159ddc8519))
+
+
+### Performance Improvements
+
+* add session history encoding telemetry ([#19812](https://github.com/vm0-ai/vm0/issues/19812)) ([7c0814a](https://github.com/vm0-ai/vm0/commit/7c0814af703af9ad89cd34dc0fd131db0916fec7))
+
+## [0.131.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.13...runner-rs-v0.131.14) (2026-07-02)
+
+
+### Refactoring
+
+* **mitm-addon:** separate body decode policies ([#19783](https://github.com/vm0-ai/vm0/issues/19783)) ([ba4480a](https://github.com/vm0-ai/vm0/commit/ba4480aa0483bcfde78c9b7dc74cafe8353e48a9))
+
+## [0.131.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.12...runner-rs-v0.131.13) (2026-07-02)
+
+
+### Bug Fixes
+
+* expose runner session ids in diagnostics ([#19755](https://github.com/vm0-ai/vm0/issues/19755)) ([e4c62e1](https://github.com/vm0-ai/vm0/commit/e4c62e17ed7de8743f89dacf9edc62f7042307d6))
+
+
+### Refactoring
+
+* **runner:** simplify proxy registry test setup ([#19784](https://github.com/vm0-ai/vm0/issues/19784)) ([e2a77fc](https://github.com/vm0-ai/vm0/commit/e2a77fcfa15a819deaed1d4e9b6dd1f8313ff559))
+
+
+### Performance Improvements
+
+* add compressed resume session history transport ([#19667](https://github.com/vm0-ai/vm0/issues/19667)) ([ee23c32](https://github.com/vm0-ai/vm0/commit/ee23c326ccf794228d2c4f9dd6d8844cd032fc49))
+
+## [0.131.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.11...runner-rs-v0.131.12) (2026-07-02)
+
+## [0.131.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.10...runner-rs-v0.131.11) (2026-07-01)
+
+## [0.131.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.9...runner-rs-v0.131.10) (2026-07-01)
+
+
+### Bug Fixes
+
+* retry transient runner storage cache fetches ([#19674](https://github.com/vm0-ai/vm0/issues/19674)) ([315adfb](https://github.com/vm0-ai/vm0/commit/315adfb04fac9a2dce50d75dab5438f47e6de3b8))
+* sanitize runner api urls in webhook logs ([#19681](https://github.com/vm0-ai/vm0/issues/19681)) ([85c95f8](https://github.com/vm0-ai/vm0/commit/85c95f8d66ecdd6253b84c0c60ea1ff19cc584b0))
+
 ## [0.131.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.8...runner-rs-v0.131.9) (2026-07-01)
 
 

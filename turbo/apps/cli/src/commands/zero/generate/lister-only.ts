@@ -40,7 +40,7 @@ Notes:
       withErrorHandler(async (options: ListerOnlyOptions) => {
         const provider = options.provider?.trim();
         if (provider && provider !== "built-in") {
-          printConnectorGuidance(config.generationType, provider);
+          await printConnectorGuidance(config.generationType, provider);
           return;
         }
         if (provider === "built-in") {

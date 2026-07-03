@@ -24,6 +24,7 @@
     "VITE_CLERK_PUBLISHABLE_KEY",
     "VITE_ZERO_HOST_DOMAIN",
     "VM0_DESKTOP_PLATFORM_URL",
+    "VM0_COMPUTER_OUTPUT_DIR",
     "VM0_TOKEN",
     "ZERO_TOKEN",
     "ZERO_CHAT_THREAD_ID",
@@ -76,8 +77,6 @@
     "NEXT_PUBLIC_APP_URL",
     "ONBOARDING_URL",
     "NEXT_PUBLIC_ONBOARDING_URL",
-    "VITE_ONBOARDING_URL",
-    "VITE_ONBOARDING_DOMAIN",
     "APP_PORT",
     "PLAUSIBLE_SCRIPT_URL",
     "NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL",
@@ -95,6 +94,7 @@
     "OPENAI_API_KEY",
     "FAL_KEY",
     "BYTEPLUS_API_KEY",
+    "BYTEPLUS_STT_API_KEY",
     "OPENROUTER_API_KEY",
     "VAPID_PUBLIC_KEY",
     "VAPID_PRIVATE_KEY",
@@ -144,6 +144,7 @@
     "MICROSOFT_OAUTH_CLIENT_SECRET",
     "MICROSOFT_TEAMS_BOT_APP_ID",
     "MICROSOFT_TEAMS_BOT_APP_PASSWORD",
+    "MICROSOFT_TEAMS_APP_TENANT_ID",
     "DEEL_OAUTH_CLIENT_ID",
     "DEEL_OAUTH_CLIENT_SECRET",
     "DOCUSIGN_OAUTH_CLIENT_ID",
@@ -270,6 +271,10 @@
     },
     "lint": {
       "dependsOn": ["^lint"]
+    },
+    "lint-runtime-api-compat": {
+      "cache": false,
+      "outputs": []
     },
     "check-types": {
       "dependsOn": ["^check-types", "^build"]

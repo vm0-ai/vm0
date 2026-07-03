@@ -6,6 +6,8 @@ export const CHAT_THREAD_EMOJI_OPTIONS = [
   { emoji: "💡", label: "Idea" },
   { emoji: "❓", label: "Question" },
   { emoji: "⏳", label: "Waiting" },
+  { emoji: "👀", label: "Watching" },
+  { emoji: "🚀", label: "Shipped" },
 ] as const;
 
 const CHAT_THREAD_EMOJI_PATTERN =
@@ -45,24 +47,8 @@ export function applyChatThreadEmoji(
   return text ? `${emoji} ${text}` : emoji;
 }
 
-export function chatThreadEmojiShortcutIndex(event: {
-  key: string;
-  code?: string;
-}): number | null {
-  const codeMatch = event.code?.match(/^(?:Digit|Numpad)([1-7])$/);
-  const key = codeMatch?.[1] ?? event.key;
-  const fallbackShiftedKeys: Record<string, string> = {
-    "!": "1",
-    "@": "2",
-    "#": "3",
-    $: "4",
-    "%": "5",
-    "^": "6",
-    "&": "7",
-  };
-  const digit = fallbackShiftedKeys[key] ?? key;
-  if (!/^[1-7]$/.test(digit)) {
-    return null;
-  }
-  return Number(digit) - 1;
+export function removeChatThreadEmoji(
+  title: string | null | undefined,
+): string {
+  return getChatThreadTitleParts(title).text;
 }

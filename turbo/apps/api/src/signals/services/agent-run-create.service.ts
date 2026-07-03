@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { command, computed, type Computed } from "ccstate";
 import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
@@ -96,6 +97,7 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { blobs } from "@vm0/db/schema/blob";
 import { conversations } from "@vm0/db/schema/conversation";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -107,7 +109,7 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, count, eq, gt, inArray, or, sql } from "drizzle-orm";
+import { and, count, eq, inArray, or, sql } from "drizzle-orm";
 import type { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
@@ -144,7 +146,11 @@ import {
   renderCustomConnectorRuntimePrefix,
   renderTemplateForRuntime,
 } from "./zero-custom-connector.service";
-import { prepareAgentRunStorageManifest } from "./agent-run-storage.service";
+import { activePendingRunPredicate } from "./agent-run-activity.service";
+import {
+  prepareAgentRunStorageManifest,
+  StorageManifestBuildStats,
+} from "./agent-run-storage.service";
 import {
   encryptQueuedRunnerJobPayload,
   queuedRunnerJobPayload,
@@ -174,6 +180,10 @@ import {
   loadAgentConnectorScope,
   loadZeroBackedComposeAgent,
 } from "./agent-connector-scope.service";
+import {
+  normalizeSessionHistoryBlobEncoding,
+  SESSION_HISTORY_ENCODING_GZIP,
+} from "./session-history-blobs";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
@@ -336,6 +346,14 @@ interface RunRecord {
   readonly status: "pending" | "queued";
 }
 
+interface LaunchRunIdentity {
+  readonly runId: string;
+  readonly sessionId: string;
+  readonly shouldCreateSession: boolean;
+}
+
+type LaunchRunStatus = "pending" | "queued" | "failed";
+
 interface LockedRunPersistenceRow extends Record<string, unknown> {
   readonly status: string;
   readonly sandboxId: string | null;
@@ -351,6 +369,41 @@ type RunnerJobPayload = ReturnType<typeof queuedRunnerJobPayload>;
 interface PreparedRunnerLaunch {
   readonly runnerJobPayload: RunnerJobPayload;
   readonly runContextSnapshot: RunContextAxiomSnapshot;
+}
+
+type AgentRunCallbackInsert = typeof agentRunCallbacks.$inferInsert;
+
+type AtomicLaunchCommitResult =
+  | {
+      readonly kind: "pending";
+      readonly run: RunRecord;
+      readonly runnerJobPayload: RunnerJobPayload;
+      readonly runContextSnapshot: RunContextAxiomSnapshot;
+    }
+  | {
+      readonly kind: "queued";
+      readonly run: RunRecord;
+      readonly queueDepth: number;
+      readonly telemetryTimestamp: string;
+      readonly runContextSnapshot: RunContextAxiomSnapshot;
+    }
+  | {
+      readonly kind: "queue-payload-required";
+    };
+type CommittedAtomicLaunchResult = Exclude<
+  AtomicLaunchCommitResult,
+  { readonly kind: "queue-payload-required" }
+>;
+
+interface CommitPreparedLaunchArgs {
+  readonly db: Db;
+  readonly createArgs: CreateAgentRunArgs;
+  readonly context: PreparedRunContext;
+  readonly identity: LaunchRunIdentity;
+  readonly callbackRows: readonly AgentRunCallbackInsert[];
+  readonly launch: PreparedRunnerLaunch;
+  readonly encryptedQueuedParams: string | undefined;
+  readonly timing: ApiDispatchTimingCollector;
 }
 
 type QueuedPersistenceResult =
@@ -681,6 +734,17 @@ function isRouteError(value: unknown): value is CreateRunErrorResult {
     typeof (value as { readonly status: unknown }).status === "number" &&
     (value as { readonly status: number }).status !== 201
   );
+}
+
+function isReturnableRouteError(
+  value: AtomicLaunchCommitResult | CreateRunErrorResult,
+  signal: AbortSignal,
+): value is CreateRunErrorResult {
+  if (!isRouteError(value)) {
+    return false;
+  }
+  signal.throwIfAborted();
+  return true;
 }
 
 function firstAgent(content: AgentComposeContent): AgentConfig | undefined {
@@ -1204,6 +1268,35 @@ function isSingleSecretModelProviderConfig(
   );
 }
 
+function envBindingsRequireModel(
+  envBindings: ModelProviderEnvBindings,
+): boolean {
+  return Object.values(envBindings).some((value) => {
+    return value.includes("$model");
+  });
+}
+
+function resolveModelProviderModel(args: {
+  readonly type: ModelProviderType;
+  readonly selectedModel: string | null;
+  readonly defaultModel: string | undefined;
+  readonly envBindings: ModelProviderEnvBindings | undefined;
+}): string | null {
+  let model = args.selectedModel;
+  if (model === null && args.defaultModel !== undefined) {
+    model = args.defaultModel;
+  }
+  if (
+    args.envBindings &&
+    envBindingsRequireModel(args.envBindings) &&
+    !model &&
+    args.defaultModel !== ""
+  ) {
+    throw new Error(`Missing model for model provider ${args.type}`);
+  }
+  return model === "" ? null : model;
+}
+
 function modelProviderEnvironmentSecretValue(
   type: ModelProviderType,
   secretName: string,
@@ -1277,7 +1370,15 @@ function modelProviderEnvironment(args: {
   if (!hasFirewallAuth && args.secretValue === undefined) {
     throw new Error(`Missing eager secret for model provider ${args.type}`);
   }
-  const model = args.selectedModel ?? args.config.defaultModel ?? "";
+  const envBindings =
+    getModelProviderEnvBindings(args.type, args.featureStates) ??
+    args.config.envBindings;
+  const model = resolveModelProviderModel({
+    type: args.type,
+    selectedModel: args.selectedModel,
+    defaultModel: args.config.defaultModel,
+    envBindings,
+  });
   const runtimeModel = model ? getProviderRuntimeModel(args.type, model) : "";
   const environmentSecret = modelProviderEnvironmentSecretValue(
     args.type,
@@ -1285,9 +1386,6 @@ function modelProviderEnvironment(args: {
     args.secretValue ?? "",
     args.featureStates,
   );
-  const envBindings =
-    getModelProviderEnvBindings(args.type, args.featureStates) ??
-    args.config.envBindings;
   const environment: Record<string, string> = {};
   for (const [key, value] of Object.entries(envBindings)) {
     environment[key] = value
@@ -1303,7 +1401,7 @@ function modelProviderEnvironment(args: {
     secrets: hasFirewallAuth
       ? {}
       : { [args.config.secretName]: args.secretValue ?? "" },
-    selectedModel: model || null,
+    selectedModel: model,
     firewall,
     inlineFirewall: shouldInlineModelProviderFirewall(
       args.type,
@@ -1337,7 +1435,12 @@ function providerEnvironmentFromSecretRefs(
     };
   }
 
-  const model = selectedModel ?? MODEL_PROVIDER_TYPES[type].defaultModel ?? "";
+  const model = resolveModelProviderModel({
+    type,
+    selectedModel,
+    defaultModel: getDefaultModel(type),
+    envBindings,
+  });
   const environment: Record<string, string> = {};
   for (const [key, value] of Object.entries(envBindings)) {
     if (value === "$secret") {
@@ -1392,7 +1495,12 @@ function providerEnvironmentFromSecretMap(
   }
 
   const fallbackSecret = Object.entries(providerSecrets)[0];
-  const model = selectedModel ?? getDefaultModel(type) ?? "";
+  const model = resolveModelProviderModel({
+    type,
+    selectedModel,
+    defaultModel: getDefaultModel(type),
+    envBindings,
+  });
   const environment: Record<string, string> = {};
   for (const [key, value] of Object.entries(envBindings)) {
     if (value === "$secret") {
@@ -1500,8 +1608,16 @@ async function multiAuthModelProviderEnvironment(
     }
   }
 
-  const selectedModel =
-    args.selectedModel ?? getDefaultModel(args.type) ?? null;
+  const selectedModelEnvBindings = getModelProviderEnvBindings(
+    args.type,
+    featureStates,
+  );
+  const selectedModel = resolveModelProviderModel({
+    type: args.type,
+    selectedModel: args.selectedModel,
+    defaultModel: getDefaultModel(args.type),
+    envBindings: selectedModelEnvBindings,
+  });
   const runtimeModel = selectedModel
     ? getProviderRuntimeModel(args.type, selectedModel)
     : null;
@@ -2932,6 +3048,31 @@ async function buildCustomConnectorRuntimeContext(args: {
       featureSwitchContext: args.featureSwitchContext,
     });
     const apis: ExpandedFirewallConfig["apis"] = [];
+    const headers = Object.fromEntries(
+      row.connector.headerInjections.flatMap((header) => {
+        const rendered = renderTemplateForRuntime({
+          template: header.valueTemplate,
+          connectorId: row.connector.id,
+          fields: row.connector.fields,
+          configuredValueMarkers: valueMarkers,
+        });
+        return rendered === null ? [] : [[header.name, rendered]];
+      }),
+    );
+    const query = Object.fromEntries(
+      row.connector.queryInjections.flatMap((queryInjection) => {
+        const rendered = renderTemplateForRuntime({
+          template: queryInjection.valueTemplate,
+          connectorId: row.connector.id,
+          fields: row.connector.fields,
+          configuredValueMarkers: valueMarkers,
+        });
+        return rendered === null ? [] : [[queryInjection.name, rendered]];
+      }),
+    );
+    if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {
+      continue;
+    }
     for (const prefixTemplate of row.connector.prefixTemplates) {
       const renderedPrefix = renderCustomConnectorRuntimePrefix({
         template: prefixTemplate,
@@ -2943,30 +3084,8 @@ async function buildCustomConnectorRuntimeContext(args: {
       apis.push({
         base: renderedPrefix,
         auth: {
-          headers: Object.fromEntries(
-            row.connector.headerInjections.map((header) => {
-              return [
-                header.name,
-                renderTemplateForRuntime({
-                  template: header.valueTemplate,
-                  connectorId: row.connector.id,
-                  fields: row.connector.fields,
-                }),
-              ];
-            }),
-          ),
-          query: Object.fromEntries(
-            row.connector.queryInjections.map((query) => {
-              return [
-                query.name,
-                renderTemplateForRuntime({
-                  template: query.valueTemplate,
-                  connectorId: row.connector.id,
-                  fields: row.connector.fields,
-                }),
-              ];
-            }),
-          ),
+          headers,
+          query,
         },
       });
     }
@@ -3592,7 +3711,7 @@ async function checkRunConcurrencyLimit(
           eq(agentRuns.status, "running"),
           and(
             eq(agentRuns.status, "pending"),
-            gt(agentRuns.createdAt, staleThreshold),
+            activePendingRunPredicate(staleThreshold),
           ),
         ),
       ),
@@ -3924,8 +4043,13 @@ function loadResumeSession(
           cliAgentSessionId: conversations.cliAgentSessionId,
           cliAgentSessionHistory: conversations.cliAgentSessionHistory,
           cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
+          sessionHistoryBlobEncoding: blobs.encoding,
         })
         .from(conversations)
+        .leftJoin(
+          blobs,
+          eq(conversations.cliAgentSessionHistoryHash, blobs.hash),
+        )
         .where(eq(conversations.id, conversationId))
         .limit(1);
 
@@ -3940,12 +4064,22 @@ function loadResumeSession(
         (): Promise<StoredExecutionContext["resumeSession"] | null> => {
           const cliAgentSessionId = conversation.cliAgentSessionId;
           const hash = conversation.cliAgentSessionHistoryHash;
+          let encoding: typeof SESSION_HISTORY_ENCODING_GZIP | undefined;
+          if (conversation.sessionHistoryBlobEncoding !== null) {
+            const parsedEncoding = normalizeSessionHistoryBlobEncoding(
+              conversation.sessionHistoryBlobEncoding,
+            );
+            if (parsedEncoding === SESSION_HISTORY_ENCODING_GZIP) {
+              encoding = parsedEncoding;
+            }
+          }
           if (hash) {
             return Promise.resolve({
               sessionId: cliAgentSessionId,
               historyRef: {
                 kind: "blob",
                 hash,
+                ...(encoding ? { encoding } : {}),
               },
             });
           }
@@ -4138,6 +4272,58 @@ function zeroRunModelProviderValues(
   };
 }
 
+function prepareLaunchRunIdentity(args: {
+  readonly resolved: ResolvedCompose;
+}): LaunchRunIdentity {
+  return {
+    runId: randomUUID(),
+    sessionId: args.resolved.agentSessionId ?? randomUUID(),
+    shouldCreateSession: !args.resolved.agentSessionId,
+  };
+}
+
+function runRecordFromLaunchIdentity(
+  identity: LaunchRunIdentity,
+  status: RunRecord["status"],
+  createdAt: Date,
+): RunRecord {
+  return {
+    id: identity.runId,
+    createdAt,
+    sessionId: identity.sessionId,
+    status,
+  };
+}
+
+function runFailureMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Run failed";
+}
+
+async function prepareRunCallbackRows(args: {
+  readonly runId: string;
+  readonly callbacks: readonly RunCallback[] | undefined;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<readonly AgentRunCallbackInsert[]> {
+  if (!args.callbacks || args.callbacks.length === 0) {
+    return [];
+  }
+
+  return await Promise.all(
+    args.callbacks.map(async (callback): Promise<AgentRunCallbackInsert> => {
+      return {
+        runId: args.runId,
+        url: "url" in callback ? callback.url : null,
+        internalKind: "internalKind" in callback ? callback.internalKind : null,
+        encryptedSecret: await encryptPersistentSecretValue(
+          callback.secret,
+          args.featureSwitchContext,
+        ),
+        payload: callback.payload,
+      };
+    }),
+  );
+}
+
 async function insertZeroRunRecord(
   tx: Db,
   args: {
@@ -4164,6 +4350,77 @@ async function insertZeroRunRecord(
   });
 }
 
+async function insertLaunchRunRows(
+  tx: Db,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly identity: LaunchRunIdentity;
+    readonly status: LaunchRunStatus;
+    readonly resolved: ResolvedCompose;
+    readonly body: CreateRunBody;
+    readonly artifacts: readonly ContextArtifact[];
+    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+    readonly modelProvider: ResolvedModelProviderEnvironment | null;
+    readonly callbackRows: readonly AgentRunCallbackInsert[];
+    readonly chatThreadId: string | undefined;
+    readonly zeroRunMetadata: ZeroRunMetadata | undefined;
+    readonly runnerGroup: string | undefined;
+    readonly error: string | undefined;
+  },
+): Promise<{ readonly createdAt: Date }> {
+  if (args.identity.shouldCreateSession) {
+    await tx.insert(agentSessions).values({
+      id: args.identity.sessionId,
+      userId: args.userId,
+      orgId: args.orgId,
+      agentComposeId: args.resolved.composeId,
+      artifacts: [...args.artifacts],
+      conversationId: null,
+    });
+  }
+
+  const createdAt = nowDate();
+  const completedAt = args.status === "failed" ? createdAt : undefined;
+  const runValues: typeof agentRuns.$inferInsert = {
+    id: args.identity.runId,
+    createdAt,
+    userId: args.userId,
+    orgId: args.orgId,
+    agentComposeVersionId: args.resolved.agentComposeVersionId,
+    status: args.status,
+    prompt: args.body.prompt,
+    appendSystemPrompt: args.body.appendSystemPrompt ?? null,
+    vars: args.body.vars ?? null,
+    secretNames: args.body.secrets ? Object.keys(args.body.secrets) : null,
+    additionalVolumes: args.additionalVolumes
+      ? [...args.additionalVolumes]
+      : null,
+    resumedFromCheckpointId: args.resolved.resumedFromCheckpointId ?? null,
+    continuedFromSessionId: args.resolved.continuedFromAgentSessionId ?? null,
+    sessionId: args.identity.sessionId,
+    lastHeartbeatAt: createdAt,
+    runnerGroup: args.runnerGroup ?? null,
+    completedAt: completedAt ?? null,
+    error: args.error ?? null,
+  };
+  await tx.insert(agentRuns).values(runValues);
+
+  await insertZeroRunRecord(tx, {
+    runId: args.identity.runId,
+    body: args.body,
+    modelProvider: args.modelProvider,
+    chatThreadId: args.chatThreadId,
+    zeroRunMetadata: args.zeroRunMetadata,
+  });
+
+  if (args.callbackRows.length > 0) {
+    await tx.insert(agentRunCallbacks).values([...args.callbackRows]);
+  }
+
+  return { createdAt };
+}
+
 async function insertRunRecord(
   tx: Db,
   args: {
@@ -4180,82 +4437,29 @@ async function insertRunRecord(
     readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<RunRecord> {
-  const agentSessionId =
-    args.resolved.agentSessionId ??
-    (
-      await tx
-        .insert(agentSessions)
-        .values({
-          userId: args.userId,
-          orgId: args.orgId,
-          agentComposeId: args.resolved.composeId,
-          artifacts: [...args.artifacts],
-          conversationId: null,
-        })
-        .returning({ id: agentSessions.id })
-    )[0]?.id;
-
-  if (!agentSessionId) {
-    throw new Error("Failed to create agent session");
-  }
-
-  const [run] = await tx
-    .insert(agentRuns)
-    .values({
-      userId: args.userId,
-      orgId: args.orgId,
-      agentComposeVersionId: args.resolved.agentComposeVersionId,
-      status: "pending",
-      prompt: args.body.prompt,
-      appendSystemPrompt: args.body.appendSystemPrompt ?? null,
-      vars: args.body.vars ?? null,
-      secretNames: args.body.secrets ? Object.keys(args.body.secrets) : null,
-      additionalVolumes: args.additionalVolumes
-        ? [...args.additionalVolumes]
-        : null,
-      resumedFromCheckpointId: args.resolved.resumedFromCheckpointId ?? null,
-      continuedFromSessionId: args.resolved.continuedFromAgentSessionId ?? null,
-      sessionId: agentSessionId,
-      lastHeartbeatAt: nowDate(),
-    })
-    .returning({
-      id: agentRuns.id,
-      createdAt: agentRuns.createdAt,
-      sessionId: agentRuns.sessionId,
-    });
-
-  if (!run) {
-    throw new Error("Failed to create run record");
-  }
-
-  await insertZeroRunRecord(tx, {
-    runId: run.id,
+  const identity = prepareLaunchRunIdentity({ resolved: args.resolved });
+  const callbackRows = await prepareRunCallbackRows({
+    runId: identity.runId,
+    callbacks: args.callbacks,
+    featureSwitchContext: args.featureSwitchContext,
+  });
+  const { createdAt } = await insertLaunchRunRows(tx, {
+    userId: args.userId,
+    orgId: args.orgId,
+    identity,
+    status: "pending",
+    resolved: args.resolved,
     body: args.body,
+    artifacts: args.artifacts,
+    additionalVolumes: args.additionalVolumes,
     modelProvider: args.modelProvider,
+    callbackRows,
     chatThreadId: args.chatThreadId,
     zeroRunMetadata: args.zeroRunMetadata,
+    runnerGroup: undefined,
+    error: undefined,
   });
-
-  if (args.callbacks && args.callbacks.length > 0) {
-    const callbackRows = await Promise.all(
-      args.callbacks.map(async (callback) => {
-        return {
-          runId: run.id,
-          url: "url" in callback ? callback.url : null,
-          internalKind:
-            "internalKind" in callback ? callback.internalKind : null,
-          encryptedSecret: await encryptPersistentSecretValue(
-            callback.secret,
-            args.featureSwitchContext,
-          ),
-          payload: callback.payload,
-        };
-      }),
-    );
-    await tx.insert(agentRunCallbacks).values(callbackRows);
-  }
-
-  return { ...run, status: "pending" };
+  return runRecordFromLaunchIdentity(identity, "pending", createdAt);
 }
 
 async function insertQueuedRunRecord(
@@ -4274,82 +4478,29 @@ async function insertQueuedRunRecord(
     readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<RunRecord> {
-  const agentSessionId =
-    args.resolved.agentSessionId ??
-    (
-      await tx
-        .insert(agentSessions)
-        .values({
-          userId: args.userId,
-          orgId: args.orgId,
-          agentComposeId: args.resolved.composeId,
-          artifacts: [...args.artifacts],
-          conversationId: null,
-        })
-        .returning({ id: agentSessions.id })
-    )[0]?.id;
-
-  if (!agentSessionId) {
-    throw new Error("Failed to create queued agent session");
-  }
-
-  const [run] = await tx
-    .insert(agentRuns)
-    .values({
-      userId: args.userId,
-      orgId: args.orgId,
-      agentComposeVersionId: args.resolved.agentComposeVersionId,
-      status: "queued",
-      prompt: args.body.prompt,
-      appendSystemPrompt: args.body.appendSystemPrompt ?? null,
-      vars: args.body.vars ?? null,
-      secretNames: args.body.secrets ? Object.keys(args.body.secrets) : null,
-      additionalVolumes: args.additionalVolumes
-        ? [...args.additionalVolumes]
-        : null,
-      resumedFromCheckpointId: args.resolved.resumedFromCheckpointId ?? null,
-      continuedFromSessionId: args.resolved.continuedFromAgentSessionId ?? null,
-      sessionId: agentSessionId,
-      lastHeartbeatAt: nowDate(),
-    })
-    .returning({
-      id: agentRuns.id,
-      createdAt: agentRuns.createdAt,
-      sessionId: agentRuns.sessionId,
-    });
-
-  if (!run) {
-    throw new Error("Failed to create queued run record");
-  }
-
-  await insertZeroRunRecord(tx, {
-    runId: run.id,
+  const identity = prepareLaunchRunIdentity({ resolved: args.resolved });
+  const callbackRows = await prepareRunCallbackRows({
+    runId: identity.runId,
+    callbacks: args.callbacks,
+    featureSwitchContext: args.featureSwitchContext,
+  });
+  const { createdAt } = await insertLaunchRunRows(tx, {
+    userId: args.userId,
+    orgId: args.orgId,
+    identity,
+    status: "queued",
+    resolved: args.resolved,
     body: args.body,
+    artifacts: args.artifacts,
+    additionalVolumes: args.additionalVolumes,
     modelProvider: args.modelProvider,
+    callbackRows,
     chatThreadId: args.chatThreadId,
     zeroRunMetadata: args.zeroRunMetadata,
+    runnerGroup: undefined,
+    error: undefined,
   });
-
-  if (args.callbacks && args.callbacks.length > 0) {
-    const callbackRows = await Promise.all(
-      args.callbacks.map(async (callback) => {
-        return {
-          runId: run.id,
-          url: "url" in callback ? callback.url : null,
-          internalKind:
-            "internalKind" in callback ? callback.internalKind : null,
-          encryptedSecret: await encryptPersistentSecretValue(
-            callback.secret,
-            args.featureSwitchContext,
-          ),
-          payload: callback.payload,
-        };
-      }),
-    );
-    await tx.insert(agentRunCallbacks).values(callbackRows);
-  }
-
-  return { ...run, status: "queued" };
+  return runRecordFromLaunchIdentity(identity, "queued", createdAt);
 }
 
 async function buildStoredExecutionContext(args: {
@@ -4779,7 +4930,7 @@ async function markRunFailed(
 function buildRunnerJobPayload(
   db: Db,
   args: {
-    readonly run: RunRecord;
+    readonly run: Pick<RunRecord, "id">;
     readonly userId: string;
     readonly orgId: string;
     readonly resolved: ResolvedCompose;
@@ -4836,6 +4987,9 @@ function buildRunnerJobPayload(
           ),
         )
       : args.body;
+    const storageManifestStats = args.timing
+      ? new StorageManifestBuildStats()
+      : undefined;
     const storageManifest = await measureApiDispatchTiming(
       args.timing,
       "api_dispatch_prepare_storage_manifest",
@@ -4854,8 +5008,12 @@ function buildRunnerJobPayload(
             additionalVolumes: args.additionalVolumes,
             framework: args.framework,
             timing: args.timing,
+            stats: storageManifestStats,
           }),
         );
+      },
+      () => {
+        return storageManifestStats?.overallDimensions();
       },
     );
     const builtContext = await measureApiDispatchTiming(
@@ -5028,7 +5186,7 @@ function dispatchRun(
 
     if (persisted.status === "pending") {
       ingestRunContextSnapshot(launch.runContextSnapshot);
-      await notifyRunnerJob(db, {
+      await notifyRunnerJob({
         runnerGroup: payload.runnerGroup,
         runId: args.run.id,
         profile: payload.profile,
@@ -5138,6 +5296,268 @@ function enqueueRunForConcurrency(
   });
 }
 
+async function checkRunConcurrencyPreflight(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly timing: ApiDispatchTimingCollector;
+}): Promise<CreateRunErrorResult | null> {
+  return await args.db.transaction(async (tx) => {
+    await args.timing.measure(
+      "api_dispatch_concurrency_preflight_lock_wait",
+      "nested",
+      async () => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
+        );
+      },
+    );
+    return await args.timing.measure(
+      "api_dispatch_concurrency_preflight_check",
+      "nested",
+      async () => {
+        return await checkRunConcurrencyLimit(tx, args.orgId);
+      },
+    );
+  });
+}
+
+async function commitFailedLaunch(args: {
+  readonly db: Db;
+  readonly createArgs: CreateAgentRunArgs;
+  readonly context: PreparedRunContext;
+  readonly identity: LaunchRunIdentity;
+  readonly callbackRows: readonly AgentRunCallbackInsert[];
+  readonly error: unknown;
+}): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
+  const message = runFailureMessage(args.error);
+  const { createdAt } = await args.db.transaction(async (tx) => {
+    return await insertLaunchRunRows(tx, {
+      userId: args.createArgs.userId,
+      orgId: args.createArgs.orgId,
+      identity: args.identity,
+      status: "failed",
+      resolved: args.context.resolved,
+      body: args.context.body,
+      artifacts: args.context.artifacts,
+      additionalVolumes: args.context.additionalVolumes,
+      modelProvider: args.context.modelProvider,
+      callbackRows: args.callbackRows,
+      chatThreadId: args.createArgs.chatThreadId,
+      zeroRunMetadata: args.createArgs.zeroRunMetadata,
+      runnerGroup: undefined,
+      error: message,
+    });
+  });
+
+  await publishRunChangedForUserSafely(
+    args.createArgs.userId,
+    args.identity.runId,
+    {
+      status: "failed",
+    },
+  );
+  if (args.createArgs.dispatchFailedCallbacks) {
+    await tapError(
+      args.createArgs.dispatchFailedCallbacks(
+        args.db,
+        args.identity.runId,
+        message,
+      ),
+      (error) => {
+        L.error("Failed to dispatch failed-run callbacks", {
+          runId: args.identity.runId,
+          error,
+        });
+      },
+    );
+  }
+  return failedRunResponse(
+    runRecordFromLaunchIdentity(args.identity, "pending", createdAt),
+    args.error,
+  );
+}
+
+async function insertAtomicLaunchRunRecord(args: {
+  readonly tx: DbTransaction;
+  readonly commit: CommitPreparedLaunchArgs;
+  readonly status: Extract<LaunchRunStatus, "pending" | "queued">;
+  readonly runnerGroup: string;
+}): Promise<RunRecord> {
+  const { createdAt } = await args.commit.timing.measure(
+    "api_dispatch_insert_run_record",
+    "nested",
+    async () => {
+      return await insertLaunchRunRows(args.tx, {
+        userId: args.commit.createArgs.userId,
+        orgId: args.commit.createArgs.orgId,
+        identity: args.commit.identity,
+        status: args.status,
+        resolved: args.commit.context.resolved,
+        body: args.commit.context.body,
+        artifacts: args.commit.context.artifacts,
+        additionalVolumes: args.commit.context.additionalVolumes,
+        modelProvider: args.commit.context.modelProvider,
+        callbackRows: args.commit.callbackRows,
+        chatThreadId: args.commit.createArgs.chatThreadId,
+        zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
+        runnerGroup: args.runnerGroup,
+        error: undefined,
+      });
+    },
+  );
+  return runRecordFromLaunchIdentity(
+    args.commit.identity,
+    args.status,
+    createdAt,
+  );
+}
+
+async function commitQueuedPreparedLaunch(
+  tx: DbTransaction,
+  args: CommitPreparedLaunchArgs,
+  payload: RunnerJobPayload,
+): Promise<Extract<AtomicLaunchCommitResult, { readonly kind: "queued" }>> {
+  if (!args.encryptedQueuedParams) {
+    throw new Error("Missing encrypted queued runner job payload");
+  }
+
+  const run = await insertAtomicLaunchRunRecord({
+    tx,
+    commit: args,
+    status: "queued",
+    runnerGroup: payload.runnerGroup,
+  });
+  await tx.insert(agentRunQueue).values({
+    runId: args.identity.runId,
+    userId: args.createArgs.userId,
+    orgId: args.createArgs.orgId,
+    encryptedParams: args.encryptedQueuedParams,
+    createdAt: run.createdAt,
+    expiresAt: sql`now() + interval '2 hours'`,
+  });
+  const [depthRow] = await tx
+    .select({ depth: count() })
+    .from(agentRunQueue)
+    .where(eq(agentRunQueue.orgId, args.createArgs.orgId));
+  return {
+    kind: "queued",
+    run,
+    queueDepth: Number(depthRow?.depth ?? 0),
+    telemetryTimestamp: nowDate().toISOString(),
+    runContextSnapshot: args.launch.runContextSnapshot,
+  };
+}
+
+async function commitPendingPreparedLaunch(
+  tx: DbTransaction,
+  args: CommitPreparedLaunchArgs,
+  payload: RunnerJobPayload,
+): Promise<Extract<AtomicLaunchCommitResult, { readonly kind: "pending" }>> {
+  const run = await insertAtomicLaunchRunRecord({
+    tx,
+    commit: args,
+    status: "pending",
+    runnerGroup: payload.runnerGroup,
+  });
+  await args.timing.measure(
+    "api_dispatch_persist_runner_job_queue",
+    "top_level",
+    async () => {
+      await args.timing.measure(
+        "api_dispatch_insert_runner_job_queue",
+        "nested",
+        async () => {
+          await tx.insert(runnerJobQueue).values({
+            runId: args.identity.runId,
+            runnerGroup: payload.runnerGroup,
+            profile: payload.profile,
+            cliAgentSessionId: payload.cliAgentSessionId,
+            executionContext: payload.executionContext,
+            expiresAt: sql`now() + interval '2 hours'`,
+          });
+        },
+      );
+    },
+  );
+  return {
+    kind: "pending",
+    run,
+    runnerJobPayload: payload,
+    runContextSnapshot: args.launch.runContextSnapshot,
+  };
+}
+
+async function commitPreparedLaunch(
+  args: CommitPreparedLaunchArgs,
+): Promise<AtomicLaunchCommitResult | CreateRunErrorResult> {
+  const payload = args.launch.runnerJobPayload;
+  return await args.db.transaction(async (tx) => {
+    await args.timing.measure(
+      "api_dispatch_admission_lock_wait",
+      "nested",
+      async () => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext(${args.createArgs.orgId}))`,
+        );
+      },
+    );
+    const concurrency = await args.timing.measure(
+      "api_dispatch_check_concurrency_limit",
+      "nested",
+      async () => {
+        return await checkRunConcurrencyLimit(tx, args.createArgs.orgId);
+      },
+    );
+
+    if (concurrency) {
+      if (!args.createArgs.queueOnConcurrencyLimit) {
+        return concurrency;
+      }
+      if (!args.encryptedQueuedParams) {
+        return { kind: "queue-payload-required" };
+      }
+      return await commitQueuedPreparedLaunch(tx, args, payload);
+    }
+
+    return await commitPendingPreparedLaunch(tx, args, payload);
+  });
+}
+
+function buildAtomicLaunchPayload(
+  db: Db,
+  args: {
+    readonly createArgs: CreateAgentRunArgs;
+    readonly context: PreparedRunContext;
+    readonly run: Pick<RunRecord, "id">;
+    readonly timing: ApiDispatchTimingCollector;
+  },
+): Computed<Promise<PreparedRunnerLaunch>> {
+  return buildRunnerJobPayload(db, {
+    run: args.run,
+    userId: args.createArgs.userId,
+    orgId: args.createArgs.orgId,
+    resolved: args.context.resolved,
+    body: args.context.body,
+    artifacts: args.context.artifacts,
+    framework: args.context.framework,
+    modelProvider: args.context.modelProvider,
+    connectorContext: args.context.connectorContext,
+    customConnectorContext: args.context.customConnectorContext,
+    permissionManifest: args.context.permissionManifest,
+    billableFirewalls: args.context.billableFirewalls,
+    modelUsageProvider: args.context.modelUsageProvider,
+    apiStartTime: args.createArgs.apiStartTime,
+    additionalVolumes: args.context.additionalVolumes,
+    includeZeroTokenSecret: args.createArgs.includeZeroTokenSecret,
+    zeroTokenComputerUseHostId: args.createArgs.zeroTokenComputerUseHostId,
+    chatThreadId: args.createArgs.chatThreadId,
+    extraEnvironment: args.createArgs.extraEnvironment,
+    userTimezone: args.context.userTimezone,
+    featureSwitchContext: args.context.featureSwitchContext,
+    timing: args.timing,
+  });
+}
+
 function createdRunResponse(
   run: RunRecord,
   dispatchResult: { readonly status: RunStatus; readonly sandboxId?: string },
@@ -5164,7 +5584,7 @@ function failedRunResponse(
       runId: run.id,
       status: "failed",
       sessionId: run.sessionId,
-      error: error instanceof Error ? error.message : "Run failed",
+      error: runFailureMessage(error),
       createdAt: run.createdAt.toISOString(),
     },
   };
@@ -6213,6 +6633,248 @@ async function beforeDispatchResponse(args: {
   return cancelledBeforeDispatchRunResponse(args.run);
 }
 
+function createLegacyBeforeDispatchRun(input: {
+  readonly db: Db;
+  readonly args: CreateAgentRunArgs;
+  readonly context: PreparedRunContext;
+  readonly signal: AbortSignal;
+  readonly timing: ApiDispatchTimingCollector;
+  readonly drainOrgQueue: () => Promise<void>;
+}): Computed<Promise<CreateRunRouteResult>> {
+  return computed(async (get): Promise<CreateRunRouteResult> => {
+    // The chat auto-send pre-dispatch gate is intentionally left on the
+    // legacy split persistence path until #19530 migrates message claims.
+    const transactionResult = await input.timing.measure(
+      "api_dispatch_insert_run_with_concurrency",
+      "top_level",
+      async () => {
+        return await insertRunWithConcurrency(
+          input.db,
+          input.args,
+          input.context,
+          input.timing,
+        );
+      },
+    );
+    input.signal.throwIfAborted();
+
+    if (isRouteError(transactionResult)) {
+      return transactionResult;
+    }
+
+    const beforeDispatch = await beforeDispatchResponse({
+      db: input.db,
+      run: transactionResult,
+      createArgs: input.args,
+      signal: input.signal,
+      drainOrgQueue: input.drainOrgQueue,
+    });
+    if (beforeDispatch) {
+      return beforeDispatch;
+    }
+
+    if (transactionResult.status === "queued") {
+      return await get(
+        completeQueuedRun({
+          db: input.db,
+          args: input.args,
+          context: input.context,
+          run: transactionResult,
+          signal: input.signal,
+        }),
+      );
+    }
+
+    return await get(
+      completePendingRun({
+        db: input.db,
+        args: input.args,
+        context: input.context,
+        run: transactionResult,
+        drainOrgQueue: input.drainOrgQueue,
+        signal: input.signal,
+        timing: input.timing,
+      }),
+    );
+  });
+}
+
+async function committedAtomicLaunchResponse(args: {
+  readonly db: Db;
+  readonly createArgs: CreateAgentRunArgs;
+  readonly committed: CommittedAtomicLaunchResult;
+  readonly timing: ApiDispatchTimingCollector;
+}): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
+  if (args.committed.kind === "queued") {
+    recordQueuedRunEnqueueTelemetry({
+      runId: args.committed.run.id,
+      queueDepth: args.committed.queueDepth,
+      timestamp: args.committed.telemetryTimestamp,
+    });
+    ingestRunContextSnapshot(args.committed.runContextSnapshot);
+    await publishQueueChangedSafely({
+      orgId: args.createArgs.orgId,
+      runId: args.committed.run.id,
+    });
+    return createdRunResponse(args.committed.run, { status: "queued" });
+  }
+
+  ingestRunContextSnapshot(args.committed.runContextSnapshot);
+  await notifyRunnerJob({
+    runnerGroup: args.committed.runnerJobPayload.runnerGroup,
+    runId: args.committed.run.id,
+    profile: args.committed.runnerJobPayload.profile,
+    cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
+  });
+  args.timing.flush({
+    runId: args.committed.run.id,
+    runnerGroup: args.committed.runnerJobPayload.runnerGroup,
+    profile: args.committed.runnerJobPayload.profile,
+    dispatchPath: "direct",
+    ...(args.createArgs.timingDimensions
+      ? { dimensions: args.createArgs.timingDimensions }
+      : {}),
+    ...(args.createArgs.body.triggerSource
+      ? { triggerSource: args.createArgs.body.triggerSource }
+      : {}),
+  });
+  return createdRunResponse(args.committed.run, { status: "pending" });
+}
+
+function createAtomicLaunchRun(input: {
+  readonly db: Db;
+  readonly args: CreateAgentRunArgs;
+  readonly context: PreparedRunContext;
+  readonly signal: AbortSignal;
+  readonly timing: ApiDispatchTimingCollector;
+}): Computed<Promise<CreateRunRouteResult>> {
+  return computed(async (get): Promise<CreateRunRouteResult> => {
+    const identity = prepareLaunchRunIdentity({
+      resolved: input.context.resolved,
+    });
+    if (!input.args.queueOnConcurrencyLimit) {
+      const preflightConcurrency = await checkRunConcurrencyPreflight({
+        db: input.db,
+        orgId: input.args.orgId,
+        timing: input.timing,
+      });
+      input.signal.throwIfAborted();
+      if (preflightConcurrency) {
+        return preflightConcurrency;
+      }
+    }
+
+    const callbackRows = await prepareRunCallbackRows({
+      runId: identity.runId,
+      callbacks: input.args.callbacks,
+      featureSwitchContext: input.context.featureSwitchContext,
+    });
+    input.signal.throwIfAborted();
+
+    const launchResult = await settle(
+      input.timing.measure(
+        "api_dispatch_build_runner_job_payload",
+        "top_level",
+        async () => {
+          return await get(
+            buildAtomicLaunchPayload(input.db, {
+              createArgs: input.args,
+              context: input.context,
+              run: { id: identity.runId },
+              timing: input.timing,
+            }),
+          );
+        },
+      ),
+    );
+    input.signal.throwIfAborted();
+    if (!launchResult.ok) {
+      return await commitFailedLaunch({
+        db: input.db,
+        createArgs: input.args,
+        context: input.context,
+        identity,
+        callbackRows,
+        error: launchResult.error,
+      });
+    }
+
+    const commitLaunch = async (encryptedQueuedParams: string | undefined) => {
+      return await input.timing.measure(
+        "api_dispatch_insert_run_with_concurrency",
+        "top_level",
+        async () => {
+          return await commitPreparedLaunch({
+            db: input.db,
+            createArgs: input.args,
+            context: input.context,
+            identity,
+            callbackRows,
+            launch: launchResult.value,
+            encryptedQueuedParams,
+            timing: input.timing,
+          });
+        },
+      );
+    };
+
+    let committed = await commitLaunch(undefined);
+    if (isReturnableRouteError(committed, input.signal)) {
+      return committed;
+    }
+
+    if (committed.kind === "queue-payload-required") {
+      input.signal.throwIfAborted();
+      const encryptedQueuedParamsResult = await settle(
+        encryptQueuedRunnerJobPayload(
+          launchResult.value.runnerJobPayload,
+          input.context.featureSwitchContext,
+        ),
+      );
+      input.signal.throwIfAborted();
+      if (!encryptedQueuedParamsResult.ok) {
+        const retryWithoutQueuedPayload = await commitLaunch(undefined);
+        if (isReturnableRouteError(retryWithoutQueuedPayload, input.signal)) {
+          return retryWithoutQueuedPayload;
+        }
+        if (retryWithoutQueuedPayload.kind !== "queue-payload-required") {
+          return await committedAtomicLaunchResponse({
+            db: input.db,
+            createArgs: input.args,
+            committed: retryWithoutQueuedPayload,
+            timing: input.timing,
+          });
+        }
+        input.signal.throwIfAborted();
+        return await commitFailedLaunch({
+          db: input.db,
+          createArgs: input.args,
+          context: input.context,
+          identity,
+          callbackRows,
+          error: encryptedQueuedParamsResult.error,
+        });
+      }
+
+      committed = await commitLaunch(encryptedQueuedParamsResult.value);
+      if (isReturnableRouteError(committed, input.signal)) {
+        return committed;
+      }
+      if (committed.kind === "queue-payload-required") {
+        input.signal.throwIfAborted();
+        throw new Error("Queued launch still required encrypted payload");
+      }
+    }
+
+    return await committedAtomicLaunchResponse({
+      db: input.db,
+      createArgs: input.args,
+      committed,
+      timing: input.timing,
+    });
+  });
+}
+
 export const createAgentRun$ = command(
   async (
     { get, set },
@@ -6275,53 +6937,26 @@ export const createAgentRun$ = command(
       }
     }
 
-    const transactionResult = await timing.measure(
-      "api_dispatch_insert_run_with_concurrency",
-      "top_level",
-      async () => {
-        return await insertRunWithConcurrency(db, args, context, timing);
-      },
-    );
-    signal.throwIfAborted();
-
-    if (isRouteError(transactionResult)) {
-      return transactionResult;
-    }
-
-    const beforeDispatch = await beforeDispatchResponse({
-      db,
-      run: transactionResult,
-      createArgs: args,
-      signal,
-      drainOrgQueue: async () => {
-        await set(drainOrgQueue$, { orgId: args.orgId }, signal);
-      },
-    });
-    if (beforeDispatch) {
-      return beforeDispatch;
-    }
-
-    if (transactionResult.status === "queued") {
+    if (args.beforeDispatch) {
       return await get(
-        completeQueuedRun({
+        createLegacyBeforeDispatchRun({
           db,
           args,
           context,
-          run: transactionResult,
           signal,
+          timing,
+          drainOrgQueue: async () => {
+            await set(drainOrgQueue$, { orgId: args.orgId }, signal);
+          },
         }),
       );
     }
 
     return await get(
-      completePendingRun({
+      createAtomicLaunchRun({
         db,
         args,
         context,
-        run: transactionResult,
-        drainOrgQueue: async () => {
-          await set(drainOrgQueue$, { orgId: args.orgId }, signal);
-        },
         signal,
         timing,
       }),

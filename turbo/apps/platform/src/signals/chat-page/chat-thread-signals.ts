@@ -1,9 +1,5 @@
 import type { Command, Computed } from "ccstate";
-import type {
-  ChatThreadArtifactRun,
-  GenerationTemplateRequest,
-  ModelSelectionRequest,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatThreadArtifactRun } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import type { ChatThread } from "../agent-chat.ts";
@@ -26,7 +22,6 @@ export interface ActiveGoalState {
 export interface SendMessageOptions {
   readonly revokesMessageId?: string;
   readonly includeDraftAttachments?: boolean;
-  readonly generationTemplate?: GenerationTemplateRequest;
   readonly computerUseHostId?: string | null;
 }
 
@@ -53,19 +48,14 @@ export interface ChatThreadSignals {
     Promise<void>,
     [
       string,
-      ModelSelectionRequest | null,
+      ModelProviderSelection | null,
       SendMessageOptions | undefined,
       AbortSignal,
     ]
   >;
   queueMessage$: Command<
     Promise<void>,
-    [
-      string,
-      GenerationTemplateRequest | undefined,
-      string | null | undefined,
-      AbortSignal,
-    ]
+    [string, string | null | undefined, AbortSignal]
   >;
   recallMessage$: Command<Promise<void>, [EnrichedChatMessage, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
@@ -75,6 +65,8 @@ export interface ChatThreadSignals {
   scrollToTop$: Command<void, []>;
   scrollBy$: Command<boolean, [ScrollStepDirection]>;
   prepareKeyboardScroll$: Command<boolean, []>;
+  containerEl$: Computed<HTMLElement | null>;
+  setContainerRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   // True when the message list is scrolled away from the bottom - drives the
   // feature-gated scroll-to-bottom button. Read-only outside scroll signals.
   awayFromBottom$: Computed<boolean>;
@@ -116,6 +108,7 @@ export interface ChatThreadSignals {
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
   renderedGroupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
   hasOlderHistory$: Computed<Promise<boolean>>;
+  messageRunIndicatorState$: Computed<Promise<"running" | "queued" | null>>;
   latestRunStatus$: Computed<Promise<string | null>>;
   // The thread's active goal, folded from goal-state marker messages. Null when
   // there is no active goal. Drives the goal row above the composer.
@@ -130,6 +123,11 @@ export interface ChatThreadSignals {
   blockColors$: Computed<[string, string, string]>;
   rotatingPhrase$: Computed<string>;
   donePhrase$: Computed<string>;
+  displayedThinkingText$: Computed<Promise<string>>;
+  setThinkingIndicatorTextRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
   runPhraseLoop$: Command<Promise<void>, [AbortSignal]>;
   // -- Artifacts ------------------------------------------------------------
   artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;

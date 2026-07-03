@@ -1,6 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import {
+  DecryptCommand,
+  type DecryptCommandOutput,
+  GenerateDataKeyCommand,
+  type GenerateDataKeyCommandOutput,
+} from "@aws-sdk/client-kms";
+import {
   getModelProviderFirewall,
   getVm0ConcreteProviderType,
   type ModelProviderType,
@@ -16,7 +22,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { v5 as uuidv5 } from "uuid";
 
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
@@ -34,6 +40,7 @@ import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
@@ -44,6 +51,10 @@ import {
   resetAutomationsFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
 } from "./helpers/automations";
+import {
+  setSecretKmsClientForTests,
+  type SecretKmsClient,
+} from "../../../lib/secret-kms-client";
 
 /**
  * RUN-01..04 and CHAIN-RUN: successful run dispatch and lifecycle.
@@ -55,15 +66,14 @@ import {
 
 const context = testContext();
 const ASSISTANT_MESSAGE_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
+const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
 // Sentinel provider id for model-first thread selections (the wire-protocol
 // value the chat composer sends when picking a model instead of a provider).
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
-  "api_dispatch_lock_run_for_queue_persistence",
   "api_dispatch_insert_runner_job_queue",
-  "api_dispatch_update_run_runner_group",
 ] as const;
 const CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES = [
   "claim_route_request_prepare",
@@ -120,7 +130,6 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_user_timezone",
   "api_dispatch_prepare_context_prepare_output_metadata",
   "api_dispatch_insert_run_with_concurrency",
-  "api_dispatch_mark_pending_heartbeat",
   "api_dispatch_build_runner_job_payload",
   "api_dispatch_persist_runner_job_queue",
   ...API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES,
@@ -130,6 +139,12 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest",
   "api_dispatch_prepare_storage_manifest_resolve_inputs",
   "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_lookup_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
   "api_dispatch_prepare_storage_manifest_load_storage_index",
   "api_dispatch_prepare_storage_manifest_build_entries",
   "api_dispatch_prepare_storage_manifest_build_compose_entries",
@@ -147,6 +162,12 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
 const API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest_resolve_inputs",
   "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_lookup_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
   "api_dispatch_prepare_storage_manifest_load_storage_index",
   "api_dispatch_prepare_storage_manifest_build_entries",
   "api_dispatch_prepare_storage_manifest_build_compose_entries",
@@ -330,6 +351,61 @@ async function seedVm0ManagedDefaultModelKey(): Promise<string> {
   return await seedVm0ManagedDefaultModelKeyState(context);
 }
 
+function useSecretKmsClientForTests(args: {
+  readonly failAfterGenerateDataKeys?: number;
+  readonly onGenerateDataKey?: (callNumber: number) => void;
+}): void {
+  let generateDataKeyCalls = 0;
+  function send(
+    command: GenerateDataKeyCommand,
+  ): Promise<GenerateDataKeyCommandOutput>;
+  function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
+  function send(
+    command: GenerateDataKeyCommand | DecryptCommand,
+  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
+    if (command instanceof GenerateDataKeyCommand) {
+      generateDataKeyCalls += 1;
+      args.onGenerateDataKey?.(generateDataKeyCalls);
+      if (
+        args.failAfterGenerateDataKeys !== undefined &&
+        generateDataKeyCalls > args.failAfterGenerateDataKeys
+      ) {
+        return Promise.reject(
+          new Error("unexpected queued payload encryption"),
+        );
+      }
+      return Promise.resolve({
+        $metadata: {},
+        KeyId: command.input.KeyId,
+        CiphertextBlob: Buffer.from(
+          `encrypted-data-key:${command.input.KeyId}`,
+          "utf8",
+        ),
+        Plaintext: TEST_DATA_KEY,
+      });
+    }
+
+    return Promise.resolve({ $metadata: {}, Plaintext: TEST_DATA_KEY });
+  }
+
+  const client: SecretKmsClient = { send };
+  setSecretKmsClientForTests(client);
+}
+
+function failKmsAfterGenerateDataKeys(limit: number): void {
+  useSecretKmsClientForTests({ failAfterGenerateDataKeys: limit });
+}
+
+function advanceNowOnFirstGenerateDataKey(timestamp: number): void {
+  useSecretKmsClientForTests({
+    onGenerateDataKey: (callNumber) => {
+      if (callNumber === 1) {
+        mockNow(timestamp);
+      }
+    },
+  });
+}
+
 function inlineFirewallApis(
   entries: readonly ExecutionFirewallEntry[] | undefined,
   name: string,
@@ -496,11 +572,28 @@ function expectApiDispatchTimingEventsNotToLeak(
   }
 }
 
+function s3CommandName(command: unknown): string | undefined {
+  return (command as { readonly constructor?: { readonly name?: string } })
+    .constructor?.name;
+}
+
+function s3CommandKey(command: unknown): string | undefined {
+  return (command as { readonly input?: { readonly Key?: string } }).input?.Key;
+}
+
 function mockSessionHistoryBlob(hash: string, history: string): void {
   context.mocks.s3.send.mockImplementation((command: unknown) => {
     const input = (command as { readonly input?: { readonly Key?: string } })
       .input;
     if (input?.Key === `blobs/${hash}.blob`) {
+      if (
+        (command as { readonly constructor?: { readonly name?: string } })
+          .constructor?.name === "HeadObjectCommand"
+      ) {
+        return Promise.resolve({
+          ContentLength: Buffer.byteLength(history, "utf8"),
+        });
+      }
       return Promise.resolve({
         Body: {
           async *[Symbol.asyncIterator]() {
@@ -823,6 +916,376 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ]);
 
     await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("emits bucketed storage manifest shape dimensions without leaking storage identifiers", async () => {
+    const api = createRunsAutomationsApi(context);
+    const storages = createStoragesBddApi(context);
+    const { actor } = await entitledRunActor();
+    const prompt = "storage manifest dimensions should not leak prompt";
+    const storageName = `bdd-manifest-shape-${randomUUID().slice(0, 8)}`;
+    const mountPath = "/cache";
+    const storageFile = storageTextFile(
+      "cache.txt",
+      `manifest shape payload ${storageName}`,
+    );
+    const prepared = await storages.prepareStorage(actor, {
+      storageName,
+      storageType: "volume",
+      files: [storageFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName,
+      storageType: "volume",
+      versionId: prepared.versionId,
+      files: [storageFile],
+    });
+
+    const composeName = `bdd-manifest-shape-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      volumes: {
+        cache: {
+          name: storageName,
+          version: prepared.versionId,
+        },
+      },
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          volumes: [`cache:${mountPath}`],
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const headVersionId = await readAutomationComposeHeadVersion(
+      context,
+      compose.composeId,
+    );
+
+    const created = await api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt,
+      additionalVolumes: [
+        {
+          name: storageName,
+          version: prepared.versionId,
+          mountPath,
+        },
+      ],
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_requested_compose_count_bucket: "1",
+        storage_manifest_requested_additional_count_bucket: "1",
+        storage_manifest_requested_artifact_count_bucket: "1",
+        storage_manifest_deduped_artifact_count_bucket: "1",
+        storage_manifest_resolved_compose_count_bucket: "1",
+        storage_manifest_resolved_additional_count_bucket: "1",
+        storage_manifest_resolved_artifact_count_bucket: "1",
+        storage_manifest_final_storage_count_bucket: "1",
+        storage_manifest_final_artifact_count_bucket: "1",
+        storage_manifest_dropped_compose_count_bucket: "1",
+        storage_manifest_planned_presign_count_bucket: "2_4",
+        storage_manifest_duplicate_presign_candidate_count_bucket: "0",
+        storage_manifest_artifact_ensure_already_initialized_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_storage_count_bucket: "1",
+        storage_manifest_artifact_ensure_created_storage_count_bucket: "1",
+        storage_manifest_artifact_ensure_lost_create_race_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_head_version_count_bucket: "1",
+        storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+          "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_artifact_ensure_already_initialized_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_storage_count_bucket: "1",
+        storage_manifest_artifact_ensure_created_storage_count_bucket: "1",
+        storage_manifest_artifact_ensure_lost_create_race_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_head_version_count_bucket: "1",
+        storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+          "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_build_entries",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_resolved_compose_count_bucket: "1",
+        storage_manifest_resolved_additional_count_bucket: "1",
+        storage_manifest_resolved_artifact_count_bucket: "1",
+        storage_manifest_planned_presign_count_bucket: "2_4",
+        storage_manifest_duplicate_presign_candidate_count_bucket: "0",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_generate_compose_urls",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_compose_planned_presign_count_bucket: "0",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_generate_additional_urls",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_additional_planned_presign_count_bucket: "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_generate_artifact_urls",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_artifact_planned_presign_count_bucket: "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_assemble",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_final_storage_count_bucket: "1",
+        storage_manifest_final_artifact_count_bucket: "1",
+        storage_manifest_dropped_compose_count_bucket: "1",
+      }),
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      prompt,
+      storageName,
+      mountPath,
+      prepared.versionId,
+      headVersionId,
+      "https://r2.example.com",
+    ]);
+
+    const claim = await api.claimRunnerJob(created.runId);
+    const memoryArtifact = claim.storageManifest?.artifacts.find((artifact) => {
+      return artifact.vasStorageName === "memory";
+    });
+    expect(memoryArtifact).toMatchObject({
+      archiveUrl: expect.any(String),
+      vasStorageId: expect.any(String),
+      vasVersionId: expect.any(String),
+      missingRootPolicy: "preserveParentVersion",
+    });
+    if (!memoryArtifact) {
+      throw new Error("Expected the claim manifest to include memory");
+    }
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      memoryArtifact.archiveUrl,
+      memoryArtifact.vasStorageId,
+      memoryArtifact.vasVersionId,
+    ]);
+
+    const initialized = await api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt: "storage manifest dimensions initialized artifact path",
+      additionalVolumes: [
+        {
+          name: storageName,
+          version: prepared.versionId,
+          mountPath,
+        },
+      ],
+    });
+    const initializedTimingEvents = apiDispatchTimingEventsForRun(
+      initialized.runId,
+    );
+    expect(
+      singleApiDispatchEvent(
+        initializedTimingEvents,
+        "api_dispatch_prepare_storage_manifest",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_artifact_ensure_already_initialized_count_bucket: "1",
+        storage_manifest_artifact_ensure_missing_storage_count_bucket: "0",
+        storage_manifest_artifact_ensure_created_storage_count_bucket: "0",
+        storage_manifest_artifact_ensure_lost_create_race_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_head_version_count_bucket: "0",
+        storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+          "0",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        initializedTimingEvents,
+        "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_artifact_ensure_already_initialized_count_bucket: "1",
+        storage_manifest_artifact_ensure_missing_storage_count_bucket: "0",
+        storage_manifest_artifact_ensure_created_storage_count_bucket: "0",
+        storage_manifest_artifact_ensure_lost_create_race_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_head_version_count_bucket: "0",
+        storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+          "0",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        initializedTimingEvents,
+        "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+      ).duration_ms,
+    ).toBe(0);
+    expect(
+      singleApiDispatchEvent(
+        initializedTimingEvents,
+        "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
+      ).duration_ms,
+    ).toBe(0);
+    expectApiDispatchTimingEventsNotToLeak(initializedTimingEvents, [
+      storageName,
+      mountPath,
+      prepared.versionId,
+      headVersionId,
+    ]);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+    await api.requestCancelRun(actor, initialized.runId, [200]);
+  });
+
+  it("keeps a committed artifact head when stale empty initialization finishes later", async () => {
+    const api = createRunsAutomationsApi(context);
+    const storages = createStoragesBddApi(context);
+    const { actor } = await entitledRunActor();
+    const composeName = `bdd-artifact-head-race-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const headVersionId = await readAutomationComposeHeadVersion(
+      context,
+      compose.composeId,
+    );
+
+    let releaseEmptyUploads = (): void => {};
+    const emptyUploadsGate = new Promise<void>((resolve) => {
+      releaseEmptyUploads = resolve;
+    });
+    let markEmptyUploadStarted = (): void => {};
+    const emptyUploadStarted = new Promise<void>((resolve) => {
+      markEmptyUploadStarted = resolve;
+    });
+
+    let blockedEmptyPutCount = 0;
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (
+        s3CommandName(command) === "PutObjectCommand" &&
+        s3CommandKey(command)?.includes("/artifact/memory/")
+      ) {
+        blockedEmptyPutCount += 1;
+        markEmptyUploadStarted();
+        return emptyUploadsGate.then(() => {
+          return {};
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    const staleInitializerRun = api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt: "stale empty artifact initialization must not overwrite head",
+    });
+    onTestFinished(async () => {
+      releaseEmptyUploads();
+      const created = await staleInitializerRun.then(
+        (run) => {
+          return run;
+        },
+        () => {
+          return undefined;
+        },
+      );
+      if (created) {
+        await api.requestCancelRun(actor, created.runId, [200]);
+      }
+    });
+
+    const gateResult = await Promise.race([
+      emptyUploadStarted.then(() => {
+        return "empty-upload-started" as const;
+      }),
+      staleInitializerRun.then(() => {
+        return "run-finished" as const;
+      }),
+    ]);
+    expect(gateResult).toBe("empty-upload-started");
+
+    const artifactFile = storageTextFile(
+      "artifact.txt",
+      `committed artifact ${randomUUID()}`,
+    );
+    const prepared = await storages.prepareStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      files: [artifactFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      versionId: prepared.versionId,
+      files: [artifactFile],
+    });
+    await expect(
+      storages.downloadStorage(actor, {
+        name: "memory",
+        type: "artifact",
+      }),
+    ).resolves.toStrictEqual(
+      expect.objectContaining({
+        versionId: prepared.versionId,
+        fileCount: 1,
+      }),
+    );
+
+    releaseEmptyUploads();
+    await staleInitializerRun;
+    expect(blockedEmptyPutCount).toBe(2);
+    await expect(
+      storages.downloadStorage(actor, {
+        name: "memory",
+        type: "artifact",
+      }),
+    ).resolves.toStrictEqual(
+      expect.objectContaining({
+        versionId: prepared.versionId,
+        fileCount: 1,
+      }),
+    );
   });
 
   it("keeps a direct launch claimable when run-context ingest fails", async () => {
@@ -1188,6 +1651,84 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const cancelled = await api.readRun(actor, first.runId);
     expect(cancelled.status).toBe("cancelled");
   });
+
+  it("exposes same-session affinity metadata to runner poll responses", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "start affinity-protected session",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(first).toMatchObject({ status: "pending" });
+    const firstClaim = await api.claimRunnerJob(first.runId);
+    const cliAgentSessionId = `bdd-affinity-cli-${first.runId}`;
+    const history = `bdd affinity history ${first.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+
+    const protectedFollowUp = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continue affinity-protected session",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const protectedPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, profiles: ["vm0/default"] },
+      [200],
+    );
+    if (protectedPoll.status !== 200) {
+      throw new Error("Expected affinity poll to return 200");
+    }
+    expect(protectedPoll.body.job?.runId).toBe(protectedFollowUp.runId);
+    expect(protectedPoll.body.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(protectedPoll.body.job?.affinityProtectedUntil).toStrictEqual(
+      expect.any(String),
+    );
+
+    const protectedClaim = await api.claimRunnerJob(protectedFollowUp.runId);
+    expect(protectedClaim.prompt).toBe("continue affinity-protected session");
+    await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
+
+    const expiredFollowUp = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continue after affinity protection expires",
+      modelProvider: "anthropic-api-key",
+    });
+    mockNow(now() + 60_000);
+    const expiredClaim = await api.requestClaimRunnerJob(
+      true,
+      expiredFollowUp.runId,
+      [200],
+    );
+    if (expiredClaim.status !== 200) {
+      throw new Error("Expected expired affinity claim to succeed");
+    }
+    expect(expiredClaim.body.prompt).toBe(
+      "continue after affinity protection expires",
+    );
+    await api.requestCancelRun(actor, expiredFollowUp.runId, [200]);
+  });
 });
 
 describe("RUN-01: admission boundaries beyond request validation", () => {
@@ -1232,9 +1773,54 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(vm0Rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
-  it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
+  it("does not require queued payload encryption while capacity is available", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
+    failKmsAfterGenerateDataKeys(1);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "capacity available run should not encrypt queued payload",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(run.status).toBe("pending");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("timestamps pending launches when the durable row is inserted", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const requestStartedAt = Date.UTC(2026, 0, 1, 12, 0, 0);
+    const payloadPreparedAt = requestStartedAt + 6 * 60_000;
+    mockNow(requestStartedAt);
+    advanceNowOnFirstGenerateDataKey(payloadPreparedAt);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "pending launch timestamp should reflect durable insert",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(run.status).toBe("pending");
+    if (!run.createdAt) {
+      throw new Error("Expected created run createdAt");
+    }
+    expect(new Date(run.createdAt).getTime()).toBe(payloadPreparedAt);
+
+    const stored = await api.readRun(actor, run.runId);
+    if (!stored.createdAt) {
+      throw new Error("Expected stored run createdAt");
+    }
+    expect(new Date(stored.createdAt).getTime()).toBe(payloadPreparedAt);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     const first = await api.createRun(actor, {
       agentId,
@@ -1267,11 +1853,256 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(promoted.status).toBe("pending");
     const drained = await waitForRunQueueLength(api, actor, 0);
     expect(drained.body.queue).toHaveLength(0);
+    await api.heartbeatRunner(runnerGroup);
+    const thirdClaim = await api.claimRunnerJob(third.runId);
+    expect(thirdClaim.prompt).toBe("queued run three");
 
     await api.requestCancelRun(actor, second.runId, [200]);
     await api.requestCancelRun(actor, third.runId, [200]);
     const emptied = await api.readRunQueue(actor);
     expect(emptied.body.concurrency.active).toBe(0);
+  });
+
+  it("counts promoted queued runs by promotion heartbeat for admission", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before old queue promotion one",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(first.status).toBe("pending");
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before old queue promotion two",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(second.status).toBe("pending");
+
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run promoted after pending ttl",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    mockNow(now() + 16 * 60_000);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
+    expect(promoted.status).toBe("pending");
+
+    const fresh = await api.createRun(actor, {
+      agentId,
+      prompt: "fresh run beside promoted queue item",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(fresh.status).toBe("pending");
+
+    const overLimit = await api.createRun(actor, {
+      agentId,
+      prompt: "run should queue behind promoted active item",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(overLimit.status).toBe("queued");
+
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.concurrency.active).toBe(2);
+    expect(queue.body.queue).toContainEqual(
+      expect.objectContaining({ runId: overLimit.runId }),
+    );
+
+    await api.requestCancelRun(actor, overLimit.runId, [200]);
+    await api.requestCancelRun(actor, fresh.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
+  it("finishes promoted queued run notifications after request abort", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const controller = new AbortController();
+    let queueChangedPublishes = 0;
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before abort promotion one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before abort promotion two",
+      modelProvider: "anthropic-api-key",
+    });
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should still notify after abort",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        queueChangedPublishes++;
+        if (queueChangedPublishes === 2) {
+          const error = new Error("abort after queued promotion commit");
+          error.name = "AbortError";
+          controller.abort(error);
+        }
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const cancelled = await api.requestCancelRunWithSignal(
+      actor,
+      first.runId,
+      controller.signal,
+    );
+    expect(cancelled.status).toBe(200);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
+    expect(promoted.status).toBe("pending");
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(
+          ([topic, payload]) => {
+            return (
+              topic === "job" &&
+              isRecord(payload) &&
+              payload.runId === queued.runId
+            );
+          },
+        );
+      })
+      .toBe(true);
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
+  });
+
+  it("drains queued runs after a cancel request aborts post-commit", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const controller = new AbortController();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before post-commit abort one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before post-commit abort two",
+      modelProvider: "anthropic-api-key",
+    });
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should drain after cancel abort",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        const error = new Error("abort after cancel commit");
+        error.name = "AbortError";
+        controller.abort(error);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const cancelled = await api.requestCancelRunWithSignal(
+      actor,
+      first.runId,
+      controller.signal,
+    );
+    expect(cancelled.status).toBe(200);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
+    expect(promoted.status).toBe("pending");
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(
+          ([topic, payload]) => {
+            return (
+              topic === "job" &&
+              isRecord(payload) &&
+              payload.runId === queued.runId
+            );
+          },
+        );
+      })
+      .toBe(true);
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
+  });
+
+  it("drains queued runs when queue changed publish fails after cancellation", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before publish failure one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before publish failure two",
+      modelProvider: "anthropic-api-key",
+    });
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should drain despite queue publish failure",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        return Promise.reject(new Error("queue changed publish failed"));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
+    expect(promoted.status).toBe("pending");
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(
+          ([topic, payload]) => {
+            return (
+              topic === "job" &&
+              isRecord(payload) &&
+              payload.runId === queued.runId
+            );
+          },
+        );
+      })
+      .toBe(true);
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
   });
 
   it("keeps a queued launch visible when enqueue telemetry fails", async () => {
@@ -1357,6 +2188,43 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     );
 
     await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
+  it("records a failed queued launch when queue payload encryption fails", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before queued encryption failure one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before queued encryption failure two",
+      modelProvider: "anthropic-api-key",
+    });
+
+    mockEnv("SECRETS_KMS_KEY_ID", undefined);
+    const failed = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should fail when payload encryption fails",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe(
+      "SECRETS_KMS_KEY_ID is required for KMS secret encryption",
+    );
+    const stored = await api.readRun(actor, failed.runId);
+    expect(stored.status).toBe("failed");
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).not.toContainEqual(
+      expect.objectContaining({ runId: failed.runId }),
+    );
+
     await api.requestCancelRun(actor, first.runId, [200]);
     await api.requestCancelRun(actor, second.runId, [200]);
   });
@@ -1758,7 +2626,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       actor,
       agent.agentId,
       workflowName,
-      "# BDD codex kit\nUse this workflow for codex runs.",
+      { content: "# BDD codex kit\nUse this workflow for codex runs." },
       [201],
     );
     const thread = await chat.createThread(actor, { agentId: agent.agentId });
@@ -2929,6 +3797,161 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("omits custom connector auth entries backed only by missing optional fields", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Optional Runtime",
+        prefixTemplates: [`https://${rand}.optional.test/v1/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+          {
+            key: "secondary_token",
+            label: "Secondary token",
+            kind: "secret",
+            required: false,
+          },
+          {
+            key: "tenant_id",
+            label: "Tenant ID",
+            kind: "variable",
+            required: false,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+          {
+            name: "X-Secondary",
+            valueTemplate: "{{secrets.secondary_token}}",
+          },
+        ],
+        queryInjections: [
+          {
+            name: "tenant",
+            valueTemplate: "{{variables.tenant_id}}",
+          },
+        ],
+      },
+      values: [{ key: "api_key", kind: "secret", value: "optional-primary" }],
+      agentId,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the optional custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const idPart = saved.connector.id.replaceAll("-", "");
+    const internalName = `custom_connector_${idPart}`;
+    const secretKey = `CUSTOM_${idPart}_S_API_KEY`;
+    const secondarySecretKey = `CUSTOM_${idPart}_S_SECONDARY_TOKEN`;
+    const tenantVarKey = `CUSTOM_${idPart}_V_TENANT_ID`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(customApis[0]?.auth?.headers).toStrictEqual({
+      Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+    });
+    expect(customApis[0]?.auth?.query).toStrictEqual({});
+    expect(JSON.stringify(customApis)).not.toContain(secondarySecretKey);
+    expect(JSON.stringify(customApis)).not.toContain(tenantVarKey);
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the custom claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected the optional custom firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer optional-primary",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("skips custom connectors when all auth entries require missing optional fields", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Optional Only Runtime",
+        prefixTemplates: [`https://${rand}.optional-only.test/v1/`],
+        fields: [
+          {
+            key: "secret",
+            label: "API key",
+            kind: "secret",
+            required: false,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.secret}}",
+          },
+        ],
+        queryInjections: [],
+      },
+      values: [
+        {
+          key: "secret",
+          kind: "secret",
+          value: "optional-only-secret",
+        },
+      ],
+      agentId,
+    });
+    expect(saved.authorizedAgentId).toBe(agentId);
+    await connectors.deleteCustomConnectorSecret(actor, saved.connector.id);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the optional-only custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const internalName = `custom_connector_${saved.connector.id.replaceAll("-", "")}`;
+    expect(findFirewallEntry(claim.firewalls, internalName)).toBeUndefined();
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty(internalName);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
   it("keeps connector-owned vars out of custom connector base urls", async () => {
     const api = createRunsAutomationsApi(context);
     const authOrg = createAuthOrgAgentsBddApi(context);
@@ -3477,7 +4500,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       actor,
       agent.agentId,
       workflowName,
-      "# BDD claude kit\nUse this workflow in claude runs.",
+      { content: "# BDD claude kit\nUse this workflow in claude runs." },
       [201],
     );
 
@@ -3520,6 +4543,19 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(
+          ([topic, payload]) => {
+            return (
+              topic === `run:changed:${run.runId}` &&
+              isRecord(payload) &&
+              payload.status === "cancelled"
+            );
+          },
+        );
+      })
+      .toBe(true);
 
     const repeated = await api.requestCancelRun(actor, run.runId, [200]);
     expect(repeated.status).toBe(200);
@@ -3949,6 +4985,37 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     });
     expect(failedRun.status).toBe("failed");
     expect(failedRun.error).toBe("Only vm0/* runner groups are supported");
+    const storedFailedRun = await api.readRun(actor, failedRun.runId);
+    expect(storedFailedRun.status).toBe("failed");
+    const failedClaim = await api.requestClaimRunnerJob(
+      true,
+      failedRun.runId,
+      [404],
+    );
+    expectApiError(failedClaim.body);
+    expect(failedClaim.body.error.message).toBe("Job not found in queue");
+
+    const firstActive = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "active direct run one",
+    });
+    const secondActive = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "active direct run two",
+    });
+    const rejected = await api.requestDirectRun(
+      actor,
+      {
+        agentComposeId: foreignCompose.composeId,
+        prompt: "concurrency should win before runner payload validation",
+      },
+      [429],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("CONCURRENT_RUN_LIMIT");
+
+    await api.requestCancelRun(actor, firstActive.runId, [200]);
+    await api.requestCancelRun(actor, secondActive.runId, [200]);
   });
 });
 
@@ -4663,10 +5730,11 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         sandboxOperations: [
           {
             ts: nowDate().toISOString(),
-            action_type: "volume_mount",
+            action_type: "session_history_download",
             duration_ms: 8,
             success: false,
-            error: "mount timed out",
+            error: "download timed out",
+            encoding: "gzip",
           },
         ],
       },
@@ -4697,10 +5765,11 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       "vm0-sandbox-op-log-dev",
       [
         expect.objectContaining({
-          op_type: "volume_mount",
+          op_type: "session_history_download",
           run_id: created.runId,
           success: false,
-          error: "mount timed out",
+          error: "download timed out",
+          encoding: "gzip",
           source: "sandbox",
         }),
       ],

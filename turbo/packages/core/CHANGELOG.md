@@ -1,5 +1,207 @@
 # Changelog
 
+## [8.390.1](https://github.com/vm0-ai/vm0/compare/core-v8.390.0...core-v8.390.1) (2026-07-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.144.1
+
+## [8.390.0](https://github.com/vm0-ai/vm0/compare/core-v8.389.1...core-v8.390.0) (2026-07-02)
+
+
+### Features
+
+* add Codex fast mode for ChatGPT subscription runs ([#19811](https://github.com/vm0-ai/vm0/issues/19811)) ([42e8e48](https://github.com/vm0-ai/vm0/commit/42e8e4883e548d497eb0b86a936b6be308ad1bed))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.144.0
+    * @vm0/connectors bumped to 1.129.0
+
+## [8.389.1](https://github.com/vm0-ai/vm0/compare/core-v8.389.0...core-v8.389.1) (2026-07-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.3
+
+## [8.389.0](https://github.com/vm0-ai/vm0/compare/core-v8.388.0...core-v8.389.0) (2026-07-02)
+
+
+### Features
+
+* add in-canvas image editing ([#19873](https://github.com/vm0-ai/vm0/issues/19873)) ([758557b](https://github.com/vm0-ai/vm0/commit/758557ba1d7963d7eee86ae7362e31f081840f39))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.2
+    * @vm0/connectors bumped to 1.128.0
+
+## [8.388.0](https://github.com/vm0-ai/vm0/compare/core-v8.387.0...core-v8.388.0) (2026-07-02)
+
+
+### Features
+
+* enable data export for everyone ([#19871](https://github.com/vm0-ai/vm0/issues/19871)) ([dd6f8fe](https://github.com/vm0-ai/vm0/commit/dd6f8feebc11a3a07161affd2a9ed271487b194f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.1
+
+## [8.387.0](https://github.com/vm0-ai/vm0/compare/core-v8.386.2...core-v8.387.0) (2026-07-02)
+
+
+### Features
+
+* add Desktop Computer Use filesystem plugins ([#19814](https://github.com/vm0-ai/vm0/issues/19814)) ([062a44c](https://github.com/vm0-ai/vm0/commit/062a44c181536df868bc6b081bae0dd7a2d9d9d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.0
+    * @vm0/connectors bumped to 1.127.0
+
+## [8.386.2](https://github.com/vm0-ai/vm0/compare/core-v8.386.1...core-v8.386.2) (2026-07-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.2
+
+## [8.386.1](https://github.com/vm0-ai/vm0/compare/core-v8.386.0...core-v8.386.1) (2026-07-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.1
+
+## [8.386.0](https://github.com/vm0-ai/vm0/compare/core-v8.385.0...core-v8.386.0) (2026-07-02)
+
+
+### Features
+
+* add byteplus voice input stt ([#19510](https://github.com/vm0-ai/vm0/issues/19510)) ([42665c5](https://github.com/vm0-ai/vm0/commit/42665c5054ab243593122ab999f98829f301f6b7))
+* add Pexels as presentation image provider with Unsplash-preferred switch ([#19756](https://github.com/vm0-ai/vm0/issues/19756)) ([9222ea2](https://github.com/vm0-ai/vm0/commit/9222ea207ba7a4224eb6809d46ccac2b02ece38b))
+
+
+### Bug Fixes
+
+* restart full thinking typewriter lines ([#19771](https://github.com/vm0-ai/vm0/issues/19771)) ([063aac1](https://github.com/vm0-ai/vm0/commit/063aac15a9cf3c7ac5d48963583db987e980899d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.0
+    * @vm0/connectors bumped to 1.126.0
+
+## [8.385.0](https://github.com/vm0-ai/vm0/compare/core-v8.384.4...core-v8.385.0) (2026-07-02)
+
+
+### Features
+
+* support darwin x64 desktop builds ([#19766](https://github.com/vm0-ai/vm0/issues/19766)) ([d58dd67](https://github.com/vm0-ai/vm0/commit/d58dd6729078d9bf6556ed5a75c4a66e08b87373))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.141.0
+    * @vm0/connectors bumped to 1.125.0
+
+## [8.384.4](https://github.com/vm0-ai/vm0/compare/core-v8.384.3...core-v8.384.4) (2026-07-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.140.1
+    * @vm0/connectors bumped to 1.124.1
+
+## [8.384.3](https://github.com/vm0-ai/vm0/compare/core-v8.384.2...core-v8.384.3) (2026-07-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.140.0
+
+## [8.384.2](https://github.com/vm0-ai/vm0/compare/core-v8.384.1...core-v8.384.2) (2026-07-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.139.2
+    * @vm0/connectors bumped to 1.124.0
+
+## [8.384.1](https://github.com/vm0-ai/vm0/compare/core-v8.384.0...core-v8.384.1) (2026-07-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.139.1
+
+## [8.384.0](https://github.com/vm0-ai/vm0/compare/core-v8.383.0...core-v8.384.0) (2026-07-01)
+
+
+### Features
+
+* add image artifact keyboard navigation ([#19694](https://github.com/vm0-ai/vm0/issues/19694)) ([2d6e968](https://github.com/vm0-ai/vm0/commit/2d6e968d6940a997a4c34e722304d7b230663697)), closes [#19133](https://github.com/vm0-ai/vm0/issues/19133)
+* add teams settings ui ([#19570](https://github.com/vm0-ai/vm0/issues/19570)) ([242e261](https://github.com/vm0-ai/vm0/commit/242e26146208b187de904e92116590bb767bc5e9))
+* open connectorAccessManagement to all users ([#19686](https://github.com/vm0-ai/vm0/issues/19686)) ([3131bf0](https://github.com/vm0-ai/vm0/commit/3131bf00def4a0b94754b0b941fced4a43aa2814))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.139.0
+    * @vm0/connectors bumped to 1.123.0
+
+## [8.383.0](https://github.com/vm0-ai/vm0/compare/core-v8.382.0...core-v8.383.0) (2026-07-01)
+
+
+### Features
+
+* add workflow templates to composer ([#19660](https://github.com/vm0-ai/vm0/issues/19660)) ([1f110fd](https://github.com/vm0-ai/vm0/commit/1f110fd9d3ae503e731e957767a76d0094ce88a9))
+* show subscription usage in sidebar ([#19673](https://github.com/vm0-ai/vm0/issues/19673)) ([a186329](https://github.com/vm0-ai/vm0/commit/a1863296fc3b8545a9edf6ce4a12c0739d5dec88))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.138.0
+    * @vm0/connectors bumped to 1.122.0
+
 ## [8.382.0](https://github.com/vm0-ai/vm0/compare/core-v8.381.3...core-v8.382.0) (2026-07-01)
 
 

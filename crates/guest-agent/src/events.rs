@@ -4,8 +4,7 @@
 //! event payloads for webhook delivery.
 
 use crate::constants;
-use crate::env;
-use crate::env::Framework;
+use crate::env::{Framework, GuestConfig};
 use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::masker::SecretMasker;
@@ -37,38 +36,35 @@ pub(crate) struct ClaudeFailureDiagnostic {
     pub message: String,
 }
 
-/// Send a single event to the webhook.
+/// Send a single event using an explicit guest-agent runtime snapshot.
 ///
-/// On framework session-start events, captures the session metadata needed by
-/// checkpoints before preparing the webhook payload.
-pub async fn send_event(
+/// Captures session metadata using the provided config and paths before
+/// preparing and posting the webhook payload.
+pub async fn send_event_for_config(
     http: &HttpClient,
     event: Value,
     seq: u32,
     masker: &SecretMasker,
+    config: &GuestConfig,
+    paths: &paths::GuestPaths,
 ) -> Result<(), AgentError> {
-    let mut capture = SessionMetadataCapture::new();
-    capture.capture_event(&event, masker);
+    let capture = SessionMetadataCapture::from_values(
+        config.framework,
+        &config.home_dir,
+        paths.session_id_file(),
+        paths.session_history_path_file(),
+    );
+    capture.capture_event(&event);
 
     if !http.has_api() {
         return Ok(());
     }
 
-    let payload = prepare_event_payload(event, seq, masker);
-    post_event(http, &payload).await
+    let payload = prepare_event_payload_for_run_id(event, seq, masker, &config.run_id);
+    post_event_with_error_flag(http, &payload, paths.event_error_flag()).await
 }
 
-/// Prepare an event webhook payload by adding a sequence number, masking secrets,
-/// and moving the event into the HTTP payload shape.
-///
-/// This function does not perform filesystem or network I/O; session metadata
-/// capture is handled separately before payload preparation, and network
-/// delivery happens in `post_event` / `send_event`.
-pub fn prepare_event_payload(event: Value, seq: u32, masker: &SecretMasker) -> Value {
-    prepare_event_payload_for_run_id(event, seq, masker, env::run_id())
-}
-
-pub(crate) fn prepare_event_payload_for_run_id(
+pub fn prepare_event_payload_for_run_id(
     mut event: Value,
     seq: u32,
     masker: &SecretMasker,
@@ -410,11 +406,6 @@ fn truncate_diagnostic_message(message: &str) -> String {
     format!("{}{}", &message[..end], FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX)
 }
 
-/// POST a prepared event payload to the webhook endpoint.
-pub async fn post_event(http: &HttpClient, payload: &Value) -> Result<(), AgentError> {
-    post_event_with_error_flag(http, payload, paths::event_error_flag()).await
-}
-
 pub async fn post_event_with_error_flag(
     http: &HttpClient,
     payload: &Value,
@@ -489,9 +480,7 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
 /// - Claude Code: `{type: system, subtype: init, session_id: <uuid>}`
 /// - Codex:       `{type: thread.started, thread_id: <uuid>}`
 ///
-/// Ordinary events only seed the masker from an existing session id once; they
-/// do not repair the history marker. Checkpoint resolves missing markers when
-/// it consumes session metadata.
+/// Checkpoint resolves missing markers when it consumes session metadata.
 ///
 /// The on-disk format of `session_history_path_file()` differs by framework:
 /// - Claude: literal `~/.claude/projects/-{cwd}/{session_id}.jsonl` path.
@@ -499,7 +488,6 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
 ///   marker — codex doesn't write the session file until turn-completion, so
 ///   resolution is deferred to checkpoint time.
 pub(crate) struct SessionMetadataCapture {
-    existing_session_id_seeded: bool,
     framework: Framework,
     home_dir: String,
     session_id_file: String,
@@ -507,15 +495,6 @@ pub(crate) struct SessionMetadataCapture {
 }
 
 impl SessionMetadataCapture {
-    pub(crate) fn new() -> Self {
-        Self::from_values(
-            Framework::from_env(),
-            env::home_dir(),
-            paths::session_id_file(),
-            paths::session_history_path_file(),
-        )
-    }
-
     pub(crate) fn from_values(
         framework: Framework,
         home_dir: &str,
@@ -523,7 +502,6 @@ impl SessionMetadataCapture {
         session_history_path_file: &str,
     ) -> Self {
         Self {
-            existing_session_id_seeded: false,
             framework,
             home_dir: home_dir.to_string(),
             session_id_file: session_id_file.to_string(),
@@ -531,15 +509,12 @@ impl SessionMetadataCapture {
         }
     }
 
-    pub(crate) fn capture_event(&mut self, event: &Value, masker: &SecretMasker) {
-        self.register_event_session_identifier(event, masker);
-
+    pub(crate) fn capture_event(&self, event: &Value) {
         let session_id = match self.framework {
             Framework::ClaudeCode => extract_claude_session_id(event),
             Framework::Codex => extract_codex_thread_id(event),
         };
         let Some(session_id) = session_id else {
-            self.seed_existing_session_id(masker);
             return;
         };
         let Some(history_path_payload) =
@@ -549,10 +524,8 @@ impl SessionMetadataCapture {
                 &session_id,
             )
         else {
-            self.seed_existing_session_id(masker);
             return;
         };
-        masker.add_sensitive_value(&session_id);
 
         // Idempotency: only the first id-bearing event of the run wins, but allow
         // a retry of the same session to repair a missing history marker after a
@@ -560,10 +533,6 @@ impl SessionMetadataCapture {
         match std::fs::read_to_string(&self.session_id_file) {
             Ok(existing_session_id) => {
                 let existing_session_id = existing_session_id.trim();
-                if !existing_session_id.is_empty() {
-                    masker.add_sensitive_value(existing_session_id);
-                    self.existing_session_id_seeded = true;
-                }
                 if existing_session_id == session_id {
                     session_metadata::ensure_history_marker_payload_at(
                         &self.session_history_path_file,
@@ -592,51 +561,10 @@ impl SessionMetadataCapture {
                 self.session_id_file
             ),
         }
-        self.existing_session_id_seeded = true;
         session_metadata::write_session_history_marker_at(
             &self.session_history_path_file,
             &history_path_payload,
         );
-    }
-
-    pub(crate) fn register_event_session_identifier(&self, event: &Value, masker: &SecretMasker) {
-        register_event_session_identifier_for_framework(event, masker, self.framework);
-    }
-
-    fn seed_existing_session_id(&mut self, masker: &SecretMasker) {
-        if self.existing_session_id_seeded {
-            return;
-        }
-        self.existing_session_id_seeded = true;
-
-        match std::fs::read_to_string(&self.session_id_file) {
-            Ok(session_id) => {
-                let session_id = session_id.trim();
-                if !session_id.is_empty() {
-                    masker.add_sensitive_value(session_id);
-                }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => log_error!(
-                LOG_TAG,
-                "Failed to read existing session ID from {}: {e}",
-                self.session_id_file
-            ),
-        }
-    }
-}
-
-fn register_event_session_identifier_for_framework(
-    event: &Value,
-    masker: &SecretMasker,
-    framework: Framework,
-) {
-    let id = match framework {
-        Framework::ClaudeCode => string_field(event, "session_id"),
-        Framework::Codex => string_field(event, "thread_id"),
-    };
-    if let Some(id) = id {
-        masker.add_sensitive_value(id);
     }
 }
 
@@ -688,7 +616,7 @@ mod tests {
         });
         let masker = SecretMasker::from_raw("c2VjcmV0LXZhbHVl");
 
-        let payload = prepare_event_payload(event, 7, &masker);
+        let payload = prepare_event_payload_for_run_id(event, 7, &masker, "test-run");
 
         assert_eq!(payload["events"][0]["type"], "test");
         assert_eq!(payload["events"][0]["sequenceNumber"], 7);
@@ -700,7 +628,7 @@ mod tests {
         let event = serde_json::json!("contains secret-value");
         let masker = SecretMasker::from_raw("c2VjcmV0LXZhbHVl");
 
-        let payload = prepare_event_payload(event, 7, &masker);
+        let payload = prepare_event_payload_for_run_id(event, 7, &masker, "test-run");
 
         assert_eq!(payload["events"][0], "contains ***");
     }

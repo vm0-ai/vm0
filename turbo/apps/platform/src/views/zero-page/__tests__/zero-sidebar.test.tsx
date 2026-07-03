@@ -1,7 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
@@ -15,6 +14,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { automationsMainContract } from "@vm0/api-contracts/contracts/automations";
 
 import {
   click,
@@ -24,7 +24,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
+import {
+  PLACEHOLDER,
+  splitChatThreadListResponse,
+} from "./chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -38,82 +41,6 @@ const ARCHIVED_THREAD_ID = "b0000000-0000-4000-a000-000000000004";
 const RESEARCH_THREAD_ID = "b0000000-0000-4000-a000-000000000005";
 
 type SidebarThread = Parameters<typeof splitChatThreadListResponse>[0][number];
-
-function connectedPersonalCodexProvider(
-  overrides: Partial<ModelProviderResponse> = {},
-): ModelProviderResponse {
-  return {
-    id: "00000000-0000-4000-a000-000000000301",
-    type: "codex-oauth-token",
-    framework: "codex",
-    secretName: null,
-    authMethod: "auth_json",
-    secretNames: ["CODEX_AUTH_JSON"],
-    isDefault: false,
-    selectedModel: null,
-    workspaceName: "Personal ChatGPT",
-    planType: "pro",
-    subscriptionResetPeriod: "Weekly",
-    subscriptionNextResetAt: "2030-01-07T00:00:00.000Z",
-    subscriptionUsage: {
-      fiveHour: {
-        usedPercent: 18,
-        remainingPercent: 82,
-        resetAt: "2030-01-01T05:00:00.000Z",
-        windowSeconds: 18_000,
-      },
-      weekly: {
-        usedPercent: 45,
-        remainingPercent: 55,
-        resetAt: "2030-01-07T00:00:00.000Z",
-        windowSeconds: 604_800,
-      },
-    },
-    needsReconnect: false,
-    lastRefreshErrorCode: null,
-    createdAt: "2026-03-01T00:00:00Z",
-    updatedAt: "2026-03-20T00:00:00Z",
-    ...overrides,
-  };
-}
-
-function connectedPersonalClaudeCodeProvider(
-  overrides: Partial<ModelProviderResponse> = {},
-): ModelProviderResponse {
-  return {
-    id: "00000000-0000-4000-a000-000000000302",
-    type: "claude-code-oauth-token",
-    framework: "claude-code",
-    secretName: "CLAUDE_CODE_OAUTH_TOKEN",
-    authMethod: null,
-    secretNames: null,
-    isDefault: false,
-    selectedModel: null,
-    workspaceName: "claude.user@example.com",
-    planType: "pro",
-    subscriptionResetPeriod: "weekly",
-    subscriptionNextResetAt: "2030-01-07T00:00:00.000Z",
-    subscriptionUsage: {
-      fiveHour: {
-        usedPercent: 12,
-        remainingPercent: 88,
-        resetAt: "2030-01-01T05:00:00.000Z",
-        windowSeconds: 18_000,
-      },
-      weekly: {
-        usedPercent: 24,
-        remainingPercent: 76,
-        resetAt: "2030-01-07T00:00:00.000Z",
-        windowSeconds: 604_800,
-      },
-    },
-    needsReconnect: false,
-    lastRefreshErrorCode: null,
-    createdAt: "2026-03-01T00:00:00Z",
-    updatedAt: "2026-03-20T00:00:00Z",
-    ...overrides,
-  };
-}
 
 function prepareDefaultAgent(): void {
   context.mocks.data.team([
@@ -277,6 +204,17 @@ function openAgentRowMenu(container: HTMLElement, name: string): void {
   click(
     within(agentRowByName(container, name)).getByLabelText("Open agent menu"),
   );
+}
+
+function agentRowActionRootForMenuTrigger(trigger: HTMLElement): HTMLElement {
+  let current = trigger.parentElement;
+  while (current instanceof HTMLElement) {
+    if (current.style.getPropertyValue("--agent-row-trigger-opacity")) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  throw new Error("Agent row action root not found");
 }
 
 function openThreadMenu(title: string): void {
@@ -1110,6 +1048,52 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("skips the automations check when deleting a chat with workflow automation enabled", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ]);
+
+    // Never resolves: if the delete flow still queried automations, the
+    // dialog would be stuck showing the "checking" state forever.
+    const automationsRequested = context.mocks.deferred<void>();
+    context.mocks.api(automationsMainContract.list, async ({ respond }) => {
+      await automationsRequested.promise;
+      return respond(200, { automations: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Scheduled launch"),
+      ).toBeInTheDocument();
+    });
+
+    openThreadMenu("Scheduled launch");
+    click(menuItemByText("Delete chat"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete chat?",
+    });
+    expect(
+      screen.queryByTestId("delete-chat-thread-checking"),
+    ).not.toBeInTheDocument();
+
+    click(buttonByText("Delete", dialog));
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).queryByText("Scheduled launch"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("cancels and confirms deleting a regular chat from the sidebar", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([
@@ -1254,15 +1238,7 @@ describe("zero sidebar", () => {
       expect(within(sidebar).getByText("Research Agent")).toBeInTheDocument();
     });
 
-    const researchAgentButton = queryAllByRoleFast("button", dialog).find(
-      (element) => {
-        return element.textContent?.trim() === "Research Agent";
-      },
-    );
-    if (!researchAgentButton) {
-      throw new Error("Research Agent button not found");
-    }
-    click(researchAgentButton);
+    click(within(dialog).getByRole("option", { name: /Research Agent/ }));
 
     await waitFor(() => {
       expect(
@@ -1299,6 +1275,96 @@ describe("zero sidebar", () => {
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
     expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
+  });
+
+  it("opens the agent picker from the global shortcut while composer is focused", async () => {
+    prepareAgentTeam();
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
+    composer.focus();
+    fireEvent.keyDown(composer, {
+      key: "a",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
+    expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
+  });
+
+  it("ignores global shortcuts while a dialog is open", async () => {
+    prepareAgentTeam();
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      expect(sidebar()).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, {
+      key: "a",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+
+    expect(screen.queryByText("Keyboard Shortcuts")).not.toBeInTheDocument();
+  });
+
+  it("selects an agent from the picker with arrow keys and enter", async () => {
+    prepareAgentTeam();
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      expect(sidebar()).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, {
+      key: "a",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    const search = within(dialog).getByPlaceholderText("Search agents...");
+
+    await fill(search, "support");
+
+    await waitFor(() => {
+      expect(
+        within(dialog).queryByText("Research Agent"),
+      ).not.toBeInTheDocument();
+      expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Talk to" }),
+      ).not.toBeInTheDocument();
+      expect(
+        within(sidebar()).getByText("Chats with Support Agent"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("shows agent unread indicators and dropdown actions behind the feature switch", async () => {
@@ -1349,19 +1415,32 @@ describe("zero sidebar", () => {
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
     const researchDialogRow = agentRowByName(dialog, "Research Agent");
     const supportDialogRow = agentRowByName(dialog, "Support Agent");
-    expect(
-      within(researchDialogRow).getByLabelText("Unread"),
-    ).toBeInTheDocument();
-    expect(
-      within(supportDialogRow).getByLabelText("Unread"),
-    ).toBeInTheDocument();
+    const researchDialogUnread =
+      within(researchDialogRow).getByLabelText("Unread");
+    const supportDialogUnread =
+      within(supportDialogRow).getByLabelText("Unread");
+    expect(researchDialogUnread).toBeInTheDocument();
+    expect(researchDialogUnread).toBeVisible();
+    expect(supportDialogUnread).toBeInTheDocument();
+    expect(supportDialogUnread).toBeVisible();
     expect(
       within(supportDialogRow).queryByLabelText("Pin to sidebar"),
     ).not.toBeInTheDocument();
 
-    click(within(supportDialogRow).getByLabelText("Open agent menu"));
+    const supportMenuTrigger =
+      within(supportDialogRow).getByLabelText("Open agent menu");
+    const supportActionRoot =
+      agentRowActionRootForMenuTrigger(supportMenuTrigger);
+    fireEvent.pointerEnter(supportActionRoot);
+    expect(supportDialogUnread).not.toBeVisible();
+    fireEvent.pointerLeave(supportActionRoot);
+    expect(supportDialogUnread).toBeVisible();
+
+    click(supportMenuTrigger);
+    expect(supportDialogUnread).not.toBeVisible();
     expect(menuItemByText("Pin to sidebar")).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(supportDialogUnread).toBeVisible();
 
     await waitFor(() => {
       expect(
@@ -1384,6 +1463,7 @@ describe("zero sidebar", () => {
       expect(
         within(supportDialogRow).getByLabelText("Unread"),
       ).toBeInTheDocument();
+      expect(within(supportDialogRow).getByLabelText("Unread")).toBeVisible();
     });
   });
 
@@ -1581,125 +1661,6 @@ describe("zero sidebar", () => {
     await waitFor(() => {
       expect(within(nav).getByText("Agents")).toBeInTheDocument();
       expect(within(nav).getByText("Connectors")).toBeInTheDocument();
-    });
-  });
-
-  it("hides sidebar subscriptions when the feature switch is disabled", async () => {
-    prepareDefaultAgent();
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider(),
-      connectedPersonalClaudeCodeProvider(),
-    ]);
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
-
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    await waitFor(() => {
-      expect(screen.getByText("Where Zero works")).toBeInTheDocument();
-    });
-    expect(screen.queryByText("Subscriptions")).not.toBeInTheDocument();
-  });
-
-  it("shows sidebar subscriptions between where zero works and the account footer when enabled", async () => {
-    prepareDefaultAgent();
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider(),
-      connectedPersonalClaudeCodeProvider(),
-    ]);
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
-    });
-
-    const panel = await waitFor(() => {
-      return screen.getByTestId("sidebar-subscriptions");
-    });
-    expect(within(panel).getByText("Subscriptions")).toBeInTheDocument();
-    expect(within(panel).getByText("Codex")).toBeInTheDocument();
-    expect(within(panel).getByText("Claude Code")).toBeInTheDocument();
-    expect(within(panel).getByText("82%")).toBeInTheDocument();
-    expect(within(panel).getByText("55%")).toBeInTheDocument();
-    expect(within(panel).getByText("88%")).toBeInTheDocument();
-    expect(within(panel).getByText("76%")).toBeInTheDocument();
-
-    const codexFiveHour = within(panel).getByRole("progressbar", {
-      name: "Codex 5h remaining",
-    });
-    expect(codexFiveHour).toHaveAttribute("aria-valuenow", "82");
-    fireEvent.focus(codexFiveHour);
-    await waitFor(() => {
-      expect(screen.getAllByText(/resets Jan 1, 2030/).length).toBeGreaterThan(
-        0,
-      );
-    });
-
-    const works = screen.getByText("Where Zero works");
-    const subscriptions = within(panel).getByText("Subscriptions");
-    const account = screen.getByText("Test User");
-    expect(
-      works.compareDocumentPosition(subscriptions) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(
-      subscriptions.compareDocumentPosition(account) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-  });
-
-  it("refreshes sidebar subscriptions only when the refresh button is clicked", async () => {
-    prepareDefaultAgent();
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider(),
-      connectedPersonalClaudeCodeProvider(),
-    ]);
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
-    });
-
-    const panel = await waitFor(() => {
-      return screen.getByTestId("sidebar-subscriptions");
-    });
-    expect(within(panel).getByText("82%")).toBeInTheDocument();
-
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider({
-        subscriptionUsage: {
-          fiveHour: {
-            usedPercent: 36,
-            remainingPercent: 64,
-            resetAt: "2030-01-01T05:00:00.000Z",
-            windowSeconds: 18_000,
-          },
-          weekly: {
-            usedPercent: 70,
-            remainingPercent: 30,
-            resetAt: "2030-01-07T00:00:00.000Z",
-            windowSeconds: 604_800,
-          },
-        },
-      }),
-      connectedPersonalClaudeCodeProvider(),
-    ]);
-
-    expect(within(panel).queryByText("64%")).not.toBeInTheDocument();
-    click(screen.getByLabelText("Refresh subscriptions"));
-
-    await waitFor(() => {
-      expect(within(panel).getByText("64%")).toBeInTheDocument();
-      expect(within(panel).getByText("30%")).toBeInTheDocument();
     });
   });
 

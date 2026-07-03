@@ -7,16 +7,14 @@
 //! the position file (#11008).
 //!
 //! Callers interact via [`Telemetry`]: spawn the task with
-//! [`Telemetry::spawn_for_paths`] for explicit runtime paths or
-//! [`Telemetry::spawn`] for legacy process-global paths, request uploads with
-//! [`Telemetry::flush`], and release with [`Telemetry::shutdown`] or
+//! [`Telemetry::spawn_for_paths`] for explicit runtime paths, request uploads
+//! with [`Telemetry::flush`], and release with [`Telemetry::shutdown`] or
 //! [`Telemetry::final_flush_and_shutdown`].
 
 mod delta;
 
 use self::delta::{read_file_delta, read_jsonl_delta};
 use crate::constants;
-use crate::env;
 use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::masker::SecretMasker;
@@ -57,17 +55,6 @@ impl TelemetryPaths {
             system_log_pos_file: paths.telemetry_system_log_pos_file().to_string(),
             metrics_pos_file: paths.telemetry_metrics_pos_file().to_string(),
             sandbox_ops_pos_file: paths.telemetry_sandbox_ops_pos_file().to_string(),
-        }
-    }
-
-    fn from_legacy_paths() -> Self {
-        Self {
-            system_log_file: paths::system_log_file().to_string(),
-            metrics_log_file: paths::metrics_log_file().to_string(),
-            sandbox_ops_file: paths::sandbox_ops_file().to_string(),
-            system_log_pos_file: paths::telemetry_system_log_pos_file().to_string(),
-            metrics_pos_file: paths::telemetry_metrics_pos_file().to_string(),
-            sandbox_ops_pos_file: paths::telemetry_sandbox_ops_pos_file().to_string(),
         }
     }
 }
@@ -194,31 +181,13 @@ enum Cmd {
 ///
 /// Holds both the command channel and the spawned task's [`JoinHandle`],
 /// so callers see one lifecycle object rather than juggling two.
-/// Construct with [`Self::spawn_for_paths`] or [`Self::spawn`]; release with
-/// [`Self::shutdown`].
+/// Construct with [`Self::spawn_for_paths`]; release with [`Self::shutdown`].
 pub struct Telemetry {
     tx: mpsc::Sender<Cmd>,
     handle: JoinHandle<()>,
 }
 
 impl Telemetry {
-    /// Spawn the uploader task and return an owning handle.
-    ///
-    /// Spawn **at most one instance per telemetry path set.** Legacy callers
-    /// use process-global paths, while explicit runtime callers pass a single
-    /// run's paths. Two uploader tasks targeting the same pos files would
-    /// reintroduce the multi-writer race that the channel was built to
-    /// eliminate (#11008). The type system can't enforce this — the constraint
-    /// is the shared pos paths, not the channel.
-    pub fn spawn(masker: Arc<SecretMasker>, http: HttpClient) -> Self {
-        Self::spawn_for_run(
-            env::run_id().to_string(),
-            TelemetryPaths::from_legacy_paths(),
-            masker,
-            http,
-        )
-    }
-
     /// Spawn the uploader task using explicit run id and paths.
     pub fn spawn_for_run(
         run_id: String,

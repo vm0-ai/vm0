@@ -48,6 +48,10 @@ import {
   resetMockTelegramIntegration,
 } from "./api-integrations-telegram.ts";
 import {
+  apiIntegrationsTeamsHandlers,
+  resetMockTeamsIntegration,
+} from "./api-integrations-teams.ts";
+import {
   apiIntegrationsAgentPhoneHandlers,
   resetMockAgentPhoneIntegration,
 } from "./api-integrations-agentphone.ts";
@@ -59,6 +63,7 @@ import {
   apiAgentsHandlers,
   resetMockComposesList,
   resetMockTeam,
+  resetMockUserConnectors,
 } from "./api-agents.ts";
 import { apiWorkflowsHandlers, resetMockWorkflows } from "./api-workflows.ts";
 import { apiMemoryHandlers, resetMockMemory } from "./api-memory.ts";
@@ -117,6 +122,7 @@ export const handlers = [
   ...appLogsHandlers,
   ...apiIntegrationsSlackOrgHandlers,
   ...apiIntegrationsTelegramHandlers,
+  ...apiIntegrationsTeamsHandlers,
   ...apiIntegrationsAgentPhoneHandlers,
   ...apiIntegrationsGithubHandlers,
   ...apiAgentsHandlers,
@@ -145,6 +151,7 @@ export function resetAllMockHandlers(): void {
   resetMockVariables();
   resetMockSlackOrgIntegration();
   resetMockTelegramIntegration();
+  resetMockTeamsIntegration();
   resetMockAgentPhoneIntegration();
   resetMockGithubIntegration();
   resetMockUserPreferences();
@@ -166,6 +173,7 @@ export function resetAllMockHandlers(): void {
   resetMockAutomations();
   resetMockAutomationTriggers();
   resetMockTeam();
+  resetMockUserConnectors();
   resetMockWorkflows();
   resetMockMemory();
   resetMockMemoryActivity();

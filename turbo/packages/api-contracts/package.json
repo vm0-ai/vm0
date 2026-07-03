@@ -1,6 +1,6 @@
 {
   "name": "@vm0/api-contracts",
-  "version": "1.137.0",
+  "version": "1.144.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -27,11 +27,13 @@
     "./firewalls/*": null
   },
   "scripts": {
+    "build:runtime-api-schema": "tsx src/runtime-api-schema/cli.ts build",
     "generate:rust": "tsx src/rust-bindings/generate.ts",
+    "lint-runtime-api-compat": "tsx src/runtime-api-schema/cli.ts lint",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
-    "check-types": "tsc -p tsconfig.contracts.json --noEmit && tsc -p tsconfig.rust-bindings.json --noEmit"
+    "check-types": "tsc -p tsconfig.contracts.json --noEmit && tsc -p tsconfig.rust-bindings.json --noEmit && tsc -p tsconfig.runtime-api-schema.json --noEmit"
   },
   "dependencies": {
     "@trpc/server": "11.18.0",

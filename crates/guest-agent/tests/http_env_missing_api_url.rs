@@ -1,16 +1,16 @@
-mod common;
-
 use guest_agent::http::HttpClient;
 
 #[test]
-fn for_current_env_requires_api_url_when_api_token_is_set() {
-    unsafe {
-        common::clear_guest_agent_bootstrap_env_for_test();
-        std::env::set_var("VM0_API_TOKEN", "test-token");
-        std::env::set_var("VM0_API_URL", "");
-    }
+fn for_config_requires_api_url_when_api_token_is_set() {
+    let config = guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
+        run_id: "http-missing-api-url".to_string(),
+        api_token: "test-token".to_string(),
+        home: Some(std::env::temp_dir().to_string_lossy().into_owned()),
+        ..Default::default()
+    })
+    .expect("test config should be valid");
 
-    let Err(err) = HttpClient::for_current_env() else {
+    let Err(err) = HttpClient::for_config(&config) else {
         panic!("missing API URL should fail fast");
     };
     assert!(

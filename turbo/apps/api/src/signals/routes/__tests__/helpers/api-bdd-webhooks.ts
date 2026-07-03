@@ -582,11 +582,28 @@ export function createWebhookCallbackApi(context: TestContext) {
       headers: SandboxWebhookHeaders,
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
     ) {
-      registerKnownSessionHistoryBlob(
+      const sessionHistoryBlob = registerKnownSessionHistoryBlob(
         context,
         body.runId,
         body.cliAgentSessionHistoryHash,
       );
+      if (sessionHistoryBlob && statuses.includes(200)) {
+        await accept(
+          setupApp({ context })(
+            webhookCheckpointsPrepareHistoryContract,
+          ).prepare({
+            headers,
+            body: {
+              runId: body.runId,
+              hash: body.cliAgentSessionHistoryHash,
+              rawSize: sessionHistoryBlob.byteLength,
+              encodedSize: sessionHistoryBlob.byteLength,
+              encoding: "identity",
+            },
+          }),
+          [200],
+        );
+      }
       return await accept(
         setupApp({ context })(webhookCheckpointsContract).create({
           headers,

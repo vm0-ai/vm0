@@ -79,7 +79,7 @@ impl HeldSessionStateSnapshot {
         Self::default()
     }
 
-    fn update_workspace_cache_states(&self, states: Vec<HeldSessionState>) {
+    pub(super) fn update_workspace_cache_states(&self, states: Vec<HeldSessionState>) {
         let mut inner = self.lock_inner();
         inner.workspace_cache_states = states;
         inner.workspace_cache_loaded = true;
@@ -116,8 +116,8 @@ impl HeldSessionStateSnapshot {
     }
 }
 
-/// Collect current runner state, update the provider's held-sessions cache,
-/// and send a heartbeat to the server.
+/// Collect current runner state, refresh the local held-session snapshot, and
+/// send a heartbeat to the server.
 pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) {
     let pool = hb.idle_pool.lock().await;
     let mut state = collect_heartbeat_state(
@@ -150,9 +150,6 @@ pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) 
         sessions = state.held_session_states.len(),
         "heartbeat held session states"
     );
-    hb.provider
-        .set_held_session_states(state.held_session_states.clone())
-        .await;
     hb.provider.heartbeat(&state).await;
 }
 
@@ -409,8 +406,7 @@ mod tests {
         let budget = ResourceBudget::new(8, 32768, 1.0, 4);
         let active_cli_agent_sessions =
             super::super::active_sessions::new_active_cli_agent_sessions();
-        let (provider, provider_handle) =
-            MockJobProvider::new(tokio_util::sync::CancellationToken::new());
+        let (provider, _) = MockJobProvider::new(tokio_util::sync::CancellationToken::new());
         let held_session_snapshot = HeldSessionStateSnapshot::new();
         let hb = HeartbeatContext::new(HeartbeatContextInit {
             idle_pool: &idle_pool,
@@ -440,9 +436,6 @@ mod tests {
                 );
             }
         }
-        let updates = provider_handle.held_session_state_updates();
-        assert_eq!(updates.len(), 1);
-        assert_eq!(updates[0][0].session_id, session_id);
         let cached_states = held_session_snapshot.current_held_session_states(
             Vec::new(),
             &active_cli_agent_sessions,

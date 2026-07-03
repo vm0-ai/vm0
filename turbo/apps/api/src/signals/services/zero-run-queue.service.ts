@@ -4,18 +4,7 @@ import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import {
-  and,
-  count,
-  eq,
-  gt,
-  inArray,
-  isNull,
-  lt,
-  ne,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, count, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
@@ -25,6 +14,7 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { logger } from "../../lib/log";
+import { activePendingRunPredicate } from "./agent-run-activity.service";
 import { decryptQueuedRunnerJobPayload } from "./agent-run-queue-payload.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
@@ -38,6 +28,7 @@ import {
   cappedBaseConcurrencyLimit,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
+import { tapError } from "../utils";
 
 const L = logger("ZeroRunQueue");
 
@@ -156,7 +147,7 @@ async function activeConcurrencyCount(
           eq(agentRuns.status, "running"),
           and(
             eq(agentRuns.status, "pending"),
-            gt(agentRuns.createdAt, staleThreshold),
+            activePendingRunPredicate(staleThreshold),
           ),
         ),
       ),
@@ -387,6 +378,99 @@ async function loadQueuedRunnerJobPayload(
   return payload;
 }
 
+async function publishRemovedStaleQueueSideEffects(
+  orgId: string,
+): Promise<void> {
+  await tapError(publishOrgSignal(orgId, "queue:changed"), (error) => {
+    L.error("Failed to publish queue changed after stale queue removal", {
+      orgId,
+      error,
+    });
+  });
+}
+
+async function publishPromotedQueueSideEffects(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
+    readonly runnerNotification: RunnerNotification | null;
+  },
+): Promise<void> {
+  await tapError(publishOrgSignal(args.orgId, "queue:changed"), (error) => {
+    L.error("Failed to publish queue changed after queued run promotion", {
+      orgId: args.orgId,
+      error,
+    });
+  });
+
+  if (args.queueMarkerNotification) {
+    await tapError(
+      publishUserSignal(
+        [args.queueMarkerNotification.userId],
+        `chatThreadMessageCreated:${args.queueMarkerNotification.chatThreadId}`,
+      ),
+      (error) => {
+        L.error("Failed to publish queued marker notification", {
+          userId: args.queueMarkerNotification?.userId,
+          chatThreadId: args.queueMarkerNotification?.chatThreadId,
+          error,
+        });
+      },
+    );
+    await tapError(
+      publishThreadListChanged(args.queueMarkerNotification.userId),
+      (error) => {
+        L.error("Failed to publish thread list changed after queue promotion", {
+          userId: args.queueMarkerNotification?.userId,
+          error,
+        });
+      },
+    );
+  }
+
+  if (args.runnerNotification) {
+    await tapError(notifyRunnerJob(args.runnerNotification), (error) => {
+      L.error("Failed to notify runner after queued run promotion", {
+        runId: args.runnerNotification?.runId,
+        runnerGroup: args.runnerNotification?.runnerGroup,
+        error,
+      });
+    });
+  }
+}
+
+async function promoteQueuedCandidateWithSideEffects(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly row: QueueCandidate;
+    readonly payload: QueuedRunnerJobPayload | null;
+  },
+): Promise<"drained" | "full" | "skipped"> {
+  const result = await promoteQueuedCandidate(db, args);
+  if (result.status === "removed-stale") {
+    await publishRemovedStaleQueueSideEffects(args.orgId);
+    return "skipped";
+  }
+  if (result.status === "full") {
+    return "full";
+  }
+  if (result.status === "lost") {
+    L.debug("drainOrgQueue: queued run already transitioned, skipping", {
+      runId: args.row.runId,
+    });
+    return "skipped";
+  }
+
+  await publishPromotedQueueSideEffects(db, {
+    orgId: args.orgId,
+    queueMarkerNotification: result.queueMarkerNotification,
+    runnerNotification: result.runnerNotification,
+  });
+  return "drained";
+}
+
 /**
  * Drain the org's queued runs after a concurrency slot frees up.
  *
@@ -428,45 +512,18 @@ export const drainOrgQueue$ = command(
             )
           : null;
 
-      const result = await promoteQueuedCandidate(writeDb, {
+      const result = await promoteQueuedCandidateWithSideEffects(writeDb, {
         orgId: args.orgId,
         row,
         payload,
       });
       signal.throwIfAborted();
-      if (result.status === "removed-stale") {
-        await publishOrgSignal(args.orgId, "queue:changed");
-        signal.throwIfAborted();
-        continue;
-      }
-      if (result.status === "full") {
+      if (result === "full") {
         return 0;
       }
-      if (result.status === "lost") {
-        L.debug("drainOrgQueue: queued run already transitioned, skipping", {
-          runId: row.runId,
-        });
+      if (result === "skipped") {
         continue;
       }
-
-      await publishOrgSignal(args.orgId, "queue:changed");
-      signal.throwIfAborted();
-
-      if (result.queueMarkerNotification) {
-        await publishUserSignal(
-          [result.queueMarkerNotification.userId],
-          `chatThreadMessageCreated:${result.queueMarkerNotification.chatThreadId}`,
-        );
-        signal.throwIfAborted();
-        await publishThreadListChanged(result.queueMarkerNotification.userId);
-        signal.throwIfAborted();
-      }
-
-      if (result.runnerNotification) {
-        await notifyRunnerJob(writeDb, result.runnerNotification);
-        signal.throwIfAborted();
-      }
-
       return 1;
     }
 
@@ -700,7 +757,7 @@ export const drainStaleQueues$ = command(
               eq(agentRuns.status, "running"),
               and(
                 eq(agentRuns.status, "pending"),
-                gt(agentRuns.createdAt, staleThreshold),
+                activePendingRunPredicate(staleThreshold),
               ),
             ),
           ),

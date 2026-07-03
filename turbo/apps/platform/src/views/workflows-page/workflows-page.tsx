@@ -1,31 +1,52 @@
 // Workflow list surfaces for agent-scoped tabs and the workspace index page.
+import type { ReactNode } from "react";
 import {
   useGet,
   useLastLoadable,
   useLastResolved,
   useSet,
 } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
-import { IconLoader2, IconPlayerPlay } from "@tabler/icons-react";
-import { Button, Tabs, TabsList, TabsTrigger, cn } from "@vm0/ui";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import {
+  IconArrowsSort,
+  IconChevronDown,
+  IconLock,
+  IconPlus,
+  IconRoute,
+  IconWorld,
+} from "@tabler/icons-react";
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  cn,
+} from "@vm0/ui";
 
+import { nowDate } from "../../lib/time.ts";
 import { openCreateWorkflowDialog$ } from "../../signals/automation-page/workflow-trigger-automation-dialog.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
-import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import {
   allVisibleWorkflows$,
   allWorkflowTriggerEntries$,
-  runWorkflowTriggerNow$,
-  setWorkflowIndexFilterTab$,
-  workflowIndexFilterTab$,
-  type WorkflowIndexFilterTab,
+  setWorkflowFilter$,
+  setWorkflowSortMode$,
+  workflowFilter$,
+  workflowSortMode$,
+  type WorkflowFilter,
+  type WorkflowSortMode,
   type WorkflowTriggerAutomationEntry,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import {
   CreateWorkflowAutomationDialog,
@@ -36,39 +57,10 @@ import {
 } from "../zero-page/workflow-trigger-automations-page.tsx";
 import { agentLabel, workflowTitle } from "./workflow-shared.tsx";
 
-type WorkflowGroupKey = "pending" | "public" | "private";
 type WorkflowTriggerEntryMap = ReadonlyMap<
   string,
   readonly WorkflowTriggerAutomationEntry[]
 >;
-
-const WORKFLOW_GROUPS: readonly {
-  readonly key: WorkflowGroupKey;
-  readonly label: string;
-}[] = [
-  { key: "pending", label: "Pending review" },
-  { key: "public", label: "Public" },
-  { key: "private", label: "Private" },
-];
-
-function workflowGroupKey(workflow: ZeroWorkflowSummary): WorkflowGroupKey {
-  if (workflow.visibility === "private" && workflow.requestToPublish) {
-    return "pending";
-  }
-  return workflow.visibility;
-}
-
-function groupWorkflows(
-  workflows: readonly ZeroWorkflowSummary[],
-): Record<WorkflowGroupKey, ZeroWorkflowSummary[]> {
-  return workflows.reduce<Record<WorkflowGroupKey, ZeroWorkflowSummary[]>>(
-    (groups, workflow) => {
-      groups[workflowGroupKey(workflow)].push(workflow);
-      return groups;
-    },
-    { pending: [], public: [], private: [] },
-  );
-}
 
 function workflowTriggerEntryMap(
   entries: readonly WorkflowTriggerAutomationEntry[],
@@ -82,43 +74,11 @@ function workflowTriggerEntryMap(
   return grouped;
 }
 
-function hasWorkflowTriggers(
-  workflow: ZeroWorkflowSummary,
-  triggerEntriesByWorkflowId: WorkflowTriggerEntryMap,
-): boolean {
-  return (triggerEntriesByWorkflowId.get(workflow.id)?.length ?? 0) > 0;
-}
-
-function filterWorkflows(
-  workflows: readonly ZeroWorkflowSummary[],
-  triggerEntriesByWorkflowId: WorkflowTriggerEntryMap,
-  filterTab: WorkflowIndexFilterTab,
-): readonly ZeroWorkflowSummary[] {
-  if (filterTab === "automations") {
-    return workflows.filter((workflow) => {
-      return hasWorkflowTriggers(workflow, triggerEntriesByWorkflowId);
-    });
-  }
-
-  return [...workflows].sort((a, b) => {
-    const aHasTriggers = hasWorkflowTriggers(a, triggerEntriesByWorkflowId);
-    const bHasTriggers = hasWorkflowTriggers(b, triggerEntriesByWorkflowId);
-    if (aHasTriggers !== bHasTriggers) {
-      return aHasTriggers ? -1 : 1;
-    }
-    return 0;
-  });
-}
-
-function pluralizeWorkflow(count: number): string {
-  return `${count} workflow${count === 1 ? "" : "s"}`;
-}
-
 function ownerLabel(workflow: ZeroWorkflowSummary): string {
   return workflow.ownerUserDisplayName?.trim() || workflow.ownerUserId;
 }
 
-function ownerInitials(label: string): string {
+function initials(label: string): string {
   const words = label.trim().split(/\s+/).filter(Boolean);
   if (words.length >= 2) {
     return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
@@ -126,22 +86,510 @@ function ownerInitials(label: string): string {
   return (words[0]?.slice(0, 2) || "??").toUpperCase();
 }
 
+function triggerDotClass(entry: WorkflowTriggerAutomationEntry): string {
+  const trigger = entry.trigger;
+  if (trigger.kind === "schedule") {
+    return "bg-blue-500";
+  }
+  return trigger.eventType === "webhook-received"
+    ? "bg-amber-500"
+    : "bg-emerald-500";
+}
+
+function connectorNames(
+  entries: readonly WorkflowTriggerAutomationEntry[],
+): string {
+  return entries
+    .slice(0, 2)
+    .map((entry) => {
+      return triggerTypeLabel(entry.trigger);
+    })
+    .join(", ");
+}
+
+function connectorPillClassName({
+  interactive = false,
+  muted = false,
+}: {
+  readonly interactive?: boolean;
+  readonly muted?: boolean;
+}) {
+  return cn(
+    "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-white px-2 text-[11px] font-normal leading-none",
+    muted ? "text-muted-foreground" : "text-foreground/70",
+    interactive &&
+      "cursor-pointer transition-colors hover:border-border hover:bg-gray-50 hover:text-foreground",
+  );
+}
+
+function ConnectorPillMarker({
+  dotClassName,
+}: {
+  readonly dotClassName: string;
+}) {
+  return (
+    <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotClassName)} />
+  );
+}
+
+/** The agent that runs the workflow, drawn as its real avatar. */
+function AgentAvatar({ workflow }: { readonly workflow: ZeroWorkflowSummary }) {
+  const label = agentLabel(workflow);
+  return (
+    <AgentAvatarImg
+      name={workflow.agentId}
+      alt={`Runs as ${label}`}
+      className="h-6 w-6 shrink-0 rounded-md"
+      size={24}
+    />
+  );
+}
+
+function MemberAvatar({
+  workflow,
+}: {
+  readonly workflow: ZeroWorkflowSummary;
+}) {
+  const label = ownerLabel(workflow);
+  if (workflow.ownerUserImageUrl) {
+    return (
+      <span className="h-6 w-6 shrink-0 overflow-hidden rounded-full border border-border/60 bg-gray-50">
+        <img
+          src={workflow.ownerUserImageUrl}
+          alt={label}
+          className="h-full w-full object-cover"
+        />
+      </span>
+    );
+  }
+  return (
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-gray-50 text-[10px] font-semibold text-muted-foreground">
+      {initials(label)}
+    </span>
+  );
+}
+
+function VisibilityIcon({
+  workflow,
+}: {
+  readonly workflow: ZeroWorkflowSummary;
+}) {
+  const isPublic = workflow.visibility === "public";
+  const Icon = isPublic ? IconWorld : IconLock;
+  return (
+    <Icon
+      size={15}
+      stroke={1.7}
+      className={cn(
+        "shrink-0",
+        isPublic ? "text-blue-500" : "text-muted-foreground/70",
+      )}
+      aria-label={isPublic ? "Public" : "Private"}
+    />
+  );
+}
+
+/** The connector pill's list of automations, shown when the pill is clicked. */
+function ConnectorPopoverList({
+  entries,
+  displayTimezone,
+}: {
+  readonly entries: readonly WorkflowTriggerAutomationEntry[];
+  readonly displayTimezone: string;
+}) {
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center gap-1.5 px-2 pb-1.5 pt-1 text-xs font-semibold text-muted-foreground">
+        <span>Automations</span>
+        <span className="font-normal text-muted-foreground/70">
+          {entries.length}
+        </span>
+      </div>
+      {entries.map((entry) => {
+        return (
+          <div
+            key={entry.trigger.id}
+            className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50"
+          >
+            <span className={connectorPillClassName({})}>
+              <ConnectorPillMarker dotClassName={triggerDotClass(entry)} />
+              {triggerTypeLabel(entry.trigger)}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+              {humanReadableTriggerRuleLabel(entry.trigger, displayTimezone)}
+            </span>
+            <WorkflowTriggerEnabledSwitch entry={entry} size="sm" />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ConnectorCell({
+  entries,
+  displayTimezone,
+}: {
+  readonly entries: readonly WorkflowTriggerAutomationEntry[];
+  readonly displayTimezone: string;
+}) {
+  if (entries.length === 0) {
+    return (
+      <span className={connectorPillClassName({ muted: true })}>
+        <ConnectorPillMarker dotClassName="bg-muted-foreground/40" />
+        Manual
+      </span>
+    );
+  }
+
+  const [lead] = entries;
+  const remaining = entries.length - 2;
+  return (
+    <Popover>
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className={connectorPillClassName({ interactive: true })}
+              >
+                {lead ? (
+                  <ConnectorPillMarker dotClassName={triggerDotClass(lead)} />
+                ) : null}
+                <span>{connectorNames(entries)}</span>
+                {remaining > 0 ? (
+                  <span className="text-muted-foreground">+{remaining}</span>
+                ) : null}
+              </button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">View automations</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <PopoverContent align="end" className="w-80 p-1">
+        <ConnectorPopoverList
+          entries={entries}
+          displayTimezone={displayTimezone}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function WorkflowHoverContent({
+  workflow,
+}: {
+  readonly workflow: ZeroWorkflowSummary;
+}) {
+  const title = workflowTitle(workflow);
+  return (
+    <div className="max-w-xs">
+      <p className="text-sm font-semibold text-foreground">{title}</p>
+      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+        {workflow.description ?? workflow.name}
+      </p>
+      <div className="mt-2.5 flex flex-col gap-1.5 border-t border-border/60 pt-2.5 text-xs text-foreground/80">
+        <div className="flex items-center gap-2">
+          <span className="w-16 shrink-0 text-muted-foreground">
+            Created by
+          </span>
+          <MemberAvatar workflow={workflow} />
+          <span className="truncate">{ownerLabel(workflow)}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-16 shrink-0 text-muted-foreground">Runs as</span>
+          <AgentAvatar workflow={workflow} />
+          <span className="truncate">{agentLabel(workflow)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowRowIcon({
+  entries,
+}: {
+  readonly entries: readonly WorkflowTriggerAutomationEntry[];
+}) {
+  const [lead] = entries;
+  if (lead) {
+    return <TriggerListIcon trigger={lead.trigger} size="sm" />;
+  }
+  return (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-muted-foreground">
+      <IconRoute size={16} stroke={1.7} />
+    </span>
+  );
+}
+
+function WorkflowRow({
+  workflow,
+  entries,
+  displayTimezone,
+}: {
+  readonly workflow: ZeroWorkflowSummary;
+  readonly entries: readonly WorkflowTriggerAutomationEntry[];
+  readonly displayTimezone: string;
+}) {
+  const title = workflowTitle(workflow);
+  return (
+    <article className="flex items-center gap-3 px-5 py-3.5 text-left text-foreground transition-colors hover:bg-gray-50">
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              pathname={ROUTES.workflowDetailAutomations}
+              options={{ pathParams: { workflowId: workflow.id } }}
+              aria-label={`Open ${title}`}
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              <WorkflowRowIcon entries={entries} />
+              <span className="min-w-0 truncate text-sm font-medium underline decoration-dotted decoration-foreground/40 decoration-[1px] underline-offset-2">
+                {title}
+              </span>
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent
+            side="bottom"
+            align="start"
+            className="rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] p-3"
+            style={{
+              backgroundColor: "hsl(var(--card))",
+              color: "hsl(var(--card-foreground))",
+              boxShadow:
+                "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+            }}
+          >
+            <WorkflowHoverContent workflow={workflow} />
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <ConnectorCell entries={entries} displayTimezone={displayTimezone} />
+      <VisibilityIcon workflow={workflow} />
+      <AgentAvatar workflow={workflow} />
+    </article>
+  );
+}
+
+function hasTriggers(
+  workflowId: string,
+  entriesByWorkflowId: WorkflowTriggerEntryMap,
+): boolean {
+  return (entriesByWorkflowId.get(workflowId)?.length ?? 0) > 0;
+}
+
+function applyWorkflowFilters(
+  workflows: readonly ZeroWorkflowSummary[],
+  entriesByWorkflowId: WorkflowTriggerEntryMap,
+  filter: WorkflowFilter,
+): readonly ZeroWorkflowSummary[] {
+  return workflows.filter((workflow) => {
+    const automated = hasTriggers(workflow.id, entriesByWorkflowId);
+    switch (filter) {
+      case "automated": {
+        return automated;
+      }
+      case "without": {
+        return !automated;
+      }
+      case "private": {
+        return workflow.visibility === "private";
+      }
+      case "public": {
+        return workflow.visibility === "public";
+      }
+      default: {
+        return true;
+      }
+    }
+  });
+}
+
+function emptyDescriptionForFilter(filter: WorkflowFilter): string {
+  switch (filter) {
+    case "without": {
+      return "Every workflow here runs on a schedule or event.";
+    }
+    case "automated": {
+      return "Add a schedule or trigger to a workflow and it shows up here.";
+    }
+    case "private": {
+      return "No private workflows yet.";
+    }
+    case "public": {
+      return "No public workflows yet.";
+    }
+    default: {
+      return "Create a workflow from chat or save one from a useful run.";
+    }
+  }
+}
+
+type NextRunBucket = "today" | "week" | "later" | "event" | "manual";
+
+const NEXT_RUN_SECTIONS: readonly {
+  readonly key: NextRunBucket;
+  readonly label: string;
+}[] = [
+  { key: "today", label: "Runs today" },
+  { key: "week", label: "This week" },
+  { key: "later", label: "Later" },
+  { key: "event", label: "On event" },
+  { key: "manual", label: "Manual" },
+];
+
+function dayKey(date: Date, timezone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function workflowNextRunBucket(
+  entries: readonly WorkflowTriggerAutomationEntry[],
+  now: Date,
+  timezone: string,
+): NextRunBucket {
+  if (entries.length === 0) {
+    return "manual";
+  }
+  const upcoming = entries
+    .filter((entry) => {
+      return (
+        entry.trigger.kind === "schedule" &&
+        entry.trigger.enabled &&
+        entry.trigger.nextRunAt !== null
+      );
+    })
+    .map((entry) => {
+      return new Date(entry.trigger.nextRunAt as string);
+    });
+  if (upcoming.length === 0) {
+    return "event";
+  }
+  const soonest = upcoming.reduce((earliest, candidate) => {
+    return candidate < earliest ? candidate : earliest;
+  });
+  if (dayKey(soonest, timezone) === dayKey(now, timezone)) {
+    return "today";
+  }
+  const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  return soonest <= weekAhead ? "week" : "later";
+}
+
+function WorkflowSectionHeader({ label }: { readonly label: string }) {
+  return (
+    <div className="px-5 pb-1.5 pt-4">
+      <span className="text-[13px] font-medium leading-4 text-foreground/50">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function WorkflowRowDivider() {
+  return <div className="mx-5 h-px bg-border/50" />;
+}
+
+function WorkflowRowList({
+  workflows,
+  entriesByWorkflowId,
+  displayTimezone,
+  framed = true,
+}: {
+  readonly workflows: readonly ZeroWorkflowSummary[];
+  readonly entriesByWorkflowId: WorkflowTriggerEntryMap;
+  readonly displayTimezone: string;
+  readonly framed?: boolean;
+}) {
+  const rows = (
+    <>
+      {workflows.map((workflow, index) => {
+        return (
+          <div key={workflow.id}>
+            {index > 0 ? <WorkflowRowDivider /> : null}
+            <WorkflowRow
+              workflow={workflow}
+              entries={entriesByWorkflowId.get(workflow.id) ?? []}
+              displayTimezone={displayTimezone}
+            />
+          </div>
+        );
+      })}
+    </>
+  );
+  if (!framed) {
+    return <div>{rows}</div>;
+  }
+  return <div className="zero-card overflow-hidden">{rows}</div>;
+}
+
+function WorkflowNextRunGroups({
+  workflows,
+  entriesByWorkflowId,
+  displayTimezone,
+}: {
+  readonly workflows: readonly ZeroWorkflowSummary[];
+  readonly entriesByWorkflowId: WorkflowTriggerEntryMap;
+  readonly displayTimezone: string;
+}) {
+  const now = nowDate();
+  const buckets = new Map<NextRunBucket, ZeroWorkflowSummary[]>();
+  for (const workflow of workflows) {
+    const entries = entriesByWorkflowId.get(workflow.id) ?? [];
+    const bucket = workflowNextRunBucket(entries, now, displayTimezone);
+    const list = buckets.get(bucket) ?? [];
+    list.push(workflow);
+    buckets.set(bucket, list);
+  }
+  const visibleSections = NEXT_RUN_SECTIONS.flatMap((section) => {
+    const sectionWorkflows = buckets.get(section.key);
+    if (!sectionWorkflows || sectionWorkflows.length === 0) {
+      return [];
+    }
+    return [{ section, sectionWorkflows }];
+  });
+
+  return (
+    <div className="zero-card overflow-hidden">
+      {visibleSections.map(({ section, sectionWorkflows }, index) => {
+        return (
+          <section key={section.key}>
+            {index > 0 ? <WorkflowRowDivider /> : null}
+            <WorkflowSectionHeader label={section.label} />
+            <WorkflowRowList
+              workflows={sectionWorkflows}
+              entriesByWorkflowId={entriesByWorkflowId}
+              displayTimezone={displayTimezone}
+              framed={false}
+            />
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 export function WorkflowListPanel({
   workflows,
   loading,
-  showAgentColumn,
   emptyDescription,
+  sortMode = "next-run",
   triggerEntriesByWorkflowId,
   displayTimezone = new Intl.DateTimeFormat().resolvedOptions().timeZone,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[] | null;
   readonly loading: boolean;
-  readonly showAgentColumn: boolean;
+  readonly showAgentColumn?: boolean;
   readonly emptyDescription: string;
+  readonly sortMode?: WorkflowSortMode;
   readonly triggerEntriesByWorkflowId?: WorkflowTriggerEntryMap;
   readonly displayTimezone?: string;
 }) {
-  const resolvedTriggerEntriesByWorkflowId =
+  const entriesByWorkflowId =
     triggerEntriesByWorkflowId ??
     new Map<string, readonly WorkflowTriggerAutomationEntry[]>();
 
@@ -150,12 +598,19 @@ export function WorkflowListPanel({
       {loading ? (
         <WorkflowIndexSkeleton />
       ) : workflows && workflows.length > 0 ? (
-        <WorkflowGroups
-          workflows={workflows}
-          showAgentColumn={showAgentColumn}
-          triggerEntriesByWorkflowId={resolvedTriggerEntriesByWorkflowId}
-          displayTimezone={displayTimezone}
-        />
+        sortMode === "next-run" ? (
+          <WorkflowNextRunGroups
+            workflows={workflows}
+            entriesByWorkflowId={entriesByWorkflowId}
+            displayTimezone={displayTimezone}
+          />
+        ) : (
+          <WorkflowRowList
+            workflows={workflows}
+            entriesByWorkflowId={entriesByWorkflowId}
+            displayTimezone={displayTimezone}
+          />
+        )
       ) : (
         <div className="zero-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
           <p className="text-sm font-medium text-foreground">No workflows</p>
@@ -168,294 +623,149 @@ export function WorkflowListPanel({
   );
 }
 
-function WorkflowGroups({
-  workflows,
-  showAgentColumn,
-  triggerEntriesByWorkflowId,
-  displayTimezone,
+function FilterPills<T extends string>({
+  value,
+  options,
+  onChange,
 }: {
-  readonly workflows: readonly ZeroWorkflowSummary[];
-  readonly showAgentColumn: boolean;
-  readonly triggerEntriesByWorkflowId: WorkflowTriggerEntryMap;
-  readonly displayTimezone: string;
+  readonly value: T;
+  readonly options: readonly {
+    readonly value: T;
+    readonly label: ReactNode;
+  }[];
+  readonly onChange: (value: T) => void;
 }) {
-  const groups = groupWorkflows(workflows);
-
   return (
-    <div className="flex flex-col gap-4">
-      {WORKFLOW_GROUPS.map((group) => {
-        const groupWorkflows = groups[group.key];
-        if (groupWorkflows.length === 0) {
-          return null;
-        }
-
+    <>
+      {options.map((option) => {
+        const active = option.value === value;
         return (
-          <section key={group.key} className="flex flex-col gap-2">
-            <div className="flex items-center justify-between px-0.5">
-              <h2 className="text-sm font-medium text-muted-foreground">
-                {group.label}
-              </h2>
-              <span className="text-xs text-muted-foreground">
-                {pluralizeWorkflow(groupWorkflows.length)}
-              </span>
-            </div>
-            <div className="flex flex-col gap-2.5">
-              {groupWorkflows.map((workflow) => {
-                return (
-                  <WorkflowIndexCard
-                    key={workflow.id}
-                    workflow={workflow}
-                    showAgentColumn={showAgentColumn}
-                    triggerEntries={
-                      triggerEntriesByWorkflowId.get(workflow.id) ?? []
-                    }
-                    displayTimezone={displayTimezone}
-                  />
-                );
-              })}
-            </div>
-          </section>
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => {
+              onChange(option.value);
+            }}
+            className={cn(
+              "inline-flex h-7 shrink-0 cursor-pointer items-center rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors",
+              active
+                ? "bg-muted text-foreground"
+                : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+            )}
+          >
+            {option.label}
+          </button>
         );
       })}
-    </div>
+    </>
   );
 }
 
-function WorkflowOwner({
-  workflow,
-}: {
-  readonly workflow: ZeroWorkflowSummary;
-}) {
-  const label = ownerLabel(workflow);
-  const imageUrl = workflow.ownerUserImageUrl;
+const SORT_OPTIONS: readonly {
+  readonly value: WorkflowSortMode;
+  readonly label: string;
+}[] = [
+  { value: "alphabetical", label: "Alphabetical" },
+  { value: "created", label: "Created time" },
+  { value: "next-run", label: "Next run" },
+];
 
-  return (
-    <span className="flex min-w-0 shrink-0 items-center gap-2 text-xs font-medium text-muted-foreground">
-      {imageUrl ? (
-        <span className="h-6 w-6 shrink-0 overflow-hidden rounded-full border border-border/60 bg-gray-50">
-          <img
-            src={imageUrl}
-            alt={label}
-            className="h-full w-full object-cover"
-          />
-        </span>
-      ) : (
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-gray-50 text-[10px] font-semibold text-muted-foreground">
-          {ownerInitials(label)}
-        </span>
-      )}
-      <span className="max-w-[8rem] truncate">{label}</span>
-    </span>
-  );
-}
-
-function WorkflowSlug({ name }: { readonly name: string }) {
-  return (
-    <span className="inline-flex max-w-full items-center truncate rounded-full bg-gray-50 px-2 py-0.5 text-xs font-normal text-muted-foreground">
-      {name}
-    </span>
-  );
-}
-
-function WorkflowIndexCard({
-  workflow,
-  showAgentColumn,
-  triggerEntries,
-  displayTimezone,
-}: {
-  readonly workflow: ZeroWorkflowSummary;
-  readonly showAgentColumn: boolean;
-  readonly triggerEntries: readonly WorkflowTriggerAutomationEntry[];
-  readonly displayTimezone: string;
-}) {
-  const title = workflowTitle(workflow);
-
-  return (
-    <article
-      className={cn(
-        "zero-card relative px-5 py-4 text-left text-foreground transition-colors hover:bg-gray-50",
-        triggerEntries.some((entry) => {
-          return !entry.trigger.enabled;
-        }) && "opacity-90",
-      )}
-    >
-      <Link
-        pathname={ROUTES.workflowDetailAutomations}
-        options={{
-          pathParams: {
-            workflowId: workflow.id,
-          },
-        }}
-        aria-label={`Open ${title}`}
-        className="absolute inset-0 z-0 rounded-[inherit] focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
-      >
-        <span className="sr-only">{title}</span>
-      </Link>
-      <div className="pointer-events-none relative z-10 flex items-start justify-between gap-4">
-        <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="min-w-0 truncate text-sm font-medium text-foreground">
-            {title}
-          </span>
-          <WorkflowSlug name={workflow.name} />
-          {showAgentColumn && <WorkflowSlug name={agentLabel(workflow)} />}
-        </div>
-        <WorkflowOwner workflow={workflow} />
-      </div>
-      <div className="pointer-events-none relative z-10 mt-3 text-sm leading-6 text-muted-foreground">
-        {workflow.description ?? workflow.name}
-      </div>
-      <WorkflowCardTriggerFooter
-        entries={triggerEntries}
-        displayTimezone={displayTimezone}
-      />
-    </article>
-  );
-}
-
-function isFixedIntervalWorkflowTrigger(
-  entry: WorkflowTriggerAutomationEntry,
-): boolean {
-  return (
-    entry.trigger.kind === "schedule" && entry.trigger.schedule.type === "loop"
-  );
-}
-
-function WorkflowIndexRunNowButton({
-  entry,
-}: {
-  readonly entry: WorkflowTriggerAutomationEntry;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const navigate = useSet(detachedNavigateTo$);
-  const [runNowLoadable, runNow] = useLoadableSet(runWorkflowTriggerNow$);
-  const running = runNowLoadable.state === "loading";
-  const title = workflowTitle(entry.workflow);
-
-  if (!entry.workflow.canManage || !isFixedIntervalWorkflowTrigger(entry)) {
-    return null;
-  }
-
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      aria-label={`Run ${title} now`}
-      className="zero-btn-morandi h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-medium"
-      disabled={running}
-      onClick={() => {
-        detach(
-          (async () => {
-            const result = await runNow(entry.trigger.id, pageSignal);
-            toast.success("Workflow started", {
-              action: {
-                label: "View in chat",
-                onClick: () => {
-                  navigate(ROUTES.chat, {
-                    pathParams: { threadId: result.chatThreadId },
-                  });
-                },
-              },
-            });
-          })(),
-          Reason.DomCallback,
-          "run workflow trigger from workflows page",
-        );
-      }}
-    >
-      {running ? (
-        <IconLoader2 size={13} className="animate-spin" />
-      ) : (
-        <IconPlayerPlay size={13} stroke={1.5} />
-      )}
-      <span>{running ? "Starting..." : "Run now"}</span>
-    </Button>
-  );
-}
-
-function WorkflowCardTriggerFooter({
-  entries,
-  displayTimezone,
-}: {
-  readonly entries: readonly WorkflowTriggerAutomationEntry[];
-  readonly displayTimezone: string;
-}) {
-  const [primaryEntry] = entries;
-  if (!primaryEntry) {
-    return null;
-  }
-  const remainingCount = entries.length - 1;
-  const trigger = primaryEntry.trigger;
-
-  return (
-    <div className="pointer-events-none relative z-10 mt-4 border-t border-border/60 pt-3">
-      <div
-        className={cn(
-          "flex min-w-0 items-center gap-3",
-          !trigger.enabled && "opacity-75",
-        )}
-      >
-        <TriggerListIcon trigger={trigger} />
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-sm leading-5 text-muted-foreground">
-          <span className="shrink-0">{triggerTypeLabel(trigger)}</span>
-          <span className="shrink-0 select-none text-muted-foreground/50">
-            ·
-          </span>
-          <span className="min-w-0 truncate font-medium text-foreground/85">
-            {humanReadableTriggerRuleLabel(trigger, displayTimezone)}
-          </span>
-          {remainingCount > 0 ? (
-            <span className="shrink-0 text-xs text-muted-foreground">
-              +{remainingCount} more
-            </span>
-          ) : null}
-        </div>
-        <div className="pointer-events-auto relative z-20 flex shrink-0 items-center gap-2">
-          <WorkflowIndexRunNowButton entry={primaryEntry} />
-          <WorkflowTriggerEnabledSwitch entry={primaryEntry} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function WorkflowFilterTabs({
+function SortDropdown({
   value,
-  onValueChange,
+  onChange,
 }: {
-  readonly value: WorkflowIndexFilterTab;
-  readonly onValueChange: (value: WorkflowIndexFilterTab) => void;
+  readonly value: WorkflowSortMode;
+  readonly onChange: (value: WorkflowSortMode) => void;
 }) {
+  const current = SORT_OPTIONS.find((option) => {
+    return option.value === value;
+  });
   return (
-    <Tabs
-      value={value}
-      onValueChange={(nextValue) => {
-        if (nextValue === "automations" || nextValue === "all") {
-          onValueChange(nextValue);
-        }
-      }}
-    >
-      <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-        <TabsTrigger
-          value="automations"
-          className="px-3 text-sm data-[state=active]:bg-background"
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="zero-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
         >
-          Automations
-        </TabsTrigger>
-        <TabsTrigger
-          value="all"
-          className="px-3 text-sm data-[state=active]:bg-background"
-        >
-          All
-        </TabsTrigger>
-      </TabsList>
-    </Tabs>
+          <IconArrowsSort
+            size={15}
+            stroke={1.8}
+            className="text-muted-foreground"
+          />
+          {current?.label ?? "Next run"}
+          <IconChevronDown size={14} stroke={1.8} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {SORT_OPTIONS.map((option) => {
+          return (
+            <DropdownMenuItem
+              key={option.value}
+              onSelect={() => {
+                onChange(option.value);
+              }}
+            >
+              {option.label}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function sortWorkflows(
+  workflows: readonly ZeroWorkflowSummary[],
+  sortMode: WorkflowSortMode,
+): readonly ZeroWorkflowSummary[] {
+  if (sortMode === "created") {
+    return [...workflows].sort((a, b) => {
+      return b.createdAt.localeCompare(a.createdAt);
+    });
+  }
+  if (sortMode === "alphabetical") {
+    return [...workflows].sort((a, b) => {
+      return workflowTitle(a).localeCompare(workflowTitle(b));
+    });
+  }
+  return workflows;
+}
+
+function WorkflowFilterBar({
+  filter,
+  sortMode,
+}: {
+  readonly filter: WorkflowFilter;
+  readonly sortMode: WorkflowSortMode;
+}) {
+  const setFilter = useSet(setWorkflowFilter$);
+  const setSortMode = useSet(setWorkflowSortMode$);
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <FilterPills
+        value={filter}
+        onChange={setFilter}
+        options={[
+          { value: "all", label: "All" },
+          { value: "automated", label: "Automated" },
+          { value: "without", label: "Without automation" },
+          { value: "private", label: "Private" },
+          { value: "public", label: "Public" },
+        ]}
+      />
+      <div className="ml-auto">
+        <SortDropdown value={sortMode} onChange={setSortMode} />
+      </div>
+    </div>
   );
 }
 
 export function WorkflowsPage() {
-  const filterTab = useGet(workflowIndexFilterTab$);
-  const setFilterTab = useSet(setWorkflowIndexFilterTab$);
+  const filter = useGet(workflowFilter$);
+  const sortMode = useGet(workflowSortMode$);
   const workflowsLoadable = useLastLoadable(allVisibleWorkflows$);
   const triggerEntriesLoadable = useLastLoadable(allWorkflowTriggerEntries$);
   const preferences = useLastResolved(userPreferences$);
@@ -474,7 +784,10 @@ export function WorkflowsPage() {
     preferences?.timezone ??
     new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const filteredWorkflows = workflows
-    ? filterWorkflows(workflows, triggerEntriesByWorkflowId, filterTab)
+    ? sortWorkflows(
+        applyWorkflowFilters(workflows, triggerEntriesByWorkflowId, filter),
+        sortMode,
+      )
     : null;
 
   return (
@@ -486,34 +799,32 @@ export function WorkflowsPage() {
               Workflows
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Reusable instructions your team can run, edit, or trigger.
+              Reusable instructions your team can run, edit, or automate.
             </p>
           </div>
           <Button
             type="button"
+            variant="outline"
             size="sm"
-            className="h-9 shrink-0 rounded-lg bg-foreground px-3 text-background hover:bg-foreground/90"
+            className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border"
             onClick={() => {
               openCreateWorkflowDialog();
             }}
           >
+            <IconPlus size={14} stroke={2} />
             Create in chat
           </Button>
         </div>
       </header>
 
       <main className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6">
-        <div className="mx-auto flex max-w-[900px] flex-col gap-3">
-          <WorkflowFilterTabs value={filterTab} onValueChange={setFilterTab} />
+        <div className="mx-auto flex max-w-[900px] flex-col gap-4">
+          <WorkflowFilterBar filter={filter} sortMode={sortMode} />
           <WorkflowListPanel
             workflows={filteredWorkflows}
             loading={loading}
-            showAgentColumn
-            emptyDescription={
-              filterTab === "automations"
-                ? "Add a trigger to a workflow and it will show up here."
-                : "Create a workflow from chat or save one from a useful run."
-            }
+            sortMode={sortMode}
+            emptyDescription={emptyDescriptionForFilter(filter)}
             triggerEntriesByWorkflowId={triggerEntriesByWorkflowId}
             displayTimezone={displayTimezone}
           />
@@ -527,27 +838,16 @@ export function WorkflowsPage() {
 
 function WorkflowIndexSkeleton() {
   return (
-    <div className="flex flex-col gap-4" data-testid="workflows-loading">
-      {[0, 1, 2].map((groupIndex) => {
+    <div className="zero-card overflow-hidden" data-testid="workflows-loading">
+      {[0, 1, 2, 3].map((rowIndex) => {
         return (
-          <div key={groupIndex} className="flex flex-col gap-2">
-            <div className="flex items-center justify-between px-0.5">
-              <div className="h-4 w-24 rounded bg-muted/50" />
-              <div className="h-3 w-16 rounded bg-muted/40" />
-            </div>
-            <div className="zero-card px-5 py-4">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <div className="h-4 w-40 rounded bg-muted/50" />
-                  <div className="h-5 w-28 rounded-full bg-muted/40" />
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <div className="h-6 w-6 rounded-full bg-muted/40" />
-                  <div className="h-4 w-16 rounded bg-muted/40" />
-                </div>
-              </div>
-              <div className="mt-3 h-4 w-full rounded bg-muted/40" />
-              <div className="mt-2 h-4 w-3/4 rounded bg-muted/30" />
+          <div key={rowIndex}>
+            {rowIndex > 0 ? <WorkflowRowDivider /> : null}
+            <div className="flex items-center gap-3 px-5 py-3.5">
+              <div className="h-8 w-8 shrink-0 rounded-lg bg-muted/40" />
+              <div className="h-4 w-40 rounded bg-muted/50" />
+              <div className="ml-auto h-8 w-32 rounded-full bg-muted/40" />
+              <div className="h-5 w-5 rounded-full bg-muted/40" />
             </div>
           </div>
         );

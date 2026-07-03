@@ -16,6 +16,13 @@ export type UserConnectorEnabledTypes = z.infer<
   typeof userConnectorEnabledTypesSchema
 >;
 
+export const userConnectorUpdateSchema = userConnectorEnabledTypesSchema.extend(
+  {
+    operation: z.enum(["replace", "add", "remove"]).optional(),
+  },
+);
+export type UserConnectorUpdate = z.infer<typeof userConnectorUpdateSchema>;
+
 /**
  * Contract for GET/PUT /api/zero/agents/:id/user-connectors
  */
@@ -38,7 +45,7 @@ export const zeroUserConnectorsContract = c.router({
     path: "/api/zero/agents/:id/user-connectors",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
-    body: userConnectorEnabledTypesSchema,
+    body: userConnectorUpdateSchema,
     responses: {
       200: userConnectorEnabledTypesSchema,
       400: apiErrorSchema,
@@ -46,7 +53,7 @@ export const zeroUserConnectorsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Replace enabled connector types for user on agent",
+    summary: "Update enabled connector types for user on agent",
   },
 });
 export type ZeroUserConnectorsContract = typeof zeroUserConnectorsContract;

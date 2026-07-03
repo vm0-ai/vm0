@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
@@ -67,6 +68,34 @@ const GITHUB_PR_THREAD_ID = "b0000000-0000-4000-a000-000000000702";
 const FOLLOWUP_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
 const HISTORY_THREAD_ID = "b0000000-0000-4000-a000-000000000705";
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
+
+function replaceNavigatorProperty(property: string, value: unknown): void {
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, property);
+  Object.defineProperty(navigator, property, {
+    configurable: true,
+    value,
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      if (descriptor) {
+        Object.defineProperty(navigator, property, descriptor);
+        return;
+      }
+      Reflect.deleteProperty(navigator, property);
+    },
+    { once: true },
+  );
+}
+
+function mockMacUserAgentData(architecture: string): void {
+  replaceNavigatorProperty("userAgentData", {
+    platform: "macOS",
+    getHighEntropyValues: () => {
+      return Promise.resolve({ architecture, platform: "macOS" });
+    },
+  });
+}
 
 function computerUsePermissions() {
   return {
@@ -841,6 +870,24 @@ function linkByText(text: string): HTMLElement {
   return link;
 }
 
+function linkByLabel(label: string): HTMLElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!link) {
+    throw new Error(`${label} link not found`);
+  }
+  return link;
+}
+
+function queryLinkByText(text: string): HTMLElement | null {
+  return (
+    queryAllByRoleFast("link").find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+    }) ?? null
+  );
+}
+
 function queryButtonByText(text: string): HTMLElement | null {
   return (
     queryAllByRoleFast("button").find((candidate) => {
@@ -881,6 +928,129 @@ function setScrollMetrics(
     scrollHeight: { configurable: true, value: metrics.scrollHeight },
     clientHeight: { configurable: true, value: metrics.clientHeight },
   });
+}
+
+function mockThinkingTypewriterLayout({
+  text,
+  labelWidth,
+  parentWidth,
+  graphemeWidth,
+  measureTextWidth = (value) => {
+    return Array.from(value).length * graphemeWidth;
+  },
+}: {
+  readonly text: string;
+  readonly labelWidth: number;
+  readonly parentWidth: number;
+  readonly graphemeWidth: number;
+  readonly measureTextWidth?: (value: string) => number;
+}): void {
+  const getContextDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLCanvasElement.prototype,
+    "getContext",
+  );
+  const getBoundingClientRectDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "getBoundingClientRect",
+  );
+  const clientWidthDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "clientWidth",
+  );
+
+  const rectForWidth = (width: number): DOMRect => {
+    return {
+      bottom: 20,
+      height: 20,
+      left: 0,
+      right: width,
+      toJSON: () => {
+        return {};
+      },
+      top: 0,
+      width,
+      x: 0,
+      y: 0,
+    } as DOMRect;
+  };
+  const elementWidth = (el: HTMLElement): number => {
+    if (el.getAttribute("aria-label") === text) {
+      return labelWidth;
+    }
+    if (
+      Array.from(el.children).some((child) => {
+        return child.getAttribute("aria-label") === text;
+      })
+    ) {
+      return parentWidth;
+    }
+    return 0;
+  };
+
+  Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+    configurable: true,
+    value: (contextId: string) => {
+      if (contextId !== "2d") {
+        return null;
+      }
+      return {
+        measureText: (value: string) => {
+          return {
+            width: measureTextWidth(value),
+          } as TextMetrics;
+        },
+      } as CanvasRenderingContext2D;
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
+    configurable: true,
+    value(this: HTMLElement) {
+      return rectForWidth(elementWidth(this));
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+    configurable: true,
+    get(this: HTMLElement) {
+      return elementWidth(this);
+    },
+  });
+
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      if (getContextDescriptor) {
+        Object.defineProperty(
+          HTMLCanvasElement.prototype,
+          "getContext",
+          getContextDescriptor,
+        );
+      }
+      if (!getContextDescriptor) {
+        Reflect.deleteProperty(HTMLCanvasElement.prototype, "getContext");
+      }
+      if (getBoundingClientRectDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "getBoundingClientRect",
+          getBoundingClientRectDescriptor,
+        );
+      }
+      if (!getBoundingClientRectDescriptor) {
+        Reflect.deleteProperty(HTMLElement.prototype, "getBoundingClientRect");
+      }
+      if (clientWidthDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "clientWidth",
+          clientWidthDescriptor,
+        );
+      }
+      if (!clientWidthDescriptor) {
+        Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
+      }
+    },
+    { once: true },
+  );
 }
 
 function mockResizeObserver(): { triggerAll: () => void } {
@@ -1189,6 +1359,39 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("shows thinking from loaded messages before thread metadata resolves", async () => {
+    const threadGate = context.mocks.deferred<void>();
+    mockChatLifecycle(context, {
+      threadId: "thread-message-list-thinking-pending-metadata",
+      activeRunIds: ["run-message-list-thinking-pending-metadata"],
+      threadGate: threadGate.promise,
+      chatMessages: [
+        {
+          id: "msg-message-list-assistant-pending-metadata",
+          role: "assistant",
+          content: "I am still working on this.",
+          runId: "run-message-list-thinking-pending-metadata",
+          runEventId: "event-message-list-assistant-text-pending-metadata",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-message-list-thinking-pending-metadata",
+    });
+
+    await screen.findByText("I am still working on this.");
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+
+    threadGate.resolve();
+  });
+
   it("clears thinking when the same run completes even with stale active run ids", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-message-list-completed",
@@ -1224,10 +1427,78 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps thinking when a different run completes while another run is open", async () => {
+  it("clears thinking for a completed latest run with an older terminated run", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-stale-run-before-completed-latest-run",
+      activeRunIds: [],
+      chatMessages: [
+        {
+          id: "msg-stale-run-user",
+          role: "user",
+          content: "Start the stale run",
+          runId: "run-stale-without-marker",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-stale-run-assistant",
+          role: "assistant",
+          content: "This old run is already done.",
+          runId: "run-stale-without-marker",
+          runEventId: "event-stale-run-assistant-text",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-stale-run-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-stale-without-marker",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-latest-run-user",
+          role: "user",
+          content: "Run the current task",
+          runId: "run-latest-completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-latest-run-assistant",
+          role: "assistant",
+          content: "The current task is complete.",
+          runId: "run-latest-completed",
+          runEventId: "event-latest-run-assistant-text",
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+        {
+          id: "msg-latest-run-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-latest-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-stale-run-before-completed-latest-run",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The current task is complete."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("ignores active run ids when loaded messages end at a completed run", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-stale-lifecycle-thinking",
-      activeRunIds: [],
+      activeRunIds: ["run-r2"],
       chatMessages: [
         {
           id: "msg-stale-usage-r1",
@@ -1289,10 +1560,298 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText("Continue the plan")).toBeInTheDocument();
       expect(screen.getByText("The next step is ready.")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("keeps thinking when the message stream shows later run activity", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-stale-lifecycle-thinking-active-later",
+      activeRunIds: ["run-r2"],
+      chatMessages: [
+        {
+          id: "msg-stale-active-later-usage-r1",
+          role: "assistant",
+          content: null,
+          runId: "run-r1",
+          usage: {
+            version: 1,
+            totalCredits: 5,
+            settledAt: "2026-06-09T10:00:00Z",
+            breakdown: [
+              {
+                kind: "model/kimi-k2.5/tokens.input",
+                credits: 5,
+                providers: [{ provider: "moonshot", credits: 5 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-stale-active-later-user-r2",
+          role: "user",
+          content: "Continue the plan",
+          runId: "run-r2",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-stale-active-later-start-r2",
+          role: "assistant",
+          content: null,
+          runId: "run-r2",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-stale-active-later-assistant-r2",
+          role: "assistant",
+          content: "The next step is ready.",
+          runId: "run-r2",
+          runEventId: "event-r2-assistant-text-active-later",
+          createdAt: "2026-06-09T10:00:03Z",
+        },
+        {
+          id: "msg-stale-active-later-completed-r3",
+          role: "assistant",
+          content: null,
+          runId: "run-r3",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:04Z",
+        },
+        {
+          id: "msg-stale-active-later-thinking-r2",
+          role: "assistant",
+          content: null,
+          thinking: "Continuing the plan",
+          runId: "run-r2",
+          createdAt: "2026-06-09T10:00:05Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-stale-lifecycle-thinking-active-later",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Continue the plan")).toBeInTheDocument();
+      expect(screen.getByText("The next step is ready.")).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
       expect(
         document.querySelector("[data-thinking-indicator]"),
       ).not.toBeNull();
+    });
+  });
+
+  it("clears thinking when only the latest completed marker is loaded after an older unterminated run", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-completed-marker-only-after-stale-run",
+      activeRunIds: [],
+      chatMessages: [
+        {
+          id: "msg-marker-only-stale-user",
+          role: "user",
+          content: "Start an older run",
+          runId: "run-marker-only-stale",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-marker-only-stale-assistant",
+          role: "assistant",
+          content: "This older run has already finished.",
+          runId: "run-marker-only-stale",
+          runEventId: "event-marker-only-stale-assistant-text",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-marker-only-stale-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-marker-only-stale",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-marker-only-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-marker-only-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-completed-marker-only-after-stale-run",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("This older run has already finished."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("does not use active run ids to revive an older run after a newer run completes", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-concurrent-run-completed-later",
+      activeRunIds: ["run-concurrent-active"],
+      chatMessages: [
+        {
+          id: "msg-concurrent-active-user",
+          role: "user",
+          content: "Keep monitoring deployment",
+          runId: "run-concurrent-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-concurrent-active-assistant",
+          role: "assistant",
+          content: "Monitoring is still running.",
+          runId: "run-concurrent-active",
+          runEventId: "event-concurrent-active-assistant-text",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-concurrent-completed-user",
+          role: "user",
+          content: "Summarize current status",
+          runId: "run-concurrent-completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-concurrent-completed-assistant",
+          role: "assistant",
+          content: "The current status summary is ready.",
+          runId: "run-concurrent-completed",
+          runEventId: "event-concurrent-completed-assistant-text",
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+        {
+          id: "msg-concurrent-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-concurrent-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-concurrent-run-completed-later",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The current status summary is ready."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("keeps thinking for an active run when the message stream shows later activity", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-concurrent-run-active-later",
+      activeRunIds: ["run-concurrent-active"],
+      chatMessages: [
+        {
+          id: "msg-concurrent-active-later-user",
+          role: "user",
+          content: "Keep monitoring deployment",
+          runId: "run-concurrent-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-concurrent-active-later-assistant",
+          role: "assistant",
+          content: "Monitoring is still running.",
+          runId: "run-concurrent-active",
+          runEventId: "event-concurrent-active-later-assistant-text",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-concurrent-active-later-completed-user",
+          role: "user",
+          content: "Summarize current status",
+          runId: "run-concurrent-completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-concurrent-active-later-completed-assistant",
+          role: "assistant",
+          content: "The current status summary is ready.",
+          runId: "run-concurrent-completed",
+          runEventId: "event-concurrent-active-later-completed-assistant-text",
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+        {
+          id: "msg-concurrent-active-later-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-concurrent-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+        {
+          id: "msg-concurrent-active-later-thinking",
+          role: "assistant",
+          content: null,
+          thinking: "Still monitoring deployment",
+          runId: "run-concurrent-active",
+          createdAt: "2026-06-09T10:01:03Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-concurrent-run-active-later",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The current status summary is ready."),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+  });
+
+  it("does not use active run ids when active messages are outside the loaded window", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-active-run-outside-loaded-window",
+      activeRunIds: ["run-active-outside-window"],
+      chatMessages: [
+        {
+          id: "msg-window-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-window-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-active-run-outside-loaded-window",
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });
   });
 
@@ -2341,6 +2900,48 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("does not fold a completed run when the only prior assistant message is thinking", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-work-folding-thinking-only",
+      chatMessages: [
+        {
+          role: "user",
+          content: "Summarize the launch status",
+          runId: "run-work-folding-thinking-only",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: null,
+          thinking: "Reviewing launch context",
+          runId: "run-work-folding-thinking-only",
+          createdAt: "2026-06-09T10:00:05Z",
+        },
+        {
+          role: "assistant",
+          content: "Launch status is ready.",
+          runId: "run-work-folding-thinking-only",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:05Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-work-folding-thinking-only",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Summarize the launch status"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Launch status is ready.")).toBeInTheDocument();
+      expect(screen.queryByText("Worked for 5s")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Expand work history")).toBeNull();
+    });
+  });
+
   it("does not fold a completed run with a single message", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-single-message",
@@ -2630,6 +3231,14 @@ describe("chat lifecycle", () => {
       scrollHeight: 1500,
       clientHeight: 300,
     });
+    fireEvent.keyDown(composer, { key: "ArrowUp", ctrlKey: true });
+    expect(scrollContainer.scrollTop).toBe(0);
+
+    scrollContainer.scrollTop = 420;
+    fireEvent.scroll(scrollContainer);
+    fireEvent.keyDown(composer, { key: "ArrowDown", ctrlKey: true });
+    expect(scrollContainer.scrollTop).toBe(1500);
+
     threadRegion.focus();
     fireEvent.keyDown(threadRegion, { key: "ArrowDown", ctrlKey: true });
     expect(scrollContainer.scrollTop).toBe(1500);
@@ -2728,7 +3337,6 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Tail run group window")).toBeInTheDocument();
       expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
         "10 runs",
       );
@@ -2771,7 +3379,6 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Middle run group window")).toBeInTheDocument();
       expect(screen.getByText("A reply 1")).toBeInTheDocument();
       expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
         "9 runs",
@@ -2860,9 +3467,77 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Previous thread")).toBeInTheDocument();
       expect(screen.getByText("Next thread")).toBeInTheDocument();
       expect(screen.getByText("Rename chat")).toBeInTheDocument();
-      expect(screen.getByText("Change emoji")).toBeInTheDocument();
+      expect(screen.getByText("Change icon")).toBeInTheDocument();
       expect(screen.getAllByText("F2")).toHaveLength(2);
       expect(screen.getAllByText("Shift").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("keeps shifted slash editable in the chat composer", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+    });
+
+    const composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, { key: "?", shiftKey: true });
+
+    expect(screen.queryByText("Keyboard Shortcuts")).not.toBeInTheDocument();
+  });
+
+  it("moves between chat threads with page shortcuts from the composer", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Previous keyboard thread")).toBeInTheDocument();
+      expect(screen.getByText("Next keyboard thread")).toBeInTheDocument();
+    });
+
+    let composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, {
+      key: "ArrowUp",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Previous thread launch note"),
+      ).toBeInTheDocument();
+    });
+
+    composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, {
+      key: "ArrowDown",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
     });
   });
 
@@ -2884,7 +3559,7 @@ describe("chat lifecycle", () => {
       ).toBeGreaterThan(0);
     });
 
-    expect(screen.queryByLabelText("Change emoji")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Change icon")).not.toBeInTheDocument();
 
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
@@ -2913,7 +3588,7 @@ describe("chat lifecycle", () => {
         screen.getAllByText("Current keyboard thread").length,
       ).toBeGreaterThan(0);
     });
-    const emojiButton = screen.getByLabelText("Change emoji");
+    const emojiButton = screen.getByLabelText("Change icon");
     expect(emojiButton).toHaveTextContent("");
     expect(emojiButton.querySelector("svg")).not.toBeInTheDocument();
     expect(emojiButton).toHaveClass("h-7", "w-7");
@@ -3018,7 +3693,7 @@ describe("chat lifecycle", () => {
     expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue("");
   });
 
-  it("renames the main chat with F2 when a side chat is focused", async () => {
+  it("renames the focused side chat with F2", async () => {
     const user = userEvent.setup({ delay: null });
     mockResizeObserver();
     mockKeyboardNavigationThreads();
@@ -3043,8 +3718,93 @@ describe("chat lifecycle", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
     expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
-      "Current keyboard thread",
+      "Next keyboard thread",
     );
+  });
+
+  it("moves the focused side chat with page keyboard shortcuts", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread?sidebar=keyboard-next-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
+    });
+
+    const threadRegions = screen.getAllByLabelText("Chat thread");
+    expect(threadRegions).toHaveLength(2);
+    const sideThreadRegion = threadRegions[1];
+    if (!sideThreadRegion) {
+      throw new Error("Side chat thread not found");
+    }
+    sideThreadRegion.focus();
+    fireEvent.keyDown(sideThreadRegion, {
+      key: "ArrowUp",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Previous thread launch note"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("adds an emoji to the focused side chat directly with Shift+1", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({ currentDetailTitle: null });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread?sidebar=keyboard-next-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
+    });
+
+    const threadRegions = screen.getAllByLabelText("Chat thread");
+    expect(threadRegions).toHaveLength(2);
+    const sideThreadRegion = threadRegions[1];
+    if (!sideThreadRegion) {
+      throw new Error("Side chat thread not found");
+    }
+    sideThreadRegion.focus();
+    fireEvent.keyDown(sideThreadRegion, {
+      key: "!",
+      code: "Digit1",
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        "keyboard-next-thread",
+        "✅ Next keyboard thread",
+      );
+    });
   });
 
   it("adds an emoji to the current chat with Shift+F2", async () => {
@@ -3074,20 +3834,99 @@ describe("chat lifecycle", () => {
       ).toBeGreaterThan(0);
     });
 
-    const threadRegion = screen.getByLabelText("Chat thread");
-    threadRegion.focus();
-    fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
+    const composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, { key: "F2", shiftKey: true });
 
     const menu = await screen.findByRole("menu");
-    expect(queryAllByRoleFast("menuitem", menu)).toHaveLength(7);
-    click(menuItemByLabel("Done ✅", menu));
+    expect(queryAllByRoleFast("menuitem", menu)).toHaveLength(10);
+    expect(within(menu).queryByText("Done")).not.toBeInTheDocument();
+    expect(within(menu).getByText("Clear icon")).toBeInTheDocument();
+    expect(within(menu).getAllByText("Shift").length).toBeGreaterThan(0);
+    expect(within(menu).getByText("1")).toBeInTheDocument();
+    expect(within(menu).getByText("0")).toBeInTheDocument();
+    click(menuItemByLabel("Done icon Shift 1", menu));
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
         "keyboard-current-thread",
-        "✅",
+        "✅ Current keyboard thread",
       );
     });
+  });
+
+  it("adds an emoji to the current chat directly with Shift+1", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({ currentDetailTitle: null });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, {
+      key: "!",
+      code: "Digit1",
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        "keyboard-current-thread",
+        "✅ Current keyboard thread",
+      );
+    });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("keeps shifted digit input editable in the chat composer", async () => {
+    const user = userEvent.setup({ delay: null });
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({ currentDetailTitle: null });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+    });
+
+    const composer = chatComposerTextarea();
+    await user.type(composer, "!");
+
+    expect(composer).toHaveValue("!");
+    expect(renameRequest).not.toHaveBeenCalled();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("does not refocus the chat emoji button or show its tooltip after closing the picker from outside", async () => {
@@ -3107,10 +3946,10 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+      expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
     });
 
-    const emojiButton = screen.getByLabelText("Change emoji");
+    const emojiButton = screen.getByLabelText("Change icon");
     function visibleChatThreadIconTooltip(): HTMLElement | undefined {
       return screen.queryAllByText("Chat thread icon").find((element) => {
         try {
@@ -3143,7 +3982,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("replaces the current chat emoji from the Shift+F2 picker", async () => {
+  it("replaces the current chat emoji from the Shift+F2 picker item", async () => {
     const renameRequest = vi.fn();
     mockResizeObserver();
     mockKeyboardNavigationThreads({
@@ -3168,7 +4007,7 @@ describe("chat lifecycle", () => {
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
       expect(document.title).toBe("🔥   Current keyboard thread | VM0");
-      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+      expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
       expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
     });
 
@@ -3182,7 +4021,13 @@ describe("chat lifecycle", () => {
         return item.getAttribute("aria-label") === "Important 📌";
       }),
     ).toBeFalsy();
-    fireEvent.keyDown(menu, { key: "1", code: "Digit1" });
+    const doneItem = queryAllByRoleFast("menuitem", menu).find((item) => {
+      return item.getAttribute("aria-label") === "Done icon Shift 1";
+    });
+    if (!doneItem) {
+      throw new Error("Done icon menu item not found");
+    }
+    click(doneItem);
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
@@ -3190,6 +4035,79 @@ describe("chat lifecycle", () => {
         "✅ Current keyboard thread",
       );
     });
+  });
+
+  it("clears the current chat emoji directly with Shift+0", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({
+      currentTitle: "🔥 Current keyboard thread",
+    });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, {
+      key: ")",
+      code: "Digit0",
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        "keyboard-current-thread",
+        "Current keyboard thread",
+      );
+    });
+  });
+
+  it("does not clear the emoji when the chat has no other title text", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({ currentTitle: "🔥" });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, {
+      key: ")",
+      code: "Digit0",
+      shiftKey: true,
+    });
+
+    expect(renameRequest).not.toHaveBeenCalled();
   });
 
   it("opens run logs from assistant message actions", async () => {
@@ -3278,7 +4196,8 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("starts a workflow prompt from an assistant message when the composer is empty", async () => {
+  it("starts a workflow prompt from the composer when the composer is empty", async () => {
+    const user = userEvent.setup({ delay: null });
     const threadId = "assistant-message-create-workflow-empty";
     const assistantReply = "We can turn this into a workflow.";
     mockWorkflowComposerWorkflows();
@@ -3316,13 +4235,24 @@ describe("chat lifecycle", () => {
     if (!(assistantGroup instanceof HTMLElement)) {
       throw new Error("assistant message group not found");
     }
-    const copyButton = within(assistantGroup).getByLabelText("Copy message");
-    const workflowButton =
-      within(assistantGroup).getByLabelText("Create workflow");
     expect(
-      copyButton.compareDocumentPosition(workflowButton) &
+      within(assistantGroup).queryByLabelText("Create workflow"),
+    ).not.toBeInTheDocument();
+    const templateButton = buttonByLabel("Template");
+    const workflowButton = buttonByLabel("Create workflow");
+    expect(
+      templateButton.compareDocumentPosition(workflowButton) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+
+    await user.hover(workflowButton);
+    const workflowTooltip = await screen.findByText("Create workflow", {
+      selector: "div",
+    });
+    await waitFor(() => {
+      expect(workflowTooltip).toBeVisible();
+    });
+    await user.unhover(workflowButton);
 
     click(workflowButton);
 
@@ -3375,13 +4305,8 @@ describe("chat lifecycle", () => {
       expect(editor).toHaveTextContent(draft);
     });
 
-    const assistantMessage = await screen.findByText(assistantReply);
-    const assistantGroup = assistantMessage.closest('[data-role="assistant"]');
-    if (!(assistantGroup instanceof HTMLElement)) {
-      throw new Error("assistant message group not found");
-    }
-    const workflowButton =
-      within(assistantGroup).getByLabelText("Create workflow");
+    await screen.findByText(assistantReply);
+    const workflowButton = buttonByLabel("Create workflow");
 
     click(workflowButton);
 
@@ -3446,14 +4371,8 @@ describe("chat lifecycle", () => {
       },
     });
 
-    const assistantMessage = await screen.findByText(assistantReply);
-    const assistantGroup = assistantMessage.closest('[data-role="assistant"]');
-    if (!(assistantGroup instanceof HTMLElement)) {
-      throw new Error("assistant message group not found");
-    }
-    expect(
-      within(assistantGroup).queryByLabelText("Create workflow"),
-    ).not.toBeInTheDocument();
+    await screen.findByText(assistantReply);
+    expect(screen.queryByLabelText("Create workflow")).not.toBeInTheDocument();
   });
 
   it("shows linked automations from the chat header sidebar", async () => {
@@ -4101,7 +5020,6 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Run group folding")).toBeInTheDocument();
       expect(screen.getByText("Latest daily check result")).toBeInTheDocument();
       const foldButton = buttonByLabel("Expand grouped run history");
       expect(
@@ -4234,7 +5152,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("First goal result")).toBeInTheDocument();
-      expect(screen.getByText("Worked for 30s")).toBeInTheDocument();
+      expect(screen.getAllByText("Worked for 30s").length).toBeGreaterThan(0);
     });
   });
 
@@ -4854,6 +5772,212 @@ describe("chat lifecycle", () => {
     expect(sentMessages[0]?.revokesMessageId).toBeUndefined();
   });
 
+  it("shows recommended follow-ups after a completed marker update event", async () => {
+    const assistantReply = "I can turn this into a launch package.";
+    const followupPrompt = "Create a presentation outline";
+    const updateTopic = `chatThreadMessageUpdated:${FOLLOWUP_THREAD_ID}`;
+    const completedMarker: Extract<PagedChatMessage, { role: "assistant" }> = {
+      id: "00000000-0000-4000-8000-000000004001",
+      role: "assistant",
+      content: null,
+      runId: "run-followup",
+      runLifecycleEvent: "completed",
+      createdAt: "2026-06-09T10:01:01Z",
+    };
+    const fetchedMessageIds: string[] = [];
+
+    mockChatLifecycle(context, {
+      threadId: FOLLOWUP_THREAD_ID,
+      threadTitle: "Launch package",
+      chatMessages: [
+        {
+          id: "msg-followup-user",
+          role: "user",
+          content: "Package this launch plan",
+          runId: "run-followup",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-followup-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-followup",
+          sequenceNumber: 2,
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+        completedMarker,
+      ],
+      onMessageGet: (messageId) => {
+        fetchedMessageIds.push(messageId);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FOLLOWUP_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(assistantReply)).toBeInTheDocument();
+      expect(queryButtonByText(followupPrompt)).not.toBeInTheDocument();
+      expect(context.mocks.ably.hasSubscription(updateTopic)).toBeTruthy();
+    });
+
+    context.mocks.ably.trigger(updateTopic, { messageId: "not-a-valid-id" });
+    completedMarker.recommendedFollowups = [
+      {
+        prompt: followupPrompt,
+        kind: "generate",
+        generationType: "presentation",
+      },
+    ];
+    context.mocks.ably.trigger(updateTopic, { messageId: completedMarker.id });
+
+    await waitFor(() => {
+      expect(fetchedMessageIds).toContain(completedMarker.id);
+      expect(buttonByText(followupPrompt)).toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("catches recommended follow-ups written before realtime subscription is ready", async () => {
+    const assistantReply = "I can turn this into a launch package.";
+    const followupPrompt = "Create a presentation outline";
+    const completedMarker: Extract<PagedChatMessage, { role: "assistant" }> = {
+      id: "00000000-0000-4000-8000-000000004003",
+      role: "assistant",
+      content: null,
+      runId: "run-followup-subscribe-gap",
+      runLifecycleEvent: "completed",
+      createdAt: "2026-06-09T10:01:01Z",
+    };
+    const fetchedMessageIds: string[] = [];
+    let updatedAfterInitialList = false;
+
+    mockChatLifecycle(context, {
+      threadId: FOLLOWUP_THREAD_ID,
+      threadTitle: "Launch package",
+      chatMessages: [
+        {
+          id: "msg-followup-subscribe-gap-user",
+          role: "user",
+          content: "Package this launch plan",
+          runId: "run-followup-subscribe-gap",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-followup-subscribe-gap-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-followup-subscribe-gap",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        completedMarker,
+      ],
+      afterInitialMessagesList: () => {
+        if (updatedAfterInitialList) {
+          return;
+        }
+        updatedAfterInitialList = true;
+        completedMarker.recommendedFollowups = [
+          {
+            prompt: followupPrompt,
+            kind: "generate",
+            generationType: "presentation",
+          },
+        ];
+      },
+      onMessageGet: (messageId) => {
+        fetchedMessageIds.push(messageId);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FOLLOWUP_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(fetchedMessageIds).toContain(completedMarker.id);
+      expect(buttonByText(followupPrompt)).toBeInTheDocument();
+    });
+  });
+
+  it("keeps stale recommended follow-ups hidden after the user advances the thread", async () => {
+    const assistantReply = "I can turn this into a launch package.";
+    const followupPrompt = "Create a presentation outline";
+    const updateTopic = `chatThreadMessageUpdated:${FOLLOWUP_THREAD_ID}`;
+    const completedMarker: Extract<PagedChatMessage, { role: "assistant" }> = {
+      id: "00000000-0000-4000-8000-000000004002",
+      role: "assistant",
+      content: null,
+      runId: "run-followup-old",
+      runLifecycleEvent: "completed",
+      createdAt: "2026-06-09T10:01:01Z",
+    };
+    const fetchedMessageIds: string[] = [];
+
+    mockChatLifecycle(context, {
+      threadId: FOLLOWUP_THREAD_ID,
+      threadTitle: "Launch package",
+      chatMessages: [
+        {
+          id: "msg-followup-old-user",
+          role: "user",
+          content: "Package this launch plan",
+          runId: "run-followup-old",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-followup-old-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-followup-old",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        completedMarker,
+        {
+          id: "msg-followup-new-user",
+          role: "user",
+          content: "I already sent a new message",
+          runId: "run-followup-new",
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+      ],
+      onMessageGet: (messageId) => {
+        fetchedMessageIds.push(messageId);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FOLLOWUP_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(assistantReply)).toBeInTheDocument();
+      expect(
+        screen.getByText("I already sent a new message"),
+      ).toBeInTheDocument();
+      expect(queryButtonByText(followupPrompt)).not.toBeInTheDocument();
+      expect(context.mocks.ably.hasSubscription(updateTopic)).toBeTruthy();
+    });
+
+    completedMarker.recommendedFollowups = [
+      {
+        prompt: followupPrompt,
+        kind: "generate",
+        generationType: "presentation",
+      },
+    ];
+    context.mocks.ably.trigger(updateTopic, { messageId: completedMarker.id });
+
+    await waitFor(() => {
+      expect(fetchedMessageIds).toContain(completedMarker.id);
+      expect(queryButtonByText(followupPrompt)).not.toBeInTheDocument();
+    });
+  });
+
   it("hides recommended follow-ups after a newer assistant reply", async () => {
     const firstAssistantReply = "I can turn this into a launch package.";
     const newerAssistantReply = "Here is the newer launch package.";
@@ -5041,12 +6165,80 @@ describe("chat lifecycle", () => {
         "So Zero can work in your browser and apps for you, even ones with no connector like LinkedIn or Reddit.",
       ),
     ).toBeInTheDocument();
-    expect(linkByText("Download for macOS")).toHaveAttribute(
+    expect(screen.getByText("Requires macOS 14 or newer.")).toBeInTheDocument();
+    const downloadLink = await waitFor(() => {
+      return linkByText("Download for macOS");
+    });
+    expect(downloadLink).toHaveAttribute(
       "href",
       expect.stringContaining(
         "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
       ),
     );
+  });
+
+  it("blocks the Computer Use download dialog on Intel Macs", async () => {
+    mockMacUserAgentData("x86");
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-download-intel";
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await screen.findByText("Connect my computer"));
+
+    const requiredButton = await waitFor(() => {
+      return buttonByText("Requires Apple Silicon Mac");
+    });
+    expect(requiredButton).toBeDisabled();
+    expect(screen.getByText("Requires macOS 14 or newer.")).toBeInTheDocument();
+    expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
+  });
+
+  it("shows Apple Silicon and Intel download links when x64 downloads are enabled", async () => {
+    mockMacUserAgentData("x86");
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-download-x64";
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.DesktopX64Download]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await screen.findByText("Connect my computer"));
+
+    const appleSiliconDownload = await waitFor(() => {
+      return linkByLabel("Download for Mac Apple Silicon");
+    });
+    expect(appleSiliconDownload).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
+      ),
+    );
+    expect(linkByLabel("Download for Mac Intel")).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "/api/zero/desktop/updates/stable/darwin/x64/dmg",
+      ),
+    );
+    expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Requires Apple Silicon Mac"),
+    ).not.toBeInTheDocument();
   });
 
   it("does not auto-select the only online Computer Use host", async () => {
@@ -5374,10 +6566,135 @@ describe("chat lifecycle", () => {
   it("transcribes voice input into the composer", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "voice-input-thread";
-    context.mocks.browser.voiceInput();
+    const draftPatches: unknown[] = [];
+    const toastError = vi.spyOn(toast, "error");
+    context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
+    context.mocks.http.patch(
+      "*/api/zero/chat-threads/:id",
+      async ({ request }) => {
+        draftPatches.push(await request.json());
+        return new Response(null, { status: 200 });
+      },
+    );
     context.mocks.http.post("*/api/zero/voice-io/stt", () => {
       return new Response(JSON.stringify({ text: "Summarize the standup" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+      const textarea = await waitFor(() => {
+        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+      });
+
+      await user.click(await screen.findByLabelText("Voice input"));
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByLabelText("Stop recording"));
+
+      await waitFor(() => {
+        expect(textarea).toHaveValue("Summarize the standup");
+      });
+      await waitFor(() => {
+        expect(draftPatches).toContainEqual({
+          draftContent: "Summarize the standup",
+          draftAttachments: null,
+        });
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
+    } finally {
+      toastError.mockRestore();
+    }
+  });
+
+  it("shows voice input starting state while the browser opens the microphone", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "voice-input-starting-thread";
+    const micReady = context.mocks.deferred<void>();
+    context.mocks.browser.voiceInput({
+      getUserMediaReady: micReady.promise,
+      rms: 0.1,
+    });
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Starting voice input")).toBeDisabled();
+    });
+    expect(screen.queryByLabelText("Stop recording")).not.toBeInTheDocument();
+
+    micReady.resolve(undefined);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+  });
+
+  it("starts recording before the voice activity monitor is ready", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "voice-input-monitor-pending-thread";
+    const audioReady = context.mocks.deferred<void>();
+    context.mocks.browser.voiceInput({
+      audioContextReady: audioReady.promise,
+      rms: 0.1,
+    });
+    mockChatLifecycle(context, { threadId });
+    let transcriptionCalled = false;
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      transcriptionCalled = true;
+      return new Response(JSON.stringify({ text: "first words" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByLabelText("Starting voice input"),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Stop recording"));
+    audioReady.resolve(undefined);
+
+    await waitFor(() => {
+      expect(transcriptionCalled).toBeTruthy();
+      expect(textarea).toHaveValue("first words");
+    });
+  });
+
+  it("cancels silent voice input without calling transcription", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "silent-voice-input-thread";
+    context.mocks.browser.voiceInput({ rms: 0 });
+    mockChatLifecycle(context, { threadId });
+    let transcriptionCalled = false;
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      transcriptionCalled = true;
+      return new Response(JSON.stringify({ text: "unexpected" }), {
         headers: { "Content-Type": "application/json" },
       });
     });
@@ -5397,14 +6714,16 @@ describe("chat lifecycle", () => {
     await user.click(screen.getByLabelText("Stop recording"));
 
     await waitFor(() => {
-      expect(textarea).toHaveValue("Summarize the standup");
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
     });
+    expect(transcriptionCalled).toBeFalsy();
+    expect(textarea).toHaveValue("");
   });
 
   it("opens billing recovery when voice input quota is depleted", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "voice-input-quota-thread";
-    context.mocks.browser.voiceInput();
+    context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
     context.mocks.http.post("*/api/zero/voice-io/stt", () => {
       return new Response(
@@ -5919,5 +7238,255 @@ describe("chat lifecycle", () => {
       expect(screen.queryByText("Active task prompt")).not.toBeInTheDocument();
       expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
     });
+  });
+});
+
+describe("initial thinking indicator", () => {
+  it("renders the latest run thinking marker inside the thinking indicator", async () => {
+    const threadId = "thread-initial-thinking";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-thinking-user",
+          role: "user",
+          content: "Draft a launch checklist",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-thinking-marker",
+          role: "assistant",
+          content: null,
+          thinking: "Reviewing your request",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+    const label = await screen.findByLabelText("Reviewing your request");
+    expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
+  });
+
+  it("renders the thinking marker before thread detail resolves", async () => {
+    const threadId = "thread-initial-thinking-thread-detail-gated";
+    const threadGate = context.mocks.deferred<void>();
+    mockChatLifecycle(context, {
+      threadId,
+      threadGate: threadGate.promise,
+      chatMessages: [
+        {
+          id: "msg-thinking-detail-gated-user",
+          role: "user",
+          content: "Draft a launch checklist",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-thinking-detail-gated-marker",
+          role: "assistant",
+          content: null,
+          thinking: "Reading the prompt",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
+      },
+    });
+
+    const label = await screen.findByLabelText("Reading the prompt");
+    expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
+
+    threadGate.resolve();
+  });
+
+  it("restarts on every follow-up line instead of sliding a short tail", async () => {
+    const threadId = "thread-initial-thinking-rollover";
+    const thinking = "ABCDEFG";
+    mockThinkingTypewriterLayout({
+      text: thinking,
+      labelWidth: 38,
+      parentWidth: 160,
+      graphemeWidth: 10,
+      measureTextWidth: (value) => {
+        return (
+          Array.from(value).filter((grapheme) => {
+            return grapheme !== ".";
+          }).length * 10
+        );
+      },
+    });
+    const displayedLabels = new Set<string>();
+    const labelObserver = new MutationObserver(() => {
+      const label = document.querySelector(`[aria-label="${thinking}"]`);
+      if (label?.textContent) {
+        displayedLabels.add(label.textContent);
+      }
+    });
+    labelObserver.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        labelObserver.disconnect();
+      },
+      { once: true },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-thinking-rollover-user",
+          role: "user",
+          content: "Draft a launch checklist",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-thinking-rollover-marker",
+          role: "assistant",
+          content: null,
+          thinking,
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
+      },
+    });
+
+    const label = await screen.findByLabelText(thinking);
+    await waitFor(() => {
+      expect(label).toHaveTextContent(/^G$/);
+    });
+    expect(
+      Array.from(displayedLabels).some((value) => {
+        return value === "D" || value === "DE" || value === "DEF";
+      }),
+    ).toBeTruthy();
+    expect(displayedLabels.has("...EFG")).toBeFalsy();
+    expect(label).not.toHaveTextContent(thinking);
+    expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
+  });
+
+  it("keeps the thinking marker visible while later messages are queued", async () => {
+    const threadId = "thread-initial-thinking-with-queue";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-thinking-queued-user",
+          role: "user",
+          content: "Draft a launch checklist",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-thinking-queued-marker",
+          role: "assistant",
+          content: null,
+          thinking: "Reviewing your request",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+        {
+          id: "msg-thinking-queued-followup",
+          role: "user",
+          content: "Also include owners",
+          runId: undefined,
+          createdAt: "2026-03-10T00:00:02Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
+      },
+    });
+
+    const label = await screen.findByLabelText("Reviewing your request");
+    expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
+    await waitFor(() => {
+      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
+        "Also include owners",
+      );
+    });
+  });
+
+  it("hides the thinking marker when the same run has assistant text", async () => {
+    const threadId = "thread-initial-thinking-answer";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-thinking-answer-user",
+          role: "user",
+          content: "Draft a launch checklist",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-thinking-answer-marker",
+          role: "assistant",
+          content: null,
+          thinking: "Reviewing your request",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+        {
+          id: "msg-thinking-answer",
+          role: "assistant",
+          content: "Here is the checklist.",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:02Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
+      },
+    });
+
+    await screen.findByText("Here is the checklist.");
+    expect(
+      screen.queryByText("Reviewing your request"),
+    ).not.toBeInTheDocument();
   });
 });

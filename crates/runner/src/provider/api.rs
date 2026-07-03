@@ -1,6 +1,5 @@
 //! [`JobProvider`] backed by an Ably control plane + HTTP polling + REST API.
 
-use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -25,8 +24,7 @@ use crate::http::HttpClient;
 use crate::ids::RunId;
 use crate::run_cancellation::SharedRunCancellationMap;
 use crate::types::{
-    CompleteRequest, ExecutionContext, HeartbeatState, HeldSessionState, Job,
-    MAX_HELD_SESSION_STATES, PollResponse, SandboxReuseResult,
+    CompleteRequest, ExecutionContext, HeartbeatState, Job, PollResponse, SandboxReuseResult,
 };
 use sandbox::SandboxId;
 
@@ -34,13 +32,6 @@ use sandbox::SandboxId;
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody {
     telemetry: ClaimRequestTelemetry,
-    capabilities: [ClaimCapability; 1],
-}
-
-#[derive(Serialize)]
-enum ClaimCapability {
-    #[serde(rename = "resumeSessionHistoryRef")]
-    ResumeSessionHistoryRef,
 }
 
 #[derive(Serialize)]
@@ -84,21 +75,6 @@ enum DiscoveryWakeup {
     Poll(PollDue),
 }
 
-fn poll_held_session_states(states: &[HeldSessionState]) -> Cow<'_, [HeldSessionState]> {
-    if states.len() <= MAX_HELD_SESSION_STATES {
-        return Cow::Borrowed(states);
-    }
-
-    let mut capped = states.to_vec();
-    capped.sort_unstable_by(|a, b| {
-        b.last_completed_at
-            .cmp(&a.last_completed_at)
-            .then_with(|| a.session_id.cmp(&b.session_id))
-    });
-    capped.truncate(MAX_HELD_SESSION_STATES);
-    Cow::Owned(capped)
-}
-
 // ---------------------------------------------------------------------------
 // ApiProvider
 // ---------------------------------------------------------------------------
@@ -119,16 +95,11 @@ pub struct ApiProvider {
     profiles: Vec<String>,
     /// Coalesced poll wakeup state updated by the Ably supervisor.
     poll_wakeups: Arc<PollWakeups>,
-    /// Matching targeted direct job candidates delivered by Ably notifications.
-    _targeted_direct_candidate_tx: mpsc::Sender<DirectJobCandidate>,
-    targeted_direct_candidate_rx: tokio::sync::Mutex<mpsc::Receiver<DirectJobCandidate>>,
-    /// Supported broadcast direct job candidates delivered by Ably notifications.
-    _broadcast_direct_candidate_tx: mpsc::Sender<DirectJobCandidate>,
-    broadcast_direct_candidate_rx: tokio::sync::Mutex<mpsc::Receiver<DirectJobCandidate>>,
+    /// Supported direct job candidates delivered by Ably notifications.
+    _direct_candidate_tx: mpsc::Sender<DirectJobCandidate>,
+    direct_candidate_rx: tokio::sync::Mutex<mpsc::Receiver<DirectJobCandidate>>,
     /// Background Ably control-plane task.
     ably_supervisor: AblySupervisor,
-    /// Session generations held in the idle pool, sent in poll requests for affinity ordering.
-    held_session_states: tokio::sync::Mutex<Vec<HeldSessionState>>,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -140,26 +111,19 @@ impl ApiProvider {
         token: String,
         group: String,
         profiles: Vec<String>,
-        runner_id: String,
         cancel: CancellationToken,
         cancel_tokens: SharedRunCancellationMap,
     ) -> Arc<Self> {
         let api = ApiClient::new(http, token);
         let poll_wakeups = Arc::new(PollWakeups::new(false));
-        let (targeted_direct_candidate_tx, targeted_direct_candidate_rx) =
-            mpsc::channel(DIRECT_CANDIDATE_QUEUE_CAPACITY);
-        let (broadcast_direct_candidate_tx, broadcast_direct_candidate_rx) =
+        let (direct_candidate_tx, direct_candidate_rx) =
             mpsc::channel(DIRECT_CANDIDATE_QUEUE_CAPACITY);
         let ably_supervisor = AblySupervisor::spawn(AblySupervisorConfig {
             api: api.clone(),
             group: group.clone(),
-            runner_id,
             profiles: profiles.clone(),
             poll_wakeups: Arc::clone(&poll_wakeups),
-            direct_candidate_senders: DirectCandidateSenders::new(
-                targeted_direct_candidate_tx.clone(),
-                broadcast_direct_candidate_tx.clone(),
-            ),
+            direct_candidate_senders: DirectCandidateSenders::new(direct_candidate_tx.clone()),
             cancel_tokens,
             provider_cancel: cancel.clone(),
         });
@@ -169,26 +133,16 @@ impl ApiProvider {
             group,
             profiles,
             poll_wakeups,
-            _targeted_direct_candidate_tx: targeted_direct_candidate_tx,
-            targeted_direct_candidate_rx: tokio::sync::Mutex::new(targeted_direct_candidate_rx),
-            _broadcast_direct_candidate_tx: broadcast_direct_candidate_tx,
-            broadcast_direct_candidate_rx: tokio::sync::Mutex::new(broadcast_direct_candidate_rx),
+            _direct_candidate_tx: direct_candidate_tx,
+            direct_candidate_rx: tokio::sync::Mutex::new(direct_candidate_rx),
             ably_supervisor,
-            held_session_states: tokio::sync::Mutex::new(Vec::new()),
             cancel,
         })
     }
 
     async fn try_recv_direct_candidate(&self) -> Option<DirectJobCandidate> {
-        let mut targeted_direct_candidate_rx = self.targeted_direct_candidate_rx.lock().await;
-        match targeted_direct_candidate_rx.try_recv() {
-            Ok(candidate) => return Some(candidate),
-            Err(mpsc::error::TryRecvError::Empty) => {}
-            Err(mpsc::error::TryRecvError::Disconnected) => {}
-        }
-
-        let mut broadcast_direct_candidate_rx = self.broadcast_direct_candidate_rx.lock().await;
-        match broadcast_direct_candidate_rx.try_recv() {
+        let mut direct_candidate_rx = self.direct_candidate_rx.lock().await;
+        match direct_candidate_rx.try_recv() {
             Ok(candidate) => Some(candidate),
             Err(mpsc::error::TryRecvError::Empty) => None,
             Err(mpsc::error::TryRecvError::Disconnected) => None,
@@ -201,20 +155,14 @@ impl ApiProvider {
                 return Some(candidate);
             }
 
-            let mut targeted_direct_candidate_rx = self.targeted_direct_candidate_rx.lock().await;
-            let mut broadcast_direct_candidate_rx = self.broadcast_direct_candidate_rx.lock().await;
+            let mut direct_candidate_rx = self.direct_candidate_rx.lock().await;
 
             tokio::select! {
                 biased;
                 () = self.cancel.cancelled() => {
                     return None;
                 }
-                candidate = targeted_direct_candidate_rx.recv() => {
-                    if let Some(candidate) = candidate {
-                        return Some(candidate);
-                    }
-                }
-                candidate = broadcast_direct_candidate_rx.recv() => {
+                candidate = direct_candidate_rx.recv() => {
                     if let Some(candidate) = candidate {
                         return Some(candidate);
                     }
@@ -255,12 +203,10 @@ impl JobProvider for ApiProvider {
                 DiscoveryWakeup::Direct(direct) => {
                     let run_id = direct.run_id();
                     let profile = direct.profile_name().to_owned();
-                    let targeted = direct.targeted();
                     let candidate = direct.into_job_candidate();
                     info!(
                         run_id = %run_id,
                         profile = %profile,
-                        targeted,
                         "ably: direct job candidate discovered"
                     );
                     return Some(candidate);
@@ -270,7 +216,6 @@ impl JobProvider for ApiProvider {
             let reason = due.reason();
             let poll_due_started_at = Instant::now();
 
-            let held_session_states = self.held_session_states.lock().await.clone();
             let poll_result = tokio::select! {
                 biased;
                 () = self.cancel.cancelled() => {
@@ -281,11 +226,9 @@ impl JobProvider for ApiProvider {
                         self.poll_wakeups.request_immediate_poll().await;
                         let run_id = direct.run_id();
                         let profile = direct.profile_name().to_owned();
-                        let targeted = direct.targeted();
                         info!(
                             run_id = %run_id,
                             profile = %profile,
-                            targeted,
                             poll_reason = ?reason,
                             "ably: direct job candidate interrupted poll"
                         );
@@ -293,7 +236,7 @@ impl JobProvider for ApiProvider {
                     }
                     return None;
                 }
-                result = self.api.poll(&self.group, &self.profiles, &held_session_states, reason) => result,
+                result = self.api.poll(&self.group, &self.profiles, reason) => result,
             };
 
             match poll_result {
@@ -309,7 +252,7 @@ impl JobProvider for ApiProvider {
                         info!(
                             run_id = %job.run_id,
                             poll_reason = ?reason,
-                            "poll: job found while target-other defer arrived, retrying after defer"
+                            "poll: job found while deferred poll arrived, retrying after defer"
                         );
                         continue;
                     }
@@ -318,12 +261,16 @@ impl JobProvider for ApiProvider {
                     }
                     // Fall back to default profile when server doesn't send one
                     // (backwards compat with pre-profile API).
+                    let run_id = job.run_id;
+                    let cli_agent_session_id = job.cli_agent_session_id;
+                    let affinity_protected_until = job.affinity_protected_until;
                     let profile = job
                         .experimental_profile
                         .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
-                    info!(run_id = %job.run_id, %profile, poll_reason = ?reason, "poll: job found");
+                    info!(run_id = %run_id, %profile, poll_reason = ?reason, "poll: job found");
                     return Some(
-                        JobCandidate::new(job.run_id, profile)
+                        JobCandidate::new(run_id, profile)
+                            .with_affinity_metadata(cli_agent_session_id, affinity_protected_until)
                             .with_discovery_source(JobDiscoverySource::Poll)
                             .with_poll_reason(poll_reason_value(reason))
                             .with_poll_timing(poll_due_started_at.elapsed(), http_request_elapsed),
@@ -380,8 +327,8 @@ impl JobProvider for ApiProvider {
         }
     }
 
-    async fn set_held_session_states(&self, states: Vec<HeldSessionState>) {
-        *self.held_session_states.lock().await = states;
+    async fn defer_poll_after(&self, delay: Duration) {
+        self.poll_wakeups.request_deferred_poll_after(delay).await;
     }
 
     async fn shutdown(&self) {
@@ -456,10 +403,9 @@ impl ApiClient {
         &self,
         group: &str,
         profiles: &[String],
-        held_session_states: &[HeldSessionState],
         reason: PollReason,
     ) -> RunnerResult<PollApiResult> {
-        let body = poll_request_body(group, profiles, held_session_states, reason);
+        let body = poll_request_body(group, profiles, reason);
         let poll_started_at = Instant::now();
         let resp = send_api(
             self.http
@@ -519,7 +465,11 @@ impl ApiClient {
         )
         .await?;
 
-        if matches!(resp.status(), StatusCode::CONFLICT | StatusCode::NOT_FOUND) {
+        if resp.status() == StatusCode::CONFLICT {
+            return Err(RunnerError::AlreadyClaimed);
+        }
+
+        if resp.status() == StatusCode::NOT_FOUND {
             return Err(RunnerError::AlreadyClaimed);
         }
 
@@ -600,7 +550,6 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
                 .map(claim_telemetry_duration_ms),
             poll_reason: candidate.poll_reason().map(String::from),
         },
-        capabilities: [ClaimCapability::ResumeSessionHistoryRef],
     }
 }
 
@@ -610,29 +559,14 @@ fn claim_telemetry_duration_ms(duration: Duration) -> u64 {
     duration_ms(duration).min(CLAIM_TELEMETRY_DURATION_MS_MAX)
 }
 
-fn poll_request_body(
-    group: &str,
-    profiles: &[String],
-    held_session_states: &[HeldSessionState],
-    reason: PollReason,
-) -> serde_json::Value {
-    let mut body = serde_json::json!({
+fn poll_request_body(group: &str, profiles: &[String], reason: PollReason) -> serde_json::Value {
+    serde_json::json!({
         "group": group,
         "profiles": profiles,
         "telemetry": {
             "pollReason": poll_reason_value(reason),
         },
-    });
-    let held_session_states = poll_held_session_states(held_session_states);
-    if !held_session_states.is_empty()
-        && let Some(obj) = body.as_object_mut()
-    {
-        obj.insert(
-            "heldSessionStates".to_string(),
-            serde_json::json!(&*held_session_states),
-        );
-    }
-    body
+    })
 }
 
 fn poll_reason_value(reason: PollReason) -> &'static str {
@@ -774,12 +708,15 @@ fn is_static_json_field(field: &str) -> bool {
             | "captureNetworkBodies"
             | "checkpointId"
             | "cliAgentType"
+            | "cliAgentSessionId"
             | "clientId"
             | "debugNoMockClaude"
             | "debugNoMockCodex"
             | "deny"
             | "description"
             | "disallowedTools"
+            | "encodedSize"
+            | "encoding"
             | "encryptedSecrets"
             | "environment"
             | "experimentalProfile"
@@ -790,6 +727,7 @@ fn is_static_json_field(field: &str) -> bool {
             | "headers"
             | "hash"
             | "historyRef"
+            | "heldSessionStates"
             | "issued"
             | "job"
             | "keyName"
@@ -805,6 +743,7 @@ fn is_static_json_field(field: &str) -> bool {
             | "permissions"
             | "prompt"
             | "query"
+            | "rawSize"
             | "resumeSession"
             | "rules"
             | "runId"
@@ -822,6 +761,7 @@ fn is_static_json_field(field: &str) -> bool {
             | "storages"
             | "timestamp"
             | "token"
+            | "lastCompletedAt"
             | "tools"
             | "ttl"
             | "unknownPolicy"
@@ -936,9 +876,7 @@ mod tests {
         cancel: CancellationToken,
         poll_wakeups: Arc<PollWakeups>,
     ) -> Arc<ApiProvider> {
-        let (targeted_direct_candidate_tx, targeted_direct_candidate_rx) =
-            mpsc::channel(DIRECT_CANDIDATE_QUEUE_CAPACITY);
-        let (broadcast_direct_candidate_tx, broadcast_direct_candidate_rx) =
+        let (direct_candidate_tx, direct_candidate_rx) =
             mpsc::channel(DIRECT_CANDIDATE_QUEUE_CAPACITY);
         Arc::new(ApiProvider {
             api: ApiClient::new(
@@ -952,12 +890,9 @@ mod tests {
             group: "default".to_string(),
             profiles: Vec::new(),
             poll_wakeups,
-            _targeted_direct_candidate_tx: targeted_direct_candidate_tx,
-            targeted_direct_candidate_rx: tokio::sync::Mutex::new(targeted_direct_candidate_rx),
-            _broadcast_direct_candidate_tx: broadcast_direct_candidate_tx,
-            broadcast_direct_candidate_rx: tokio::sync::Mutex::new(broadcast_direct_candidate_rx),
+            _direct_candidate_tx: direct_candidate_tx,
+            direct_candidate_rx: tokio::sync::Mutex::new(direct_candidate_rx),
             ably_supervisor: AblySupervisor::disabled(),
-            held_session_states: tokio::sync::Mutex::new(Vec::new()),
             cancel,
         })
     }
@@ -1061,7 +996,7 @@ mod tests {
     #[test]
     fn poll_request_body_serializes_poll_reason_telemetry() {
         let profiles = vec![crate::profile::DEFAULT_PROFILE.to_string()];
-        let body = poll_request_body("vm0/test", &profiles, &[], PollReason::Immediate);
+        let body = poll_request_body("vm0/test", &profiles, PollReason::Immediate);
 
         assert_eq!(body["group"], "vm0/test");
         assert_eq!(body["profiles"][0], crate::profile::DEFAULT_PROFILE);
@@ -1098,10 +1033,7 @@ mod tests {
         assert_eq!(body["telemetry"]["pollDueToJobDiscoveredMs"], 19);
         assert_eq!(body["telemetry"]["pollHttpRequestMs"], 11);
         assert_eq!(body["telemetry"]["pollReason"], "deferred");
-        assert_eq!(
-            body["capabilities"],
-            serde_json::json!(["resumeSessionHistoryRef"])
-        );
+        assert!(body.get("capabilities").is_none());
     }
 
     #[test]
@@ -1229,7 +1161,9 @@ mod tests {
                 then.status(200).json_body(serde_json::json!({
                     "job": {
                         "runId": run_id,
-                        "experimentalProfile": "vm0/default"
+                        "experimentalProfile": "vm0/default",
+                        "cliAgentSessionId": "sess-poll",
+                        "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
                     }
                 }));
             })
@@ -1247,6 +1181,8 @@ mod tests {
 
         assert_eq!(discovered.run_id(), run_id);
         assert_eq!(discovered.profile_name(), "vm0/default");
+        assert_eq!(discovered.cli_agent_session_id(), Some("sess-poll"));
+        assert!(discovered.is_affinity_protected());
         assert_eq!(
             discovered.discovery_source(),
             Some(JobDiscoverySource::Poll)
@@ -1276,11 +1212,10 @@ mod tests {
             .checked_sub(Duration::from_millis(25))
             .unwrap();
         provider
-            ._broadcast_direct_candidate_tx
+            ._direct_candidate_tx
             .try_send(DirectJobCandidate::new_with_discovered_at(
                 run_id,
                 crate::profile::DEFAULT_PROFILE.to_string(),
-                true,
                 discovered_at,
             ))
             .unwrap();
@@ -1299,53 +1234,6 @@ mod tests {
         assert!(discovered.job_discovered_elapsed() >= Duration::from_millis(25));
         assert!(discovered.poll_due_to_job_discovered_elapsed().is_none());
         assert!(discovered.poll_http_request_elapsed().is_none());
-        poll_mock.assert_calls_async(0).await;
-    }
-
-    #[tokio::test]
-    async fn discover_prioritizes_targeted_direct_candidate_over_broadcast_backlog() {
-        let server = MockServer::start_async().await;
-        let broadcast_run_id: RunId = "00000000-0000-0000-0000-000000000007".parse().unwrap();
-        let targeted_run_id: RunId = "00000000-0000-0000-0000-000000000008".parse().unwrap();
-        let poll_mock = server
-            .mock_async(|when, then| {
-                when.method(POST).path(routes::runners::poll::POLL.path);
-                then.status(200)
-                    .json_body(serde_json::json!({ "job": null }));
-            })
-            .await;
-        let provider = api_provider_for_test(
-            server.base_url(),
-            CancellationToken::new(),
-            Arc::new(PollWakeups::new(false)),
-        );
-        provider
-            ._broadcast_direct_candidate_tx
-            .try_send(DirectJobCandidate::new(
-                broadcast_run_id,
-                crate::profile::DEFAULT_PROFILE.to_string(),
-                false,
-            ))
-            .unwrap();
-        provider
-            ._targeted_direct_candidate_tx
-            .try_send(DirectJobCandidate::new(
-                targeted_run_id,
-                crate::profile::DEFAULT_PROFILE.to_string(),
-                true,
-            ))
-            .unwrap();
-
-        let discovered = tokio::time::timeout(Duration::from_secs(1), provider.discover())
-            .await
-            .expect("discover should receive direct candidate")
-            .unwrap();
-
-        assert_eq!(discovered.run_id(), targeted_run_id);
-        assert_eq!(
-            discovered.discovery_source(),
-            Some(JobDiscoverySource::Ably)
-        );
         poll_mock.assert_calls_async(0).await;
     }
 
@@ -1393,11 +1281,10 @@ mod tests {
             Arc::clone(&wakeups),
         );
         provider
-            ._broadcast_direct_candidate_tx
+            ._direct_candidate_tx
             .try_send(DirectJobCandidate::new(
                 run_id,
                 crate::profile::DEFAULT_PROFILE.to_string(),
-                false,
             ))
             .unwrap();
 
@@ -1453,11 +1340,10 @@ mod tests {
             .expect("poll should reach the server")
             .unwrap();
         provider
-            ._targeted_direct_candidate_tx
+            ._direct_candidate_tx
             .try_send(DirectJobCandidate::new(
                 direct_run_id,
                 crate::profile::DEFAULT_PROFILE.to_string(),
-                true,
             ))
             .unwrap();
 
@@ -1486,7 +1372,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn discover_defers_job_return_when_target_other_wakeup_arrives_during_poll() {
+    async fn discover_defers_job_return_when_deferred_poll_arrives_during_poll() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let api_url = format!("http://{}", listener.local_addr().unwrap());
         let first_run_id: RunId = "00000000-0000-0000-0000-000000000004".parse().unwrap();
@@ -1522,7 +1408,7 @@ mod tests {
 
         let discovered = tokio::time::timeout(Duration::from_secs(1), discover_task)
             .await
-            .expect("discover should retry after target-other defer")
+            .expect("discover should retry after deferred poll")
             .unwrap()
             .unwrap();
 
@@ -1543,7 +1429,7 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let err = api
-            .poll("default", &[], &[], PollReason::Immediate)
+            .poll("default", &[], PollReason::Immediate)
             .await
             .unwrap_err();
 
@@ -1563,7 +1449,7 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let err = api
-            .poll("default", &[], &[], PollReason::Immediate)
+            .poll("default", &[], PollReason::Immediate)
             .await
             .unwrap_err();
 
@@ -1575,75 +1461,6 @@ mod tests {
             other => panic!("expected RunnerError::Api, got {other:?}"),
         }
         mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn api_client_poll_sends_held_session_states() {
-        let server = MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(POST)
-                    .path(routes::runners::poll::POLL.path)
-                    .json_body(serde_json::json!({
-                        "group": "default",
-                        "profiles": ["vm0/default"],
-                        "telemetry": {
-                            "pollReason": "deferred"
-                        },
-                        "heldSessionStates": [
-                            {
-                                "sessionId": "sess-a",
-                                "lastCompletedAt": "2026-05-28T00:00:00.000Z"
-                            }
-                        ]
-                    }));
-                then.status(200)
-                    .json_body(serde_json::json!({ "job": null }));
-            })
-            .await;
-        let api = api_client_for_server(&server);
-        let profiles = vec!["vm0/default".to_string()];
-        let held_session_states = vec![HeldSessionState {
-            session_id: "sess-a".to_string(),
-            last_completed_at: "2026-05-28T00:00:00.000Z".to_string(),
-        }];
-
-        let poll = api
-            .poll(
-                "default",
-                &profiles,
-                &held_session_states,
-                PollReason::Deferred,
-            )
-            .await
-            .unwrap();
-
-        assert!(poll.job.is_none());
-        mock.assert_async().await;
-    }
-
-    #[test]
-    fn poll_held_session_states_caps_to_newest_contract_limit() {
-        let states: Vec<HeldSessionState> = (0..=MAX_HELD_SESSION_STATES)
-            .map(|index| HeldSessionState {
-                session_id: format!("sess-{index:03}"),
-                last_completed_at: format!(
-                    "2026-05-28T00:{:02}:{:02}.000Z",
-                    index / 60,
-                    index % 60
-                ),
-            })
-            .collect();
-
-        let capped = poll_held_session_states(&states);
-        let capped_sessions: Vec<&str> = capped
-            .iter()
-            .map(|state| state.session_id.as_str())
-            .collect();
-
-        assert_eq!(capped_sessions.len(), MAX_HELD_SESSION_STATES);
-        assert!(!capped_sessions.contains(&"sess-000"));
-        assert!(capped_sessions.contains(&"sess-1024"));
     }
 
     #[tokio::test]
@@ -1884,7 +1701,6 @@ mod tests {
             .poll(
                 "default",
                 &[crate::profile::DEFAULT_PROFILE.to_string()],
-                &[],
                 PollReason::Immediate,
             )
             .await

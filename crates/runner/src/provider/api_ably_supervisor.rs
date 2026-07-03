@@ -1,23 +1,18 @@
 //! Ably control-plane supervisor for API-backed runner job discovery.
 //!
 //! `ApiProvider` uses this module as the low-latency side of discovery while
-//! keeping HTTP polling as the correctness fallback. Untargeted or
-//! matching-target job notifications become direct candidates when they include
-//! a supported profile; notifications targeted to another runner schedule
-//! deferred poll wakeups; and non-target-other incomplete notifications or
-//! direct-queue fallback request immediate poll wakeups so the server remains
-//! the source of truth for job selection. Ably cancel notifications bypass
-//! discovery and only signal local cancellation handles. Invalid job
-//! notifications are ignored. Profile support is checked only after target
-//! routing, so target-other notifications defer even when their profile is
-//! missing or unsupported; non-target-other unsupported profiles are ignored
+//! keeping HTTP polling as the correctness fallback. Job notifications become
+//! direct candidates when they include a supported profile; incomplete
+//! notifications or direct-queue fallback request immediate poll wakeups so the
+//! server remains the source of truth for job selection. Ably cancel
+//! notifications bypass discovery and only signal local cancellation handles.
+//! Invalid job notifications are ignored. Unsupported profiles are ignored
 //! without mutating discovery wakeup state.
 //!
-//! The direct candidate queues are an optimization, not the only delivery path:
-//! target-other deferrals, non-target-other incomplete notifications, full or
-//! closed direct queues, backlog draining, and Ably connection state all route
-//! through `PollWakeups` so a runner can still discover work through HTTP
-//! polling.
+//! The direct candidate queue is an optimization, not the only delivery path:
+//! incomplete notifications, full or closed direct queues, backlog draining, and
+//! Ably connection state all route through `PollWakeups` so a runner can still
+//! discover work through HTTP polling.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -36,10 +31,7 @@ use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
 const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
 const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
 const ABLY_DISCONNECT_ERROR_AFTER: Duration = Duration::from_secs(60);
-const TARGETED_RUNNER_DEFER: Duration = Duration::from_secs(2);
-// Bound repeated target-other notifications so one runner is not starved forever.
-const TARGETED_RUNNER_DEFER_MAX: Duration = Duration::from_secs(10);
-
+const DEFERRED_POLL_MAX: Duration = Duration::from_secs(10);
 type AblyConnectHandle =
     tokio::task::JoinHandle<Result<ably_subscriber::Subscription, ably_subscriber::Error>>;
 
@@ -47,26 +39,54 @@ type AblyConnectHandle =
 pub(super) struct DirectJobCandidate {
     run_id: RunId,
     profile_name: String,
-    targeted: bool,
     discovered_at: StdInstant,
+    cli_agent_session_id: Option<String>,
+    affinity_protected_until: Option<String>,
 }
 
 impl DirectJobCandidate {
-    pub(super) fn new(run_id: RunId, profile_name: String, targeted: bool) -> Self {
-        Self::new_with_discovered_at(run_id, profile_name, targeted, StdInstant::now())
+    #[cfg(test)]
+    pub(super) fn new(run_id: RunId, profile_name: String) -> Self {
+        Self::new_with_discovered_at(run_id, profile_name, StdInstant::now())
     }
 
+    pub(super) fn new_with_affinity(
+        run_id: RunId,
+        profile_name: String,
+        cli_agent_session_id: Option<String>,
+        affinity_protected_until: Option<String>,
+    ) -> Self {
+        Self::new_with_affinity_metadata(
+            run_id,
+            profile_name,
+            StdInstant::now(),
+            cli_agent_session_id,
+            affinity_protected_until,
+        )
+    }
+
+    #[cfg(test)]
     pub(super) fn new_with_discovered_at(
         run_id: RunId,
         profile_name: String,
-        targeted: bool,
         discovered_at: StdInstant,
+    ) -> Self {
+        Self::new_with_affinity_metadata(run_id, profile_name, discovered_at, None, None)
+    }
+
+    pub(super) fn new_with_affinity_metadata(
+        run_id: RunId,
+        profile_name: String,
+        discovered_at: StdInstant,
+        cli_agent_session_id: Option<String>,
+        affinity_protected_until: Option<String>,
     ) -> Self {
         Self {
             run_id,
             profile_name,
-            targeted,
             discovered_at,
+            cli_agent_session_id,
+            affinity_protected_until,
         }
     }
 
@@ -78,31 +98,21 @@ impl DirectJobCandidate {
         &self.profile_name
     }
 
-    pub(super) fn targeted(&self) -> bool {
-        self.targeted
-    }
-
     pub(super) fn into_job_candidate(self) -> JobCandidate {
         JobCandidate::new_with_discovered_at(self.run_id, self.profile_name, self.discovered_at)
+            .with_affinity_metadata(self.cli_agent_session_id, self.affinity_protected_until)
             .with_discovery_source(JobDiscoverySource::Ably)
     }
 }
 
 #[derive(Clone)]
 pub(super) struct DirectCandidateSenders {
-    targeted: mpsc::Sender<DirectJobCandidate>,
-    broadcast: mpsc::Sender<DirectJobCandidate>,
+    direct: mpsc::Sender<DirectJobCandidate>,
 }
 
 impl DirectCandidateSenders {
-    pub(super) fn new(
-        targeted: mpsc::Sender<DirectJobCandidate>,
-        broadcast: mpsc::Sender<DirectJobCandidate>,
-    ) -> Self {
-        Self {
-            targeted,
-            broadcast,
-        }
+    pub(super) fn new(direct: mpsc::Sender<DirectJobCandidate>) -> Self {
+        Self { direct }
     }
 }
 
@@ -159,12 +169,9 @@ impl PollRecord {
 ///
 /// - Ably connection state selects the ordinary polling cadence: slow while
 ///   connected, fast while disconnected.
-/// - Immediate wakeups request a prompt HTTP poll for startup,
-///   non-target-other incomplete Ably job notifications, direct queue fallback,
-///   and backlog draining after a job is found.
-/// - Target-other-runner notifications schedule deferred polls. The defer window
-///   intentionally takes priority over immediate wakeups and wakeup retries so a
-///   runner does not immediately steal work that was just targeted elsewhere.
+/// - Immediate wakeups request a prompt HTTP poll for startup, incomplete Ably
+///   job notifications, direct queue fallback, and backlog draining after a job
+///   is found.
 /// - Wakeup retries are only for failed wakeup-driven polls. Ordinary slow and
 ///   fast polling failures wait for the next ordinary cadence.
 /// - Generations prevent an HTTP poll result from clearing wakeups that arrived
@@ -180,10 +187,10 @@ struct PollWakeupsInner {
     ably_connected: bool,
     /// Immediate poll request. Re-armed after `JobFound` to drain backlog.
     poll_now: bool,
-    /// Target-other-runner fairness deadline. Blocks immediate and retry polls
-    /// until this deadline is reached.
+    /// Deferred poll deadline. Blocks immediate and retry polls until this
+    /// deadline is reached.
     deferred_poll_at: Option<tokio::time::Instant>,
-    /// Upper bound for repeated target-other deferral extension.
+    /// Upper bound for repeated deferral extension.
     deferred_poll_cap_at: Option<tokio::time::Instant>,
     /// Retry deadline for failed wakeup-driven polls only.
     wakeup_retry_at: Option<tokio::time::Instant>,
@@ -236,9 +243,9 @@ impl PollWakeups {
         self.notify.notify_waiters();
     }
 
-    async fn request_deferred_poll_after(&self, delay: Duration) {
+    pub(super) async fn request_deferred_poll_after(&self, delay: Duration) {
         let now = tokio::time::Instant::now();
-        self.request_deferred_poll_capped_at(now + delay, now + TARGETED_RUNNER_DEFER_MAX)
+        self.request_deferred_poll_capped_at(now + delay, now + DEFERRED_POLL_MAX)
             .await;
     }
 
@@ -277,7 +284,7 @@ impl PollWakeups {
         let mut should_notify = false;
         let mut inner = self.inner.lock().await;
         let has_new_wakeup = inner.generation != due.generation;
-        // A target-other wakeup that arrives while an HTTP poll is in flight
+        // A deferred wakeup that arrives while an HTTP poll is in flight
         // must be honored before returning a newly found job to this runner.
         let defer_job_return =
             outcome == PollOutcome::JobFound && has_new_wakeup && inner.deferred_poll_at.is_some();
@@ -340,7 +347,7 @@ impl PollWakeups {
                     });
                 }
                 if inner.deferred_poll_at.is_some() {
-                    // Target-other fairness deliberately holds immediate polls
+                    // Deferred fairness deliberately holds immediate polls
                     // and wakeup retries until the deferred deadline.
                     Self::next_scheduled(&inner, now, slow_interval, fast_interval)
                 } else if inner.poll_now {
@@ -381,7 +388,7 @@ impl PollWakeups {
         fast_interval: Duration,
     ) -> ScheduledPoll {
         let mut scheduled = if let Some(at) = inner.deferred_poll_at {
-            // A pending target-other defer is the highest-priority scheduled
+            // A pending deferred poll is the highest-priority scheduled
             // deadline, even when an immediate poll or wakeup retry exists.
             ScheduledPoll {
                 at,
@@ -462,7 +469,7 @@ impl PollWakeups {
     }
 
     #[cfg(test)]
-    async fn snapshot(&self) -> PollWakeupsSnapshot {
+    pub(super) async fn snapshot(&self) -> PollWakeupsSnapshot {
         let inner = self.inner.lock().await;
         PollWakeupsSnapshot {
             ably_connected: inner.ably_connected,
@@ -476,12 +483,12 @@ impl PollWakeups {
 
 #[cfg(test)]
 #[derive(Debug)]
-struct PollWakeupsSnapshot {
-    ably_connected: bool,
-    poll_now: bool,
-    deferred_poll_at: Option<tokio::time::Instant>,
-    deferred_poll_cap_at: Option<tokio::time::Instant>,
-    wakeup_retry_at: Option<tokio::time::Instant>,
+pub(super) struct PollWakeupsSnapshot {
+    pub(super) ably_connected: bool,
+    pub(super) poll_now: bool,
+    pub(super) deferred_poll_at: Option<tokio::time::Instant>,
+    pub(super) deferred_poll_cap_at: Option<tokio::time::Instant>,
+    pub(super) wakeup_retry_at: Option<tokio::time::Instant>,
 }
 
 pub(super) struct AblySupervisor {
@@ -492,7 +499,6 @@ pub(super) struct AblySupervisor {
 pub(super) struct AblySupervisorConfig {
     pub(super) api: ApiClient,
     pub(super) group: String,
-    pub(super) runner_id: String,
     pub(super) profiles: Vec<String>,
     pub(super) poll_wakeups: Arc<PollWakeups>,
     pub(super) direct_candidate_senders: DirectCandidateSenders,
@@ -503,7 +509,6 @@ pub(super) struct AblySupervisorConfig {
 struct SupervisorTaskConfig {
     api: ApiClient,
     group: String,
-    runner_id: String,
     profiles: Vec<String>,
     poll_wakeups: Arc<PollWakeups>,
     direct_candidate_senders: DirectCandidateSenders,
@@ -519,7 +524,6 @@ impl AblySupervisor {
         let task_config = SupervisorTaskConfig {
             api: config.api,
             group: config.group,
-            runner_id: config.runner_id,
             profiles: config.profiles,
             poll_wakeups: config.poll_wakeups,
             direct_candidate_senders: config.direct_candidate_senders,
@@ -591,7 +595,6 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                     Some(ably_subscriber::Event::Message(msg)) => {
                         handle_ably_message(
                             &msg,
-                            &config.runner_id,
                             &config.profiles,
                             &config.poll_wakeups,
                             &config.direct_candidate_senders,
@@ -663,7 +666,6 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
 
 async fn handle_ably_message(
     msg: &ably_subscriber::Message,
-    runner_id: &str,
     profiles: &[String],
     poll_wakeups: &PollWakeups,
     direct_candidate_senders: &DirectCandidateSenders,
@@ -683,30 +685,18 @@ async fn handle_ably_message(
             return;
         };
 
-        if let Some(target) = notif.target_runner_id
-            && target != runner_id
-        {
-            info!(
-                run_id = %notif.run_id,
-                target = %target,
-                "ably: job targeted to another runner, deferring poll"
-            );
-            JobNotificationAction::Defer
-        } else if let Some(profile) = notif.profile {
+        if let Some(profile) = notif.profile {
             if supports_profile(profiles, profile) {
-                let targeted = notif
-                    .target_runner_id
-                    .is_some_and(|target| target == runner_id);
                 info!(
                     run_id = %notif.run_id,
                     profile = %profile,
-                    targeted,
                     "ably: job notification, queueing direct candidate"
                 );
-                JobNotificationAction::Direct(DirectJobCandidate::new(
+                JobNotificationAction::Direct(DirectJobCandidate::new_with_affinity(
                     notif.run_id,
                     profile.to_owned(),
-                    targeted,
+                    notif.cli_agent_session_id.map(str::to_owned),
+                    notif.affinity_protected_until.map(str::to_owned),
                 ))
             } else {
                 info!(
@@ -717,12 +707,8 @@ async fn handle_ably_message(
                 JobNotificationAction::Ignore
             }
         } else {
-            let targeted = notif
-                .target_runner_id
-                .is_some_and(|target| target == runner_id);
             info!(
                 run_id = %notif.run_id,
-                targeted,
                 "ably: job notification missing profile, waking poll"
             );
             JobNotificationAction::WakeNow
@@ -730,11 +716,6 @@ async fn handle_ably_message(
     };
 
     match action {
-        JobNotificationAction::Defer => {
-            poll_wakeups
-                .request_deferred_poll_after(TARGETED_RUNNER_DEFER)
-                .await;
-        }
         JobNotificationAction::WakeNow => {
             poll_wakeups.request_immediate_poll().await;
         }
@@ -746,7 +727,6 @@ async fn handle_ably_message(
 }
 
 enum JobNotificationAction {
-    Defer,
     Direct(DirectJobCandidate),
     Ignore,
     WakeNow,
@@ -755,7 +735,8 @@ enum JobNotificationAction {
 struct JobNotification<'a> {
     run_id: RunId,
     profile: Option<&'a str>,
-    target_runner_id: Option<&'a str>,
+    cli_agent_session_id: Option<&'a str>,
+    affinity_protected_until: Option<&'a str>,
 }
 
 fn supports_profile(profiles: &[String], profile: &str) -> bool {
@@ -767,20 +748,14 @@ async fn enqueue_direct_candidate(
     direct_candidate_senders: &DirectCandidateSenders,
     poll_wakeups: &PollWakeups,
 ) {
-    let (queue, direct_candidate_tx) = if candidate.targeted() {
-        ("targeted", &direct_candidate_senders.targeted)
-    } else {
-        ("broadcast", &direct_candidate_senders.broadcast)
-    };
     // Direct candidates are a latency optimization. If the bounded queue cannot
     // accept one, HTTP polling preserves discovery correctness.
-    match direct_candidate_tx.try_send(candidate) {
+    match direct_candidate_senders.direct.try_send(candidate) {
         Ok(()) => {}
         Err(mpsc::error::TrySendError::Full(candidate)) => {
             warn!(
                 run_id = %candidate.run_id(),
                 profile = %candidate.profile_name(),
-                queue,
                 "ably: direct candidate queue full, waking poll"
             );
             poll_wakeups.request_immediate_poll().await;
@@ -789,7 +764,6 @@ async fn enqueue_direct_candidate(
             warn!(
                 run_id = %candidate.run_id(),
                 profile = %candidate.profile_name(),
-                queue,
                 "ably: direct candidate queue closed, waking poll"
             );
             poll_wakeups.request_immediate_poll().await;
@@ -825,7 +799,7 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
             }
         },
         None => {
-            warn!(data = %msg.data, "ably: job message missing runId");
+            warn!("ably: job message missing runId");
             return None;
         }
     };
@@ -834,15 +808,21 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("profile")
         .and_then(|v| v.as_str())
         .filter(|value| !value.is_empty());
-    let target_runner_id = msg
+    let cli_agent_session_id = msg
         .data
-        .get("targetRunnerId")
+        .get("cliAgentSessionId")
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.is_empty());
+    let affinity_protected_until = msg
+        .data
+        .get("affinityProtectedUntil")
         .and_then(|v| v.as_str())
         .filter(|value| !value.is_empty());
     Some(JobNotification {
         run_id,
         profile,
-        target_runner_id,
+        cli_agent_session_id,
+        affinity_protected_until,
     })
 }
 
@@ -1006,26 +986,20 @@ mod tests {
     }
 
     struct DirectCandidateReceivers {
-        targeted: mpsc::Receiver<DirectJobCandidate>,
-        broadcast: mpsc::Receiver<DirectJobCandidate>,
+        direct: mpsc::Receiver<DirectJobCandidate>,
     }
 
     fn direct_candidate_channels() -> (DirectCandidateSenders, DirectCandidateReceivers) {
-        direct_candidate_channels_with_capacity(4, 4)
+        direct_candidate_channels_with_capacity(4)
     }
 
     fn direct_candidate_channels_with_capacity(
-        targeted_capacity: usize,
-        broadcast_capacity: usize,
+        capacity: usize,
     ) -> (DirectCandidateSenders, DirectCandidateReceivers) {
-        let (targeted_tx, targeted_rx) = mpsc::channel(targeted_capacity);
-        let (broadcast_tx, broadcast_rx) = mpsc::channel(broadcast_capacity);
+        let (direct_tx, direct_rx) = mpsc::channel(capacity);
         (
-            DirectCandidateSenders::new(targeted_tx, broadcast_tx),
-            DirectCandidateReceivers {
-                targeted: targeted_rx,
-                broadcast: broadcast_rx,
-            },
+            DirectCandidateSenders::new(direct_tx),
+            DirectCandidateReceivers { direct: direct_rx },
         )
     }
 
@@ -1260,7 +1234,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn target_other_runner_deferred_poll_extends_until_latest_deadline() {
+    async fn deferred_poll_extends_until_latest_deadline() {
         let wakeups = Arc::new(PollWakeups::new(true));
         let _ = wakeups
             .wait_for_poll_due(
@@ -1299,7 +1273,7 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(1)).await;
         assert!(
             !wait.is_finished(),
-            "new target-other notification should extend the defer window"
+            "new deferred poll request should extend the defer window"
         );
 
         tokio::time::sleep_until(extended_deadline).await;
@@ -1307,7 +1281,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn target_other_runner_deferred_poll_extension_is_bounded() {
+    async fn deferred_poll_extension_is_bounded() {
         let wakeups = PollWakeups::new(true);
         let _ = wakeups
             .wait_for_poll_due(
@@ -1347,7 +1321,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn target_other_runner_deferred_poll_cap_resets_after_deadline() {
+    async fn deferred_poll_cap_resets_after_deadline() {
         let wakeups = PollWakeups::new(true);
         let _ = wakeups
             .wait_for_poll_due(
@@ -1400,7 +1374,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn target_other_runner_deferred_poll_blocks_pending_immediate_until_deadline() {
+    async fn deferred_poll_blocks_pending_immediate_until_deadline() {
         let wakeups = Arc::new(PollWakeups::new(true));
         let initial = wakeups
             .wait_for_poll_due(
@@ -1429,7 +1403,7 @@ mod tests {
         tokio::task::yield_now().await;
         assert!(
             !wait.is_finished(),
-            "pending immediate must not bypass target-other defer window"
+            "pending immediate must not bypass deferred poll window"
         );
 
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -1438,7 +1412,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn target_other_runner_deferred_poll_blocks_wakeup_retry_until_deadline() {
+    async fn deferred_poll_blocks_wakeup_retry_until_deadline() {
         let wakeups = Arc::new(PollWakeups::new(true));
         let initial = wakeups
             .wait_for_poll_due(
@@ -1466,7 +1440,7 @@ mod tests {
         tokio::task::yield_now().await;
         assert!(
             !wait.is_finished(),
-            "wakeup retry must not bypass target-other defer window"
+            "wakeup retry must not bypass deferred poll window"
         );
 
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -1495,7 +1469,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn job_found_defers_return_when_target_other_wakeup_arrived_after_poll_started() {
+    async fn job_found_defers_return_when_deferred_poll_arrived_after_poll_started() {
         let wakeups = PollWakeups::new(true);
         let due = wakeups
             .wait_for_poll_due(
@@ -1518,7 +1492,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn job_found_returns_when_target_other_defer_was_the_poll_reason() {
+    async fn job_found_returns_when_deferred_poll_was_the_poll_reason() {
         let wakeups = PollWakeups::new(true);
         let initial = wakeups
             .wait_for_poll_due(
@@ -1623,19 +1597,10 @@ mod tests {
         let profiles = default_profiles();
         let msg = make_message(Some("cancel"), serde_json::json!({ "runId": run_id }));
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
         assert!(token.is_cancelled());
-        assert!(direct_rx.targeted.try_recv().is_err());
-        assert!(direct_rx.broadcast.try_recv().is_err());
+        assert!(direct_rx.direct.try_recv().is_err());
     }
 
     #[tokio::test]
@@ -1655,33 +1620,29 @@ mod tests {
             Some("job"),
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000001",
-                "profile": "vm0/default"
+                "profile": "vm0/default",
+                "cliAgentSessionId": "sess-ably",
+                "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
             }),
         );
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
-        let candidate = direct_rx.broadcast.try_recv().expect("direct candidate");
+        let candidate = direct_rx.direct.try_recv().expect("direct candidate");
         assert_eq!(
             candidate.run_id().to_string(),
             "00000000-0000-0000-0000-000000000001"
         );
         assert_eq!(candidate.profile_name(), "vm0/default");
-        assert!(!candidate.targeted());
-        assert!(direct_rx.targeted.try_recv().is_err());
+        let candidate = candidate.into_job_candidate();
+        assert_eq!(candidate.cli_agent_session_id(), Some("sess-ably"));
+        assert!(candidate.is_affinity_protected());
+        assert!(direct_rx.direct.try_recv().is_err());
         assert!(!wakeups.snapshot().await.poll_now);
     }
 
     #[tokio::test]
-    async fn matching_targeted_job_notification_enqueues_direct_candidate() {
+    async fn legacy_target_runner_id_is_ignored_for_direct_candidate() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
         let (direct_senders, mut direct_rx) = direct_candidate_channels();
@@ -1702,20 +1663,11 @@ mod tests {
             }),
         );
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
-        let candidate = direct_rx.targeted.try_recv().expect("direct candidate");
+        let candidate = direct_rx.direct.try_recv().expect("direct candidate");
         assert_eq!(candidate.profile_name(), "vm0/default");
-        assert!(candidate.targeted());
-        assert!(direct_rx.broadcast.try_recv().is_err());
+        assert!(direct_rx.direct.try_recv().is_err());
         assert!(!wakeups.snapshot().await.poll_now);
     }
 
@@ -1740,25 +1692,16 @@ mod tests {
             }),
         );
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
-        assert!(direct_rx.targeted.try_recv().is_err());
-        assert!(direct_rx.broadcast.try_recv().is_err());
+        assert!(direct_rx.direct.try_recv().is_err());
         let snapshot = wakeups.snapshot().await;
         assert!(!snapshot.poll_now);
         assert!(snapshot.deferred_poll_at.is_none());
     }
 
     #[tokio::test]
-    async fn matching_targeted_job_notification_uses_profile_routing() {
+    async fn legacy_target_runner_id_does_not_override_profile_routing() {
         for (data, should_wake_poll) in [
             (
                 serde_json::json!({
@@ -1789,19 +1732,10 @@ mod tests {
                 .await;
             let msg = make_message(Some("job"), data);
 
-            handle_ably_message(
-                &msg,
-                "runner-1",
-                &profiles,
-                &wakeups,
-                &direct_senders,
-                &tokens,
-            )
-            .await;
+            handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
             let snapshot = wakeups.snapshot().await;
-            assert!(direct_rx.targeted.try_recv().is_err());
-            assert!(direct_rx.broadcast.try_recv().is_err());
+            assert!(direct_rx.direct.try_recv().is_err());
             assert_eq!(snapshot.poll_now, should_wake_poll);
             assert!(snapshot.deferred_poll_at.is_none());
         }
@@ -1827,18 +1761,9 @@ mod tests {
             }),
         );
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
-        assert!(direct_rx.targeted.try_recv().is_err());
-        assert!(direct_rx.broadcast.try_recv().is_err());
+        assert!(direct_rx.direct.try_recv().is_err());
         assert!(wakeups.snapshot().await.poll_now);
     }
 
@@ -1863,18 +1788,9 @@ mod tests {
             }),
         );
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
-        assert!(direct_rx.targeted.try_recv().is_err());
-        assert!(direct_rx.broadcast.try_recv().is_err());
+        assert!(direct_rx.direct.try_recv().is_err());
         assert!(wakeups.snapshot().await.poll_now);
     }
 
@@ -1882,7 +1798,7 @@ mod tests {
     async fn full_direct_candidate_queue_wakes_poll_fallback() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
-        let (direct_senders, mut direct_rx) = direct_candidate_channels_with_capacity(1, 1);
+        let (direct_senders, mut direct_rx) = direct_candidate_channels_with_capacity(1);
         let profiles = default_profiles();
         let _ = wakeups
             .wait_for_poll_due(
@@ -1899,35 +1815,16 @@ mod tests {
             }),
         );
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
-        let candidate = direct_rx
-            .broadcast
-            .try_recv()
-            .expect("first direct candidate");
+        let candidate = direct_rx.direct.try_recv().expect("first direct candidate");
         assert_eq!(candidate.profile_name(), "vm0/default");
         assert!(wakeups.snapshot().await.poll_now);
     }
 
     #[tokio::test]
-    async fn target_other_runner_job_notification_defers_poll() {
+    async fn legacy_target_runner_id_does_not_defer_poll() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
         let (direct_senders, mut direct_rx) = direct_candidate_channels();
@@ -1948,35 +1845,34 @@ mod tests {
             }),
         );
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
+        let candidate = direct_rx.direct.try_recv().expect("direct candidate");
+        assert_eq!(candidate.profile_name(), "vm0/default");
         let snapshot = wakeups.snapshot().await;
-        assert!(direct_rx.targeted.try_recv().is_err());
-        assert!(direct_rx.broadcast.try_recv().is_err());
+        assert!(direct_rx.direct.try_recv().is_err());
         assert!(!snapshot.poll_now);
-        assert!(snapshot.deferred_poll_at.is_some());
+        assert!(snapshot.deferred_poll_at.is_none());
     }
 
     #[tokio::test]
-    async fn target_other_runner_job_notification_defers_before_profile_routing() {
-        for data in [
-            serde_json::json!({
-                "runId": "00000000-0000-0000-0000-000000000001",
-                "profile": "vm0/large",
-                "targetRunnerId": "runner-2"
-            }),
-            serde_json::json!({
-                "runId": "00000000-0000-0000-0000-000000000001",
-                "targetRunnerId": "runner-2"
-            }),
+    async fn legacy_target_runner_id_is_ignored_before_profile_routing() {
+        for (data, should_wake_poll) in [
+            (
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000001",
+                    "profile": "vm0/large",
+                    "targetRunnerId": "runner-2"
+                }),
+                false,
+            ),
+            (
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000001",
+                    "targetRunnerId": "runner-2"
+                }),
+                true,
+            ),
         ] {
             let tokens = Mutex::new(HashMap::new());
             let wakeups = PollWakeups::new(true);
@@ -1991,21 +1887,12 @@ mod tests {
                 .await;
             let msg = make_message(Some("job"), data);
 
-            handle_ably_message(
-                &msg,
-                "runner-1",
-                &profiles,
-                &wakeups,
-                &direct_senders,
-                &tokens,
-            )
-            .await;
+            handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
             let snapshot = wakeups.snapshot().await;
-            assert!(direct_rx.targeted.try_recv().is_err());
-            assert!(direct_rx.broadcast.try_recv().is_err());
-            assert!(!snapshot.poll_now);
-            assert!(snapshot.deferred_poll_at.is_some());
+            assert!(direct_rx.direct.try_recv().is_err());
+            assert_eq!(snapshot.poll_now, should_wake_poll);
+            assert!(snapshot.deferred_poll_at.is_none());
         }
     }
 
@@ -2024,19 +1911,11 @@ mod tests {
             .await;
         let msg = make_message(Some("job"), serde_json::json!({ "runId": "not-a-uuid" }));
 
-        handle_ably_message(
-            &msg,
-            "runner-1",
-            &profiles,
-            &wakeups,
-            &direct_senders,
-            &tokens,
-        )
-        .await;
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_senders, &tokens).await;
 
         let snapshot = wakeups.snapshot().await;
-        assert!(direct_rx.targeted.try_recv().is_err());
-        assert!(direct_rx.broadcast.try_recv().is_err());
+        assert!(direct_rx.direct.try_recv().is_err());
+        assert!(direct_rx.direct.try_recv().is_err());
         assert!(!snapshot.poll_now);
         assert!(snapshot.deferred_poll_at.is_none());
     }
@@ -2058,21 +1937,24 @@ mod tests {
     }
 
     #[test]
-    fn parse_job_notification_with_target_runner_id() {
+    fn parse_job_notification_ignores_target_runner_id() {
         let msg = make_message(
             Some("job"),
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000001",
                 "profile": "vm0/default",
-                "targetRunnerId": "00000000-0000-0000-0000-000000000099"
+                "targetRunnerId": "00000000-0000-0000-0000-000000000099",
+                "cliAgentSessionId": "sess-target",
+                "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
             }),
         );
         let notif = parse_job_notification(&msg).unwrap();
-        assert_eq!(
-            notif.target_runner_id,
-            Some("00000000-0000-0000-0000-000000000099")
-        );
         assert_eq!(notif.profile, Some("vm0/default"));
+        assert_eq!(notif.cli_agent_session_id, Some("sess-target"));
+        assert_eq!(
+            notif.affinity_protected_until,
+            Some("2999-01-01T00:00:00.000Z")
+        );
     }
 
     #[test]

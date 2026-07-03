@@ -1,27 +1,30 @@
 use super::*;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::support::MOCK_COPY_FILE_MAX_BYTES;
 
+fn copy_file_options(missing_ok: bool) -> CopyFileOptions {
+    CopyFileOptions {
+        max_bytes: 1024,
+        timeout: test_timeout(),
+        missing_ok,
+    }
+}
+
+fn temp_host_path(file_name: &str) -> (tempfile::TempDir, PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(file_name);
+    (dir, path)
+}
+
 #[tokio::test]
 async fn sandbox_copy_file_missing_ok_default_does_not_write_host_file() {
     let sandbox = MockSandbox::new("test-1");
-    let path = std::env::temp_dir().join(format!(
-        "sandbox-mock-copy-missing-{}",
-        uuid::Uuid::new_v4().simple()
-    ));
+    let (_host_dir, path) = temp_host_path("missing.log");
 
     let result = sandbox
-        .copy_file(
-            "/tmp/missing.log",
-            &path,
-            CopyFileOptions {
-                max_bytes: 1024,
-                timeout: Duration::from_secs(5),
-                missing_ok: true,
-            },
-        )
+        .copy_file("/tmp/missing.log", &path, copy_file_options(true))
         .await
         .unwrap();
 
@@ -32,38 +35,23 @@ async fn sandbox_copy_file_missing_ok_default_does_not_write_host_file() {
 #[tokio::test]
 async fn sandbox_copy_file_missing_ok_default_preserves_existing_host_file() {
     let sandbox = MockSandbox::new("test-1");
-    let path = std::env::temp_dir().join(format!(
-        "sandbox-mock-copy-missing-existing-{}",
-        uuid::Uuid::new_v4().simple()
-    ));
+    let (_host_dir, path) = temp_host_path("missing-existing.log");
     std::fs::write(&path, b"old host log").unwrap();
 
     let result = sandbox
-        .copy_file(
-            "/tmp/missing.log",
-            &path,
-            CopyFileOptions {
-                max_bytes: 1024,
-                timeout: Duration::from_secs(5),
-                missing_ok: true,
-            },
-        )
+        .copy_file("/tmp/missing.log", &path, copy_file_options(true))
         .await
         .unwrap();
 
     assert_eq!(result.bytes_copied, 0);
     assert_eq!(std::fs::read(&path).unwrap(), b"old host log");
-    let _ = std::fs::remove_file(path);
 }
 
 #[tokio::test]
 async fn sandbox_copy_file_rejects_queued_bytes_over_max() {
     let sandbox = MockSandbox::new("test-1");
     sandbox.push_copy_file_result(Ok(b"too long".to_vec()));
-    let path = std::env::temp_dir().join(format!(
-        "sandbox-mock-copy-over-max-{}",
-        uuid::Uuid::new_v4().simple()
-    ));
+    let (_host_dir, path) = temp_host_path("over-max.log");
 
     let err = sandbox
         .copy_file(
@@ -71,8 +59,7 @@ async fn sandbox_copy_file_rejects_queued_bytes_over_max() {
             &path,
             CopyFileOptions {
                 max_bytes: 3,
-                timeout: Duration::from_secs(5),
-                missing_ok: false,
+                ..copy_file_options(false)
             },
         )
         .await
@@ -90,23 +77,14 @@ async fn sandbox_copy_file_rejects_queued_bytes_over_max() {
 #[tokio::test]
 async fn sandbox_copy_file_rejects_invalid_options() {
     let sandbox = MockSandbox::new("test-1");
-    let path = std::env::temp_dir().join(format!(
-        "sandbox-mock-copy-invalid-{}",
-        uuid::Uuid::new_v4().simple()
-    ));
+    let (_guest_path_dir, guest_path) = temp_host_path("invalid-guest.log");
+    let (_options_path_dir, options_path) = temp_host_path("invalid-options.log");
+    let (_host_path_dir, host_path) = temp_host_path("invalid-host.log");
 
     sandbox.push_copy_file_result(Ok(b"valid log\n".to_vec()));
     for invalid_guest_path in ["", "/tmp/bad\0path.log"] {
         let err = sandbox
-            .copy_file(
-                invalid_guest_path,
-                &path,
-                CopyFileOptions {
-                    max_bytes: 1024,
-                    timeout: Duration::from_secs(5),
-                    missing_ok: true,
-                },
-            )
+            .copy_file(invalid_guest_path, &guest_path, copy_file_options(true))
             .await
             .unwrap_err();
         assert_operation_error(
@@ -115,34 +93,24 @@ async fn sandbox_copy_file_rejects_invalid_options() {
             SandboxOperationReason::Other,
             "guest file path",
         );
-        assert!(!path.exists());
+        assert!(!guest_path.exists());
     }
 
     let result = sandbox
-        .copy_file(
-            "/tmp/system.log",
-            &path,
-            CopyFileOptions {
-                max_bytes: 1024,
-                timeout: Duration::from_secs(5),
-                missing_ok: false,
-            },
-        )
+        .copy_file("/tmp/system.log", &guest_path, copy_file_options(false))
         .await
         .unwrap();
     assert_eq!(result.bytes_copied, 10);
-    assert_eq!(std::fs::read(&path).unwrap(), b"valid log\n");
-    std::fs::remove_file(&path).unwrap();
+    assert_eq!(std::fs::read(&guest_path).unwrap(), b"valid log\n");
 
     sandbox.push_copy_file_result(Ok(b"opts ok\n".to_vec()));
     let err = sandbox
         .copy_file(
             "/tmp/system.log",
-            &path,
+            &options_path,
             CopyFileOptions {
                 max_bytes: 0,
-                timeout: Duration::from_secs(5),
-                missing_ok: true,
+                ..copy_file_options(true)
             },
         )
         .await
@@ -153,16 +121,15 @@ async fn sandbox_copy_file_rejects_invalid_options() {
         SandboxOperationReason::Other,
         "max_bytes must be positive",
     );
-    assert!(!path.exists());
+    assert!(!options_path.exists());
 
     let err = sandbox
         .copy_file(
             "/tmp/system.log",
-            &path,
+            &options_path,
             CopyFileOptions {
-                max_bytes: 1024,
                 timeout: Duration::ZERO,
-                missing_ok: true,
+                ..copy_file_options(true)
             },
         )
         .await
@@ -173,16 +140,15 @@ async fn sandbox_copy_file_rejects_invalid_options() {
         SandboxOperationReason::Other,
         "timeout must be positive",
     );
-    assert!(!path.exists());
+    assert!(!options_path.exists());
 
     let err = sandbox
         .copy_file(
             "/tmp/system.log",
-            &path,
+            &options_path,
             CopyFileOptions {
                 max_bytes: MOCK_COPY_FILE_MAX_BYTES + 1,
-                timeout: Duration::from_secs(5),
-                missing_ok: true,
+                ..copy_file_options(true)
             },
         )
         .await
@@ -193,23 +159,14 @@ async fn sandbox_copy_file_rejects_invalid_options() {
         SandboxOperationReason::Other,
         "max_bytes must be at most",
     );
-    assert!(!path.exists());
+    assert!(!options_path.exists());
 
     let result = sandbox
-        .copy_file(
-            "/tmp/system.log",
-            &path,
-            CopyFileOptions {
-                max_bytes: 1024,
-                timeout: Duration::from_secs(5),
-                missing_ok: false,
-            },
-        )
+        .copy_file("/tmp/system.log", &options_path, copy_file_options(false))
         .await
         .unwrap();
     assert_eq!(result.bytes_copied, 8);
-    assert_eq!(std::fs::read(&path).unwrap(), b"opts ok\n");
-    std::fs::remove_file(&path).unwrap();
+    assert_eq!(std::fs::read(&options_path).unwrap(), b"opts ok\n");
 
     sandbox.push_copy_file_result(Ok(b"host ok\n".to_vec()));
     for invalid_host_path in ["", ".", "/tmp/", "/tmp/.", "/tmp/bad\0host.log"] {
@@ -217,11 +174,7 @@ async fn sandbox_copy_file_rejects_invalid_options() {
             .copy_file(
                 "/tmp/system.log",
                 Path::new(invalid_host_path),
-                CopyFileOptions {
-                    max_bytes: 1024,
-                    timeout: Duration::from_secs(5),
-                    missing_ok: true,
-                },
+                copy_file_options(true),
             )
             .await
             .unwrap_err();
@@ -234,20 +187,11 @@ async fn sandbox_copy_file_rejects_invalid_options() {
     }
 
     let result = sandbox
-        .copy_file(
-            "/tmp/system.log",
-            &path,
-            CopyFileOptions {
-                max_bytes: 1024,
-                timeout: Duration::from_secs(5),
-                missing_ok: false,
-            },
-        )
+        .copy_file("/tmp/system.log", &host_path, copy_file_options(false))
         .await
         .unwrap();
     assert_eq!(result.bytes_copied, 8);
-    assert_eq!(std::fs::read(&path).unwrap(), b"host ok\n");
-    std::fs::remove_file(&path).unwrap();
+    assert_eq!(std::fs::read(&host_path).unwrap(), b"host ok\n");
 }
 
 #[tokio::test]
@@ -261,15 +205,7 @@ async fn sandbox_copy_file_allows_relative_host_path_without_parent() {
     let path = Path::new(&file_name);
 
     let result = sandbox
-        .copy_file(
-            "/tmp/system.log",
-            path,
-            CopyFileOptions {
-                max_bytes: 1024,
-                timeout: Duration::from_secs(5),
-                missing_ok: false,
-            },
-        )
+        .copy_file("/tmp/system.log", path, copy_file_options(false))
         .await
         .unwrap();
 

@@ -11,6 +11,7 @@ import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
   type ChatMessageAutomationSnapshot,
+  type ChatMessageGenerationTemplate,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
@@ -66,6 +67,7 @@ import {
   generateAndPersistChatThreadTitle,
   isChatTitleGenerationConfigured,
 } from "../services/zero-chat-title.service";
+import { generateAndPersistInitialThinkingMessage } from "../services/zero-chat-initial-thinking.service";
 import {
   MODEL_FIRST_SELECTION_PROVIDER_ID,
   type ModelFirstPin,
@@ -77,12 +79,16 @@ import {
 } from "../services/zero-model-selection.service";
 import { visibleChatMessageCondition } from "../services/zero-chat-message-shared.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
+import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { bestEffort } from "../utils";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { RouteEntry } from "../route-entry";
-import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
+import {
+  buildGenerationTemplatePrompt,
+  describeGenerationTemplateSelection,
+} from "./generation-template-prompt";
 import { resolveThreadGenerationTemplatePrompt } from "./thread-generation-template";
 
 type SendBody = z.infer<typeof chatMessagesContract.send.body>;
@@ -97,6 +103,9 @@ interface NormalSendBody {
     readonly modelProviderId: string;
     readonly selectedModel: string;
   } | null;
+  readonly runOptions?: {
+    readonly codexServiceTier?: "fast";
+  };
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly hasTextContent?: boolean;
   readonly attachFiles?: AttachFile[];
@@ -143,6 +152,7 @@ interface WebChatPriorRunMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
   readonly attachFiles: readonly string[] | null;
+  readonly generationTemplate: ChatMessageGenerationTemplate | null;
 }
 
 interface WebChatPriorRun {
@@ -162,6 +172,7 @@ interface WebChatIncompleteRoundMessage {
   readonly content: string | null;
   readonly error: string | null;
   readonly attachFiles: readonly string[] | null;
+  readonly generationTemplate: ChatMessageGenerationTemplate | null;
 }
 
 interface WebChatIncompleteRound {
@@ -199,6 +210,14 @@ interface PreparedNormalSend {
   readonly generationTemplatePrompt: string;
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
+  readonly initialThinkingEnabled: boolean;
+  readonly codexFastModeEnabled: boolean;
+}
+
+interface NormalSendFeatureSwitches {
+  readonly codexFastModeEnabled: boolean;
+  readonly presentationRunbookEnabled: boolean;
+  readonly initialThinkingEnabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -557,10 +576,31 @@ function formatAttachFileIds(
     .join("\n");
 }
 
+// Generation templates are one-shot (see resolveThreadGenerationTemplatePrompt) —
+// there is no thread-sticky DB default, so a later turn only learns a selection
+// happened here by seeing this marker in the replayed text.
+function generationTemplateReplayMarker(
+  role: "user" | "assistant",
+  generationTemplate: ChatMessageGenerationTemplate | null,
+): string {
+  // Workflow templates are one-shot by design (never sticky, see
+  // resolveThreadGenerationTemplatePrompt) — a "stays in effect" marker would
+  // misrepresent that, so only illustration/video/presentation get one.
+  if (role !== "user" || generationTemplate?.type === "workflow") {
+    return "";
+  }
+  const description = describeGenerationTemplateSelection(generationTemplate);
+  return description ? `[Selected a template — ${description}.]\n` : "";
+}
+
 function formatPriorRunMessage(message: WebChatPriorRunMessage): string {
   const roleLabel = message.role === "user" ? "User" : "Assistant";
+  const marker = generationTemplateReplayMarker(
+    message.role,
+    message.generationTemplate,
+  );
   const attach = formatAttachFileIds(message.attachFiles);
-  const body = `${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
+  const body = `${marker}${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
   return attach ? `${body}\n${attach}` : body;
 }
 
@@ -620,11 +660,17 @@ function formatIncompleteMessage(
 ): string {
   const attach = formatAttachFileIds(message.attachFiles);
   if (message.role === "user") {
+    const marker = generationTemplateReplayMarker(
+      message.role,
+      message.generationTemplate,
+    );
     const body =
       message.content !== null && message.content !== ""
         ? truncateIncomplete(message.content)
         : "[empty message]";
-    return attach ? `User: ${body}\n${attach}` : `User: ${body}`;
+    return attach
+      ? `${marker}User: ${body}\n${attach}`
+      : `${marker}User: ${body}`;
   }
   if (message.content !== null && message.content !== "") {
     return `Assistant (partial): ${truncateIncomplete(message.content)}`;
@@ -694,6 +740,7 @@ function groupIncompleteRoundsByRunId(
       content: row.content,
       error: row.error,
       attachFiles: row.attachFiles,
+      generationTemplate: row.generationTemplate,
     });
   }
   return order.map((runId) => {
@@ -832,6 +879,7 @@ async function getLatestRunsByThreadId(
       attachFiles: chatMessages.attachFiles,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
+      generationTemplate: chatMessages.generationTemplate,
     })
     .from(chatMessages)
     .where(
@@ -859,6 +907,7 @@ async function getLatestRunsByThreadId(
       role: row.role,
       content: row.content,
       attachFiles: row.attachFiles,
+      generationTemplate: row.generationTemplate,
     });
     messagesByRunId.set(row.runId, existing);
   }
@@ -888,6 +937,7 @@ async function getIncompleteRoundsSinceLastSuccess(
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
       runStatus: agentRuns.status,
+      generationTemplate: chatMessages.generationTemplate,
     })
     .from(chatMessages)
     .innerJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
@@ -937,6 +987,7 @@ async function getIncompleteRoundsSinceLastSuccess(
       attachFiles: row.attachFiles,
       createdAt: row.createdAt,
       sequenceNumber: row.sequenceNumber,
+      generationTemplate: row.generationTemplate,
     });
   }
 
@@ -1234,6 +1285,100 @@ async function validateModelSelection(params: {
   return undefined;
 }
 
+async function resolveCodexServiceTierValidationPin(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly body: NormalSendBody;
+}): Promise<
+  | ThreadModelPin
+  | ReturnType<typeof providerDeleted>
+  | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof insufficientCredits>
+> {
+  if (params.body.modelSelection) {
+    return await resolveModelSelectionPin({
+      db: params.db,
+      orgId: params.orgId,
+      userId: params.userId,
+      modelSelection: params.body.modelSelection,
+    });
+  }
+  if (params.body.modelSelection === undefined && params.body.threadId) {
+    const existing = await existingModelFirstThreadPin(
+      params.db,
+      params.body.threadId,
+    );
+    if (existing) {
+      return await resolveStoredModelFirstPin({
+        db: params.db,
+        orgId: params.orgId,
+        userId: params.userId,
+        pin: existing,
+      });
+    }
+  }
+  return await resolveDefaultModelFirstPin(
+    params.db,
+    params.orgId,
+    params.userId,
+  );
+}
+
+async function validateCodexServiceTierBeforeThread(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly body: NormalSendBody;
+  readonly codexFastModeEnabled: boolean;
+}): Promise<NormalSendFailure | undefined> {
+  if (!codexFastServiceTierRequested(params.body)) {
+    return undefined;
+  }
+  const modelPin = await resolveCodexServiceTierValidationPin(params);
+  if ("status" in modelPin) {
+    return modelPin;
+  }
+  const providerAdmission = await resolveModelFirstProviderAdmission({
+    db: params.db,
+    orgId: params.orgId,
+    userId: params.userId,
+    modelPin,
+    requestedModelProvider: requestedModelProviderFor(params.body),
+  });
+  const codexServiceTierError = validateCodexServiceTier({
+    body: params.body,
+    modelPin,
+    providerAdmission,
+    codexFastModeEnabled: params.codexFastModeEnabled,
+  });
+  return codexServiceTierError ?? providerAdmission.error ?? undefined;
+}
+
+async function resolveNormalSendFeatureSwitches(
+  db: Db,
+  orgId: string,
+  userId: string,
+  zeroPreCreateSource: ZeroPreCreateSource | undefined,
+): Promise<NormalSendFeatureSwitches> {
+  const context = await loadUserFeatureSwitchContext(db, orgId, userId);
+  return {
+    codexFastModeEnabled: isFeatureEnabled(
+      FeatureSwitchKey.CodexFastMode,
+      context,
+    ),
+    presentationRunbookEnabled: isFeatureEnabled(
+      FeatureSwitchKey.PresentationTemplateRunbook,
+      context,
+    ),
+    initialThinkingEnabled:
+      isFeatureEnabled(
+        FeatureSwitchKey.ChatInitialThinkingIndicator,
+        context,
+      ) && zeroPreCreateSource === undefined,
+  };
+}
+
 async function updateUserModelPreference(
   db: Db,
   orgId: string,
@@ -1391,16 +1536,61 @@ async function createChatThread(
   db: Db,
   args: {
     readonly userId: string;
+    readonly orgId: string;
     readonly agentId: string;
     readonly clientThreadId: string | undefined;
     readonly pin: ThreadModelPin;
   },
 ): Promise<CreateChatThreadResult> {
-  if (args.clientThreadId) {
-    const [thread] = await db
+  return await db.transaction(async (tx) => {
+    if (args.clientThreadId) {
+      const [thread] = await tx
+        .insert(chatThreads)
+        .values({
+          id: args.clientThreadId,
+          userId: args.userId,
+          agentComposeId: args.agentId,
+          title: null,
+          modelProviderId: null,
+          modelProviderType: null,
+          modelProviderCredentialScope: null,
+          selectedModel: args.pin.selectedModel,
+        })
+        .onConflictDoNothing({ target: chatThreads.id })
+        .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
+      if (thread) {
+        await appendChatThreadEvent(tx, {
+          kind: "created",
+          userId: args.userId,
+          orgId: args.orgId,
+          chatThreadId: thread.id,
+          agentComposeId: args.agentId,
+          title: null,
+          createdAt: thread.createdAt,
+        });
+        return { id: thread.id, clientThreadAlreadyExisted: false };
+      }
+
+      const [existingThread] = await tx
+        .select({ id: chatThreads.id })
+        .from(chatThreads)
+        .where(
+          and(
+            eq(chatThreads.id, args.clientThreadId),
+            eq(chatThreads.userId, args.userId),
+            eq(chatThreads.agentComposeId, args.agentId),
+          ),
+        )
+        .limit(1);
+      if (!existingThread) {
+        return notFound("Chat thread not found");
+      }
+      return { id: existingThread.id, clientThreadAlreadyExisted: true };
+    }
+
+    const [thread] = await tx
       .insert(chatThreads)
       .values({
-        id: args.clientThreadId,
         userId: args.userId,
         agentComposeId: args.agentId,
         title: null,
@@ -1409,45 +1599,21 @@ async function createChatThread(
         modelProviderCredentialScope: null,
         selectedModel: args.pin.selectedModel,
       })
-      .onConflictDoNothing({ target: chatThreads.id })
-      .returning({ id: chatThreads.id });
-    if (thread) {
-      return { id: thread.id, clientThreadAlreadyExisted: false };
+      .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
+    if (!thread) {
+      throw new Error("Failed to create chat thread");
     }
-
-    const [existingThread] = await db
-      .select({ id: chatThreads.id })
-      .from(chatThreads)
-      .where(
-        and(
-          eq(chatThreads.id, args.clientThreadId),
-          eq(chatThreads.userId, args.userId),
-          eq(chatThreads.agentComposeId, args.agentId),
-        ),
-      )
-      .limit(1);
-    if (!existingThread) {
-      return notFound("Chat thread not found");
-    }
-    return { id: existingThread.id, clientThreadAlreadyExisted: true };
-  }
-
-  const [thread] = await db
-    .insert(chatThreads)
-    .values({
+    await appendChatThreadEvent(tx, {
+      kind: "created",
       userId: args.userId,
+      orgId: args.orgId,
+      chatThreadId: thread.id,
       agentComposeId: args.agentId,
       title: null,
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: args.pin.selectedModel,
-    })
-    .returning({ id: chatThreads.id });
-  if (!thread) {
-    throw new Error("Failed to create chat thread");
-  }
-  return { id: thread.id, clientThreadAlreadyExisted: false };
+      createdAt: thread.createdAt,
+    });
+    return { id: thread.id, clientThreadAlreadyExisted: false };
+  });
 }
 
 async function resolveThread(params: {
@@ -1463,6 +1629,7 @@ async function resolveThread(params: {
   if (!params.existingThreadId) {
     const thread = await createChatThread(params.db, {
       userId: params.userId,
+      orgId: params.orgId,
       agentId: params.agentId,
       clientThreadId: params.clientThreadId,
       pin: params.initialPin,
@@ -2021,8 +2188,11 @@ const handleInterruptSend$ = command(
       return cancelResult;
     }
     if (!cancelResult.alreadyCancelled) {
+      const backgroundSignal = new AbortController().signal;
       waitUntil(
-        bestEffort(set(dispatchCancelSideEffects$, cancelResult, signal)),
+        bestEffort(
+          set(dispatchCancelSideEffects$, cancelResult, backgroundSignal),
+        ),
       );
     }
 
@@ -2063,6 +2233,24 @@ const prepareNormalSend$ = command(
     if (modelError) {
       return modelError;
     }
+    const featureSwitches = await resolveNormalSendFeatureSwitches(
+      db,
+      args.orgId,
+      args.userId,
+      args.zeroPreCreateSource,
+    );
+    signal.throwIfAborted();
+    const codexServiceTierError = await validateCodexServiceTierBeforeThread({
+      db,
+      orgId: args.orgId,
+      userId: args.userId,
+      body: args.body,
+      codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
+    });
+    signal.throwIfAborted();
+    if (codexServiceTierError) {
+      return codexServiceTierError;
+    }
     if (args.body.generationTemplate) {
       const validation = buildGenerationTemplatePrompt(
         args.body.generationTemplate,
@@ -2094,18 +2282,10 @@ const prepareNormalSend$ = command(
       thread.incompleteContext,
     );
     signal.throwIfAborted();
-    const presentationRunbookEnabled = isFeatureEnabled(
-      FeatureSwitchKey.PresentationTemplateRunbook,
-      await loadUserFeatureSwitchContext(db, args.orgId, args.userId),
-    );
-    const generationTemplatePrompt =
-      await resolveThreadGenerationTemplatePrompt({
-        db,
-        threadId: thread.threadId,
-        explicit: args.body.generationTemplate,
-        presentationRunbookEnabled,
-      });
-    signal.throwIfAborted();
+    const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
+      explicit: args.body.generationTemplate,
+      presentationRunbookEnabled: featureSwitches.presentationRunbookEnabled,
+    });
     const persistedExplicitSelection =
       await maybePersistExplicitModelFirstSelection({
         db,
@@ -2134,6 +2314,8 @@ const prepareNormalSend$ = command(
       generationTemplatePrompt,
       computerUseHostGrant,
       persistedExplicitSelection,
+      initialThinkingEnabled: featureSwitches.initialThinkingEnabled,
+      codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
     };
   },
 );
@@ -2176,6 +2358,7 @@ function scheduleChatTitleGeneration(params: {
   readonly body: NormalSendBody;
   readonly thread: ResolvedThread;
   readonly userId: string;
+  readonly orgId: string;
 }): void {
   if (
     params.body.hasTextContent === false ||
@@ -2189,6 +2372,7 @@ function scheduleChatTitleGeneration(params: {
       db: params.db,
       threadId: params.thread.threadId,
       userId: params.userId,
+      orgId: params.orgId,
       prompt: params.body.prompt,
       includePriorRounds: !params.thread.isNewThread,
     }),
@@ -2202,6 +2386,7 @@ function scheduleAssociatedUserMessage(params: {
   readonly userId: string;
   readonly runId: string;
   readonly appendQueueMarker: boolean;
+  readonly appendInitialThinking: boolean;
 }): void {
   waitUntil(
     (async () => {
@@ -2226,6 +2411,17 @@ function scheduleAssociatedUserMessage(params: {
         [params.userId],
         `chatThreadRunCreated:${params.threadId}`,
       );
+      if (params.appendInitialThinking) {
+        await bestEffort(
+          generateAndPersistInitialThinkingMessage({
+            db: params.db,
+            threadId: params.threadId,
+            userId: params.userId,
+            runId: params.runId,
+            currentPrompt: params.body.prompt,
+          }),
+        );
+      }
       // No threadListChanged here: the sending client reloads its own
       // sidebar after the POST, sorting only moves on run-terminal events,
       // and the terminal callback broadcasts to other clients.
@@ -2238,14 +2434,17 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly body: NormalSendBody;
   readonly thread: ResolvedThread;
   readonly userId: string;
+  readonly orgId: string;
   readonly runId: string;
   readonly runStatus: string;
+  readonly initialThinkingEnabled: boolean;
 }): void {
   scheduleChatTitleGeneration({
     db: params.db,
     body: params.body,
     thread: params.thread,
     userId: params.userId,
+    orgId: params.orgId,
   });
   scheduleAssociatedUserMessage({
     db: params.db,
@@ -2254,6 +2453,11 @@ function scheduleCreatedChatRunSideEffects(params: {
     userId: params.userId,
     runId: params.runId,
     appendQueueMarker: params.runStatus === "queued",
+    appendInitialThinking:
+      params.initialThinkingEnabled &&
+      params.runStatus !== "queued" &&
+      params.body.hasTextContent !== false &&
+      params.body.prompt.trim().length > 0,
   });
 }
 
@@ -2410,6 +2614,58 @@ async function resolveTimedProviderAdmission(params: {
   );
 }
 
+function codexFastServiceTierRequested(body: NormalSendBody): boolean {
+  return body.runOptions?.codexServiceTier === "fast";
+}
+
+function isCodexFastServiceTierModel(
+  model: string | null | undefined,
+): boolean {
+  const bareModel = model?.startsWith("openai/")
+    ? model.slice("openai/".length)
+    : model;
+  return bareModel === "gpt-5.5";
+}
+
+function validateCodexServiceTier(params: {
+  readonly body: NormalSendBody;
+  readonly modelPin: ThreadModelPin;
+  readonly providerAdmission: ModelFirstProviderAdmission;
+  readonly codexFastModeEnabled: boolean;
+}): ReturnType<typeof badRequestMessage> | undefined {
+  if (!codexFastServiceTierRequested(params.body)) {
+    return undefined;
+  }
+  if (!params.codexFastModeEnabled) {
+    return badRequestMessage(
+      "Codex fast mode is not enabled for this workspace",
+    );
+  }
+  if (
+    params.providerAdmission.effectiveModelProvider === "codex-oauth-token" &&
+    isCodexFastServiceTierModel(params.modelPin.selectedModel)
+  ) {
+    return undefined;
+  }
+  return badRequestMessage(
+    "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 runs",
+  );
+}
+
+function codexServiceTierForRun(params: {
+  readonly body: NormalSendBody;
+  readonly modelPin: ThreadModelPin;
+  readonly providerAdmission: ModelFirstProviderAdmission;
+  readonly codexFastModeEnabled: boolean;
+}): "fast" | undefined {
+  return params.codexFastModeEnabled &&
+    codexFastServiceTierRequested(params.body) &&
+    params.providerAdmission.effectiveModelProvider === "codex-oauth-token" &&
+    isCodexFastServiceTierModel(params.modelPin.selectedModel)
+    ? "fast"
+    : undefined;
+}
+
 function buildCreateZeroRunArgs(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
@@ -2427,6 +2683,12 @@ function buildCreateZeroRunArgs(params: {
     modelProviderCredentialScope:
       modelPin.modelProviderCredentialScope ?? undefined,
     selectedModelOverride: modelPin.selectedModel ?? undefined,
+    codexServiceTier: codexServiceTierForRun({
+      body: args.body,
+      modelPin,
+      providerAdmission,
+      codexFastModeEnabled: prepared.codexFastModeEnabled,
+    }),
     callbacks: [
       {
         internalKind: "chat" as const,
@@ -2513,6 +2775,16 @@ const createNormalChatRun$ = command(
       });
     }
 
+    const codexServiceTierError = validateCodexServiceTier({
+      body: args.body,
+      modelPin,
+      providerAdmission,
+      codexFastModeEnabled: prepared.codexFastModeEnabled,
+    });
+    if (codexServiceTierError) {
+      return codexServiceTierError;
+    }
+
     const createRunArgs = await buildTimedCreateZeroRunArgs({
       args,
       prepared,
@@ -2550,8 +2822,10 @@ const createNormalChatRun$ = command(
       body: args.body,
       thread: prepared.thread,
       userId: args.userId,
+      orgId: args.orgId,
       runId: runResult.body.runId,
       runStatus: runResult.body.status,
+      initialThinkingEnabled: prepared.initialThinkingEnabled,
     });
 
     if (prepared.persistedExplicitSelection && modelPin.selectedModel) {

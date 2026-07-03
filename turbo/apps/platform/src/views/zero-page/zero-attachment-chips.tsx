@@ -10,10 +10,13 @@ import { createPortal } from "react-dom";
 import {
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
+  IconChevronLeft,
+  IconChevronRight,
   IconColumns2,
   IconFileMusic,
   IconPhoto,
   IconPencil,
+  IconWand,
   IconLoader2,
   IconZoomReset,
   IconX,
@@ -47,6 +50,7 @@ import {
   lightboxDialogFullscreen$,
   lightboxDialogVisible$,
   lightboxDialogRef$,
+  navigateImageLightbox$,
   openAudioLightbox$,
   openDocumentLightbox$,
   openImageLightbox$,
@@ -59,6 +63,7 @@ import {
   openArtifactSidebarPreview$,
   openPresentationEditor$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
+import { openArtifactImageEdit$ } from "../../signals/zero-page/zero-image-edit.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   presentationHtmlPreviewUrl,
@@ -66,6 +71,7 @@ import {
 } from "../../signals/zero-page/presentation-html-cache-bust.ts";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import {
+  artifactPreviewUrlsMatch,
   attachmentFilenameFromUrl,
   downloadAttachmentUrl,
   publicAttachmentUrl,
@@ -80,6 +86,11 @@ import {
   artifactFallbackSubtitle,
   artifactTitleSubtitle,
 } from "./zero-artifact-display.ts";
+import {
+  currentMessageImageArtifactNavigation,
+  type ImageArtifactNavigationItem,
+  shouldIgnoreImageArtifactNavigationKey,
+} from "./zero-artifact-image-navigation.ts";
 import {
   ZoomableArtifactImageCanvas,
   type ZoomableImageControls,
@@ -266,10 +277,12 @@ function LightboxBodyScrollLock() {
 function DialogIconButton({
   ariaLabel,
   children,
+  dataTestId,
   onClick,
 }: {
   ariaLabel: string;
   children: ReactNode;
+  dataTestId?: string;
   onClick: () => void;
 }) {
   return (
@@ -279,6 +292,7 @@ function DialogIconButton({
       className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       aria-label={ariaLabel}
       title={ariaLabel}
+      data-testid={dataTestId}
     >
       {children}
     </button>
@@ -334,6 +348,18 @@ function ArtifactDialogEditHtmlButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+function ArtifactDialogEditImageButton({ onClick }: { onClick: () => void }) {
+  return (
+    <DialogIconButton
+      ariaLabel="Edit image"
+      dataTestId="image-edit-open"
+      onClick={onClick}
+    >
+      <IconWand size={18} stroke={1.8} />
+    </DialogIconButton>
+  );
+}
+
 function artifactDialogFilename(preview: AttachmentLightboxState): string {
   return "filename" in preview && preview.filename
     ? preview.filename
@@ -343,6 +369,11 @@ function artifactDialogFilename(preview: AttachmentLightboxState): string {
 type ArtifactDialogItem = {
   runId: string;
   file: ChatThreadArtifactFile;
+};
+
+type ArtifactImageNavigationActions = {
+  readonly onNext?: () => void;
+  readonly onPrevious?: () => void;
 };
 
 function artifactDialogKindLabel(
@@ -385,7 +416,7 @@ function findArtifactDialogItemForUrl(
 ): ArtifactDialogItem | undefined {
   for (const run of runs) {
     const file = run.files.find((candidate) => {
-      return candidate.url === url;
+      return artifactPreviewUrlsMatch(candidate.url, url);
     });
     if (file) {
       return { runId: run.runId, file };
@@ -531,6 +562,91 @@ function ArtifactDialogImageZoomControls({
   );
 }
 
+function ArtifactDialogImageNavigationControls({
+  navigation,
+}: {
+  navigation?: ArtifactImageNavigationActions;
+}) {
+  if (!navigation?.onPrevious && !navigation?.onNext) {
+    return null;
+  }
+
+  return (
+    <>
+      {navigation.onPrevious && (
+        <button
+          type="button"
+          onClick={navigation.onPrevious}
+          aria-label="Previous image artifact"
+          title="Previous image artifact"
+          data-testid="artifact-dialog-previous-image"
+          className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
+        >
+          <IconChevronLeft size={22} stroke={1.8} />
+        </button>
+      )}
+      {navigation.onNext && (
+        <button
+          type="button"
+          onClick={navigation.onNext}
+          aria-label="Next image artifact"
+          title="Next image artifact"
+          data-testid="artifact-dialog-next-image"
+          className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
+        >
+          <IconChevronRight size={22} stroke={1.8} />
+        </button>
+      )}
+    </>
+  );
+}
+
+function ArtifactDialogImageNavigationKeydown({
+  navigation,
+}: {
+  navigation?: ArtifactImageNavigationActions;
+}) {
+  let cleanup: (() => void) | null = null;
+
+  return (
+    <span
+      ref={(node) => {
+        cleanup?.();
+        cleanup = null;
+        if (!node || (!navigation?.onPrevious && !navigation?.onNext)) {
+          return;
+        }
+
+        const onKeyDown = (event: KeyboardEvent) => {
+          // The lightbox modal is an immersive overlay: arrow keys always
+          // navigate, regardless of focus.
+          if (
+            shouldIgnoreImageArtifactNavigationKey(event, {
+              considerFocus: false,
+            })
+          ) {
+            return;
+          }
+          if (event.key === "ArrowLeft" && navigation.onPrevious) {
+            event.preventDefault();
+            navigation.onPrevious();
+          }
+          if (event.key === "ArrowRight" && navigation.onNext) {
+            event.preventDefault();
+            navigation.onNext();
+          }
+        };
+
+        document.addEventListener("keydown", onKeyDown);
+        cleanup = () => {
+          document.removeEventListener("keydown", onKeyDown);
+        };
+      }}
+      hidden
+    />
+  );
+}
+
 function ArtifactDialogTextBody({
   kind,
   signal,
@@ -625,9 +741,11 @@ function ArtifactDialogTextBody({
 }
 
 function ArtifactDialogBody({
+  imageNavigation,
   pageSignal,
   preview,
 }: {
+  imageNavigation?: ArtifactImageNavigationActions;
   pageSignal: AbortSignal;
   preview: AttachmentLightboxState;
 }) {
@@ -638,19 +756,24 @@ function ArtifactDialogBody({
     return (
       <ArtifactDialogStage flush scrollable={false}>
         <ArtifactDialogCard fillHeight>
-          <ZoomableArtifactImageCanvas
-            src={publicAttachmentUrl(preview.url)}
-            alt={filename}
-            zoomKey={artifactDialogImageZoomKey(preview.url, fullscreen)}
-            imageTestId="attachment-lightbox-image"
-            contentClassName="p-6"
-            imageClassName="rounded-lg shadow-sm"
-            canvasTestId="artifact-dialog-image-stage"
-          >
-            {(controls) => {
-              return <ArtifactDialogImageZoomControls controls={controls} />;
-            }}
-          </ZoomableArtifactImageCanvas>
+          <div className="relative h-full min-h-0">
+            <ZoomableArtifactImageCanvas
+              src={publicAttachmentUrl(preview.url)}
+              alt={filename}
+              zoomKey={artifactDialogImageZoomKey(preview.url, fullscreen)}
+              imageTestId="attachment-lightbox-image"
+              contentClassName="p-6"
+              imageClassName="rounded-lg shadow-sm"
+              canvasTestId="artifact-dialog-image-stage"
+            >
+              {(controls) => {
+                return <ArtifactDialogImageZoomControls controls={controls} />;
+              }}
+            </ZoomableArtifactImageCanvas>
+            <ArtifactDialogImageNavigationControls
+              navigation={imageNavigation}
+            />
+          </div>
         </ArtifactDialogCard>
       </ArtifactDialogStage>
     );
@@ -828,11 +951,57 @@ function ArtifactPreviewDialogThreadResolver({
 }) {
   const loadable = useLastLoadable(thread.artifacts$);
   const agentId = useLastResolved(thread.agentId$);
+  const messageGroups = useLastResolved(thread.groupedChatMessages$);
+  const features = useGet(featureSwitch$);
+  const imageNavigationEnabled = Boolean(
+    features?.[FeatureSwitchKey.ImageArtifactKeyboardNavigation],
+  );
+  const navigateImageLightbox = useSet(navigateImageLightbox$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const item =
     loadable.state === "hasData"
       ? findArtifactDialogItemForUrl(loadable.data, preview.url)
       : undefined;
+  const imageNavigation =
+    imageNavigationEnabled &&
+    preview.kind === "image" &&
+    loadable.state === "hasData"
+      ? currentMessageImageArtifactNavigation(
+          loadable.data,
+          (messageGroups ?? []).flatMap((group) => {
+            return group.messages;
+          }),
+          preview.url,
+        )
+      : {};
+  const openImageNavigationItem = (
+    navigationItem: ImageArtifactNavigationItem,
+  ) => {
+    navigateImageLightbox({
+      artifact: navigationItem.artifact
+        ? artifactDialogMetadataFromItem({
+            agentId,
+            item: navigationItem.artifact,
+            onSyncSuccess: () => {
+              reloadArtifacts();
+            },
+            threadId: thread.threadId,
+          })
+        : undefined,
+      filename: navigationItem.filename,
+      url: navigationItem.url,
+    });
+  };
+  const imageNavigationAction = (
+    navigationItem: ImageArtifactNavigationItem | undefined,
+  ) => {
+    if (!navigationItem) {
+      return undefined;
+    }
+    return () => {
+      openImageNavigationItem(navigationItem);
+    };
+  };
 
   if (item) {
     return (
@@ -845,6 +1014,10 @@ function ArtifactPreviewDialogThreadResolver({
           },
           threadId: thread.threadId,
         })}
+        imageNavigation={{
+          onNext: imageNavigationAction(imageNavigation.next),
+          onPrevious: imageNavigationAction(imageNavigation.previous),
+        }}
         preview={preview}
       />
     );
@@ -859,9 +1032,16 @@ function ArtifactPreviewDialogThreadResolver({
     );
   }
 
+  // The previewed image is not a run artifact (e.g. a human-uploaded image that
+  // resolves from the user artifacts bucket). It still navigates among the other
+  // images in its message.
   return (
     <ArtifactPreviewDialogContent
       artifact={preview.artifact}
+      imageNavigation={{
+        onNext: imageNavigationAction(imageNavigation.next),
+        onPrevious: imageNavigationAction(imageNavigation.previous),
+      }}
       preview={preview}
     />
   );
@@ -904,6 +1084,7 @@ function ArtifactPreviewDialogActions({
 }) {
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
   const openArtifactSidebarHtmlEdit = useSet(openArtifactSidebarHtmlEdit$);
+  const openArtifactImageEdit = useSet(openArtifactImageEdit$);
   const openArtifactSidebarPreview = useSet(openArtifactSidebarPreview$);
   const openPresentationEditor = useSet(openPresentationEditor$);
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
@@ -917,6 +1098,9 @@ function ArtifactPreviewDialogActions({
     preview.kind === "html" &&
     artifact?.artifactKind === "hosted-site" &&
     Boolean(features?.[FeatureSwitchKey.HtmlArtifactCommentEditing]);
+  const showImageEdit =
+    preview.kind === "image" &&
+    Boolean(features?.[FeatureSwitchKey.ImageEditing]);
   const resetDialogImageZoom = (targetFullscreen: boolean) => {
     resetArtifactDialogImageZoom({
       fullscreen,
@@ -937,6 +1121,14 @@ function ArtifactPreviewDialogActions({
   };
   const openHtmlEditInSplitView = () => {
     openArtifactSidebarHtmlEdit({ fullscreen, url: preview.url });
+    closeLightboxWithDialogExit();
+  };
+  const openImageEditInSplitView = () => {
+    resetDialogImageZoom(fullscreen);
+    resetZoomableImageCanvasZoom(
+      zoomableArtifactImageKey("artifact-sidebar", preview.url, "sidebar"),
+    );
+    openArtifactImageEdit({ fullscreen, url: preview.url });
     closeLightboxWithDialogExit();
   };
 
@@ -969,6 +1161,12 @@ function ArtifactPreviewDialogActions({
           <ArtifactActionSeparator />
         </>
       )}
+      {showImageEdit && (
+        <>
+          <ArtifactDialogEditImageButton onClick={openImageEditInSplitView} />
+          <ArtifactActionSeparator />
+        </>
+      )}
       <ArtifactDialogSplitViewButton onClick={openInSplitView} />
       <ArtifactDialogFullscreenButton
         fullscreen={fullscreen}
@@ -991,9 +1189,11 @@ function ArtifactPreviewDialogActions({
 
 function ArtifactPreviewDialogContent({
   artifact,
+  imageNavigation,
   preview,
 }: {
   artifact: AttachmentArtifactMetadata | undefined;
+  imageNavigation?: ArtifactImageNavigationActions;
   preview: AttachmentLightboxState;
 }) {
   const dialogRef = useSet(lightboxDialogRef$);
@@ -1030,6 +1230,9 @@ function ArtifactPreviewDialogContent({
       data-testid="attachment-lightbox"
     >
       <LightboxBodyScrollLock />
+      <ArtifactDialogImageNavigationKeydown
+        navigation={preview.kind === "image" ? imageNavigation : undefined}
+      />
       <div
         className={`zero-dialog-enter-content flex min-h-0 flex-col overflow-hidden bg-background text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.30)] transition-transform duration-[180ms] ease ${
           visible ? "translate-y-0" : "translate-y-2"
@@ -1054,7 +1257,11 @@ function ArtifactPreviewDialogContent({
           />
         </div>
         <div className="min-h-0 flex-1 bg-background">
-          <ArtifactDialogBody pageSignal={pageSignal} preview={preview} />
+          <ArtifactDialogBody
+            imageNavigation={imageNavigation}
+            pageSignal={pageSignal}
+            preview={preview}
+          />
         </div>
       </div>
     </div>,

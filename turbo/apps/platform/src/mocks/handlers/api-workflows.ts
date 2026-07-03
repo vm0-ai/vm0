@@ -36,11 +36,12 @@ function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
     displayName: workflow.displayName,
     description: workflow.description,
     visibility: workflow.visibility,
-    requestToPublish: workflow.requestToPublish,
     ownerUserId: workflow.ownerUserId,
     ownerUserDisplayName: "Test User",
     ownerUserImageUrl: null,
+    createdAt: workflow.createdAt,
     canManage: workflow.canManage,
+    canPublish: workflow.canPublish,
   };
 }
 
@@ -206,9 +207,9 @@ export const apiWorkflowsHandlers = [
       displayName: body.displayName ?? null,
       description: body.description ?? null,
       visibility: body.visibility ?? "private",
-      requestToPublish: false,
       ownerUserId: "test-user-123",
       canManage: true,
+      canPublish: true,
       createdByUserId: "test-user-123",
       updatedByUserId: "test-user-123",
       createdAt: now,
@@ -303,8 +304,8 @@ export const apiWorkflowsHandlers = [
       id: crypto.randomUUID(),
       agentId: body.toAgentId,
       visibility: "private",
-      requestToPublish: false,
       ownerUserId: "test-user-123",
+      canPublish: true,
       createdByUserId: "test-user-123",
       updatedByUserId: "test-user-123",
       createdAt: now,
@@ -374,53 +375,17 @@ function visibilityHandlers() {
   };
 
   return [
-    mockApi(
-      zeroWorkflowVisibilityContract.requestPublish,
-      ({ params, respond }) => {
-        const result = transition(params.workflowId, (workflow) => {
-          return { ...workflow, requestToPublish: true };
-        });
-        return result
-          ? respond(200, result)
-          : respond(404, notFound(params.workflowId));
-      },
-    ),
-    mockApi(
-      zeroWorkflowVisibilityContract.cancelPublishRequest,
-      ({ params, respond }) => {
-        const result = transition(params.workflowId, (workflow) => {
-          return { ...workflow, requestToPublish: false };
-        });
-        return result
-          ? respond(200, result)
-          : respond(404, notFound(params.workflowId));
-      },
-    ),
-    mockApi(
-      zeroWorkflowVisibilityContract.approvePublish,
-      ({ params, respond }) => {
-        const result = transition(params.workflowId, (workflow) => {
-          return { ...workflow, visibility: "public", requestToPublish: false };
-        });
-        return result
-          ? respond(200, result)
-          : respond(404, notFound(params.workflowId));
-      },
-    ),
-    mockApi(
-      zeroWorkflowVisibilityContract.rejectPublish,
-      ({ params, respond }) => {
-        const result = transition(params.workflowId, (workflow) => {
-          return { ...workflow, requestToPublish: false };
-        });
-        return result
-          ? respond(200, result)
-          : respond(404, notFound(params.workflowId));
-      },
-    ),
+    mockApi(zeroWorkflowVisibilityContract.publish, ({ params, respond }) => {
+      const result = transition(params.workflowId, (workflow) => {
+        return { ...workflow, visibility: "public" };
+      });
+      return result
+        ? respond(200, result)
+        : respond(404, notFound(params.workflowId));
+    }),
     mockApi(zeroWorkflowVisibilityContract.demote, ({ params, respond }) => {
       const result = transition(params.workflowId, (workflow) => {
-        return { ...workflow, visibility: "private", requestToPublish: false };
+        return { ...workflow, visibility: "private" };
       });
       return result
         ? respond(200, result)

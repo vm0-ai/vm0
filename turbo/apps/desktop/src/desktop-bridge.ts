@@ -57,6 +57,13 @@ export interface DesktopComputerUseApi {
   readonly setKeepAwakeEnabled: (
     enabled: boolean,
   ) => Promise<DesktopComputerUseState>;
+  readonly setFilesystemPluginEnabled: (
+    enabled: boolean,
+  ) => Promise<DesktopComputerUseState>;
+  readonly addFilesystemPluginAllowedDirectory: () => Promise<DesktopComputerUseState>;
+  readonly removeFilesystemPluginAllowedDirectory: (
+    directory: string,
+  ) => Promise<DesktopComputerUseState>;
   readonly openAccessibilitySettings: () => Promise<void>;
   readonly openScreenRecordingSettings: () => Promise<void>;
   readonly openAutomationSettings: () => Promise<void>;

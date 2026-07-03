@@ -22,6 +22,13 @@ export const CANONICAL_CODEX_MEMORY_MOUNT_PATH = `${CANONICAL_GUEST_HOME_DIR}/.c
 // Shared resume history size contract. Rust consumers import the generated
 // binding from `api_contracts::generated::constants`.
 export const RESUME_SESSION_HISTORY_MAX_BYTES = 128 * 1024 * 1024;
+export const SESSION_HISTORY_ENCODING_IDENTITY = "identity";
+export const SESSION_HISTORY_ENCODING_GZIP = "gzip";
+export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
+export const sessionHistoryEncodingSchema = z.enum([
+  SESSION_HISTORY_ENCODING_IDENTITY,
+  SESSION_HISTORY_ENCODING_GZIP,
+]);
 
 export function elapsedSinceApiStartMs(
   apiStartTimeMs: number | undefined,
@@ -88,6 +95,12 @@ export const jobSchema = z.object({
   vars: z.record(z.string(), z.string()).nullable(),
   checkpointId: z.uuid().nullable(),
   experimentalProfile: z.string().optional(),
+  cliAgentSessionId: z.string().nullable().optional(),
+  affinityProtectedUntil: z
+    .string()
+    .datetime({ offset: true })
+    .nullable()
+    .optional(),
 });
 
 export const heldSessionStateSchema = z.object({
@@ -179,23 +192,48 @@ const resumeSessionHistoryBlobRefSchema = z.object({
   kind: z.literal("blob"),
   hash: z.string().regex(/^[a-f0-9]{64}$/),
 });
+const resumeSessionHistoryRawSizeSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(RESUME_SESSION_HISTORY_MAX_BYTES);
+const resumeSessionHistoryEncodedSizeSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(RESUME_SESSION_HISTORY_MAX_BYTES);
 
 const storedResumeSessionRefSchema = z.object({
   sessionId: z.string(),
-  historyRef: resumeSessionHistoryBlobRefSchema,
+  historyRef: resumeSessionHistoryBlobRefSchema.extend({
+    encoding: sessionHistoryEncodingSchema.optional(),
+  }),
 });
+
+const resumeSessionIdentityHistoryRefSchema = resumeSessionHistoryBlobRefSchema
+  .extend({
+    url: z.string().url(),
+    encoding: z.literal("identity").optional(),
+    rawSize: resumeSessionHistoryRawSizeSchema,
+    encodedSize: resumeSessionHistoryEncodedSizeSchema,
+  })
+  .strict();
+
+const resumeSessionGzipHistoryRefSchema = resumeSessionHistoryBlobRefSchema
+  .extend({
+    url: z.string().url(),
+    encoding: z.literal("gzip"),
+    rawSize: resumeSessionHistoryRawSizeSchema,
+    encodedSize: resumeSessionHistoryEncodedSizeSchema,
+  })
+  .strict();
 
 const resumeSessionRefSchema = z.object({
   sessionId: z.string(),
-  historyRef: resumeSessionHistoryBlobRefSchema.extend({
-    url: z.string().url(),
-    size: z
-      .number()
-      .int()
-      .nonnegative()
-      .max(RESUME_SESSION_HISTORY_MAX_BYTES)
-      .optional(),
-  }),
+  historyRef: z.union([
+    resumeSessionGzipHistoryRefSchema,
+    resumeSessionIdentityHistoryRefSchema,
+  ]),
 });
 
 export const storedResumeSessionSchema = z.union([
@@ -430,4 +468,5 @@ export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
 export type StoredResumeSession = z.infer<typeof storedResumeSessionSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
-export type RunnerClaimCapability = "resumeSessionHistoryRef";
+
+export type RunnerClaimCapability = z.infer<typeof runnerClaimCapabilitySchema>;

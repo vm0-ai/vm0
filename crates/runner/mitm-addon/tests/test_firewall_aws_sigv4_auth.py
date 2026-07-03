@@ -69,11 +69,65 @@ def _auth_response() -> dict[str, object]:
     }
 
 
+def _auth_response_without_session_token() -> dict[str, object]:
+    return {
+        "headers": {},
+        "awsSigv4": {
+            "accessKeyId": "AKIDEXAMPLE",
+            "secretAccessKey": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+        },
+        "expiresAt": 1_800_000_000,
+        "resolvedSecrets": [
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+        ],
+        "refreshedConnectors": [],
+        "refreshedSecrets": [],
+    }
+
+
 def _prepare_firewall_request(flow, *, original_url: str | None = None) -> None:
     flow.metadata[metadata_keys.VM_RUN_ID] = "run-1"
     flow.metadata[metadata_keys.ORIGINAL_URL] = (
         get_original_url(flow) if original_url is None else original_url
     )
+
+
+async def _handle_firewall_request_with_auth_endpoint(
+    flow,
+    tmp_path,
+    mitm_ctx,
+    *,
+    endpoint: FakeAuthEndpoint | None = None,
+    auth_response: dict[str, object] | None = None,
+    allow: matching.FirewallAllow | None = None,
+    vm_info: dict | None = None,
+) -> auth.FirewallAuthHandlingResult:
+    resolved_endpoint = endpoint or FakeAuthEndpoint()
+    resolved_endpoint.queue_json_response(
+        _auth_response() if auth_response is None else auth_response
+    )
+    _prepare_firewall_request(flow)
+
+    with resolved_endpoint.run(), mitm_ctx(api_url=resolved_endpoint.api_url):
+        return await auth.handle_firewall_request(
+            flow,
+            _allow(_api_entry()) if allow is None else allow,
+            _vm_info(tmp_path) if vm_info is None else vm_info,
+        )
+
+
+def _assert_sigv4_failed_closed(
+    result: auth.FirewallAuthHandlingResult,
+    flow,
+    message_fragment: str,
+) -> None:
+    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+    assert flow.response is not None
+    assert flow.response.status_code == 502
+    response = flow.response.json()
+    assert response["error"] == "aws_sigv4_auth_failed"
+    assert message_fragment in response["message"]
 
 
 def _aws_auth_cache_key(tmp_path, api_entry: dict | None = None):
@@ -100,7 +154,6 @@ def _aws_auth_cache_key(tmp_path, api_entry: dict | None = None):
 
 async def test_re_signs_header_sigv4_request(real_flow, headers, tmp_path, mitm_ctx):
     endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     flow = real_flow(
         with_response=False,
         host="sts.amazonaws.com",
@@ -120,10 +173,13 @@ async def test_re_signs_header_sigv4_request(real_flow, headers, tmp_path, mitm_
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(
+        flow,
+        tmp_path,
+        mitm_ctx,
+        endpoint=endpoint,
+    )
 
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
     assert flow.response is None
@@ -148,23 +204,7 @@ async def test_re_signs_header_sigv4_request_to_reference_signature(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(
-        {
-            "headers": {},
-            "awsSigv4": {
-                "accessKeyId": "AKIDEXAMPLE",
-                "secretAccessKey": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-            },
-            "expiresAt": 1_800_000_000,
-            "resolvedSecrets": [
-                "AWS_ACCESS_KEY_ID",
-                "AWS_SECRET_ACCESS_KEY",
-            ],
-            "refreshedConnectors": [],
-            "refreshedSecrets": [],
-        }
-    )
+    auth_response = _auth_response_without_session_token()
     api_entry = {
         "base": "https://iam.amazonaws.com",
         "auth": {
@@ -193,14 +233,14 @@ async def test_re_signs_header_sigv4_request_to_reference_signature(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(
-            flow,
-            matching.FirewallAllow(api_entry, "aws", "list-users", {}, "GET /", "/"),
-            _vm_info(tmp_path),
-        )
+    result = await _handle_firewall_request_with_auth_endpoint(
+        flow,
+        tmp_path,
+        mitm_ctx,
+        auth_response=auth_response,
+        allow=matching.FirewallAllow(api_entry, "aws", "list-users", {}, "GET /", "/"),
+    )
 
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
     assert flow.request.headers["authorization"] == (
@@ -218,23 +258,7 @@ async def test_re_signs_header_sigv4_request_with_encoded_path(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(
-        {
-            "headers": {},
-            "awsSigv4": {
-                "accessKeyId": "AKIDEXAMPLE",
-                "secretAccessKey": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-            },
-            "expiresAt": 1_800_000_000,
-            "resolvedSecrets": [
-                "AWS_ACCESS_KEY_ID",
-                "AWS_SECRET_ACCESS_KEY",
-            ],
-            "refreshedConnectors": [],
-            "refreshedSecrets": [],
-        }
-    )
+    auth_response = _auth_response_without_session_token()
     api_entry = {
         "base": "https://iam.amazonaws.com",
         "auth": {
@@ -262,21 +286,21 @@ async def test_re_signs_header_sigv4_request_with_encoded_path(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(
-            flow,
-            matching.FirewallAllow(
-                api_entry,
-                "aws",
-                "encoded-path",
-                {},
-                "GET /{path+}",
-                "/a/../long/path%20name/",
-            ),
-            _vm_info(tmp_path),
-        )
+    result = await _handle_firewall_request_with_auth_endpoint(
+        flow,
+        tmp_path,
+        mitm_ctx,
+        auth_response=auth_response,
+        allow=matching.FirewallAllow(
+            api_entry,
+            "aws",
+            "encoded-path",
+            {},
+            "GET /{path+}",
+            "/a/../long/path%20name/",
+        ),
+    )
 
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
     assert flow.request.url == "https://iam.amazonaws.com/a/../long/path%20name/"
@@ -294,23 +318,7 @@ async def test_re_signs_header_sigv4_request_with_normalized_host(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(
-        {
-            "headers": {},
-            "awsSigv4": {
-                "accessKeyId": "AKIDEXAMPLE",
-                "secretAccessKey": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-            },
-            "expiresAt": 1_800_000_000,
-            "resolvedSecrets": [
-                "AWS_ACCESS_KEY_ID",
-                "AWS_SECRET_ACCESS_KEY",
-            ],
-            "refreshedConnectors": [],
-            "refreshedSecrets": [],
-        }
-    )
+    auth_response = _auth_response_without_session_token()
     api_entry = {
         "base": "https://iam.amazonaws.com",
         "auth": {
@@ -338,14 +346,14 @@ async def test_re_signs_header_sigv4_request_with_normalized_host(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(
-            flow,
-            matching.FirewallAllow(api_entry, "aws", "normalized-host", {}, "GET /", "/"),
-            _vm_info(tmp_path),
-        )
+    result = await _handle_firewall_request_with_auth_endpoint(
+        flow,
+        tmp_path,
+        mitm_ctx,
+        auth_response=auth_response,
+        allow=matching.FirewallAllow(api_entry, "aws", "normalized-host", {}, "GET /", "/"),
+    )
 
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
     assert flow.request.headers["host"] == "iam.amazonaws.com"
@@ -363,23 +371,7 @@ async def test_re_signs_header_sigv4_request_with_trusted_original_url(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(
-        {
-            "headers": {},
-            "awsSigv4": {
-                "accessKeyId": "AKIDEXAMPLE",
-                "secretAccessKey": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-            },
-            "expiresAt": 1_800_000_000,
-            "resolvedSecrets": [
-                "AWS_ACCESS_KEY_ID",
-                "AWS_SECRET_ACCESS_KEY",
-            ],
-            "refreshedConnectors": [],
-            "refreshedSecrets": [],
-        }
-    )
+    auth_response = _auth_response_without_session_token()
     api_entry = {
         "base": "https://iam.amazonaws.com",
         "auth": {
@@ -408,15 +400,15 @@ async def test_re_signs_header_sigv4_request_with_trusted_original_url(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
     flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = "iam.amazonaws.com"
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(
-            flow,
-            matching.FirewallAllow(api_entry, "aws", "trusted-url", {}, "GET /", "/"),
-            _vm_info(tmp_path),
-        )
+    result = await _handle_firewall_request_with_auth_endpoint(
+        flow,
+        tmp_path,
+        mitm_ctx,
+        auth_response=auth_response,
+        allow=matching.FirewallAllow(api_entry, "aws", "trusted-url", {}, "GET /", "/"),
+    )
 
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
     assert flow.request.url == "https://iam.amazonaws.com/"
@@ -435,24 +427,8 @@ async def test_re_signs_header_sigv4_request_keeps_resolved_query_with_trusted_u
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(
-        {
-            "headers": {},
-            "query": {"Trace": "secret-value"},
-            "awsSigv4": {
-                "accessKeyId": "AKIDEXAMPLE",
-                "secretAccessKey": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-            },
-            "expiresAt": 1_800_000_000,
-            "resolvedSecrets": [
-                "AWS_ACCESS_KEY_ID",
-                "AWS_SECRET_ACCESS_KEY",
-            ],
-            "refreshedConnectors": [],
-            "refreshedSecrets": [],
-        }
-    )
+    auth_response = _auth_response_without_session_token()
+    auth_response["query"] = {"Trace": "secret-value"}
     api_entry = {
         "base": "https://iam.amazonaws.com",
         "auth": {
@@ -483,15 +459,15 @@ async def test_re_signs_header_sigv4_request_keeps_resolved_query_with_trusted_u
             ),
         ),
     )
-    _prepare_firewall_request(flow)
     flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = "iam.amazonaws.com"
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(
-            flow,
-            matching.FirewallAllow(api_entry, "aws", "trusted-query", {}, "GET /", "/"),
-            _vm_info(tmp_path),
-        )
+    result = await _handle_firewall_request_with_auth_endpoint(
+        flow,
+        tmp_path,
+        mitm_ctx,
+        auth_response=auth_response,
+        allow=matching.FirewallAllow(api_entry, "aws", "trusted-query", {}, "GET /", "/"),
+    )
 
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
     signed_parts = urllib.parse.urlsplit(flow.request.url)
@@ -511,8 +487,6 @@ async def test_re_signs_header_sigv4_request_keeps_resolved_query_with_trusted_u
 
 
 async def test_re_signs_query_sigv4_request(real_flow, tmp_path, mitm_ctx):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     placeholder_credential = urllib.parse.quote(
         "PLACEHOLDER/20260101/us-east-1/sts/aws4_request",
         safe="",
@@ -531,10 +505,8 @@ async def test_re_signs_query_sigv4_request(real_flow, tmp_path, mitm_ctx):
         ),
         method="GET",
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
     assert "authorization" not in flow.request.headers
@@ -552,8 +524,6 @@ async def test_re_signs_query_sigv4_request_strips_session_token_header(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     placeholder_credential = urllib.parse.quote(
         "PLACEHOLDER/20260101/us-east-1/sts/aws4_request",
         safe="",
@@ -576,10 +546,8 @@ async def test_re_signs_query_sigv4_request_strips_session_token_header(
             ("X-Amz-Security-Token", "placeholder-session-token"),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
     assert "x-amz-security-token" not in flow.request.headers
@@ -592,8 +560,6 @@ async def test_re_signs_query_sigv4_request_preserves_literal_plus(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     placeholder_credential = urllib.parse.quote(
         "PLACEHOLDER/20260101/us-east-1/sts/aws4_request",
         safe="",
@@ -612,10 +578,8 @@ async def test_re_signs_query_sigv4_request_preserves_literal_plus(
         ),
         method="GET",
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
     raw_query = urllib.parse.urlsplit(flow.request.url).query
@@ -626,8 +590,6 @@ async def test_re_signs_query_sigv4_request_preserves_literal_plus(
 
 
 async def test_sigv4a_request_fails_closed(real_flow, headers, tmp_path, mitm_ctx):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     flow = real_flow(
         with_response=False,
         host="s3.amazonaws.com",
@@ -644,21 +606,13 @@ async def test_sigv4a_request_fails_closed(real_flow, headers, tmp_path, mitm_ct
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "SigV4A is not supported" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "SigV4A is not supported")
 
 
 async def test_hmac_sigv4_wildcard_region_fails_closed(real_flow, headers, tmp_path, mitm_ctx):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     flow = real_flow(
         with_response=False,
         host="s3.amazonaws.com",
@@ -675,16 +629,10 @@ async def test_hmac_sigv4_wildcard_region_fails_closed(real_flow, headers, tmp_p
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "Wildcard AWS signing region requires SigV4A" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "Wildcard AWS signing region requires SigV4A")
 
 
 async def test_header_sigv4_with_malformed_scope_fails_closed(
@@ -693,8 +641,6 @@ async def test_header_sigv4_with_malformed_scope_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     flow = real_flow(
         with_response=False,
         host="sts.amazonaws.com",
@@ -712,16 +658,10 @@ async def test_header_sigv4_with_malformed_scope_fails_closed(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "Malformed AWS credential scope" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "Malformed AWS credential scope")
 
 
 async def test_header_sigv4_with_control_character_header_fails_closed(
@@ -730,8 +670,6 @@ async def test_header_sigv4_with_control_character_header_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     flow = real_flow(
         with_response=False,
         host="sts.amazonaws.com",
@@ -750,16 +688,10 @@ async def test_header_sigv4_with_control_character_header_fails_closed(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "AWS request header contains invalid text" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "AWS request header contains invalid text")
 
 
 async def test_header_sigv4_with_invalid_resolved_access_key_fails_closed(
@@ -768,13 +700,11 @@ async def test_header_sigv4_with_invalid_resolved_access_key_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
     response = _auth_response()
     response["awsSigv4"] = {
         "accessKeyId": "AKID/EXAMPLE",
         "secretAccessKey": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
     }
-    endpoint.queue_json_response(response)
     flow = real_flow(
         with_response=False,
         host="sts.amazonaws.com",
@@ -792,16 +722,15 @@ async def test_header_sigv4_with_invalid_resolved_access_key_fails_closed(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(
+        flow,
+        tmp_path,
+        mitm_ctx,
+        auth_response=response,
+    )
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "Invalid AWS access key ID" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "Invalid AWS access key ID")
 
 
 async def test_header_sigv4_with_empty_resolved_secret_key_fails_closed(
@@ -837,11 +766,7 @@ async def test_header_sigv4_with_empty_resolved_secret_key_fails_closed(
     with mitm_ctx():
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "Invalid AWS secret access key" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "Invalid AWS secret access key")
 
 
 async def test_header_sigv4_without_trusted_original_url_fails_closed(
@@ -880,11 +805,7 @@ async def test_header_sigv4_without_trusted_original_url_fails_closed(
     with mitm_ctx():
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "AWS request URL is unavailable" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "AWS request URL is unavailable")
 
 
 @pytest.mark.parametrize(
@@ -932,11 +853,7 @@ async def test_header_sigv4_with_malformed_current_request_target_fails_closed(
     with mitm_ctx():
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "AWS request URL is malformed" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "AWS request URL is malformed")
 
 
 async def test_header_sigv4_with_empty_resolved_session_token_fails_closed(
@@ -976,11 +893,7 @@ async def test_header_sigv4_with_empty_resolved_session_token_fails_closed(
     with mitm_ctx():
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "Invalid AWS session token" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "Invalid AWS session token")
 
 
 async def test_header_sigv4_with_real_source_access_key_fails_closed(
@@ -989,8 +902,6 @@ async def test_header_sigv4_with_real_source_access_key_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     flow = real_flow(
         with_response=False,
         host="sts.amazonaws.com",
@@ -1008,16 +919,10 @@ async def test_header_sigv4_with_real_source_access_key_fails_closed(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "placeholder access key ID" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "placeholder access key ID")
 
 
 async def test_header_sigv4_with_duplicate_credential_fails_closed(
@@ -1026,8 +931,6 @@ async def test_header_sigv4_with_duplicate_credential_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     flow = real_flow(
         with_response=False,
         host="sts.amazonaws.com",
@@ -1046,16 +949,10 @@ async def test_header_sigv4_with_duplicate_credential_fails_closed(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "Malformed AWS authorization header" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "Malformed AWS authorization header")
 
 
 async def test_header_sigv4_with_duplicate_authorization_headers_fails_closed(
@@ -1064,8 +961,6 @@ async def test_header_sigv4_with_duplicate_authorization_headers_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     authorization = (
         "AWS4-HMAC-SHA256 "
         "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
@@ -1084,16 +979,10 @@ async def test_header_sigv4_with_duplicate_authorization_headers_fails_closed(
             ("Authorization", authorization),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "Malformed AWS authorization header" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "Malformed AWS authorization header")
 
 
 async def test_header_sigv4_without_signature_fails_closed(
@@ -1102,8 +991,6 @@ async def test_header_sigv4_without_signature_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     flow = real_flow(
         with_response=False,
         host="sts.amazonaws.com",
@@ -1120,16 +1007,10 @@ async def test_header_sigv4_without_signature_fails_closed(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "Malformed AWS authorization header" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "Malformed AWS authorization header")
 
 
 async def test_header_sigv4_with_duplicate_signed_header_fails_closed(
@@ -1138,8 +1019,6 @@ async def test_header_sigv4_with_duplicate_signed_header_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     flow = real_flow(
         with_response=False,
         host="sts.amazonaws.com",
@@ -1157,16 +1036,10 @@ async def test_header_sigv4_with_duplicate_signed_header_fails_closed(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "Malformed AWS signed headers" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "Malformed AWS signed headers")
 
 
 async def test_header_sigv4_with_empty_signed_header_segment_fails_closed(
@@ -1175,8 +1048,6 @@ async def test_header_sigv4_with_empty_signed_header_segment_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     flow = real_flow(
         with_response=False,
         host="sts.amazonaws.com",
@@ -1194,16 +1065,10 @@ async def test_header_sigv4_with_empty_signed_header_segment_fails_closed(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "Malformed AWS signed headers" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "Malformed AWS signed headers")
 
 
 async def test_header_sigv4_without_amz_date_fails_closed(
@@ -1212,8 +1077,6 @@ async def test_header_sigv4_without_amz_date_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     flow = real_flow(
         with_response=False,
         host="sts.amazonaws.com",
@@ -1230,16 +1093,10 @@ async def test_header_sigv4_without_amz_date_fails_closed(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "requires x-amz-date" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "requires x-amz-date")
 
 
 async def test_header_sigv4_with_malformed_amz_date_fails_closed(
@@ -1248,8 +1105,6 @@ async def test_header_sigv4_with_malformed_amz_date_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     flow = real_flow(
         with_response=False,
         host="sts.amazonaws.com",
@@ -1267,16 +1122,10 @@ async def test_header_sigv4_with_malformed_amz_date_fails_closed(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "Malformed AWS signing date" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "Malformed AWS signing date")
 
 
 async def test_header_sigv4_with_scope_date_mismatch_fails_closed(
@@ -1285,8 +1134,6 @@ async def test_header_sigv4_with_scope_date_mismatch_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     flow = real_flow(
         with_response=False,
         host="sts.amazonaws.com",
@@ -1304,16 +1151,14 @@ async def test_header_sigv4_with_scope_date_mismatch_fails_closed(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "AWS signing date does not match credential scope" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(
+        result,
+        flow,
+        "AWS signing date does not match credential scope",
+    )
 
 
 async def test_header_sigv4_with_duplicate_amz_date_fails_closed(
@@ -1322,8 +1167,6 @@ async def test_header_sigv4_with_duplicate_amz_date_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     flow = real_flow(
         with_response=False,
         host="sts.amazonaws.com",
@@ -1342,16 +1185,10 @@ async def test_header_sigv4_with_duplicate_amz_date_fails_closed(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "requires a single x-amz-date" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "requires a single x-amz-date")
 
 
 async def test_header_sigv4_with_duplicate_content_hash_fails_closed(
@@ -1360,8 +1197,6 @@ async def test_header_sigv4_with_duplicate_content_hash_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     flow = real_flow(
         with_response=False,
         host="sts.amazonaws.com",
@@ -1382,16 +1217,10 @@ async def test_header_sigv4_with_duplicate_content_hash_fails_closed(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "AWS content hash header is ambiguous" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "AWS content hash header is ambiguous")
 
 
 async def test_header_sigv4_with_empty_content_hash_fails_closed(
@@ -1400,8 +1229,6 @@ async def test_header_sigv4_with_empty_content_hash_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     flow = real_flow(
         with_response=False,
         host="sts.amazonaws.com",
@@ -1421,21 +1248,13 @@ async def test_header_sigv4_with_empty_content_hash_fails_closed(
             ),
         ),
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "AWS content hash header is empty" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "AWS content hash header is empty")
 
 
 async def test_query_sigv4_without_signature_fails_closed(real_flow, tmp_path, mitm_ctx):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     placeholder_credential = urllib.parse.quote(
         "PLACEHOLDER/20260101/us-east-1/sts/aws4_request",
         safe="",
@@ -1453,21 +1272,13 @@ async def test_query_sigv4_without_signature_fails_closed(real_flow, tmp_path, m
         ),
         method="GET",
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "Malformed AWS presigned query" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "Malformed AWS presigned query")
 
 
 async def test_query_sigv4_with_real_source_access_key_fails_closed(real_flow, tmp_path, mitm_ctx):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     source_credential = urllib.parse.quote(
         "AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request",
         safe="",
@@ -1486,21 +1297,13 @@ async def test_query_sigv4_with_real_source_access_key_fails_closed(real_flow, t
         ),
         method="GET",
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "placeholder access key ID" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "placeholder access key ID")
 
 
 async def test_query_sigv4_with_duplicate_credential_fails_closed(real_flow, tmp_path, mitm_ctx):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     placeholder_credential = urllib.parse.quote(
         "PLACEHOLDER/20260101/us-east-1/sts/aws4_request",
         safe="",
@@ -1524,16 +1327,10 @@ async def test_query_sigv4_with_duplicate_credential_fails_closed(real_flow, tmp
         ),
         method="GET",
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "Malformed AWS presigned query" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "Malformed AWS presigned query")
 
 
 async def test_query_sigv4_with_duplicate_signed_header_fails_closed(
@@ -1541,8 +1338,6 @@ async def test_query_sigv4_with_duplicate_signed_header_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     placeholder_credential = urllib.parse.quote(
         "PLACEHOLDER/20260101/us-east-1/sts/aws4_request",
         safe="",
@@ -1562,21 +1357,13 @@ async def test_query_sigv4_with_duplicate_signed_header_fails_closed(
         ),
         method="GET",
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "Malformed AWS signed headers" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "Malformed AWS signed headers")
 
 
 async def test_query_sigv4_with_malformed_expiry_fails_closed(real_flow, tmp_path, mitm_ctx):
-    endpoint = FakeAuthEndpoint()
-    endpoint.queue_json_response(_auth_response())
     placeholder_credential = urllib.parse.quote(
         "PLACEHOLDER/20260101/us-east-1/sts/aws4_request",
         safe="",
@@ -1595,13 +1382,7 @@ async def test_query_sigv4_with_malformed_expiry_fails_closed(real_flow, tmp_pat
         ),
         method="GET",
     )
-    _prepare_firewall_request(flow)
 
-    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+    result = await _handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
-    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
-    assert flow.response is not None
-    assert flow.response.status_code == 502
-    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
-    assert "Malformed AWS presigned query expiry" in flow.response.json()["message"]
+    _assert_sigv4_failed_closed(result, flow, "Malformed AWS presigned query expiry")

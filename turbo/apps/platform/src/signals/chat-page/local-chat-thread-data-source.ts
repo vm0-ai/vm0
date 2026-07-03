@@ -6,6 +6,7 @@ import type {
   AppendQueuedMessageArgs,
   CancelRunsArgs,
   ChatThreadDataSource,
+  GetMessageArgs,
   PatchComputerUseHostArgs,
   PatchModelSelectionArgs,
   RecallMessageArgs,
@@ -48,6 +49,16 @@ const localListMessagesBefore$ = command(() => {
     hasMore: false,
   });
 });
+
+const localGetMessage$ = command(
+  (
+    _visitor,
+    _args: GetMessageArgs,
+    _signal: AbortSignal,
+  ): Promise<PagedChatMessage | null> => {
+    return Promise.resolve(null);
+  },
+);
 
 const localMarkRead$ = command((): Promise<string | null> => {
   return Promise.resolve(null);
@@ -124,6 +135,7 @@ export function createLocalChatThreadDataSource(input: {
     recallMessage$: localRecallMessage$,
     listMessagesAfter$: localListMessagesAfter$,
     listMessagesBefore$: localListMessagesBefore$,
+    getMessage$: localGetMessage$,
     cancelRuns$,
     markRead$: localMarkRead$,
     subscribeRealtime$: localSubscribeRealtime$,

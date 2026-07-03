@@ -163,6 +163,30 @@ export function publicAttachmentUrl(url: string): string {
   return normalizedLegacyFileUrl(url) ?? normalizedArtifactFileUrl(url) ?? url;
 }
 
+function comparableArtifactPreviewUrl(value: string): string | null {
+  if (!URL.canParse(value)) {
+    return null;
+  }
+  const url = new URL(value);
+  const pathname = url.pathname === "/" ? "" : url.pathname;
+  return `${url.protocol}//${url.host}${pathname}${url.search}${url.hash}`;
+}
+
+export function artifactPreviewUrlsMatch(
+  artifactUrl: string,
+  previewUrl: string,
+): boolean {
+  if (artifactUrl === previewUrl) {
+    return true;
+  }
+  const comparableArtifactUrl = comparableArtifactPreviewUrl(artifactUrl);
+  const comparablePreviewUrl = comparableArtifactPreviewUrl(previewUrl);
+  return (
+    comparableArtifactUrl !== null &&
+    comparableArtifactUrl === comparablePreviewUrl
+  );
+}
+
 function canUseDevArtifactFetchProxy(): boolean {
   if (!import.meta.env.DEV) {
     return false;

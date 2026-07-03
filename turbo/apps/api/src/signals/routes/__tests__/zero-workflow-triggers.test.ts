@@ -1542,7 +1542,8 @@ describe("zero workflow triggers", () => {
       workflowTriggerId: created.body.id,
       triggerSource: "workflow-schedule",
     });
-    expect(sandboxOperationEventsForRun(run.body.runId)).toStrictEqual(
+    const timingEvents = sandboxOperationEventsForRun(run.body.runId);
+    expect(timingEvents).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           op_type: "api_dispatch_pre_create_agent_run",
@@ -1551,6 +1552,34 @@ describe("zero workflow triggers", () => {
         }),
       ]),
     );
+    const actionTypes = new Set(
+      timingEvents.map((event) => {
+        return event.op_type;
+      }),
+    );
+    for (const actionType of [
+      "api_dispatch_pre_create_zero_workflow_trigger_entrypoint_gap",
+      "api_dispatch_pre_create_zero_workflow_trigger_check_active_run",
+      "api_dispatch_pre_create_zero_workflow_trigger_resolve_model_context",
+      "api_dispatch_pre_create_zero_workflow_trigger_build_run_input",
+      "api_dispatch_pre_create_zero_workflow_trigger_create_run",
+    ]) {
+      expect(actionTypes).toContain(actionType);
+    }
+    expect(actionTypes).not.toContain(
+      "api_dispatch_pre_create_zero_entrypoint_gap",
+    );
+    expect(timingEvents).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_workflow_trigger_create_run",
+          trigger_source: "workflow-schedule",
+          zero_run_origin: "workflow_trigger",
+          span_kind: "nested",
+        }),
+      ]),
+    );
+    expect(JSON.stringify(timingEvents)).not.toContain(WORKFLOW_NAME);
 
     const triggerState = await workflowTriggerStateAction({
       action: "get-trigger",

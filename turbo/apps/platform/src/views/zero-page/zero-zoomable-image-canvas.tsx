@@ -53,6 +53,17 @@ type ZoomableArtifactImageCanvasProps = {
   zoomKey?: string;
 };
 
+type ZoomableArtifactImageElementProps = {
+  alt: string;
+  imageClassName?: string;
+  imageRef?: Ref<HTMLImageElement>;
+  imageTestId: string;
+  imageWidth: string;
+  onError?: () => void;
+  onLoad: (event: SyntheticEvent<HTMLImageElement>) => void;
+  src: string;
+};
+
 function controlsFromTransformState({
   displayZoom,
   setDisplayZoom,
@@ -71,8 +82,8 @@ function controlsFromTransformState({
   const zoom = displayZoom;
 
   return {
-    canZoomIn: zoom < IMAGE_LIGHTBOX_MAX_ZOOM - 0.001,
-    canZoomOut: zoom > IMAGE_LIGHTBOX_MIN_ZOOM + 0.001,
+    canZoomIn: zoom < IMAGE_LIGHTBOX_MAX_ZOOM,
+    canZoomOut: zoom > IMAGE_LIGHTBOX_MIN_ZOOM,
     resetZoom: () => {
       resetTransform(0);
       setDisplayZoom(zoomKey, 1);
@@ -114,6 +125,42 @@ function calculateImageFitWidth(image: HTMLImageElement) {
   }
 
   return naturalWidth > 0 ? naturalWidth : null;
+}
+
+function ZoomableArtifactImageElement({
+  alt,
+  imageClassName,
+  imageRef,
+  imageTestId,
+  imageWidth,
+  onError,
+  onLoad,
+  src,
+}: ZoomableArtifactImageElementProps) {
+  return (
+    <img
+      ref={imageRef}
+      src={src}
+      alt={alt}
+      data-testid={imageTestId}
+      loading="eager"
+      decoding="async"
+      fetchPriority="high"
+      onLoad={onLoad}
+      onError={onError}
+      draggable={false}
+      style={{
+        WebkitTouchCallout: "default",
+        pointerEvents: "auto",
+        userSelect: "none",
+        width: imageWidth,
+      }}
+      className={cn(
+        "block h-auto max-w-none shrink-0 select-none object-contain",
+        imageClassName,
+      )}
+    />
+  );
 }
 
 export function ZoomableArtifactImageCanvas({
@@ -217,24 +264,15 @@ export function ZoomableArtifactImageCanvas({
                   )}
                   data-testid={`${canvasTestId}-content`}
                 >
-                  <img
-                    ref={imageRef}
-                    src={src}
+                  <ZoomableArtifactImageElement
                     alt={alt}
-                    data-testid={imageTestId}
-                    onLoad={handleImageLoad}
+                    imageClassName={imageClassName}
+                    imageRef={imageRef}
+                    imageTestId={imageTestId}
+                    imageWidth={imageWidth}
                     onError={onError}
-                    draggable={false}
-                    style={{
-                      WebkitTouchCallout: "default",
-                      pointerEvents: "auto",
-                      userSelect: "none",
-                      width: imageWidth,
-                    }}
-                    className={cn(
-                      "block h-auto max-w-none shrink-0 select-none object-contain",
-                      imageClassName,
-                    )}
+                    onLoad={handleImageLoad}
+                    src={src}
                   />
                 </div>
               </TransformComponent>

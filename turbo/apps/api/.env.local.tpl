@@ -93,8 +93,14 @@ FAL_KEY=op://Development/fal/FAL_KEY
 # Optional: BytePlus ModelArk video generation
 BYTEPLUS_API_KEY=op://Development/byteplus/BYTEPLUS_API_KEY
 
+# Optional: BytePlus voice input STT
+BYTEPLUS_STT_API_KEY=op://Development/byteplus/BYTEPLUS_STT_API_KEY
+
 # Optional: Unsplash presentation image resolution
 UNSPLASH_ACCESS_KEY=op://Development/unsplash/UNSPLASH_ACCESS_KEY
+
+# Optional: Pexels presentation image resolution
+PEXELS_API_KEY=op://Development/pexels/PEXELS_API_KEY
 
 # Optional: Airtable OAuth Connector
 AIRTABLE_OAUTH_CLIENT_ID=op://Development/airtable/AIRTABLE_OAUTH_CLIENT_ID
@@ -135,6 +141,7 @@ MICROSOFT_OAUTH_CLIENT_SECRET=op://Development/microsoft/MICROSOFT_OAUTH_CLIENT_
 # Optional: Microsoft Teams Bot
 MICROSOFT_TEAMS_BOT_APP_ID=op://Development/microsoft/MICROSOFT_TEAMS_BOT_APP_ID
 MICROSOFT_TEAMS_BOT_APP_PASSWORD=op://Development/microsoft/MICROSOFT_TEAMS_BOT_APP_PASSWORD
+MICROSOFT_TEAMS_APP_TENANT_ID=op://Development/microsoft/MICROSOFT_TEAMS_APP_TENANT_ID
 
 # Optional: HubSpot OAuth Connector
 HUBSPOT_OAUTH_CLIENT_ID=op://Development/hubspot/HUBSPOT_OAUTH_CLIENT_ID

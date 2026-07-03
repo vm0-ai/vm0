@@ -1,4 +1,5 @@
 use crate::support::*;
+use base64::Engine;
 use guest_agent::masker::SecretMasker;
 use httpmock::prelude::*;
 use std::time::Duration;
@@ -202,7 +203,7 @@ async fn final_flush_and_shutdown_uploads_log_emitted_immediately_before_it() {
 }
 
 #[tokio::test]
-async fn telemetry_masks_runtime_session_id_registered_after_spawn() {
+async fn telemetry_preserves_runtime_session_id_and_masks_secrets() {
     let api = SharedApiMock::new().await;
     let server = api.server();
     let files = ExplicitTelemetryFiles::new("runtime-session-mask").unwrap();
@@ -212,27 +213,29 @@ async fn telemetry_masks_runtime_session_id_registered_after_spawn() {
     let system_log = paths.system_log_file();
     ensure_parent_dir(system_log);
 
-    let session_id = "telemetry-session-secret";
+    let session_id = "telemetry-session-id";
+    let secret = "actual-telemetry-secret-123";
     let event_mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/events")
-            .body_includes(r#""session_id":"***""#);
+            .body_includes(format!(r#""session_id":"{session_id}""#));
         then.status(200);
     });
     let raw_telemetry_mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/telemetry")
-            .body_includes(session_id);
+            .body_includes(secret);
         then.status(500);
     });
     let masked_telemetry_mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/telemetry")
-            .body_includes("system log ***");
+            .body_includes(format!("system log {session_id} ***"));
         then.status(200);
     });
 
-    let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
+    let secret_values = base64::engine::general_purpose::STANDARD.encode(secret);
+    let masker = std::sync::Arc::new(SecretMasker::from_raw(&secret_values));
     let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
         "test-run-001".to_string(),
         paths,
@@ -244,11 +247,12 @@ async fn telemetry_masks_runtime_session_id_registered_after_spawn() {
         "subtype": "init",
         "session_id": session_id
     });
-    guest_agent::events::send_event(&http_client!(), event, 1, &masker)
+    let config = shared_guest_config().expect("shared integration guest config should be valid");
+    guest_agent::events::send_event_for_config(&http_client!(), event, 1, &masker, &config, paths)
         .await
         .expect("session event should be sent");
 
-    std::fs::write(system_log, format!("system log {session_id}\n"))
+    std::fs::write(system_log, format!("system log {session_id} {secret}\n"))
         .expect("system log should be written");
     telemetry
         .flush(guest_agent::telemetry::UploadMode::Final)

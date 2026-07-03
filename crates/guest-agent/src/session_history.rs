@@ -2,8 +2,8 @@
 //! codex (`CODEX_SEARCH:{dir_len}:{dir}:{id}` marker → bounded layout scan +
 //! optional zstd decode).
 //!
-//! The event metadata capture path writes one of two payloads to
-//! `paths::session_history_path_file()`:
+//! The event metadata capture path writes one of two payloads to the
+//! `GuestPaths::session_history_path_file()` runtime file:
 //!
 //! - Claude: a literal filesystem path to the `.jsonl` history file.
 //! - Codex:  a length-prefixed
@@ -12,9 +12,8 @@
 //!   resolution until checkpoint time when the file is on disk.
 //!
 //! `read_session_history` is the file-backed entry point. Checkpoint resolves
-//! missing marker payloads first, then calls `read_session_history_from_payload`.
-//! Both paths return history bytes, decompressing legacy `.zst` files when
-//! needed.
+//! missing marker payloads first, then calls the bounded payload reader. Both
+//! paths return history bytes, decompressing legacy `.zst` files when needed.
 //!
 //! See parent epic #11386, sub-issue #11419 for the design rationale.
 //!
@@ -42,6 +41,7 @@ use std::path::{Path, PathBuf};
 use std::fs::File;
 
 const CODEX_MARKER_PREFIX: &str = "CODEX_SEARCH:";
+pub(crate) const SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES: usize = 64 * 1024;
 // Checkpoint must resolve Codex history from user-controlled guest-home state.
 // Keep the budget comfortably above normal date-partitioned histories while
 // preventing layout-shaped trees from turning session lookup into an
@@ -69,10 +69,26 @@ pub(crate) fn is_codex_marker(payload: &str) -> bool {
 /// codex marker. Returns the file contents, decompressed if the resolved path
 /// ends in `.zst`.
 pub fn read_session_history(path_file: &str) -> Result<Vec<u8>, AgentError> {
-    let raw = std::fs::read_to_string(path_file).map_err(|e| {
+    let raw = read_history_marker_payload_file(path_file).map_err(|e| {
         AgentError::Checkpoint(format!("Failed to read history-path file {path_file}: {e}"))
     })?;
     read_session_history_from_payload(raw.trim())
+}
+
+pub(crate) fn read_history_marker_payload_file(path_file: &str) -> io::Result<String> {
+    let file = std::fs::File::open(path_file)?;
+    let mut bytes = Vec::new();
+    file.take((SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "session history marker exceeds maximum size of {SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES} bytes"
+            ),
+        ));
+    }
+    String::from_utf8(bytes).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
 /// Read session history bytes from an already-resolved marker payload.
@@ -81,6 +97,23 @@ pub fn read_session_history(path_file: &str) -> Result<Vec<u8>, AgentError> {
 /// codex marker.
 pub(crate) fn read_session_history_from_payload(payload: &str) -> Result<Vec<u8>, AgentError> {
     read_session_history_from_payload_impl(payload, None)
+}
+
+/// Read decoded session history bytes without returning more than `max_bytes`.
+///
+/// The implementation reads one extra decoded byte to detect over-limit
+/// histories without consuming an unbounded stream.
+pub(crate) fn read_session_history_from_payload_bounded(
+    payload: &str,
+    max_bytes: u64,
+) -> Result<Vec<u8>, AgentError> {
+    read_session_history_from_payload_impl(payload, Some(max_bytes))
+}
+
+fn session_history_exceeds_max_error(max_bytes: u64) -> AgentError {
+    AgentError::Checkpoint(format!(
+        "Session history exceeds maximum size of {max_bytes} bytes"
+    ))
 }
 
 pub(crate) struct SessionHistoryDigest {
@@ -664,18 +697,18 @@ fn read_zstd_history_reader(
     max_bytes: Option<u64>,
 ) -> Result<Vec<u8>, AgentError> {
     let mut bytes = Vec::new();
-    match max_bytes {
-        Some(max_bytes) => {
-            let limit = max_bytes.checked_add(1).ok_or_else(|| {
-                AgentError::Checkpoint("Session history read limit overflowed".to_string())
-            })?;
-            reader.by_ref().take(limit).read_to_end(&mut bytes)
-        }
+    match decoded_read_limit(max_bytes) {
+        Some(limit) => reader.by_ref().take(limit).read_to_end(&mut bytes),
         None => reader.read_to_end(&mut bytes),
     }
     .map_err(|e| {
         AgentError::Checkpoint(format!("Failed to decompress zstd session history: {e}"))
     })?;
+    if let Some(max_bytes) = max_bytes
+        && bytes.len() as u64 > max_bytes
+    {
+        return Err(session_history_exceeds_max_error(max_bytes));
+    }
     Ok(bytes)
 }
 
@@ -685,11 +718,8 @@ fn read_history_reader(
     max_bytes: Option<u64>,
 ) -> Result<Vec<u8>, AgentError> {
     let mut bytes = Vec::new();
-    match max_bytes {
-        Some(max_bytes) => {
-            let limit = max_bytes.checked_add(1).ok_or_else(|| {
-                AgentError::Checkpoint("Session history read limit overflowed".to_string())
-            })?;
+    match decoded_read_limit(max_bytes) {
+        Some(limit) => {
             reader
                 .by_ref()
                 .take(limit)
@@ -702,7 +732,18 @@ fn read_history_reader(
                 .map_err(|e| read_history_error(path, e))?;
         }
     }
+    if let Some(max_bytes) = max_bytes
+        && bytes.len() as u64 > max_bytes
+    {
+        return Err(session_history_exceeds_max_error(max_bytes));
+    }
     Ok(bytes)
+}
+
+fn decoded_read_limit(max_bytes: Option<u64>) -> Option<u64> {
+    // `u64::MAX` cannot be exceeded by an in-memory Vec on supported targets,
+    // so there is no extra probe byte to read for that cap.
+    max_bytes.and_then(|max_bytes| max_bytes.checked_add(1))
 }
 
 fn digest_history_reader(
@@ -739,14 +780,185 @@ fn digest_history_reader(
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_history_file(dir: &tempfile::TempDir, name: &str, bytes: &[u8]) -> PathBuf {
+        let path = dir.path().join(name);
+        std::fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    fn assert_over_limit(error: AgentError, max_bytes: u64) {
+        let message = error.to_string();
+        assert!(
+            message.contains(&format!(
+                "Session history exceeds maximum size of {max_bytes} bytes"
+            )),
+            "expected over-limit error for cap {max_bytes}, got: {message}"
+        );
+    }
+
+    #[test]
+    fn bounded_read_allows_literal_history_at_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_history_file(&dir, "history.jsonl", b"abcd");
+
+        let bytes = read_session_history_from_payload_bounded(path.to_str().unwrap(), 4).unwrap();
+
+        assert_eq!(bytes, b"abcd");
+    }
+
+    #[test]
+    fn bounded_read_allows_empty_literal_history_with_zero_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_history_file(&dir, "history.jsonl", b"");
+
+        let bytes = read_session_history_from_payload_bounded(path.to_str().unwrap(), 0).unwrap();
+
+        assert_eq!(bytes, b"");
+    }
+
+    #[test]
+    fn bounded_read_rejects_nonempty_literal_history_with_zero_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_history_file(&dir, "history.jsonl", b"a");
+
+        let err = read_session_history_from_payload_bounded(path.to_str().unwrap(), 0)
+            .expect_err("bounded literal read must reject nonempty history when cap is zero");
+
+        assert_over_limit(err, 0);
+    }
+
+    #[test]
+    fn bounded_read_rejects_nonempty_zstd_history_with_zero_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let compressed = zstd::encode_all(b"a".as_slice(), 0).unwrap();
+        let path = write_history_file(&dir, "history.jsonl.zst", &compressed);
+
+        let err = read_session_history_from_payload_bounded(path.to_str().unwrap(), 0)
+            .expect_err("bounded zstd read must reject nonempty history when cap is zero");
+
+        assert_over_limit(err, 0);
+    }
+
+    #[test]
+    fn bounded_read_rejects_literal_history_over_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_history_file(&dir, "history.jsonl", b"abcde");
+
+        let err = read_session_history_from_payload_bounded(path.to_str().unwrap(), 4)
+            .expect_err("bounded literal read must reject over-limit history");
+
+        assert_over_limit(err, 4);
+    }
+
+    #[test]
+    fn read_session_history_rejects_oversized_marker_payload_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let payload = vec![b'a'; SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES + 1];
+        let path = write_history_file(&dir, "session-history-marker", &payload);
+
+        let err = read_session_history(path.to_str().unwrap())
+            .expect_err("session history marker file read must reject oversized payloads");
+
+        let message = err.to_string();
+        assert!(
+            message.contains("session history marker exceeds maximum size"),
+            "expected oversized marker error, got: {message}"
+        );
+    }
+
+    #[test]
+    fn bounded_read_rejects_codex_marker_history_over_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions_dir = dir.path().join("sessions");
+        let day_dir = sessions_dir.join("2026").join("07").join("02");
+        std::fs::create_dir_all(&day_dir).unwrap();
+        let thread_id = "019e9154-c304-70f0-adde-36efb1be1701";
+        let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl");
+        std::fs::write(path, b"abcde").unwrap();
+        let payload = codex_marker_payload(&sessions_dir, thread_id);
+
+        let err = read_session_history_from_payload_bounded(&payload, 4)
+            .expect_err("bounded codex marker read must reject over-limit history");
+
+        assert_over_limit(err, 4);
+    }
+
+    #[test]
+    fn bounded_read_allows_literal_history_with_u64_max_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_history_file(&dir, "history.jsonl", b"abcde");
+
+        let bytes =
+            read_session_history_from_payload_bounded(path.to_str().unwrap(), u64::MAX).unwrap();
+
+        assert_eq!(bytes, b"abcde");
+    }
+
+    #[test]
+    fn bounded_read_allows_zstd_history_at_decoded_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let max_bytes = 1024;
+        let history = vec![b'a'; max_bytes as usize];
+        let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
+        let path = write_history_file(&dir, "history.jsonl.zst", &compressed);
+
+        let bytes = read_session_history_from_payload_bounded(path.to_str().unwrap(), max_bytes)
+            .expect("bounded zstd read must allow history exactly at the decoded cap");
+
+        assert_eq!(bytes, history);
+    }
+
+    #[test]
+    fn bounded_read_rejects_truncated_zstd_history_at_decoded_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let max_bytes = 1024;
+        let history = vec![b'a'; max_bytes as usize];
+        let mut compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
+        compressed.pop().expect("encoded fixture must not be empty");
+        let path = write_history_file(&dir, "history.jsonl.zst", &compressed);
+
+        let err = read_session_history_from_payload_bounded(path.to_str().unwrap(), max_bytes)
+            .expect_err("bounded zstd read must reject truncated history at the decoded cap");
+
+        let message = err.to_string();
+        assert!(
+            message.contains("Failed to decompress zstd session history"),
+            "expected decompression error for truncated zstd history, got: {message}"
+        );
+    }
+
+    #[test]
+    fn bounded_read_rejects_zstd_history_over_decoded_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let max_bytes = 1024;
+        let history = vec![b'a'; max_bytes as usize + 1];
+        let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
+        assert!(
+            compressed.len() <= max_bytes as usize,
+            "test fixture should be smaller than the decoded cap"
+        );
+        let path = write_history_file(&dir, "history.jsonl.zst", &compressed);
+
+        let err = read_session_history_from_payload_bounded(path.to_str().unwrap(), max_bytes)
+            .expect_err("bounded zstd read must reject over-limit decoded history");
+
+        assert_over_limit(err, max_bytes);
+    }
+}
+
 // Note: integration coverage for the public `read_session_history` entry
 // (both Claude literal-path and codex marker -> bounded layout scan + zstd
 // decode) lives in `crates/guest-agent/tests/session_history_read.rs`.
 // The internal helpers
 // (`read_codex_session_history`, `codex_session_filename_matches`,
 // `read_history_bytes`, `decode_marker`) are exercised transitively by
-// those integration tests, in line with the project's "integration
-// tests only" policy (`docs/testing.md`, `CLAUDE.md`).
+// those integration tests. Inline coverage above is limited to the
+// `read_session_history_from_payload_bounded` cap contract because the public
+// entry point cannot pass a small test cap.
 //
 // `decode_marker` is the one piece of non-trivial parsing logic; if it
 // regresses, the integration tests will catch it because the codex flow

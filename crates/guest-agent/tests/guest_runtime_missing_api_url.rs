@@ -1,7 +1,7 @@
 //! Production runtime bootstrap should fail fast when API auth is incomplete.
 //!
-//! This test lives in its own binary because `guest_agent::env` caches
-//! environment values in process-wide once cells.
+//! This test lives in its own binary to isolate process env captured by
+//! `GuestRuntime::from_process_env`.
 
 mod common;
 

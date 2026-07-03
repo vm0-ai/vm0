@@ -40,7 +40,13 @@ import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
 export type WorkflowDetailTab = "automations" | "instructions" | "info";
-export type WorkflowIndexFilterTab = "automations" | "all";
+export type WorkflowFilter =
+  | "all"
+  | "automated"
+  | "without"
+  | "private"
+  | "public";
+export type WorkflowSortMode = "next-run" | "alphabetical" | "created";
 export type WorkflowCopyDialogAgent = {
   readonly id: string;
   readonly displayName: string | null;
@@ -204,31 +210,69 @@ export const workflowCopyDialogState$ = computed((get) => {
   return get(internalWorkflowCopyDialogState$);
 });
 
-const WORKFLOW_INDEX_FILTER_TAB_PARAM = "tab";
-const DEFAULT_WORKFLOW_INDEX_FILTER_TAB: WorkflowIndexFilterTab = "automations";
+const FILTER_PARAM = "filter";
+const SORT_MODE_PARAM = "sort";
 
-function isWorkflowIndexFilterTab(tab: string): tab is WorkflowIndexFilterTab {
-  return tab === "automations" || tab === "all";
+function readSearchParam<T extends string>(
+  params: URLSearchParams,
+  key: string,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  const value = params.get(key) ?? "";
+  return (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : fallback;
 }
 
-export const workflowIndexFilterTab$ = computed(
-  (get): WorkflowIndexFilterTab => {
-    const tab = get(searchParams$).get(WORKFLOW_INDEX_FILTER_TAB_PARAM) ?? "";
-    return isWorkflowIndexFilterTab(tab)
-      ? tab
-      : DEFAULT_WORKFLOW_INDEX_FILTER_TAB;
+export const workflowFilter$ = computed((get): WorkflowFilter => {
+  return readSearchParam(
+    get(searchParams$),
+    FILTER_PARAM,
+    ["all", "automated", "without", "private", "public"],
+    "all",
+  );
+});
+
+export const workflowSortMode$ = computed((get): WorkflowSortMode => {
+  return readSearchParam(
+    get(searchParams$),
+    SORT_MODE_PARAM,
+    ["next-run", "alphabetical", "created"],
+    "next-run",
+  );
+});
+
+function nextSearchParams(
+  current: URLSearchParams,
+  key: string,
+  value: string,
+  fallback: string,
+): URLSearchParams {
+  const params = new URLSearchParams(current);
+  if (value === fallback) {
+    params.delete(key);
+  } else {
+    params.set(key, value);
+  }
+  return params;
+}
+
+export const setWorkflowFilter$ = command(
+  ({ get, set }, value: WorkflowFilter) => {
+    set(
+      replaceSearchParams$,
+      nextSearchParams(get(searchParams$), FILTER_PARAM, value, "all"),
+    );
   },
 );
 
-export const setWorkflowIndexFilterTab$ = command(
-  ({ get, set }, tab: WorkflowIndexFilterTab) => {
-    const params = new URLSearchParams(get(searchParams$));
-    if (tab === DEFAULT_WORKFLOW_INDEX_FILTER_TAB) {
-      params.delete(WORKFLOW_INDEX_FILTER_TAB_PARAM);
-    } else {
-      params.set(WORKFLOW_INDEX_FILTER_TAB_PARAM, tab);
-    }
-    set(replaceSearchParams$, params);
+export const setWorkflowSortMode$ = command(
+  ({ get, set }, value: WorkflowSortMode) => {
+    set(
+      replaceSearchParams$,
+      nextSearchParams(get(searchParams$), SORT_MODE_PARAM, value, "next-run"),
+    );
   },
 );
 
@@ -661,12 +705,7 @@ export const openWorkflowChat$ = command(
   },
 );
 
-type WorkflowVisibilityAction =
-  | "request-publish"
-  | "cancel-publish-request"
-  | "approve-publish"
-  | "reject-publish"
-  | "demote";
+type WorkflowVisibilityAction = "publish" | "demote";
 
 export const changeWorkflowVisibility$ = command(
   async (
@@ -678,15 +717,9 @@ export const changeWorkflowVisibility$ = command(
     const params = { workflowId: input.workflowId };
     const options = { params, fetchOptions: { signal } };
     const request =
-      input.action === "request-publish"
-        ? client.requestPublish(options)
-        : input.action === "cancel-publish-request"
-          ? client.cancelPublishRequest(options)
-          : input.action === "approve-publish"
-            ? client.approvePublish(options)
-            : input.action === "reject-publish"
-              ? client.rejectPublish(options)
-              : client.demote(options);
+      input.action === "publish"
+        ? client.publish(options)
+        : client.demote(options);
     await accept(request, [200]);
     signal.throwIfAborted();
     set(reloadWorkflows$);

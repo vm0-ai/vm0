@@ -53,6 +53,12 @@ describe("buildVm0ApiKeys", () => {
         expect.objectContaining({
           apiKey: "provider-anthropic-key",
           label: "dev-seed",
+          model: "claude-fable-5",
+          vendor: "anthropic",
+        }),
+        expect.objectContaining({
+          apiKey: "provider-anthropic-key",
+          label: "dev-seed",
           model: "claude-sonnet-4-6",
           vendor: "anthropic",
         }),

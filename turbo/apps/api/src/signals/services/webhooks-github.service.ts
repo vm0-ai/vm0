@@ -55,13 +55,15 @@ const gitHubLabelSchema = z.object({
   name: z.string(),
 });
 
+const gitHubPullRequestMarkerSchema = z.object({}).passthrough();
+
 const gitHubIssueSchema = z.object({
   number: z.number(),
   title: z.string(),
   body: z.string().nullable(),
   labels: z.array(gitHubLabelSchema),
   user: gitHubUserSchema,
-  pull_request: z.unknown().optional(),
+  pull_request: gitHubPullRequestMarkerSchema.optional(),
 });
 
 const gitHubCommentSchema = z.object({

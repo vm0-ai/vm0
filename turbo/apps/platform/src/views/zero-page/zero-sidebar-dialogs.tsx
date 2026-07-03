@@ -1,6 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import type { ReactNode } from "react";
+import type { ReactNode, SyntheticEvent } from "react";
 import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
@@ -28,8 +28,11 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  Dialog,
-  DialogContent,
+  CommandDialog,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -171,6 +174,110 @@ export function AgentDialogAgentButton({
   );
 }
 
+function AgentCommandSearch({
+  query,
+  setQuery,
+}: {
+  readonly query: string;
+  readonly setQuery: (query: string) => void;
+}) {
+  return (
+    <div className="px-5 pb-3">
+      <div className="relative w-full">
+        <CommandInput
+          value={query}
+          onValueChange={setQuery}
+          placeholder="Search agents..."
+          className={query ? "pr-7" : ""}
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={() => {
+              return setQuery("");
+            }}
+            className="absolute right-1.5 top-1/2 flex h-7 w-7 shrink-0 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="Clear search"
+          >
+            <IconX size={14} stroke={2} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AgentCommandSection({
+  label,
+  children,
+  className = "pb-2",
+}: {
+  readonly label: string;
+  readonly children: ReactNode;
+  readonly className?: string;
+}) {
+  return (
+    <CommandGroup
+      heading={label}
+      className={`px-5 ${className} [&_[cmdk-group-items]]:mt-1 [&_[cmdk-group-items]]:flex [&_[cmdk-group-items]]:flex-col`}
+    >
+      {children}
+    </CommandGroup>
+  );
+}
+
+function AgentCommandAgentContent({
+  agent,
+  avatar,
+  subtitle,
+}: {
+  readonly agent: AgentDialogItem;
+  readonly avatar?: ReactNode;
+  readonly subtitle?: ReactNode;
+}) {
+  const label = agentDialogLabel(agent);
+  return (
+    <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+      {avatar ?? (
+        <AgentAvatarImg
+          name={agent.id}
+          alt={label}
+          className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
+        />
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm text-foreground">{label}</span>
+        {subtitle ? (
+          <span className="block truncate text-xs text-muted-foreground">
+            {subtitle}
+          </span>
+        ) : null}
+      </span>
+    </span>
+  );
+}
+
+function stopCommandItemEvent(e: SyntheticEvent) {
+  e.stopPropagation();
+}
+
+function AgentCommandSideActions({
+  children,
+}: {
+  readonly children: ReactNode;
+}) {
+  return (
+    <div
+      onPointerDown={stopCommandItemEvent}
+      onMouseDown={stopCommandItemEvent}
+      onClick={stopCommandItemEvent}
+      className="ml-auto shrink-0"
+    >
+      {children}
+    </div>
+  );
+}
+
 function SortablePinnedAgent({
   agent,
   onUnpin,
@@ -194,47 +301,42 @@ function SortablePinnedAgent({
   };
 
   return (
-    <div
+    <CommandItem
       ref={setNodeRef}
+      value={agent.id}
+      onSelect={onChat}
       style={style}
-      className="group flex items-center gap-2 rounded-lg px-1 py-2 transition-colors hover:bg-accent"
+      className="group w-full gap-2 px-1 py-2"
     >
-      {onChat ? (
-        <AgentDialogAgentButton agent={agent} onSelect={onChat} />
-      ) : (
-        <>
-          <AgentAvatarImg
-            name={agent.id}
-            alt={agent.displayName ?? agent.id}
-            className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
-          />
-          <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-            {agent.displayName ?? agent.id}
-          </span>
-        </>
-      )}
+      <AgentCommandAgentContent agent={agent} />
       <div className="flex shrink-0 items-center gap-0.5">
         <button
           type="button"
           className="flex h-8 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-colors duration-150 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-muted-foreground/18"
           aria-label={`Reorder ${agent.displayName ?? agent.id}`}
           disabled={disabled}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
           {...attributes}
           {...listeners}
         >
           <IconArrowsMove size={16} stroke={2} />
         </button>
-        <AgentRowSideActions
-          hasUnread={unreadIndicatorsEnabled && hasUnread}
-          action={{
-            label: "Unpin",
-            disabled,
-            icon: <IconPinnedOff size={16} stroke={2} />,
-            onSelect: onUnpin,
-          }}
-        />
+        <AgentCommandSideActions>
+          <AgentRowSideActions
+            hasUnread={unreadIndicatorsEnabled && hasUnread}
+            action={{
+              label: "Unpin",
+              disabled,
+              icon: <IconPinnedOff size={16} stroke={2} />,
+              onSelect: onUnpin,
+            }}
+          />
+        </AgentCommandSideActions>
       </div>
-    </div>
+    </CommandItem>
   );
 }
 
@@ -326,42 +428,50 @@ export function AgentListDialog({
 
   const handleChat = (agentId: string | null) => {
     onOpenChange(false);
-    setQuery("");
     onSelectChatAgent?.(agentId);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="zero-app sm:max-w-xl w-[calc(100vw-2rem)] p-0 gap-0">
-        <DialogHeader className="px-5 pt-5 pb-3">
-          <DialogTitle className="text-base font-semibold">Talk to</DialogTitle>
-          <DialogDescription className="text-sm text-muted-foreground mt-1">
-            Pick an agent to start a conversation.
-          </DialogDescription>
-        </DialogHeader>
+    <CommandDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      className="zero-app sm:max-w-xl w-[calc(100vw-2rem)] gap-0"
+      commandClassName="gap-0"
+      commandProps={{ shouldFilter: false, loop: true }}
+    >
+      <DialogHeader className="px-5 pt-5 pb-3">
+        <DialogTitle className="text-base font-semibold">Talk to</DialogTitle>
+        <DialogDescription className="text-sm text-muted-foreground mt-1">
+          Pick an agent to start a conversation.
+        </DialogDescription>
+      </DialogHeader>
 
-        <AgentDialogSearch query={query} setQuery={setQuery} />
+      <AgentCommandSearch query={query} setQuery={setQuery} />
 
-        <div className="max-h-[min(520px,65vh)] overflow-y-auto">
-          {/* Lead agent */}
-          {showLead && (
-            <AgentDialogSection label="Lead">
-              <div className="flex items-center gap-2 rounded-lg px-1 py-2 transition-colors hover:bg-accent">
-                <AgentDialogAgentButton
-                  agent={{ id: "lead", displayName }}
-                  onSelect={() => {
-                    return handleChat(null);
-                  }}
-                  avatar={
-                    <AvatarFromUrl
-                      avatarUrl={zeroAvatarUrl}
-                      alt={displayName}
-                      className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
-                    />
-                  }
-                  subtitle="Your lead assistant, always here for you"
-                />
-                {unreadIndicatorsEnabled && (
+      <CommandList>
+        {/* Lead agent */}
+        {showLead && (
+          <AgentCommandSection label="Lead">
+            <CommandItem
+              value="lead"
+              onSelect={() => {
+                return handleChat(null);
+              }}
+              className="group w-full gap-2 px-1 py-2"
+            >
+              <AgentCommandAgentContent
+                agent={{ id: "lead", displayName }}
+                avatar={
+                  <AvatarFromUrl
+                    avatarUrl={zeroAvatarUrl}
+                    alt={displayName}
+                    className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
+                  />
+                }
+                subtitle="Your lead assistant, always here for you"
+              />
+              {unreadIndicatorsEnabled && (
+                <AgentCommandSideActions>
                   <AgentRowSideActions
                     hasUnread={
                       defaultAgentId
@@ -369,64 +479,65 @@ export function AgentListDialog({
                         : false
                     }
                   />
-                )}
-              </div>
-            </AgentDialogSection>
-          )}
+                </AgentCommandSideActions>
+              )}
+            </CommandItem>
+          </AgentCommandSection>
+        )}
 
-          {/* Pinned agents */}
-          {filteredPinned.length > 0 && (
-            <AgentDialogSection label="Pinned">
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
+        {/* Pinned agents */}
+        {filteredPinned.length > 0 && (
+          <AgentCommandSection label="Pinned">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={filteredPinned.map((a) => {
+                  return a.id;
+                })}
+                strategy={verticalListSortingStrategy}
               >
-                <SortableContext
-                  items={filteredPinned.map((a) => {
-                    return a.id;
+                <>
+                  {filteredPinned.map((agent) => {
+                    return (
+                      <SortablePinnedAgent
+                        key={agent.id}
+                        agent={agent}
+                        onUnpin={() => {
+                          return togglePin(agent.id);
+                        }}
+                        onChat={() => {
+                          return handleChat(agent.id);
+                        }}
+                        disabled={saving}
+                        unreadIndicatorsEnabled={unreadIndicatorsEnabled}
+                        hasUnread={unreadAgentIds?.has(agent.id) ?? false}
+                      />
+                    );
                   })}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <>
-                    {filteredPinned.map((agent) => {
-                      return (
-                        <SortablePinnedAgent
-                          key={agent.id}
-                          agent={agent}
-                          onUnpin={() => {
-                            return togglePin(agent.id);
-                          }}
-                          onChat={() => {
-                            return handleChat(agent.id);
-                          }}
-                          disabled={saving}
-                          unreadIndicatorsEnabled={unreadIndicatorsEnabled}
-                          hasUnread={unreadAgentIds?.has(agent.id) ?? false}
-                        />
-                      );
-                    })}
-                  </>
-                </SortableContext>
-              </DndContext>
-            </AgentDialogSection>
-          )}
+                </>
+              </SortableContext>
+            </DndContext>
+          </AgentCommandSection>
+        )}
 
-          {/* Unpinned agents */}
-          {filteredUnpinned.length > 0 && (
-            <AgentDialogSection label="Others" className="pb-3">
-              {filteredUnpinned.map((agent) => {
-                return (
-                  <div
-                    key={agent.id}
-                    className="group flex items-center gap-2 rounded-lg px-1 py-2 transition-colors hover:bg-accent"
-                  >
-                    <AgentDialogAgentButton
-                      agent={agent}
-                      onSelect={() => {
-                        return handleChat(agent.id);
-                      }}
-                    />
+        {/* Unpinned agents */}
+        {filteredUnpinned.length > 0 && (
+          <AgentCommandSection label="Others" className="pb-3">
+            {filteredUnpinned.map((agent) => {
+              return (
+                <CommandItem
+                  key={agent.id}
+                  value={agent.id}
+                  onSelect={() => {
+                    return handleChat(agent.id);
+                  }}
+                  className="group w-full gap-2 px-1 py-2"
+                >
+                  <AgentCommandAgentContent agent={agent} />
+                  <AgentCommandSideActions>
                     <AgentRowSideActions
                       hasUnread={
                         unreadIndicatorsEnabled
@@ -442,32 +553,32 @@ export function AgentListDialog({
                         },
                       }}
                     />
-                  </div>
-                );
-              })}
-            </AgentDialogSection>
-          )}
+                  </AgentCommandSideActions>
+                </CommandItem>
+              );
+            })}
+          </AgentCommandSection>
+        )}
 
-          {subagents.length === 0 && (
+        {subagents.length === 0 && (
+          <div className="px-5 pb-5">
+            <p className="text-xs text-muted-foreground px-1 py-2">
+              No sub-agents available yet.
+            </p>
+          </div>
+        )}
+
+        {trimmedQuery &&
+          !showLead &&
+          filteredPinned.length === 0 &&
+          filteredUnpinned.length === 0 && (
             <div className="px-5 pb-5">
               <p className="text-xs text-muted-foreground px-1 py-2">
-                No sub-agents available yet.
+                No agents found
               </p>
             </div>
           )}
-
-          {trimmedQuery &&
-            !showLead &&
-            filteredPinned.length === 0 &&
-            filteredUnpinned.length === 0 && (
-              <div className="px-5 pb-5">
-                <p className="text-xs text-muted-foreground px-1 py-2">
-                  No agents found
-                </p>
-              </div>
-            )}
-        </div>
-      </DialogContent>
-    </Dialog>
+      </CommandList>
+    </CommandDialog>
   );
 }

@@ -200,16 +200,15 @@ impl CodexAppServerClient {
         std::fs::create_dir_all(&config.codex_home)?;
 
         let mut cmd = tokio::process::Command::new(&config.binary);
-        if let Some(child_env_config) = &config.child_env {
-            child_env::apply_to_tokio_command_with_values(
-                &mut cmd,
-                &child_env_config.home_dir,
-                &child_env_config.user_env,
-                &child_env_config.api_url,
-            );
-        } else {
-            child_env::apply_to_tokio_command(&mut cmd);
-        }
+        let child_env_config = config.child_env.as_ref().ok_or_else(|| {
+            CodexAppServerError::Protocol("app-server child env config is required".to_string())
+        })?;
+        child_env::apply_to_tokio_command_with_values(
+            &mut cmd,
+            &child_env_config.home_dir,
+            &child_env_config.user_env,
+            &child_env_config.api_url,
+        );
         cmd.args(["app-server", "--listen", "stdio://"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

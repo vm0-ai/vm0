@@ -85,7 +85,6 @@ const RUNNER_PRE_SPAWN_PHASE_ACTIONS: &[&str] = &[
     "runner_claim_device_rate_limits",
     "runner_claim_idle_reuse_lookup",
     "runner_claim_held_session_state_refresh",
-    "runner_claim_provider_held_session_update",
     "runner_claim_workspace_promotion_validation",
     "runner_claim_idle_unpark",
     "runner_claim_active_status_publish",
@@ -107,11 +106,10 @@ fn pre_spawn_timing_with_phases() -> RunnerPreSpawnTiming {
         (RunnerPreSpawnPhase::DeviceRateLimits, 3),
         (RunnerPreSpawnPhase::IdleReuseLookup, 4),
         (RunnerPreSpawnPhase::HeldSessionStateRefresh, 5),
-        (RunnerPreSpawnPhase::ProviderHeldSessionUpdate, 6),
-        (RunnerPreSpawnPhase::WorkspacePromotionValidation, 7),
-        (RunnerPreSpawnPhase::IdleUnpark, 8),
-        (RunnerPreSpawnPhase::ActiveStatusPublish, 9),
-        (RunnerPreSpawnPhase::SpawnJobSetup, 10),
+        (RunnerPreSpawnPhase::WorkspacePromotionValidation, 6),
+        (RunnerPreSpawnPhase::IdleUnpark, 7),
+        (RunnerPreSpawnPhase::ActiveStatusPublish, 8),
+        (RunnerPreSpawnPhase::SpawnJobSetup, 9),
     ] {
         timing.record_phase(phase, Duration::from_millis(duration_ms));
     }
@@ -251,6 +249,9 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         "runner_executor_start_to_spawn",
         "runner_claim_to_spawn",
         "runner_fresh_sandbox_prepare",
+        "runner_fresh_sandbox_factory_create",
+        "runner_fresh_sandbox_proxy_register",
+        "runner_fresh_sandbox_start",
         "runner_guest_timezone_sync",
         "runner_user_env_write",
         "runner_agent_env_build",
@@ -264,6 +265,7 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     }
     assert_pre_spawn_phase_actions_succeeded(&telemetry);
     assert_lacks_action(&telemetry, "runner_reused_sandbox_prepare");
+    assert_lacks_action(&telemetry, "runner_fresh_workspace_image_prepare");
     assert_lacks_action(&telemetry, "runner_guest_state_restore");
 }
 
@@ -323,6 +325,9 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     }
     assert_pre_spawn_phase_actions_succeeded(&telemetry);
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_prepare");
+    assert_lacks_action(&telemetry, "runner_fresh_sandbox_factory_create");
+    assert_lacks_action(&telemetry, "runner_fresh_sandbox_proxy_register");
+    assert_lacks_action(&telemetry, "runner_fresh_sandbox_start");
     assert_lacks_action(&telemetry, "runner_guest_timezone_sync");
 }
 

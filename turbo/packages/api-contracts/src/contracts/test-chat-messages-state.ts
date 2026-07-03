@@ -36,6 +36,26 @@ const vm0ApiKeyVendorSchema = z.enum([
   "openrouter",
 ]);
 
+const testChatMessageRecommendedFollowupSchema = z.object({
+  prompt: z.string(),
+  kind: z.enum(["talk", "generate"]),
+  generationType: z
+    .enum(["image", "video", "presentation", "website"])
+    .optional(),
+});
+
+const testChatMessagesStateSeedMessageSchema = z.object({
+  id: z.string().uuid(),
+  role: z.enum(["user", "assistant"]),
+  content: z.string().nullable(),
+  created_at: z.string().datetime(),
+  sequence_number: z.number().int().nullable().optional(),
+  run_lifecycle_event: z.enum(["completed", "failed", "cancelled"]).optional(),
+  recommended_followups: z
+    .array(testChatMessageRecommendedFollowupSchema)
+    .optional(),
+});
+
 export const testChatMessagesStateActionBodySchema = z.discriminatedUnion(
   "action",
   [
@@ -73,6 +93,11 @@ export const testChatMessagesStateActionBodySchema = z.discriminatedUnion(
       action: z.literal("attach-pre-dispatch-cancelled-run-to-thread"),
       run_id: z.uuid(),
       thread_id: z.uuid(),
+    }),
+    z.object({
+      action: z.literal("seed-thread-messages"),
+      thread_id: z.string().uuid(),
+      messages: z.array(testChatMessagesStateSeedMessageSchema).min(1),
     }),
   ],
 );

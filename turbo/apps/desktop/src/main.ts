@@ -16,8 +16,10 @@ import {
 } from "electron";
 import {
   ComputerUseSnapshotStore,
+  SUPPORTED_COMPUTER_USE_CAPABILITIES,
   executeComputerUseCommand,
 } from "./computer-use-accessibility";
+import { COMPUTER_USE_PLUGIN_CALL_KIND } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
 import {
   MAC_AUTOMATION_SETTINGS_URL,
   createAutomationPermissionDeniedPrompt,
@@ -32,17 +34,13 @@ import {
   resolveComputerUseApiBaseUrl,
 } from "./computer-use-host";
 import {
-  OFFLINE_COMPUTER_USE_HOST_STATE,
   hasRequiredComputerUsePermissions,
   type ComputerUseAutomationPermissionTarget,
-  type ComputerUseHostRuntimeState,
   type DesktopComputerUseState,
 } from "./computer-use-types";
-import {
-  isComputerUseSetupRequired,
-  resolveComputerUseStartupGate,
-  type ComputerUseStartupGate,
-} from "./computer-use-startup-gate";
+import { isComputerUseSetupRequired } from "./computer-use-startup-gate";
+import { ComputerUseRuntimeController } from "./computer-use-runtime-controller";
+import { DeveloperToolsController } from "./desktop-developer-tools-controller";
 import {
   getComputerUsePermissionState,
   probeComputerUseAutomationPermission,
@@ -61,6 +59,7 @@ import {
 import { DesktopComputerUseAutoStartSupervisor } from "./desktop-computer-use-autostart";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
 import { readOrCreateComputerUseInstallationId } from "./desktop-computer-use-installation";
+import { DesktopFilesystemPluginManager } from "./desktop-filesystem-plugin";
 import { DesktopKeepAwakeController } from "./desktop-keep-awake";
 import { startDesktopLaunchComputerUse } from "./desktop-launch-computer-use";
 import {
@@ -68,6 +67,10 @@ import {
   buildDesktopQuitConfirmationOptions,
   isDesktopQuitConfirmed,
 } from "./desktop-quit-confirmation";
+import {
+  DESKTOP_SMOKE_TEST_READY_MARKER,
+  isDesktopSmokeTestEnabled,
+} from "./desktop-smoke-test";
 import { installDesktopTray, type DesktopTrayController } from "./desktop-tray";
 import { DesktopAuthSession } from "./desktop-auth-session";
 import {
@@ -78,7 +81,6 @@ import {
   installDesktopDeveloperToolsIpc,
   notifyDesktopDeveloperToolsChanged,
 } from "./desktop-developer-tools-electron";
-import type { DesktopDeveloperToolsState } from "./desktop-bridge";
 import {
   buildDesktopAuthConsumeUrl,
   buildDesktopAuthSelectOrgUrl,
@@ -120,11 +122,9 @@ const desktopAuthSelectOrgUrl = buildDesktopAuthSelectOrgUrl(
 );
 const desktopAuthTokenUrl = buildDesktopAuthTokenUrl(config.webUrl);
 const localRendererUrl = desktopRendererUrl();
-const ZERO_DEBUG_FEATURE_SWITCH_KEY = "zeroDebug";
 const ZERO_FEATURE_SWITCHES_PATH = "/api/zero/feature-switches";
 const noAllowedAppOrigins: ReadonlySet<string> = new Set();
 const ELECTRON_ERR_ABORTED = -3;
-const COMPUTER_USE_QUIT_STOP_TIMEOUT_MS = 1_000;
 const DESKTOP_SIGN_OUT_STORAGES = [
   "cookies",
   "localstorage",
@@ -138,19 +138,12 @@ const MAC_SCREEN_RECORDING_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
 let mainWindow: BrowserWindow | null = null;
 let appIsQuitting = false;
-let computerUseQuitStopStarted = false;
-let computerUseManualStopRequested = false;
 let computerUseNativeBackendDisposed = false;
 let desktopTray: DesktopTrayController | null = null;
 let keepAwakeController: DesktopKeepAwakeController | null = null;
-let developerToolsAvailable = false;
-let developerToolsEnabled = false;
-let developerToolsRefresh: Promise<void> | null = null;
-let developerToolsRefreshRequested = false;
+let filesystemPluginManager: DesktopFilesystemPluginManager | null = null;
 let desktopAutoUpdatesInstalled = false;
 const desktopAuthStartGate = createDesktopAuthStartGate();
-let computerUseRuntime: ComputerUseHostRuntime | null = null;
-let computerUseBlockedHostState: ComputerUseHostRuntimeState | null = null;
 const computerUseSnapshotStore = new ComputerUseSnapshotStore();
 const computerUseNativeBackend = createComputerUseNativeBackend({
   onRuntimeError: captureDesktopNativeHelperError,
@@ -189,6 +182,28 @@ const quitConfirmation = new DesktopQuitConfirmationController({
     app.quit();
   },
 });
+const developerTools = new DeveloperToolsController({
+  fetchFeatureSwitches: () =>
+    getAuthSession().fetchWithSessionAuth(
+      new URL(ZERO_FEATURE_SWITCHES_PATH, desktopApiBaseUrl),
+    ),
+  setFilesystemPluginFeatureEnabled: (enabled) => {
+    filesystemPluginManager?.setFeatureEnabled(enabled);
+  },
+  onChange: notifyDeveloperToolsChanged,
+  logRefreshError: (error) => {
+    console.warn("Unable to refresh desktop developer tools state", error);
+  },
+});
+const computerUseController = new ComputerUseRuntimeController({
+  createRuntime: createComputerUseHostRuntime,
+  refreshPermissions: refreshComputerUsePermissionState,
+  getAuthState: () => getAuthSession().getAuthState(),
+  setHostRuntimeOnline: (online) => {
+    filesystemPluginManager?.setHostRuntimeOnline(online);
+  },
+  onChange: notifyComputerUseChanged,
+});
 
 function refreshDesktopTray(): void {
   desktopTray?.refresh();
@@ -199,6 +214,9 @@ function refreshDesktopTrayAuth(): void {
 }
 
 function notifyComputerUseChanged(): void {
+  filesystemPluginManager?.setHostRuntimeOnline(
+    computerUseController.isRuntimeOnline(),
+  );
   notifyDesktopComputerUseChanged();
   refreshDesktopTray();
   computerUseAutoStart.restartRecoverableRuntimeState();
@@ -207,7 +225,7 @@ function notifyComputerUseChanged(): void {
 function notifyAuthChanged(): void {
   notifyDesktopAuthChanged();
   refreshDesktopTrayAuth();
-  refreshDeveloperToolsAvailabilityForState();
+  developerTools.requestRefresh();
 }
 
 function notifyDeveloperToolsChanged(): void {
@@ -215,84 +233,6 @@ function notifyDeveloperToolsChanged(): void {
   if (app.isReady()) {
     applyApplicationMenu();
   }
-}
-
-function getDesktopDeveloperToolsState(): DesktopDeveloperToolsState {
-  return {
-    available: developerToolsAvailable,
-    enabled: developerToolsAvailable && developerToolsEnabled,
-  };
-}
-
-function setDesktopDeveloperToolsEnabled(
-  enabled: boolean,
-): DesktopDeveloperToolsState {
-  const nextEnabled = developerToolsAvailable && enabled;
-  if (developerToolsEnabled !== nextEnabled) {
-    developerToolsEnabled = nextEnabled;
-    notifyDeveloperToolsChanged();
-  }
-  return getDesktopDeveloperToolsState();
-}
-
-function setDeveloperToolsAvailability(available: boolean): void {
-  const nextEnabled = available ? developerToolsEnabled : false;
-  if (
-    developerToolsAvailable === available &&
-    developerToolsEnabled === nextEnabled
-  ) {
-    return;
-  }
-  developerToolsAvailable = available;
-  developerToolsEnabled = nextEnabled;
-  notifyDeveloperToolsChanged();
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function zeroDebugEnabledFromFeatureSwitches(value: unknown): boolean {
-  if (!isRecord(value) || !isRecord(value.switches)) {
-    return false;
-  }
-  return value.switches[ZERO_DEBUG_FEATURE_SWITCH_KEY] === true;
-}
-
-async function refreshDeveloperToolsAvailability(): Promise<void> {
-  const response = await getAuthSession().fetchWithSessionAuth(
-    new URL(ZERO_FEATURE_SWITCHES_PATH, desktopApiBaseUrl),
-  );
-  if (response.status === 401) {
-    setDeveloperToolsAvailability(false);
-    return;
-  }
-  if (!response.ok) {
-    throw new Error(
-      `Desktop developer tools feature switch failed: ${response.status}`,
-    );
-  }
-  const body: unknown = await response.json();
-  setDeveloperToolsAvailability(zeroDebugEnabledFromFeatureSwitches(body));
-}
-
-function refreshDeveloperToolsAvailabilityForState(): void {
-  if (developerToolsRefresh) {
-    developerToolsRefreshRequested = true;
-    return;
-  }
-  developerToolsRefresh = refreshDeveloperToolsAvailability()
-    .catch((error) => {
-      console.warn("Unable to refresh desktop developer tools state", error);
-      setDeveloperToolsAvailability(false);
-    })
-    .finally(() => {
-      developerToolsRefresh = null;
-      if (developerToolsRefreshRequested) {
-        developerToolsRefreshRequested = false;
-        refreshDeveloperToolsAvailabilityForState();
-      }
-    });
 }
 
 async function runAuthWindow(request: {
@@ -441,13 +381,21 @@ function getComputerUseBridgeState(): DesktopComputerUseState {
     supported: process.platform === "darwin",
     deviceName: friendlyDeviceName(),
     permissions: getComputerUsePermissionState(),
-    host:
-      computerUseRuntime?.getState() ??
-      computerUseBlockedHostState ??
-      OFFLINE_COMPUTER_USE_HOST_STATE,
+    host: computerUseController.getHostState(),
     keepAwake: keepAwakeController?.getState() ?? {
       enabled: false,
       active: false,
+    },
+    plugins: {
+      filesystem: filesystemPluginManager?.getState() ?? {
+        featureEnabled: false,
+        enabled: false,
+        allowedDirectories: [],
+        status: "disabled",
+        lastError: null,
+        version: "",
+        capabilities: [],
+      },
     },
   };
 }
@@ -473,70 +421,97 @@ function releaseKeepAwake(): void {
   keepAwakeController?.release();
 }
 
+function ensureFilesystemPluginManager(): DesktopFilesystemPluginManager {
+  if (!filesystemPluginManager) {
+    filesystemPluginManager = new DesktopFilesystemPluginManager({
+      preferencesPath: desktopPreferencesPath(),
+      onChange: notifyComputerUseChanged,
+    });
+    filesystemPluginManager.load();
+  }
+  return filesystemPluginManager;
+}
+
+function supportedComputerUseCapabilities(): readonly string[] {
+  return [
+    ...SUPPORTED_COMPUTER_USE_CAPABILITIES,
+    ...(filesystemPluginManager?.getCapabilities() ?? []),
+  ];
+}
+
+function createComputerUseHostRuntime(): ComputerUseHostRuntime {
+  const desktopSession = session.fromPartition(config.sessionPartition);
+  const installationId = readOrCreateComputerUseInstallationId(
+    desktopPreferencesPath(),
+  );
+  return new ComputerUseHostRuntime({
+    platformUrl: config.platformUrl,
+    installationId,
+    hostName: readSystemHostName(config.identity.displayName),
+    appVersion: app.getVersion(),
+    sessionFetch: createDesktopComputerUseSessionFetch({
+      platformUrl: config.platformUrl,
+      session: desktopSession,
+      getCachedAuthToken: () => getAuthSession().getCachedToken(),
+      getAuthToken: (options) => getAuthSession().getToken(options),
+    }),
+    hostFetch: (input, init) => {
+      return fetch(input, init);
+    },
+    getPermissions: refreshComputerUsePermissionState,
+    getSupportedCapabilities: supportedComputerUseCapabilities,
+    executeCommand: (command, permissions) => {
+      if (command.kind === COMPUTER_USE_PLUGIN_CALL_KIND) {
+        return ensureFilesystemPluginManager().execute(command);
+      }
+      return executeComputerUseCommand(command, permissions, {
+        nativeBackend: computerUseNativeBackend,
+        snapshotStore: computerUseSnapshotStore,
+      });
+    },
+    onCommandFailure: automationPermissionPrompt,
+    onChange: notifyComputerUseChanged,
+  });
+}
+
 async function startComputerUseRuntime(
   options: { readonly userInitiated?: boolean } = {},
 ): Promise<DesktopComputerUseState> {
-  if (computerUseManualStopRequested && options.userInitiated !== true) {
-    return getComputerUseBridgeState();
-  }
-  computerUseManualStopRequested = false;
-
-  const permissions = await refreshComputerUsePermissionState();
-  let startupGate: ComputerUseStartupGate = { status: "missing_permissions" };
-  if (hasRequiredComputerUsePermissions(permissions)) {
-    const authState = await getAuthSession().getAuthState();
-    startupGate = resolveComputerUseStartupGate({ authState, permissions });
-  }
-  if (startupGate.status !== "ready") {
-    if (computerUseRuntime) {
-      await computerUseRuntime.stop();
-      computerUseRuntime = null;
-    }
-    computerUseBlockedHostState =
-      startupGate.status === "blocked" ? startupGate.host : null;
-    notifyComputerUseChanged();
-    return getComputerUseBridgeState();
-  }
-
-  const desktopSession = session.fromPartition(config.sessionPartition);
-  computerUseBlockedHostState = null;
-  if (!computerUseRuntime) {
-    const installationId = readOrCreateComputerUseInstallationId(
-      desktopPreferencesPath(),
-    );
-    computerUseRuntime = new ComputerUseHostRuntime({
-      platformUrl: config.platformUrl,
-      installationId,
-      hostName: readSystemHostName(config.identity.displayName),
-      appVersion: app.getVersion(),
-      sessionFetch: createDesktopComputerUseSessionFetch({
-        platformUrl: config.platformUrl,
-        session: desktopSession,
-        getCachedAuthToken: () => getAuthSession().getCachedToken(),
-        getAuthToken: (options) => getAuthSession().getToken(options),
-      }),
-      hostFetch: (input, init) => {
-        return fetch(input, init);
-      },
-      getPermissions: refreshComputerUsePermissionState,
-      executeCommand: (command, permissions) => {
-        return executeComputerUseCommand(command, permissions, {
-          nativeBackend: computerUseNativeBackend,
-          snapshotStore: computerUseSnapshotStore,
-        });
-      },
-      onCommandFailure: automationPermissionPrompt,
-      onChange: notifyComputerUseChanged,
-    });
-  }
-  await computerUseRuntime.start();
+  await computerUseController.start(options);
   return getComputerUseBridgeState();
 }
 
 async function stopComputerUseRuntime(): Promise<DesktopComputerUseState> {
-  computerUseManualStopRequested = true;
-  await computerUseRuntime?.stop();
-  notifyComputerUseChanged();
+  await computerUseController.stop();
+  return getComputerUseBridgeState();
+}
+
+function setFilesystemPluginEnabled(enabled: boolean): DesktopComputerUseState {
+  ensureFilesystemPluginManager().setEnabled(enabled);
+  return getComputerUseBridgeState();
+}
+
+async function addFilesystemPluginAllowedDirectory(): Promise<DesktopComputerUseState> {
+  const options = {
+    properties: ["openDirectory", "createDirectory"],
+  } satisfies Electron.OpenDialogOptions;
+  const window = currentDialogWindow();
+  const result = window
+    ? await dialog.showOpenDialog(window, options)
+    : await dialog.showOpenDialog(options);
+  if (!result.canceled) {
+    const [directory] = result.filePaths;
+    if (directory) {
+      ensureFilesystemPluginManager().addAllowedDirectory(directory);
+    }
+  }
+  return getComputerUseBridgeState();
+}
+
+function removeFilesystemPluginAllowedDirectory(
+  directory: string,
+): DesktopComputerUseState {
+  ensureFilesystemPluginManager().removeAllowedDirectory(directory);
   return getComputerUseBridgeState();
 }
 
@@ -555,7 +530,7 @@ async function requestComputerUseScreenRecording(): Promise<DesktopComputerUseSt
 async function refreshComputerUsePermissions(): Promise<DesktopComputerUseState> {
   const permissions = await refreshComputerUsePermissionState();
   if (!hasRequiredComputerUsePermissions(permissions)) {
-    computerUseBlockedHostState = null;
+    computerUseController.clearBlockedHostState();
   }
   notifyComputerUseChanged();
   return getComputerUseBridgeState();
@@ -570,6 +545,7 @@ async function probeComputerUseAutomation(
 }
 
 function installComputerUse(): void {
+  ensureFilesystemPluginManager();
   installComputerUseIpc(
     {
       getState: getComputerUseBridgeState,
@@ -580,6 +556,9 @@ function installComputerUse(): void {
       requestScreenRecordingPermission: requestComputerUseScreenRecording,
       probeAutomationPermission: probeComputerUseAutomation,
       setKeepAwakeEnabled,
+      setFilesystemPluginEnabled,
+      addFilesystemPluginAllowedDirectory,
+      removeFilesystemPluginAllowedDirectory,
     },
     { rendererUrl: localRendererUrl },
   );
@@ -588,8 +567,8 @@ function installComputerUse(): void {
 function installDesktopDeveloperTools(): void {
   installDesktopDeveloperToolsIpc(
     {
-      getState: getDesktopDeveloperToolsState,
-      setEnabled: setDesktopDeveloperToolsEnabled,
+      getState: () => developerTools.getState(),
+      setEnabled: (enabled) => developerTools.setEnabled(enabled),
     },
     { rendererUrl: localRendererUrl },
   );
@@ -605,20 +584,6 @@ function refreshComputerUsePermissionsForState(): void {
     });
 }
 
-async function stopComputerUseRuntimeForQuit(): Promise<void> {
-  const runtime = computerUseRuntime;
-  if (!runtime) {
-    return;
-  }
-
-  await Promise.race([
-    runtime.stop(),
-    new Promise<void>((resolve) => {
-      setTimeout(resolve, COMPUTER_USE_QUIT_STOP_TIMEOUT_MS);
-    }),
-  ]);
-}
-
 function disposeComputerUseNativeBackend(): void {
   if (computerUseNativeBackendDisposed) {
     return;
@@ -631,10 +596,7 @@ async function prepareForQuitAndInstall(): Promise<void> {
   quitConfirmation.allowQuitWithoutConfirmation();
   appIsQuitting = true;
   releaseKeepAwake();
-  if (!computerUseQuitStopStarted) {
-    computerUseQuitStopStarted = true;
-    await stopComputerUseRuntimeForQuit();
-  }
+  await computerUseController.stopForQuit();
   disposeComputerUseNativeBackend();
 }
 
@@ -647,14 +609,7 @@ async function clearDesktopAuthStorage(): Promise<void> {
 async function signOutDesktopSession(): Promise<void> {
   await clearDesktopAuthStorage();
   getAuthSession().signOut();
-  const runtime = computerUseRuntime;
-  computerUseRuntime = null;
-  computerUseBlockedHostState = null;
-  try {
-    await runtime?.stop();
-  } finally {
-    notifyComputerUseChanged();
-  }
+  await computerUseController.stopForAuthChange();
 }
 
 function installDesktopAuth(): void {
@@ -745,13 +700,14 @@ function applyApplicationMenu(): void {
     },
     { type: "separator" },
   ];
-  if (developerToolsAvailable) {
+  const developerToolsState = developerTools.getState();
+  if (developerToolsState.available) {
     appSubmenu.push({
       label: "Developer Tools",
       type: "checkbox",
-      checked: developerToolsEnabled,
+      checked: developerToolsState.enabled,
       click: () => {
-        setDesktopDeveloperToolsEnabled(!developerToolsEnabled);
+        developerTools.setEnabled(!developerToolsState.enabled);
       },
     });
     appSubmenu.push({ type: "separator" });
@@ -844,22 +800,22 @@ function openDesktopAuthStart(rawUrl: string): boolean {
   return true;
 }
 
+function dispatchDesktopAuthCallback(callback: DesktopAuthCallback): void {
+  desktopAuthStartGate.suppressRetry();
+  if (authSession) {
+    authSession.consumeCallback(callback, logDesktopAuthError);
+    return;
+  }
+  queuePendingDesktopAuthCallback(callback);
+}
+
 function openDesktopAuthCallback(rawUrl: string): boolean {
   const callback = parseDesktopAuthCallback(rawUrl, config.identity.authScheme);
   if (!callback) {
     return false;
   }
 
-  desktopAuthStartGate.suppressRetry();
-
-  if (!authSession) {
-    queuePendingDesktopAuthCallback(callback);
-    return true;
-  }
-
-  void authSession
-    .consumeCode(callback.code, callback.handoffId)
-    .catch(logDesktopAuthError);
+  dispatchDesktopAuthCallback(callback);
   return true;
 }
 
@@ -1096,16 +1052,12 @@ function waitForAuthConsumeWindow(
 }
 
 async function maybeStartComputerUseAfterAuth(): Promise<void> {
-  const runtime = computerUseRuntime;
-  computerUseRuntime = null;
-  computerUseBlockedHostState = null;
-  await runtime?.stop();
+  await computerUseController.stopForAuthChange();
   notifyAuthChanged();
-  notifyComputerUseChanged();
   const permissions = await refreshComputerUsePermissionState();
   notifyComputerUseChanged();
   if (hasRequiredComputerUsePermissions(permissions)) {
-    await startComputerUseRuntime({ userInitiated: true });
+    await computerUseController.start({ userInitiated: true });
   }
 }
 
@@ -1132,15 +1084,7 @@ function handleDesktopAuthCallbackArgv(argv: readonly string[]): boolean {
     return false;
   }
 
-  desktopAuthStartGate.suppressRetry();
-  if (!authSession) {
-    queuePendingDesktopAuthCallback(callback);
-    return true;
-  }
-
-  void authSession
-    .consumeCode(callback.code, callback.handoffId)
-    .catch(logDesktopAuthError);
+  dispatchDesktopAuthCallback(callback);
   return true;
 }
 
@@ -1211,13 +1155,12 @@ if (!hasSingleInstanceLock) {
 
     appIsQuitting = true;
     releaseKeepAwake();
-    if (!computerUseRuntime || computerUseQuitStopStarted) {
+    if (!computerUseController.quitStopRequired()) {
       disposeComputerUseNativeBackend();
       return;
     }
-    computerUseQuitStopStarted = true;
     event.preventDefault();
-    void stopComputerUseRuntimeForQuit().finally(() => {
+    void computerUseController.stopForQuit().finally(() => {
       disposeComputerUseNativeBackend();
       app.quit();
     });
@@ -1241,7 +1184,7 @@ if (!hasSingleInstanceLock) {
     refreshComputerUsePermissionsForState();
     const desktopAuthSession = getAuthSession();
     installDesktopAuth();
-    refreshDeveloperToolsAvailabilityForState();
+    developerTools.requestRefresh();
     installTray();
     queueDesktopAuthCallbackArgv(process.argv);
 
@@ -1263,6 +1206,12 @@ if (!hasSingleInstanceLock) {
     app.on("activate", () => {
       void createMainWindow();
     });
+
+    if (isDesktopSmokeTestEnabled(process.env)) {
+      console.log(DESKTOP_SMOKE_TEST_READY_MARKER);
+      quitConfirmation.allowQuitWithoutConfirmation();
+      app.quit();
+    }
   });
 
   app.on("window-all-closed", () => {

@@ -65,7 +65,6 @@
         "vite.renderer.config.ts",
         "src/main.ts",
         "src/preload.ts",
-        "src/vm0-computer.ts",
         "src/renderer/main.tsx",
         "src/**/*.{test,spec}.{ts,tsx}"
       ],
@@ -73,6 +72,7 @@
       "ignoreDependencies": [
         "@electron-forge/cli",
         "@electron-forge/maker-zip",
+        "@modelcontextprotocol/server-filesystem",
         "oxlint",
         "tsup"
       ],
@@ -87,6 +87,14 @@
     },
     "packages/connectors": {
       "entry": [
+        "src/**/__tests__/**/*.{test,spec}.ts",
+        "src/**/*.{test,spec}.ts"
+      ],
+      "project": ["src/**/*.ts"]
+    },
+    "packages/api-contracts": {
+      "entry": [
+        "src/runtime-api-schema/cli.ts",
         "src/**/__tests__/**/*.{test,spec}.ts",
         "src/**/*.{test,spec}.ts"
       ],

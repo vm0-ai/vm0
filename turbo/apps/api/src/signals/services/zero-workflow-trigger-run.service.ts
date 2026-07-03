@@ -8,7 +8,7 @@ import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { now, nowDate } from "../external/time";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
@@ -19,7 +19,12 @@ import {
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
 } from "./zero-model-selection.service";
+import {
+  ApiDispatchTimingCollector,
+  measureApiDispatchTiming,
+} from "./api-dispatch-timing.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
+import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
 
 export type TriggerRow = typeof zeroWorkflowTriggers.$inferSelect;
 
@@ -30,6 +35,9 @@ export interface DueWorkflowTrigger {
   readonly agentId: string;
   readonly workflowName: string;
   readonly chatThreadId: string;
+  // One-time schedule triggers are disabled as part of the optimistic claim.
+  // That claimed row can still proceed through the run-start readability gate.
+  readonly allowClaimedOnceScheduleTrigger?: boolean;
 }
 
 type RunErrorResponse = {
@@ -60,6 +68,31 @@ type ModelContext =
       readonly effectiveModelProvider: string | null | undefined;
     }
   | { readonly ok: false; readonly failure: RunFailure };
+
+interface RunWorkflowTriggerNowArgs {
+  readonly due: DueWorkflowTrigger;
+  readonly apiStartTime: number;
+  readonly sessionId?: string;
+  // Overrides the default `/<workflowName>` slash-command prompt.
+  readonly prompt?: string;
+  // Display-only source context surfaced through workflowSnapshot.triggerBrief.
+  readonly triggerBrief?: string;
+  readonly triggerSource?: TriggerSource;
+  readonly appendSystemPrompt?: string;
+  readonly callbacks?: readonly InternalRunCallbackInput[];
+  readonly activePreviousRunPolicy?: ActivePreviousRunPolicy;
+  readonly recordLastRunId?: boolean;
+  readonly recordLastRunAt?: boolean;
+  readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+  readonly timing?: ApiDispatchTimingCollector;
+}
+
+interface WorkflowTriggerRunInput {
+  readonly prompt: string;
+  readonly appendSystemPrompt: string;
+  readonly callbacks: readonly InternalRunCallbackInput[];
+  readonly zeroRunMetadata: ReturnType<typeof workflowTriggerRunMetadata>;
+}
 
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
@@ -194,47 +227,177 @@ async function resolveModelContext(args: {
   };
 }
 
+function workflowTriggerTiming(
+  args: RunWorkflowTriggerNowArgs,
+): ApiDispatchTimingCollector {
+  const timing = args.timing ?? new ApiDispatchTimingCollector();
+  if (!args.timing) {
+    timing.recordElapsed(
+      "api_dispatch_pre_create_zero_workflow_trigger_entrypoint_gap",
+      "nested",
+      args.apiStartTime,
+    );
+  }
+  return timing;
+}
+
+async function checkActivePreviousWorkflowRun(args: {
+  readonly db: Db;
+  readonly trigger: TriggerRow;
+  readonly activePreviousRunPolicy?: ActivePreviousRunPolicy;
+  readonly timing: ApiDispatchTimingCollector;
+  readonly signal: AbortSignal;
+}): Promise<RunFailure | undefined> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_workflow_trigger_check_active_run",
+    "nested",
+    async (): Promise<RunFailure | undefined> => {
+      if (args.activePreviousRunPolicy !== "allow" && args.trigger.lastRunId) {
+        const [lastRun] = await args.db
+          .select({ status: agentRuns.status })
+          .from(agentRuns)
+          .where(eq(agentRuns.id, args.trigger.lastRunId))
+          .limit(1);
+        args.signal.throwIfAborted();
+        if (lastRun && isActivePreviousRunStatus(lastRun.status)) {
+          return {
+            kind: "conflict",
+            message: "Previous run is still active",
+          };
+        }
+      }
+      return undefined;
+    },
+  );
+}
+
+async function checkWorkflowTriggerTargetReadable(args: {
+  readonly db: Db;
+  readonly trigger: TriggerRow;
+  readonly agentId: string;
+  readonly allowClaimedOnceScheduleTrigger: boolean;
+  readonly timing: ApiDispatchTimingCollector;
+  readonly signal: AbortSignal;
+}): Promise<RunFailure | undefined> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_workflow_trigger_check_target_access",
+    "nested",
+    async (): Promise<RunFailure | undefined> => {
+      const canFire = await workflowTriggerCanFire(args.db, {
+        trigger: args.trigger,
+        agentId: args.agentId,
+        allowClaimedOnceScheduleTrigger: args.allowClaimedOnceScheduleTrigger,
+        signal: args.signal,
+      });
+      args.signal.throwIfAborted();
+      if (!canFire) {
+        return {
+          kind: "conflict",
+          message: "Workflow trigger is paused or no longer readable",
+        };
+      }
+      return undefined;
+    },
+  );
+}
+
+async function resolveTimedWorkflowModelContext(args: {
+  readonly db: Db;
+  readonly trigger: TriggerRow;
+  readonly chatThreadId: string;
+  readonly timing: ApiDispatchTimingCollector;
+  readonly signal: AbortSignal;
+}): Promise<ModelContext> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_workflow_trigger_resolve_model_context",
+    "nested",
+    async () => {
+      return await resolveModelContext({
+        db: args.db,
+        orgId: args.trigger.orgId,
+        userId: args.trigger.ownerUserId,
+        chatThreadId: args.chatThreadId,
+        signal: args.signal,
+      });
+    },
+  );
+}
+
+async function buildTimedWorkflowTriggerRunInput(args: {
+  readonly command: RunWorkflowTriggerNowArgs;
+  readonly trigger: TriggerRow;
+  readonly agentId: string;
+  readonly workflowName: string;
+  readonly chatThreadId: string;
+  readonly timing: ApiDispatchTimingCollector;
+}): Promise<WorkflowTriggerRunInput> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_workflow_trigger_build_run_input",
+    "nested",
+    () => {
+      return {
+        prompt: args.command.prompt ?? `/${args.workflowName}`,
+        appendSystemPrompt:
+          args.command.appendSystemPrompt ??
+          buildAppendSystemPrompt(args.workflowName),
+        callbacks:
+          args.command.callbacks ??
+          buildWorkflowTriggerCallbacks(
+            args.trigger,
+            args.agentId,
+            args.chatThreadId,
+          ),
+        zeroRunMetadata: workflowTriggerRunMetadata(
+          args.trigger,
+          args.command.triggerBrief,
+        ),
+      };
+    },
+  );
+}
+
 export const runWorkflowTriggerNow$ = command(
   async (
     { set },
-    args: {
-      readonly due: DueWorkflowTrigger;
-      readonly apiStartTime: number;
-      readonly sessionId?: string;
-      // Overrides the default `/<workflowName>` slash-command prompt.
-      readonly prompt?: string;
-      // Display-only source context surfaced through workflowSnapshot.triggerBrief.
-      readonly triggerBrief?: string;
-      readonly triggerSource?: TriggerSource;
-      readonly appendSystemPrompt?: string;
-      readonly callbacks?: readonly InternalRunCallbackInput[];
-      readonly activePreviousRunPolicy?: ActivePreviousRunPolicy;
-      readonly recordLastRunId?: boolean;
-      readonly recordLastRunAt?: boolean;
-      readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
-    },
+    args: RunWorkflowTriggerNowArgs,
     signal: AbortSignal,
   ): Promise<RunWorkflowTriggerResult> => {
     const db = set(writeDb$);
     const { trigger, agentId, workflowName, chatThreadId } = args.due;
-
-    if (args.activePreviousRunPolicy !== "allow" && trigger.lastRunId) {
-      const [lastRun] = await db
-        .select({ status: agentRuns.status })
-        .from(agentRuns)
-        .where(eq(agentRuns.id, trigger.lastRunId))
-        .limit(1);
-      signal.throwIfAborted();
-      if (lastRun && isActivePreviousRunStatus(lastRun.status)) {
-        return { kind: "conflict", message: "Previous run is still active" };
-      }
+    const timing = workflowTriggerTiming(args);
+    const activePreviousRunFailure = await checkActivePreviousWorkflowRun({
+      db,
+      trigger,
+      activePreviousRunPolicy: args.activePreviousRunPolicy,
+      timing,
+      signal,
+    });
+    if (activePreviousRunFailure) {
+      return activePreviousRunFailure;
     }
 
-    const modelContext = await resolveModelContext({
+    const targetAccessFailure = await checkWorkflowTriggerTargetReadable({
       db,
-      orgId: trigger.orgId,
-      userId: trigger.ownerUserId,
+      trigger,
+      agentId,
+      allowClaimedOnceScheduleTrigger:
+        args.due.allowClaimedOnceScheduleTrigger === true,
+      timing,
+      signal,
+    });
+    if (targetAccessFailure) {
+      return targetAccessFailure;
+    }
+
+    const modelContext = await resolveTimedWorkflowModelContext({
+      db,
+      trigger,
       chatThreadId,
+      timing,
       signal,
     });
     if (!modelContext.ok) {
@@ -242,7 +405,20 @@ export const runWorkflowTriggerNow$ = command(
     }
     const { modelPin, effectiveModelProvider } = modelContext;
 
-    const prompt = args.prompt ?? `/${workflowName}`;
+    const runInput = await buildTimedWorkflowTriggerRunInput({
+      command: args,
+      trigger,
+      agentId,
+      workflowName,
+      chatThreadId,
+      timing,
+    });
+    signal.throwIfAborted();
+    timing.recordElapsed(
+      "api_dispatch_pre_create_zero_workflow_trigger_create_run",
+      "nested",
+      now(),
+    );
     const result = await set(
       createZeroRun$,
       {
@@ -253,7 +429,7 @@ export const runWorkflowTriggerNow$ = command(
           tokenType: "session",
         },
         body: {
-          prompt,
+          prompt: runInput.prompt,
           agentId,
           ...(args.sessionId ? { sessionId: args.sessionId } : {}),
           ...(effectiveModelProvider
@@ -267,13 +443,11 @@ export const runWorkflowTriggerNow$ = command(
         modelProviderCredentialScope:
           modelPin.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: modelPin.selectedModel ?? undefined,
-        appendSystemPrompt:
-          args.appendSystemPrompt ?? buildAppendSystemPrompt(workflowName),
-        callbacks:
-          args.callbacks ??
-          buildWorkflowTriggerCallbacks(trigger, agentId, chatThreadId),
-        zeroRunMetadata: workflowTriggerRunMetadata(trigger, args.triggerBrief),
+        appendSystemPrompt: runInput.appendSystemPrompt,
+        callbacks: runInput.callbacks,
+        zeroRunMetadata: runInput.zeroRunMetadata,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
+        timing,
       },
       signal,
     );
@@ -288,7 +462,7 @@ export const runWorkflowTriggerNow$ = command(
       threadId: chatThreadId,
       userId: trigger.ownerUserId,
       runId: result.body.runId,
-      prompt,
+      prompt: runInput.prompt,
       appendQueueMarker: result.body.status === "queued",
       runGroupId: trigger.id,
     });

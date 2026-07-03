@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.46](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.45...guest-download-v0.20.46) (2026-07-02)
+
+
+### Refactoring
+
+* remove guest-common runtime path fallbacks ([#19717](https://github.com/vm0-ai/vm0/issues/19717)) ([2ce4fd7](https://github.com/vm0-ai/vm0/commit/2ce4fd76711d400408d340d4126b5224c716616b))
+
 ## [0.20.45](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.44...guest-download-v0.20.45) (2026-07-01)
 
 ## [0.20.44](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.43...guest-download-v0.20.44) (2026-07-01)

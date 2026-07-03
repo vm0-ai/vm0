@@ -1,5 +1,6 @@
 mod common;
 
+use std::collections::HashMap;
 use std::future::{Future, poll_fn};
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
@@ -62,7 +63,7 @@ async fn codex_app_server_initializes_and_sends_initialized_notification() -> Re
 async fn codex_app_server_initialize_sends_configured_opt_out_notifications() -> Result<(), String>
 {
     let codex_home = TempDir::new().map_err(|error| format!("create codex home: {error}"))?;
-    let config = CodexAppServerConfig::new(mock_codex_path()?, codex_home.path())
+    let config = new_config(mock_codex_path()?, codex_home.path())
         .with_opt_out_notification_methods([
             "process/outputDelta",
             "item/agentMessage/delta",
@@ -90,7 +91,7 @@ async fn codex_app_server_extra_env_cannot_override_codex_home() -> Result<(), S
     let codex_home = TempDir::new().map_err(|error| format!("create codex home: {error}"))?;
     let override_home =
         TempDir::new().map_err(|error| format!("create override codex home: {error}"))?;
-    let config = CodexAppServerConfig::new(mock_codex_path()?, codex_home.path())
+    let config = new_config(mock_codex_path()?, codex_home.path())
         .with_env("CODEX_HOME", override_home.path().to_string_lossy());
     let mut client = CodexAppServerClient::spawn(config).map_err(|error| format!("{error:?}"))?;
 
@@ -876,7 +877,7 @@ async fn codex_app_server_drop_kills_open_child() -> Result<(), String> {
 #[test]
 fn codex_app_server_spawn_without_tokio_runtime_returns_error() -> Result<(), String> {
     let codex_home = TempDir::new().map_err(|error| format!("create codex home: {error}"))?;
-    let config = CodexAppServerConfig::new("/definitely/missing/codex", codex_home.path());
+    let config = new_config("/definitely/missing/codex", codex_home.path());
 
     match CodexAppServerClient::spawn(config) {
         Err(CodexAppServerError::Protocol(message)) => {
@@ -892,7 +893,7 @@ fn codex_app_server_spawn_without_tokio_runtime_returns_error() -> Result<(), St
 
 fn spawn_client(scenario: Option<&str>) -> Result<ClientFixture, String> {
     let codex_home = TempDir::new().map_err(|error| format!("create codex home: {error}"))?;
-    let mut config = CodexAppServerConfig::new(mock_codex_path()?, codex_home.path());
+    let mut config = new_config(mock_codex_path()?, codex_home.path());
     if let Some(scenario) = scenario {
         config = config.with_env("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
     }
@@ -901,6 +902,15 @@ fn spawn_client(scenario: Option<&str>) -> Result<ClientFixture, String> {
         client,
         _codex_home: codex_home,
     })
+}
+
+fn new_config(binary: impl Into<PathBuf>, codex_home: impl Into<PathBuf>) -> CodexAppServerConfig {
+    let codex_home = codex_home.into();
+    CodexAppServerConfig::new(binary, codex_home.clone()).with_child_env(
+        codex_home.to_string_lossy().into_owned(),
+        &HashMap::new(),
+        "http://127.0.0.1:1",
+    )
 }
 
 fn mock_codex_path() -> Result<PathBuf, String> {

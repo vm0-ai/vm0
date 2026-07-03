@@ -2,7 +2,7 @@ import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { IconLoader2, IconWand } from "@tabler/icons-react";
+import { IconLoader2, IconPlus, IconWand } from "@tabler/icons-react";
 import {
   Card,
   CardContent,
@@ -127,7 +127,6 @@ export function AgentsPageTabs() {
           <AgentTabsView
             activeTab={activeTab}
             onTabChange={setActiveTab}
-            publicAgentCount={publicAgentCount}
             atPublicLimit={atPublicLimit}
             onCreate={openCreateDialog}
           />
@@ -151,13 +150,11 @@ export function AgentsPageTabs() {
 function AgentTabsView({
   activeTab,
   onTabChange,
-  publicAgentCount,
   atPublicLimit,
   onCreate,
 }: {
   activeTab: Visibility;
   onTabChange: (tab: Visibility) => void;
-  publicAgentCount: number;
   atPublicLimit: boolean;
   onCreate: (visibility: Visibility) => void;
 }) {
@@ -214,25 +211,18 @@ function AgentTabsView({
             </TabsTrigger>
           </TabsList>
         </Tabs>
-        <div className="flex items-center gap-4">
-          {activeTab === "public" && (
-            <PublicSlotIndicator
-              used={publicAgentCount}
-              total={MAX_PUBLIC_AGENTS}
-            />
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="zero-btn-morandi h-8 rounded-lg border"
-            disabled={createDisabled}
-            onClick={() => {
-              return onCreate(activeTab);
-            }}
-          >
-            Create
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+          disabled={createDisabled}
+          onClick={() => {
+            return onCreate(activeTab);
+          }}
+        >
+          <IconPlus size={14} stroke={2} />
+          New agent
+        </Button>
       </div>
 
       {skeleton ? (
@@ -243,6 +233,7 @@ function AgentTabsView({
           membersById={membersById}
           unreadAgentIds={unreadAgentIds}
           unreadIndicatorsEnabled={agentUnreadIndicatorsEnabled}
+          showCreator={activeTab !== "private"}
         />
       ) : activeTab === "private" ? (
         <PrivateEmptyState
@@ -252,44 +243,6 @@ function AgentTabsView({
         />
       ) : null}
     </div>
-  );
-}
-
-function PublicSlotIndicator({ used, total }: { used: number; total: number }) {
-  const radius = 6.5;
-  const circumference = 2 * Math.PI * radius;
-  const fraction = total > 0 ? Math.min(1, used / total) : 0;
-  return (
-    <span
-      className="flex items-center gap-2 text-xs text-muted-foreground"
-      aria-label={`${used} of ${total} public agents used`}
-    >
-      <svg width="16" height="16" viewBox="0 0 18 18" aria-hidden="true">
-        <circle
-          cx="9"
-          cy="9"
-          r={radius}
-          fill="none"
-          stroke="hsl(var(--gray-300))"
-          strokeWidth="3"
-        />
-        <circle
-          cx="9"
-          cy="9"
-          r={radius}
-          fill="none"
-          stroke="hsl(var(--foreground))"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeDasharray={`${circumference * fraction} ${circumference}`}
-          transform="rotate(-90 9 9)"
-        />
-      </svg>
-      <span aria-hidden="true">
-        <span className="font-semibold text-foreground">{used}</span> / {total}{" "}
-        public
-      </span>
-    </span>
   );
 }
 
@@ -325,11 +278,13 @@ function AgentGrid({
   membersById,
   unreadAgentIds,
   unreadIndicatorsEnabled,
+  showCreator,
 }: {
   agents: AgentProps["agent"][];
   membersById: ReadonlyMap<string, OrgMember>;
   unreadAgentIds: ReadonlySet<string> | undefined;
   unreadIndicatorsEnabled: boolean;
+  showCreator: boolean;
 }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -348,6 +303,7 @@ function AgentGrid({
                 unreadIndicatorsEnabled &&
                 (unreadAgentIds?.has(agent.id) ?? false)
               }
+              showCreator={showCreator}
             />
           </Link>
         );
@@ -588,6 +544,7 @@ type AgentProps = {
   };
   creator: AgentCreator;
   hasUnread: boolean;
+  showCreator: boolean;
 };
 
 interface AgentCreator {
@@ -646,7 +603,7 @@ function AgentUnreadIndicator() {
   );
 }
 
-function AgentCard({ agent, creator, hasUnread }: AgentProps) {
+function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const lead = agent.id === defaultAgentId;
   const displayName = agent.displayName ?? agent.id;
@@ -666,21 +623,56 @@ function AgentCard({ agent, creator, hasUnread }: AgentProps) {
             {hasUnread && <AgentUnreadIndicator />}
           </span>
           <div className="flex-1 min-w-0">
-            <span className="block truncate text-sm font-medium text-foreground">
-              {displayName}
-            </span>
+            {showCreator ? (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="block w-fit max-w-full truncate text-sm font-medium text-foreground underline decoration-dotted decoration-foreground/40 decoration-[1px] underline-offset-2">
+                      {displayName}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="bottom"
+                    align="start"
+                    className="w-64 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] p-3 text-left font-normal"
+                    style={{
+                      backgroundColor: "hsl(var(--popover))",
+                      color: "hsl(var(--popover-foreground))",
+                      // Matches --zero-card-shadow; inlined because the tooltip
+                      // portal renders outside .zero-app where the var is scoped.
+                      boxShadow:
+                        "0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02)",
+                      whiteSpace: "normal",
+                    }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full">
+                        <CreatorAvatar creator={creator} />
+                      </span>
+                      <span className="text-xs font-medium text-foreground">
+                        Created by {creator.name}
+                      </span>
+                    </span>
+                    {description && (
+                      <span className="mt-2 block text-xs leading-relaxed text-muted-foreground">
+                        {description}
+                      </span>
+                    )}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <span
+                className="block truncate text-sm font-medium text-foreground"
+                title={displayName}
+              >
+                {displayName}
+              </span>
+            )}
             <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
               {description}
             </p>
           </div>
-        </div>
-        <div className="mt-auto flex items-center gap-2 border-t border-border/60 pt-3">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full">
-            <CreatorAvatar creator={creator} />
-          </span>
-          <span className="truncate text-xs text-muted-foreground">
-            Created by {creator.name}
-          </span>
         </div>
       </CardContent>
     </Card>

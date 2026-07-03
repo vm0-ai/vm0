@@ -61,6 +61,10 @@
       "schedule": "0 0,12 * * *"
     },
     {
+      "path": "/api/cron/refresh-system-storage-presigned-urls",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/computer-use-screenshot-cleanup",
       "schedule": "30 2 * * *"
     },

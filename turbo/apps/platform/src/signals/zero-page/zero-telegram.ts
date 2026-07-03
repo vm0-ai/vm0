@@ -311,7 +311,14 @@ export const startTelegramSettingsRealtime$ = command(
       return false;
     });
 
-    await set(setAblyLoop$, "telegram:changed", onTelegramChanged$, signal);
+    await set(
+      setAblyLoop$,
+      {
+        topic: "telegram:changed",
+        loopCommand$: onTelegramChanged$,
+      },
+      signal,
+    );
   },
 );
 

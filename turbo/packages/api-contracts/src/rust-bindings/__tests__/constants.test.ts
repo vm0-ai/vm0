@@ -17,6 +17,9 @@ import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  SESSION_HISTORY_ENCODING_GZIP,
+  SESSION_HISTORY_ENCODING_IDENTITY,
+  SESSION_HISTORY_GZIP_MIN_BYTES,
 } from "../../contracts/runners";
 
 const codexOauthPlaceholders =
@@ -35,6 +38,18 @@ const canonicalWorkingDirDoc = [
 const resumeSessionHistoryMaxBytesDoc = [
   "Maximum resume session history blob size accepted by the API, runner, and guest verifier.",
   "Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.",
+] as const;
+const sessionHistoryEncodingGzipDoc = [
+  "Wire and blob metadata value for gzip-compressed resume session history.",
+  "Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.",
+] as const;
+const sessionHistoryEncodingIdentityDoc = [
+  "Wire and blob metadata value for uncompressed resume session history.",
+  "Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.",
+] as const;
+const sessionHistoryGzipMinBytesDoc = [
+  "Minimum raw resume session history size before the guest attempts gzip upload negotiation.",
+  "Smaller histories stay identity-encoded to avoid gzip work when it cannot materially reduce transport size.",
 ] as const;
 
 function rustString(value: string): RustConstantValue {
@@ -58,6 +73,24 @@ const expectedBindings = [
     rustConstName: "RESUME_SESSION_HISTORY_MAX_BYTES",
     value: rustU64(RESUME_SESSION_HISTORY_MAX_BYTES),
     rustDoc: resumeSessionHistoryMaxBytesDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "SESSION_HISTORY_ENCODING_GZIP",
+    value: rustString(SESSION_HISTORY_ENCODING_GZIP),
+    rustDoc: sessionHistoryEncodingGzipDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "SESSION_HISTORY_ENCODING_IDENTITY",
+    value: rustString(SESSION_HISTORY_ENCODING_IDENTITY),
+    rustDoc: sessionHistoryEncodingIdentityDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "SESSION_HISTORY_GZIP_MIN_BYTES",
+    value: rustU64(SESSION_HISTORY_GZIP_MIN_BYTES),
+    rustDoc: sessionHistoryGzipMinBytesDoc,
   },
   {
     rustModulePath: ["runners", "paths"],
@@ -230,6 +263,15 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = ${RESUME_SESSION_HISTORY_MAX_BYTES};`,
+    );
+    expect(firstRender).toContain(
+      `pub const SESSION_HISTORY_ENCODING_GZIP: &str = "${SESSION_HISTORY_ENCODING_GZIP}";`,
+    );
+    expect(firstRender).toContain(
+      `pub const SESSION_HISTORY_ENCODING_IDENTITY: &str = "${SESSION_HISTORY_ENCODING_IDENTITY}";`,
+    );
+    expect(firstRender).toContain(
+      `pub const SESSION_HISTORY_GZIP_MIN_BYTES: u64 = ${SESSION_HISTORY_GZIP_MIN_BYTES};`,
     );
     expect(firstRender).toContain(
       `pub const CHATGPT_ACCOUNT_ID: &str = "${codexOauthPlaceholders.CHATGPT_ACCOUNT_ID}";`,

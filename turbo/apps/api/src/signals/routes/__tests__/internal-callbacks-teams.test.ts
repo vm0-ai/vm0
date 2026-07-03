@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
@@ -266,14 +267,31 @@ async function completeSandboxRun(args: {
   const sandboxHeaders = { authorization: `Bearer ${args.sandboxToken}` };
   if (args.exitCode === 0) {
     const cliAgentSessionId = `bdd-teams-cli-${args.runId}`;
+    const cliAgentSessionHistory = `bdd teams history ${args.runId}`;
+    const cliAgentSessionHistoryHash = createHash("sha256")
+      .update(cliAgentSessionHistory)
+      .digest("hex");
+    const cliAgentSessionHistorySize = Buffer.byteLength(
+      cliAgentSessionHistory,
+      "utf8",
+    );
+    await webhooksApi.requestAgentCheckpointPrepareHistory(
+      {
+        runId: args.runId,
+        hash: cliAgentSessionHistoryHash,
+        rawSize: cliAgentSessionHistorySize,
+        encodedSize: cliAgentSessionHistorySize,
+        encoding: "identity",
+      },
+      sandboxHeaders,
+      [200],
+    );
     await webhooksApi.requestAgentCheckpoint(
       {
         runId: args.runId,
         cliAgentType: "claude-code",
         cliAgentSessionId,
-        cliAgentSessionHistoryHash: createHash("sha256")
-          .update(`bdd teams history ${args.runId}`)
-          .digest("hex"),
+        cliAgentSessionHistoryHash,
       },
       sandboxHeaders,
       [200],
@@ -313,9 +331,7 @@ async function claimFollowUpInThread(args: {
     text: "continue in the same thread",
   });
   await runsApi.heartbeatRunner(args.runnerGroup);
-  return await runsApi.claimRunnerJob(followUpRunId, {
-    capabilities: ["resumeSessionHistoryRef"],
-  });
+  return await runsApi.claimRunnerJob(followUpRunId);
 }
 
 beforeEach(() => {

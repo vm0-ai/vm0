@@ -1,31 +1,36 @@
 import type { IDBPDatabase } from "idb";
 import { describe, expect, it, vi } from "vitest";
 import {
+  CHAT_MESSAGES_ORDER_INDEX,
   CHAT_MESSAGES_STORE,
   CHAT_THREAD_META_STORE,
   upgradeChatIdb,
 } from "./chat-idb-schema.ts";
 
+interface FakeObjectStore {
+  readonly createIndex: ReturnType<typeof vi.fn>;
+}
+
 function fakeDb(existingStores: readonly string[]) {
   const stores = new Set(existingStores);
-  const createdStores = new Map<
-    string,
-    {
-      createIndex: ReturnType<typeof vi.fn>;
-    }
-  >();
+  const objectStores = new Map<string, FakeObjectStore>();
+  const createdStores = new Map<string, FakeObjectStore>();
   const deleteObjectStore = vi.fn((name: string) => {
     stores.delete(name);
+    objectStores.delete(name);
   });
   const createObjectStore = vi.fn((name: string) => {
     stores.add(name);
     const store = {
       createIndex: vi.fn(),
     };
+    objectStores.set(name, store);
     createdStores.set(name, store);
     return store;
   });
-
+  for (const name of existingStores) {
+    objectStores.set(name, { createIndex: vi.fn() });
+  }
   return {
     db: {
       objectStoreNames: {
@@ -43,7 +48,7 @@ function fakeDb(existingStores: readonly string[]) {
 }
 
 describe("upgradeChatIdb", () => {
-  it("clears legacy chat cache when upgrading to v4", () => {
+  it("clears legacy chat cache when upgrading from before v4", () => {
     const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
       CHAT_MESSAGES_STORE,
       CHAT_THREAD_META_STORE,
@@ -62,5 +67,61 @@ describe("upgradeChatIdb", () => {
     expect(
       createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
     ).toHaveBeenCalledWith("byThreadAndTime", ["threadId", "createdAt"]);
+    expect(
+      createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
+    ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, [
+      "threadId",
+      "createdAt",
+      "orderSequence",
+      "id",
+    ]);
+  });
+
+  it("keeps thread metadata when resetting v4 messages for the order index", () => {
+    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_META_STORE,
+    ]);
+
+    upgradeChatIdb(db, 4);
+
+    expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
+    expect(deleteObjectStore).not.toHaveBeenCalledWith(CHAT_THREAD_META_STORE);
+    expect(createObjectStore).toHaveBeenCalledTimes(1);
+    expect(createObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE, {
+      keyPath: "id",
+    });
+    expect(
+      createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
+    ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, [
+      "threadId",
+      "createdAt",
+      "orderSequence",
+      "id",
+    ]);
+  });
+
+  it("keeps thread metadata when resetting v5 messages for terminal marker ordering", () => {
+    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_META_STORE,
+    ]);
+
+    upgradeChatIdb(db, 5);
+
+    expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
+    expect(deleteObjectStore).not.toHaveBeenCalledWith(CHAT_THREAD_META_STORE);
+    expect(createObjectStore).toHaveBeenCalledTimes(1);
+    expect(createObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE, {
+      keyPath: "id",
+    });
+    expect(
+      createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
+    ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, [
+      "threadId",
+      "createdAt",
+      "orderSequence",
+      "id",
+    ]);
   });
 });

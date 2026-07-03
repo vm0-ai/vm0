@@ -1,6 +1,5 @@
 //! E2E timing helpers — measure durations from API start time.
 
-use crate::env;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,11 +8,6 @@ use std::time::{Duration, SystemTime};
 const LOG_TAG: &str = "sandbox:guest-agent";
 const MIN_EPOCH_MS_TIMESTAMP: u64 = 1_000_000_000_000;
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
-
-/// Record an E2E duration from `VM0_API_START_TIME` to now under `op_name`.
-pub fn record_e2e_from_api(op_name: &str) {
-    record_e2e_from_api_start(op_name, env::api_start_time());
-}
 
 /// Record an E2E duration from an already captured API start timestamp.
 pub fn record_e2e_from_api_start(op_name: &str, api_start: &str) {

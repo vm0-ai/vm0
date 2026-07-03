@@ -235,15 +235,19 @@ function formatUsageReset(resetAt: string | null): string | null {
   if (Number.isNaN(date.getTime())) {
     return `resets ${text}`;
   }
-  return `resets ${date.toLocaleDateString("en-US", {
+  const options: Intl.DateTimeFormatOptions = {
     month: "short",
     day: "numeric",
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
-    timeZone: "UTC",
     timeZoneName: "short",
-  })}`;
+  };
+  const browserTimeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (browserTimeZone) {
+    options.timeZone = browserTimeZone;
+  }
+  return `resets ${date.toLocaleDateString("en-US", options)}`;
 }
 
 function fallbackSubscriptionUsage(

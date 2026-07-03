@@ -374,19 +374,3 @@ export const setNewThreadGenerationTemplate$ = command(
     set(internalNewThreadGenerationTemplate$, value);
   },
 );
-
-interface ThreadGenerationTemplateState {
-  readonly threadId: string;
-  readonly value: GenerationTemplateRequest | undefined;
-}
-
-const internalThreadGenerationTemplate$ =
-  state<ThreadGenerationTemplateState | null>(null);
-export const threadGenerationTemplate$ = computed((get) => {
-  return get(internalThreadGenerationTemplate$);
-});
-export const setThreadGenerationTemplate$ = command(
-  ({ set }, threadId: string, value: GenerationTemplateRequest | undefined) => {
-    set(internalThreadGenerationTemplate$, { threadId, value });
-  },
-);

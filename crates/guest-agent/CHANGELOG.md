@@ -1,5 +1,69 @@
 # Changelog
 
+## [0.46.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.45.3...guest-agent-v0.46.0) (2026-07-02)
+
+
+### Features
+
+* add Codex fast mode for ChatGPT subscription runs ([#19811](https://github.com/vm0-ai/vm0/issues/19811)) ([42e8e48](https://github.com/vm0-ai/vm0/commit/42e8e4883e548d497eb0b86a936b6be308ad1bed))
+
+
+### Bug Fixes
+
+* enforce session history read size cap ([#19878](https://github.com/vm0-ai/vm0/issues/19878)) ([efa2680](https://github.com/vm0-ai/vm0/commit/efa26801d6bdd96aa6e8522b4bfdb6c5e9944990))
+
+## [0.45.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.45.2...guest-agent-v0.45.3) (2026-07-02)
+
+
+### Bug Fixes
+
+* **guest-agent:** compress non-utf8 session history uploads ([#19826](https://github.com/vm0-ai/vm0/issues/19826)) ([7b0d449](https://github.com/vm0-ai/vm0/commit/7b0d44977de5ba2b435ebbd3c9b4b557f0ca9ae3))
+
+## [0.45.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.45.1...guest-agent-v0.45.2) (2026-07-02)
+
+
+### Bug Fixes
+
+* **guest-agent:** classify claude stalled streams ([#19865](https://github.com/vm0-ai/vm0/issues/19865)) ([6799682](https://github.com/vm0-ai/vm0/commit/679968254cadde4774a1082b533ccec1ca26ac74))
+
+## [0.45.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.45.0...guest-agent-v0.45.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* expose runner session ids in diagnostics ([#19755](https://github.com/vm0-ai/vm0/issues/19755)) ([e4c62e1](https://github.com/vm0-ai/vm0/commit/e4c62e17ed7de8743f89dacf9edc62f7042307d6))
+
+
+### Performance Improvements
+
+* add compressed resume session history transport ([#19667](https://github.com/vm0-ai/vm0/issues/19667)) ([ee23c32](https://github.com/vm0-ai/vm0/commit/ee23c326ccf794228d2c4f9dd6d8844cd032fc49))
+
+## [0.45.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.44.2...guest-agent-v0.45.0) (2026-07-02)
+
+
+### Features
+
+* restore Claude Fable 5 support ([#19721](https://github.com/vm0-ai/vm0/issues/19721)) ([97a7753](https://github.com/vm0-ai/vm0/commit/97a775354429e1f3de625627e3fbeeaf01c2552d))
+
+
+### Refactoring
+
+* remove guest-common runtime path fallbacks ([#19717](https://github.com/vm0-ai/vm0/issues/19717)) ([2ce4fd7](https://github.com/vm0-ai/vm0/commit/2ce4fd76711d400408d340d4126b5224c716616b))
+
+## [0.44.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.44.1...guest-agent-v0.44.2) (2026-07-01)
+
+
+### Refactoring
+
+* retire guest-agent env facade readers ([#19712](https://github.com/vm0-ai/vm0/issues/19712)) ([13cf0a8](https://github.com/vm0-ai/vm0/commit/13cf0a857fc2738671a0ec629e97ddc53ccc21ec))
+
+## [0.44.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.44.0...guest-agent-v0.44.1) (2026-07-01)
+
+
+### Refactoring
+
+* remove guest-agent path facades ([#19687](https://github.com/vm0-ai/vm0/issues/19687)) ([e054c10](https://github.com/vm0-ai/vm0/commit/e054c10f91e6b91838770c1de324782a75182d9d))
+
 ## [0.44.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.6...guest-agent-v0.44.0) (2026-07-01)
 
 

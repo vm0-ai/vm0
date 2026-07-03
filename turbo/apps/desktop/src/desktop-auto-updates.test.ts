@@ -78,19 +78,22 @@ interface CapturedUpdateOptions {
   readonly onNotifyUser: (info: { readonly releaseName: string }) => void;
 }
 
-function stubDesktopAutoUpdatePlatform(): void {
+function stubDesktopAutoUpdatePlatform(
+  arch: NodeJS.Architecture = "arm64",
+): void {
   Object.defineProperty(process, "platform", {
     configurable: true,
     value: "darwin",
   });
   Object.defineProperty(process, "arch", {
     configurable: true,
-    value: "arm64",
+    value: arch,
   });
 }
 
 function installAndCaptureUpdateOptions(
   getComputerUseHostState: () => ComputerUseHostRuntimeState,
+  expectedFeedArch: "arm64" | "x64" = "arm64",
 ): {
   readonly updateOptions: CapturedUpdateOptions;
   readonly prepareForQuitAndInstall: ReturnType<typeof vi.fn>;
@@ -113,7 +116,7 @@ function installAndCaptureUpdateOptions(
       notifyUser: true,
       updateInterval: "30 minutes",
       updateSource: expect.objectContaining({
-        baseUrl: "https://api.vm0.ai/api/desktop/updates/stable/darwin/arm64",
+        baseUrl: `https://api.vm0.ai/api/desktop/updates/stable/darwin/${expectedFeedArch}`,
       }),
     }),
   );
@@ -171,6 +174,24 @@ describe("desktop auto-updates", () => {
       expect(mocks.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
     });
     expect(mocks.dialog.showMessageBox).not.toHaveBeenCalled();
+  });
+
+  it("uses the x64 update feed on Intel Macs", () => {
+    stubDesktopAutoUpdatePlatform("x64");
+
+    installAndCaptureUpdateOptions(
+      () => OFFLINE_COMPUTER_USE_HOST_STATE,
+      "x64",
+    );
+
+    const [updateOptions] = mocks.updateElectronApp.mock.calls[0] ?? [];
+    expect(updateOptions).toEqual(
+      expect.objectContaining({
+        updateSource: expect.objectContaining({
+          baseUrl: "https://api.vm0.ai/api/desktop/updates/stable/darwin/x64",
+        }),
+      }),
+    );
   });
 
   it("checks for updates on request", () => {

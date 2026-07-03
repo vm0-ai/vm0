@@ -35,6 +35,7 @@ interface MockedUser {
   fullName: string;
   firstName?: string;
   imageUrl?: string;
+  createdAt?: Date;
   primaryEmailAddress: { emailAddress: string } | null;
   unsafeMetadata: Record<string, unknown>;
   createOrganizationEnabled: boolean;
@@ -68,6 +69,7 @@ export function mockUser(
     email?: string;
     firstName?: string;
     imageUrl?: string;
+    createdAt?: Date;
     createOrganizationEnabled?: boolean;
     clientSessions?: MockedClientSession[];
   } | null,

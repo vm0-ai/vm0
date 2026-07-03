@@ -109,6 +109,25 @@ export const openImageLightbox$ = command(
   },
 );
 
+/**
+ * Swap the previewed image without re-opening the dialog. Unlike
+ * `openImageLightbox$`, this preserves the current fullscreen state and exit
+ * animation token so keyboard/arrow navigation between images in the same
+ * message does not collapse fullscreen.
+ */
+export const navigateImageLightbox$ = command(
+  (
+    { set },
+    value: {
+      url: string;
+      filename?: string;
+      artifact?: AttachmentArtifactMetadata;
+    },
+  ) => {
+    set(internalLightboxState$, { kind: "image", ...value });
+  },
+);
+
 export const openDocumentLightbox$ = command(
   (
     { set },

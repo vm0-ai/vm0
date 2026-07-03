@@ -653,7 +653,6 @@ export type ZeroWorkflowTriggerUpdateRequest = z.infer<
 
 /**
  * Workflow summary. A workflow belongs to exactly one agent (`agentId`).
- * `requestToPublish` is only meaningful while `visibility = 'private'`.
  * `canManage` reflects the caller's effective rights (agent write-permission
  * for public workflows; ownership for private ones).
  */
@@ -666,11 +665,12 @@ export const zeroWorkflowSummarySchema = z.object({
   displayName: z.string().max(256).nullable(),
   description: z.string().max(1024).nullable(),
   visibility: zeroWorkflowVisibilitySchema,
-  requestToPublish: z.boolean(),
   ownerUserId: z.string(),
   ownerUserDisplayName: z.string().nullable().optional(),
   ownerUserImageUrl: z.string().nullable().optional(),
+  createdAt: z.string().datetime(),
   canManage: z.boolean(),
+  canPublish: z.boolean(),
   shadowedBy: z
     .object({
       id: z.string().uuid(),
@@ -685,7 +685,6 @@ export const zeroWorkflowDetailResponseSchema =
   zeroWorkflowSummarySchema.extend({
     createdByUserId: z.string(),
     updatedByUserId: z.string(),
-    createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
     instruction: z.string().nullable(),
     files: z.array(workflowFileMetadataSchema).nullable(),
@@ -875,15 +874,11 @@ export const zeroWorkflowsDetailContract = c.router({
   },
 });
 
-/**
- * Visibility transitions. A private workflow whose owner lacks agent
- * write-permission flows through request -> approve/reject; an owner with agent
- * write-permission publishes directly. Demotion is an agent-write operation.
- */
+/** Visibility transitions. */
 export const zeroWorkflowVisibilityContract = c.router({
-  requestPublish: {
+  publish: {
     method: "POST",
-    path: "/api/zero/workflows/:workflowId/request-publish",
+    path: "/api/zero/workflows/:workflowId/publish",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: c.noBody(),
@@ -895,54 +890,7 @@ export const zeroWorkflowVisibilityContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary:
-      "Owner requests promotion to public (auto-approves if owner has agent write-permission)",
-  },
-  cancelPublishRequest: {
-    method: "POST",
-    path: "/api/zero/workflows/:workflowId/cancel-publish-request",
-    headers: authHeadersSchema,
-    pathParams: workflowIdParams,
-    body: c.noBody(),
-    responses: {
-      200: zeroWorkflowSummarySchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Owner withdraws a pending publish request",
-  },
-  approvePublish: {
-    method: "POST",
-    path: "/api/zero/workflows/:workflowId/approve-publish",
-    headers: authHeadersSchema,
-    pathParams: workflowIdParams,
-    body: c.noBody(),
-    responses: {
-      200: zeroWorkflowSummarySchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-    },
-    summary: "Agent write-permission holder approves a pending publish request",
-  },
-  rejectPublish: {
-    method: "POST",
-    path: "/api/zero/workflows/:workflowId/reject-publish",
-    headers: authHeadersSchema,
-    pathParams: workflowIdParams,
-    body: c.noBody(),
-    responses: {
-      200: zeroWorkflowSummarySchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Agent write-permission holder rejects a pending publish request",
+    summary: "Publish a private workflow",
   },
   demote: {
     method: "POST",

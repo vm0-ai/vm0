@@ -13,6 +13,7 @@ import {
   chatThreadComputerUseHostContract,
   chatThreadMessagesContract,
   chatMessagesContract,
+  type ChatRunOptionsRequest,
   type GenerationTemplateRequest,
   type ModelSelectionRequest,
   type PagedChatMessage,
@@ -254,6 +255,12 @@ type MockPagedMessage =
       id?: string;
     });
 
+function cloneMockPagedMessage<T extends MockPagedMessage & { id: string }>(
+  message: T,
+): T {
+  return structuredClone(message);
+}
+
 function isRecallMessageBody(body: {
   revokesMessageId?: string;
   prompt?: string;
@@ -278,7 +285,7 @@ function appendSeedChatMessages(args: {
   chatMessages: MockPagedMessage[];
   activeRunIds: readonly string[];
 }) {
-  const completionCandidateRunIds = new Set<string>();
+  const completionCandidateRuns = new Map<string, string>();
   const terminalRunIds = new Set<string>();
   for (let i = 0; i < args.chatMessages.length; i++) {
     const seed = args.chatMessages[i]!;
@@ -286,7 +293,7 @@ function appendSeedChatMessages(args: {
     collectSeedRunState({
       seed,
       runId,
-      completionCandidateRunIds,
+      completionCandidateRuns,
       terminalRunIds,
     });
     args.pagedMessages.push({
@@ -297,20 +304,40 @@ function appendSeedChatMessages(args: {
   }
   appendDefaultCompletionMarkers({
     pagedMessages: args.pagedMessages,
-    completionCandidateRunIds,
+    completionCandidateRuns,
     terminalRunIds,
     activeRunIds: new Set(args.activeRunIds),
   });
 }
 
+function markerCreatedAtAfter(createdAt: string): string {
+  return new Date(new Date(createdAt).getTime() + 1).toISOString();
+}
+
+function addCompletionCandidate(
+  runs: Map<string, string>,
+  runId: string,
+  createdAt: string,
+): void {
+  const markerCreatedAt = markerCreatedAtAfter(createdAt);
+  const current = runs.get(runId);
+  if (current === undefined || current < markerCreatedAt) {
+    runs.set(runId, markerCreatedAt);
+  }
+}
+
 function collectSeedRunState(args: {
   seed: MockPagedMessage;
   runId: string | undefined;
-  completionCandidateRunIds: Set<string>;
+  completionCandidateRuns: Map<string, string>;
   terminalRunIds: Set<string>;
 }) {
   if (!("runId" in args.seed) && args.runId !== undefined) {
-    args.completionCandidateRunIds.add(args.runId);
+    addCompletionCandidate(
+      args.completionCandidateRuns,
+      args.runId,
+      args.seed.createdAt,
+    );
   }
   if (
     args.seed.role === "assistant" &&
@@ -325,17 +352,21 @@ function collectSeedRunState(args: {
     args.seed.content !== null &&
     args.seed.runEventId === undefined
   ) {
-    args.completionCandidateRunIds.add(args.runId);
+    addCompletionCandidate(
+      args.completionCandidateRuns,
+      args.runId,
+      args.seed.createdAt,
+    );
   }
 }
 
 function appendDefaultCompletionMarkers(args: {
   pagedMessages: (MockPagedMessage & { id: string })[];
-  completionCandidateRunIds: Set<string>;
+  completionCandidateRuns: Map<string, string>;
   terminalRunIds: Set<string>;
   activeRunIds: Set<string>;
 }) {
-  for (const runId of args.completionCandidateRunIds) {
+  for (const [runId, createdAt] of args.completionCandidateRuns) {
     if (args.terminalRunIds.has(runId) || args.activeRunIds.has(runId)) {
       continue;
     }
@@ -345,7 +376,7 @@ function appendDefaultCompletionMarkers(args: {
       content: null,
       runId,
       runLifecycleEvent: "completed",
-      createdAt: "2026-03-10T00:00:59Z",
+      createdAt,
     });
   }
 }
@@ -393,6 +424,12 @@ export function mockChatLifecycle(
      * Lets tests prove the latest-message view renders before silent backfill.
      */
     beforeHistoryGate?: Promise<void>;
+    /**
+     * Promise the thread metadata handler awaits before responding. Lets tests
+     * prove message-derived UI does not wait for activeRunIds metadata.
+     */
+    threadGate?: Promise<void>;
+    afterInitialMessagesList?: () => void;
     onRunCreate?: (body: {
       prompt?: string;
       clientMessageId?: string;
@@ -405,9 +442,11 @@ export function mockChatLifecycle(
       hasTextContent?: boolean;
       generationTemplate?: GenerationTemplateRequest;
       modelSelection?: ModelSelectionRequest | null;
+      runOptions?: ChatRunOptionsRequest;
       computerUseHostId?: string | null;
       revokesMessageId?: string;
     }) => void;
+    onMessageGet?: (messageId: string) => void;
   },
 ): MockLifecycleControl {
   let threadId = options?.threadId ?? "thread-test-1";
@@ -502,6 +541,76 @@ export function mockChatLifecycle(
     );
   };
 
+  const buildPagedMessages = () => {
+    const assistantId = `msg-assistant-run-v${assistantVersion}`;
+    const historicalMessages = historyMessages.map((message, i) => {
+      return {
+        id: `msg-history-${i}`,
+        ...message,
+      };
+    });
+
+    const pagedMessages: (MockPagedMessage & { id: string })[] = [];
+
+    for (const message of historicalMessages) {
+      pagedMessages.push(message);
+    }
+
+    // Seed with pre-existing chatMessages (e.g. history on resume). Seeded
+    // entries represent historical messages, so default `runId` to the mock
+    // run when the test didn't include the key — without it, user messages
+    // would look "unassociated" (runId === undefined) and be treated as
+    // queued. Tests that *want* a queued seed should explicitly pass
+    // `runId: undefined`, which we respect via the `in` check.
+    appendSeedChatMessages({
+      pagedMessages,
+      chatMessages,
+      activeRunIds: optionActiveRunIds,
+    });
+
+    for (const message of queuedMessages) {
+      pagedMessages.push({
+        id: message.id ?? `queued-${pagedMessages.length}`,
+        ...message,
+      });
+    }
+
+    // After a run is associated, append user + assistant messages.
+    if (runAssociated) {
+      pagedMessages.push({
+        id: runUserMessageId,
+        role: "user",
+        content: runPrompt ?? "Hello",
+        runId: MOCK_RUN_ID,
+        createdAt: "2026-03-10T00:00:01Z",
+      });
+      pagedMessages.push({
+        id: assistantId,
+        role: "assistant",
+        content: resultContent || null,
+        runId: MOCK_RUN_ID,
+        error: runError ?? undefined,
+        runLifecycleEvent:
+          runStatus === "failed" || runStatus === "cancelled"
+            ? runStatus
+            : undefined,
+        createdAt: "2026-03-10T00:00:02Z",
+      });
+      if (runStatus === "completed") {
+        pagedMessages.push({
+          id: `msg-assistant-run-marker-v${assistantVersion}`,
+          role: "assistant",
+          content: null,
+          runId: MOCK_RUN_ID,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-03-10T00:00:03Z",
+        });
+      }
+    }
+
+    return pagedMessages;
+  };
+
   const appendQueuedUserMessage = async (body: {
     prompt?: string;
     attachFiles?: {
@@ -555,6 +664,7 @@ export function mockChatLifecycle(
     hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
     modelSelection?: ModelSelectionRequest | null;
+    runOptions?: ChatRunOptionsRequest;
     computerUseHostId?: string | null;
     revokesMessageId?: string;
   }) => {
@@ -583,73 +693,7 @@ export function mockChatLifecycle(
     const beforeId = query.beforeId;
     const limit = query.limit ?? 50;
     const beforeHistoryGate = options?.beforeHistoryGate ?? Promise.resolve();
-
-    const assistantId = `msg-assistant-run-v${assistantVersion}`;
-
-    const historicalMessages = historyMessages.map((message, i) => {
-      return {
-        id: `msg-history-${i}`,
-        ...message,
-      };
-    });
-
-    const pagedMessages: (MockPagedMessage & { id: string })[] = [];
-
-    for (const message of historicalMessages) {
-      pagedMessages.push(message);
-    }
-
-    // Seed with pre-existing chatMessages (e.g. history on resume). Seeded
-    // entries represent historical messages, so default `runId` to the mock
-    // run when the test didn't include the key — without it, user messages
-    // would look "unassociated" (runId === undefined) and be treated as
-    // queued. Tests that *want* a queued seed should explicitly pass
-    // `runId: undefined`, which we respect via the `in` check.
-    appendSeedChatMessages({
-      pagedMessages,
-      chatMessages,
-      activeRunIds: optionActiveRunIds,
-    });
-
-    for (const message of queuedMessages) {
-      pagedMessages.push({
-        id: message.id ?? `queued-${pagedMessages.length}`,
-        ...message,
-      });
-    }
-
-    // After a run is associated, append user + assistant messages
-    if (runAssociated) {
-      pagedMessages.push({
-        id: runUserMessageId,
-        role: "user",
-        content: runPrompt ?? "Hello",
-        runId: MOCK_RUN_ID,
-        createdAt: "2026-03-10T00:00:01Z",
-      });
-      pagedMessages.push({
-        id: assistantId,
-        role: "assistant",
-        content: resultContent || null,
-        runId: MOCK_RUN_ID,
-        error: runError ?? undefined,
-        runLifecycleEvent:
-          runStatus === "failed" || runStatus === "cancelled"
-            ? runStatus
-            : undefined,
-        createdAt: "2026-03-10T00:00:02Z",
-      });
-      if (runStatus === "completed") {
-        pagedMessages.push({
-          id: `msg-assistant-run-marker-v${assistantVersion}`,
-          role: "assistant",
-          content: null,
-          runId: MOCK_RUN_ID,
-          runLifecycleEvent: "completed",
-          createdAt: "2026-03-10T00:00:03Z",
-        });
-      }
-    }
+    const pagedMessages = buildPagedMessages();
 
     if (beforeId) {
       return beforeHistoryGate.then(() => {
@@ -664,7 +708,7 @@ export function mockChatLifecycle(
           beforeIndex,
         );
         return respond(200, {
-          messages: olderMessages,
+          messages: olderMessages.map(cloneMockPagedMessage),
           hasHistoryBefore: beforeIndex - olderMessages.length > 0,
         });
       });
@@ -681,7 +725,7 @@ export function mockChatLifecycle(
             ? pagedMessages.slice(Math.max(0, pagedMessages.length - 2))
             : [pagedMessages[pagedMessages.length - 1]!];
         return respond(200, {
-          messages,
+          messages: messages.map(cloneMockPagedMessage),
         });
       }
       return respond(200, { messages: [] });
@@ -689,15 +733,37 @@ export function mockChatLifecycle(
 
     lastDeliveredVersion = assistantVersion;
     const latestMessages = pagedMessages.slice(historyMessages.length);
-    return respond(200, {
-      messages: latestMessages.slice(
-        Math.max(0, latestMessages.length - limit),
-      ),
+    const body = {
+      messages: latestMessages
+        .slice(Math.max(0, latestMessages.length - limit))
+        .map(cloneMockPagedMessage),
       hasHistoryBefore:
         historyMessages.length > 0 || latestMessages.length > limit,
-    });
+    };
+    options?.afterInitialMessagesList?.();
+    return respond(200, body);
   });
-  context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+  context.mocks.api(chatThreadMessagesContract.get, ({ params, respond }) => {
+    options?.onMessageGet?.(params.messageId);
+    if (params.threadId !== threadId) {
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
+    }
+    const message = buildPagedMessages().find((item) => {
+      return item.id === params.messageId;
+    });
+    if (!message) {
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
+    }
+    return respond(200, cloneMockPagedMessage(message));
+  });
+  context.mocks.api(chatThreadByIdContract.get, async ({ respond }) => {
+    if (options?.threadGate) {
+      await options.threadGate;
+    }
     const lifecycleActiveRunIds =
       runAssociated && !terminal.has(runStatus) ? [MOCK_RUN_ID] : [];
     const activeRunIds = [...optionActiveRunIds, ...lifecycleActiveRunIds];

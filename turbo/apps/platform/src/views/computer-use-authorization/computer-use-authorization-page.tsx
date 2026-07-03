@@ -1,22 +1,29 @@
 import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
+  IconAlertTriangle,
   IconCheck,
   IconDeviceDesktop,
   IconDownload,
   IconLoader2,
 } from "@tabler/icons-react";
 import type { ComputerUseHost } from "@vm0/api-contracts/contracts/zero-computer-use";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Button } from "@vm0/ui/components/ui/button";
 import {
   applyComputerUseAuthorizationRequest$,
   computerUseAuthorizationRequest$,
 } from "../../signals/computer-use-authorization/computer-use-authorization.ts";
 import {
+  zeroDesktopDownloadSupportStatus$,
   visibleComputerUseHosts,
   ZERO_DESKTOP_DOWNLOAD_URL,
+  ZERO_DESKTOP_INTEL_DOWNLOAD_URL,
+  ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL,
+  ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import computerUseIllustration from "../zero-page/assets/computer-use-illustration.png";
 import { Vm0LogoLink } from "../zero-page/zero-directed-shared.tsx";
@@ -82,6 +89,17 @@ function HostOption({
 }
 
 function EmptyHosts() {
+  const features = useGet(featureSwitch$);
+  const showIntelDownload =
+    features[FeatureSwitchKey.DesktopX64Download] ?? false;
+  const downloadSupportLoadable = useLoadable(
+    zeroDesktopDownloadSupportStatus$,
+  );
+  const downloadSupportStatus =
+    downloadSupportLoadable.state === "hasData"
+      ? downloadSupportLoadable.data
+      : "checking";
+
   return (
     <div className="flex flex-col items-center gap-4 rounded-lg border border-border bg-muted/30 px-4 py-6 text-center">
       <div className="flex h-24 w-24 items-center justify-center">
@@ -99,16 +117,55 @@ function EmptyHosts() {
           Open Zero Computer Use on your Mac and refresh this page when it comes
           online.
         </p>
+        <p className="text-sm leading-5 text-muted-foreground">
+          {ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL}
+        </p>
       </div>
-      <a
-        href={ZERO_DESKTOP_DOWNLOAD_URL}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-      >
-        <IconDownload size={16} />
-        Download for macOS
-      </a>
+      {showIntelDownload ? (
+        <div className="flex w-full max-w-sm flex-col items-center gap-3">
+          <a
+            href={ZERO_DESKTOP_DOWNLOAD_URL}
+            aria-label="Download for Mac Apple Silicon"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            <IconDownload size={16} />
+            Download for Mac (Apple Silicon)
+          </a>
+          <p className="text-sm text-muted-foreground">
+            On an Intel Mac?{" "}
+            <a
+              href={ZERO_DESKTOP_INTEL_DOWNLOAD_URL}
+              aria-label="Download for Mac Intel"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-primary hover:underline"
+            >
+              Download here
+            </a>
+          </p>
+        </div>
+      ) : downloadSupportStatus === "unsupported-intel-mac" ? (
+        <Button type="button" variant="outline" disabled className="h-9">
+          <IconAlertTriangle size={16} />
+          {ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL}
+        </Button>
+      ) : downloadSupportStatus === "checking" ? (
+        <Button type="button" variant="outline" disabled className="h-9">
+          Checking compatibility
+        </Button>
+      ) : (
+        <a
+          href={ZERO_DESKTOP_DOWNLOAD_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+        >
+          <IconDownload size={16} />
+          Download for macOS
+        </a>
+      )}
     </div>
   );
 }

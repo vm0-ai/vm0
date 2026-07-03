@@ -286,8 +286,8 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       audioContext: (): void => {
         mockAudioContext(getSignal());
       },
-      voiceInput: (): void => {
-        mockVoiceInput(getSignal());
+      voiceInput: (options?: VoiceInputMockOptions): void => {
+        mockVoiceInput(getSignal(), options);
       },
       imageDimensions: (
         results:
@@ -523,7 +523,16 @@ function mockAudioContext(signal: AbortSignal): void {
   });
 }
 
-function mockVoiceInput(signal: AbortSignal): void {
+interface VoiceInputMockOptions {
+  readonly audioContextReady?: Promise<void>;
+  readonly getUserMediaReady?: Promise<void>;
+  readonly rms?: number;
+}
+
+function mockVoiceInput(
+  signal: AbortSignal,
+  options: VoiceInputMockOptions = {},
+): void {
   const mediaRecorderGlobal = globalThis as typeof globalThis & {
     MediaRecorder?: typeof MediaRecorder;
   };
@@ -538,6 +547,40 @@ function mockVoiceInput(signal: AbortSignal): void {
       ];
     },
   } as unknown as MediaStream;
+
+  class TestMediaStreamAudioSource {
+    connect(_destination: AnalyserNode): void {}
+
+    disconnect(): void {}
+  }
+
+  class TestAnalyser {
+    fftSize = 1024;
+
+    getFloatTimeDomainData(samples: Float32Array<ArrayBuffer>): void {
+      samples.fill(options.rms ?? 0);
+    }
+
+    disconnect(): void {}
+  }
+
+  class TestVoiceAudioContext {
+    resume(): Promise<void> {
+      return options.audioContextReady ?? Promise.resolve();
+    }
+
+    close(): Promise<void> {
+      return Promise.resolve();
+    }
+
+    createMediaStreamSource(_stream: MediaStream): MediaStreamAudioSourceNode {
+      return new TestMediaStreamAudioSource() as unknown as MediaStreamAudioSourceNode;
+    }
+
+    createAnalyser(): AnalyserNode {
+      return new TestAnalyser() as unknown as AnalyserNode;
+    }
+  }
 
   type RecorderDataEvent = Event & { data: Blob };
 
@@ -581,7 +624,9 @@ function mockVoiceInput(signal: AbortSignal): void {
         return Promise.resolve([] as MediaDeviceInfo[]);
       },
       getUserMedia: () => {
-        return Promise.resolve(stream);
+        return (options.getUserMediaReady ?? Promise.resolve()).then(() => {
+          return stream;
+        });
       },
     },
   );
@@ -590,6 +635,14 @@ function mockVoiceInput(signal: AbortSignal): void {
     "MediaRecorder",
     TestMediaRecorder as unknown as typeof MediaRecorder,
   );
+  const audioContextDescriptor =
+    options.rms === undefined
+      ? undefined
+      : defineWindowProperty(
+          window,
+          "AudioContext",
+          TestVoiceAudioContext as unknown as typeof AudioContext,
+        );
 
   restoreOnAbort(signal, () => {
     restoreWindowProperty(navigator, "mediaDevices", mediaDevicesDescriptor);
@@ -598,6 +651,9 @@ function mockVoiceInput(signal: AbortSignal): void {
       "MediaRecorder",
       mediaRecorderDescriptor,
     );
+    if (audioContextDescriptor !== undefined) {
+      restoreWindowProperty(window, "AudioContext", audioContextDescriptor);
+    }
   });
 }
 

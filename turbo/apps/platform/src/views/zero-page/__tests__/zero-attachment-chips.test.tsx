@@ -75,6 +75,7 @@ function presentationHtml(): string {
 }
 
 function setupHostedSiteArtifactPreview({
+  artifactUrl,
   featureSwitches = {
     [FeatureSwitchKey.HtmlArtifactCommentEditing]: true,
   },
@@ -85,6 +86,7 @@ function setupHostedSiteArtifactPreview({
   path = `/chats/${THREAD_ID}`,
   runId,
 }: {
+  artifactUrl?: string;
   featureSwitches?: Parameters<typeof detachedSetupPage>[0]["featureSwitches"];
   filename: string;
   html?: string;
@@ -93,6 +95,7 @@ function setupHostedSiteArtifactPreview({
   path?: string;
   runId: string;
 }): void {
+  const artifactMetadataUrl = artifactUrl ?? htmlUrl;
   context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
     expect(new URL(request.url).searchParams.get("url")).toBe(htmlUrl);
     return new Response(
@@ -116,7 +119,7 @@ function setupHostedSiteArtifactPreview({
         {
           runId,
           files: [
-            artifactFile(htmlUrl, {
+            artifactFile(artifactMetadataUrl, {
               artifactKind: "hosted-site",
               filename,
             }),
@@ -155,20 +158,19 @@ function expectHostedSiteEditingHeader({
   expect(
     within(sidebar).getByTestId("artifact-sidebar-html-edit-status"),
   ).toHaveTextContent("Editing");
-  expect(
-    within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
-  ).toHaveTextContent("Exit");
+  const exitEdit = within(sidebar).getByTestId(
+    "artifact-sidebar-exit-html-edit",
+  );
+  expect(exitEdit).toHaveAttribute("aria-label", "Exit editing");
   expect(
     within(sidebar)
       .getByTestId("artifact-sidebar-html-edit-status")
-      .compareDocumentPosition(
-        within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
-      ),
+      .compareDocumentPosition(within(sidebar).getByLabelText(fullscreenLabel)),
   ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   expect(
     within(sidebar)
-      .getByTestId("artifact-sidebar-exit-html-edit")
-      .compareDocumentPosition(within(sidebar).getByLabelText(fullscreenLabel)),
+      .getByLabelText(fullscreenLabel)
+      .compareDocumentPosition(exitEdit),
   ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   expect(within(sidebar).queryByLabelText("Edit page")).toBeNull();
   expect(within(sidebar).queryByLabelText("Open in new tab")).toBeNull();
@@ -1065,6 +1067,476 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("navigates modal image artifacts within the current run", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/image-navigation/first.png";
+    const notesUrl =
+      "https://cdn.vm7.io/artifacts/test/image-navigation/notes.md";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/image-navigation/second.png";
+    // A generated image artifact that lives in the same run but was NOT attached
+    // to the message. It must be excluded from message-scoped navigation.
+    const generatedArtifactUrl =
+      "https://cdn.vm7.io/artifacts/test/image-navigation/generated.png";
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-image-navigation",
+            files: [
+              artifactFile(firstImageUrl, {
+                id: "artifact-first-image",
+                filename: "first.png",
+                contentType: "image/png",
+                size: 128,
+              }),
+              artifactFile(notesUrl, {
+                id: "artifact-notes",
+                filename: "notes.md",
+                contentType: "text/markdown",
+                size: 64,
+              }),
+              artifactFile(secondImageUrl, {
+                id: "artifact-second-image",
+                filename: "second.png",
+                contentType: "image/png",
+                size: 256,
+              }),
+              artifactFile(generatedArtifactUrl, {
+                id: "artifact-generated-image",
+                filename: "generated.png",
+                contentType: "image/png",
+                size: 512,
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-image-navigation",
+          role: "user",
+          content: "Review these images",
+          attachFiles: [
+            {
+              id: "artifact-first-image",
+              filename: "first.png",
+              contentType: "image/png",
+              size: 128,
+              url: firstImageUrl,
+            },
+            {
+              id: "artifact-notes",
+              filename: "notes.md",
+              contentType: "text/markdown",
+              size: 64,
+              url: notesUrl,
+            },
+            {
+              id: "artifact-second-image",
+              filename: "second.png",
+              contentType: "image/png",
+              size: 256,
+              url: secondImageUrl,
+            },
+          ],
+          runId: "run-image-navigation",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
+      },
+    });
+
+    click(await screen.findByLabelText("Preview first.png"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+    expect(screen.queryByLabelText("Previous image artifact")).toBeNull();
+    expect(screen.getByLabelText("Next image artifact")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+      "alt",
+      "first.png",
+    );
+
+    await user.click(screen.getByLabelText("Next image artifact"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "second.png",
+      );
+    });
+    expect(
+      screen.getByLabelText("Previous image artifact"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Next image artifact")).toBeNull();
+
+    // The lightbox modal is immersive: arrow keys navigate even when focus is
+    // on an interactive control.
+    const shareButton = screen.getByLabelText("Share");
+    shareButton.focus();
+    fireEvent.keyDown(shareButton, { key: "ArrowLeft" });
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+  });
+
+  it("navigates modal images generated in an assistant message body", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/body-image-navigation/first.png";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/body-image-navigation/second.png";
+    // A generated image that exists in the run artifacts but is NOT referenced
+    // in the message body. It must be excluded from message-scoped navigation.
+    const unreferencedImageUrl =
+      "https://cdn.vm7.io/artifacts/test/body-image-navigation/unreferenced.png";
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-body-image-navigation",
+            files: [
+              artifactFile(firstImageUrl, {
+                id: "artifact-body-first-image",
+                filename: "first.png",
+                contentType: "image/png",
+                size: 128,
+              }),
+              artifactFile(secondImageUrl, {
+                id: "artifact-body-second-image",
+                filename: "second.png",
+                contentType: "image/png",
+                size: 256,
+              }),
+              artifactFile(unreferencedImageUrl, {
+                id: "artifact-body-unreferenced-image",
+                filename: "unreferenced.png",
+                contentType: "image/png",
+                size: 512,
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-body-image-navigation",
+          role: "assistant",
+          content: `Generated images:\n\n${firstImageUrl}\n${secondImageUrl}`,
+          runId: "run-body-image-navigation",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
+      },
+    });
+
+    const bodyImage = await screen.findByAltText("first.png");
+    const previewButton = bodyImage.closest("button");
+    if (!previewButton) {
+      throw new Error("Markdown image preview button not found");
+    }
+    fireEvent.load(bodyImage);
+    click(previewButton);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+    expect(screen.queryByLabelText("Previous image artifact")).toBeNull();
+    expect(screen.getByLabelText("Next image artifact")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Next image artifact"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "second.png",
+      );
+    });
+    // The unreferenced generated artifact is not part of the message, so the
+    // last message image has no next target.
+    expect(screen.queryByLabelText("Next image artifact")).toBeNull();
+
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+  });
+
+  it("navigates human-uploaded images that are not run artifacts", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/user-image-navigation/first.png";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/user-image-navigation/second.png";
+    // The images the user attached are NOT part of the thread's run artifacts;
+    // they resolve from the user artifacts bucket. Navigation must still work.
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, { runs: [] });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-user-image-navigation",
+          role: "user",
+          content: "Here are my photos",
+          attachFiles: [
+            {
+              id: "user-first-image",
+              filename: "first.png",
+              contentType: "image/png",
+              size: 128,
+              url: firstImageUrl,
+            },
+            {
+              id: "user-second-image",
+              filename: "second.png",
+              contentType: "image/png",
+              size: 256,
+              url: secondImageUrl,
+            },
+          ],
+          runId: "run-user-image-navigation",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
+      },
+    });
+
+    click(await screen.findByLabelText("Preview first.png"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+    expect(screen.queryByLabelText("Previous image artifact")).toBeNull();
+    expect(screen.getByLabelText("Next image artifact")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Next image artifact"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "second.png",
+      );
+    });
+    expect(
+      screen.getByLabelText("Previous image artifact"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Next image artifact")).toBeNull();
+
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+  });
+
+  it("keeps the modal fullscreen state while navigating images", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/fullscreen-navigation/first.png";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/fullscreen-navigation/second.png";
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-fullscreen-navigation",
+            files: [
+              artifactFile(firstImageUrl, {
+                id: "artifact-fullscreen-first-image",
+                filename: "first.png",
+                contentType: "image/png",
+                size: 128,
+              }),
+              artifactFile(secondImageUrl, {
+                id: "artifact-fullscreen-second-image",
+                filename: "second.png",
+                contentType: "image/png",
+                size: 256,
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-fullscreen-navigation",
+          role: "user",
+          content: "Review these images",
+          attachFiles: [
+            {
+              id: "artifact-fullscreen-first-image",
+              filename: "first.png",
+              contentType: "image/png",
+              size: 128,
+              url: firstImageUrl,
+            },
+            {
+              id: "artifact-fullscreen-second-image",
+              filename: "second.png",
+              contentType: "image/png",
+              size: 256,
+              url: secondImageUrl,
+            },
+          ],
+          runId: "run-fullscreen-navigation",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
+      },
+    });
+
+    click(await screen.findByLabelText("Preview first.png"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+
+    await user.click(screen.getByLabelText("Enter fullscreen"));
+    expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Next image artifact"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "second.png",
+      );
+    });
+    // Navigating between images must not collapse fullscreen.
+    expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Enter fullscreen")).toBeNull();
+  });
+
+  it("hides image navigation when the feature switch is disabled", async () => {
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/navigation-disabled/first.png";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/navigation-disabled/second.png";
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-navigation-disabled",
+            files: [
+              artifactFile(firstImageUrl, {
+                id: "artifact-disabled-first-image",
+                filename: "first.png",
+                contentType: "image/png",
+                size: 128,
+              }),
+              artifactFile(secondImageUrl, {
+                id: "artifact-disabled-second-image",
+                filename: "second.png",
+                contentType: "image/png",
+                size: 256,
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-navigation-disabled",
+          role: "user",
+          content: "Review these images",
+          attachFiles: [
+            {
+              id: "artifact-disabled-first-image",
+              filename: "first.png",
+              contentType: "image/png",
+              size: 128,
+              url: firstImageUrl,
+            },
+            {
+              id: "artifact-disabled-second-image",
+              filename: "second.png",
+              contentType: "image/png",
+              size: 256,
+              url: secondImageUrl,
+            },
+          ],
+          runId: "run-navigation-disabled",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    // No featureSwitches override: the switch defaults to off in tests.
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    click(await screen.findByLabelText("Preview first.png"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+
+    expect(screen.queryByLabelText("Next image artifact")).toBeNull();
+    expect(screen.queryByLabelText("Previous image artifact")).toBeNull();
+  });
+
   it("opens presentation artifact controls from chat message links", async () => {
     const presentationUrl =
       "https://cdn.vm7.io/artifacts/test/body-presentation/quarterly-roadmap.html";
@@ -1263,25 +1735,21 @@ describe("zero attachment chips", () => {
       expect(
         within(sidebar).getByTestId("artifact-sidebar-html-edit-status"),
       ).toHaveTextContent("Editing");
-      expect(
-        within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
-      ).toHaveTextContent("Exit");
-      expect(
-        within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
-      ).toHaveClass("border");
+      const exitEdit = within(sidebar).getByTestId(
+        "artifact-sidebar-exit-html-edit",
+      );
+      expect(exitEdit).toHaveAttribute("aria-label", "Exit editing");
       expect(
         within(sidebar)
           .getByTestId("artifact-sidebar-html-edit-status")
           .compareDocumentPosition(
-            within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
+            within(sidebar).getByLabelText("Enter fullscreen"),
           ),
       ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
       expect(
         within(sidebar)
-          .getByTestId("artifact-sidebar-exit-html-edit")
-          .compareDocumentPosition(
-            within(sidebar).getByLabelText("Enter fullscreen"),
-          ),
+          .getByLabelText("Enter fullscreen")
+          .compareDocumentPosition(exitEdit),
       ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
       expect(within(sidebar).queryByLabelText("Edit page")).toBeNull();
       expect(within(sidebar).queryByLabelText("Open in new tab")).toBeNull();
@@ -1336,47 +1804,64 @@ describe("zero attachment chips", () => {
     });
 
     await waitFor(() => {
-      const marker = frame.contentDocument?.querySelector<HTMLElement>(
-        "[data-testid='html-dom-comment-marker']",
-      );
-      const tag = marker?.querySelector<HTMLElement>(
-        "[data-testid='html-dom-comment-tag']",
-      );
-      const tagText = tag?.querySelector<HTMLElement>(
-        "[data-testid='html-dom-comment-tag-text']",
-      );
-      const deleteButton = marker?.querySelector<HTMLElement>(
-        "[data-testid='html-dom-comment-delete']",
-      );
-      expect(marker).not.toBeNull();
-      expect(marker).toHaveAttribute(HTML_DOM_EDIT_OVERLAY_ATTR);
-      expect(marker).not.toHaveAttribute("title");
-      expect(marker).toHaveAttribute(
-        "data-vm0-html-comment-placement",
-        "right",
-      );
       expect(
-        marker?.querySelector("[data-testid='html-dom-comment-anchor']"),
+        frame.contentDocument?.querySelector(
+          "[data-testid='html-dom-comment-marker']",
+        ),
       ).not.toBeNull();
-      expect(
-        marker?.querySelector("[data-testid='html-dom-comment-leader']"),
-      ).not.toBeNull();
-      expect(deleteButton).not.toBeNull();
-      expect(deleteButton?.style.opacity).toBe("0");
-      expect(deleteButton?.style.pointerEvents).toBe("none");
-      expect(frame.contentDocument?.head.textContent).toContain(
-        "[data-vm0-html-comment-target-node-id]:hover [data-vm0-html-comment-delete-id]",
-      );
-      expect(frame.contentDocument?.head.textContent).toContain(":hover");
-      expect(tag).toHaveTextContent("Make the headline shorter");
-      expect(tagText).toHaveTextContent("Make the headline shorter");
-      expect(tag?.style.maxWidth).toBe("136px");
-      expect(tag?.style.height).toBe("56px");
-      expect(tag?.style.overflow).toBe("hidden");
-      expect(tagText?.style.whiteSpace).toBe("normal");
-      expect(tagText?.style.overflowWrap).toBe("anywhere");
-      expect(tagText?.style.getPropertyValue("-webkit-line-clamp")).toBe("2");
     });
+    const marker = frame.contentDocument!.querySelector<HTMLElement>(
+      "[data-testid='html-dom-comment-marker']",
+    )!;
+    const tag = marker.querySelector<HTMLElement>(
+      "[data-testid='html-dom-comment-tag']",
+    )!;
+    const tagText = tag.querySelector<HTMLElement>(
+      "[data-testid='html-dom-comment-tag-text']",
+    )!;
+    const deleteButton = marker.querySelector<HTMLElement>(
+      "[data-testid='html-dom-comment-delete']",
+    )!;
+    const deleteIcon = deleteButton.querySelector<SVGSVGElement>("svg")!;
+    expect(marker).toHaveAttribute(HTML_DOM_EDIT_OVERLAY_ATTR);
+    expect(marker).not.toHaveAttribute("title");
+    expect(marker).toHaveAttribute("data-vm0-html-comment-placement", "right");
+    expect(
+      marker.querySelector("[data-testid='html-dom-comment-anchor']"),
+    ).not.toBeNull();
+    expect(
+      marker.querySelector("[data-testid='html-dom-comment-leader']"),
+    ).not.toBeNull();
+    expect(deleteButton.parentElement).toBe(marker);
+    expect(deleteButton.style.left).toBe("140px");
+    expect(deleteButton.style.top).toBe("28px");
+    expect(deleteButton.style.width).toBe("24px");
+    expect(deleteButton.style.height).toBe("24px");
+    expect(deleteButton.style.alignItems).toBe("center");
+    expect(deleteButton.style.justifyContent).toBe("center");
+    expect(deleteButton.style.transform).toBe("translateY(-50%)");
+    expect(deleteButton.style.opacity).toBe("0");
+    expect(deleteButton.style.pointerEvents).toBe("none");
+    expect(deleteIcon).not.toBeNull();
+    expect(deleteIcon.getAttribute("viewBox")).toBe("0 0 24 24");
+    expect(deleteIcon.style.width).toBe("14px");
+    expect(deleteIcon.style.height).toBe("14px");
+    expect(frame.contentDocument?.head.textContent).toContain(
+      "[data-vm0-html-comment-target-node-id]:hover [data-vm0-html-comment-delete-id]",
+    );
+    expect(frame.contentDocument?.head.textContent).toContain(":hover");
+    expect(tag).toHaveTextContent("Make the headline shorter");
+    expect(tagText).toHaveTextContent("Make the headline shorter");
+    expect(tag.style.maxWidth).toBe("136px");
+    expect(tag.style.height).toBe("56px");
+    expect(tag.style.overflow).toBe("hidden");
+    expect(tag.style.justifyContent).toBe("center");
+    expect(tag.style.textAlign).toBe("center");
+    expect(tagText.style.whiteSpace).toBe("normal");
+    expect(tagText.style.overflowWrap).toBe("anywhere");
+    expect(tagText.style.padding).toBe("0px 22px");
+    expect(tagText.style.textAlign).toBe("center");
+    expect(tagText.style.getPropertyValue("-webkit-line-clamp")).toBe("2");
     expect(screen.getByTestId("html-dom-comment-toolbar")).toBeInTheDocument();
     expect(screen.getByTestId("html-dom-toolbar-send")).toBeEnabled();
     expect(
@@ -1790,7 +2275,7 @@ describe("zero attachment chips", () => {
       ).toHaveTextContent("Editing");
       expect(
         within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
-      ).toHaveTextContent("Exit");
+      ).toHaveAttribute("aria-label", "Exit editing");
       expect(within(sidebar).queryByLabelText("Open in new tab")).toBeNull();
       expect(within(sidebar).queryByLabelText("Share artifact")).toBeNull();
       expect(within(sidebar).queryByLabelText("Download artifact")).toBeNull();
@@ -1806,6 +2291,136 @@ describe("zero attachment chips", () => {
       expect(restoredEditFrame.contentDocument?.body.textContent).not.toContain(
         "Launch sooner",
       );
+    });
+  });
+
+  it("shows hosted-site HTML edit action when the preview URL has a root trailing slash", async () => {
+    const artifactUrl = "https://launch-site-root.sites.vm7.io";
+    const previewUrl = `${artifactUrl}/`;
+    setupHostedSiteArtifactPreview({
+      artifactUrl,
+      filename: "launch-site-root.html",
+      htmlUrl: previewUrl,
+      label: "Launch site",
+      runId: "run-hosted-site-root",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Open html preview for Launch site"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open html preview for Launch site"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit page")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Edit presentation")).toBeNull();
+    });
+  });
+
+  it("saves an HTML edit snapshot when a comment draft is generated", async () => {
+    const htmlUrl = "https://save-on-send.sites.vm7.io";
+    const draftHtml =
+      "<!doctype html><html><body><main><h1>Launch sooner</h1></main></body></html>";
+    const savedBodies: string[] = [];
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(
+        `<!doctype html><html><head><title>Save on send</title></head><body><main><h1>Launch faster</h1></main></body></html>`,
+        { headers: { "Content-Type": "text/html" } },
+      );
+    });
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-save-on-send",
+            files: [
+              artifactFile(htmlUrl, {
+                artifactKind: "hosted-site",
+                filename: "save-on-send.html",
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    context.mocks.api(zeroHostContract.createHtmlEditDraft, ({ respond }) => {
+      return respond(200, {
+        kind: "html-edit-draft",
+        version: 1,
+        html: draftHtml,
+      });
+    });
+    context.mocks.api(
+      chatThreadArtifactsContract.upsertHtmlEditSnapshot,
+      ({ body, params, respond }) => {
+        expect(params.threadId).toBe(THREAD_ID);
+        expect(body.url).toBe(htmlUrl);
+        savedBodies.push(body.html);
+        return respond(200, {
+          artifactUrl: body.url,
+          snapshotUrl:
+            "https://cdn.vm7.io/artifacts/html-edit-drafts/save-on-send.html?v=1",
+          updatedAt: "2026-03-10T00:06:00Z",
+        });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-save-on-send",
+          role: "assistant",
+          content: `[Save on send](${htmlUrl})`,
+          runId: "run-save-on-send",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.HtmlArtifactCommentEditing]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(await screen.findByLabelText("Open html preview for Save on send"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit page")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit page"));
+
+    const frame = (await screen.findByTestId(
+      "html-dom-comment-frame",
+    )) as HTMLIFrameElement;
+    await waitFor(() => {
+      expect(
+        frame.contentDocument
+          ?.querySelector("h1")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+    });
+    fireEvent.click(frame.contentDocument!.querySelector("h1")!);
+
+    const user = userEvent.setup({ delay: null });
+    await user.type(
+      await screen.findByTestId("html-dom-comment-textarea"),
+      "Make the headline shorter",
+    );
+    fireEvent.keyDown(screen.getByTestId("html-dom-comment-textarea"), {
+      key: "Enter",
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-toolbar-send")).toBeEnabled();
+    });
+
+    click(screen.getByTestId("html-dom-toolbar-send"));
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-draft-toolbar")).toBeInTheDocument();
+      expect(savedBodies).toStrictEqual([draftHtml]);
     });
   });
 
@@ -2881,7 +3496,9 @@ describe("zero attachment chips", () => {
       expect(within(sidebar).queryByLabelText("Open in new tab")).toBeNull();
       expect(within(sidebar).queryByLabelText("Share artifact")).toBeNull();
       expect(within(sidebar).queryByLabelText("Download artifact")).toBeNull();
-      expect(within(sidebar).queryByLabelText("Close artifact")).toBeNull();
+      expect(
+        within(sidebar).getByLabelText("Close artifact"),
+      ).toBeInTheDocument();
       expect(
         within(sidebar).queryByTestId("artifact-sidebar-exit-html-edit"),
       ).toBeNull();

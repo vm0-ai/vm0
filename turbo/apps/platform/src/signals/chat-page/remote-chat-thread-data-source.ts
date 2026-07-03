@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Command } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadMarkReadContract,
@@ -6,11 +6,19 @@ import {
   chatThreadModelSelectionContract,
   chatThreadMessagesContract,
   chatMessagesContract,
+  type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { setAblyLoop$ } from "../realtime.ts";
+import { modelSelectionRequestFromSelection } from "./model-selection-request.ts";
+import { setAblyLoop$, setAblyPayloadLoop$ } from "../realtime.ts";
+import {
+  createDeferredPromise,
+  resetSignalScope,
+  settle,
+  withCleanup,
+} from "../utils.ts";
 import { logger } from "../log.ts";
 import { reloadSidebarDraftThreads$ } from "./sidebar-draft-threads.ts";
 import {
@@ -23,6 +31,7 @@ import type {
   ChatThreadDataSource,
   InitialPage,
   AppendQueuedMessageArgs,
+  GetMessageArgs,
   ListMessagesAfterArgs,
   ListMessagesBeforeArgs,
   MarkReadArgs,
@@ -34,6 +43,21 @@ import type {
 } from "./chat-thread-data-source.ts";
 
 const L = logger("ChatThread");
+
+type ChatRealtimeSubscription =
+  | {
+      readonly kind: "loop";
+      readonly topic: string;
+      readonly loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>;
+    }
+  | {
+      readonly kind: "payload";
+      readonly topic: string;
+      readonly loopCommand$: Command<
+        Promise<boolean> | boolean,
+        [unknown, AbortSignal]
+      >;
+    };
 
 const patchDraft$ = command(
   async (
@@ -48,7 +72,7 @@ const patchDraft$ = command(
         body: { draftContent: content, draftAttachments: attachments },
         fetchOptions: { signal },
       }),
-      [204],
+      [200, 204],
     );
     signal.throwIfAborted();
     set(reloadSidebarDraftThreads$);
@@ -65,7 +89,9 @@ const patchModelSelection$ = command(
     await accept(
       client.update({
         params: { id: threadId },
-        body: { modelSelection },
+        body: {
+          modelSelection: modelSelectionRequestFromSelection(modelSelection),
+        },
         fetchOptions: { signal },
       }),
       [204],
@@ -229,6 +255,28 @@ const listMessagesBefore$ = command(
   },
 );
 
+const getMessage$ = command(
+  async (
+    { get },
+    { threadId, messageId }: GetMessageArgs,
+    signal: AbortSignal,
+  ): Promise<PagedChatMessage | null> => {
+    const client = get(zeroClient$)(chatThreadMessagesContract);
+    const result = await accept(
+      client.get({
+        params: { threadId, messageId },
+        fetchOptions: { signal },
+      }),
+      [200, 404],
+    );
+    signal.throwIfAborted();
+    if (result.status === 404) {
+      return null;
+    }
+    return result.body;
+  },
+);
+
 const cancelRuns$ = command(
   async (
     { get },
@@ -283,46 +331,125 @@ const markRead$ = command(
   },
 );
 
-const subscribeRealtime$ = command(
-  async (
-    { set },
-    { threadId, handlers }: SubscribeRealtimeArgs,
-    signal: AbortSignal,
-  ) => {
-    await Promise.all([
-      set(
-        setAblyLoop$,
-        `chatThreadMessageCreated:${threadId}`,
-        handlers.onMessageCreated$,
-        signal,
-      ),
-      set(
-        setAblyLoop$,
-        `chatThreadRunCreated:${threadId}`,
-        handlers.onRunChanged$,
-        signal,
-      ),
-      set(
-        setAblyLoop$,
-        `chatThreadRunUpdated:${threadId}`,
-        handlers.onRunChanged$,
-        signal,
-      ),
-      set(
-        setAblyLoop$,
-        `chatThreadAutomationsChanged:${threadId}`,
-        handlers.onAutomationsChanged$,
-        signal,
-      ),
-    ]);
-    signal.throwIfAborted();
-  },
-);
+function createSubscribeRealtime() {
+  const resetSubscriptionSignal$ = resetSignalScope();
+
+  return command(
+    async (
+      { set },
+      { threadId, handlers }: SubscribeRealtimeArgs,
+      signal: AbortSignal,
+    ) => {
+      const subscriptionScope = set(resetSubscriptionSignal$, signal);
+      const subscriptionSignal = subscriptionScope.signal;
+
+      await withCleanup(
+        (async () => {
+          const ready = createDeferredPromise<void>(subscriptionSignal);
+          const subscriptions: ChatRealtimeSubscription[] = [
+            {
+              kind: "loop",
+              topic: `chatThreadMessageCreated:${threadId}`,
+              loopCommand$: handlers.onMessageCreated$,
+            },
+            {
+              kind: "payload",
+              topic: `chatThreadMessageUpdated:${threadId}`,
+              loopCommand$: handlers.onMessageUpdated$,
+            },
+            {
+              kind: "loop",
+              topic: `chatThreadRunCreated:${threadId}`,
+              loopCommand$: handlers.onRunChanged$,
+            },
+            {
+              kind: "loop",
+              topic: `chatThreadRunUpdated:${threadId}`,
+              loopCommand$: handlers.onRunChanged$,
+            },
+            {
+              kind: "loop",
+              topic: `chatThreadAutomationsChanged:${threadId}`,
+              loopCommand$: handlers.onAutomationsChanged$,
+            },
+          ];
+
+          let pendingSubscriptions = subscriptions.length;
+          const markSubscribed = () => {
+            pendingSubscriptions -= 1;
+            if (pendingSubscriptions === 0 && !ready.settled()) {
+              ready.resolve();
+            }
+          };
+          const options = { onSubscribed: markSubscribed };
+          const startSubscription = async (
+            subscription: ChatRealtimeSubscription,
+          ) => {
+            if (subscription.kind === "loop") {
+              await set(
+                setAblyLoop$,
+                {
+                  topic: subscription.topic,
+                  loopCommand$: subscription.loopCommand$,
+                  options,
+                },
+                subscriptionSignal,
+              );
+            } else {
+              await set(
+                setAblyPayloadLoop$,
+                {
+                  topic: subscription.topic,
+                  loopCommand$: subscription.loopCommand$,
+                  options,
+                },
+                subscriptionSignal,
+              );
+            }
+            subscriptionSignal.throwIfAborted();
+            if (ready.settled()) {
+              return;
+            }
+            const error = new Error(
+              `Realtime subscription ended before ready: ${subscription.topic}`,
+            );
+            ready.reject(error);
+            throw error;
+          };
+          const subscriptionPromises = subscriptions.map(startSubscription);
+          const subscription = Promise.all(subscriptionPromises);
+
+          await Promise.race([ready.promise, subscription]);
+          subscriptionSignal.throwIfAborted();
+          if (ready.settled() && handlers.onSubscribed$) {
+            const synced = await settle(
+              Promise.resolve(set(handlers.onSubscribed$, subscriptionSignal)),
+              subscriptionSignal,
+            );
+            subscriptionSignal.throwIfAborted();
+            if (!synced.ok) {
+              subscriptionScope.abort();
+              await Promise.allSettled(subscriptionPromises);
+              signal.throwIfAborted();
+              throw synced.error;
+            }
+          }
+          await subscription;
+          subscriptionSignal.throwIfAborted();
+        })(),
+        () => {
+          subscriptionScope.abort(signal.reason);
+        },
+      );
+    },
+  );
+}
 
 export function createRemoteChatThreadDataSource(
   threadId: string,
 ): ChatThreadDataSource {
   const reloadCounter$ = state(0);
+  const subscribeRealtime$ = createSubscribeRealtime();
 
   const getThread$ = computed(async (get): Promise<ChatThread | null> => {
     get(reloadCounter$);
@@ -396,6 +523,7 @@ export function createRemoteChatThreadDataSource(
     recallMessage$,
     listMessagesAfter$,
     listMessagesBefore$,
+    getMessage$,
     cancelRuns$,
     markRead$,
     subscribeRealtime$,

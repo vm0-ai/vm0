@@ -295,6 +295,15 @@ interface SlashCaretPosition {
   readonly height: number;
 }
 
+interface SlashCaretVirtualElement {
+  readonly contextElement: HTMLElement;
+  getBoundingClientRect(): DOMRect;
+}
+
+interface SlashCaretVirtualRef {
+  current: SlashCaretVirtualElement;
+}
+
 function slashCaretPosition(
   editor: Editor,
   slashRange: SlashWorkflowRange,
@@ -311,9 +320,34 @@ function slashCaretPosition(
   };
 }
 
-// Zero-size Popover anchor pinned to the active slash so the suggestion menu opens
-// at the `/` the user typed rather than a fixed corner. Falls back to the viewport
-// origin when there is no active slash (the menu is closed then anyway).
+function slashCaretRect(caret: SlashCaretPosition): DOMRect {
+  const viewport = window.visualViewport;
+  const left = caret.left + (viewport?.offsetLeft ?? 0);
+  const top = caret.top + (viewport?.offsetTop ?? 0);
+  return new DOMRect(left, top, 0, caret.height);
+}
+
+function slashCaretVirtualRef(
+  editor: Editor | null,
+  slashRange: SlashWorkflowRange | null,
+): SlashCaretVirtualRef | null {
+  if (!editor || !slashRange) {
+    return null;
+  }
+
+  return {
+    current: {
+      contextElement: editor.view.dom,
+      getBoundingClientRect() {
+        return slashCaretRect(slashCaretPosition(editor, slashRange));
+      },
+    },
+  };
+}
+
+// Virtual Popover anchor pinned to the active slash so the suggestion menu opens
+// at the `/` the user typed. Reading the rect lazily lets Floating UI remeasure
+// after mobile visual viewport changes without translating through a fixed DOM node.
 function SlashCaretAnchor({
   editor,
   slashRange,
@@ -321,22 +355,8 @@ function SlashCaretAnchor({
   readonly editor: Editor | null;
   readonly slashRange: SlashWorkflowRange | null;
 }) {
-  const caret =
-    editor && slashRange ? slashCaretPosition(editor, slashRange) : null;
-  return (
-    <PopoverAnchor asChild>
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed"
-        style={{
-          left: caret?.left ?? 0,
-          top: caret?.top ?? 0,
-          width: 0,
-          height: caret?.height ?? 0,
-        }}
-      />
-    </PopoverAnchor>
-  );
+  const virtualRef = slashCaretVirtualRef(editor, slashRange);
+  return virtualRef ? <PopoverAnchor virtualRef={virtualRef} /> : null;
 }
 
 interface SlashMenuKeyContext {

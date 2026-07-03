@@ -1,8 +1,10 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import {
@@ -17,6 +19,82 @@ import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+
+function connectedPersonalCodexProvider(
+  overrides: Partial<ModelProviderResponse> = {},
+): ModelProviderResponse {
+  return {
+    id: "00000000-0000-4000-a000-000000000301",
+    type: "codex-oauth-token",
+    framework: "codex",
+    secretName: null,
+    authMethod: "auth_json",
+    secretNames: ["CODEX_AUTH_JSON"],
+    isDefault: false,
+    selectedModel: null,
+    workspaceName: "Personal ChatGPT",
+    planType: "pro",
+    subscriptionResetPeriod: "Weekly",
+    subscriptionNextResetAt: "2030-01-07T00:00:00.000Z",
+    subscriptionUsage: {
+      fiveHour: {
+        usedPercent: 18,
+        remainingPercent: 82,
+        resetAt: "2030-01-01T05:00:00.000Z",
+        windowSeconds: 18_000,
+      },
+      weekly: {
+        usedPercent: 45,
+        remainingPercent: 55,
+        resetAt: "2030-01-07T00:00:00.000Z",
+        windowSeconds: 604_800,
+      },
+    },
+    needsReconnect: false,
+    lastRefreshErrorCode: null,
+    createdAt: "2026-03-01T00:00:00Z",
+    updatedAt: "2026-03-20T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function connectedPersonalClaudeCodeProvider(
+  overrides: Partial<ModelProviderResponse> = {},
+): ModelProviderResponse {
+  return {
+    id: "00000000-0000-4000-a000-000000000302",
+    type: "claude-code-oauth-token",
+    framework: "claude-code",
+    secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+    authMethod: null,
+    secretNames: null,
+    isDefault: false,
+    selectedModel: null,
+    workspaceName: "claude.user@example.com",
+    planType: "pro",
+    subscriptionResetPeriod: "weekly",
+    subscriptionNextResetAt: "2030-01-07T00:00:00.000Z",
+    subscriptionUsage: {
+      fiveHour: {
+        usedPercent: 12,
+        remainingPercent: 88,
+        resetAt: "2030-01-01T05:00:00.000Z",
+        windowSeconds: 18_000,
+      },
+      weekly: {
+        usedPercent: 24,
+        remainingPercent: 76,
+        resetAt: "2030-01-07T00:00:00.000Z",
+        windowSeconds: 604_800,
+      },
+    },
+    needsReconnect: false,
+    lastRefreshErrorCode: null,
+    createdAt: "2026-03-01T00:00:00Z",
+    updatedAt: "2026-03-20T00:00:00Z",
+    ...overrides,
+  };
+}
 
 function prepareDefaultAgent(): void {
   context.mocks.data.team([
@@ -145,6 +223,206 @@ describe("zero sidebar account menu", () => {
       ).toBeInTheDocument();
       expect(screen.getByText("Pro credits")).toBeInTheDocument();
       expect(screen.getByText("Launch bonus")).toBeInTheDocument();
+    });
+  });
+
+  it("hides account menu subscriptions when the feature switch is disabled", async () => {
+    mockAdminAccountSidebar();
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+      connectedPersonalClaudeCodeProvider(),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    const menu = await openAccountMenu();
+
+    await waitFor(() => {
+      expect(within(menu).getByText("12,500 credits")).toBeInTheDocument();
+    });
+    expect(
+      within(menu).queryByTestId("account-menu-subscriptions"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows subscription usage grouped below credits in the account menu", async () => {
+    mockAdminAccountSidebar();
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+      connectedPersonalClaudeCodeProvider(),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
+    });
+
+    const menu = await openAccountMenu();
+    const panel = await within(menu).findByTestId("account-menu-subscriptions");
+
+    expect(within(panel).queryByText("Subscriptions")).not.toBeInTheDocument();
+    expect(
+      within(panel).queryByLabelText("Refresh subscriptions"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(panel).getByRole("heading", { name: "Codex" }),
+    ).toBeInTheDocument();
+    expect(
+      within(panel).getByRole("heading", { name: "Claude Code" }),
+    ).toBeInTheDocument();
+    expect(within(panel).getAllByText("5h")).toHaveLength(2);
+    expect(within(panel).getAllByText("week")).toHaveLength(2);
+    expect(within(panel).getByText("82%")).toBeInTheDocument();
+    expect(within(panel).getByText("55%")).toBeInTheDocument();
+    expect(within(panel).getByText("88%")).toBeInTheDocument();
+    expect(within(panel).getByText("76%")).toBeInTheDocument();
+
+    const codexFiveHour = within(panel).getByRole("progressbar", {
+      name: "Codex 5h remaining",
+    });
+    expect(codexFiveHour).toHaveAttribute("aria-valuenow", "82");
+
+    const credits = within(menu).getByText("12,500 credits");
+    const codex = within(panel).getByRole("heading", { name: "Codex" });
+    expect(
+      credits.compareDocumentPosition(codex) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("refreshes account menu subscriptions when the menu opens", async () => {
+    mockAdminAccountSidebar();
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+      connectedPersonalClaudeCodeProvider(),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
+    });
+
+    let menu = await openAccountMenu();
+    let panel = await within(menu).findByTestId("account-menu-subscriptions");
+    expect(within(panel).getByText("82%")).toBeInTheDocument();
+
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider({
+        subscriptionUsage: {
+          fiveHour: {
+            usedPercent: 36,
+            remainingPercent: 64,
+            resetAt: "2030-01-01T05:00:00.000Z",
+            windowSeconds: 18_000,
+          },
+          weekly: {
+            usedPercent: 70,
+            remainingPercent: 30,
+            resetAt: "2030-01-07T00:00:00.000Z",
+            windowSeconds: 604_800,
+          },
+        },
+      }),
+      connectedPersonalClaudeCodeProvider(),
+    ]);
+
+    expect(within(panel).queryByText("64%")).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    menu = await openAccountMenu();
+    panel = await within(menu).findByTestId("account-menu-subscriptions");
+
+    await waitFor(() => {
+      expect(within(panel).getByText("64%")).toBeInTheDocument();
+      expect(within(panel).getByText("30%")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps loaded subscription usage visible while a menu refresh is pending", async () => {
+    mockAdminAccountSidebar();
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
+    });
+
+    let menu = await openAccountMenu();
+    let panel = await within(menu).findByTestId("account-menu-subscriptions");
+    expect(
+      within(panel).getByRole("heading", { name: "Codex" }),
+    ).toBeInTheDocument();
+    expect(within(panel).getByText("82%")).toBeInTheDocument();
+    expect(
+      within(panel).queryByRole("heading", { name: "Claude Code" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    const refreshReady = context.mocks.deferred<void>();
+    let refreshRequested = false;
+    context.mocks.api(
+      zeroPersonalModelProvidersMainContract.list,
+      async ({ respond }) => {
+        refreshRequested = true;
+        await refreshReady.promise;
+        return respond(200, { modelProviders: [] });
+      },
+    );
+
+    menu = await openAccountMenu();
+    panel = await within(menu).findByTestId("account-menu-subscriptions");
+
+    await waitFor(() => {
+      expect(refreshRequested).toBeTruthy();
+    });
+    expect(
+      within(panel).getByRole("heading", { name: "Codex" }),
+    ).toBeInTheDocument();
+    expect(within(panel).getByText("82%")).toBeInTheDocument();
+    expect(
+      within(panel).queryByRole("heading", { name: "Claude Code" }),
+    ).not.toBeInTheDocument();
+
+    refreshReady.resolve();
+
+    await waitFor(() => {
+      expect(
+        within(menu).queryByTestId("account-menu-subscriptions"),
+      ).not.toBeInTheDocument();
     });
   });
 

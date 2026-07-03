@@ -123,6 +123,7 @@ export function SlashWorkflowMenu({
       align="start"
       sideOffset={8}
       collisionPadding={12}
+      updatePositionStrategy="always"
       // Keep focus in the TipTap editor: the menu's keyboard navigation is
       // handled there, so the popover must never steal focus when it opens.
       onOpenAutoFocus={(event) => {

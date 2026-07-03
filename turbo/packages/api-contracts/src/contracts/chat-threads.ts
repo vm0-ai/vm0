@@ -58,6 +58,21 @@ const chatThreadArtifactRunSchema = z.object({
   files: z.array(chatThreadArtifactFileSchema),
 });
 
+const htmlArtifactEditSnapshotQuerySchema = z.object({
+  url: z.string().url(),
+});
+
+const htmlArtifactEditSnapshotUpsertSchema = z.object({
+  url: z.string().url(),
+  html: z.string().min(1),
+});
+
+const htmlArtifactEditSnapshotSchema = z.object({
+  artifactUrl: z.string().url(),
+  snapshotUrl: z.string().url(),
+  updatedAt: z.string(),
+});
+
 const chatThreadGithubPrCheckRunSchema = z.object({
   name: z.string(),
   status: z.string(),
@@ -232,6 +247,7 @@ const pagedChatMessageBaseSchema = z.object({
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
+  sequenceNumber: z.number().nullable().optional(),
   // Present on user messages posted by a firing automation. `automationId`
   // links to the automation detail page; `automationSnapshot` preserves the
   // automation label and description at send time. `automationTitle` is
@@ -285,6 +301,7 @@ const pagedChatMessageSchema = z.discriminatedUnion("role", [
     .strict(),
   pagedChatMessageBaseSchema.extend({
     role: z.literal("assistant"),
+    thinking: z.string().optional(),
     runLifecycleEvent: z.enum(["completed", "failed", "cancelled"]).optional(),
     recommendedFollowups: chatMessageRecommendedFollowupsSchema.optional(),
   }),
@@ -368,6 +385,12 @@ const modelSelectionRequestSchema = z
       });
     }
   });
+
+const codexServiceTierSchema = z.enum(["fast"]);
+
+const chatRunOptionsRequestSchema = z.object({
+  codexServiceTier: codexServiceTierSchema.optional(),
+});
 
 /**
  * Chat threads list route contract (/api/chat-threads)
@@ -500,6 +523,10 @@ const chatThreadIdPathParamsSchema = z.object({ id: z.string().uuid() });
 const chatThreadThreadIdPathParamsSchema = z.object({
   threadId: z.string().uuid(),
 });
+const chatThreadMessagePathParamsSchema =
+  chatThreadThreadIdPathParamsSchema.extend({
+    messageId: z.string().uuid(),
+  });
 
 export const chatThreadByIdContract = c.router({
   get: {
@@ -765,6 +792,7 @@ export const chatMessagesContract = c.router({
          * thread override and fall back to agent/org defaults.
          */
         modelSelection: modelSelectionRequestSchema.nullable().optional(),
+        runOptions: chatRunOptionsRequestSchema.optional(),
         generationTemplate: generationTemplateRequestSchema.optional(),
         computerUseHostId: z.string().uuid().nullable().optional(),
         // Optional for backward compatibility: older clients that omit this field
@@ -794,6 +822,7 @@ export const chatMessagesContract = c.router({
         clientThreadId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
+        runOptions: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
@@ -811,6 +840,7 @@ export const chatMessagesContract = c.router({
         clientThreadId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
+        runOptions: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
@@ -938,6 +968,18 @@ export const chatThreadMessagesContract = c.router({
     },
     summary: "Get paginated chat messages for a thread",
   },
+  get: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/messages/:messageId",
+    headers: authHeadersSchema,
+    pathParams: chatThreadMessagePathParamsSchema,
+    responses: {
+      200: pagedChatMessageSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get a chat message by id for a thread",
+  },
 });
 
 export const chatThreadArtifactsContract = c.router({
@@ -956,6 +998,50 @@ export const chatThreadArtifactsContract = c.router({
       404: apiErrorSchema,
     },
     summary: "List uploaded files associated with every run in a chat thread",
+  },
+  getHtmlEditSnapshot: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/html-artifact-edit-snapshot",
+    headers: authHeadersSchema,
+    pathParams: chatThreadThreadIdPathParamsSchema,
+    query: htmlArtifactEditSnapshotQuerySchema,
+    responses: {
+      200: z.object({ snapshot: htmlArtifactEditSnapshotSchema.nullable() }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get a resumable HTML artifact edit snapshot for a chat thread",
+  },
+  upsertHtmlEditSnapshot: {
+    method: "PUT",
+    path: "/api/zero/chat-threads/:threadId/html-artifact-edit-snapshot",
+    headers: authHeadersSchema,
+    pathParams: chatThreadThreadIdPathParamsSchema,
+    body: htmlArtifactEditSnapshotUpsertSchema,
+    responses: {
+      200: htmlArtifactEditSnapshotSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      402: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Upsert a resumable HTML artifact edit snapshot for a chat thread",
+  },
+  deleteHtmlEditSnapshot: {
+    method: "DELETE",
+    path: "/api/zero/chat-threads/:threadId/html-artifact-edit-snapshot",
+    headers: authHeadersSchema,
+    pathParams: chatThreadThreadIdPathParamsSchema,
+    query: htmlArtifactEditSnapshotQuerySchema,
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Delete a resumable HTML artifact edit snapshot for a chat thread",
   },
   syncGoogleDrive: {
     method: "POST",
@@ -1029,6 +1115,7 @@ export {
   chatThreadDetailSchema,
   chatThreadMetadataSchema,
   modelSelectionRequestSchema,
+  chatRunOptionsRequestSchema,
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
   videoGenerationTemplateRequestSchema,
@@ -1042,11 +1129,14 @@ export {
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
+  htmlArtifactEditSnapshotSchema,
   chatThreadGithubPrCheckRunSchema,
   chatThreadGithubPrSchema,
 };
 
 export type ModelSelectionRequest = z.infer<typeof modelSelectionRequestSchema>;
+export type CodexServiceTier = z.infer<typeof codexServiceTierSchema>;
+export type ChatRunOptionsRequest = z.infer<typeof chatRunOptionsRequestSchema>;
 export type GenerationTemplateRequest = z.infer<
   typeof generationTemplateRequestSchema
 >;
@@ -1098,6 +1188,9 @@ export type ChatThreadArtifactGoogleDriveSync = z.infer<
   typeof chatThreadArtifactGoogleDriveSyncSchema
 >;
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;
+export type HtmlArtifactEditSnapshot = z.infer<
+  typeof htmlArtifactEditSnapshotSchema
+>;
 export type ChatThreadGithubPrCheckRun = z.infer<
   typeof chatThreadGithubPrCheckRunSchema
 >;

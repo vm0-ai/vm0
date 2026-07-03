@@ -20,6 +20,7 @@ import {
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
   type ChatThreadListItem,
+  type ChatRunOptionsRequest,
   type GenerationTemplateRequest,
   type ModelSelectionRequest,
   type PagedChatMessage,
@@ -158,6 +159,7 @@ type BddSendMessageBody =
       readonly clientThreadId?: string;
       readonly modelProvider?: string;
       readonly modelSelection?: ModelSelectionRequest | null;
+      readonly runOptions?: ChatRunOptionsRequest;
       readonly generationTemplate?: GenerationTemplateRequest;
       readonly hasTextContent?: boolean;
       readonly attachFiles?: readonly AttachFile[];
@@ -908,6 +910,36 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
+    async getThreadMessage(
+      actor: ApiTestUser,
+      threadId: string,
+      messageId: string,
+    ): Promise<PagedChatMessage> {
+      const response = await accept(
+        threadMessagesClient().get({
+          headers: authenticate(context, actor),
+          params: { threadId, messageId },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestGetThreadMessage(
+      actor: ApiTestUser | null,
+      threadId: string,
+      messageId: string,
+      statuses: readonly (200 | 401 | 404)[],
+    ) {
+      return await accept(
+        threadMessagesClient().get({
+          headers: authenticate(context, actor),
+          params: { threadId, messageId },
+        }),
+        statuses,
+      );
+    },
+
     async listThreadArtifacts(
       actor: ApiTestUser,
       threadId: string,
@@ -1042,7 +1074,13 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       body: BddSendMessageBody,
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 409 | 422)[],
+      signal?: AbortSignal,
     ) {
+      const client = signal
+        ? setupAppWithRoutes({ context, routes: chatFilesRoutes, signal })(
+            chatMessagesContract,
+          )
+        : chatMessagesClient();
       const requestBody =
         "prompt" in body
           ? {
@@ -1060,6 +1098,9 @@ export function createChatFilesBddApi(context: TestContext) {
               ...(body.modelSelection === undefined
                 ? {}
                 : { modelSelection: body.modelSelection }),
+              ...(body.runOptions === undefined
+                ? {}
+                : { runOptions: body.runOptions }),
               ...(body.generationTemplate === undefined
                 ? {}
                 : { generationTemplate: body.generationTemplate }),
@@ -1100,7 +1141,7 @@ export function createChatFilesBddApi(context: TestContext) {
               };
 
       return await accept(
-        chatMessagesClient().send({
+        client.send({
           headers: authenticate(context, actor),
           body: requestBody,
         }),

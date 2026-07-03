@@ -398,12 +398,12 @@ impl CompletionPhase {
         // Structural guarantee: claim (in provider) is always paired with complete.
         signal_usage_flush(run_id, &usage_flush_tx);
         let ownership = OwnershipTransitions::new(status.as_ref());
-        let needs_session_affinity_refresh = completion_ready.needs_session_affinity_refresh();
+        let session_affinity_changed = completion_ready.session_affinity_changed();
         completion_ready
             .complete_and_release(provider.as_ref(), &ownership, &cleanup_state)
             .await;
         drop(active_cli_agent_session_guard);
-        if needs_session_affinity_refresh {
+        if session_affinity_changed {
             park_notify.notify_one();
         }
     }
@@ -993,9 +993,39 @@ mod tests {
         test_support::ParkedIdleCandidateBuilder,
     };
     use crate::ids::RunId;
+    use crate::provider::JobCandidate;
     use crate::resource_budget::ResourceBudget;
     use crate::restored_session_identity::RestoredSessionIdentity;
     use crate::status::StatusTracker;
+    use crate::types::HeartbeatState;
+
+    struct NoopCompletionProvider;
+
+    #[async_trait::async_trait]
+    impl JobProvider for NoopCompletionProvider {
+        async fn discover(&self) -> Option<JobCandidate> {
+            None
+        }
+
+        async fn claim(&self, _candidate: JobCandidate) -> Option<ClaimedJob> {
+            None
+        }
+
+        async fn complete(
+            &self,
+            _run_id: RunId,
+            _exit_code: i32,
+            _error: Option<&str>,
+            _sandbox_id: Option<SandboxId>,
+            _reuse_result: Option<SandboxReuseResult>,
+            _completion_auth: CompletionAuth,
+        ) {
+        }
+
+        async fn heartbeat(&self, _state: &HeartbeatState) {}
+
+        async fn shutdown(&self) {}
+    }
 
     fn job_failure_diagnostic(failure_reason: Option<FailureReason>) -> FailureDiagnostic {
         let mut diagnostic = FailureDiagnostic::new(
@@ -1270,6 +1300,63 @@ mod tests {
             panic!("parked sandbox should unpark");
         };
         assert!(sandbox.restored_session_identity().is_none());
+    }
+
+    #[tokio::test]
+    async fn completion_notifies_again_after_releasing_active_session_guard() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let session_id = "sess-post-complete-refresh";
+        fixture.status.add_run(run_id, sandbox_id).await;
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            session_id,
+            lease,
+            RunCleanupState::new(),
+        );
+        let finalized = finalization
+            .finalize(executor_phase_outcome(
+                run_id,
+                "post-complete-refresh",
+                None,
+            ))
+            .await;
+        assert!(
+            fixture.park_notify.notified().now_or_never().is_some(),
+            "finalizer should send the early park refresh"
+        );
+
+        let active_sessions = super::super::active_sessions::new_active_cli_agent_sessions();
+        let active_cli_agent_session_guard = ActiveCliAgentSessionGuard::new(
+            Arc::clone(&active_sessions),
+            Some(session_id.to_owned()),
+        );
+        let (usage_flush_tx, _usage_flush_rx) = mpsc::channel(1);
+
+        CompletionPhase {
+            run_id,
+            provider: Arc::new(NoopCompletionProvider),
+            status: Arc::clone(&fixture.status),
+            usage_flush_tx,
+            park_notify: Arc::clone(&fixture.park_notify),
+            active_cli_agent_session_guard,
+            cleanup_state: RunCleanupState::new(),
+        }
+        .complete(finalized.completion_ready)
+        .await;
+
+        assert!(
+            super::super::active_sessions::active_cli_agent_session_ids(&active_sessions)
+                .is_empty(),
+            "completion should release the active session guard before notifying"
+        );
+        assert!(
+            fixture.park_notify.notified().now_or_never().is_some(),
+            "completion should send a post-guard-release refresh"
+        );
     }
 
     #[test]

@@ -1,17 +1,9 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
-import { listZeroConnectors, searchZeroConnectors } from "../../../lib/api";
+import { listZeroConnectorCatalogStatus } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { resolveAgentContext } from "./agent-context";
 import { padEndAnsi, renderConnectedAsCell, stripAnsi } from "./connected-as";
-
-function isConnectorType(type: string): type is ConnectorType {
-  return type in CONNECTOR_TYPES;
-}
 
 export const listCommand = new Command()
   .name("list")
@@ -20,22 +12,14 @@ export const listCommand = new Command()
   .option("--agent <id>", "Show per-agent authorization column")
   .action(
     withErrorHandler(async (options: { agent?: string }) => {
-      const [{ connectors }, availableCatalog, agentCtx] = await Promise.all([
-        listZeroConnectors(),
-        searchZeroConnectors(),
+      const [{ connectors }, agentCtx] = await Promise.all([
+        listZeroConnectorCatalogStatus(),
         resolveAgentContext(options.agent),
       ]);
-      const connectedMap = new Map(
-        connectors.map((c) => {
-          return [c.type, c];
-        }),
-      );
 
-      const allTypes = availableCatalog.connectors
-        .map((connector) => {
-          return connector.id;
-        })
-        .filter(isConnectorType);
+      const allTypes = connectors.map((connector) => {
+        return connector.connectorRef;
+      });
 
       const typeWidth = Math.max(
         4,
@@ -45,8 +29,8 @@ export const listCommand = new Command()
       );
 
       const connectedAsHeader = "CONNECTED AS";
-      const connectedCells = allTypes.map((type) => {
-        return renderConnectedAsCell(connectedMap.get(type));
+      const connectedCells = connectors.map((connector) => {
+        return renderConnectedAsCell(connector);
       });
       const connectedAsWidth = Math.max(
         connectedAsHeader.length,

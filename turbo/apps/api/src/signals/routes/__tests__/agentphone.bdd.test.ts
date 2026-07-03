@@ -123,6 +123,10 @@ async function pollDispatchedJob(runnerGroup: string): Promise<{
   return { runId: job.runId, appendSystemPrompt: job.appendSystemPrompt ?? "" };
 }
 
+function agentPhoneCliAgentSessionIdForRun(runId: string): string {
+  return `bdd-agentphone-cli-${runId}`;
+}
+
 async function completeSandboxRun(
   sandboxToken: string,
   runId: string,
@@ -137,7 +141,7 @@ async function completeSandboxRun(
       {
         runId,
         cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-agentphone-cli-${runId}`,
+        cliAgentSessionId: agentPhoneCliAgentSessionIdForRun(runId),
         cliAgentSessionHistoryHash: createHash("sha256")
           .update(`bdd agentphone history ${runId}`)
           .digest("hex"),

@@ -231,6 +231,8 @@ describe("runner resume session contract", () => {
         kind: "blob",
         hash: historyHash,
         url: "https://r2.example.com/blobs/history.blob?sig=secret",
+        rawSize: 1024,
+        encodedSize: 1024,
       },
     };
 
@@ -265,7 +267,38 @@ describe("runner resume session contract", () => {
         kind: "blob",
         hash: historyHash,
         url: "https://r2.example.com/blobs/history.blob?sig=secret",
-        size: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+        rawSize: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+        encodedSize: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+      },
+    };
+
+    expect(resumeSessionSchema.safeParse(resumeSession).success).toBe(false);
+  });
+
+  it("accepts gzip hash-backed claim resume sessions with explicit sizes", () => {
+    const resumeSession = {
+      sessionId: "sess-123",
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: "https://r2.example.com/blobs/history.blob.gz?sig=secret",
+        encoding: "gzip",
+        rawSize: 1024,
+        encodedSize: 128,
+      },
+    };
+
+    expect(resumeSessionSchema.parse(resumeSession)).toEqual(resumeSession);
+  });
+
+  it("rejects malformed gzip claim resume sessions", () => {
+    const resumeSession = {
+      sessionId: "sess-123",
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: "https://r2.example.com/blobs/history.blob.gz?sig=secret",
+        encoding: "gzip",
       },
     };
 
@@ -276,7 +309,7 @@ describe("runner resume session contract", () => {
 describe("runner claim capability contract", () => {
   it("accepts unknown capabilities for forward compatibility", () => {
     const result = runnersJobClaimContract.claim.body.safeParse({
-      capabilities: ["resumeSessionHistoryRef", "futureCapability"],
+      capabilities: ["futureCapability"],
     });
 
     expect(result.success).toBe(true);

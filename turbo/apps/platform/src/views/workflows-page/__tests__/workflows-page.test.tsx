@@ -39,7 +39,7 @@ const OTHER_AGENT_ID = "c0000000-0000-4000-a000-000000000102";
 const SALES_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000201";
 const OPS_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000202";
 const OTHER_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000203";
-const PENDING_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000204";
+const CHECKLIST_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000204";
 const COPIED_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000205";
 const GMAIL_TRIGGER_ID = "workflow-trigger-gmail-new-message";
 const GMAIL_LABEL_TRIGGER_ID = "workflow-trigger-gmail-label-applied";
@@ -148,23 +148,6 @@ function weekdayWorkflowTrigger(): WorkflowScheduleTriggerSummary {
     chatThreadId: "thread_weekday_brief",
     nextRunAt: "2026-06-19T01:00:00.000Z",
     lastRunAt: "2026-06-18T01:00:00.000Z",
-  };
-}
-
-function intervalWorkflowTrigger(): WorkflowScheduleTriggerSummary {
-  return {
-    id: "workflow-trigger-interval-brief",
-    kind: "schedule",
-    schedule: {
-      type: "loop",
-      intervalSeconds: 15 * 60,
-    },
-    scheduleSummary: "Every 15 minutes",
-    ownerUserId: CURRENT_USER_ID,
-    enabled: true,
-    chatThreadId: "thread_interval_brief",
-    nextRunAt: "2026-06-19T01:15:00.000Z",
-    lastRunAt: "2026-06-19T01:00:00.000Z",
   };
 }
 
@@ -349,9 +332,9 @@ function salesResearch(): ZeroWorkflowDetailResponse {
     displayName: "Sales Research",
     description: "Collects account context before outreach.",
     visibility: "public",
-    requestToPublish: false,
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
+    canPublish: false,
     createdByUserId: CURRENT_USER_ID,
     updatedByUserId: UPDATED_USER_ID,
     createdAt: "2026-06-17T13:52:00.000Z",
@@ -385,9 +368,9 @@ function opsPlaybook(): ZeroWorkflowDetailResponse {
     displayName: "Ops Playbook",
     description: null,
     visibility: "private",
-    requestToPublish: false,
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
+    canPublish: true,
     createdByUserId: CURRENT_USER_ID,
     updatedByUserId: CURRENT_USER_ID,
     createdAt: "2026-06-15T12:00:00.000Z",
@@ -399,9 +382,9 @@ function opsPlaybook(): ZeroWorkflowDetailResponse {
   };
 }
 
-function pendingReviewWorkflow(): ZeroWorkflowDetailResponse {
+function launchChecklistWorkflow(): ZeroWorkflowDetailResponse {
   return {
-    id: PENDING_WORKFLOW_ID,
+    id: CHECKLIST_WORKFLOW_ID,
     agentId: AGENT_ID,
     agentName: "research-bot",
     agentDisplayName: "Research Bot",
@@ -409,9 +392,9 @@ function pendingReviewWorkflow(): ZeroWorkflowDetailResponse {
     displayName: "Launch Checklist",
     description: "Prepares release approvals.",
     visibility: "private",
-    requestToPublish: true,
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
+    canPublish: true,
     createdByUserId: CURRENT_USER_ID,
     updatedByUserId: CURRENT_USER_ID,
     createdAt: "2026-06-18T12:00:00.000Z",
@@ -433,9 +416,9 @@ function otherAgentWorkflow(): ZeroWorkflowDetailResponse {
     displayName: "Support Intake",
     description: "Sorts incoming support requests.",
     visibility: "public",
-    requestToPublish: false,
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
+    canPublish: false,
     createdByUserId: CURRENT_USER_ID,
     updatedByUserId: CURRENT_USER_ID,
     createdAt: "2026-06-16T12:00:00.000Z",
@@ -471,11 +454,12 @@ function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
     displayName: workflow.displayName,
     description: workflow.description,
     visibility: workflow.visibility,
-    requestToPublish: workflow.requestToPublish,
     ownerUserId: workflow.ownerUserId,
     ownerUserDisplayName: "Test User",
     ownerUserImageUrl: null,
+    createdAt: workflow.createdAt,
     canManage: workflow.canManage,
+    canPublish: workflow.canPublish,
   };
 }
 
@@ -900,12 +884,12 @@ function linkByAriaLabel(label: string): HTMLAnchorElement {
   return link;
 }
 
-function tabByText(text: string): HTMLElement {
-  const tab = queryAllByRoleFast("tab").find((candidate) => {
-    return textFor(candidate) === text;
+function tabByName(name: string): HTMLElement {
+  const tab = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.trim() === name;
   });
   if (!tab) {
-    throw new Error(`${text} tab not found`);
+    throw new Error(`${name} filter pill not found`);
   }
   return tab;
 }
@@ -956,14 +940,14 @@ describe("workflows routes", () => {
     expect(screen.queryByText("Workflow not found.")).not.toBeInTheDocument();
   });
 
-  it("shows triggered workflows first on the workspace workflows page", async () => {
+  it("filters the workspace workflows by automation and visibility", async () => {
     context.mocks.data.userPreferences({ timezone: "UTC" });
     mockAgentPageApis();
     mockChatLifecycle(context);
     mockWorkflowApis([
       salesResearch(),
       opsPlaybook(),
-      pendingReviewWorkflow(),
+      launchChecklistWorkflow(),
       otherAgentWorkflow(),
     ]);
 
@@ -977,40 +961,15 @@ describe("workflows routes", () => {
       expect(linkByAriaLabel("Open Sales Research")).toBeInTheDocument();
     });
     expect(search()).toBe("");
-    expect(tabByText("Automations")).toHaveAttribute("aria-selected", "true");
-    expect(screen.queryByText("Ops Playbook")).not.toBeInTheDocument();
-    expect(screen.queryByText("Launch Checklist")).not.toBeInTheDocument();
-    expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
 
-    const salesCard = articleByText("Sales Research");
-    expect(within(salesCard).getByText("Schedule")).toBeInTheDocument();
-    expect(
-      within(salesCard).getByText("Every weekday at 9:00 AM"),
-    ).toBeInTheDocument();
-    const switchControl = within(salesCard).getByRole("switch", {
-      name: "Disable Sales Research",
-    });
-    expect(switchControl).toHaveAttribute("aria-checked", "true");
-
-    click(switchControl);
-    await waitFor(() => {
-      expect(
-        within(articleByText("Sales Research")).getByRole("switch", {
-          name: "Enable Sales Research",
-        }),
-      ).toHaveAttribute("aria-checked", "false");
-    });
-
-    click(tabByText("All"));
-    await waitFor(() => {
-      expect(search()).toBe("?tab=all");
-    });
-    expect(tabByText("All")).toHaveAttribute("aria-selected", "true");
-    await waitFor(() => {
-      expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
-    });
+    // The default "All" view lists every workspace workflow.
+    expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
     expect(linkByAriaLabel("Open Launch Checklist")).toBeInTheDocument();
     expect(linkByAriaLabel("Open Support Intake")).toBeInTheDocument();
+
+    // The automated workflow surfaces its connector pill on the row.
+    const salesCard = articleByText("Sales Research");
+    expect(within(salesCard).getByText("Schedule")).toBeInTheDocument();
 
     const supportLink = linkByAriaLabel("Open Support Intake");
     expect(supportLink).toHaveAttribute(
@@ -1018,12 +977,52 @@ describe("workflows routes", () => {
       `/workflows/${OTHER_WORKFLOW_ID}/automations`,
     );
 
-    click(tabByText("Automations"));
+    // "Automated" keeps only workflows that have at least one automation.
+    click(tabByName("Automated"));
+    await waitFor(() => {
+      expect(search()).toBe("?filter=automated");
+    });
+    expect(linkByAriaLabel("Open Sales Research")).toBeInTheDocument();
+    expect(screen.queryByText("Ops Playbook")).not.toBeInTheDocument();
+    expect(screen.queryByText("Launch Checklist")).not.toBeInTheDocument();
+    expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
+
+    // "Without automation" keeps only the manual workflows.
+    click(tabByName("Without automation"));
+    await waitFor(() => {
+      expect(search()).toBe("?filter=without");
+    });
+    expect(screen.queryByText("Sales Research")).not.toBeInTheDocument();
+    expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
+    expect(linkByAriaLabel("Open Launch Checklist")).toBeInTheDocument();
+
+    // The pills are a single mutually-exclusive group: selecting "Private"
+    // replaces the automation selection rather than combining with it.
+    click(tabByName("Private"));
+    await waitFor(() => {
+      expect(search()).toBe("?filter=private");
+    });
+    expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
+    expect(linkByAriaLabel("Open Launch Checklist")).toBeInTheDocument();
+    expect(screen.queryByText("Sales Research")).not.toBeInTheDocument();
+    expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
+
+    // "Public" keeps only the public workflows.
+    click(tabByName("Public"));
+    await waitFor(() => {
+      expect(search()).toBe("?filter=public");
+    });
+    expect(linkByAriaLabel("Open Sales Research")).toBeInTheDocument();
+    expect(linkByAriaLabel("Open Support Intake")).toBeInTheDocument();
+    expect(screen.queryByText("Ops Playbook")).not.toBeInTheDocument();
+    expect(screen.queryByText("Launch Checklist")).not.toBeInTheDocument();
+
+    // Clearing the filter returns to the full list.
+    click(tabByName("All"));
     await waitFor(() => {
       expect(search()).toBe("");
     });
-    expect(tabByText("Automations")).toHaveAttribute("aria-selected", "true");
-    expect(screen.queryByText("Ops Playbook")).not.toBeInTheDocument();
+    expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
 
     expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).toContain(
       "Help me create a workflow for this agent.",
@@ -1049,55 +1048,12 @@ describe("workflows routes", () => {
     await expectComposerText(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
   });
 
-  it("runs a fixed interval trigger from the workflows page and links to the chat in a toast", async () => {
-    const runTriggerIds: string[] = [];
-    context.mocks.data.userPreferences({ timezone: "UTC" });
-    mockAgentPageApis();
-    mockChatLifecycle(context, { threadId: TRIGGER_RUN_THREAD_ID });
-    mockWorkflowApis([
-      { ...salesResearch(), triggers: [intervalWorkflowTrigger()] },
-    ]);
-    mockRunWorkflowTrigger((triggerId) => {
-      runTriggerIds.push(triggerId);
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/workflows",
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
-    });
-
-    await waitFor(() => {
-      expect(linkByAriaLabel("Open Sales Research")).toBeInTheDocument();
-    });
-    const salesCard = articleByText("Sales Research");
-    expect(within(salesCard).getByText("Every 15 minutes")).toBeInTheDocument();
-
-    click(buttonByText("Run now", salesCard));
-
-    await waitFor(() => {
-      expect(runTriggerIds).toStrictEqual(["workflow-trigger-interval-brief"]);
-    });
-    expect(pathname()).toBe("/workflows");
-    expect(search()).toBe("");
-    await expect(
-      screen.findByText("Workflow started"),
-    ).resolves.toBeInTheDocument();
-
-    click(buttonByText("View in chat"));
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/chats/${TRIGGER_RUN_THREAD_ID}`);
-    });
-    expect(search()).toBe("");
-  });
-
   it("redirects the legacy agent workflows tab when workflow automation is enabled", async () => {
     mockAgentPageApis();
     mockWorkflowApis([
       salesResearch(),
       opsPlaybook(),
-      pendingReviewWorkflow(),
+      launchChecklistWorkflow(),
       otherAgentWorkflow(),
     ]);
 
@@ -1147,11 +1103,19 @@ describe("workflow detail page", () => {
     });
     expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/automations`);
     expect(search()).toBe("");
-    expect(screen.getByText("Schedule")).toBeInTheDocument();
-    expect(screen.getAllByText("Last run").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Next run").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Schedule")).not.toBeInTheDocument();
+    expect(screen.getByText("Last")).toBeInTheDocument();
+    expect(screen.getByText("Next")).toBeInTheDocument();
+    expect(screen.queryByText("Active")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "Disable Every weekday at 9:00 AM" }),
+    ).toBeInTheDocument();
     expect(buttonByText("Run now")).toBeInTheDocument();
-    click(buttonByText("Info"));
+    expect(screen.queryByText("Delete automation")).not.toBeInTheDocument();
+    click(buttonByText("More actions"));
+    expect(menuItemByText("Delete automation")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    click(buttonByText("Settings"));
     await waitFor(() => {
       expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
     });
@@ -1184,6 +1148,7 @@ describe("workflow detail page", () => {
     const workflow = {
       ...salesResearch(),
       canManage: false,
+      canPublish: false,
     };
     context.store.set(setWorkflowFileDraft$, {
       workflowId: SALES_WORKFLOW_ID,
@@ -1206,6 +1171,31 @@ describe("workflow detail page", () => {
     expect(
       screen.queryByText("You have unsaved changes"),
     ).not.toBeInTheDocument();
+  });
+
+  it("disables publishing when the workflow owner lacks agent write permission", async () => {
+    const workflow = {
+      ...opsPlaybook(),
+      canManage: true,
+      canPublish: false,
+    };
+    mockWorkflowApis([workflow]);
+
+    detachedSetupPage({
+      context,
+      path: `/workflows/${OPS_WORKFLOW_ID}/info`,
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
+    });
+
+    const publishSwitch = await screen.findByRole("switch", {
+      name: "Make workflow public",
+    });
+    expect(publishSwitch).toBeDisabled();
+    expect(
+      screen.getByText(
+        "Publishing a workflow under an agent you do not own requires org admin permissions.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("opens the shared workflow chat thread with the workflow slash command", async () => {
@@ -1506,6 +1496,7 @@ describe("workflow detail page", () => {
     const workflow = {
       ...salesResearch(),
       canManage: false,
+      canPublish: false,
     };
     context.store.set(patchWorkflowMetadataForm$, {
       workflowId: SALES_WORKFLOW_ID,
@@ -1533,7 +1524,7 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
     });
-    click(buttonByText("Info"));
+    click(buttonByText("Settings"));
 
     await waitFor(() => {
       expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
@@ -2027,7 +2018,7 @@ describe("workflow detail page", () => {
       expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
     });
 
-    click(buttonByText("Edit"));
+    click(buttonByText("Edit automation"));
 
     const updateTriggerForm = screen.getByRole("form", {
       name: "Update schedule automation",
@@ -2079,7 +2070,7 @@ describe("workflow detail page", () => {
       expect(screen.getByText("Every 1 hour")).toBeInTheDocument();
     });
 
-    click(buttonByText("Edit"));
+    click(buttonByText("Edit automation"));
 
     const updateTriggerForm = screen.getByRole("form", {
       name: "Update schedule automation",
@@ -2134,7 +2125,7 @@ describe("workflow detail page", () => {
       );
     });
 
-    click(buttonByText("Edit"));
+    click(buttonByText("Edit automation"));
 
     const updateTriggerForm = screen.getByRole("form", {
       name: "Update Gmail new message automation",
@@ -2190,7 +2181,7 @@ describe("workflow detail page", () => {
       expect(screen.getByText("Gmail label applied")).toBeInTheDocument();
     });
 
-    click(buttonByText("Edit"));
+    click(buttonByText("Edit automation"));
 
     const updateTriggerForm = screen.getByRole("form", {
       name: "Update Gmail label automation",

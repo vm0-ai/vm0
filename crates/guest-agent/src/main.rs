@@ -66,7 +66,7 @@ fn helper_exit_code_from_args() -> Option<i32> {
     }
     let metadata_path = args
         .next()
-        .unwrap_or_else(|| paths::final_session_history_identity_file().into());
+        .unwrap_or_else(final_session_history_identity_path_from_process_env);
     let remaining = args.collect::<Vec<_>>();
     let expected = match parse_session_history_identity_expectation(&remaining) {
         Ok(expected) => expected,
@@ -88,6 +88,15 @@ fn helper_exit_code_from_args() -> Option<i32> {
             }
         },
     )
+}
+
+#[allow(clippy::panic)]
+fn final_session_history_identity_path_from_process_env() -> std::ffi::OsString {
+    let run_id = std::env::var(guest_contracts::env::RUN_ID_ENV).unwrap_or_default();
+    paths::GuestPaths::from_process_env(&run_id)
+        .unwrap_or_else(|error| panic!("failed to resolve guest runtime directory: {error}"))
+        .final_session_history_identity_file()
+        .into()
 }
 
 fn parse_session_history_identity_expectation(
@@ -663,8 +672,18 @@ fn is_claude_result_simple_provider_overloaded_error(
 fn is_claude_result_provider_stream_timeout(source: FailureDetailSource, normalized: &str) -> bool {
     let trimmed = normalized.trim();
     source == FailureDetailSource::ClaudeResult
-        && trimmed.starts_with("api error: stream idle timeout")
+        && (is_claude_result_stream_idle_timeout(trimmed)
+            || is_claude_result_stalled_mid_stream(trimmed))
+}
+
+fn is_claude_result_stream_idle_timeout(trimmed: &str) -> bool {
+    trimmed.starts_with("api error: stream idle timeout")
         && trimmed.contains("partial response received")
+}
+
+fn is_claude_result_stalled_mid_stream(trimmed: &str) -> bool {
+    trimmed.starts_with("api error: response stalled mid-stream")
+        && trimmed.contains("response above may be incomplete")
 }
 
 fn is_claude_provider_server_error(source: FailureDetailSource, normalized: &str) -> bool {
@@ -1285,6 +1304,28 @@ mod tests {
         MAIN_TEST_RUNTIME_ROOT.join("main-recovery-checkpoint")
     }
 
+    fn test_guest_paths() -> paths::GuestPaths {
+        paths::GuestPaths::from_runtime_dir(test_runtime_dir())
+    }
+
+    fn run_scoped_cleanup_paths(paths: &paths::GuestPaths, include_session: bool) -> Vec<String> {
+        let mut cleanup_paths = Vec::new();
+        if include_session {
+            cleanup_paths.push(paths.session_id_file().to_string());
+            cleanup_paths.push(paths.session_history_path_file().to_string());
+        }
+        cleanup_paths.extend([
+            paths.checkpoint_error_file().to_string(),
+            paths.failure_diagnostic_file().to_string(),
+            paths.event_error_flag().to_string(),
+            paths.sandbox_ops_file().to_string(),
+            paths.telemetry_system_log_pos_file().to_string(),
+            paths.telemetry_metrics_pos_file().to_string(),
+            paths.telemetry_sandbox_ops_pos_file().to_string(),
+        ]);
+        cleanup_paths
+    }
+
     struct EnvVarRestoreGuard {
         saved: Vec<(&'static str, Option<std::ffi::OsString>)>,
     }
@@ -1407,6 +1448,21 @@ mod tests {
     impl Drop for SystemLogOverrideGuard {
         fn drop(&mut self) {
             guest_common::log::clear_system_log_file();
+        }
+    }
+
+    struct SandboxOpsOverrideGuard;
+
+    impl SandboxOpsOverrideGuard {
+        fn set(path: &std::path::Path) -> Self {
+            guest_common::telemetry::set_sandbox_ops_log_file(path);
+            Self
+        }
+    }
+
+    impl Drop for SandboxOpsOverrideGuard {
+        fn drop(&mut self) {
+            guest_common::telemetry::clear_sandbox_ops_log_file();
         }
     }
 
@@ -1929,25 +1985,75 @@ mod tests {
     }
 
     #[test]
-    fn cli_failure_reason_ignores_stream_idle_timeout_from_stderr() {
+    fn cli_failure_reason_classifies_claude_result_stalled_mid_stream() {
         let reason = super::classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
-            FailureDetailSource::Stderr,
-            "API Error: Stream idle timeout - partial response received",
+            FailureDetailSource::ClaudeResult,
+            "API Error: Response stalled mid-stream. The response above may be incomplete.",
         );
 
-        assert_eq!(reason, None);
+        assert_eq!(reason, Some(FailureReason::ProviderStreamTimeout));
     }
 
     #[test]
-    fn cli_failure_reason_ignores_codex_stream_idle_timeout() {
-        let reason = super::classify_cli_failure_reason(
-            AgentFramework::Codex,
-            FailureDetailSource::ClaudeResult,
-            "API Error: Stream idle timeout - partial response received",
+    fn cli_failure_reason_classifies_claude_result_stalled_mid_stream_diagnostic() {
+        let message =
+            "API Error: Response stalled mid-stream. The response above may be incomplete.";
+        let msg = cli_failure_message(
+            1,
+            &["background stderr noise".to_string()],
+            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
         );
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(msg.source);
+        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
 
-        assert_eq!(reason, None);
+        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::ProviderStreamTimeout)
+        );
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::ClaudeResult)
+        );
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_claude_result_stream_timeout_messages_from_stderr() {
+        for message in [
+            "API Error: Stream idle timeout - partial response received",
+            "API Error: Response stalled mid-stream. The response above may be incomplete.",
+        ] {
+            let reason = super::classify_cli_failure_reason(
+                AgentFramework::ClaudeCode,
+                FailureDetailSource::Stderr,
+                message,
+            );
+
+            assert_eq!(reason, None, "message: {message}");
+        }
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_non_claude_stream_timeout_messages() {
+        for message in [
+            "API Error: Stream idle timeout - partial response received",
+            "API Error: Response stalled mid-stream. The response above may be incomplete.",
+        ] {
+            let reason = super::classify_cli_failure_reason(
+                AgentFramework::Codex,
+                FailureDetailSource::ClaudeResult,
+                message,
+            );
+
+            assert_eq!(reason, None, "message: {message}");
+        }
     }
 
     #[test]
@@ -1962,14 +2068,19 @@ mod tests {
     }
 
     #[test]
-    fn cli_failure_reason_ignores_explanatory_stream_idle_timeout_text() {
-        let reason = super::classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            FailureDetailSource::ClaudeResult,
+    fn cli_failure_reason_ignores_explanatory_stream_timeout_text() {
+        for message in [
             "Observed API Error: Stream idle timeout - partial response received in an earlier run",
-        );
+            "Observed API Error: Response stalled mid-stream. The response above may be incomplete in an earlier run",
+        ] {
+            let reason = super::classify_cli_failure_reason(
+                AgentFramework::ClaudeCode,
+                FailureDetailSource::ClaudeResult,
+                message,
+            );
 
-        assert_eq!(reason, None);
+            assert_eq!(reason, None, "message: {message}");
+        }
     }
 
     #[test]
@@ -2758,16 +2869,19 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         let _env_guard = unsafe { set_test_env(server, None) };
+        let guest_paths = test_guest_paths();
 
         let tmp = tempfile::tempdir().unwrap();
         let system_log_path = tmp.path().join("system.log");
         let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
-        let cleanup_paths = [
+        let _sandbox_ops_guard =
+            SandboxOpsOverrideGuard::set(std::path::Path::new(guest_paths.sandbox_ops_file()));
+        let cleanup_paths = vec![
             system_log_path.to_string_lossy().into_owned(),
-            paths::sandbox_ops_file().to_string(),
-            paths::telemetry_system_log_pos_file().to_string(),
-            paths::telemetry_metrics_pos_file().to_string(),
-            paths::telemetry_sandbox_ops_pos_file().to_string(),
+            guest_paths.sandbox_ops_file().to_string(),
+            guest_paths.telemetry_system_log_pos_file().to_string(),
+            guest_paths.telemetry_metrics_pos_file().to_string(),
+            guest_paths.telemetry_sandbox_ops_pos_file().to_string(),
         ];
         for path in &cleanup_paths {
             let _ = std::fs::remove_file(path);
@@ -2788,15 +2902,18 @@ mod tests {
             true,
             None,
         );
-        let masker = Arc::new(masker::SecretMasker::from_env());
+        let config = test_guest_config(server, None);
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
         let http = test_http_client(server);
-        let telemetry = Telemetry::spawn(masker, http);
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http);
 
         final_telemetry(telemetry).await;
 
         telemetry_mock.assert_calls_async(1).await;
         telemetry_mock.delete_async().await;
-        let sandbox_ops = std::fs::read_to_string(paths::sandbox_ops_file()).unwrap_or_default();
+        let sandbox_ops =
+            std::fs::read_to_string(guest_paths.sandbox_ops_file()).unwrap_or_default();
         assert!(
             !sandbox_ops.contains("final_telemetry_upload"),
             "final telemetry must not record telemetry-upload telemetry through the same stream"
@@ -2818,13 +2935,17 @@ mod tests {
                 let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
                 server.reset_async().await;
                 let _env_guard = unsafe { set_test_env(server, None) };
+                let guest_paths = test_guest_paths();
+                let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(std::path::Path::new(
+                    guest_paths.sandbox_ops_file(),
+                ));
 
                 let marker = "producer_after_shutdown_before_final_upload";
-                let cleanup_paths = [
-                    paths::sandbox_ops_file().to_string(),
-                    paths::telemetry_system_log_pos_file().to_string(),
-                    paths::telemetry_metrics_pos_file().to_string(),
-                    paths::telemetry_sandbox_ops_pos_file().to_string(),
+                let cleanup_paths = vec![
+                    guest_paths.sandbox_ops_file().to_string(),
+                    guest_paths.telemetry_system_log_pos_file().to_string(),
+                    guest_paths.telemetry_metrics_pos_file().to_string(),
+                    guest_paths.telemetry_sandbox_ops_pos_file().to_string(),
                 ];
                 for path in &cleanup_paths {
                     let _ = std::fs::remove_file(path);
@@ -2848,9 +2969,11 @@ mod tests {
                 let heartbeat_handle = tokio::spawn(async {
                     std::future::pending::<()>().await;
                 });
-                let masker = Arc::new(masker::SecretMasker::from_env());
+                let config = test_guest_config(server, None);
+                let masker = Arc::new(masker::SecretMasker::from_config(&config));
                 let http = test_http_client(server);
-                let telemetry = Telemetry::spawn(masker, http);
+                let telemetry =
+                    Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http);
 
                 stop_background_and_flush_final_telemetry(
                     shutdown,
@@ -3032,22 +3155,13 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         let _env_guard = unsafe { set_test_env(server, Some("/event-upload-failure")) };
+        let guest_paths = test_guest_paths();
 
-        let cleanup_paths = [
-            paths::session_id_file().to_string(),
-            paths::session_history_path_file().to_string(),
-            paths::checkpoint_error_file().to_string(),
-            paths::failure_diagnostic_file().to_string(),
-            paths::event_error_flag().to_string(),
-            paths::sandbox_ops_file().to_string(),
-            paths::telemetry_system_log_pos_file().to_string(),
-            paths::telemetry_metrics_pos_file().to_string(),
-            paths::telemetry_sandbox_ops_pos_file().to_string(),
-        ];
+        let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, true);
         for path in &cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
-        paths::write_private(paths::event_error_flag(), "").unwrap();
+        paths::write_private(guest_paths.event_error_flag(), "").unwrap();
 
         let _telemetry_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/telemetry");
@@ -3056,10 +3170,11 @@ mod tests {
                 .json_body(json!({}));
         });
 
-        let masker = Arc::new(masker::SecretMasker::from_env());
-        let http = test_http_client(server);
-        let telemetry = Telemetry::spawn(masker, http.clone());
         let config = test_guest_config(server, Some("/event-upload-failure"));
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
+        let http = test_http_client(server);
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
         let runtime = test_guest_runtime(config, http.clone());
         let exit_code = complete_execution(
             0,
@@ -3079,11 +3194,11 @@ mod tests {
 
         assert_eq!(exit_code, 1);
         assert_eq!(
-            std::fs::read_to_string(paths::checkpoint_error_file()).unwrap(),
+            std::fs::read_to_string(guest_paths.checkpoint_error_file()).unwrap(),
             "Some events failed to send, marking run as failed"
         );
         let diagnostic: FailureDiagnostic =
-            serde_json::from_slice(&std::fs::read(paths::failure_diagnostic_file()).unwrap())
+            serde_json::from_slice(&std::fs::read(guest_paths.failure_diagnostic_file()).unwrap())
                 .unwrap();
         assert_eq!(diagnostic.failure_class, FailureClass::EventUploadFailed);
         assert_eq!(diagnostic.cli_exit_code, Some(0));
@@ -3100,18 +3215,9 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         let _env_guard = unsafe { set_test_env(server, Some("/checkpoint-failure")) };
+        let guest_paths = test_guest_paths();
 
-        let cleanup_paths = [
-            paths::session_id_file().to_string(),
-            paths::session_history_path_file().to_string(),
-            paths::checkpoint_error_file().to_string(),
-            paths::failure_diagnostic_file().to_string(),
-            paths::event_error_flag().to_string(),
-            paths::sandbox_ops_file().to_string(),
-            paths::telemetry_system_log_pos_file().to_string(),
-            paths::telemetry_metrics_pos_file().to_string(),
-            paths::telemetry_sandbox_ops_pos_file().to_string(),
-        ];
+        let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, true);
         for path in &cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
@@ -3123,10 +3229,11 @@ mod tests {
                 .json_body(json!({}));
         });
 
-        let masker = Arc::new(masker::SecretMasker::from_env());
-        let http = test_http_client(server);
-        let telemetry = Telemetry::spawn(masker, http.clone());
         let config = test_guest_config(server, Some("/checkpoint-failure"));
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
+        let http = test_http_client(server);
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
         let runtime = test_guest_runtime(config, http.clone());
         let exit_code = complete_execution(
             0,
@@ -3145,10 +3252,10 @@ mod tests {
         telemetry.shutdown().await;
 
         assert_eq!(exit_code, 1);
-        let error = std::fs::read_to_string(paths::checkpoint_error_file()).unwrap();
+        let error = std::fs::read_to_string(guest_paths.checkpoint_error_file()).unwrap();
         assert!(error.contains("Checkpoint failed"), "got: {error}");
         let diagnostic: FailureDiagnostic =
-            serde_json::from_slice(&std::fs::read(paths::failure_diagnostic_file()).unwrap())
+            serde_json::from_slice(&std::fs::read(guest_paths.failure_diagnostic_file()).unwrap())
                 .unwrap();
         assert_eq!(diagnostic.failure_class, FailureClass::CheckpointFailed);
         assert_eq!(diagnostic.cli_exit_code, Some(0));
@@ -3165,22 +3272,13 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         let _env_guard = unsafe { set_test_env(server, Some("plain prompt")) };
+        let guest_paths = test_guest_paths();
 
-        let cleanup_paths = [
-            paths::session_id_file().to_string(),
-            paths::session_history_path_file().to_string(),
-            paths::checkpoint_error_file().to_string(),
-            paths::failure_diagnostic_file().to_string(),
-            paths::event_error_flag().to_string(),
-            paths::sandbox_ops_file().to_string(),
-            paths::telemetry_system_log_pos_file().to_string(),
-            paths::telemetry_metrics_pos_file().to_string(),
-            paths::telemetry_sandbox_ops_pos_file().to_string(),
-        ];
+        let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, true);
         for path in &cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
-        paths::write_private(paths::event_error_flag(), "").unwrap();
+        paths::write_private(guest_paths.event_error_flag(), "").unwrap();
 
         let _telemetry_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/telemetry");
@@ -3189,10 +3287,11 @@ mod tests {
                 .json_body(json!({}));
         });
 
-        let masker = Arc::new(masker::SecretMasker::from_env());
-        let http = test_http_client(server);
-        let telemetry = Telemetry::spawn(masker, http.clone());
         let config = test_guest_config(server, Some("plain prompt"));
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
+        let http = test_http_client(server);
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
         let runtime = test_guest_runtime(config, http.clone());
         let failure_message = "CLI failed before all events uploaded";
         let failure_diagnostic = FailureDiagnostic::new(
@@ -3220,11 +3319,11 @@ mod tests {
 
         assert_eq!(exit_code, 1);
         assert_eq!(
-            std::fs::read_to_string(paths::checkpoint_error_file()).unwrap(),
+            std::fs::read_to_string(guest_paths.checkpoint_error_file()).unwrap(),
             failure_message
         );
         let diagnostic: FailureDiagnostic =
-            serde_json::from_slice(&std::fs::read(paths::failure_diagnostic_file()).unwrap())
+            serde_json::from_slice(&std::fs::read(guest_paths.failure_diagnostic_file()).unwrap())
                 .unwrap();
         assert_eq!(diagnostic, failure_diagnostic);
         for path in cleanup_paths {
@@ -3236,16 +3335,9 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         let _env_guard = unsafe { set_test_env(server, Some("/help")) };
+        let guest_paths = test_guest_paths();
 
-        let cleanup_paths = [
-            paths::checkpoint_error_file().to_string(),
-            paths::failure_diagnostic_file().to_string(),
-            paths::event_error_flag().to_string(),
-            paths::sandbox_ops_file().to_string(),
-            paths::telemetry_system_log_pos_file().to_string(),
-            paths::telemetry_metrics_pos_file().to_string(),
-            paths::telemetry_sandbox_ops_pos_file().to_string(),
-        ];
+        let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, false);
         for path in &cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
@@ -3266,10 +3358,11 @@ mod tests {
                 .json_body(json!({}));
         });
 
-        let masker = Arc::new(masker::SecretMasker::from_env());
-        let http = test_http_client(server);
-        let telemetry = Telemetry::spawn(masker, http.clone());
         let config = test_guest_config(server, Some("/help"));
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
+        let http = test_http_client(server);
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
         let runtime = test_guest_runtime(config, http.clone());
         let failure_message = "Claude Code emitted a zero-turn result without creating session history; skipping checkpoint";
         let failure_diagnostic = FailureDiagnostic::new(
@@ -3298,11 +3391,11 @@ mod tests {
 
         assert_eq!(exit_code, 1);
         assert_eq!(
-            std::fs::read_to_string(paths::checkpoint_error_file()).unwrap(),
+            std::fs::read_to_string(guest_paths.checkpoint_error_file()).unwrap(),
             failure_message
         );
         let diagnostic: FailureDiagnostic =
-            serde_json::from_slice(&std::fs::read(paths::failure_diagnostic_file()).unwrap())
+            serde_json::from_slice(&std::fs::read(guest_paths.failure_diagnostic_file()).unwrap())
                 .unwrap();
         assert_eq!(diagnostic, failure_diagnostic);
         assert_eq!(prepare_mock.calls_async().await, 0);
@@ -3317,18 +3410,9 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         let _env_guard = unsafe { set_test_env(server, Some("plain prompt")) };
+        let guest_paths = test_guest_paths();
 
-        let cleanup_paths = [
-            paths::session_id_file().to_string(),
-            paths::session_history_path_file().to_string(),
-            paths::checkpoint_error_file().to_string(),
-            paths::failure_diagnostic_file().to_string(),
-            paths::event_error_flag().to_string(),
-            paths::sandbox_ops_file().to_string(),
-            paths::telemetry_system_log_pos_file().to_string(),
-            paths::telemetry_metrics_pos_file().to_string(),
-            paths::telemetry_sandbox_ops_pos_file().to_string(),
-        ];
+        let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, true);
         for path in &cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
@@ -3337,9 +3421,9 @@ mod tests {
         let history_path = dir.path().join("history.jsonl");
         let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant"}"# + "\n";
         std::fs::write(&history_path, &history).unwrap();
-        paths::write_private(paths::session_id_file(), "recovery-session-from-main").unwrap();
+        paths::write_private(guest_paths.session_id_file(), "recovery-session-from-main").unwrap();
         paths::write_private(
-            paths::session_history_path_file(),
+            guest_paths.session_history_path_file(),
             history_path.to_string_lossy().as_ref(),
         )
         .unwrap();
@@ -3376,10 +3460,11 @@ mod tests {
                 .json_body(json!({}));
         });
 
-        let masker = Arc::new(masker::SecretMasker::from_env());
-        let http = test_http_client(server);
-        let telemetry = Telemetry::spawn(masker, http.clone());
         let config = test_guest_config(server, Some("plain prompt"));
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
+        let http = test_http_client(server);
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
         let runtime = test_guest_runtime(config, http.clone());
         let failure_message = "You've hit your usage limit.";
         let failure_diagnostic = FailureDiagnostic::new(
@@ -3407,11 +3492,11 @@ mod tests {
 
         assert_eq!(exit_code, 1);
         assert_eq!(
-            std::fs::read_to_string(paths::checkpoint_error_file()).unwrap(),
+            std::fs::read_to_string(guest_paths.checkpoint_error_file()).unwrap(),
             failure_message
         );
         let diagnostic: FailureDiagnostic =
-            serde_json::from_slice(&std::fs::read(paths::failure_diagnostic_file()).unwrap())
+            serde_json::from_slice(&std::fs::read(guest_paths.failure_diagnostic_file()).unwrap())
                 .unwrap();
         assert_eq!(diagnostic, failure_diagnostic);
         prepare_mock.assert_calls_async(1).await;

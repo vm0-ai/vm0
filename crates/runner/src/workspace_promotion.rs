@@ -4,7 +4,6 @@ use futures_util::FutureExt;
 use sandbox::Sandbox;
 use tracing::warn;
 
-use crate::paths::diagnostic_session_fingerprint;
 use crate::workspace_image_cache::{
     WorkspaceImagePromotionContext, WorkspaceImagePromotionOutcome,
 };
@@ -38,13 +37,11 @@ pub(crate) async fn promote_workspace_image_from_active_sandbox(
             false
         }
         Err(_) => {
-            let session_fingerprint =
-                diagnostic_session_fingerprint(promotion.cli_agent_session_id());
             warn!(
                 run_id = %promotion.run_id(),
                 sandbox_id = %promotion.sandbox_id(),
                 profile_name = promotion.profile_name(),
-                session_fingerprint = %session_fingerprint,
+                session_id = %promotion.cli_agent_session_id(),
                 reason,
                 "workspace image cache promotion panicked"
             );
@@ -62,13 +59,11 @@ async fn promote_workspace_image_from_active_sandbox_inner(
     match flush_and_unmount_workspace_drive(sandbox, promotion.run_id()).await {
         Ok(()) => {}
         Err(e) => {
-            let session_fingerprint =
-                diagnostic_session_fingerprint(promotion.cli_agent_session_id());
             warn!(
                 run_id = %promotion.run_id(),
                 sandbox_id = %promotion.sandbox_id(),
                 profile_name = promotion.profile_name(),
-                session_fingerprint = %session_fingerprint,
+                session_id = %promotion.cli_agent_session_id(),
                 reason,
                 error = %e,
                 "workspace image cache promotion skipped because guest unmount failed"
@@ -86,13 +81,11 @@ async fn promote_workspace_image_from_active_sandbox_inner(
             WorkspacePromotionAction::AbandonUnpublished
         }
         Err(e) => {
-            let session_fingerprint =
-                diagnostic_session_fingerprint(promotion.cli_agent_session_id());
             warn!(
                 run_id = %promotion.run_id(),
                 sandbox_id = %promotion.sandbox_id(),
                 profile_name = promotion.profile_name(),
-                session_fingerprint = %session_fingerprint,
+                session_id = %promotion.cli_agent_session_id(),
                 reason,
                 error = %e,
                 "workspace image cache promotion failed"
@@ -114,13 +107,11 @@ pub(crate) async fn promote_workspace_image_from_parked_sandbox(
     match AssertUnwindSafe(sandbox.unpark()).catch_unwind().await {
         Ok(Ok(())) => {}
         Ok(Err(e)) => {
-            let session_fingerprint =
-                diagnostic_session_fingerprint(promotion.cli_agent_session_id());
             warn!(
                 run_id = %promotion.run_id(),
                 sandbox_id = %promotion.sandbox_id(),
                 profile_name = promotion.profile_name(),
-                session_fingerprint = %session_fingerprint,
+                session_id = %promotion.cli_agent_session_id(),
                 reason,
                 error = %e,
                 "workspace image cache promotion skipped because idle sandbox unpark failed"
@@ -129,13 +120,11 @@ pub(crate) async fn promote_workspace_image_from_parked_sandbox(
             return false;
         }
         Err(_) => {
-            let session_fingerprint =
-                diagnostic_session_fingerprint(promotion.cli_agent_session_id());
             warn!(
                 run_id = %promotion.run_id(),
                 sandbox_id = %promotion.sandbox_id(),
                 profile_name = promotion.profile_name(),
-                session_fingerprint = %session_fingerprint,
+                session_id = %promotion.cli_agent_session_id(),
                 reason,
                 "workspace image cache promotion skipped because idle sandbox unpark panicked"
             );
@@ -157,7 +146,7 @@ pub(crate) async fn abandon_unpublished_workspace_promotion(
     let run_id = promotion.run_id();
     let sandbox_id = promotion.sandbox_id();
     let profile_name = promotion.profile_name().to_owned();
-    let session_fingerprint = diagnostic_session_fingerprint(promotion.cli_agent_session_id());
+    let cli_agent_session_id = promotion.cli_agent_session_id().to_owned();
     match promotion.abandon_unpublished(reason).await {
         Ok(abandoned) => abandoned,
         Err(e) => {
@@ -165,7 +154,7 @@ pub(crate) async fn abandon_unpublished_workspace_promotion(
                 run_id = %run_id,
                 sandbox_id = %sandbox_id,
                 profile_name,
-                session_fingerprint = %session_fingerprint,
+                session_id = %cli_agent_session_id,
                 reason,
                 error = %e,
                 "workspace image cache promotion context abandonment failed"

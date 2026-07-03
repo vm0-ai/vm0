@@ -22,7 +22,6 @@ import {
   type ChatMessageUsagePayload,
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
-  type ChatMessageRecommendedFollowupGenerationType,
   type ChatMessageRecommendedFollowups,
   type ChatMessageAutomationSnapshot,
   type ChatMessageGoalEvent,
@@ -58,6 +57,8 @@ import {
   resolveAttachFileUrls,
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
+import { normalizeRecommendedFollowups } from "./zero-chat-recommended-followups.service";
+import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
@@ -65,11 +66,20 @@ import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief
 export { insertAssistantEventMessages$ };
 
 const messageRoleSchema = z.enum(["user", "assistant"]);
+const TERMINAL_MESSAGE_ORDER_SEQUENCE = 2_147_483_647;
+
+function chatMessageOrderSequenceSql() {
+  return sql<number>`CASE
+    WHEN ${chatMessages.runLifecycleEvent} IS NOT NULL THEN ${TERMINAL_MESSAGE_ORDER_SEQUENCE}
+    ELSE COALESCE(${chatMessages.sequenceNumber}, -1)
+  END`;
+}
 
 type ChatMessageRow = {
   readonly id: string;
   readonly role: string;
   readonly content: string | null;
+  readonly thinking: string | null;
   readonly runId: string | null;
   readonly runGroupId: string | null;
   readonly triggerSource: TriggerSource | null;
@@ -152,6 +162,7 @@ const messageColumns = {
   id: chatMessages.id,
   role: chatMessages.role,
   content: chatMessages.content,
+  thinking: chatMessages.thinking,
   runId: effectiveChatMessageRunId(),
   runGroupId: chatMessages.runGroupId,
   triggerSource: sql<TriggerSource | null>`(
@@ -503,55 +514,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isRecommendedFollowupGenerationType(
-  value: unknown,
-): value is ChatMessageRecommendedFollowupGenerationType {
-  return (
-    value === "image" ||
-    value === "video" ||
-    value === "presentation" ||
-    value === "website"
-  );
-}
-
-function normalizeRecommendedFollowups(
-  value: unknown,
-): ChatMessageRecommendedFollowups | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-
-  const seen = new Set<string>();
-  const followups: ChatMessageRecommendedFollowups = [];
-  for (const item of value) {
-    const prompt =
-      typeof item === "string"
-        ? item.trim()
-        : isRecord(item) && typeof item.prompt === "string"
-          ? item.prompt.trim()
-          : "";
-    if (prompt.length === 0 || seen.has(prompt)) {
-      continue;
-    }
-    seen.add(prompt);
-
-    if (!isRecord(item) || item.kind !== "generate") {
-      followups.push({ prompt, kind: "talk" });
-      continue;
-    }
-
-    followups.push({
-      prompt,
-      kind: "generate",
-      ...(isRecommendedFollowupGenerationType(item.generationType)
-        ? { generationType: item.generationType }
-        : {}),
-    });
-  }
-
-  return followups.length > 0 ? followups : undefined;
-}
-
 function normalizeUsagePayload(
   value: ChatMessageUsagePayload | null,
 ): PagedChatMessage["usage"] {
@@ -635,6 +597,7 @@ function toPagedMessage(
       error: row.error ?? undefined,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
+      sequenceNumber: row.sequenceNumber,
       workflowSnapshot,
       createdAt: row.createdAt.toISOString(),
     };
@@ -647,13 +610,16 @@ function toPagedMessage(
         automationSnapshot: row.automationSnapshot ?? undefined,
       };
     }
+    const recommendedFollowups = normalizeRecommendedFollowups(
+      row.recommendedFollowups,
+    );
     return {
       ...message,
       role: "assistant" as const,
+      thinking: row.thinking ?? undefined,
       runLifecycleEvent: lifecycleEventOrUndefined(row.runLifecycleEvent),
-      recommendedFollowups: normalizeRecommendedFollowups(
-        row.recommendedFollowups,
-      ),
+      recommendedFollowups:
+        recommendedFollowups.length > 0 ? recommendedFollowups : undefined,
     };
   });
 }
@@ -1357,6 +1323,7 @@ export function zeroChatThreadMessagesPage(args: {
 
     const db = get(db$);
     const threadFilter = eq(chatMessages.chatThreadId, args.threadId);
+    const cursorSequence = chatMessageOrderSequenceSql();
     let rows: ChatMessageRow[];
     let hasHistoryBefore = false;
 
@@ -1367,7 +1334,8 @@ export function zeroChatThreadMessagesPage(args: {
         .where(threadFilter)
         .orderBy(
           desc(chatMessages.createdAt),
-          desc(chatMessages.sequenceNumber),
+          desc(cursorSequence),
+          desc(chatMessages.id),
         )
         .limit(args.limit + 1);
       hasHistoryBefore = latestRows.length > args.limit;
@@ -1379,19 +1347,27 @@ export function zeroChatThreadMessagesPage(args: {
       }
       const cursorAfterCondition = sql`(
         ${chatMessages.createdAt},
-        COALESCE(${chatMessages.sequenceNumber}, -1)
+        ${cursorSequence},
+        ${chatMessages.id}
       ) > (
-        SELECT ${chatMessages.createdAt}, COALESCE(${chatMessages.sequenceNumber}, -1)
+        SELECT ${chatMessages.createdAt},
+          ${chatMessageOrderSequenceSql()},
+          ${chatMessages.id}
         FROM ${chatMessages}
         WHERE ${chatMessages.id} = ${cursorId}
+          AND ${chatMessages.chatThreadId} = ${args.threadId}
       )`;
       const cursorBeforeCondition = sql`(
         ${chatMessages.createdAt},
-        COALESCE(${chatMessages.sequenceNumber}, -1)
+        ${cursorSequence},
+        ${chatMessages.id}
       ) < (
-        SELECT ${chatMessages.createdAt}, COALESCE(${chatMessages.sequenceNumber}, -1)
+        SELECT ${chatMessages.createdAt},
+          ${chatMessageOrderSequenceSql()},
+          ${chatMessages.id}
         FROM ${chatMessages}
         WHERE ${chatMessages.id} = ${cursorId}
+          AND ${chatMessages.chatThreadId} = ${args.threadId}
       )`;
 
       if (args.sinceId !== undefined) {
@@ -1401,7 +1377,8 @@ export function zeroChatThreadMessagesPage(args: {
           .where(and(threadFilter, cursorAfterCondition))
           .orderBy(
             asc(chatMessages.createdAt),
-            asc(chatMessages.sequenceNumber),
+            asc(cursorSequence),
+            asc(chatMessages.id),
           )
           .limit(args.limit);
       } else {
@@ -1411,7 +1388,8 @@ export function zeroChatThreadMessagesPage(args: {
           .where(and(threadFilter, cursorBeforeCondition))
           .orderBy(
             desc(chatMessages.createdAt),
-            desc(chatMessages.sequenceNumber),
+            desc(cursorSequence),
+            desc(chatMessages.id),
           )
           .limit(args.limit + 1);
         hasHistoryBefore = previousRows.length > args.limit;
@@ -1430,11 +1408,42 @@ export function zeroChatThreadMessagesPage(args: {
   });
 }
 
+export function zeroChatThreadMessageById(args: {
+  readonly threadId: string;
+  readonly userId: string;
+  readonly messageId: string;
+}): Computed<Promise<PagedChatMessage | null>> {
+  return computed(async (get) => {
+    const owned = await get(ownedChatThread(args.threadId, args.userId));
+    if (!owned) {
+      return null;
+    }
+
+    const db = get(db$);
+    const [row] = await db
+      .select(messageColumns)
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.id, args.messageId),
+          eq(chatMessages.chatThreadId, args.threadId),
+        ),
+      )
+      .limit(1);
+    if (!row) {
+      return null;
+    }
+
+    return await get(toPagedMessage(args.userId, row));
+  });
+}
+
 export const createChatThread$ = command(
   async (
     { set },
     args: {
       readonly userId: string;
+      readonly orgId?: string | null;
       readonly agentComposeId: string;
       readonly title: string | undefined;
       readonly clientThreadId: string | undefined;
@@ -1442,18 +1451,33 @@ export const createChatThread$ = command(
     signal: AbortSignal,
   ): Promise<{ id: string; createdAt: Date }> => {
     const writeDb = set(writeDb$);
-    const [thread] = await writeDb
-      .insert(chatThreads)
-      .values({
-        ...(args.clientThreadId !== undefined
-          ? { id: args.clientThreadId }
-          : {}),
+    const thread = await writeDb.transaction(async (tx) => {
+      const [createdThread] = await tx
+        .insert(chatThreads)
+        .values({
+          ...(args.clientThreadId !== undefined
+            ? { id: args.clientThreadId }
+            : {}),
+          userId: args.userId,
+          agentComposeId: args.agentComposeId,
+          title: args.title ?? null,
+          lastReadAt: sql`NOW()`,
+        })
+        .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
+      if (!createdThread) {
+        return undefined;
+      }
+      await appendChatThreadEvent(tx, {
+        kind: "created",
         userId: args.userId,
+        orgId: args.orgId,
+        chatThreadId: createdThread.id,
         agentComposeId: args.agentComposeId,
         title: args.title ?? null,
-        lastReadAt: sql`NOW()`,
-      })
-      .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
+        createdAt: createdThread.createdAt,
+      });
+      return createdThread;
+    });
     signal.throwIfAborted();
 
     if (!thread) {
@@ -1513,7 +1537,11 @@ interface ThreadRunToCancel {
 export const deleteChatThread$ = command(
   async (
     { set },
-    args: { readonly threadId: string; readonly userId: string },
+    args: {
+      readonly threadId: string;
+      readonly userId: string;
+      readonly orgId?: string | null;
+    },
     signal: AbortSignal,
   ): Promise<{
     readonly deleted: boolean;
@@ -1522,8 +1550,13 @@ export const deleteChatThread$ = command(
     const writeDb = set(writeDb$);
 
     const deletion = await writeDb.transaction(async (tx) => {
-      const lockedRows = await tx.execute<{ readonly id: string }>(sql`
-        SELECT ${chatThreads.id} AS "id"
+      const lockedRows = await tx.execute<{
+        readonly id: string;
+        readonly agentComposeId: string;
+      }>(sql`
+        SELECT
+          ${chatThreads.id} AS "id",
+          ${chatThreads.agentComposeId} AS "agentComposeId"
         FROM ${chatThreads}
         WHERE ${chatThreads.id} = ${args.threadId}
           AND ${chatThreads.userId} = ${args.userId}
@@ -1536,6 +1569,14 @@ export const deleteChatThread$ = command(
           activeRuns: [] as readonly ThreadRunToCancel[],
         };
       }
+
+      await appendChatThreadEvent(tx, {
+        kind: "deleted",
+        userId: args.userId,
+        orgId: args.orgId,
+        chatThreadId: ownedThread.id,
+        agentComposeId: ownedThread.agentComposeId,
+      });
 
       // Stop related automations first so none of them can spawn a fresh run
       // while we are cancelling the in-flight ones (their triggers cascade).

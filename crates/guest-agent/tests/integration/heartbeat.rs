@@ -26,7 +26,12 @@ async fn heartbeat_first_success() {
     let shutdown = CancellationToken::new();
     let shutdown_clone = shutdown.clone();
     let handle = tokio::spawn(async move {
-        guest_agent::heartbeat::heartbeat_loop(http_client!(), shutdown_clone).await
+        guest_agent::heartbeat::heartbeat_loop_for_run(
+            TEST_RUN_ID.to_string(),
+            http_client!(),
+            shutdown_clone,
+        )
+        .await
     });
 
     // Wait for the first heartbeat to land, then shut down.
@@ -55,7 +60,12 @@ async fn heartbeat_first_failure_fatal() {
     });
 
     let shutdown = CancellationToken::new();
-    let result = guest_agent::heartbeat::heartbeat_loop(http_client!(), shutdown).await;
+    let result = guest_agent::heartbeat::heartbeat_loop_for_run(
+        TEST_RUN_ID.to_string(),
+        http_client!(),
+        shutdown,
+    )
+    .await;
 
     assert!(result.is_err());
     mock.assert_calls_async(3).await;
@@ -83,7 +93,8 @@ async fn heartbeat_consecutive_failures_fatal() {
     let shutdown = CancellationToken::new();
     let shutdown_clone = shutdown.clone();
     let handle = tokio::spawn(async move {
-        guest_agent::heartbeat::heartbeat_loop_with_interval(
+        guest_agent::heartbeat::heartbeat_loop_for_run_with_interval(
+            TEST_RUN_ID.to_string(),
             http_client!(),
             shutdown_clone,
             TEST_HEARTBEAT_INTERVAL,
@@ -132,7 +143,8 @@ async fn heartbeat_recovery_resets_counter() {
     let shutdown = CancellationToken::new();
     let shutdown_clone = shutdown.clone();
     let handle = tokio::spawn(async move {
-        guest_agent::heartbeat::heartbeat_loop_with_interval(
+        guest_agent::heartbeat::heartbeat_loop_for_run_with_interval(
+            TEST_RUN_ID.to_string(),
             http_client!(),
             shutdown_clone,
             TEST_HEARTBEAT_INTERVAL,

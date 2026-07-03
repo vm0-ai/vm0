@@ -88,6 +88,27 @@ describe("matchShortcut", () => {
       matchShortcut("shift+/", createEvent({ key: "?", shiftKey: true })),
     ).toBe(true);
   });
+
+  it("should match shift+digit when the browser reports the shifted symbol", () => {
+    expect(
+      matchShortcut(
+        "shift+1",
+        createEvent({ key: "!", code: "Digit1", shiftKey: true }),
+      ),
+    ).toBe(true);
+    expect(
+      matchShortcut(
+        "shift+0",
+        createEvent({ key: ")", code: "Digit0", shiftKey: true }),
+      ),
+    ).toBe(true);
+  });
+
+  it("should match shift+digit symbols without a physical code fallback", () => {
+    expect(
+      matchShortcut("shift+2", createEvent({ key: "@", shiftKey: true })),
+    ).toBe(true);
+  });
 });
 
 describe("processShortcut", () => {

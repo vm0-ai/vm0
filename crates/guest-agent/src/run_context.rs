@@ -1,6 +1,6 @@
 //! Explicit immutable guest-agent run context.
 
-use crate::env::{self, GuestConfig, GuestConfigRaw};
+use crate::env::{GuestConfig, GuestConfigRaw};
 use crate::http::HttpClient;
 use crate::paths::GuestPaths;
 
@@ -21,8 +21,7 @@ impl GuestContext {
     pub fn from_process_env() -> Result<Self, String> {
         let raw = GuestConfigRaw::from_process_env();
         let paths = paths_from_raw(&raw)?;
-        let user_env = env::init_user_env_from_raw(&raw)?.clone();
-        let config = GuestConfig::from_raw_with_user_env(raw, user_env)?;
+        let config = GuestConfig::from_raw(raw)?;
         Ok(Self::new(config, paths))
     }
 }
@@ -43,8 +42,7 @@ impl GuestRuntime {
         guest_common::log::set_system_log_file(paths.system_log_file());
         guest_common::telemetry::set_sandbox_ops_log_file(paths.sandbox_ops_file());
 
-        let user_env = env::init_user_env_from_raw(&raw)?.clone();
-        let config = GuestConfig::from_raw_with_user_env(raw, user_env)?;
+        let config = GuestConfig::from_raw(raw)?;
         let http = HttpClient::for_config(&config).map_err(|error| error.to_string())?;
 
         Ok(Self {

@@ -4,6 +4,7 @@ Exports:
 
 - Bounded streaming usage decoding for gzip, deflate, zstd; one-shot
   decompression for gzip, deflate, br, zstd.
+- Request network-log capture decoding that hides opaque encoded bodies.
 - JSON usage decompression with diagnostic error classification.
 """
 
@@ -29,14 +30,29 @@ from body_limits import (
 _BROTLI_DECOMPRESS_MIN_INPUT_CHUNK_SIZE = 16
 _BROTLI_DECOMPRESS_MAX_INPUT_CHUNK_SIZE = 1024
 _BROTLI_DECOMPRESS_TARGET_INPUT_CHUNKS = 64
-_ZSTD_STREAM_DECODE_INPUT_CHUNK_SIZE = 4
+_ZSTD_STREAM_DECODE_MIN_INPUT_CHUNK_SIZE = 4
+# The streaming zstd API does not expose a per-call output limit. Keep the
+# adaptive ceiling small so a low-ratio prefix cannot make a later high-ratio
+# block materialise a multi-MB decoded ``bytes`` object before _feed_chunks().
+_ZSTD_STREAM_DECODE_MAX_INPUT_CHUNK_SIZE = 12
+_ZSTD_STREAM_DECODE_INPUT_GROWTH_FACTOR = 2
+_ZSTD_STREAM_DECODE_LOW_EXPANSION_RATIO = 2
 
 INVALID_COMPRESSED_BODY = "invalid compressed body"
 INCOMPLETE_COMPRESSED_BODY = "incomplete compressed body"
 DECODED_BODY_LIMIT_EXCEEDED = "decoded body limit exceeded"
+_SUPPORTED_ONE_SHOT_BODY_ENCODINGS = frozenset({"gzip", "deflate", "br", "zstd"})
 
 
-class BodyDecodeResult(NamedTuple):
+class _BodyDecodeResult(NamedTuple):
+    """Internal low-level bounded decode result.
+
+    ``body`` may be original wire bytes, decoded bytes, partial decoded bytes,
+    or ``b""`` depending on codec state and output limits. ``failed`` is only a
+    primitive decode signal, not a general "body unusable" policy verdict.
+    ``error`` is populated when a supported codec raises while decoding.
+    """
+
     body: bytes
     failed: bool
     error: Exception | None = None
@@ -70,6 +86,33 @@ def _feed_chunks(feed: _StreamDecodeFeed, data: bytes, max_decoded_chunk: int) -
 
 def _no_stream_decode_error() -> str | None:
     return None
+
+
+class _ZstdStreamDecodeInputSizer:
+    def __init__(self, *, max_decoded_chunk: int) -> None:
+        self._max_decoded_chunk = max_decoded_chunk
+        self._input_chunk_size = _ZSTD_STREAM_DECODE_MIN_INPUT_CHUNK_SIZE
+
+    @property
+    def input_chunk_size(self) -> int:
+        return self._input_chunk_size
+
+    def reset(self) -> None:
+        self._input_chunk_size = _ZSTD_STREAM_DECODE_MIN_INPUT_CHUNK_SIZE
+
+    def observe(self, source: bytes, decoded: bytes) -> None:
+        if not decoded:
+            return
+        if (
+            len(decoded) >= self._max_decoded_chunk
+            or len(decoded) > len(source) * _ZSTD_STREAM_DECODE_LOW_EXPANSION_RATIO
+        ):
+            self.reset()
+            return
+        self._input_chunk_size = min(
+            _ZSTD_STREAM_DECODE_MAX_INPUT_CHUNK_SIZE,
+            self._input_chunk_size * _ZSTD_STREAM_DECODE_INPUT_GROWTH_FACTOR,
+        )
 
 
 def _create_zlib_stream_decode_session(
@@ -126,6 +169,7 @@ def _create_zstd_stream_decode_session(
     feed: _StreamDecodeFeed, *, max_decoded_chunk: int
 ) -> StreamDecodeSession:
     obj = zstandard.ZstdDecompressor().decompressobj()
+    input_sizer = _ZstdStreamDecodeInputSizer(max_decoded_chunk=max_decoded_chunk)
     decode_error: str | None = None
     frame_in_progress = False
     saw_input = False
@@ -138,8 +182,9 @@ def _create_zstd_stream_decode_session(
             saw_input = True
         data = chunk
         while data:
-            source = data[:_ZSTD_STREAM_DECODE_INPUT_CHUNK_SIZE]
-            remainder = data[_ZSTD_STREAM_DECODE_INPUT_CHUNK_SIZE:]
+            input_chunk_size = input_sizer.input_chunk_size
+            source = data[:input_chunk_size]
+            remainder = data[input_chunk_size:]
             frame_in_progress = True
             try:
                 decoded = obj.decompress(source)
@@ -147,11 +192,13 @@ def _create_zstd_stream_decode_session(
                 decode_error = INVALID_COMPRESSED_BODY
                 _log_streaming_decode_error("zstd", exc)
                 return
+            input_sizer.observe(source, decoded)
             if decoded:
                 _feed_chunks(feed, decoded, max_decoded_chunk)
             if obj.eof:
                 data = obj.unused_data + remainder
                 obj = zstandard.ZstdDecompressor().decompressobj()
+                input_sizer.reset()
                 frame_in_progress = False
                 continue
             if obj.unconsumed_tail:
@@ -199,9 +246,10 @@ def create_stream_decode_session(
 
     Usage parsers are bounded-state scanners and may need to inspect long
     responses, so this helper does not enforce a total decoded-byte cap. It
-    bounds each decoded chunk before parser entry to prevent high-ratio
-    compressed input from materialising one large ``bytes`` object. Returns
-    None when a content encoding cannot be safely decoded incrementally.
+    bounds each decoded chunk before parser entry. Codecs without a per-call
+    output cap still use small adaptive input slices as a best-effort guard
+    against high-ratio compressed input. Returns None when a content encoding
+    cannot be safely decoded incrementally.
 
     The returned session exposes ``finish_error()`` so billing paths can reject
     parser state from compressed streams that never reached a valid frame/member
@@ -272,7 +320,7 @@ def decompress_body(
     body returns ``b""`` — callers that short-circuit via ``if not body`` rely
     on that (see #10287).
     """
-    result = decode_body_bounded(data, headers, max_output=max_output)
+    result = _decode_body_bounded(data, headers, max_output=max_output)
     if result.failed and result.error is not None:
         with contextlib.suppress(AttributeError):
             # ctx.log unavailable outside mitmproxy runtime
@@ -285,9 +333,9 @@ def decompress_body(
 
 def _decompress_zlib_best_effort_bounded(
     data: bytes, encoding: Literal["gzip", "deflate"], max_output: int
-) -> BodyDecodeResult:
+) -> _BodyDecodeResult:
     if max_output <= 0:
-        return BodyDecodeResult(b"", False)
+        return _BodyDecodeResult(b"", False)
 
     wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
     remaining_data = data
@@ -303,8 +351,8 @@ def _decompress_zlib_best_effort_bounded(
                 decoded = obj.decompress(member_data, max_length=max_output - len(out))
             except zlib.error as exc:
                 if completed_member:
-                    return BodyDecodeResult(bytes(out), False)
-                return BodyDecodeResult(data, True, exc)
+                    return _BodyDecodeResult(bytes(out), False)
+                return _BodyDecodeResult(data, True, exc)
 
             out.extend(decoded)
             if obj.unconsumed_tail:
@@ -313,44 +361,52 @@ def _decompress_zlib_best_effort_bounded(
             break
 
         if len(out) >= max_output:
-            return BodyDecodeResult(bytes(out), False)
+            return _BodyDecodeResult(bytes(out), False)
         if obj.eof:
             completed_member = True
             if obj.unused_data:
                 remaining_data = obj.unused_data
                 continue
-            return BodyDecodeResult(bytes(out), False)
-        return BodyDecodeResult(bytes(out), False)
+            return _BodyDecodeResult(bytes(out), False)
+        return _BodyDecodeResult(bytes(out), False)
 
-    return BodyDecodeResult(bytes(out), False)
+    return _BodyDecodeResult(bytes(out), False)
 
 
-def decode_body_bounded(
+def _decode_body_bounded(
     data: bytes,
     headers: http.Headers,
     *,
     max_output: int,
-    fail_on_unsupported_encoding: bool = False,
-) -> BodyDecodeResult:
+) -> _BodyDecodeResult:
+    """Decode supported content encodings with a bounded best-effort contract.
+
+    Missing and ``identity`` encodings return original bytes. Unsupported
+    encodings also pass through original bytes because unsupported encoding is a
+    caller policy decision, not a codec failure. Supported invalid compressed
+    bodies return ``failed=True`` with original bytes when no compressed member
+    completed. Gzip/deflate trailing garbage after a completed member keeps the
+    decoded prefix. Truncated gzip/deflate may return partial decoded output.
+    Valid empty compressed frames return ``b""``. ``max_output`` caps decoded
+    output and may return a truncated decoded prefix without marking failure.
+    """
     encoding = headers.get("content-encoding", "").strip().lower()
     if not encoding or encoding == "identity":
-        return BodyDecodeResult(data, False)
+        return _BodyDecodeResult(data, False)
     try:
         if encoding in ("gzip", "deflate"):
             return _decompress_zlib_best_effort_bounded(data, encoding, max_output)
         if encoding == "br":
-            return BodyDecodeResult(_decompress_brotli_bounded(data, max_output), False)
+            return _BodyDecodeResult(_decompress_brotli_bounded(data, max_output), False)
         if encoding == "zstd":
             # stream_reader.read(n) reads *up to* n bytes: the full frame if
             # smaller than n, exactly n if larger — so total memory is bounded
             # by n plus ZSTD_DStream{In,Out}Size (~128 KB library buffers).
             with zstandard.ZstdDecompressor().stream_reader(data) as reader:
-                return BodyDecodeResult(reader.read(max_output), False)
+                return _BodyDecodeResult(reader.read(max_output), False)
     except (zlib.error, brotli.error, zstandard.ZstdError) as exc:
-        return BodyDecodeResult(data, True, exc)
-    if fail_on_unsupported_encoding:
-        return BodyDecodeResult(b"", True)
-    return BodyDecodeResult(data, False)
+        return _BodyDecodeResult(data, True, exc)
+    return _BodyDecodeResult(data, False)
 
 
 def _decompress_brotli_bounded_with_status(
@@ -465,18 +521,9 @@ def _decompress_zstd_json_usage_body(data: bytes, max_output: int) -> tuple[byte
     return body, _validate_complete_zstd_frames(data)
 
 
-def decompress_json_usage_body(
-    data: bytes, headers: http.Headers, max_output: int = LARGE_RESPONSE_DECOMPRESS_LIMIT
+def _decode_supported_body_with_complete_status(
+    data: bytes, encoding: str, max_output: int
 ) -> tuple[bytes, str | None]:
-    """Decompress a JSON usage response body with an observable empty-prefix error.
-
-    ``decompress_body`` intentionally treats truncated compressed prefixes as an
-    empty body because body capture can still mark those responses truncated
-    from stream metadata. JSON usage fallback only has the final buffer, so it
-    needs to distinguish a valid compressed empty response from an incomplete
-    compressed frame that produced no JSON bytes.
-    """
-    encoding = headers.get("content-encoding", "").strip().lower()
     if encoding in ("gzip", "deflate"):
         return _decompress_zlib_json_usage_body(data, encoding, max_output)
     if encoding == "br":
@@ -494,6 +541,48 @@ def decompress_json_usage_body(
         return body, None
     if encoding == "zstd":
         return _decompress_zstd_json_usage_body(data, max_output)
+    raise ValueError(f"unsupported content encoding: {encoding}")
+
+
+def decode_request_body_for_network_log_capture(
+    data: bytes,
+    headers: http.Headers,
+    *,
+    max_output: int = DEFAULT_BODY_DECODE_LIMIT,
+) -> bytes | None:
+    """Decode a request body for persistent network-log capture.
+
+    Request capture hides unsupported encodings and supported-codec decode
+    failures instead of keeping best-effort fallback bytes. This helper is
+    intentionally separate from billing inspection, which has a stricter
+    fail-closed policy.
+    """
+    encoding = headers.get("content-encoding", "").strip().lower()
+    if not encoding or encoding == "identity":
+        return data
+    if encoding not in _SUPPORTED_ONE_SHOT_BODY_ENCODINGS:
+        return None
+
+    body, error = _decode_supported_body_with_complete_status(data, encoding, max_output)
+    if error is not None and error != DECODED_BODY_LIMIT_EXCEEDED:
+        return None
+    return body
+
+
+def decompress_json_usage_body(
+    data: bytes, headers: http.Headers, max_output: int = LARGE_RESPONSE_DECOMPRESS_LIMIT
+) -> tuple[bytes, str | None]:
+    """Decompress a JSON usage response body with an observable empty-prefix error.
+
+    ``decompress_body`` intentionally treats truncated compressed prefixes as an
+    empty body because body capture can still mark those responses truncated
+    from stream metadata. JSON usage fallback only has the final buffer, so it
+    needs to distinguish a valid compressed empty response from an incomplete
+    compressed frame that produced no JSON bytes.
+    """
+    encoding = headers.get("content-encoding", "").strip().lower()
+    if encoding in _SUPPORTED_ONE_SHOT_BODY_ENCODINGS:
+        return _decode_supported_body_with_complete_status(data, encoding, max_output)
     if encoding and encoding != "identity" and data:
         return b"", "unsupported content encoding"
     return decompress_body(data, headers, max_output=max_output), None

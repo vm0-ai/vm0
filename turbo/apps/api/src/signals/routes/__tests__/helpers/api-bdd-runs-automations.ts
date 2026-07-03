@@ -1008,6 +1008,24 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
     },
 
+    async requestCancelRunWithSignal(
+      actor: ApiTestUser,
+      runId: string,
+      signal: AbortSignal,
+    ): Promise<{ readonly status: number; readonly body: unknown }> {
+      const { authorization } = authenticate(context, actor);
+      const app = createAppWithRoutes({
+        signal,
+        routes: runsAutomationRoutes,
+      });
+      const response = await app.request(`/api/zero/runs/${runId}/cancel`, {
+        method: "POST",
+        headers: authorization === undefined ? {} : { authorization },
+      });
+      const body: unknown = await response.json();
+      return { status: response.status, body };
+    },
+
     async heartbeatRunner(group?: string) {
       return await accept(
         runsAutomationApp(context)(runnersHeartbeatContract).heartbeat({
@@ -1035,11 +1053,22 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
     },
 
-    async pollRunner(group?: string) {
+    async pollRunner(
+      group?: string,
+      args: {
+        readonly heldSessionStates?: RunnerPollBody["heldSessionStates"];
+      } = {},
+    ) {
       return await accept(
         runsAutomationApp(context)(runnersPollContract).poll({
           headers: runnerHeaders(true),
-          body: { group: group ?? "vm0/test", profiles: ["vm0/default"] },
+          body: {
+            group: group ?? "vm0/test",
+            profiles: ["vm0/default"],
+            ...(args.heldSessionStates === undefined
+              ? {}
+              : { heldSessionStates: args.heldSessionStates }),
+          },
         }),
         [200],
       );
@@ -1063,12 +1092,13 @@ export function createRunsAutomationsApi(context: TestContext) {
       validAuth: boolean,
       runId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+      body: RunnerJobClaimRequest = {},
     ) {
       return await accept(
         runsAutomationApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(validAuth),
           params: { id: runId },
-          body: {},
+          body,
         }),
         statuses,
       );

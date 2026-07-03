@@ -2,7 +2,11 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { loadFirewallPermissionMetadata } from "@vm0/connectors/firewall-metadata";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadByIdContract,
+  chatThreadMessagesContract,
+  chatThreadsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
@@ -29,13 +33,52 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { pathname } from "../../../signals/location.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { detachedNavigateTo$ } from "../../../signals/route.ts";
+import { ROUTES } from "../../../signals/route-paths.ts";
 
 const context = testContext();
 const zeroAgentId = "c0000000-0000-4000-a000-000000000001";
 const researchAgentId = "a0000000-0000-4000-a000-000000000401";
+
+function applyUserConnectorUpdate(
+  current: readonly string[],
+  body: {
+    readonly enabledTypes: readonly string[];
+    readonly operation?: "replace" | "add" | "remove";
+  },
+): string[] {
+  if (body.operation === "add") {
+    return Array.from(new Set([...current, ...body.enabledTypes]));
+  }
+  if (body.operation === "remove") {
+    return current.filter((type) => {
+      return !body.enabledTypes.includes(type);
+    });
+  }
+  return [...body.enabledTypes];
+}
+
+function applyCustomConnectorUpdate(
+  current: readonly string[],
+  body: {
+    readonly enabledIds: readonly string[];
+    readonly operation?: "replace" | "add" | "remove";
+  },
+): string[] {
+  if (body.operation === "add") {
+    return Array.from(new Set([...current, ...body.enabledIds]));
+  }
+  if (body.operation === "remove") {
+    return current.filter((id) => {
+      return !body.enabledIds.includes(id);
+    });
+  }
+  return [...body.enabledIds];
+}
 
 function createAgent(id: string, displayName: string): TeamComposeItem {
   return {
@@ -227,7 +270,13 @@ async function connectorCategoryLabel(
   return `${category} (${count})`;
 }
 
-function mockTeamAPIs(): void {
+function mockTeamAPIs({
+  customConnector = createCustomConnector(),
+  onCustomConnectorUpdate,
+}: {
+  readonly customConnector?: CustomConnectorResponse;
+  readonly onCustomConnectorUpdate?: () => void;
+} = {}): void {
   context.mocks.data.team([
     createAgent(zeroAgentId, "Zero"),
     createAgent(researchAgentId, "Research Agent"),
@@ -254,26 +303,47 @@ function mockTeamAPIs(): void {
       updatedAt: "2026-03-02T00:00:00Z",
     }),
   ]);
-  let enabledTypes: string[] = [];
-  let enabledCustomConnectorIds: string[] = [];
-  const customConnector = createCustomConnector();
-  context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-    return respond(200, { enabledTypes });
+  const enabledTypesByAgent = new Map<string, string[]>();
+  const enabledCustomConnectorIdsByAgent = new Map<string, string[]>();
+  context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+    return respond(200, {
+      enabledTypes: enabledTypesByAgent.get(params.id) ?? [],
+    });
   });
-  context.mocks.api(zeroUserConnectorsContract.update, ({ body, respond }) => {
-    enabledTypes = body.enabledTypes;
-    return respond(200, { enabledTypes });
-  });
+  context.mocks.api(
+    zeroUserConnectorsContract.update,
+    ({ body, params, respond }) => {
+      const enabledTypes = applyUserConnectorUpdate(
+        enabledTypesByAgent.get(params.id) ?? [],
+        body,
+      );
+      enabledTypesByAgent.set(params.id, enabledTypes);
+      return respond(200, { enabledTypes });
+    },
+  );
   context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
     return respond(200, { connectors: [customConnector] });
   });
-  context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
-    return respond(200, { enabledIds: enabledCustomConnectorIds });
-  });
+  context.mocks.api(
+    zeroAgentCustomConnectorsContract.get,
+    ({ params, respond }) => {
+      return respond(200, {
+        enabledIds: enabledCustomConnectorIdsByAgent.get(params.id) ?? [],
+      });
+    },
+  );
   context.mocks.api(
     zeroAgentCustomConnectorsContract.update,
-    ({ body, respond }) => {
-      enabledCustomConnectorIds = body.enabledIds;
+    ({ body, params, respond }) => {
+      onCustomConnectorUpdate?.();
+      const enabledCustomConnectorIds = applyCustomConnectorUpdate(
+        enabledCustomConnectorIdsByAgent.get(params.id) ?? [],
+        body,
+      );
+      enabledCustomConnectorIdsByAgent.set(
+        params.id,
+        enabledCustomConnectorIds,
+      );
       return respond(200, { enabledIds: enabledCustomConnectorIds });
     },
   );
@@ -286,10 +356,11 @@ function mockTeamAPIs(): void {
     });
   });
   context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+    const agent = params.id === zeroAgentId ? "Zero" : "Research Agent";
     return respond(200, {
       agentId: params.id,
       ownerId: "test-owner-id",
-      displayName: "Research Agent",
+      displayName: agent,
       description: "Finds and summarizes information",
       sound: null,
       avatarUrl: null,
@@ -360,6 +431,85 @@ describe("team page navigation", () => {
     await waitFor(() => {
       expect(
         screen.queryByText("Custom connectors saved"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("does not allow enabling custom connectors without a secret", async () => {
+    let updateCalls = 0;
+    mockTeamAPIs({
+      customConnector: {
+        ...createCustomConnector(),
+        connected: false,
+        missingRequiredFields: ["secret"],
+        configuredFieldKeys: [],
+        hasSecret: false,
+      },
+      onCustomConnectorUpdate: () => {
+        updateCalls += 1;
+      },
+    });
+
+    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Acme Search")).toBeInTheDocument();
+      expect(screen.getByText(/no secret set/)).toBeInTheDocument();
+    });
+
+    const toggle = screen.getByLabelText(
+      "Authorize Acme Search for this agent",
+    );
+    expect(toggle).toBeDisabled();
+
+    fireEvent.click(toggle);
+    expect(updateCalls).toBe(0);
+    expect(
+      screen.queryByText("Custom connectors saved"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not reuse a failed connector authorization draft across agents", async () => {
+    mockTeamAPIs();
+    let updateCalls = 0;
+    context.mocks.api(zeroUserConnectorsContract.update, ({ respond }) => {
+      updateCalls += 1;
+      return respond(400, {
+        error: {
+          message: "Connector authorization save failed",
+          code: "VALIDATION_ERROR",
+        },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("@octocat")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Grant GitHub access"));
+    await waitFor(() => {
+      expect(updateCalls).toBe(1);
+    });
+
+    context.store.set(detachedNavigateTo$, ROUTES.agentDetail, {
+      pathParams: { agentId: zeroAgentId },
+      searchParams: new URLSearchParams(),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Zero" })).toBeInTheDocument();
+      expect(screen.getByText("@octocat")).toBeInTheDocument();
+      expect(screen.getByLabelText("Grant GitHub access")).toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Revoke GitHub access"),
       ).not.toBeInTheDocument();
     });
   });
@@ -454,6 +604,130 @@ describe("team page navigation", () => {
         screen.getByPlaceholderText(
           "Ask me to automate workflows, manage tasks...",
         ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("opens the first chat thread from an agent chat page shortcut", async () => {
+    mockTeamAPIs();
+    const firstThreadId = "agent-chat-shortcut-first-thread";
+    const secondThreadId = "agent-chat-shortcut-second-thread";
+    const firstMessageId = "b0000000-0000-4000-a000-000000000501";
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, {
+        pinned: [],
+        threads: [
+          {
+            id: firstThreadId,
+            title: "First shortcut thread",
+            agent: { id: researchAgentId, avatarUrl: null },
+            createdAt: "2026-06-01T00:00:00Z",
+            updatedAt: "2026-06-01T00:02:00Z",
+            running: false,
+            pinnedAt: null,
+          },
+          {
+            id: secondThreadId,
+            title: "Second shortcut thread",
+            agent: { id: researchAgentId, avatarUrl: null },
+            createdAt: "2026-06-01T00:00:00Z",
+            updatedAt: "2026-06-01T00:01:00Z",
+            running: false,
+            pinnedAt: null,
+          },
+        ],
+        hasMore: false,
+        nextCursor: null,
+      });
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+      return respond(200, {
+        id: params.id,
+        title:
+          params.id === firstThreadId
+            ? "First shortcut thread"
+            : "Second shortcut thread",
+        agentId: researchAgentId,
+        activeRunIds: [],
+        createdAt: "2026-06-01T00:00:00Z",
+        updatedAt: "2026-06-01T00:02:00Z",
+        lastReadMessageId: null,
+        lastReadAt: null,
+        lastMessageAt: "2026-06-01T00:02:00Z",
+        pinnedAt: null,
+        draftContent: null,
+        draftAttachments: null,
+        computerUseHostId: null,
+        modelProviderId: null,
+        selectedModel: null,
+      });
+    });
+    context.mocks.api(
+      chatThreadMessagesContract.list,
+      ({ params, query, respond }) => {
+        if (query.sinceId) {
+          return respond(200, { messages: [] });
+        }
+        return respond(200, {
+          messages:
+            params.threadId === firstThreadId
+              ? [
+                  {
+                    id: firstMessageId,
+                    role: "user",
+                    content: "First shortcut thread message",
+                    createdAt: "2026-06-01T00:02:00Z",
+                  },
+                ]
+              : [],
+          hasHistoryBefore: false,
+        });
+      },
+    );
+    context.mocks.api(chatThreadMessagesContract.get, ({ params, respond }) => {
+      if (
+        params.threadId === firstThreadId &&
+        params.messageId === firstMessageId
+      ) {
+        return respond(200, {
+          id: firstMessageId,
+          role: "user",
+          content: "First shortcut thread message",
+          createdAt: "2026-06-01T00:02:00Z",
+        });
+      }
+      return respond(404, {
+        error: { message: "Message not found", code: "NOT_FOUND" },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/agents/${researchAgentId}/chat` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText(
+          "Ask me to automate workflows, manage tasks...",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(
+      screen.getByPlaceholderText(
+        "Ask me to automate workflows, manage tasks...",
+      ),
+      {
+        key: "ArrowDown",
+        ctrlKey: true,
+        shiftKey: true,
+      },
+    );
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/chats/${firstThreadId}`);
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByText("First shortcut thread message"),
       ).toBeInTheDocument();
     });
   });

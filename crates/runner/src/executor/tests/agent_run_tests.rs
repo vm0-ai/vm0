@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 use std::sync::Arc;
@@ -7,6 +8,7 @@ use std::time::Duration;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_GUEST_HOME_DIR;
 use api_contracts::generated::types::runners::storage::StorageManifest;
+use flate2::{Compression, write::GzEncoder};
 use guest_contracts::session_history_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
     FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
@@ -43,11 +45,17 @@ use crate::local_queue::{ActiveInputEntry, LocalQueue};
 use crate::restored_session_identity::RestoredSessionIdentityMismatchReason;
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::{
-    ResumeSession, ResumeSessionHistory, ResumeSessionHistoryRef, ResumeSessionHistoryRefKind,
-    SandboxReuseResult,
+    ResumeSession, ResumeSessionHistory, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
+    ResumeSessionHistoryRefKind, SandboxReuseResult,
 };
 
 const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
+
+fn gzip_bytes(raw: &[u8]) -> Vec<u8> {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+    encoder.write_all(raw).unwrap();
+    encoder.finish().unwrap()
+}
 
 async fn serve_history_once(body: &'static [u8]) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -154,6 +162,18 @@ fn assert_failed_action_error_once(
     );
 }
 
+fn assert_successful_action_with_encoding(
+    ops: &[(String, bool, Option<String>, Option<String>)],
+    action: &str,
+    encoding: &str,
+) {
+    assert!(
+        ops.iter()
+            .any(|op| op.0 == action && op.1 && op.3.as_deref() == Some(encoding)),
+        "expected {action} telemetry with {encoding} encoding, got: {ops:?}"
+    );
+}
+
 fn assert_no_action(ops: &[(String, bool, Option<String>)], action: &str) {
     assert!(
         ops.iter().all(|op| op.0 != action),
@@ -185,7 +205,9 @@ async fn assert_checkpointed_final_identity_helper_failure_falls_back(
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
-                size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
             },
         },
     });
@@ -571,7 +593,9 @@ async fn run_in_sandbox_materializes_resume_session_history_ref_before_restore()
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: serve_history_once(history).await,
-                size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
             },
         },
     });
@@ -603,6 +627,64 @@ async fn run_in_sandbox_materializes_resume_session_history_ref_before_restore()
 }
 
 #[tokio::test]
+async fn run_in_sandbox_records_gzip_session_history_download_encoding() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let history = b"{\"type\":\"init\"}\n\xff\n";
+    let compressed = Box::leak(gzip_bytes(history).into_boxed_slice());
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-gzip-ref-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: serve_history_once(compressed).await,
+                encoding: Some(ResumeSessionHistoryEncoding::Gzip),
+                raw_size: history.len() as u64,
+                encoded_size: compressed.len() as u64,
+            },
+        },
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0].path,
+        "/home/user/.claude/projects/-home-user-workspace/sess-gzip-ref-123.jsonl"
+    );
+    assert_eq!(writes[0].content, history);
+    let ops = telemetry.pending_ops_with_encoding_snapshot();
+    assert_successful_action_with_encoding(&ops, "session_history_download", "gzip");
+    assert_successful_action_with_encoding(&ops, "session_history_download_request_status", "gzip");
+    assert_successful_action_with_encoding(&ops, "session_history_download_body_read", "gzip");
+    assert_successful_action_with_encoding(&ops, "session_history_download_validation", "gzip");
+    assert_successful_action_with_encoding(
+        &ops,
+        "session_history_download_hash_verification",
+        "gzip",
+    );
+}
+
+#[tokio::test]
 async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -623,7 +705,9 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
                     Arc::clone(&release_response),
                 )
                 .await,
-                size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
             },
         },
     });
@@ -701,7 +785,9 @@ async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(b"different")),
                 url: serve_history_once(history).await,
-                size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
             },
         },
     });
@@ -783,7 +869,9 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(&history)),
                 url: server.url("/history.blob?token=secret"),
-                size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
             },
         },
     });
@@ -903,7 +991,9 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_reports
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
-                size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
             },
         },
     });
@@ -994,7 +1084,9 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_exec_er
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
-                size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
             },
         },
     });
@@ -1098,7 +1190,9 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
-                size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
             },
         },
     });
@@ -1110,7 +1204,9 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/other-history.blob?token=secret"),
-                size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
             },
         },
     });
@@ -1180,7 +1276,9 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
-                size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
             },
         },
     });
@@ -1263,7 +1361,9 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
-                size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
             },
         },
     });
@@ -1345,7 +1445,9 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
-                size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
             },
         },
     });
@@ -1604,7 +1706,9 @@ async fn run_in_sandbox_redacts_session_history_download_details_from_telemetry(
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: expected_hash.clone(),
                 url: serve_history_once(history).await,
-                size: Some(history.len() as u64),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
             },
         },
     });

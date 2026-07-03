@@ -34,6 +34,10 @@ import {
   currentUserInfo$,
   resolveAppAuthUrl,
 } from "../../signals/auth.ts";
+import {
+  reloadAccountMenuSubscriptionUsageRows$,
+  type AccountMenuSubscriptionUsageRowsCacheKey,
+} from "../../signals/zero-page/account-menu-subscriptions.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   handleZeroNavSelect$,
@@ -43,9 +47,12 @@ import {
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { webBaseForNavigation$ } from "../../signals/fetch.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
+import {
+  AccountMenuSubscriptionsPanel,
+  useSubscriptionUsageRows,
+} from "./zero-sidebar-subscriptions.tsx";
 
 interface SessionAccount {
   sessionId: string;
@@ -115,6 +122,18 @@ interface AccountDisplay {
   email: string;
   initial: string;
   imageUrl: string | undefined;
+}
+
+function subscriptionRowsCacheKeyFrom({
+  clerk,
+  current,
+  user,
+}: {
+  clerk: { session?: { id?: string } | null } | null;
+  current: SessionAccount | undefined;
+  user: { id: string } | undefined;
+}): AccountMenuSubscriptionUsageRowsCacheKey {
+  return clerk?.session?.id ?? current?.sessionId ?? user?.id ?? null;
 }
 
 function accountDisplayFrom(
@@ -200,25 +219,38 @@ function CurrentAccountHeader({
   );
 }
 
-function AdminCreditBalanceItem({
+function AccountUsageGroup({
   onOpenCreditBalance,
+  subscriptionRowsCacheKey,
+  subscriptionsEnabled,
 }: {
   onOpenCreditBalance: () => void;
+  subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
+  subscriptionsEnabled: boolean;
 }) {
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" && isAdminLoadable.data === true;
 
-  if (!isAdmin) {
-    return null;
+  if (subscriptionsEnabled) {
+    return isAdmin ? (
+      <AccountUsageGroupWithCredit
+        onOpenCreditBalance={onOpenCreditBalance}
+        subscriptionRowsCacheKey={subscriptionRowsCacheKey}
+      />
+    ) : (
+      <AccountSubscriptionsGroup
+        subscriptionRowsCacheKey={subscriptionRowsCacheKey}
+      />
+    );
   }
 
-  return (
-    <AdminCreditBalanceItemContent onOpenCreditBalance={onOpenCreditBalance} />
-  );
+  return isAdmin ? (
+    <AccountCreditBalanceGroup onOpenCreditBalance={onOpenCreditBalance} />
+  ) : null;
 }
 
-function AdminCreditBalanceItemContent({
+function AccountCreditBalanceGroup({
   onOpenCreditBalance,
 }: {
   onOpenCreditBalance: () => void;
@@ -239,21 +271,107 @@ function AdminCreditBalanceItemContent({
 
   return (
     <>
-      <DropdownMenuItem
-        onClick={onOpenCreditBalance}
-        className="gap-3 px-3 py-2.5 rounded-lg"
-      >
-        <IconCoins size={18} stroke={1.5} className="text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-sm tabular-nums">
-          {loading ? (
-            <span className="block h-4 w-24 rounded bg-muted/60" />
-          ) : (
-            creditLabel
-          )}
-        </span>
-      </DropdownMenuItem>
+      <CreditBalanceItem
+        creditLabel={creditLabel}
+        loading={loading}
+        onOpenCreditBalance={onOpenCreditBalance}
+      />
       <DropdownMenuSeparator />
     </>
+  );
+}
+
+function AccountUsageGroupWithCredit({
+  onOpenCreditBalance,
+  subscriptionRowsCacheKey,
+}: {
+  onOpenCreditBalance: () => void;
+  subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
+}) {
+  const billingLoadable = useLastLoadable(billingStatusAsync$);
+  const { loading: subscriptionsLoading, rows } = useSubscriptionUsageRows({
+    cacheKey: subscriptionRowsCacheKey,
+  });
+  const credits =
+    billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
+  const creditLoading = billingLoadable.state === "loading" && credits === null;
+  const creditLabel =
+    credits !== null
+      ? `${credits.toLocaleString("en-US")} ${credits === 1 ? "credit" : "credits"}`
+      : null;
+  const showCredit = creditLoading || creditLabel !== null;
+  const showSubscriptions = subscriptionsLoading || rows.length > 0;
+
+  if (!showCredit && !showSubscriptions) {
+    return null;
+  }
+
+  return (
+    <>
+      {showCredit && (
+        <CreditBalanceItem
+          creditLabel={creditLabel}
+          loading={creditLoading}
+          onOpenCreditBalance={onOpenCreditBalance}
+        />
+      )}
+      {showCredit && showSubscriptions && <DropdownMenuSeparator />}
+      {showSubscriptions && (
+        <AccountMenuSubscriptionsPanel
+          loading={subscriptionsLoading}
+          rows={rows}
+        />
+      )}
+      <DropdownMenuSeparator />
+    </>
+  );
+}
+
+function AccountSubscriptionsGroup({
+  subscriptionRowsCacheKey,
+}: {
+  subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
+}) {
+  const { loading, rows } = useSubscriptionUsageRows({
+    cacheKey: subscriptionRowsCacheKey,
+  });
+  const showSubscriptions = loading || rows.length > 0;
+
+  if (!showSubscriptions) {
+    return null;
+  }
+
+  return (
+    <>
+      <AccountMenuSubscriptionsPanel loading={loading} rows={rows} />
+      <DropdownMenuSeparator />
+    </>
+  );
+}
+
+function CreditBalanceItem({
+  creditLabel,
+  loading,
+  onOpenCreditBalance,
+}: {
+  creditLabel: string | null;
+  loading: boolean;
+  onOpenCreditBalance: () => void;
+}) {
+  return (
+    <DropdownMenuItem
+      onClick={onOpenCreditBalance}
+      className="gap-3 px-3 py-2.5 rounded-lg"
+    >
+      <IconCoins size={18} stroke={1.5} className="text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate text-sm tabular-nums">
+        {loading ? (
+          <span className="block h-4 w-24 rounded bg-muted/60" />
+        ) : (
+          creditLabel
+        )}
+      </span>
+    </DropdownMenuItem>
   );
 }
 
@@ -382,24 +500,14 @@ function AccountManagementGroup({
   );
 }
 
-function ExtraAccountActions({
-  showExportData,
-  webBase,
-}: {
-  showExportData: boolean;
-  webBase: string | undefined;
-}) {
+function ExtraAccountActions({ showExportData }: { showExportData: boolean }) {
   if (!showExportData) {
     return null;
   }
   return (
     <DropdownMenuItem
-      disabled={!webBase}
       onClick={() => {
-        if (!webBase) {
-          return;
-        }
-        return window.open(`${webBase}/export`, "_blank");
+        return window.open(`${window.location.origin}/export`, "_blank");
       }}
       className="gap-3 px-3 py-2.5 rounded-lg"
     >
@@ -445,17 +553,24 @@ export function AccountDropdown({
   const user =
     userInfoLoadable.state === "hasData" ? userInfoLoadable.data : undefined;
   const features = useLastResolved(featureSwitch$);
-  const webBase = useLastResolved(webBaseForNavigation$);
   const showExportData = features?.[FeatureSwitchKey.DataExport] ?? false;
   const memoryEnabled = features?.[FeatureSwitchKey.MemoryViewer] ?? false;
   const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
+  const subscriptionsEnabled =
+    features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
   const selectNav = useSet(handleZeroNavSelect$);
   const openSettings = useSet(openSettingsDialogAt$);
+  const reloadSubscriptions = useSet(reloadAccountMenuSubscriptionUsageRows$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
   const pageSignal = useGet(pageSignal$);
 
   const current = accounts.find((a) => {
     return a.isActive;
+  });
+  const subscriptionRowsCacheKey = subscriptionRowsCacheKeyFrom({
+    clerk,
+    current,
+    user,
   });
   const accountDisplay = accountDisplayFrom(user, current);
   const others = accounts.filter((a) => {
@@ -510,8 +625,20 @@ export function AccountDropdown({
     detach(openSettings("usage", pageSignal), Reason.DomCallback);
   };
 
+  const handleMenuOpenChange = (open: boolean) => {
+    if (!open || hidePreferences || !subscriptionsEnabled) {
+      return;
+    }
+
+    detach(
+      reloadSubscriptions(subscriptionRowsCacheKey, pageSignal),
+      Reason.DomCallback,
+      "reload account menu subscriptions",
+    );
+  };
+
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={handleMenuOpenChange}>
       <DropdownMenuTrigger asChild>
         {renderAccountTrigger(accountDisplay, collapsed)}
       </DropdownMenuTrigger>
@@ -527,8 +654,10 @@ export function AccountDropdown({
           visible={current !== undefined || user !== undefined}
         />
         {!hidePreferences && (
-          <AdminCreditBalanceItem
+          <AccountUsageGroup
             onOpenCreditBalance={handleOpenCreditBalance}
+            subscriptionRowsCacheKey={subscriptionRowsCacheKey}
+            subscriptionsEnabled={subscriptionsEnabled}
           />
         )}
         {!hidePreferences && (
@@ -545,10 +674,7 @@ export function AccountDropdown({
           onSwitchSession={handleSwitchSession}
           onAddAccount={handleAddAccount}
         />
-        <ExtraAccountActions
-          showExportData={showExportData}
-          webBase={webBase}
-        />
+        <ExtraAccountActions showExportData={showExportData} />
         <DropdownMenuSeparator />
         <SignOutItem onAccountAction={handleAccountAction} />
       </DropdownMenuContent>

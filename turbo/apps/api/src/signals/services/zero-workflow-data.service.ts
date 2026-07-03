@@ -19,7 +19,6 @@ export interface WorkflowRow {
   readonly agentId: string;
   readonly name: string;
   readonly visibility: "public" | "private";
-  readonly requestToPublish: boolean;
   readonly instruction: string | null;
   readonly ownerUserId: string;
   readonly displayName: string | null;
@@ -36,7 +35,6 @@ type WorkflowSummaryRow = Pick<
   | "agentId"
   | "name"
   | "visibility"
-  | "requestToPublish"
   | "ownerUserId"
   | "displayName"
   | "description"
@@ -85,6 +83,20 @@ function canManageWorkflow(
   );
 }
 
+function canPublishWorkflow(
+  workflow: WorkflowSummaryRow,
+  agent: WorkflowAgentInfo,
+  member: WorkflowMember,
+): boolean {
+  return (
+    workflow.visibility === "private" &&
+    workflow.ownerUserId === member.userId &&
+    requireAgentPermission(agent.owner, member, "publish", {
+      visibility: agent.visibility,
+    }) === null
+  );
+}
+
 export function requireWorkflowPermission(
   workflow: WorkflowRow,
   agent: WorkflowAgentInfo,
@@ -111,9 +123,7 @@ export function requireWorkflowPermission(
 
 /**
  * SQL visibility predicate over a (workflow JOIN agent) row for the given
- * member: public workflows on a visible agent, the caller's own workflows, and
- * — for agent write-permission holders — private workflows with a pending
- * publish request.
+ * member: public workflows on a visible agent, and the caller's own workflows.
  *
  * A public workflow only counts as "public" to the caller when its owning agent
  * is itself visible (public agent, or one the caller owns). A public workflow
@@ -131,23 +141,9 @@ export function visibleWorkflowCondition(member: WorkflowMember): SQL {
     agentVisibleToMember,
   );
 
-  const reviewerSeesPending =
-    member.role === "admin"
-      ? // org admin: pending requests under public agents they can write
-        and(
-          eq(zeroWorkflows.requestToPublish, true),
-          eq(zeroAgents.visibility, "public"),
-        )
-      : // non-admin: pending requests under agents they own
-        and(
-          eq(zeroWorkflows.requestToPublish, true),
-          eq(zeroAgents.owner, member.userId),
-        );
-
   return or(
     publicWorkflowOnVisibleAgent,
     eq(zeroWorkflows.ownerUserId, member.userId),
-    reviewerSeesPending,
   ) as SQL;
 }
 
@@ -203,11 +199,12 @@ export function workflowSummary(args: {
     displayName: args.workflow.displayName,
     description: args.workflow.description,
     visibility: args.workflow.visibility,
-    requestToPublish: args.workflow.requestToPublish,
     ownerUserId: args.workflow.ownerUserId,
     ownerUserDisplayName: args.ownerProfile?.displayName ?? null,
     ownerUserImageUrl: args.ownerProfile?.imageUrl ?? null,
+    createdAt: args.workflow.createdAt.toISOString(),
     canManage: canManageWorkflow(args.workflow, args.agent, args.member),
+    canPublish: canPublishWorkflow(args.workflow, args.agent, args.member),
     shadowedBy: args.shadowedBy ?? null,
   };
 }
@@ -313,7 +310,6 @@ export function zeroWorkflowList(args: {
           agentId: zeroWorkflows.agentId,
           name: zeroWorkflows.name,
           visibility: zeroWorkflows.visibility,
-          requestToPublish: zeroWorkflows.requestToPublish,
           ownerUserId: zeroWorkflows.ownerUserId,
           displayName: zeroWorkflows.displayName,
           description: zeroWorkflows.description,

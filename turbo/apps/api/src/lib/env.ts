@@ -27,8 +27,10 @@ const SCHEMA = {
   OPENAI_API_KEY: z.string().min(1),
   FAL_KEY: z.string().min(1).optional(),
   BYTEPLUS_API_KEY: z.string().min(1).optional(),
+  BYTEPLUS_STT_API_KEY: z.string().min(1).optional(),
   ZERO_MAPS_GOOGLE_MAPS_TOKEN: z.string().min(1).optional(),
   UNSPLASH_ACCESS_KEY: z.string().min(1).optional(),
+  PEXELS_API_KEY: z.string().min(1).optional(),
   FINICITY_APP_KEY: z.string().min(1).optional(),
   FINICITY_APP_SECRET: z.string().min(1).optional(),
   FINICITY_PARTNER_ID: z.string().min(1).optional(),
@@ -113,6 +115,7 @@ const SCHEMA = {
   SLACK_OAUTH_CLIENT_ID: z.string().optional(),
   MICROSOFT_TEAMS_BOT_APP_ID: z.string().min(1).optional(),
   MICROSOFT_TEAMS_BOT_APP_PASSWORD: z.string().min(1).optional(),
+  MICROSOFT_TEAMS_APP_TENANT_ID: z.string().min(1).optional(),
   // Gemini via Vertex AI (Vercel OIDC -> GCP Workload Identity Federation).
   // Production should use the GCP_* vars; dev/test may use GEMINI_API_KEY.
   GCP_PROJECT_ID: z.string().min(1).optional(),

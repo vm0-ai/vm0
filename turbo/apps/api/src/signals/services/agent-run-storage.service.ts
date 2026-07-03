@@ -14,7 +14,7 @@ import {
 import { MIN_VERSION_PREFIX_LENGTH } from "@vm0/core/version-id";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { computed, type Computed } from "ccstate";
-import { and, eq, inArray, like } from "drizzle-orm";
+import { and, eq, inArray, isNull, like } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { generatePresignedGetUrl, putS3Object } from "../external/s3";
@@ -22,17 +22,36 @@ import type { Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { settle } from "../utils";
 import {
+  resolveSystemStoragePresignedUrls,
+  SYSTEM_STORAGE_PRESIGNED_URL_TTL_SECONDS,
+  systemStoragePresignedUrlCacheKey,
+  type SystemStoragePresignedUrlCacheStatus,
+  type SystemStoragePresignedUrlRequest,
+} from "./system-storage-presigned-url-cache.service";
+import {
   measureApiDispatchTiming,
   type ApiDispatchTimingCollector,
   type ApiDispatchTimingActionType,
+  type ApiDispatchTimingDimensions,
+  type ApiDispatchTimingDimensionsInput,
 } from "./api-dispatch-timing.service";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
 
 type StorageType = "artifact" | "volume";
 type ManifestStorage = StorageManifest["storages"][number];
 type ManifestArtifact = StorageManifest["artifacts"][number];
-type OptionalManifestStorage = ManifestStorage | null;
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
+type StorageManifestEntryKind = "compose" | "additional" | "artifact";
+type StorageManifestCountBucket =
+  (typeof STORAGE_MANIFEST_COUNT_BUCKET_DIMENSIONS)[number];
+
+interface PresignCandidateInput {
+  readonly bucket: string;
+  readonly key: string;
+  readonly expiresIn: number;
+  readonly filename: string | undefined;
+  readonly usePublicEndpoint: boolean;
+}
 
 interface ContextArtifact {
   readonly name: string;
@@ -79,6 +98,7 @@ interface PrepareAgentRunStorageManifestArgs {
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly framework: SupportedFramework;
   readonly timing?: ApiDispatchTimingCollector;
+  readonly stats?: StorageManifestBuildStats;
 }
 
 interface ResolvedVolume {
@@ -95,6 +115,7 @@ interface StorageResolution {
   readonly storageId: string;
   readonly versionId: string;
   readonly s3Key: string;
+  readonly resolvedOrgId: string;
 }
 
 interface StorageLookup {
@@ -102,6 +123,12 @@ interface StorageLookup {
   readonly userId: string;
   readonly name: string;
   readonly type: StorageType;
+}
+
+interface ArtifactStorageRow {
+  readonly id: string;
+  readonly headVersionId: string | null;
+  readonly s3Prefix: string;
 }
 
 interface StorageIndexEntry {
@@ -116,9 +143,37 @@ interface StorageManifestInputs {
 }
 
 interface StorageManifestEntries {
-  readonly composeEntries: readonly OptionalManifestStorage[];
-  readonly additionalEntries: readonly OptionalManifestStorage[];
+  readonly composeEntries: readonly ManifestStorage[];
+  readonly additionalEntries: readonly ManifestStorage[];
   readonly artifactEntries: ManifestArtifact[];
+  readonly resolvedComposeEntryCount: number;
+  readonly resolvedAdditionalEntryCount: number;
+}
+
+interface BuildStorageManifestEntriesArgs {
+  readonly db: Db;
+  readonly bucket: string;
+  readonly storageIndex: StorageIndex;
+  readonly agentOrgId: string;
+  readonly runtimeOrgId: string;
+  readonly userId: string;
+  readonly composeVolumes: readonly ResolvedVolume[];
+  readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+  readonly artifacts: readonly ContextArtifact[];
+  readonly timing?: ApiDispatchTimingCollector;
+  readonly stats?: StorageManifestBuildStats;
+}
+
+interface StorageManifestEntryPhaseTimings {
+  readonly compose: StorageManifestEntryPhaseTiming;
+  readonly additional: StorageManifestEntryPhaseTiming;
+  readonly artifact: StorageManifestEntryPhaseTiming;
+}
+
+interface ResolvedStorageManifestEntryPlans {
+  readonly composePlans: readonly ResolvedManifestStoragePlan[];
+  readonly additionalPlans: readonly ResolvedManifestStoragePlan[];
+  readonly artifactInputs: readonly ResolvedManifestArtifactInput[];
 }
 
 interface ResolvedManifestStorageInput {
@@ -132,6 +187,13 @@ interface ResolvedManifestStorageInput {
 interface ResolvedManifestArtifactInput {
   readonly artifact: ContextArtifact;
   readonly resolved: StorageResolution;
+}
+
+interface ResolvedManifestStoragePlan extends ResolvedManifestStorageInput {
+  readonly entryKind: Extract<
+    StorageManifestEntryKind,
+    "compose" | "additional"
+  >;
 }
 
 interface StorageManifestPhaseTimingWindow {
@@ -149,6 +211,425 @@ type StorageIndex = ReadonlyMap<string, StorageIndexEntry>;
 
 const EMPTY_TAR_GZ = gzipSync(Buffer.alloc(1024, 0));
 const DOWNLOAD_URL_TTL_SECONDS = 60 * 60;
+const STORAGE_MANIFEST_COUNT_BUCKET_DIMENSIONS = [
+  "0",
+  "1",
+  "2_4",
+  "5_8",
+  "9_16",
+  "17_plus",
+] as const;
+const STORAGE_MANIFEST_ARTIFACT_ENSURE_ACTION_TYPES = [
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_lookup_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
+] as const satisfies readonly ApiDispatchTimingActionType[];
+
+type StorageManifestArtifactEnsureActionType =
+  (typeof STORAGE_MANIFEST_ARTIFACT_ENSURE_ACTION_TYPES)[number];
+
+function storageManifestCountBucket(count: number): StorageManifestCountBucket {
+  if (count <= 0) {
+    return "0";
+  }
+  if (count === 1) {
+    return "1";
+  }
+  if (count <= 4) {
+    return "2_4";
+  }
+  if (count <= 8) {
+    return "5_8";
+  }
+  if (count <= 16) {
+    return "9_16";
+  }
+  return "17_plus";
+}
+
+export class StorageManifestBuildStats {
+  private requestedComposeCount = 0;
+  private requestedAdditionalCount = 0;
+  private requestedArtifactCount = 0;
+  private dedupedArtifactCount = 0;
+  private resolvedComposeCount = 0;
+  private resolvedAdditionalCount = 0;
+  private resolvedArtifactCount = 0;
+  private finalStorageCount = 0;
+  private finalArtifactCount = 0;
+  private droppedComposeCount = 0;
+  private plannedComposePresignCount = 0;
+  private plannedAdditionalPresignCount = 0;
+  private plannedArtifactPresignCount = 0;
+  private systemResolvedStorageCount = 0;
+  private systemPresignCacheHitCount = 0;
+  private systemPresignCacheMissCount = 0;
+  private systemPresignCacheStaleReuseCount = 0;
+  private systemPresignCacheSyncRefreshCount = 0;
+  private nonSystemPresignCount = 0;
+  private artifactEnsureAlreadyInitializedCount = 0;
+  private artifactEnsureMissingStorageCount = 0;
+  private artifactEnsureCreatedStorageCount = 0;
+  private artifactEnsureLostCreateRaceCount = 0;
+  private artifactEnsureMissingHeadVersionCount = 0;
+  private artifactEnsureInitializedEmptyVersionCount = 0;
+  private readonly presignCandidateCounts = new Map<string, number>();
+
+  recordRequestedInputs(args: {
+    readonly composeCount: number;
+    readonly additionalCount: number;
+    readonly artifactCount: number;
+    readonly dedupedArtifactCount: number;
+  }): void {
+    this.requestedComposeCount = args.composeCount;
+    this.requestedAdditionalCount = args.additionalCount;
+    this.requestedArtifactCount = args.artifactCount;
+    this.dedupedArtifactCount = args.dedupedArtifactCount;
+  }
+
+  recordResolvedEntry(kind: StorageManifestEntryKind, count = 1): void {
+    switch (kind) {
+      case "compose": {
+        this.resolvedComposeCount += count;
+        return;
+      }
+      case "additional": {
+        this.resolvedAdditionalCount += count;
+        return;
+      }
+      case "artifact": {
+        this.resolvedArtifactCount += count;
+        return;
+      }
+    }
+  }
+
+  recordPresignCandidate(
+    kind: StorageManifestEntryKind,
+    input: PresignCandidateInput,
+  ): void {
+    switch (kind) {
+      case "compose": {
+        this.plannedComposePresignCount += 1;
+        break;
+      }
+      case "additional": {
+        this.plannedAdditionalPresignCount += 1;
+        break;
+      }
+      case "artifact": {
+        this.plannedArtifactPresignCount += 1;
+        break;
+      }
+    }
+
+    const key = JSON.stringify([
+      input.bucket,
+      input.key,
+      input.expiresIn,
+      input.filename ?? "",
+      input.usePublicEndpoint ? "public" : "private",
+    ]);
+    this.presignCandidateCounts.set(
+      key,
+      (this.presignCandidateCounts.get(key) ?? 0) + 1,
+    );
+  }
+
+  recordSystemResolvedStorage(count = 1): void {
+    this.systemResolvedStorageCount += count;
+  }
+
+  recordSystemPresignCacheResult(
+    status: SystemStoragePresignedUrlCacheStatus,
+  ): void {
+    switch (status) {
+      case "hit": {
+        this.systemPresignCacheHitCount += 1;
+        return;
+      }
+      case "miss": {
+        this.systemPresignCacheMissCount += 1;
+        return;
+      }
+      case "stale_reuse": {
+        this.systemPresignCacheStaleReuseCount += 1;
+        return;
+      }
+      case "sync_refresh": {
+        this.systemPresignCacheSyncRefreshCount += 1;
+        return;
+      }
+    }
+  }
+
+  recordNonSystemPresign(): void {
+    this.nonSystemPresignCount += 1;
+  }
+
+  recordArtifactEnsureAlreadyInitialized(): void {
+    this.artifactEnsureAlreadyInitializedCount += 1;
+  }
+
+  recordArtifactEnsureMissingStorage(): void {
+    this.artifactEnsureMissingStorageCount += 1;
+  }
+
+  recordArtifactEnsureCreatedStorage(): void {
+    this.artifactEnsureCreatedStorageCount += 1;
+  }
+
+  recordArtifactEnsureLostCreateRace(): void {
+    this.artifactEnsureLostCreateRaceCount += 1;
+  }
+
+  recordArtifactEnsureMissingHeadVersion(): void {
+    this.artifactEnsureMissingHeadVersionCount += 1;
+  }
+
+  recordArtifactEnsureInitializedEmptyVersion(): void {
+    this.artifactEnsureInitializedEmptyVersionCount += 1;
+  }
+
+  recordFinalManifest(args: {
+    readonly composeEntries: readonly ManifestStorage[];
+    readonly additionalEntries: readonly ManifestStorage[];
+    readonly finalStorageEntries: readonly ManifestStorage[];
+    readonly finalArtifactEntries: readonly ManifestArtifact[];
+    readonly resolvedComposeEntryCount?: number;
+    readonly resolvedAdditionalEntryCount?: number;
+  }): void {
+    this.finalStorageCount = args.finalStorageEntries.length;
+    this.finalArtifactCount = args.finalArtifactEntries.length;
+    this.droppedComposeCount =
+      (args.resolvedComposeEntryCount ?? args.composeEntries.length) +
+      (args.resolvedAdditionalEntryCount ?? args.additionalEntries.length) -
+      args.finalStorageEntries.length;
+  }
+
+  overallDimensions(): ApiDispatchTimingDimensions {
+    return {
+      storage_manifest_requested_compose_count_bucket:
+        storageManifestCountBucket(this.requestedComposeCount),
+      storage_manifest_requested_additional_count_bucket:
+        storageManifestCountBucket(this.requestedAdditionalCount),
+      storage_manifest_requested_artifact_count_bucket:
+        storageManifestCountBucket(this.requestedArtifactCount),
+      storage_manifest_deduped_artifact_count_bucket:
+        storageManifestCountBucket(this.dedupedArtifactCount),
+      storage_manifest_resolved_compose_count_bucket:
+        storageManifestCountBucket(this.resolvedComposeCount),
+      storage_manifest_resolved_additional_count_bucket:
+        storageManifestCountBucket(this.resolvedAdditionalCount),
+      storage_manifest_resolved_artifact_count_bucket:
+        storageManifestCountBucket(this.resolvedArtifactCount),
+      storage_manifest_final_storage_count_bucket: storageManifestCountBucket(
+        this.finalStorageCount,
+      ),
+      storage_manifest_final_artifact_count_bucket: storageManifestCountBucket(
+        this.finalArtifactCount,
+      ),
+      storage_manifest_dropped_compose_count_bucket: storageManifestCountBucket(
+        this.droppedComposeCount,
+      ),
+      storage_manifest_planned_presign_count_bucket: storageManifestCountBucket(
+        this.plannedPresignCount(),
+      ),
+      storage_manifest_duplicate_presign_candidate_count_bucket:
+        storageManifestCountBucket(this.duplicatePresignCandidateCount()),
+      ...this.systemPresignCacheDimensions(),
+      ...this.artifactEnsureDimensions(),
+    };
+  }
+
+  artifactEnsureDimensions(): ApiDispatchTimingDimensions {
+    return {
+      storage_manifest_artifact_ensure_already_initialized_count_bucket:
+        storageManifestCountBucket(this.artifactEnsureAlreadyInitializedCount),
+      storage_manifest_artifact_ensure_missing_storage_count_bucket:
+        storageManifestCountBucket(this.artifactEnsureMissingStorageCount),
+      storage_manifest_artifact_ensure_created_storage_count_bucket:
+        storageManifestCountBucket(this.artifactEnsureCreatedStorageCount),
+      storage_manifest_artifact_ensure_lost_create_race_count_bucket:
+        storageManifestCountBucket(this.artifactEnsureLostCreateRaceCount),
+      storage_manifest_artifact_ensure_missing_head_version_count_bucket:
+        storageManifestCountBucket(this.artifactEnsureMissingHeadVersionCount),
+      storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+        storageManifestCountBucket(
+          this.artifactEnsureInitializedEmptyVersionCount,
+        ),
+    };
+  }
+
+  buildEntriesDimensions(): ApiDispatchTimingDimensions {
+    return {
+      storage_manifest_resolved_compose_count_bucket:
+        storageManifestCountBucket(this.resolvedComposeCount),
+      storage_manifest_resolved_additional_count_bucket:
+        storageManifestCountBucket(this.resolvedAdditionalCount),
+      storage_manifest_resolved_artifact_count_bucket:
+        storageManifestCountBucket(this.resolvedArtifactCount),
+      storage_manifest_planned_presign_count_bucket: storageManifestCountBucket(
+        this.plannedPresignCount(),
+      ),
+      storage_manifest_duplicate_presign_candidate_count_bucket:
+        storageManifestCountBucket(this.duplicatePresignCandidateCount()),
+      ...this.systemPresignCacheDimensions(),
+    };
+  }
+
+  generateDimensions(
+    kind: StorageManifestEntryKind,
+  ): ApiDispatchTimingDimensions {
+    switch (kind) {
+      case "compose": {
+        return {
+          storage_manifest_compose_planned_presign_count_bucket:
+            storageManifestCountBucket(this.plannedComposePresignCount),
+        };
+      }
+      case "additional": {
+        return {
+          storage_manifest_additional_planned_presign_count_bucket:
+            storageManifestCountBucket(this.plannedAdditionalPresignCount),
+        };
+      }
+      case "artifact": {
+        return {
+          storage_manifest_artifact_planned_presign_count_bucket:
+            storageManifestCountBucket(this.plannedArtifactPresignCount),
+        };
+      }
+    }
+  }
+
+  assembleDimensions(): ApiDispatchTimingDimensions {
+    return {
+      storage_manifest_final_storage_count_bucket: storageManifestCountBucket(
+        this.finalStorageCount,
+      ),
+      storage_manifest_final_artifact_count_bucket: storageManifestCountBucket(
+        this.finalArtifactCount,
+      ),
+      storage_manifest_dropped_compose_count_bucket: storageManifestCountBucket(
+        this.droppedComposeCount,
+      ),
+    };
+  }
+
+  private plannedPresignCount(): number {
+    return (
+      this.plannedComposePresignCount +
+      this.plannedAdditionalPresignCount +
+      this.plannedArtifactPresignCount
+    );
+  }
+
+  private duplicatePresignCandidateCount(): number {
+    let count = 0;
+    for (const candidateCount of this.presignCandidateCounts.values()) {
+      count += Math.max(0, candidateCount - 1);
+    }
+    return count;
+  }
+
+  private systemPresignCacheDimensions(): ApiDispatchTimingDimensions {
+    return {
+      storage_manifest_system_resolved_storage_count_bucket:
+        storageManifestCountBucket(this.systemResolvedStorageCount),
+      storage_manifest_system_presign_cache_hit_count_bucket:
+        storageManifestCountBucket(this.systemPresignCacheHitCount),
+      storage_manifest_system_presign_cache_miss_count_bucket:
+        storageManifestCountBucket(this.systemPresignCacheMissCount),
+      storage_manifest_system_presign_cache_stale_reuse_count_bucket:
+        storageManifestCountBucket(this.systemPresignCacheStaleReuseCount),
+      storage_manifest_system_presign_cache_sync_refresh_count_bucket:
+        storageManifestCountBucket(this.systemPresignCacheSyncRefreshCount),
+      storage_manifest_non_system_presign_count_bucket:
+        storageManifestCountBucket(this.nonSystemPresignCount),
+    };
+  }
+}
+
+class StorageManifestArtifactEnsureTiming {
+  private readonly windows = new Map<
+    StorageManifestArtifactEnsureActionType,
+    StorageManifestPhaseTimingWindow
+  >();
+
+  constructor(
+    private readonly timing: ApiDispatchTimingCollector | undefined,
+  ) {}
+
+  async measure<T>(
+    actionType: StorageManifestArtifactEnsureActionType,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    if (!this.timing) {
+      return await operation();
+    }
+
+    const window = this.windowFor(actionType);
+    const startedAt = now();
+    window.startedAt =
+      window.startedAt === undefined
+        ? startedAt
+        : Math.min(window.startedAt, startedAt);
+    return await operation().finally(() => {
+      const finishedAt = now();
+      window.finishedAt =
+        window.finishedAt === undefined
+          ? finishedAt
+          : Math.max(window.finishedAt, finishedAt);
+    });
+  }
+
+  flush(): void {
+    if (!this.timing) {
+      return;
+    }
+
+    for (const actionType of STORAGE_MANIFEST_ARTIFACT_ENSURE_ACTION_TYPES) {
+      const window = this.windows.get(actionType);
+      const finishedAt = window?.finishedAt ?? now();
+      this.timing.recordElapsed(
+        actionType,
+        "nested",
+        window?.startedAt ?? finishedAt,
+        finishedAt,
+      );
+    }
+  }
+
+  private windowFor(
+    actionType: StorageManifestArtifactEnsureActionType,
+  ): StorageManifestPhaseTimingWindow {
+    const existing = this.windows.get(actionType);
+    if (existing) {
+      return existing;
+    }
+
+    const created: StorageManifestPhaseTimingWindow = {
+      startedAt: undefined,
+      finishedAt: undefined,
+    };
+    this.windows.set(actionType, created);
+    return created;
+  }
+}
+
+async function measureStorageManifestArtifactEnsure<T>(
+  timing: StorageManifestArtifactEnsureTiming | undefined,
+  actionType: StorageManifestArtifactEnsureActionType,
+  operation: () => Promise<T>,
+): Promise<T> {
+  return timing
+    ? await timing.measure(actionType, operation)
+    : await operation();
+}
 
 class StorageManifestEntryPhaseTiming {
   private readonly resolveWindow: StorageManifestPhaseTimingWindow = {
@@ -164,6 +645,12 @@ class StorageManifestEntryPhaseTiming {
     private readonly timing: ApiDispatchTimingCollector | undefined,
     private readonly resolveActionType: ApiDispatchTimingActionType,
     private readonly generateActionType: ApiDispatchTimingActionType,
+    private readonly resolveDimensions:
+      | ApiDispatchTimingDimensionsInput
+      | undefined,
+    private readonly generateDimensions:
+      | ApiDispatchTimingDimensionsInput
+      | undefined,
   ) {}
 
   async measureResolve<T>(operation: () => Promise<T>): Promise<T> {
@@ -175,8 +662,16 @@ class StorageManifestEntryPhaseTiming {
   }
 
   flush(): void {
-    this.record(this.resolveActionType, this.resolveWindow);
-    this.record(this.generateActionType, this.generateWindow);
+    this.record(
+      this.resolveActionType,
+      this.resolveWindow,
+      this.resolveDimensions,
+    );
+    this.record(
+      this.generateActionType,
+      this.generateWindow,
+      this.generateDimensions,
+    );
   }
 
   private async measure<T>(
@@ -204,6 +699,7 @@ class StorageManifestEntryPhaseTiming {
   private record(
     actionType: ApiDispatchTimingActionType,
     window: StorageManifestPhaseTimingWindow,
+    dimensions: ApiDispatchTimingDimensionsInput | undefined,
   ): void {
     if (!this.timing) {
       return;
@@ -215,26 +711,9 @@ class StorageManifestEntryPhaseTiming {
       "nested",
       window.startedAt ?? finishedAt,
       finishedAt,
+      dimensions,
     );
   }
-}
-
-async function withStorageManifestEntryPhaseTiming<T>(args: {
-  readonly timing?: ApiDispatchTimingCollector;
-  readonly resolveActionType: ApiDispatchTimingActionType;
-  readonly generateActionType: ApiDispatchTimingActionType;
-  readonly operation: (
-    phaseTiming: StorageManifestEntryPhaseTiming,
-  ) => Promise<T>;
-}): Promise<T> {
-  const phaseTiming = new StorageManifestEntryPhaseTiming(
-    args.timing,
-    args.resolveActionType,
-    args.generateActionType,
-  );
-  return await args.operation(phaseTiming).finally(() => {
-    phaseTiming.flush();
-  });
 }
 
 function instructionsMountPath(framework: SupportedFramework): string {
@@ -365,14 +844,7 @@ function createEmptyStorageManifest(): string {
 async function findStorage(
   db: Db,
   lookup: StorageLookup,
-): Promise<
-  | {
-      readonly id: string;
-      readonly headVersionId: string | null;
-      readonly s3Prefix: string;
-    }
-  | undefined
-> {
+): Promise<ArtifactStorageRow | undefined> {
   const [storage] = await db
     .select({
       id: storages.id,
@@ -435,24 +907,37 @@ async function loadStorageIndex(
   return index;
 }
 
-function ensureArtifactStorage(args: {
+interface EnsureArtifactStorageArgs {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly name: string;
   readonly bucket: string;
-}): Computed<Promise<void>> {
-  return computed(async (get): Promise<void> => {
-    const lookup = {
-      orgId: args.orgId,
-      userId: args.userId,
-      name: args.name,
-      type: "artifact" as const,
-    };
-    let storage = await findStorage(args.db, lookup);
+  readonly timing?: StorageManifestArtifactEnsureTiming;
+  readonly stats?: StorageManifestBuildStats;
+}
 
-    if (!storage) {
-      const [created] = await args.db
+async function findOrCreateArtifactStorage(
+  args: EnsureArtifactStorageArgs,
+  lookup: StorageLookup,
+): Promise<ArtifactStorageRow | undefined> {
+  const storage = await measureStorageManifestArtifactEnsure(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_ensure_artifact_lookup_storage",
+    async () => {
+      return await findStorage(args.db, lookup);
+    },
+  );
+  if (storage) {
+    return storage;
+  }
+
+  args.stats?.recordArtifactEnsureMissingStorage();
+  const [created] = await measureStorageManifestArtifactEnsure(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
+    async () => {
+      return await args.db
         .insert(storages)
         .values({
           orgId: args.orgId,
@@ -467,60 +952,156 @@ function ensureArtifactStorage(args: {
           headVersionId: storages.headVersionId,
           s3Prefix: storages.s3Prefix,
         });
-      storage = created ?? (await findStorage(args.db, lookup));
-    }
+    },
+  );
+  if (created) {
+    args.stats?.recordArtifactEnsureCreatedStorage();
+    return created;
+  }
 
+  const refetched = await measureStorageManifestArtifactEnsure(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
+    async () => {
+      return await findStorage(args.db, lookup);
+    },
+  );
+  if (refetched) {
+    args.stats?.recordArtifactEnsureLostCreateRace();
+  }
+  return refetched;
+}
+
+async function recordInitializedArtifactFastPath(
+  args: EnsureArtifactStorageArgs,
+): Promise<void> {
+  args.stats?.recordArtifactEnsureAlreadyInitialized();
+  await measureStorageManifestArtifactEnsure(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
+    async () => {},
+  );
+}
+
+async function uploadEmptyArtifactObjects(
+  get: ComputedGetter,
+  args: EnsureArtifactStorageArgs,
+  s3Key: string,
+): Promise<void> {
+  await measureStorageManifestArtifactEnsure(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+    async () => {
+      await Promise.all([
+        get(
+          putS3Object(
+            args.bucket,
+            `${s3Key}/manifest.json`,
+            createEmptyStorageManifest(),
+            "application/json",
+          ),
+        ),
+        get(
+          putS3Object(
+            args.bucket,
+            `${s3Key}/archive.tar.gz`,
+            EMPTY_TAR_GZ,
+            "application/gzip",
+          ),
+        ),
+      ]);
+    },
+  );
+}
+
+async function insertInitialArtifactVersion(args: {
+  readonly db: Db;
+  readonly userId: string;
+  readonly storage: ArtifactStorageRow;
+  readonly versionId: string;
+  readonly s3Key: string;
+  readonly timing?: StorageManifestArtifactEnsureTiming;
+}): Promise<boolean> {
+  return await measureStorageManifestArtifactEnsure(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
+    async () => {
+      return await args.db.transaction(async (tx) => {
+        await tx
+          .insert(storageVersions)
+          .values({
+            id: args.versionId,
+            storageId: args.storage.id,
+            s3Key: args.s3Key,
+            size: 0,
+            fileCount: 0,
+            message: "Initial empty artifact",
+            createdBy: args.userId,
+          })
+          .onConflictDoNothing();
+        const [updated] = await tx
+          .update(storages)
+          .set({
+            headVersionId: args.versionId,
+            size: 0,
+            fileCount: 0,
+            updatedAt: nowDate(),
+          })
+          .where(
+            and(
+              eq(storages.id, args.storage.id),
+              isNull(storages.headVersionId),
+            ),
+          )
+          .returning({ id: storages.id });
+        return updated !== undefined;
+      });
+    },
+  );
+}
+
+async function initializeEmptyArtifactStorage(
+  get: ComputedGetter,
+  args: EnsureArtifactStorageArgs,
+  storage: ArtifactStorageRow,
+): Promise<void> {
+  args.stats?.recordArtifactEnsureMissingHeadVersion();
+  const versionId = computeContentHashFromHashes(storage.id, []);
+  const s3Key = `${storage.s3Prefix}/${versionId}`;
+  await uploadEmptyArtifactObjects(get, args, s3Key);
+  const initializedHead = await insertInitialArtifactVersion({
+    db: args.db,
+    userId: args.userId,
+    storage,
+    versionId,
+    s3Key,
+    timing: args.timing,
+  });
+  if (initializedHead) {
+    args.stats?.recordArtifactEnsureInitializedEmptyVersion();
+  }
+}
+
+function ensureArtifactStorage(
+  args: EnsureArtifactStorageArgs,
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const lookup = {
+      orgId: args.orgId,
+      userId: args.userId,
+      name: args.name,
+      type: "artifact" as const,
+    };
+    const storage = await findOrCreateArtifactStorage(args, lookup);
     if (!storage) {
       throw new Error(`Failed to create artifact storage "${args.name}"`);
     }
     if (storage.headVersionId) {
+      await recordInitializedArtifactFastPath(args);
       return;
     }
 
-    const versionId = computeContentHashFromHashes(storage.id, []);
-    const s3Key = `${storage.s3Prefix}/${versionId}`;
-    await Promise.all([
-      get(
-        putS3Object(
-          args.bucket,
-          `${s3Key}/manifest.json`,
-          createEmptyStorageManifest(),
-          "application/json",
-        ),
-      ),
-      get(
-        putS3Object(
-          args.bucket,
-          `${s3Key}/archive.tar.gz`,
-          EMPTY_TAR_GZ,
-          "application/gzip",
-        ),
-      ),
-    ]);
-
-    await args.db.transaction(async (tx) => {
-      await tx
-        .insert(storageVersions)
-        .values({
-          id: versionId,
-          storageId: storage.id,
-          s3Key,
-          size: 0,
-          fileCount: 0,
-          message: "Initial empty artifact",
-          createdBy: args.userId,
-        })
-        .onConflictDoNothing();
-      await tx
-        .update(storages)
-        .set({
-          headVersionId: versionId,
-          size: 0,
-          fileCount: 0,
-          updatedAt: nowDate(),
-        })
-        .where(eq(storages.id, storage.id));
-    });
+    await initializeEmptyArtifactStorage(get, args, storage);
   });
 }
 
@@ -556,6 +1137,7 @@ function resolveLatestVersion(
     storageId: entry.storageId,
     versionId: entry.headVersion.id,
     s3Key: entry.headVersion.s3Key,
+    resolvedOrgId: lookup.orgId,
   };
 }
 
@@ -587,6 +1169,7 @@ async function resolvePinnedVersion(
       storageId: storage.storageId,
       versionId: exactMatch.id,
       s3Key: exactMatch.s3Key,
+      resolvedOrgId: lookup.orgId,
     };
   }
 
@@ -626,6 +1209,7 @@ async function resolvePinnedVersion(
     storageId: storage.storageId,
     versionId: match.id,
     s3Key: match.s3Key,
+    resolvedOrgId: lookup.orgId,
   };
 }
 
@@ -698,37 +1282,6 @@ async function resolveVolumeStorage(args: {
     },
     volumeVersion(args.volume),
   );
-}
-
-function buildStorageEntry(args: {
-  readonly bucket: string;
-  readonly name: string;
-  readonly mountPath: string;
-  readonly vasStorageName: string;
-  readonly instructionsTargetFilename?: string;
-  readonly resolved: StorageResolution;
-}): Computed<Promise<ManifestStorage>> {
-  return computed(async (get): Promise<ManifestStorage> => {
-    const archiveUrl = await get(
-      generatePresignedGetUrl(
-        args.bucket,
-        `${args.resolved.s3Key}/archive.tar.gz`,
-        DOWNLOAD_URL_TTL_SECONDS,
-        undefined,
-        true,
-      ),
-    );
-    return {
-      name: args.name,
-      mountPath: args.mountPath,
-      vasStorageName: args.vasStorageName,
-      vasVersionId: args.resolved.versionId,
-      ...(args.instructionsTargetFilename
-        ? { instructionsTargetFilename: args.instructionsTargetFilename }
-        : {}),
-      archiveUrl,
-    };
-  });
 }
 
 async function resolveComposeStorageInput(args: {
@@ -817,20 +1370,127 @@ async function resolveArtifactStorageInput(args: {
   return { artifact: args.artifact, resolved };
 }
 
-async function buildStorageEntryFromInput(
+function storageArchiveKey(resolved: StorageResolution): string {
+  return `${resolved.s3Key}/archive.tar.gz`;
+}
+
+function isSystemOwnedStoragePlan(plan: ResolvedManifestStoragePlan): boolean {
+  return plan.resolved.resolvedOrgId === SYSTEM_ORG_ID;
+}
+
+function systemStoragePresignedUrlRequest(args: {
+  readonly bucket: string;
+  readonly plan: ResolvedManifestStoragePlan;
+}): SystemStoragePresignedUrlRequest {
+  return {
+    bucket: args.bucket,
+    objectKey: storageArchiveKey(args.plan.resolved),
+    storageVersionId: args.plan.resolved.versionId,
+    publicEndpoint: true,
+  };
+}
+
+async function generateDirectStorageArchiveUrl(
   get: ComputedGetter,
   args: {
     readonly bucket: string;
-    readonly input: ResolvedManifestStorageInput | null;
+    readonly archiveKey: string;
+    readonly stats?: StorageManifestBuildStats;
+    readonly entryKind: StorageManifestEntryKind;
   },
-): Promise<ManifestStorage | null> {
-  if (!args.input) {
-    return null;
-  }
+): Promise<string> {
+  args.stats?.recordPresignCandidate(args.entryKind, {
+    bucket: args.bucket,
+    key: args.archiveKey,
+    expiresIn: DOWNLOAD_URL_TTL_SECONDS,
+    filename: undefined,
+    usePublicEndpoint: true,
+  });
+  args.stats?.recordNonSystemPresign();
   return await get(
-    buildStorageEntry({
-      bucket: args.bucket,
-      ...args.input,
+    generatePresignedGetUrl(
+      args.bucket,
+      args.archiveKey,
+      DOWNLOAD_URL_TTL_SECONDS,
+      undefined,
+      true,
+    ),
+  );
+}
+
+function buildStorageManifestEntry(args: {
+  readonly plan: ResolvedManifestStoragePlan;
+  readonly archiveUrl: string;
+}): ManifestStorage {
+  return {
+    name: args.plan.name,
+    mountPath: args.plan.mountPath,
+    vasStorageName: args.plan.vasStorageName,
+    vasVersionId: args.plan.resolved.versionId,
+    ...(args.plan.instructionsTargetFilename
+      ? { instructionsTargetFilename: args.plan.instructionsTargetFilename }
+      : {}),
+    archiveUrl: args.archiveUrl,
+  };
+}
+
+async function buildStorageEntriesFromPlans(
+  get: ComputedGetter,
+  args: {
+    readonly db: Db;
+    readonly bucket: string;
+    readonly plans: readonly ResolvedManifestStoragePlan[];
+    readonly stats?: StorageManifestBuildStats;
+  },
+): Promise<readonly ManifestStorage[]> {
+  const systemPlans = args.plans.filter(isSystemOwnedStoragePlan);
+  args.stats?.recordSystemResolvedStorage(systemPlans.length);
+
+  const systemRequests = systemPlans.map((plan) => {
+    return systemStoragePresignedUrlRequest({ bucket: args.bucket, plan });
+  });
+  const systemUrlsByCacheKeyPromise = resolveSystemStoragePresignedUrls({
+    db: args.db,
+    get,
+    requests: systemRequests,
+  });
+
+  return await Promise.all(
+    args.plans.map(async (plan) => {
+      const archiveKey = storageArchiveKey(plan.resolved);
+      if (!isSystemOwnedStoragePlan(plan)) {
+        return buildStorageManifestEntry({
+          plan,
+          archiveUrl: await generateDirectStorageArchiveUrl(get, {
+            bucket: args.bucket,
+            archiveKey,
+            stats: args.stats,
+            entryKind: plan.entryKind,
+          }),
+        });
+      }
+
+      const systemUrlsByCacheKey = await systemUrlsByCacheKeyPromise;
+      const request = systemStoragePresignedUrlRequest({
+        bucket: args.bucket,
+        plan,
+      });
+      const cacheKey = systemStoragePresignedUrlCacheKey(request);
+      const result = systemUrlsByCacheKey.get(cacheKey);
+      if (!result) {
+        throw new Error("Missing system storage presigned URL cache result");
+      }
+      args.stats?.recordSystemPresignCacheResult(result.status);
+      if (result.status === "miss" || result.status === "sync_refresh") {
+        args.stats?.recordPresignCandidate(plan.entryKind, {
+          bucket: args.bucket,
+          key: archiveKey,
+          expiresIn: SYSTEM_STORAGE_PRESIGNED_URL_TTL_SECONDS,
+          filename: undefined,
+          usePublicEndpoint: true,
+        });
+      }
+      return buildStorageManifestEntry({ plan, archiveUrl: result.url });
     }),
   );
 }
@@ -840,13 +1500,23 @@ async function buildArtifactEntryFromInput(
   args: {
     readonly bucket: string;
     readonly input: ResolvedManifestArtifactInput;
+    readonly stats?: StorageManifestBuildStats;
   },
 ): Promise<ManifestArtifact> {
   const { artifact, resolved } = args.input;
+  const archiveKey = `${resolved.s3Key}/archive.tar.gz`;
+  args.stats?.recordPresignCandidate("artifact", {
+    bucket: args.bucket,
+    key: archiveKey,
+    expiresIn: DOWNLOAD_URL_TTL_SECONDS,
+    filename: undefined,
+    usePublicEndpoint: true,
+  });
+  args.stats?.recordNonSystemPresign();
   const archiveUrl = await get(
     generatePresignedGetUrl(
       args.bucket,
-      `${resolved.s3Key}/archive.tar.gz`,
+      archiveKey,
       DOWNLOAD_URL_TTL_SECONDS,
       undefined,
       true,
@@ -865,17 +1535,14 @@ async function buildArtifactEntryFromInput(
   };
 }
 
-async function buildComposeStorageEntry(
-  get: ComputedGetter,
-  args: {
-    readonly db: Db;
-    readonly index: StorageIndex;
-    readonly bucket: string;
-    readonly agentOrgId: string;
-    readonly volume: ResolvedVolume;
-    readonly phaseTiming: StorageManifestEntryPhaseTiming;
-  },
-): Promise<ManifestStorage | null> {
+async function buildComposeStorageEntry(args: {
+  readonly db: Db;
+  readonly index: StorageIndex;
+  readonly agentOrgId: string;
+  readonly volume: ResolvedVolume;
+  readonly phaseTiming: StorageManifestEntryPhaseTiming;
+  readonly stats?: StorageManifestBuildStats;
+}): Promise<ResolvedManifestStoragePlan | null> {
   const input = await args.phaseTiming.measureResolve(() => {
     return resolveComposeStorageInput({
       db: args.db,
@@ -884,25 +1551,20 @@ async function buildComposeStorageEntry(
       volume: args.volume,
     });
   });
-  return await args.phaseTiming.measureGenerate(() => {
-    return buildStorageEntryFromInput(get, {
-      bucket: args.bucket,
-      input,
-    });
-  });
+  if (input) {
+    args.stats?.recordResolvedEntry("compose");
+  }
+  return input ? { ...input, entryKind: "compose" } : null;
 }
 
-async function buildAdditionalStorageEntry(
-  get: ComputedGetter,
-  args: {
-    readonly db: Db;
-    readonly index: StorageIndex;
-    readonly bucket: string;
-    readonly runtimeOrgId: string;
-    readonly volume: AdditionalVolume;
-    readonly phaseTiming: StorageManifestEntryPhaseTiming;
-  },
-): Promise<ManifestStorage | null> {
+async function buildAdditionalStorageEntry(args: {
+  readonly db: Db;
+  readonly index: StorageIndex;
+  readonly runtimeOrgId: string;
+  readonly volume: AdditionalVolume;
+  readonly phaseTiming: StorageManifestEntryPhaseTiming;
+  readonly stats?: StorageManifestBuildStats;
+}): Promise<ResolvedManifestStoragePlan | null> {
   const input = await args.phaseTiming.measureResolve(() => {
     return resolveAdditionalStorageInput({
       db: args.db,
@@ -911,47 +1573,18 @@ async function buildAdditionalStorageEntry(
       volume: args.volume,
     });
   });
-  return await args.phaseTiming.measureGenerate(() => {
-    return buildStorageEntryFromInput(get, {
-      bucket: args.bucket,
-      input,
-    });
-  });
+  if (input) {
+    args.stats?.recordResolvedEntry("additional");
+  }
+  return input ? { ...input, entryKind: "additional" } : null;
 }
 
-async function buildArtifactEntry(
-  get: ComputedGetter,
-  args: {
-    readonly db: Db;
-    readonly index: StorageIndex;
-    readonly bucket: string;
-    readonly runtimeOrgId: string;
-    readonly userId: string;
-    readonly artifact: ContextArtifact;
-    readonly phaseTiming: StorageManifestEntryPhaseTiming;
-  },
-): Promise<ManifestArtifact> {
-  const input = await args.phaseTiming.measureResolve(() => {
-    return resolveArtifactStorageInput({
-      db: args.db,
-      index: args.index,
-      runtimeOrgId: args.runtimeOrgId,
-      userId: args.userId,
-      artifact: args.artifact,
-    });
-  });
-  return await args.phaseTiming.measureGenerate(() => {
-    return buildArtifactEntryFromInput(get, {
-      bucket: args.bucket,
-      input,
-    });
-  });
-}
-
-function mergeStorageEntries(args: {
-  readonly composeEntries: readonly ManifestStorage[];
-  readonly additionalEntries: readonly ManifestStorage[];
-}): readonly ManifestStorage[] {
+function mergeStorageEntries<
+  TEntry extends { readonly mountPath: string },
+>(args: {
+  readonly composeEntries: readonly TEntry[];
+  readonly additionalEntries: readonly TEntry[];
+}): readonly TEntry[] {
   const additionalMountPaths = new Set(
     args.additionalEntries.map((entry) => {
       return entry.mountPath;
@@ -963,12 +1596,6 @@ function mergeStorageEntries(args: {
     }),
     ...args.additionalEntries,
   ];
-}
-
-function isManifestStorage(
-  entry: OptionalManifestStorage,
-): entry is ManifestStorage {
-  return entry !== null;
 }
 
 async function resolveStorageManifestInputs(
@@ -1001,8 +1628,12 @@ async function ensureStorageManifestArtifacts(
     readonly bucket: string;
     readonly artifacts: readonly ContextArtifact[];
     readonly timing?: ApiDispatchTimingCollector;
+    readonly stats?: StorageManifestBuildStats;
   },
 ): Promise<void> {
+  const artifactEnsureTiming = new StorageManifestArtifactEnsureTiming(
+    args.timing,
+  );
   await measureApiDispatchTiming(
     args.timing,
     "api_dispatch_prepare_storage_manifest_ensure_artifacts",
@@ -1017,10 +1648,17 @@ async function ensureStorageManifestArtifacts(
               userId: args.userId,
               name: artifact.name,
               bucket: args.bucket,
+              timing: artifactEnsureTiming,
+              stats: args.stats,
             }),
           );
         }),
-      );
+      ).finally(() => {
+        artifactEnsureTiming.flush();
+      });
+    },
+    () => {
+      return args.stats?.artifactEnsureDimensions();
     },
   );
 }
@@ -1048,140 +1686,249 @@ async function loadTimedStorageIndex(args: {
   );
 }
 
-async function buildStorageManifestEntries(
-  get: ComputedGetter,
-  args: {
-    readonly db: Db;
-    readonly bucket: string;
-    readonly storageIndex: StorageIndex;
-    readonly agentOrgId: string;
-    readonly runtimeOrgId: string;
-    readonly userId: string;
-    readonly composeVolumes: readonly ResolvedVolume[];
-    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
-    readonly artifacts: readonly ContextArtifact[];
-    readonly timing?: ApiDispatchTimingCollector;
-  },
-): Promise<StorageManifestEntries> {
-  const [composeEntries, additionalEntries, artifactEntries] =
-    await measureApiDispatchTiming(
+function createStorageManifestEntryPhaseTimings(args: {
+  readonly timing?: ApiDispatchTimingCollector;
+  readonly stats?: StorageManifestBuildStats;
+}): StorageManifestEntryPhaseTimings {
+  return {
+    compose: new StorageManifestEntryPhaseTiming(
       args.timing,
-      "api_dispatch_prepare_storage_manifest_build_entries",
+      "api_dispatch_prepare_storage_manifest_resolve_compose_versions",
+      "api_dispatch_prepare_storage_manifest_generate_compose_urls",
+      undefined,
+      () => {
+        return args.stats?.generateDimensions("compose");
+      },
+    ),
+    additional: new StorageManifestEntryPhaseTiming(
+      args.timing,
+      "api_dispatch_prepare_storage_manifest_resolve_additional_versions",
+      "api_dispatch_prepare_storage_manifest_generate_additional_urls",
+      undefined,
+      () => {
+        return args.stats?.generateDimensions("additional");
+      },
+    ),
+    artifact: new StorageManifestEntryPhaseTiming(
+      args.timing,
+      "api_dispatch_prepare_storage_manifest_resolve_artifact_versions",
+      "api_dispatch_prepare_storage_manifest_generate_artifact_urls",
+      undefined,
+      () => {
+        return args.stats?.generateDimensions("artifact");
+      },
+    ),
+  };
+}
+
+function isResolvedManifestStoragePlan(
+  plan: ResolvedManifestStoragePlan | null,
+): plan is ResolvedManifestStoragePlan {
+  return plan !== null;
+}
+
+async function resolveStorageManifestEntryPlans(args: {
+  readonly input: BuildStorageManifestEntriesArgs;
+  readonly phaseTimings: StorageManifestEntryPhaseTimings;
+}): Promise<ResolvedStorageManifestEntryPlans> {
+  const input = args.input;
+  const [composePlans, additionalPlans, artifactInputs] = await Promise.all([
+    measureApiDispatchTiming(
+      input.timing,
+      "api_dispatch_prepare_storage_manifest_build_compose_entries",
       "nested",
       async () => {
-        return await Promise.all([
-          measureApiDispatchTiming(
-            args.timing,
-            "api_dispatch_prepare_storage_manifest_build_compose_entries",
-            "nested",
-            async () => {
-              return await withStorageManifestEntryPhaseTiming({
-                timing: args.timing,
-                resolveActionType:
-                  "api_dispatch_prepare_storage_manifest_resolve_compose_versions",
-                generateActionType:
-                  "api_dispatch_prepare_storage_manifest_generate_compose_urls",
-                operation: async (phaseTiming) => {
-                  return await Promise.all(
-                    args.composeVolumes.map((volume) => {
-                      return buildComposeStorageEntry(get, {
-                        db: args.db,
-                        index: args.storageIndex,
-                        bucket: args.bucket,
-                        agentOrgId: args.agentOrgId,
-                        volume,
-                        phaseTiming,
-                      });
-                    }),
-                  );
-                },
-              });
-            },
-          ),
-          measureApiDispatchTiming(
-            args.timing,
-            "api_dispatch_prepare_storage_manifest_build_additional_entries",
-            "nested",
-            async () => {
-              return await withStorageManifestEntryPhaseTiming({
-                timing: args.timing,
-                resolveActionType:
-                  "api_dispatch_prepare_storage_manifest_resolve_additional_versions",
-                generateActionType:
-                  "api_dispatch_prepare_storage_manifest_generate_additional_urls",
-                operation: async (phaseTiming) => {
-                  return await Promise.all(
-                    (args.additionalVolumes ?? []).map((volume) => {
-                      return buildAdditionalStorageEntry(get, {
-                        db: args.db,
-                        index: args.storageIndex,
-                        bucket: args.bucket,
-                        runtimeOrgId: args.runtimeOrgId,
-                        volume,
-                        phaseTiming,
-                      });
-                    }),
-                  );
-                },
-              });
-            },
-          ),
-          measureApiDispatchTiming(
-            args.timing,
-            "api_dispatch_prepare_storage_manifest_build_artifact_entries",
-            "nested",
-            async () => {
-              return await withStorageManifestEntryPhaseTiming({
-                timing: args.timing,
-                resolveActionType:
-                  "api_dispatch_prepare_storage_manifest_resolve_artifact_versions",
-                generateActionType:
-                  "api_dispatch_prepare_storage_manifest_generate_artifact_urls",
-                operation: async (phaseTiming) => {
-                  return await Promise.all(
-                    args.artifacts.map((artifact) => {
-                      return buildArtifactEntry(get, {
-                        db: args.db,
-                        index: args.storageIndex,
-                        bucket: args.bucket,
-                        runtimeOrgId: args.runtimeOrgId,
-                        userId: args.userId,
-                        artifact,
-                        phaseTiming,
-                      });
-                    }),
-                  );
-                },
-              });
-            },
-          ),
-        ]);
+        return await Promise.all(
+          input.composeVolumes.map((volume) => {
+            return buildComposeStorageEntry({
+              db: input.db,
+              index: input.storageIndex,
+              agentOrgId: input.agentOrgId,
+              volume,
+              phaseTiming: args.phaseTimings.compose,
+              stats: input.stats,
+            });
+          }),
+        );
       },
-    );
+    ),
+    measureApiDispatchTiming(
+      input.timing,
+      "api_dispatch_prepare_storage_manifest_build_additional_entries",
+      "nested",
+      async () => {
+        return await Promise.all(
+          (input.additionalVolumes ?? []).map((volume) => {
+            return buildAdditionalStorageEntry({
+              db: input.db,
+              index: input.storageIndex,
+              runtimeOrgId: input.runtimeOrgId,
+              volume,
+              phaseTiming: args.phaseTimings.additional,
+              stats: input.stats,
+            });
+          }),
+        );
+      },
+    ),
+    measureApiDispatchTiming(
+      input.timing,
+      "api_dispatch_prepare_storage_manifest_build_artifact_entries",
+      "nested",
+      async () => {
+        return await Promise.all(
+          input.artifacts.map((artifact) => {
+            return args.phaseTimings.artifact.measureResolve(() => {
+              return resolveArtifactStorageInput({
+                db: input.db,
+                index: input.storageIndex,
+                runtimeOrgId: input.runtimeOrgId,
+                userId: input.userId,
+                artifact,
+              });
+            });
+          }),
+        );
+      },
+    ),
+  ]);
 
-  return { composeEntries, additionalEntries, artifactEntries };
+  input.stats?.recordResolvedEntry("artifact", artifactInputs.length);
+
+  return {
+    composePlans: composePlans.filter(isResolvedManifestStoragePlan),
+    additionalPlans: additionalPlans.filter(isResolvedManifestStoragePlan),
+    artifactInputs,
+  };
+}
+
+async function generateStorageManifestEntriesFromPlans(args: {
+  readonly get: ComputedGetter;
+  readonly input: BuildStorageManifestEntriesArgs;
+  readonly phaseTimings: StorageManifestEntryPhaseTimings;
+  readonly resolved: ResolvedStorageManifestEntryPlans;
+}): Promise<StorageManifestEntries> {
+  const finalStoragePlans = mergeStorageEntries({
+    composeEntries: args.resolved.composePlans,
+    additionalEntries: args.resolved.additionalPlans,
+  });
+  const finalComposePlans = finalStoragePlans.filter((plan) => {
+    return plan.entryKind === "compose";
+  });
+  const finalAdditionalPlans = finalStoragePlans.filter((plan) => {
+    return plan.entryKind === "additional";
+  });
+
+  const [composeEntries, additionalEntries, artifactEntries] =
+    await Promise.all([
+      args.phaseTimings.compose.measureGenerate(() => {
+        return buildStorageEntriesFromPlans(args.get, {
+          db: args.input.db,
+          bucket: args.input.bucket,
+          plans: finalComposePlans,
+          stats: args.input.stats,
+        });
+      }),
+      args.phaseTimings.additional.measureGenerate(() => {
+        return buildStorageEntriesFromPlans(args.get, {
+          db: args.input.db,
+          bucket: args.input.bucket,
+          plans: finalAdditionalPlans,
+          stats: args.input.stats,
+        });
+      }),
+      args.phaseTimings.artifact.measureGenerate(() => {
+        return Promise.all(
+          args.resolved.artifactInputs.map((input) => {
+            return buildArtifactEntryFromInput(args.get, {
+              bucket: args.input.bucket,
+              input,
+              stats: args.input.stats,
+            });
+          }),
+        );
+      }),
+    ]);
+
+  return {
+    composeEntries,
+    additionalEntries,
+    artifactEntries,
+    resolvedComposeEntryCount: args.resolved.composePlans.length,
+    resolvedAdditionalEntryCount: args.resolved.additionalPlans.length,
+  };
+}
+
+async function buildStorageManifestEntries(
+  get: ComputedGetter,
+  args: BuildStorageManifestEntriesArgs,
+): Promise<StorageManifestEntries> {
+  const phaseTimings = createStorageManifestEntryPhaseTimings({
+    timing: args.timing,
+    stats: args.stats,
+  });
+
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_build_entries",
+    "nested",
+    async () => {
+      return await (async () => {
+        const resolved = await resolveStorageManifestEntryPlans({
+          input: args,
+          phaseTimings,
+        });
+        return await generateStorageManifestEntriesFromPlans({
+          get,
+          input: args,
+          phaseTimings,
+          resolved,
+        });
+      })().finally(() => {
+        phaseTimings.compose.flush();
+        phaseTimings.additional.flush();
+        phaseTimings.artifact.flush();
+      });
+    },
+    () => {
+      return args.stats?.buildEntriesDimensions();
+    },
+  );
 }
 
 async function assembleStorageManifest(args: {
-  readonly composeEntries: readonly OptionalManifestStorage[];
-  readonly additionalEntries: readonly OptionalManifestStorage[];
+  readonly composeEntries: readonly ManifestStorage[];
+  readonly additionalEntries: readonly ManifestStorage[];
   readonly artifactEntries: ManifestArtifact[];
+  readonly resolvedComposeEntryCount: number;
+  readonly resolvedAdditionalEntryCount: number;
   readonly timing?: ApiDispatchTimingCollector;
+  readonly stats?: StorageManifestBuildStats;
 }): Promise<StorageManifest> {
   return await measureApiDispatchTiming(
     args.timing,
     "api_dispatch_prepare_storage_manifest_assemble",
     "nested",
     () => {
+      const storages = mergeStorageEntries({
+        composeEntries: args.composeEntries,
+        additionalEntries: args.additionalEntries,
+      });
+      args.stats?.recordFinalManifest({
+        composeEntries: args.composeEntries,
+        additionalEntries: args.additionalEntries,
+        finalStorageEntries: storages,
+        finalArtifactEntries: args.artifactEntries,
+        resolvedComposeEntryCount: args.resolvedComposeEntryCount,
+        resolvedAdditionalEntryCount: args.resolvedAdditionalEntryCount,
+      });
       return {
-        storages: [
-          ...mergeStorageEntries({
-            composeEntries: args.composeEntries.filter(isManifestStorage),
-            additionalEntries: args.additionalEntries.filter(isManifestStorage),
-          }),
-        ],
+        storages: [...storages],
         artifacts: args.artifactEntries,
       };
+    },
+    () => {
+      return args.stats?.assembleDimensions();
     },
   );
 }
@@ -1193,6 +1940,12 @@ export function prepareAgentRunStorageManifest(
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const { artifacts, composeVolumes } =
       await resolveStorageManifestInputs(args);
+    args.stats?.recordRequestedInputs({
+      composeCount: composeVolumes.length,
+      additionalCount: args.additionalVolumes?.length ?? 0,
+      artifactCount: args.artifacts.length,
+      dedupedArtifactCount: artifacts.length,
+    });
 
     await ensureStorageManifestArtifacts(get, {
       db: args.db,
@@ -1201,6 +1954,7 @@ export function prepareAgentRunStorageManifest(
       bucket,
       artifacts,
       timing: args.timing,
+      stats: args.stats,
     });
 
     const storageIndex = await loadTimedStorageIndex({
@@ -1221,11 +1975,13 @@ export function prepareAgentRunStorageManifest(
       additionalVolumes: args.additionalVolumes,
       artifacts,
       timing: args.timing,
+      stats: args.stats,
     });
 
     return await assembleStorageManifest({
       ...entries,
       timing: args.timing,
+      stats: args.stats,
     });
   });
 }

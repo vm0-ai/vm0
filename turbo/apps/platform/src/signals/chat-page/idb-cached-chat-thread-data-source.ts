@@ -1,5 +1,15 @@
 import { command, computed } from "ccstate";
+import {
+  chatThreadMessagesContract,
+  type PagedChatMessage,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { accept } from "../../lib/accept.ts";
+import { zeroClient$ } from "../api-client.ts";
 import { clerk$ } from "../auth.ts";
+import {
+  chatIdbReadOr,
+  chatIdbWriteBestEffort,
+} from "../external/chat-idb-safe.ts";
 import { createIdbMessageStores } from "../external/idb-message-store.ts";
 import {
   patchThreadMeta$,
@@ -9,12 +19,12 @@ import { logger } from "../log.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import type {
   ChatThreadDataSource,
+  GetMessageArgs,
   InitialPage,
   ListMessagesAfterArgs,
   ListMessagesBeforeArgs,
   SubscribeRealtimeArgs,
 } from "./chat-thread-data-source.ts";
-import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 
 const L = logger("ChatIdbCache");
 const MESSAGE_PAGE_SIZE = 50;
@@ -24,6 +34,34 @@ type ListMessagesAfterResult = {
   messages: PagedChatMessage[];
   reachedEnd: boolean;
 };
+
+const warmListMessagesAfter$ = command(
+  async (
+    { get },
+    { threadId, sinceId }: ListMessagesAfterArgs,
+    signal: AbortSignal,
+  ): Promise<ListMessagesAfterResult | null> => {
+    const client = get(zeroClient$)(chatThreadMessagesContract);
+    const result = await accept(
+      client.list({
+        params: { threadId },
+        query: { sinceId, limit: 50 },
+        fetchOptions: { signal },
+      }),
+      [200, 404],
+      { toast: false },
+    );
+    signal.throwIfAborted();
+    if (result.status === 404) {
+      L.debug("warmLatest:notFound", { threadId, sinceId });
+      return null;
+    }
+    return {
+      messages: result.body.messages,
+      reachedEnd: result.body.messages.length < 50,
+    };
+  },
+);
 
 interface CachedMessageReadStore {
   readBefore(
@@ -58,10 +96,17 @@ export async function readCachedMessagesBeforeUntilMiss(
   const seenIds = new Set<string>([beforeId]);
 
   while (true) {
-    const page = await readStore.readBefore(
-      threadId,
-      cursorId,
-      MESSAGE_PAGE_SIZE,
+    const page = await chatIdbReadOr(
+      "cachedDataSource:readBefore",
+      () => {
+        return readStore.readBefore(
+          threadId,
+          cursorId,
+          MESSAGE_PAGE_SIZE,
+          signal,
+        );
+      },
+      [],
       signal,
     );
     signal.throwIfAborted();
@@ -122,7 +167,14 @@ function createListMessagesBefore(
 
       const stores = getStores(userId, orgId);
       const readStore = stores.readStore;
-      const meta = await readThreadMeta$(userId, orgId, tid, signal);
+      const meta = await chatIdbReadOr(
+        "cachedDataSource:readThreadMetaBefore",
+        () => {
+          return readThreadMeta$(userId, orgId, tid, signal);
+        },
+        null,
+        signal,
+      );
       const cached = await readCachedMessagesBeforeUntilMiss(
         readStore,
         tid,
@@ -150,7 +202,13 @@ function createListMessagesBefore(
       );
 
       const writeStore = stores.writeStore;
-      await writeStore.upsertMessages(tid, result.messages, signal);
+      await chatIdbWriteBestEffort(
+        "cachedDataSource:upsertBefore",
+        () => {
+          return writeStore.upsertMessages(tid, result.messages, signal);
+        },
+        signal,
+      );
       L.debug("listBefore:cacheFilled", {
         threadId: tid,
         beforeId,
@@ -159,7 +217,19 @@ function createListMessagesBefore(
 
       if (!result.hasMore) {
         const startMessageId = result.messages[0]?.id ?? beforeId;
-        await patchThreadMeta$(userId, orgId, tid, { startMessageId }, signal);
+        await chatIdbWriteBestEffort(
+          "cachedDataSource:patchThreadMetaBefore",
+          () => {
+            return patchThreadMeta$(
+              userId,
+              orgId,
+              tid,
+              { startMessageId },
+              signal,
+            );
+          },
+          signal,
+        );
       }
 
       return result;
@@ -194,9 +264,12 @@ function createListMessagesAfter(
         // If it doesn't, local state has diverged and writing would create
         // a permanent gap between the last cached message and the new batch.
         if (sinceId) {
-          const anchorExists = await stores.readStore.messageExists(
-            tid,
-            sinceId,
+          const anchorExists = await chatIdbReadOr(
+            "cachedDataSource:messageExists",
+            () => {
+              return stores.readStore.messageExists(tid, sinceId, signal);
+            },
+            false,
             signal,
           );
           if (!anchorExists) {
@@ -204,7 +277,17 @@ function createListMessagesAfter(
             return result;
           }
         }
-        await stores.writeStore.upsertMessages(tid, result.messages, signal);
+        await chatIdbWriteBestEffort(
+          "cachedDataSource:upsertAfter",
+          () => {
+            return stores.writeStore.upsertMessages(
+              tid,
+              result.messages,
+              signal,
+            );
+          },
+          signal,
+        );
         L.debug("listAfter:cacheFilled", {
           threadId: tid,
           sinceId,
@@ -224,6 +307,46 @@ function createListMessagesAfter(
   );
 }
 
+function createGetMessage(
+  remote: ChatThreadDataSource,
+  getStores: (userId: string, orgId: string) => Stores,
+) {
+  return command(
+    async (
+      { get, set },
+      { threadId: tid, messageId }: GetMessageArgs,
+      signal: AbortSignal,
+    ) => {
+      const message = await set(
+        remote.getMessage$,
+        { threadId: tid, messageId },
+        signal,
+      );
+      signal.throwIfAborted();
+
+      const clerk = await get(clerk$);
+      signal.throwIfAborted();
+      const userId = clerk.user?.id;
+      const orgId = clerk.organization?.id;
+
+      if (!userId || !orgId || message === null) {
+        return message;
+      }
+
+      const stores = getStores(userId, orgId);
+      await chatIdbWriteBestEffort(
+        "cachedDataSource:upsertMessage",
+        () => {
+          return stores.writeStore.upsertMessages(tid, [message], signal);
+        },
+        signal,
+      );
+      L.debug("getMessage:cacheFilled", { threadId: tid, messageId });
+      return message;
+    },
+  );
+}
+
 export const warmLatestChatThreadMessages$ = command(
   async ({ get, set }, threadId: string, signal: AbortSignal) => {
     const clerk = await get(clerk$);
@@ -237,26 +360,28 @@ export const warmLatestChatThreadMessages$ = command(
     }
 
     const stores = createIdbMessageStores(userId, orgId);
-    const latest = await stores.readStore.readLatest(threadId, 1, signal);
+    const latest = await chatIdbReadOr(
+      "cachedDataSource:warmReadLatest",
+      () => {
+        return stores.readStore.readLatest(threadId, 1, signal);
+      },
+      [],
+      signal,
+    );
     signal.throwIfAborted();
-
-    const remote = createRemoteChatThreadDataSource(threadId);
-    const listMessagesAfter$ = createListMessagesAfter(remote, (uid, oid) => {
-      if (uid === userId && oid === orgId) {
-        return stores;
-      }
-      return createIdbMessageStores(uid, oid);
-    });
 
     let sinceId = latest[0]?.id;
     let pages = 0;
     while (!signal.aborted) {
-      const result: ListMessagesAfterResult = await set(
-        listMessagesAfter$,
+      const result = await set(
+        warmListMessagesAfter$,
         { threadId, sinceId },
         signal,
       );
       signal.throwIfAborted();
+      if (result === null) {
+        return;
+      }
       pages += 1;
 
       L.debug("warmLatest:page", {
@@ -268,6 +393,18 @@ export const warmLatestChatThreadMessages$ = command(
       });
 
       if (result.messages.length > 0) {
+        await chatIdbWriteBestEffort(
+          "cachedDataSource:warmUpsert",
+          () => {
+            return stores.writeStore.upsertMessages(
+              threadId,
+              result.messages,
+              signal,
+            );
+          },
+          signal,
+        );
+        signal.throwIfAborted();
         const nextSinceId = result.messages[result.messages.length - 1]!.id;
         if (nextSinceId === sinceId) {
           break;
@@ -326,10 +463,22 @@ export function createIdbCachedDataSource(
 
     const stores = getStores(userId, orgId);
     const readStore = stores.readStore;
-    const cached = await readStore.readLatest(threadId);
+    const cached = await chatIdbReadOr(
+      "cachedDataSource:initialReadLatest",
+      () => {
+        return readStore.readLatest(threadId);
+      },
+      [],
+    );
 
     if (cached.length > 0) {
-      const meta = await readThreadMeta$(userId, orgId, threadId);
+      const meta = await chatIdbReadOr(
+        "cachedDataSource:initialReadThreadMeta",
+        () => {
+          return readThreadMeta$(userId, orgId, threadId);
+        },
+        null,
+      );
       const startMessageId = meta?.startMessageId ?? null;
       const hasReachedStart = reachedStart(cached, startMessageId);
       const needsHistoryBackfill = !hasReachedStart && startMessageId === null;
@@ -347,22 +496,30 @@ export function createIdbCachedDataSource(
     onInitialPageCacheMiss?.();
     const page = await get(remote.initialPage$);
     const writeStore = stores.writeStore;
-    await writeStore.upsertMessages(threadId, page.messages);
+    await chatIdbWriteBestEffort("cachedDataSource:initialUpsert", () => {
+      return writeStore.upsertMessages(threadId, page.messages);
+    });
     L.debug("initialPage:cacheFilled", {
       threadId,
       count: page.messages.length,
     });
 
     if (!page.hasHistoryBefore && page.messages.length > 0) {
-      await patchThreadMeta$(userId, orgId, threadId, {
-        startMessageId: page.messages[0].id,
-      });
+      await chatIdbWriteBestEffort(
+        "cachedDataSource:initialPatchThreadMeta",
+        () => {
+          return patchThreadMeta$(userId, orgId, threadId, {
+            startMessageId: page.messages[0].id,
+          });
+        },
+      );
     }
 
     return page;
   });
 
   const listMessagesAfter$ = createListMessagesAfter(remote, getStores);
+  const getMessage$ = createGetMessage(remote, getStores);
 
   return {
     getThread$: remote.getThread$,
@@ -375,6 +532,7 @@ export function createIdbCachedDataSource(
     recallMessage$: remote.recallMessage$,
     listMessagesAfter$,
     listMessagesBefore$: createListMessagesBefore(remote, getStores),
+    getMessage$,
     cancelRuns$: remote.cancelRuns$,
     markRead$: remote.markRead$,
     subscribeRealtime$: createSubscribeRealtime(remote),

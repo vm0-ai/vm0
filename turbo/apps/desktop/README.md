@@ -7,6 +7,10 @@ auto-update are intentionally out of scope. Computer Use setup lives in the
 hosted Platform UI, while this app exposes the Desktop bridge and native macOS
 host runtime that page uses.
 
+Zero Computer Use supports macOS 14+ (macOS 14 or newer). Packaged app
+metadata, native helper builds, and release verification all use the same
+minimum for Apple Silicon artifacts and future Intel artifacts.
+
 When the user is signed in and the feature switch is enabled, the main process
 registers a Desktop Computer Use host through the Zero API command queue. It
 uses the Electron session for auth, polls queued commands, executes them with a
@@ -79,52 +83,16 @@ The desktop app does not start platform/web/api/proxy services itself. Start the
 target platform surface separately, then pass its URL through
 `VM0_DESKTOP_PLATFORM_URL`.
 
-## Manual Computer Use driver eval
-
-Run the manual `vm0-computer` driver eval suite from the monorepo root with:
-
-```bash
-pnpm desktop:eval
-```
-
-This command is intentionally outside the default CI path. It builds the native
-helper and `vm0-computer` CLI, launches a local HTML fixture in Electron,
-starts a private `vm0-computer` daemon, and executes deterministic driver
-commands against the fixture. The fixture reports its own state through a local
-HTTP oracle, so the eval does not rely on `vm0-computer` to verify itself.
-
-Useful focused runs:
-
-```bash
-pnpm desktop:eval -- --case click-element-index
-pnpm desktop:eval -- --case click-coordinates
-pnpm desktop:eval -- --repeat 5
-```
-
-The eval records command output, app-state artifact paths, screenshot artifact
-paths, oracle state, and a summary JSON file under
-`/tmp/vm0/computer-use-evals/<run-id>`.
-
-The initial suite covers the supported driver operations: app listing, app
-opening, app-state capture, element-index clicking, screenshot-coordinate
-clicking, text typing, key presses, scrolling, value setting, accessibility
-actions, and fresh post-action state capture. Operations with observable fixture
-side effects are checked against the HTTP oracle; operations that Chromium does
-not expose as DOM side effects are checked for command dispatch metadata and
-fresh post-action artifacts.
-
-When fixing a Computer Use driver bug or corner case, add the smallest
-deterministic case that reproduces it to
-`scripts/computer-use-eval.ts`. Keep the task steps fixed and keep the success
-oracle independent from `vm0-computer` output.
-
 ## Internal macOS artifacts
 
 The `Desktop` GitHub Actions workflow builds macOS artifacts for internal
 testing. Run the workflow manually from GitHub Actions, then download the
-`zero-desktop-macos-arm64-unsigned` artifact.
+artifact that matches the target Mac:
 
-The downloaded GitHub artifact contains `Zero-darwin-arm64.zip`. Unzip both
+- `zero-desktop-macos-arm64-unsigned` for Apple Silicon Macs
+- `zero-desktop-macos-x64-unsigned` for Intel Macs
+
+The downloaded GitHub artifact contains `Zero-darwin-<arch>.zip`. Unzip both
 layers, then open `Zero Computer Use.app`.
 
 These artifacts are ad-hoc signed, not Developer ID signed, and not notarized.
@@ -143,12 +111,14 @@ Desktop releases are versioned by release-please. Changes under
 `desktop-vX.Y.Z` GitHub Release.
 
 When release-please creates the `desktop-vX.Y.Z` GitHub Release, the
-`build-desktop-release` job in the release-please workflow checks out the
-matching tag, builds the production `Zero Computer Use.app`, signs it with the
-Developer ID Application certificate, notarizes it for direct distribution
-outside the Mac App Store, validates the stapled ticket, uploads
-`Zero-darwin-arm64-X.Y.Z.zip` and `Zero-darwin-arm64-X.Y.Z.dmg` to the matching
-GitHub Release, and updates the Desktop update manifest.
+`build-desktop-release` jobs in the release-please workflow check out the
+matching tag, build the production `Zero Computer Use.app` for Apple Silicon
+and Intel Macs, sign each app with the Developer ID Application certificate,
+notarize them for direct distribution outside the Mac App Store, validate the
+stapled tickets, and upload `Zero-darwin-arm64-X.Y.Z.zip`,
+`Zero-darwin-arm64-X.Y.Z.dmg`, `Zero-darwin-x64-X.Y.Z.zip`, and
+`Zero-darwin-x64-X.Y.Z.dmg` to the matching GitHub Release. After both
+architectures finish, the release workflow updates the Desktop update manifest.
 
 Use the DMG for manual installation. It opens with a styled Finder background,
 `Zero Computer Use.app` on the left, and an `/Applications` symlink on the right

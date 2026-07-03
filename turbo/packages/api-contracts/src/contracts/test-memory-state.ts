@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { initContract } from "./base";
+import { memoryActivityDiffSchema } from "./zero-memory-activity";
 
 const c = initContract();
 
@@ -15,7 +16,7 @@ export const testMemoryStateFixtureSchema = z.object({
 
 const memoryActivityItemSeedSchema = z.object({
   file_path: z.string(),
-  diff: z.unknown().optional(),
+  diff: memoryActivityDiffSchema.optional(),
 });
 
 const memorySummaryRowSchema = z.object({
