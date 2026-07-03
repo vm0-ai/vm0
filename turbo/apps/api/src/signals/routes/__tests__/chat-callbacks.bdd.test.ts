@@ -1185,6 +1185,9 @@ describe("CHAT-02: completed chat callback", () => {
       })
       .toBeGreaterThan(0);
 
+    // Keep terminal callback work blocked long enough for dispatchRunCallbacks$
+    // to reach goal continuation; releasing the gate immediately can hide the
+    // old preemption path this regression covers.
     await delay(1000, { signal: context.signal });
     const beforeAutoSend = await chat.listThreadMessages(actor, first.threadId);
     const prematureGoalContinuation = userMessages(
