@@ -68,6 +68,9 @@ export function groupConnectorsByCategory<
   const groupedCategoryIds = new Set<string>();
   const categorySections: ConnectorCategorySection<T>[] =
     categoryMetadata?.categories.flatMap((category) => {
+      if (groupedCategoryIds.has(category.id)) {
+        return [];
+      }
       const items = grouped.get(category.id);
       if (!items || items.length === 0) {
         return [];

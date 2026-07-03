@@ -491,6 +491,63 @@ describe("connectors page", () => {
     ).toHaveTextContent("Partners");
   });
 
+  it("does not render duplicate connector sections for duplicate category metadata", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus(
+      [
+        publicStatusItem({
+          connectorRef: "github",
+          label: "Duplicate GitHub",
+          category: "partner-apps",
+          authMethods: [
+            {
+              id: "oauth",
+              label: "OAuth",
+              description: null,
+              grantKind: "auth-code",
+              manualFields: [],
+              startOptions: [],
+            },
+          ],
+        }),
+      ],
+      {
+        categories: [
+          {
+            id: "partner-apps",
+            label: "Partner Apps",
+            menuLabel: "Partners",
+            groupId: null,
+          },
+          {
+            id: "partner-apps",
+            label: "Duplicate Partner Apps",
+            menuLabel: "Duplicate Partners",
+            groupId: null,
+          },
+        ],
+        groups: [],
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    const partnerSection = await screen.findByTestId(
+      "connector-category-partner-apps",
+    );
+    expect(
+      within(partnerSection).getByText("Partner Apps"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Duplicate Partner Apps"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getAllByTestId("connector-card-label").filter((element) => {
+        return element.textContent === "Duplicate GitHub";
+      }),
+    ).toHaveLength(1);
+  });
+
   it("keeps connectors visible when category metadata is missing during rollout", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
