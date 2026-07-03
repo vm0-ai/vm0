@@ -6,8 +6,6 @@ export const internalRunCallbackKinds = [
   "slack:org",
   "teams:org",
   "telegram",
-  "trigger:cron",
-  "trigger:loop",
   "workflow-trigger:cron",
   "workflow-trigger:loop",
 ] as const;
@@ -44,8 +42,6 @@ function isInternalRunCallbackKind(
     case "slack:org":
     case "teams:org":
     case "telegram":
-    case "trigger:cron":
-    case "trigger:loop":
     case "workflow-trigger:cron":
     case "workflow-trigger:loop": {
       return true;

@@ -1,10 +1,8 @@
 import type {
   TestAutomationsStateActionBody,
   TestAutomationsStateActionResponse,
-  TestAutomationsStatePatchBody,
   TestAutomationsStatePostBody,
   TestAutomationsStatePostResponse,
-  TestAutomationsStateReadResponse,
 } from "@vm0/api-contracts/contracts/test-automations-state";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
@@ -160,71 +158,6 @@ export async function deleteAutomationsScenario(
     { method: "DELETE" },
   );
   await expectOk(response, "deleteAutomationsScenario");
-}
-
-export async function readAutomationsState(
-  context: TestContext,
-  params: {
-    readonly automationId?: string;
-    readonly automationIds?: readonly string[];
-    readonly runId?: string;
-    readonly orgId?: string;
-  },
-): Promise<TestAutomationsStateReadResponse> {
-  const query = new URLSearchParams();
-  if (params.automationId) {
-    query.set("automation_id", params.automationId);
-  }
-  if (params.automationIds && params.automationIds.length > 0) {
-    query.set("automation_ids", params.automationIds.join(","));
-  }
-  if (params.runId) {
-    query.set("run_id", params.runId);
-  }
-  if (params.orgId) {
-    query.set("org_id", params.orgId);
-  }
-  const response = await requestAutomationsState(
-    context,
-    `${AUTOMATIONS_STATE_ROUTE}/read?${query.toString()}`,
-  );
-  await expectOk(response, "readAutomationsState");
-  return await readJson<TestAutomationsStateReadResponse>(response);
-}
-
-export async function patchAutomationTriggerState(
-  context: TestContext,
-  body: Omit<TestAutomationsStatePatchBody, "at_time" | "next_run_at"> & {
-    readonly at_time?: Date | null;
-    readonly next_run_at?: Date | null;
-  },
-): Promise<void> {
-  const wireBody: TestAutomationsStatePatchBody = {
-    ...body,
-    at_time: dateToWire(body.at_time),
-    next_run_at: dateToWire(body.next_run_at),
-  };
-  const response = await requestAutomationsState(
-    context,
-    `${AUTOMATIONS_STATE_ROUTE}/trigger`,
-    {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(wireBody),
-    },
-  );
-  await expectOk(response, "patchAutomationTriggerState");
-}
-
-export async function deleteOrgMembership(
-  context: TestContext,
-  fixture: AutomationsFixture,
-): Promise<void> {
-  await postAction(context, {
-    action: "delete-org-member",
-    org_id: fixture.orgId,
-    user_id: fixture.userId,
-  });
 }
 
 export async function readAutomationComposeHeadVersion(

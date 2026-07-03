@@ -24,7 +24,7 @@ export const updateCliTokenLastUsedAt$ = command(
   },
 );
 
-export const upsertMemberRoleCache$ = command(
+const upsertMemberRoleCache$ = command(
   async (
     { set },
     orgId: string,
