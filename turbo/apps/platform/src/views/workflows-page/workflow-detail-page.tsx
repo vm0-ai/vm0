@@ -4200,12 +4200,7 @@ function TriggerRow({
         )}
       >
         <div className="flex min-w-0 items-center gap-3">
-          <span
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground group-hover:bg-background"
-            aria-hidden="true"
-          >
-            <IconRepeat size={15} stroke={1.5} />
-          </span>
+          <TriggerListIcon trigger={trigger} size="sm" />
           <div className="min-w-0">
             <div className="truncate text-sm font-medium text-foreground">
               {title}
