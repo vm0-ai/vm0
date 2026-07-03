@@ -42,6 +42,14 @@ type ManifestStorage = StorageManifest["storages"][number];
 type ManifestArtifact = StorageManifest["artifacts"][number];
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 type StorageManifestEntryKind = "compose" | "additional" | "artifact";
+export type StorageManifestSource =
+  | "system_skill"
+  | "workflow_skill"
+  | "request_additional_volume"
+  | "compose_additional_volume"
+  | "compose_volume"
+  | "artifact"
+  | "unknown";
 type StorageManifestCountBucket =
   (typeof STORAGE_MANIFEST_COUNT_BUCKET_DIMENSIONS)[number];
 
@@ -96,6 +104,9 @@ interface PrepareAgentRunStorageManifestArgs {
   readonly artifacts: readonly ContextArtifact[];
   readonly volumeVersionOverrides: Record<string, string> | undefined;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+  readonly additionalVolumeSources:
+    | readonly StorageManifestSource[]
+    | undefined;
   readonly framework: SupportedFramework;
   readonly timing?: ApiDispatchTimingCollector;
   readonly stats?: StorageManifestBuildStats;
@@ -159,6 +170,9 @@ interface BuildStorageManifestEntriesArgs {
   readonly userId: string;
   readonly composeVolumes: readonly ResolvedVolume[];
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+  readonly additionalVolumeSources:
+    | readonly StorageManifestSource[]
+    | undefined;
   readonly artifacts: readonly ContextArtifact[];
   readonly timing?: ApiDispatchTimingCollector;
   readonly stats?: StorageManifestBuildStats;
@@ -187,6 +201,7 @@ interface ResolvedManifestStorageInput {
 interface ResolvedManifestArtifactInput {
   readonly artifact: ContextArtifact;
   readonly resolved: StorageResolution;
+  readonly source: StorageManifestSource;
 }
 
 interface ResolvedManifestStoragePlan extends ResolvedManifestStorageInput {
@@ -194,6 +209,7 @@ interface ResolvedManifestStoragePlan extends ResolvedManifestStorageInput {
     StorageManifestEntryKind,
     "compose" | "additional"
   >;
+  readonly source: StorageManifestSource;
 }
 
 interface StorageManifestPhaseTimingWindow {
@@ -219,6 +235,15 @@ const STORAGE_MANIFEST_COUNT_BUCKET_DIMENSIONS = [
   "9_16",
   "17_plus",
 ] as const;
+const STORAGE_MANIFEST_SOURCES = [
+  "system_skill",
+  "workflow_skill",
+  "request_additional_volume",
+  "compose_additional_volume",
+  "compose_volume",
+  "artifact",
+  "unknown",
+] as const satisfies readonly StorageManifestSource[];
 const STORAGE_MANIFEST_ARTIFACT_ENSURE_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest_ensure_artifact_lookup_storage",
   "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
@@ -230,6 +255,11 @@ const STORAGE_MANIFEST_ARTIFACT_ENSURE_ACTION_TYPES = [
 
 type StorageManifestArtifactEnsureActionType =
   (typeof STORAGE_MANIFEST_ARTIFACT_ENSURE_ACTION_TYPES)[number];
+type StorageManifestSourceCounts = Record<StorageManifestSource, number>;
+type StorageManifestSourceCountsByKind = Record<
+  StorageManifestEntryKind,
+  StorageManifestSourceCounts
+>;
 
 function storageManifestCountBucket(count: number): StorageManifestCountBucket {
   if (count <= 0) {
@@ -248,6 +278,26 @@ function storageManifestCountBucket(count: number): StorageManifestCountBucket {
     return "9_16";
   }
   return "17_plus";
+}
+
+function emptyStorageManifestSourceCounts(): StorageManifestSourceCounts {
+  return {
+    system_skill: 0,
+    workflow_skill: 0,
+    request_additional_volume: 0,
+    compose_additional_volume: 0,
+    compose_volume: 0,
+    artifact: 0,
+    unknown: 0,
+  };
+}
+
+function emptyStorageManifestSourceCountsByKind(): StorageManifestSourceCountsByKind {
+  return {
+    compose: emptyStorageManifestSourceCounts(),
+    additional: emptyStorageManifestSourceCounts(),
+    artifact: emptyStorageManifestSourceCounts(),
+  };
 }
 
 export class StorageManifestBuildStats {
@@ -270,6 +320,15 @@ export class StorageManifestBuildStats {
   private systemPresignCacheStaleReuseCount = 0;
   private systemPresignCacheSyncRefreshCount = 0;
   private nonSystemPresignCount = 0;
+  private readonly resolvedSourceCounts = emptyStorageManifestSourceCounts();
+  private readonly plannedPresignSourceCounts =
+    emptyStorageManifestSourceCounts();
+  private readonly plannedPresignSourceCountsByKind =
+    emptyStorageManifestSourceCountsByKind();
+  private readonly nonSystemPresignSourceCounts =
+    emptyStorageManifestSourceCounts();
+  private readonly nonSystemPresignSourceCountsByKind =
+    emptyStorageManifestSourceCountsByKind();
   private artifactEnsureAlreadyInitializedCount = 0;
   private artifactEnsureMissingStorageCount = 0;
   private artifactEnsureCreatedStorageCount = 0;
@@ -290,25 +349,31 @@ export class StorageManifestBuildStats {
     this.dedupedArtifactCount = args.dedupedArtifactCount;
   }
 
-  recordResolvedEntry(kind: StorageManifestEntryKind, count = 1): void {
+  recordResolvedEntry(
+    kind: StorageManifestEntryKind,
+    source: StorageManifestSource,
+    count = 1,
+  ): void {
     switch (kind) {
       case "compose": {
         this.resolvedComposeCount += count;
-        return;
+        break;
       }
       case "additional": {
         this.resolvedAdditionalCount += count;
-        return;
+        break;
       }
       case "artifact": {
         this.resolvedArtifactCount += count;
-        return;
+        break;
       }
     }
+    this.resolvedSourceCounts[source] += count;
   }
 
   recordPresignCandidate(
     kind: StorageManifestEntryKind,
+    source: StorageManifestSource,
     input: PresignCandidateInput,
   ): void {
     switch (kind) {
@@ -325,6 +390,8 @@ export class StorageManifestBuildStats {
         break;
       }
     }
+    this.plannedPresignSourceCounts[source] += 1;
+    this.plannedPresignSourceCountsByKind[kind][source] += 1;
 
     const key = JSON.stringify([
       input.bucket,
@@ -366,8 +433,13 @@ export class StorageManifestBuildStats {
     }
   }
 
-  recordNonSystemPresign(): void {
+  recordNonSystemPresign(
+    kind: StorageManifestEntryKind,
+    source: StorageManifestSource,
+  ): void {
     this.nonSystemPresignCount += 1;
+    this.nonSystemPresignSourceCounts[source] += 1;
+    this.nonSystemPresignSourceCountsByKind[kind][source] += 1;
   }
 
   recordArtifactEnsureAlreadyInitialized(): void {
@@ -440,6 +512,11 @@ export class StorageManifestBuildStats {
       ),
       storage_manifest_duplicate_presign_candidate_count_bucket:
         storageManifestCountBucket(this.duplicatePresignCandidateCount()),
+      ...this.sourceDimensions({
+        resolved: this.resolvedSourceCounts,
+        plannedPresign: this.plannedPresignSourceCounts,
+        nonSystemPresign: this.nonSystemPresignSourceCounts,
+      }),
       ...this.systemPresignCacheDimensions(),
       ...this.artifactEnsureDimensions(),
     };
@@ -477,6 +554,11 @@ export class StorageManifestBuildStats {
       ),
       storage_manifest_duplicate_presign_candidate_count_bucket:
         storageManifestCountBucket(this.duplicatePresignCandidateCount()),
+      ...this.sourceDimensions({
+        resolved: this.resolvedSourceCounts,
+        plannedPresign: this.plannedPresignSourceCounts,
+        nonSystemPresign: this.nonSystemPresignSourceCounts,
+      }),
       ...this.systemPresignCacheDimensions(),
     };
   }
@@ -489,18 +571,31 @@ export class StorageManifestBuildStats {
         return {
           storage_manifest_compose_planned_presign_count_bucket:
             storageManifestCountBucket(this.plannedComposePresignCount),
+          ...this.sourceDimensions({
+            plannedPresign: this.plannedPresignSourceCountsByKind.compose,
+            nonSystemPresign: this.nonSystemPresignSourceCountsByKind.compose,
+          }),
         };
       }
       case "additional": {
         return {
           storage_manifest_additional_planned_presign_count_bucket:
             storageManifestCountBucket(this.plannedAdditionalPresignCount),
+          ...this.sourceDimensions({
+            plannedPresign: this.plannedPresignSourceCountsByKind.additional,
+            nonSystemPresign:
+              this.nonSystemPresignSourceCountsByKind.additional,
+          }),
         };
       }
       case "artifact": {
         return {
           storage_manifest_artifact_planned_presign_count_bucket:
             storageManifestCountBucket(this.plannedArtifactPresignCount),
+          ...this.sourceDimensions({
+            plannedPresign: this.plannedPresignSourceCountsByKind.artifact,
+            nonSystemPresign: this.nonSystemPresignSourceCountsByKind.artifact,
+          }),
         };
       }
     }
@@ -534,6 +629,31 @@ export class StorageManifestBuildStats {
       count += Math.max(0, candidateCount - 1);
     }
     return count;
+  }
+
+  private sourceDimensions(args: {
+    readonly resolved?: StorageManifestSourceCounts;
+    readonly plannedPresign?: StorageManifestSourceCounts;
+    readonly nonSystemPresign?: StorageManifestSourceCounts;
+  }): ApiDispatchTimingDimensions {
+    const dimensions: Record<string, string> = {};
+    for (const source of STORAGE_MANIFEST_SOURCES) {
+      if (args.resolved) {
+        dimensions[`storage_manifest_source_${source}_resolved_count_bucket`] =
+          storageManifestCountBucket(args.resolved[source]);
+      }
+      if (args.plannedPresign) {
+        dimensions[
+          `storage_manifest_source_${source}_planned_presign_count_bucket`
+        ] = storageManifestCountBucket(args.plannedPresign[source]);
+      }
+      if (args.nonSystemPresign) {
+        dimensions[
+          `storage_manifest_source_${source}_non_system_presign_count_bucket`
+        ] = storageManifestCountBucket(args.nonSystemPresign[source]);
+      }
+    }
+    return dimensions;
   }
 
   private systemPresignCacheDimensions(): ApiDispatchTimingDimensions {
@@ -1355,6 +1475,7 @@ async function resolveArtifactStorageInput(args: {
   readonly runtimeOrgId: string;
   readonly userId: string;
   readonly artifact: ContextArtifact;
+  readonly source: StorageManifestSource;
 }): Promise<ResolvedManifestArtifactInput> {
   const resolved = await resolveStorageVersion(
     args.db,
@@ -1367,7 +1488,7 @@ async function resolveArtifactStorageInput(args: {
     },
     args.artifact.version,
   );
-  return { artifact: args.artifact, resolved };
+  return { artifact: args.artifact, resolved, source: args.source };
 }
 
 function storageArchiveKey(resolved: StorageResolution): string {
@@ -1397,16 +1518,17 @@ async function generateDirectStorageArchiveUrl(
     readonly archiveKey: string;
     readonly stats?: StorageManifestBuildStats;
     readonly entryKind: StorageManifestEntryKind;
+    readonly source: StorageManifestSource;
   },
 ): Promise<string> {
-  args.stats?.recordPresignCandidate(args.entryKind, {
+  args.stats?.recordPresignCandidate(args.entryKind, args.source, {
     bucket: args.bucket,
     key: args.archiveKey,
     expiresIn: DOWNLOAD_URL_TTL_SECONDS,
     filename: undefined,
     usePublicEndpoint: true,
   });
-  args.stats?.recordNonSystemPresign();
+  args.stats?.recordNonSystemPresign(args.entryKind, args.source);
   return await get(
     generatePresignedGetUrl(
       args.bucket,
@@ -1466,6 +1588,7 @@ async function buildStorageEntriesFromPlans(
             archiveKey,
             stats: args.stats,
             entryKind: plan.entryKind,
+            source: plan.source,
           }),
         });
       }
@@ -1482,7 +1605,7 @@ async function buildStorageEntriesFromPlans(
       }
       args.stats?.recordSystemPresignCacheResult(result.status);
       if (result.status === "miss" || result.status === "sync_refresh") {
-        args.stats?.recordPresignCandidate(plan.entryKind, {
+        args.stats?.recordPresignCandidate(plan.entryKind, plan.source, {
           bucket: args.bucket,
           key: archiveKey,
           expiresIn: SYSTEM_STORAGE_PRESIGNED_URL_TTL_SECONDS,
@@ -1505,14 +1628,14 @@ async function buildArtifactEntryFromInput(
 ): Promise<ManifestArtifact> {
   const { artifact, resolved } = args.input;
   const archiveKey = `${resolved.s3Key}/archive.tar.gz`;
-  args.stats?.recordPresignCandidate("artifact", {
+  args.stats?.recordPresignCandidate("artifact", args.input.source, {
     bucket: args.bucket,
     key: archiveKey,
     expiresIn: DOWNLOAD_URL_TTL_SECONDS,
     filename: undefined,
     usePublicEndpoint: true,
   });
-  args.stats?.recordNonSystemPresign();
+  args.stats?.recordNonSystemPresign("artifact", args.input.source);
   const archiveUrl = await get(
     generatePresignedGetUrl(
       args.bucket,
@@ -1552,9 +1675,11 @@ async function buildComposeStorageEntry(args: {
     });
   });
   if (input) {
-    args.stats?.recordResolvedEntry("compose");
+    args.stats?.recordResolvedEntry("compose", "compose_volume");
   }
-  return input ? { ...input, entryKind: "compose" } : null;
+  return input
+    ? { ...input, entryKind: "compose", source: "compose_volume" }
+    : null;
 }
 
 async function buildAdditionalStorageEntry(args: {
@@ -1562,6 +1687,7 @@ async function buildAdditionalStorageEntry(args: {
   readonly index: StorageIndex;
   readonly runtimeOrgId: string;
   readonly volume: AdditionalVolume;
+  readonly source: StorageManifestSource;
   readonly phaseTiming: StorageManifestEntryPhaseTiming;
   readonly stats?: StorageManifestBuildStats;
 }): Promise<ResolvedManifestStoragePlan | null> {
@@ -1574,9 +1700,11 @@ async function buildAdditionalStorageEntry(args: {
     });
   });
   if (input) {
-    args.stats?.recordResolvedEntry("additional");
+    args.stats?.recordResolvedEntry("additional", args.source);
   }
-  return input ? { ...input, entryKind: "additional" } : null;
+  return input
+    ? { ...input, entryKind: "additional", source: args.source }
+    : null;
 }
 
 function mergeStorageEntries<
@@ -1596,6 +1724,13 @@ function mergeStorageEntries<
     }),
     ...args.additionalEntries,
   ];
+}
+
+function additionalVolumeSourceAt(
+  sources: readonly StorageManifestSource[] | undefined,
+  index: number,
+): StorageManifestSource {
+  return sources?.[index] ?? "unknown";
 }
 
 async function resolveStorageManifestInputs(
@@ -1758,12 +1893,16 @@ async function resolveStorageManifestEntryPlans(args: {
       "nested",
       async () => {
         return await Promise.all(
-          (input.additionalVolumes ?? []).map((volume) => {
+          (input.additionalVolumes ?? []).map((volume, index) => {
             return buildAdditionalStorageEntry({
               db: input.db,
               index: input.storageIndex,
               runtimeOrgId: input.runtimeOrgId,
               volume,
+              source: additionalVolumeSourceAt(
+                input.additionalVolumeSources,
+                index,
+              ),
               phaseTiming: args.phaseTimings.additional,
               stats: input.stats,
             });
@@ -1785,6 +1924,7 @@ async function resolveStorageManifestEntryPlans(args: {
                 runtimeOrgId: input.runtimeOrgId,
                 userId: input.userId,
                 artifact,
+                source: "artifact",
               });
             });
           }),
@@ -1793,7 +1933,11 @@ async function resolveStorageManifestEntryPlans(args: {
     ),
   ]);
 
-  input.stats?.recordResolvedEntry("artifact", artifactInputs.length);
+  input.stats?.recordResolvedEntry(
+    "artifact",
+    "artifact",
+    artifactInputs.length,
+  );
 
   return {
     composePlans: composePlans.filter(isResolvedManifestStoragePlan),
@@ -1973,6 +2117,7 @@ export function prepareAgentRunStorageManifest(
       userId: args.userId,
       composeVolumes,
       additionalVolumes: args.additionalVolumes,
+      additionalVolumeSources: args.additionalVolumeSources,
       artifacts,
       timing: args.timing,
       stats: args.stats,

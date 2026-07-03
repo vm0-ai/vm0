@@ -150,6 +150,7 @@ import { activePendingRunPredicate } from "./agent-run-activity.service";
 import {
   prepareAgentRunStorageManifest,
   StorageManifestBuildStats,
+  type StorageManifestSource,
 } from "./agent-run-storage.service";
 import {
   encryptQueuedRunnerJobPayload,
@@ -271,6 +272,18 @@ interface AdditionalVolume {
   readonly version?: string;
   readonly mountPath: string;
   readonly system?: boolean;
+}
+
+type AdditionalVolumeSources = readonly StorageManifestSource[] | undefined;
+
+interface PreparedAdditionalVolume {
+  readonly volume: AdditionalVolume;
+  readonly source: StorageManifestSource;
+}
+
+interface PreparedAdditionalVolumes {
+  readonly volumes: readonly AdditionalVolume[] | undefined;
+  readonly sources: AdditionalVolumeSources;
 }
 
 interface ZeroRunMetadata {
@@ -618,12 +631,30 @@ function concurrentRunLimit(): ApiErrorResponse<429, "CONCURRENT_RUN_LIMIT"> {
 }
 
 function mergeAdditionalVolumes(args: {
-  readonly prepend: readonly AdditionalVolume[] | undefined;
-  readonly base: readonly AdditionalVolume[] | undefined;
-}): readonly AdditionalVolume[] | undefined {
-  return args.prepend || args.base
-    ? [...(args.prepend ?? []), ...(args.base ?? [])]
-    : undefined;
+  readonly prepend: readonly PreparedAdditionalVolume[] | undefined;
+  readonly base: readonly PreparedAdditionalVolume[] | undefined;
+}): PreparedAdditionalVolumes {
+  const prepared =
+    args.prepend || args.base
+      ? [...(args.prepend ?? []), ...(args.base ?? [])]
+      : undefined;
+  return {
+    volumes: prepared?.map((item) => {
+      return item.volume;
+    }),
+    sources: prepared?.map((item) => {
+      return item.source;
+    }),
+  };
+}
+
+function prepareAdditionalVolumesWithSource(
+  volumes: readonly AdditionalVolume[] | undefined,
+  source: StorageManifestSource,
+): readonly PreparedAdditionalVolume[] | undefined {
+  return volumes?.map((volume) => {
+    return { volume, source };
+  });
 }
 
 function frameworkSkillsMountPath(framework: SupportedFramework): string {
@@ -695,17 +726,23 @@ function buildInjectedSkillVolumes(
   },
   framework: SupportedFramework,
   goalSeedEnabled: boolean,
-): readonly AdditionalVolume[] | undefined {
+): readonly PreparedAdditionalVolume[] | undefined {
   if (!args.injectSkillVolumes) {
     return undefined;
   }
   return [
-    ...buildSystemSkillVolumes(
-      args.allowedConnectorTypes ?? [],
-      framework,
-      goalSeedEnabled,
-    ),
-    ...buildWorkflowSkillVolumes(args.injectSkillVolumes.workflows, framework),
+    ...(prepareAdditionalVolumesWithSource(
+      buildSystemSkillVolumes(
+        args.allowedConnectorTypes ?? [],
+        framework,
+        goalSeedEnabled,
+      ),
+      "system_skill",
+    ) ?? []),
+    ...(prepareAdditionalVolumesWithSource(
+      buildWorkflowSkillVolumes(args.injectSkillVolumes.workflows, framework),
+      "workflow_skill",
+    ) ?? []),
   ];
 }
 
@@ -5082,6 +5119,7 @@ function buildRunnerJobPayload(
     readonly modelUsageProvider: string | undefined;
     readonly apiStartTime: number;
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+    readonly additionalVolumeSources: AdditionalVolumeSources;
     readonly includeZeroTokenSecret: boolean | undefined;
     readonly zeroTokenComputerUseHostId: string | undefined;
     readonly chatThreadId: string | undefined;
@@ -5143,6 +5181,7 @@ function buildRunnerJobPayload(
             artifacts: args.artifacts,
             volumeVersionOverrides: body.volumeVersions,
             additionalVolumes: args.additionalVolumes,
+            additionalVolumeSources: args.additionalVolumeSources,
             framework: args.framework,
             timing: args.timing,
             stats: storageManifestStats,
@@ -5189,6 +5228,12 @@ function buildRunnerJobPayload(
   });
 }
 
+type BuildRunnerJobPayloadArgs = Parameters<typeof buildRunnerJobPayload>[1];
+type DispatchRunArgs = BuildRunnerJobPayloadArgs & {
+  readonly timing: ApiDispatchTimingCollector;
+  readonly timingDimensions: ApiDispatchTimingDimensions | undefined;
+};
+
 async function lockRunForDerivedPersistence(
   tx: DbTransaction,
   runId: string,
@@ -5211,31 +5256,7 @@ async function lockRunForDerivedPersistence(
 
 function dispatchRun(
   db: Db,
-  args: {
-    readonly run: RunRecord;
-    readonly userId: string;
-    readonly orgId: string;
-    readonly resolved: ResolvedCompose;
-    readonly body: CreateRunBody;
-    readonly artifacts: readonly ContextArtifact[];
-    readonly framework: SupportedFramework;
-    readonly modelProvider: ResolvedModelProviderEnvironment | null;
-    readonly connectorContext: ConnectorRuntimeContext;
-    readonly customConnectorContext: CustomConnectorRuntimeContext;
-    readonly permissionManifest: PermissionManifest | undefined;
-    readonly billableFirewalls: readonly string[];
-    readonly modelUsageProvider: string | undefined;
-    readonly apiStartTime: number;
-    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
-    readonly includeZeroTokenSecret: boolean | undefined;
-    readonly zeroTokenComputerUseHostId: string | undefined;
-    readonly chatThreadId: string | undefined;
-    readonly extraEnvironment: Record<string, string> | undefined;
-    readonly userTimezone: string | undefined;
-    readonly featureSwitchContext: FeatureSwitchContext;
-    readonly timing: ApiDispatchTimingCollector;
-    readonly timingDimensions: ApiDispatchTimingDimensions | undefined;
-  },
+  args: DispatchRunArgs,
 ): Computed<Promise<DerivedPersistenceResult>> {
   return computed(async (get): Promise<DerivedPersistenceResult> => {
     await measureApiDispatchTiming(
@@ -5363,6 +5384,7 @@ function enqueueRunForConcurrency(
     readonly modelUsageProvider: string | undefined;
     readonly apiStartTime: number;
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+    readonly additionalVolumeSources: AdditionalVolumeSources;
     readonly includeZeroTokenSecret: boolean | undefined;
     readonly zeroTokenComputerUseHostId: string | undefined;
     readonly chatThreadId: string | undefined;
@@ -5686,6 +5708,7 @@ function buildAtomicLaunchPayload(
     modelUsageProvider: args.context.modelUsageProvider,
     apiStartTime: args.createArgs.apiStartTime,
     additionalVolumes: args.context.additionalVolumes,
+    additionalVolumeSources: args.context.additionalVolumeSources,
     includeZeroTokenSecret: args.createArgs.includeZeroTokenSecret,
     zeroTokenComputerUseHostId: args.createArgs.zeroTokenComputerUseHostId,
     chatThreadId: args.createArgs.chatThreadId,
@@ -5796,6 +5819,7 @@ interface PreparedRunContext {
   readonly modelUsageProvider: string | undefined;
   readonly artifacts: readonly ContextArtifact[];
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+  readonly additionalVolumeSources: AdditionalVolumeSources;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
 }
@@ -6052,7 +6076,8 @@ function preparedRunAdditionalVolumes(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
   readonly resolved: ResolvedCompose;
-}): readonly AdditionalVolume[] | undefined {
+}): PreparedAdditionalVolumes {
+  const bodyAdditionalVolumes = args.body.additionalVolumes;
   return mergeAdditionalVolumes({
     prepend: buildInjectedSkillVolumes(
       {
@@ -6065,7 +6090,10 @@ function preparedRunAdditionalVolumes(args: {
         args.featureSwitchContext,
       ),
     ),
-    base: args.body.additionalVolumes ?? args.resolved.additionalVolumes,
+    base: prepareAdditionalVolumesWithSource(
+      bodyAdditionalVolumes ?? args.resolved.additionalVolumes,
+      bodyAdditionalVolumes ? "request_additional_volume" : "unknown",
+    ),
   });
 }
 
@@ -6402,6 +6430,7 @@ function prepareRunOutputMetadata(args: {
 }): {
   readonly artifacts: readonly ContextArtifact[];
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+  readonly additionalVolumeSources: AdditionalVolumeSources;
 } {
   const additionalVolumes = preparedRunAdditionalVolumes({
     createArgs: args.createArgs,
@@ -6416,7 +6445,11 @@ function prepareRunOutputMetadata(args: {
     framework: args.framework,
     bodyArtifacts: args.body.artifacts,
   }).artifacts;
-  return { additionalVolumes, artifacts };
+  return {
+    additionalVolumes: additionalVolumes.volumes,
+    additionalVolumeSources: additionalVolumes.sources,
+    artifacts,
+  };
 }
 
 function prepareRunContext(
@@ -6521,6 +6554,7 @@ function prepareRunContext(
         modelUsageProvider: runtimeContext.modelUsageProvider,
         artifacts: outputMetadata.artifacts,
         additionalVolumes: outputMetadata.additionalVolumes,
+        additionalVolumeSources: outputMetadata.additionalVolumeSources,
         userTimezone,
         featureSwitchContext: bodyContext.featureSwitchContext,
       };
@@ -6620,6 +6654,7 @@ function completeQueuedRun(input: {
             modelUsageProvider: input.context.modelUsageProvider,
             apiStartTime: input.args.apiStartTime,
             additionalVolumes: input.context.additionalVolumes,
+            additionalVolumeSources: input.context.additionalVolumeSources,
             includeZeroTokenSecret: input.args.includeZeroTokenSecret,
             zeroTokenComputerUseHostId: input.args.zeroTokenComputerUseHostId,
             chatThreadId: input.args.chatThreadId,
@@ -6676,6 +6711,7 @@ function completePendingRun(input: {
             modelUsageProvider: input.context.modelUsageProvider,
             apiStartTime: input.args.apiStartTime,
             additionalVolumes: input.context.additionalVolumes,
+            additionalVolumeSources: input.context.additionalVolumeSources,
             includeZeroTokenSecret: input.args.includeZeroTokenSecret,
             zeroTokenComputerUseHostId: input.args.zeroTokenComputerUseHostId,
             chatThreadId: input.args.chatThreadId,

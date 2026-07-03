@@ -1040,6 +1040,20 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_dropped_compose_count_bucket: "1",
         storage_manifest_planned_presign_count_bucket: "2_4",
         storage_manifest_duplicate_presign_candidate_count_bucket: "0",
+        storage_manifest_source_compose_volume_resolved_count_bucket: "1",
+        storage_manifest_source_compose_volume_planned_presign_count_bucket:
+          "0",
+        storage_manifest_source_compose_volume_non_system_presign_count_bucket:
+          "0",
+        storage_manifest_source_request_additional_volume_resolved_count_bucket:
+          "1",
+        storage_manifest_source_request_additional_volume_planned_presign_count_bucket:
+          "1",
+        storage_manifest_source_request_additional_volume_non_system_presign_count_bucket:
+          "1",
+        storage_manifest_source_artifact_resolved_count_bucket: "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
         storage_manifest_artifact_ensure_already_initialized_count_bucket: "0",
         storage_manifest_artifact_ensure_missing_storage_count_bucket: "1",
         storage_manifest_artifact_ensure_created_storage_count_bucket: "1",
@@ -1077,6 +1091,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_resolved_artifact_count_bucket: "1",
         storage_manifest_planned_presign_count_bucket: "2_4",
         storage_manifest_duplicate_presign_candidate_count_bucket: "0",
+        storage_manifest_source_compose_volume_resolved_count_bucket: "1",
+        storage_manifest_source_request_additional_volume_resolved_count_bucket:
+          "1",
+        storage_manifest_source_artifact_resolved_count_bucket: "1",
+        storage_manifest_source_request_additional_volume_planned_presign_count_bucket:
+          "1",
+        storage_manifest_source_request_additional_volume_non_system_presign_count_bucket:
+          "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
       }),
     );
     expect(
@@ -1087,6 +1111,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ).toStrictEqual(
       expect.objectContaining({
         storage_manifest_compose_planned_presign_count_bucket: "0",
+        storage_manifest_source_compose_volume_planned_presign_count_bucket:
+          "0",
+        storage_manifest_source_compose_volume_non_system_presign_count_bucket:
+          "0",
       }),
     );
     expect(
@@ -1097,6 +1125,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ).toStrictEqual(
       expect.objectContaining({
         storage_manifest_additional_planned_presign_count_bucket: "1",
+        storage_manifest_source_request_additional_volume_planned_presign_count_bucket:
+          "1",
+        storage_manifest_source_request_additional_volume_non_system_presign_count_bucket:
+          "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "0",
       }),
     );
     expect(
@@ -1107,6 +1140,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ).toStrictEqual(
       expect.objectContaining({
         storage_manifest_artifact_planned_presign_count_bucket: "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
+        storage_manifest_source_request_additional_volume_planned_presign_count_bucket:
+          "0",
       }),
     );
     expect(
@@ -2691,6 +2728,40 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     if (sent.status !== 201 || sent.body.runId === null) {
       throw new Error("Expected the pinned chat send to create a run");
     }
+
+    const timingEvents = apiDispatchTimingEventsForRun(sent.body.runId);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_build_entries",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_source_workflow_skill_resolved_count_bucket: "1",
+        storage_manifest_source_workflow_skill_planned_presign_count_bucket:
+          "1",
+        storage_manifest_source_workflow_skill_non_system_presign_count_bucket:
+          "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_generate_additional_urls",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_source_workflow_skill_planned_presign_count_bucket:
+          "1",
+        storage_manifest_source_workflow_skill_non_system_presign_count_bucket:
+          "1",
+      }),
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      workflowName,
+      agent.agentId,
+      thread.id,
+    ]);
 
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(sent.body.runId);
