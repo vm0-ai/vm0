@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.534.3](https://github.com/vm0-ai/vm0/compare/app-v0.534.2...app-v0.534.3) (2026-07-03)
+
+
+### Bug Fixes
+
+* make workflow list filters one mutually-exclusive pill group ([#19930](https://github.com/vm0-ai/vm0/issues/19930)) ([0356c70](https://github.com/vm0-ai/vm0/commit/0356c70c16395afd5204c35666fbf0ef37189ec4))
+* make workflow trigger pill white so it pops on card hover ([#19924](https://github.com/vm0-ai/vm0/issues/19924)) ([0324a73](https://github.com/vm0-ai/vm0/commit/0324a73854e0aa967ab3cd539b39319e45c9dbfe))
+* restyle automation workflow hover card as light card with shadow ([#19921](https://github.com/vm0-ai/vm0/issues/19921)) ([5d19520](https://github.com/vm0-ai/vm0/commit/5d195207578d1d642dab2091beda05d9bca54f5d))
+
 ## [0.534.2](https://github.com/vm0-ai/vm0/compare/app-v0.534.1...app-v0.534.2) (2026-07-03)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.221.7](https://github.com/vm0-ai/vm0/compare/cli-v9.221.6...cli-v9.221.7) (2026-07-03)
+
+
+### Bug Fixes
+
+* secure computer-use output artifacts ([#19853](https://github.com/vm0-ai/vm0/issues/19853)) ([84e5c3c](https://github.com/vm0-ai/vm0/commit/84e5c3c666f7ceca28b3f221e3792b00fb09fd90))
+
 ## [9.221.6](https://github.com/vm0-ai/vm0/compare/cli-v9.221.5...cli-v9.221.6) (2026-07-03)
 
 
