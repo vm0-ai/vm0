@@ -200,9 +200,11 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       }),
     ).toBeTruthy();
 
-    const selected = await api.requestSetDefaultAgent(admin, created.agentId, [
-      409,
-    ]);
+    const selected = await api.requestSetDefaultAgent(
+      admin,
+      created.agentId,
+      [409],
+    );
     expectApiError(selected.body);
     expect(selected.body.error.code).toBe("CONFLICT");
     const selectedStatus = await api.readOnboardingStatus(admin);
@@ -250,9 +252,11 @@ describe("AUTH-02 and AUTH-03", () => {
     expect(metadata.name).toBe("BDD CLI token");
     expect("token" in metadata).toBeFalsy();
 
-    const tokenMe = await api.requestReadMeWithBearer(created.token, admin, [
-      200,
-    ]);
+    const tokenMe = await api.requestReadMeWithBearer(
+      created.token,
+      admin,
+      [200],
+    );
     expect(tokenMe.body).toStrictEqual({
       userId: admin.userId,
       email: admin.email,
@@ -266,9 +270,11 @@ describe("AUTH-02 and AUTH-03", () => {
       }),
     ).toBeFalsy();
 
-    const revoked = await api.requestReadMeWithBearer(created.token, admin, [
-      401,
-    ]);
+    const revoked = await api.requestReadMeWithBearer(
+      created.token,
+      admin,
+      [401],
+    );
     expectApiError(revoked.body);
     expect(revoked.body.error.code).toBe("UNAUTHORIZED");
   });
@@ -985,9 +991,11 @@ describe("COMPOSE-01", () => {
     expect(crossOrg.body.error.code).toBe("NOT_FOUND");
 
     await api.deleteAgent(admin, created.composeId);
-    const deleted = await api.requestReadComposeById(admin, created.composeId, [
-      404,
-    ]);
+    const deleted = await api.requestReadComposeById(
+      admin,
+      created.composeId,
+      [404],
+    );
     expectApiError(deleted.body);
     expect(deleted.body.error.code).toBe("NOT_FOUND");
   });

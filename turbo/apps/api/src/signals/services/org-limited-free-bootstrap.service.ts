@@ -39,7 +39,7 @@ type BootstrapReservation =
       readonly composeId: string;
     };
 
-export interface EnsureOrgLimitedFreeBootstrapResult {
+interface EnsureOrgLimitedFreeBootstrapResult {
   readonly bootstrapped: boolean;
   readonly agentId: string | null;
 }
