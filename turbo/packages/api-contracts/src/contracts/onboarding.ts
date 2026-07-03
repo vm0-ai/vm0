@@ -10,6 +10,7 @@ const c = initContract();
  */
 export const onboardingStatusResponseSchema = z.object({
   needsOnboarding: z.boolean(),
+  onboardingComplete: z.boolean(),
   isAdmin: z.boolean(),
   hasOrg: z.boolean(),
   hasDefaultAgent: z.boolean(),
@@ -69,6 +70,25 @@ export const onboardingSetupContract = c.router({
   },
 });
 
+export const onboardingCompleteContract = c.router({
+  complete: {
+    method: "POST",
+    path: "/api/zero/onboarding/complete",
+    headers: authHeadersSchema,
+    body: z.object({}).strict(),
+    responses: {
+      200: z.object({
+        onboardingComplete: z.literal(true),
+        needsOnboarding: z.literal(false),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "Mark onboarding complete for the current org",
+  },
+});
+
 export const onboardingCompleteLimitedFreeContract = c.router({
   complete: {
     method: "POST",
@@ -97,5 +117,6 @@ export const onboardingCompleteLimitedFreeContract = c.router({
 
 export type OnboardingStatusContract = typeof onboardingStatusContract;
 export type OnboardingSetupContract = typeof onboardingSetupContract;
+export type OnboardingCompleteContract = typeof onboardingCompleteContract;
 export type OnboardingCompleteLimitedFreeContract =
   typeof onboardingCompleteLimitedFreeContract;

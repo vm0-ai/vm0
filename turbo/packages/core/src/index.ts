@@ -297,6 +297,7 @@ export {
   orgMessageResponseSchema,
   onboardingStatusContract,
   onboardingSetupContract,
+  onboardingCompleteContract,
   onboardingStatusResponseSchema,
   skillFrontmatterSchema,
   zeroAgentsMainContract,

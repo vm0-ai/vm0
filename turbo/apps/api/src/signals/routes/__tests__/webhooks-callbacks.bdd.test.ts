@@ -473,7 +473,8 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
 
     const status = await bdd.readOnboardingStatus(admin);
     expect(status).toMatchObject({
-      needsOnboarding: false,
+      needsOnboarding: true,
+      onboardingComplete: false,
       isAdmin: true,
       hasOrg: true,
       hasDefaultAgent: true,

@@ -51,7 +51,37 @@ export async function createOrganization(
       `Failed to create Clerk organization: ${JSON.stringify(data)}`,
     );
   }
+  await updateOrganizationMembershipRole(data.id, createdByUserId, "org:admin");
   return data.id;
+}
+
+async function updateOrganizationMembershipRole(
+  organizationId: string,
+  userId: string,
+  role: "org:admin" | "org:member",
+): Promise<void> {
+  const response = await fetch(
+    `${CLERK_API_BASE}/organizations/${organizationId}/memberships/${userId}`,
+    {
+      method: "PATCH",
+      headers: getClerkHeaders(),
+      body: JSON.stringify({ role }),
+    },
+  );
+  const data = (await response.json()) as {
+    role?: string;
+    errors?: unknown[];
+  };
+  if (!response.ok) {
+    throw new Error(
+      `Failed to update Clerk organization membership: ${JSON.stringify(data)}`,
+    );
+  }
+  if (data.role !== role) {
+    throw new Error(
+      `Expected Clerk organization membership role ${role}, got ${data.role ?? "unknown"}`,
+    );
+  }
 }
 
 export async function deleteStaleTestUsers(): Promise<void> {
