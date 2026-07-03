@@ -460,7 +460,7 @@ function DetailHeader({
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-                <p className="mt-0.5 max-w-full truncate text-sm text-muted-foreground">
+                <p className="mt-1.5 max-w-full truncate text-sm text-muted-foreground">
                   /{detail.name}
                 </p>
               </div>
