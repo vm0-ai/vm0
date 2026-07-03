@@ -56,9 +56,9 @@ describe("ComponentName", () => {
 });
 ```
 
-Setup helpers always render the page. Page setup may start long polling flows,
-so tests should call `detachedSetupPage` without awaiting it and then wait for
-the rendered page state that matters to the story.
+Page setup may start long polling flows, so page tests should call
+`detachedSetupPage` without awaiting it and then wait for the rendered page
+state that matters to the story.
 
 Signal bootstrap tests should use `setupPage({ withoutRender: true })`, await
 setup completion, and assert state transitions that cannot be observed through
