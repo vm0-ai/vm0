@@ -1,12 +1,16 @@
 import { createHash } from "node:crypto";
 
+import { delay } from "signal-timers";
 import { WebPushError } from "web-push";
-import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import type {
   AttachFile,
   GenerationTemplateRequest,
   PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
+import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   TestChatMessagesStateActionBody,
   TestChatMessagesStateActionResponse,
@@ -15,8 +19,11 @@ import { describe, expect, it, onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { accept, setupApp } from "../../../__tests__/test-helpers";
 import { testContext } from "../../../__tests__/test-context";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { now } from "../../external/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -24,6 +31,7 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { testChatMessagesStateRoutes } from "../test-chat-messages-state";
 
 /**
@@ -42,11 +50,20 @@ const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const misc = createMiscRoutesApi(context);
 
+function goalsClient() {
+  return setupApp({ context })(zeroGoalsContract);
+}
+
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
 const CHAT_CALLBACK_PRE_CREATE_TIMING_PREFIX =
   "api_dispatch_pre_create_zero_chat_callback_";
+const GOAL_CAPABILITIES = [
+  "goal:read",
+  "goal:agent-result:write",
+  "goal:user-control:write",
+] as const satisfies readonly ZeroCapability[];
 const FORBIDDEN_CHAT_CALLBACK_PRE_CREATE_TIMING_KEYS = [
   "org_id",
   "orgId",
@@ -196,6 +213,58 @@ async function queueChatMessage(
   if (sent.status !== 201 || sent.body.runId !== null) {
     throw new Error("Expected the chat send to queue while a run is active");
   }
+}
+
+function zeroGoalHeaders(
+  actor: ApiTestUser,
+  runId: string,
+): { readonly authorization: string } {
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped actor for goal auth");
+  }
+  const seconds = Math.floor(now() / 1000);
+  return {
+    authorization: `Bearer ${signSandboxJwtForTests({
+      scope: "zero",
+      userId: actor.userId,
+      orgId: actor.orgId,
+      runId,
+      capabilities: [...GOAL_CAPABILITIES],
+      iat: seconds,
+      exp: seconds + 600,
+    })}`,
+  };
+}
+
+async function enableGoalWorkflows(actor: ApiTestUser): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped actor for goal workflows");
+  }
+  await updateFeatureSwitchesForUser(
+    context,
+    {
+      userId: actor.userId,
+      orgId: actor.orgId,
+      orgRole: actor.orgRole,
+    },
+    {
+      [FeatureSwitchKey.WorkflowAutomation]: true,
+    },
+  );
+}
+
+async function createGoalForRun(
+  actor: ApiTestUser,
+  runId: string,
+  objective: string,
+): Promise<void> {
+  await accept(
+    goalsClient().create({
+      headers: zeroGoalHeaders(actor, runId),
+      body: { objective },
+    }),
+    [201],
+  );
 }
 
 async function claimChatRun(
@@ -1061,6 +1130,117 @@ describe("CHAT-02: completed chat callback", () => {
 
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
+  }, 90_000);
+
+  it("auto-sends a queued user message before continuing an active goal", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before a queued user interruption",
+    });
+    const goalObjective = "keep making autonomous progress";
+    await createGoalForRun(actor, first.runId, goalObjective);
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "queued user interruption",
+    });
+
+    const queuedBeforeComplete = await chat.listThreadMessages(
+      actor,
+      first.threadId,
+    );
+    const queued = userMessages(queuedBeforeComplete.messages).find(
+      (message) => {
+        return message.content === "queued user interruption";
+      },
+    );
+    if (!queued) {
+      throw new Error("Expected the queued user message to be listed");
+    }
+
+    const outputQueryGate = deferredGate();
+    let outputQueryCalls = 0;
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (!apl.includes("['agent-run-events']")) {
+        return Promise.resolve([]);
+      }
+      outputQueryCalls += 1;
+      return outputQueryGate.wait().then(() => {
+        return [assistantEvent(0, "completed before the queued message")];
+      });
+    });
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await expect
+      .poll(() => {
+        return outputQueryCalls;
+      })
+      .toBeGreaterThan(0);
+
+    await delay(1000, { signal: context.signal });
+    const beforeAutoSend = await chat.listThreadMessages(actor, first.threadId);
+    const prematureGoalContinuation = userMessages(
+      beforeAutoSend.messages,
+    ).find((message) => {
+      return message.content === goalObjective && message.runId !== undefined;
+    });
+
+    outputQueryGate.release();
+    if (prematureGoalContinuation?.runId) {
+      await api.requestCancelRun(actor, prematureGoalContinuation.runId, [200]);
+      await waitForRunStatus(
+        actor,
+        prematureGoalContinuation.runId,
+        "cancelled",
+      );
+      await flushWaitUntilForTest();
+      expect(
+        prematureGoalContinuation.runId,
+        "goal continuation should not start before a queued user message is claimed",
+      ).toBeUndefined();
+      return;
+    }
+
+    const afterAutoSend = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        return userMessages(messages).some((message) => {
+          return (
+            message.revokesMessageId === queued.id &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    const claimed = userMessages(afterAutoSend.messages).find((message) => {
+      return message.revokesMessageId === queued.id;
+    });
+    expect(
+      claimed?.runId,
+      "queued user messages should be claimed before goal continuation creates a new run",
+    ).toBeDefined();
+
+    const goalContinuation = userMessages(afterAutoSend.messages).find(
+      (message) => {
+        return message.content === goalObjective && message.runId !== undefined;
+      },
+    );
+    expect(goalContinuation?.runId).toBeUndefined();
+
+    if (claimed?.runId) {
+      await api.requestCancelRun(actor, claimed.runId, [200]);
+      await waitForRunStatus(actor, claimed.runId, "cancelled");
+    }
+    await flushWaitUntilForTest();
   }, 90_000);
 
   it("marks an auto-sent follow-up when org concurrency queues the new run", async () => {
