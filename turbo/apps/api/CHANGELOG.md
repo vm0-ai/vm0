@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.218.2](https://github.com/vm0-ai/vm0/compare/api-v1.218.1...api-v1.218.2) (2026-07-03)
+
+
+### Bug Fixes
+
+* cache workflow avatars and reveal webhook secrets on demand ([#20073](https://github.com/vm0-ai/vm0/issues/20073)) ([d39c8eb](https://github.com/vm0-ai/vm0/commit/d39c8eb9b3fe014795aaef38f2baab2dbd67704b))
+
+
+### Performance Improvements
+
+* attribute storage manifest presign sources ([#20080](https://github.com/vm0-ai/vm0/issues/20080)) ([5d3e2ae](https://github.com/vm0-ai/vm0/commit/5d3e2aea66a9bc1ccf29f1e4ac0be6da1e90e861))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.150.2
+    * @vm0/connectors bumped to 1.132.2
+    * @vm0/core bumped to 8.394.5
+    * @vm0/db bumped to 1.88.5
+
 ## [1.218.1](https://github.com/vm0-ai/vm0/compare/api-v1.218.0...api-v1.218.1) (2026-07-03)
 
 
