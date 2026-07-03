@@ -452,12 +452,9 @@ async function setupFixture(): Promise<GmailTestFixture> {
   }
 
   bdd.acceptAgentStorageWrites();
+  await bdd.readOnboardingStatus(actor);
   await bdd.setupOnboarding(actor, {
     displayName: "BDD Gmail Webhook Owner",
-  });
-  await bdd.completeLimitedFreeOnboarding(actor, {
-    credits: 1000,
-    expiresAt: null,
   });
   await grantVisibleCredits({ ...actor, orgId: actor.orgId });
   const agent = await bdd.createAgent(actor, {
