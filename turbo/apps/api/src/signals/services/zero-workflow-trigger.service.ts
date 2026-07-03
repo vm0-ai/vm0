@@ -35,7 +35,7 @@ import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
 import { nowDate } from "../../lib/time";
 import { isValidTimeZone, safeSync } from "../utils";
-import { calculateNextRun } from "./automations/time-trigger";
+import { calculateNextRun } from "./time-trigger";
 import {
   loadVisibleWorkflowById,
   visibleWorkflowCondition,

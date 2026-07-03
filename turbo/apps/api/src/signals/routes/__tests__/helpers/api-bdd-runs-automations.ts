@@ -16,14 +16,6 @@ import {
   type ApplyUserPermissionGrant,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import {
-  automationsByRefContract,
-  automationsMainContract,
-  automationTriggersContract,
-  type AutomationResponse,
-  type AutomationTriggerResponse,
-  type CreateTriggerRequest,
-} from "@vm0/api-contracts/contracts/automations";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
@@ -31,7 +23,6 @@ import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-p
 import {
   cronAggregateInsightsContract,
   cronAggregateUsageContract,
-  cronExecuteAutomationsContract,
   cronProcessUsageEventsContract,
   cronReconcileBillingEntitlementsContract,
   cronSummarizeMemoryContract,
@@ -50,7 +41,6 @@ import {
   zeroRunsMainContract,
   zeroRunsQueueContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
-import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
@@ -64,10 +54,8 @@ import { agentComposesReadRoutes } from "../../agent-composes-read";
 import { agentComposesRoutes } from "../../agent-composes";
 import { agentRunsCreateRoutes } from "../../agent-runs-create";
 import { agentRunsReadRoutes } from "../../agent-runs-read";
-import { automationsRoutes } from "../../automations";
 import { cronAggregateInsightsRoutes } from "../../cron-aggregate-insights";
 import { cronAggregateUsageRoutes } from "../../cron-aggregate-usage";
-import { cronExecuteAutomationsRoutes } from "../../cron-execute-automations";
 import { cronProcessUsageEventsRoutes } from "../../cron-process-usage-events";
 import { cronReconcileBillingEntitlementsRoutes } from "../../cron-reconcile-billing-entitlements";
 import { cronSummarizeMemoryRoutes } from "../../cron-summarize-memory";
@@ -98,49 +86,6 @@ type RunnerJobClaimRequest = z.infer<
 type ComposeContent = z.infer<
   (typeof composesMainContract.create)["body"]
 >["content"];
-type ContractCreateAutomationRequest = z.infer<
-  (typeof automationsMainContract.create)["body"]
->;
-type ContractUpdateAutomationRequest = z.infer<
-  (typeof automationsByRefContract.update)["body"]
->;
-type DeployAutomationRequest = {
-  readonly name: string;
-  readonly cronExpression?: string;
-  readonly atTime?: string;
-  readonly intervalSeconds?: number;
-  readonly timezone?: string;
-  readonly prompt: string;
-  readonly description?: string;
-  readonly appendSystemPrompt?: string;
-  readonly agentId: string;
-  readonly enabled?: boolean;
-  readonly chatThreadId?: string;
-};
-type CreateAutomationRequest = DeployAutomationRequest;
-type UpdateAutomationRequest = Omit<
-  Partial<DeployAutomationRequest>,
-  "description" | "appendSystemPrompt"
-> & {
-  readonly name?: string;
-  readonly description?: string | null;
-  readonly appendSystemPrompt?: string | null;
-};
-type DeployAutomationResponse = {
-  readonly automation: AutomationView;
-  readonly created: boolean;
-};
-type AutomationMutationResponse = {
-  readonly automation: AutomationView;
-  readonly created: boolean;
-};
-type AutomationListResponse = {
-  readonly automations: readonly AutomationView[];
-};
-type AutomationResourceRef = {
-  readonly id?: string;
-  readonly name: string;
-};
 type OrgModelPolicyRequest = z.infer<
   (typeof zeroModelPoliciesMainContract.update)["body"]
 >;
@@ -179,12 +124,10 @@ const CRON_AUTHORIZATION = "Bearer test-cron-secret";
 const runsAutomationRoutes = [
   ...zeroApiKeysRoutes,
   ...zeroApiKeysDeleteRoutes,
-  ...automationsRoutes,
   ...agentComposesRoutes,
   ...agentComposesReadRoutes,
   ...cronAggregateInsightsRoutes,
   ...cronAggregateUsageRoutes,
-  ...cronExecuteAutomationsRoutes,
   ...cronProcessUsageEventsRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronSummarizeMemoryRoutes,
@@ -262,150 +205,6 @@ function cronHeaders(valid: boolean): AuthHeaders {
 
 function runnerHeaders(valid: boolean): AuthHeaders {
   return valid ? { authorization: OFFICIAL_RUNNER_AUTHORIZATION } : {};
-}
-
-type TimeTriggerResponse = Extract<
-  AutomationTriggerResponse,
-  { readonly kind: "cron" | "once" | "loop" }
->;
-
-function isTimeTrigger(
-  trigger: AutomationTriggerResponse,
-): trigger is TimeTriggerResponse {
-  return (
-    trigger.kind === "cron" ||
-    trigger.kind === "once" ||
-    trigger.kind === "loop"
-  );
-}
-
-function timeTriggerFor(automation: AutomationResponse): TimeTriggerResponse {
-  const trigger = automation.triggers.find(isTimeTrigger);
-  if (!trigger) {
-    throw new Error(`Automation ${automation.id} has no time trigger`);
-  }
-  return trigger;
-}
-
-function hasTimeTrigger(automation: AutomationResponse): boolean {
-  return automation.triggers.some(isTimeTrigger);
-}
-
-function automationViewFromResponse(
-  automation: AutomationResponse,
-): AutomationView {
-  const trigger = timeTriggerFor(automation);
-  return {
-    id: automation.id,
-    agentId: automation.agentId,
-    displayName: automation.displayName,
-    userId: automation.userId,
-    name: automation.name,
-    triggerType: trigger.kind,
-    cronExpression: trigger.kind === "cron" ? trigger.cronExpression : null,
-    atTime: trigger.kind === "once" ? trigger.atTime : null,
-    intervalSeconds: trigger.kind === "loop" ? trigger.intervalSeconds : null,
-    timezone: trigger.timezone,
-    prompt: automation.instruction,
-    description: automation.description,
-    appendSystemPrompt: automation.appendSystemPrompt,
-    enabled: automation.enabled && trigger.enabled,
-    nextRunAt: trigger.nextRunAt,
-    lastRunAt: trigger.lastRunAt,
-    retryStartedAt: null,
-    consecutiveFailures: trigger.consecutiveFailures,
-    chatThreadId: automation.chatThreadId,
-    createdAt: automation.createdAt,
-    updatedAt: automation.updatedAt,
-  };
-}
-
-function createTimeTriggerRequest(
-  body: Pick<
-    DeployAutomationRequest,
-    "cronExpression" | "atTime" | "intervalSeconds" | "timezone"
-  >,
-): CreateTriggerRequest | null {
-  if (body.cronExpression !== undefined) {
-    return {
-      kind: "cron",
-      cronExpression: body.cronExpression,
-      ...(body.timezone === undefined ? {} : { timezone: body.timezone }),
-    };
-  }
-  if (body.atTime !== undefined) {
-    return {
-      kind: "once",
-      atTime: body.atTime,
-      ...(body.timezone === undefined ? {} : { timezone: body.timezone }),
-    };
-  }
-  if (body.intervalSeconds !== undefined) {
-    return { kind: "loop", intervalSeconds: body.intervalSeconds };
-  }
-  return null;
-}
-
-function contractCreateAutomationBody(
-  body: CreateAutomationRequest,
-): ContractCreateAutomationRequest {
-  const trigger = createTimeTriggerRequest(body);
-  if (!trigger) {
-    throw new Error("Time-trigger automation requires a trigger");
-  }
-  return {
-    name: body.name,
-    agentId: body.agentId,
-    instruction: body.prompt,
-    ...(body.description === undefined
-      ? {}
-      : { description: body.description }),
-    ...(body.appendSystemPrompt === undefined
-      ? {}
-      : { appendSystemPrompt: body.appendSystemPrompt }),
-    ...(body.enabled === undefined ? {} : { enabled: body.enabled }),
-    ...(body.chatThreadId === undefined
-      ? {}
-      : { chatThreadId: body.chatThreadId }),
-    trigger,
-  };
-}
-
-function contractCreateAutomationBodyUnchecked(
-  body: unknown,
-): ContractCreateAutomationRequest {
-  if (
-    typeof body === "object" &&
-    body !== null &&
-    "prompt" in body &&
-    "name" in body &&
-    "agentId" in body &&
-    createTimeTriggerRequest(body as DeployAutomationRequest) !== null
-  ) {
-    return contractCreateAutomationBody(body as CreateAutomationRequest);
-  }
-  return body as ContractCreateAutomationRequest;
-}
-
-function contractUpdateAutomationBody(
-  body: UpdateAutomationRequest,
-): ContractUpdateAutomationRequest {
-  return {
-    ...(body.name === undefined ? {} : { name: body.name }),
-    ...(body.prompt === undefined ? {} : { instruction: body.prompt }),
-    ...(body.description === undefined
-      ? {}
-      : { description: body.description }),
-    ...(body.appendSystemPrompt === undefined
-      ? {}
-      : { appendSystemPrompt: body.appendSystemPrompt }),
-  };
-}
-
-function automationRef(resource: AutomationResourceRef | string): string {
-  return typeof resource === "string"
-    ? resource
-    : (resource.id ?? resource.name);
 }
 
 function runnerHeartbeatBody(
@@ -1131,402 +930,6 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
     },
 
-    async createAutomation(
-      actor: ApiTestUser,
-      body: CreateAutomationRequest,
-    ): Promise<AutomationMutationResponse> {
-      const response = await accept(
-        runsAutomationApp(context)(automationsMainContract).create({
-          headers: authenticate(context, actor),
-          body: contractCreateAutomationBody(body),
-        }),
-        [201],
-      );
-      return {
-        automation: automationViewFromResponse(response.body.automation),
-        created: true,
-      };
-    },
-
-    async requestCreateAutomationUnchecked(
-      actor: ApiTestUser | null,
-      body: unknown,
-      statuses: readonly (201 | 400 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        runsAutomationApp(context)(automationsMainContract).create({
-          headers: authenticate(context, actor),
-          body: contractCreateAutomationBodyUnchecked(body),
-        }),
-        statuses,
-      );
-    },
-
-    async listAutomations(actor: ApiTestUser): Promise<AutomationListResponse> {
-      const response = await accept(
-        runsAutomationApp(context)(automationsMainContract).list({
-          headers: authenticate(context, actor),
-        }),
-        [200],
-      );
-      return {
-        automations: response.body.automations
-          .filter(hasTimeTrigger)
-          .map(automationViewFromResponse),
-      };
-    },
-
-    async requestListAutomations(
-      actor: ApiTestUser | null,
-      statuses: readonly (200 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        runsAutomationApp(context)(automationsMainContract).list({
-          headers: authenticate(context, actor),
-        }),
-        statuses,
-      );
-    },
-
-    async showAutomation(
-      actor: ApiTestUser,
-      automation: AutomationResourceRef,
-    ): Promise<AutomationView> {
-      const response = await accept(
-        runsAutomationApp(context)(automationsByRefContract).show({
-          headers: authenticate(context, actor),
-          params: { ref: automationRef(automation) },
-        }),
-        [200],
-      );
-      return automationViewFromResponse(response.body);
-    },
-
-    async updateAutomation(
-      actor: ApiTestUser,
-      name: string,
-      body: UpdateAutomationRequest,
-    ): Promise<AutomationMutationResponse> {
-      const updated = await accept(
-        runsAutomationApp(context)(automationsByRefContract).update({
-          headers: authenticate(context, actor),
-          params: { ref: name },
-          body: contractUpdateAutomationBody(body),
-        }),
-        [200],
-      );
-
-      const trigger = createTimeTriggerRequest(body);
-      if (trigger !== null) {
-        const shown = await accept(
-          runsAutomationApp(context)(automationsByRefContract).show({
-            headers: authenticate(context, actor),
-            params: { ref: updated.body.id },
-          }),
-          [200],
-        );
-        const existing = timeTriggerFor(shown.body);
-        await accept(
-          runsAutomationApp(context)(automationTriggersContract).update({
-            headers: authenticate(context, actor),
-            params: { id: existing.id },
-            body: trigger,
-          }),
-          [200],
-        );
-      }
-
-      const shown = await accept(
-        runsAutomationApp(context)(automationsByRefContract).show({
-          headers: authenticate(context, actor),
-          params: { ref: updated.body.id },
-        }),
-        [200],
-      );
-      return {
-        automation: automationViewFromResponse(shown.body),
-        created: false,
-      };
-    },
-
-    async enableAutomation(
-      actor: ApiTestUser,
-      automation: AutomationResourceRef,
-    ): Promise<AutomationView> {
-      const response = await accept(
-        runsAutomationApp(context)(automationsByRefContract).enable({
-          headers: authenticate(context, actor),
-          params: { ref: automationRef(automation) },
-          body: {},
-        }),
-        [200],
-      );
-      return automationViewFromResponse(response.body);
-    },
-
-    async disableAutomation(
-      actor: ApiTestUser,
-      automation: AutomationResourceRef,
-    ): Promise<AutomationView> {
-      const response = await accept(
-        runsAutomationApp(context)(automationsByRefContract).disable({
-          headers: authenticate(context, actor),
-          params: { ref: automationRef(automation) },
-          body: {},
-        }),
-        [200],
-      );
-      return automationViewFromResponse(response.body);
-    },
-
-    async requestRunAutomation(
-      actor: ApiTestUser | null,
-      automationId: string,
-      statuses: readonly (
-        | 201
-        | 400
-        | 401
-        | 402
-        | 403
-        | 404
-        | 409
-        | 429
-        | 503
-      )[],
-    ) {
-      return await accept(
-        runsAutomationApp(context)(automationsByRefContract).run({
-          headers: authenticate(context, actor),
-          params: { ref: automationId },
-          body: {},
-        }),
-        statuses,
-      );
-    },
-
-    async deleteAutomation(
-      actor: ApiTestUser,
-      automation: AutomationResourceRef,
-    ): Promise<void> {
-      await accept(
-        runsAutomationApp(context)(automationsByRefContract).delete({
-          headers: authenticate(context, actor),
-          params: { ref: automationRef(automation) },
-        }),
-        [204],
-      );
-    },
-
-    async requestDeleteAutomation(
-      actor: ApiTestUser | null,
-      automation: AutomationResourceRef,
-      statuses: readonly (204 | 400 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        runsAutomationApp(context)(automationsByRefContract).delete({
-          headers: authenticate(context, actor),
-          params: { ref: automationRef(automation) },
-        }),
-        statuses,
-      );
-    },
-
-    async requestUpdateAutomationUnchecked(
-      actor: ApiTestUser | null,
-      name: string,
-      body: unknown,
-      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        runsAutomationApp(context)(automationsByRefContract).update({
-          headers: authenticate(context, actor),
-          params: { ref: name },
-          body: contractUpdateAutomationBody(body as UpdateAutomationRequest),
-        }),
-        statuses,
-      );
-    },
-
-    async requestEnableAutomation(
-      actor: ApiTestUser | null,
-      automation: AutomationResourceRef,
-      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        runsAutomationApp(context)(automationsByRefContract).enable({
-          headers: authenticate(context, actor),
-          params: { ref: automationRef(automation) },
-          body: {},
-        }),
-        statuses,
-      );
-    },
-
-    async requestDisableAutomation(
-      actor: ApiTestUser | null,
-      automation: AutomationResourceRef,
-      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        runsAutomationApp(context)(automationsByRefContract).disable({
-          headers: authenticate(context, actor),
-          params: { ref: automationRef(automation) },
-          body: {},
-        }),
-        statuses,
-      );
-    },
-
-    // The automations list contract has no 404 response (the feature gate is
-    // meant to be indistinguishable from an unmounted route), so the contract
-    // client with throwOnUnknownStatus cannot express the gated case — read
-    // the route through a raw app request instead.
-    async requestListAutomationsRaw(
-      actor: ApiTestUser,
-    ): Promise<{ readonly status: number; readonly body: unknown }> {
-      const { authorization } = authenticate(context, actor);
-      const app = createAppWithRoutes({
-        signal: context.signal,
-        routes: runsAutomationRoutes,
-      });
-      const response = await app.request("/api/automations", {
-        method: "GET",
-        headers: authorization === undefined ? {} : { authorization },
-      });
-      const body: unknown = await response.json();
-      return { status: response.status, body };
-    },
-
-    async deployAutomation(
-      actor: ApiTestUser,
-      body: DeployAutomationRequest,
-    ): Promise<DeployAutomationResponse> {
-      const existingList = await accept(
-        runsAutomationApp(context)(automationsMainContract).list({
-          headers: authenticate(context, actor),
-        }),
-        [200],
-      );
-      const existing = existingList.body.automations.find((automation) => {
-        return (
-          automation.name === body.name &&
-          automation.agentId === body.agentId &&
-          hasTimeTrigger(automation)
-        );
-      });
-
-      if (existing !== undefined) {
-        const updated = await accept(
-          runsAutomationApp(context)(automationsByRefContract).update({
-            headers: authenticate(context, actor),
-            params: { ref: existing.id },
-            body: contractUpdateAutomationBody(body),
-          }),
-          [200],
-        );
-        const shownBeforeTriggerUpdate = await accept(
-          runsAutomationApp(context)(automationsByRefContract).show({
-            headers: authenticate(context, actor),
-            params: { ref: updated.body.id },
-          }),
-          [200],
-        );
-        const nextTrigger = createTimeTriggerRequest(body);
-        if (!nextTrigger) {
-          throw new Error("Automation deployment requires a time trigger");
-        }
-        const existingTrigger = timeTriggerFor(shownBeforeTriggerUpdate.body);
-        await accept(
-          runsAutomationApp(context)(automationTriggersContract).update({
-            headers: authenticate(context, actor),
-            params: { id: existingTrigger.id },
-            body: nextTrigger,
-          }),
-          [200],
-        );
-        if (body.enabled === true && !updated.body.enabled) {
-          await accept(
-            runsAutomationApp(context)(automationsByRefContract).enable({
-              headers: authenticate(context, actor),
-              params: { ref: updated.body.id },
-              body: {},
-            }),
-            [200],
-          );
-        }
-        if (body.enabled === false && updated.body.enabled) {
-          await accept(
-            runsAutomationApp(context)(automationsByRefContract).disable({
-              headers: authenticate(context, actor),
-              params: { ref: updated.body.id },
-              body: {},
-            }),
-            [200],
-          );
-        }
-        const shown = await accept(
-          runsAutomationApp(context)(automationsByRefContract).show({
-            headers: authenticate(context, actor),
-            params: { ref: updated.body.id },
-          }),
-          [200],
-        );
-        return {
-          automation: automationViewFromResponse(shown.body),
-          created: false,
-        };
-      }
-
-      const response = await accept(
-        runsAutomationApp(context)(automationsMainContract).create({
-          headers: authenticate(context, actor),
-          body: contractCreateAutomationBody(body),
-        }),
-        [201],
-      );
-      return {
-        automation: automationViewFromResponse(response.body.automation),
-        created: true,
-      };
-    },
-
-    async requestDeployAutomationUnchecked(
-      actor: ApiTestUser | null,
-      body: unknown,
-      statuses: readonly (201 | 400 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        runsAutomationApp(context)(automationsMainContract).create({
-          headers: authenticate(context, actor),
-          body: contractCreateAutomationBodyUnchecked(body),
-        }),
-        statuses,
-      );
-    },
-
-    async requestDeleteAutomationAs(
-      authorization: string | undefined,
-      automation: AutomationResourceRef,
-      statuses: readonly (204 | 400 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        runsAutomationApp(context)(automationsByRefContract).delete({
-          headers: authorization === undefined ? {} : { authorization },
-          params: { ref: automationRef(automation) },
-        }),
-        statuses,
-      );
-    },
-
-    async executeAutomationsCron(validAuth: boolean) {
-      return await accept(
-        runsAutomationApp(context)(cronExecuteAutomationsContract).execute({
-          headers: cronHeaders(validAuth),
-        }),
-        [200, 401],
-      );
-    },
-
     // Valid cron coverage belongs in the file that owns each global sweep.
     // This helper only checks auth rejection, so route handlers never scan the
     // shared test database.
@@ -1587,8 +990,4 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
     },
   };
-}
-
-export function uniqueAutomationName(prefix: string): string {
-  return `${prefix}-${randomUUID().slice(0, 8)}`;
 }

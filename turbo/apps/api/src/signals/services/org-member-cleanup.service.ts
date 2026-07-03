@@ -5,7 +5,6 @@ import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { and, eq, inArray } from "drizzle-orm";
 
 import type { Db } from "../external/db";
-import { suspendOrgMemberAutomations } from "./automations/suspend";
 
 export async function cleanupOrgMemberResources(
   db: Db,
@@ -15,9 +14,6 @@ export async function cleanupOrgMemberResources(
   },
   signal: AbortSignal,
 ): Promise<void> {
-  await suspendOrgMemberAutomations(db, args);
-  signal.throwIfAborted();
-
   const [installation] = await db
     .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
     .from(slackOrgInstallations)

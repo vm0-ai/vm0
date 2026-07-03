@@ -3,7 +3,7 @@ import { parseScheduledAtTime } from "@vm0/core/timezone";
 import { Cron } from "croner";
 import { and, eq } from "drizzle-orm";
 
-import type { Db } from "../../external/db";
+import type { Db } from "../external/db";
 
 type TriggerRow = typeof automationTriggers.$inferSelect;
 

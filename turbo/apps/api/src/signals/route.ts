@@ -23,7 +23,6 @@ import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
 import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat-thread-snapshots";
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
-import { cronExecuteAutomationsRoutes } from "./routes/cron-execute-automations";
 import { cronExecuteWorkflowTriggersRoutes } from "./routes/cron-execute-workflow-triggers";
 import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
 import { cronRenewGoogleCalendarWatchesRoutes } from "./routes/cron-renew-google-calendar-watches";
@@ -216,7 +215,7 @@ export const ROUTES: readonly RouteEntry[] = [
     handler: apiBuildInfo$,
   },
   ...authMeRoutes,
-  // The unified Automation resource: one automation, N schedule triggers.
+  // Legacy automations: read-only provenance rows after the workflow cutover.
   ...automationsRoutes,
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
@@ -257,7 +256,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronCompactChatThreadSnapshotsRoutes,
   ...cronCleanupSandboxesRoutes,
   ...cronDrainEmailOutboxRoutes,
-  ...cronExecuteAutomationsRoutes,
   ...cronExecuteWorkflowTriggersRoutes,
   ...cronRenewGmailWatchesRoutes,
   ...cronRenewGoogleCalendarWatchesRoutes,
