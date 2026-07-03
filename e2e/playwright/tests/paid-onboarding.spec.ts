@@ -1,42 +1,56 @@
 import { clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { expect, test } from "@playwright/test";
-import { signInThroughHostedAuth } from "../lib/auth";
+import { refreshClerkSessionToken, signInThroughHostedAuth } from "../lib/auth";
 import {
   createOrganization,
   createUser,
   deleteUserByEmail,
   generateTestEmail,
 } from "../lib/clerk-api";
+import { routeOnboardingApiToPreview } from "../lib/onboarding";
 import { fillStripeCheckout } from "../lib/stripe-checkout";
-import { deriveAppUrl } from "../playwright.config";
-
-function deriveWwwUrl(sourceUrl: string): string {
-  return sourceUrl
-    .replace(/-app\./, "-www.")
-    .replace(/\/\/app\./, "//www.")
-    .replace(/-api\./, "-www.")
-    .replace(/\/\/api\./, "//www.");
-}
+import {
+  deriveAppUrl,
+  deriveOnboardingUrl,
+  deriveServiceOrigin,
+} from "../playwright.config";
 
 test("paid onboarding completes through the video workflow", async ({
   page,
 }) => {
   test.setTimeout(240_000);
 
-  const appUrl = deriveAppUrl(process.env.VM0_API_URL!);
+  const apiUrl = process.env.VM0_API_URL!;
+  const appUrl = deriveAppUrl(apiUrl);
+  const onboardingUrl = deriveOnboardingUrl(apiUrl);
+  const onboardingAuthAppUrl = deriveServiceOrigin(onboardingUrl, "app");
+  const onboardingApiUrl = deriveServiceOrigin(onboardingUrl, "api");
   const email = generateTestEmail();
 
   try {
     const userId = await createUser(email);
-    await createOrganization("E2E Paid Onboarding Org", userId);
+    const orgId = await createOrganization("E2E Paid Onboarding Org", userId);
 
     await clerkSetup();
     await setupClerkTestingToken({ page });
-    await signInThroughHostedAuth(page, email, appUrl);
+    const session = await signInThroughHostedAuth(
+      page,
+      email,
+      onboardingAuthAppUrl,
+      {
+        followRedirect: false,
+        activeOrganizationId: orgId,
+        mirrorStorageToUrls: [onboardingUrl, onboardingApiUrl, appUrl],
+      },
+    );
+    await routeOnboardingApiToPreview(page, onboardingUrl, apiUrl, {
+      authorizationToken: session.token,
+    });
 
-    await page.goto(`${deriveWwwUrl(appUrl)}/onboarding/491858`, {
+    await page.goto(onboardingUrl, {
       waitUntil: "domcontentloaded",
     });
+    await refreshClerkSessionToken(page, { activeOrganizationId: orgId });
 
     const videoChoice = page.getByRole("radio", {
       name: /Video production/i,
@@ -77,18 +91,28 @@ test("paid onboarding completes through the video workflow", async ({
 
     const response = await checkoutResponse;
     if (response.status() !== 200) {
-      throw new Error(
-        `video checkout failed with ${response.status()}: ${await response.text()}`,
-      );
+      throw new Error(`video checkout failed with ${response.status()}`);
     }
 
-    await fillStripeCheckout(page);
-    await page.waitForURL(
-      (url) => {
-        return url.origin === new URL(appUrl).origin;
+    const checkoutCompletionResponse = page.waitForResponse(
+      (completion) => {
+        return (
+          completion.url().includes("/api/zero/billing/checkout/complete") &&
+          completion.request().method() === "POST"
+        );
       },
       { timeout: 120_000 },
     );
+
+    await fillStripeCheckout(page);
+    const completionResponse = await checkoutCompletionResponse;
+    if (completionResponse.status() !== 200) {
+      throw new Error(
+        `checkout completion failed with ${completionResponse.status()}`,
+      );
+    }
+    expect(page.url()).not.toContain("checkout.stripe.com");
+    await page.goto(appUrl, { waitUntil: "domcontentloaded" });
     expect(page.url()).not.toContain("checkout.stripe.com");
   } finally {
     await deleteUserByEmail(email);
