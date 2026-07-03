@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.536.0](https://github.com/vm0-ai/vm0/compare/app-v0.535.0...app-v0.536.0) (2026-07-03)
+
+
+### Features
+
+* simplify copy workflow dialog into a single copy/move form ([#19896](https://github.com/vm0-ai/vm0/issues/19896)) ([71e6e10](https://github.com/vm0-ai/vm0/commit/71e6e1062f41961716eb06b589b7eba51dcb8499))
+
+
+### Bug Fixes
+
+* move chat emoji digit shortcuts to ctrl shift ([#19931](https://github.com/vm0-ai/vm0/issues/19931)) ([b79c607](https://github.com/vm0-ai/vm0/commit/b79c607aa98f59f6530a29bb8762fb71ffe5632c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.391.1
+
 ## [0.535.0](https://github.com/vm0-ai/vm0/compare/app-v0.534.3...app-v0.535.0) (2026-07-03)
 
 

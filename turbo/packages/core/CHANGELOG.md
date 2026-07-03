@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.391.1](https://github.com/vm0-ai/vm0/compare/core-v8.391.0...core-v8.391.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* **core:** update schoolhouse and sticker scrapbook runbook archives ([#19947](https://github.com/vm0-ai/vm0/issues/19947)) ([017be61](https://github.com/vm0-ai/vm0/commit/017be619eea4a82478ddab3f77eb6bad339a81bd))
+
 ## [8.391.0](https://github.com/vm0-ai/vm0/compare/core-v8.390.1...core-v8.391.0) (2026-07-03)
 
 

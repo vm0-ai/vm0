@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.210.1](https://github.com/vm0-ai/vm0/compare/api-v1.210.0...api-v1.210.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* allow team access to paid video templates ([#19922](https://github.com/vm0-ai/vm0/issues/19922)) ([1c4476e](https://github.com/vm0-ai/vm0/commit/1c4476e702b597b093d3d07396843d21fc5cea04))
+* **core:** update schoolhouse and sticker scrapbook runbook archives ([#19947](https://github.com/vm0-ai/vm0/issues/19947)) ([017be61](https://github.com/vm0-ai/vm0/commit/017be619eea4a82478ddab3f77eb6bad339a81bd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.391.1
+    * @vm0/db bumped to 1.85.6
+
 ## [1.210.0](https://github.com/vm0-ai/vm0/compare/api-v1.209.3...api-v1.210.0) (2026-07-03)
 
 
