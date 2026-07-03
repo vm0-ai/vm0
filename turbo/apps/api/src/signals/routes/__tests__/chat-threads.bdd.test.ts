@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
+import { cronCompactChatThreadSnapshotsContract } from "@vm0/api-contracts/contracts/cron";
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroWorkflowsCollectionContract,
@@ -11,7 +12,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { createApp } from "../../../app-factory";
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
@@ -78,10 +79,24 @@ const authOrg = createAuthOrgAgentsBddApi(context);
 const routeMocks = createZeroRouteMocks(context);
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
+const CHAT_THREAD_SNAPSHOT_CRON_SECRET = "chat-thread-snapshot-cron-secret";
 
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
 type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
+
+async function compactChatThreadSnapshots() {
+  const client = setupApp({ context })(cronCompactChatThreadSnapshotsContract);
+  const response = await accept(
+    client.compact({
+      headers: {
+        authorization: `Bearer ${CHAT_THREAD_SNAPSHOT_CRON_SECRET}`,
+      },
+    }),
+    [200],
+  );
+  return response.body;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -527,6 +542,70 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         code: "CHAT_THREAD_EVENTS_EXPIRED",
       },
     });
+  });
+
+  it("compacts chat thread snapshots from event markers and prunes deleted agent threads", async () => {
+    mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
+    const actor = bdd.user();
+    const liveAgent = await bdd.createAgent(actor, {
+      displayName: "Snapshot compaction live agent",
+    });
+    const deletedAgent = await bdd.createAgent(actor, {
+      displayName: "Snapshot compaction deleted agent",
+    });
+    const liveCreateEventId = randomUUID();
+    const deletedCreateEventId = randomUUID();
+
+    const liveThread = await chat.createThread(actor, {
+      agentId: liveAgent.agentId,
+      title: "Initial compact title",
+      eventId: liveCreateEventId,
+    });
+    const deletedAgentThread = await chat.createThread(actor, {
+      agentId: deletedAgent.agentId,
+      title: "Deleted agent compact title",
+      eventId: deletedCreateEventId,
+    });
+
+    const initialCompact = await compactChatThreadSnapshots();
+    expect(initialCompact.eventsApplied).toBeGreaterThanOrEqual(2);
+
+    const baselineSnapshot = await chat.getThreadSnapshot(actor);
+    expect(baselineSnapshot.latestEventId).not.toBeNull();
+    expect(
+      baselineSnapshot.chatThreads.map((thread) => {
+        return thread.id;
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining([liveThread.id, deletedAgentThread.id]),
+    );
+
+    const renameEventId = randomUUID();
+    await chat.renameThread(
+      actor,
+      liveThread.id,
+      "Renamed compact title",
+      renameEventId,
+    );
+    chat.mockObjectStorageObjectsExist();
+    await authOrg.deleteAgent(actor, deletedAgent.agentId);
+
+    const incrementalCompact = await compactChatThreadSnapshots();
+    expect(incrementalCompact.eventsApplied).toBeGreaterThanOrEqual(1);
+    expect(
+      incrementalCompact.removedDeletedAgentThreads,
+    ).toBeGreaterThanOrEqual(1);
+
+    const compactedSnapshot = await chat.getThreadSnapshot(actor);
+    expect(compactedSnapshot.latestEventId).toBe(renameEventId);
+    expect(compactedSnapshot.chatThreads).toStrictEqual([
+      expect.objectContaining({
+        id: liveThread.id,
+        agentId: liveAgent.agentId,
+        title: "Renamed compact title",
+        renamedAt: expect.any(String),
+      }),
+    ]);
   });
 
   it("falls back to the first run model on detail after the explicit pin is cleared", async () => {

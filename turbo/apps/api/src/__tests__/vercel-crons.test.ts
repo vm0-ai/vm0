@@ -5,6 +5,7 @@ import {
   cronAggregateInsightsContract,
   cronAggregateModelStatsContract,
   cronAggregateUsageContract,
+  cronCompactChatThreadSnapshotsContract,
   cronCleanupSandboxesContract,
   cronComputerUseScreenshotCleanupContract,
   cronDrainEmailOutboxContract,
@@ -71,6 +72,10 @@ const expectedVercelCrons = [
   },
   {
     path: cronAggregateInsightsContract.aggregate.path,
+    schedule: "0 * * * *",
+  },
+  {
+    path: cronCompactChatThreadSnapshotsContract.compact.path,
     schedule: "0 * * * *",
   },
   {

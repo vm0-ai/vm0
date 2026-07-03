@@ -59,6 +59,13 @@ const cronProcessUsageEventsResponseSchema = z.object({
   processed: z.number(),
 });
 
+const cronCompactChatThreadSnapshotsResponseSchema = z.object({
+  success: z.literal(true),
+  scopes: z.number(),
+  eventsApplied: z.number(),
+  removedDeletedAgentThreads: z.number(),
+});
+
 const cronReconcileBillingEntitlementsResponseSchema = z.object({
   success: z.literal(true),
   downgraded: z.number(),
@@ -181,6 +188,19 @@ export const cronProcessUsageEventsContract = c.router({
       401: apiErrorSchema,
     },
     summary: "Process pending usage events",
+  },
+});
+
+export const cronCompactChatThreadSnapshotsContract = c.router({
+  compact: {
+    method: "GET",
+    path: "/api/cron/compact-chat-thread-snapshots",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronCompactChatThreadSnapshotsResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Compact chat thread snapshots from lifecycle events",
   },
 });
 
@@ -377,6 +397,8 @@ export const cronRefreshSystemStoragePresignedUrlsContract = c.router({
 export type CronAggregateUsageContract = typeof cronAggregateUsageContract;
 export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
+export type CronCompactChatThreadSnapshotsContract =
+  typeof cronCompactChatThreadSnapshotsContract;
 export type CronReconcileBillingEntitlementsContract =
   typeof cronReconcileBillingEntitlementsContract;
 export type CronAggregateInsightsContract =
@@ -405,6 +427,7 @@ export {
   cleanupResultSchema,
   cleanupResponseSchema,
   cronAggregateUsageResponseSchema,
+  cronCompactChatThreadSnapshotsResponseSchema,
   cronProcessUsageEventsResponseSchema,
   cronReconcileBillingEntitlementsResponseSchema,
   cronTelegramCleanupResponseSchema,
