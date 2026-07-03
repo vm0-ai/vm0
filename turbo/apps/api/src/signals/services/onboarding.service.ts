@@ -29,6 +29,7 @@ import {
 } from "./onboarding-credit-grants.service";
 import { updateUserConnectors } from "./user-connectors.service";
 import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
+import { DEFAULT_AGENT_AVATAR_URL } from "./default-agent-profile";
 
 const L = logger("onboarding.service");
 
@@ -511,6 +512,7 @@ function defaultAgentInfo(
         displayName: zeroAgents.displayName,
         description: zeroAgents.description,
         sound: zeroAgents.sound,
+        avatarUrl: zeroAgents.avatarUrl,
       })
       .from(agentComposes)
       .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
@@ -532,6 +534,9 @@ function defaultAgentInfo(
     }
     if (row.sound !== null) {
       metadata.sound = row.sound;
+    }
+    if (row.avatarUrl !== null) {
+      metadata.avatarUrl = row.avatarUrl;
     }
 
     return {
@@ -660,6 +665,8 @@ export const setupOnboarding$ = command(
       signal.throwIfAborted();
     }
 
+    const avatarUrl = args.avatarUrl ?? DEFAULT_AGENT_AVATAR_URL;
+
     await writeDb
       .insert(zeroAgents)
       .values({
@@ -670,14 +677,14 @@ export const setupOnboarding$ = command(
         displayName: args.displayName,
         description: null,
         sound: args.sound ?? null,
-        avatarUrl: args.avatarUrl ?? null,
+        avatarUrl,
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],
         set: {
           displayName: args.displayName,
           sound: args.sound ?? null,
-          avatarUrl: args.avatarUrl ?? null,
+          avatarUrl,
           updatedAt: nowDate(),
         },
       });
