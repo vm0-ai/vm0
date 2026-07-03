@@ -105,6 +105,7 @@ export async function setupPage(options: {
   };
   debugLoggers?: string[];
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+  withoutRender?: boolean;
 }) {
   ensureTestLocalStorage();
   createPushStateMock(options.context.signal);
@@ -170,6 +171,9 @@ export async function setupPage(options: {
     bootstrap$,
     () => {
       setupRouter(options.context.store, (element) => {
+        if (options.withoutRender) {
+          return;
+        }
         const { unmount } = render(element);
         options.context.signal.addEventListener("abort", () => {
           unmount();
