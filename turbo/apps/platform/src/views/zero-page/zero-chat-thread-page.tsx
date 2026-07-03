@@ -1788,13 +1788,8 @@ function ChatVideoPreviewButton({
     >
       <span
         data-testid="chat-video-preview-poster"
-        className={cn(
-          "flex items-center justify-center bg-black text-white/70",
-          posterClassName,
-        )}
-      >
-        <IconVideo size={22} stroke={1.5} />
-      </span>
+        className={cn("block bg-black", posterClassName)}
+      />
       <video
         src={posterVideoUrl}
         preload="metadata"

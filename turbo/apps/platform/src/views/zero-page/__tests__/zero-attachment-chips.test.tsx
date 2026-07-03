@@ -897,6 +897,9 @@ describe("zero attachment chips", () => {
     expect(
       within(videoPreview).getByTestId("chat-video-preview-poster"),
     ).toHaveClass("h-full", "w-full");
+    expect(
+      within(videoPreview).getByTestId("chat-video-preview-poster"),
+    ).toBeEmptyDOMElement();
     expect(videoPreview).not.toHaveClass("w-[min(100%,400px)]");
     expect(screen.getByText("this is the screencast")).toBeInTheDocument();
   });
