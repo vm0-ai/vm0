@@ -328,8 +328,42 @@ describe("connector catalog artifacts", () => {
     const reader = createFixtureConnectorCatalogArtifactReader();
 
     await expect(reader.readArtifact("../manifest.json")).rejects.toThrow(
-      "escapes fixture root",
+      "Artifact keys must be relative object keys",
     );
+  });
+
+  it.each(["../active.json", "./active.json", ".", "private/"])(
+    "rejects invalid active artifact key %s before reading",
+    async (activeKey) => {
+      await expect(
+        loadConnectorCatalogArtifacts({
+          reader: readerFromRecords(new Map()),
+          activeKey,
+        }),
+      ).rejects.toThrow("Artifact keys must be relative object keys");
+    },
+  );
+
+  it("rejects invalid referenced artifact keys", async () => {
+    const records = await fixtureRecords();
+    const manifest = manifestFromRecords(records);
+
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithManifest(records, {
+            ...manifest,
+            artifacts: {
+              ...manifest.artifacts,
+              public: {
+                ...manifest.artifacts.public,
+                key: "./public/catalog.json",
+              },
+            },
+          }),
+        ),
+      }),
+    ).rejects.toThrow("Artifact keys must be relative object keys");
   });
 
   it("verifies artifact digests before parsing JSON", async () => {
@@ -445,9 +479,14 @@ describe("connector catalog artifacts", () => {
           recordsWithPublicArtifact(records, publicArtifact),
         ),
       }),
-    ).rejects.toThrow(
-      "Public connector catalog artifact leaked FIXTURE_MANUAL_API_TOKEN",
-    );
+    ).rejects.toThrow("Public connector catalog artifact leaked private value");
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithPublicArtifact(records, publicArtifact),
+        ),
+      }),
+    ).rejects.not.toThrow("FIXTURE_MANUAL_API_TOKEN");
   });
 
   it("rejects public artifacts that leak private runtime artifact keys", async () => {
@@ -481,9 +520,17 @@ describe("connector catalog artifacts", () => {
           ),
         ),
       }),
-    ).rejects.toThrow(
-      "Public connector catalog artifact leaked private/fixture-manual/runtime.json",
-    );
+    ).rejects.toThrow("Public connector catalog artifact leaked private value");
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithPrivateArtifact(
+            recordsWithPublicArtifact(records, publicArtifact),
+            privateArtifact,
+          ),
+        ),
+      }),
+    ).rejects.not.toThrow("private/fixture-manual/runtime.json");
   });
 
   it("rejects public permission summary drift", async () => {
@@ -556,6 +603,39 @@ describe("connector catalog artifacts", () => {
       }),
     ).rejects.toThrow(
       "fixture-manual permission category display order mismatch",
+    );
+
+    const emptyCategoryArtifact = publicArtifactFromRecords(records);
+    emptyCategoryArtifact.permissions.push({
+      connectorRef: "fixture-oauth",
+      label: "Fixture OAuth",
+      permissionCount: 0,
+      permissions: [],
+      categories: {
+        categories: {},
+        displayOrder: [],
+      },
+      defaultPolicy: {
+        permissionDefault: "allow",
+        unknownPolicy: "allow",
+      },
+    });
+    const oauthConnector = emptyCategoryArtifact.connectors.find((item) => {
+      return item.connectorRef === "fixture-oauth";
+    });
+    if (!oauthConnector) {
+      throw new Error("Missing fixture OAuth connector");
+    }
+    oauthConnector.permissionSummary.hasCategories = true;
+
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithPublicArtifact(records, emptyCategoryArtifact),
+        ),
+      }),
+    ).rejects.toThrow(
+      "permission categories require permissions for fixture-oauth",
     );
 
     const overrideDriftArtifact = publicArtifactFromRecords(records);

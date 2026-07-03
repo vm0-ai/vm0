@@ -58,7 +58,7 @@ function assertNoSensitiveString(args: {
     }
     if (args.value.includes(sensitiveValue)) {
       throw new Error(
-        `Public connector catalog artifact leaked ${sensitiveValue} at ${args.path}`,
+        `Public connector catalog artifact leaked private value at ${args.path}`,
       );
     }
     const normalizedSensitiveValue = normalizeSensitiveString(sensitiveValue);
@@ -69,7 +69,7 @@ function assertNoSensitiveString(args: {
       normalizedValue.includes(normalizedSensitiveValue)
     ) {
       throw new Error(
-        `Public connector catalog artifact leaked ${sensitiveValue} at ${args.path}`,
+        `Public connector catalog artifact leaked private value at ${args.path}`,
       );
     }
   }

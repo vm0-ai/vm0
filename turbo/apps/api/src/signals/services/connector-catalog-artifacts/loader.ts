@@ -6,6 +6,7 @@ import {
   connectorCatalogPrivateArtifactSchema,
   connectorCatalogPublicArtifactSchema,
   isSupportedConnectorCatalogCapability,
+  parseConnectorCatalogArtifactKey,
   SUPPORTED_CONNECTOR_CATALOG_ACTIVE_SCHEMA_VERSION,
   SUPPORTED_CONNECTOR_CATALOG_ARTIFACT_SCHEMA_VERSION,
   type ConnectorCatalogActivePointer,
@@ -266,6 +267,11 @@ function assertPermissionSummaryConsistency(
     assertPermissionOverridesConsistency(permission, permissionNames);
 
     if (permission.categories) {
+      if (permissionNames.size === 0) {
+        throw new Error(
+          `Connector catalog permission categories require permissions for ${permission.connectorRef}`,
+        );
+      }
       assertSameValues({
         expected: permissionNames,
         actual: new Set(Object.keys(permission.categories.categories)),
@@ -495,7 +501,9 @@ export async function loadConnectorCatalogArtifacts(args: {
   readonly reader: ConnectorCatalogArtifactReader;
   readonly activeKey?: string;
 }): Promise<ValidatedConnectorCatalogArtifacts> {
-  const activeKey = args.activeKey ?? DEFAULT_CONNECTOR_CATALOG_ACTIVE_KEY;
+  const activeKey = parseConnectorCatalogArtifactKey(
+    args.activeKey ?? DEFAULT_CONNECTOR_CATALOG_ACTIVE_KEY,
+  );
   const activeBytes = await readArtifactBytes(args.reader, activeKey);
   const active = connectorCatalogActivePointerSchema.parse(
     parseJsonArtifact(activeKey, activeBytes),

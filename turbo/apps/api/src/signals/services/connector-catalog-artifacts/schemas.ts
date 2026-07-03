@@ -8,11 +8,14 @@ const artifactKeySchema = z
   .string()
   .min(1)
   .refine((key) => {
+    const segments = key.split("/");
     return (
       !key.startsWith("/") &&
       !key.includes("..") &&
       !key.includes("\\") &&
-      !key.includes("//")
+      segments.every((segment) => {
+        return segment.length > 0 && segment !== ".";
+      })
     );
   }, "Artifact keys must be relative object keys");
 
@@ -33,6 +36,10 @@ const connectorCatalogArtifactReferenceSchema = z
     digest: digestSchema,
   })
   .strict();
+
+export function parseConnectorCatalogArtifactKey(key: string): string {
+  return artifactKeySchema.parse(key);
+}
 
 export const connectorCatalogActivePointerSchema = z
   .object({

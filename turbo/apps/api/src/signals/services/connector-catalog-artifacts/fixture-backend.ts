@@ -8,6 +8,7 @@ import {
   type ConnectorCatalogArtifactReader,
   type ValidatedConnectorCatalogArtifacts,
 } from "./loader";
+import { parseConnectorCatalogArtifactKey } from "./schemas";
 
 const CONNECTOR_CATALOG_FIXTURE_ACTIVE_KEY =
   DEFAULT_CONNECTOR_CATALOG_ACTIVE_KEY;
@@ -24,7 +25,8 @@ const CONNECTOR_CATALOG_FIXTURE_ROOT = fileURLToPath(
 
 function fixtureArtifactPath(root: string, key: string): string {
   const rootPath = resolve(root);
-  const path = resolve(rootPath, key);
+  const artifactKey = parseConnectorCatalogArtifactKey(key);
+  const path = resolve(rootPath, artifactKey);
   if (path !== rootPath && !path.startsWith(`${rootPath}${sep}`)) {
     throw new Error(
       `Connector catalog fixture key escapes fixture root: ${key}`,
