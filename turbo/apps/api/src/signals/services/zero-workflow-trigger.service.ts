@@ -103,6 +103,17 @@ export type TriggerResult =
   | { readonly kind: "forbidden"; readonly message: string }
   | { readonly kind: "conflict"; readonly message: string }
   | { readonly kind: "bad-request"; readonly message: string };
+
+function workflowWebhookTriggersDisabledResult(): {
+  readonly kind: "bad-request";
+  readonly message: string;
+} {
+  return {
+    kind: "bad-request",
+    message: "Workflow webhook triggers are not enabled",
+  };
+}
+
 type TriggerActionFailure = Exclude<
   TriggerResult,
   { readonly kind: "ok" } | { readonly kind: "deleted" }
@@ -1349,10 +1360,7 @@ const createEventTriggerForWorkflow$ = command(
       );
       signal.throwIfAborted();
       if (!featureEnabled) {
-        return {
-          kind: "bad-request",
-          message: "Workflow webhook triggers are not enabled",
-        };
+        return workflowWebhookTriggersDisabledResult();
       }
 
       return await createWebhookEventTriggerForWorkflow({
@@ -2093,10 +2101,7 @@ const ensureEventTriggerCanBeEnabled$ = command(
       );
       signal.throwIfAborted();
       if (!featureEnabled) {
-        return {
-          kind: "bad-request",
-          message: "Workflow webhook triggers are not enabled",
-        };
+        return workflowWebhookTriggersDisabledResult();
       }
     }
     return null;

@@ -613,6 +613,14 @@ describe("zero workflows", () => {
 
   it("copies workflows and caller-owned triggers through the API", async () => {
     const actor = user();
+    if (!actor.orgId) {
+      throw new Error("Expected workflow copy actor to belong to an org");
+    }
+    const featureSwitchActor = {
+      userId: actor.userId,
+      orgId: actor.orgId,
+      orgRole: actor.orgRole,
+    };
     const sourceAgent = await createAgent(actor, {
       displayName: "Copy Source Agent",
       visibility: "private",
@@ -637,7 +645,7 @@ describe("zero workflows", () => {
       }),
       [201],
     );
-    await updateFeatureSwitchesForUser(context, actor, {
+    await updateFeatureSwitchesForUser(context, featureSwitchActor, {
       [FeatureSwitchKey.WorkflowAutomation]: true,
       [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
     });
@@ -656,7 +664,7 @@ describe("zero workflows", () => {
       kind: "event",
       eventType: "webhook-received",
     });
-    await updateFeatureSwitchesForUser(context, actor, {
+    await updateFeatureSwitchesForUser(context, featureSwitchActor, {
       [FeatureSwitchKey.WorkflowAutomation]: true,
       [FeatureSwitchKey.WorkflowWebhookTriggers]: false,
     });
@@ -697,7 +705,7 @@ describe("zero workflows", () => {
           copiedTrigger.eventType === "webhook-received"
         );
       }),
-    ).toBe(false);
+    ).toBeFalsy();
   });
 
   it("reads and updates workflow content, audit metadata, and deletion through API responses", async () => {
