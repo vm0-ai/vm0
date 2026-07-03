@@ -643,25 +643,6 @@ function skillMountPath(
 // declared in the compose — a run can execute on a provider whose framework
 // differs from the compose, and skills mounted at the wrong path are invisible
 // to the agent.
-// The harness ships a built-in `/goal` (Claude Code & Codex). When the vm0
-// `goal` seed skill is injected it must take over, so these built-in goal tool
-// identifiers are added to the run's disallowed-tools list to suppress the
-// native command. Disallowing a name the active harness does not expose is a
-// harmless no-op, so both harnesses' identifiers are listed.
-const BUILTIN_GOAL_DISALLOWED_TOOLS = ["goal", "update_goal"] as const;
-
-function withBuiltinGoalDisabled(
-  disallowedTools: string[] | undefined,
-  goalSeedEnabled: boolean,
-): string[] | undefined {
-  if (!goalSeedEnabled) {
-    return disallowedTools;
-  }
-  return [
-    ...new Set([...(disallowedTools ?? []), ...BUILTIN_GOAL_DISALLOWED_TOOLS]),
-  ];
-}
-
 function buildSystemSkillVolumes(
   connectorTypes: readonly ConnectorType[],
   framework: SupportedFramework,
@@ -4732,13 +4713,7 @@ async function buildStoredExecutionContext(args: {
       userTimezone: args.userTimezone,
       firewalls: permissions?.firewalls,
       networkPolicies: permissions?.networkPolicies,
-      disallowedTools: withBuiltinGoalDisabled(
-        args.body.disallowedTools,
-        isFeatureEnabled(
-          FeatureSwitchKey.WorkflowAutomation,
-          args.featureSwitchContext,
-        ),
-      ),
+      disallowedTools: args.body.disallowedTools,
       tools: args.body.tools,
       settings: args.body.settings,
       experimentalProfile: runnerProfile(args.resolved.content),

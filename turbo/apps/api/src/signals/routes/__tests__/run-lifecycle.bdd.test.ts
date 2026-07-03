@@ -4465,6 +4465,40 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("injects the workflow goal skill without denying invalid goal tool names", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.WorkflowAutomation]: true,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "continue the goal",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.featureFlags).toMatchObject({
+      [FeatureSwitchKey.WorkflowAutomation]: true,
+    });
+    expect(claim.disallowedTools).toStrictEqual([
+      "CronCreate",
+      "CronList",
+      "CronDelete",
+      "ScheduleWakeup",
+      "AskUserQuestion",
+      "Skill(loop)",
+      "Skill(loop *)",
+    ]);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
   it("promotes queued runs with feature flags and a fresh api start time", async () => {
     const api = createRunsAutomationsApi(context);
     const computerUse = createComputerUseBddApi(context);
