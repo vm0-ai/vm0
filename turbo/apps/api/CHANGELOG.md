@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.212.2](https://github.com/vm0-ai/vm0/compare/api-v1.212.1...api-v1.212.2) (2026-07-03)
+
+
+### Performance Improvements
+
+* attribute workflow event source timing ([#19998](https://github.com/vm0-ai/vm0/issues/19998)) ([2856fff](https://github.com/vm0-ai/vm0/commit/2856fff042e21529141082a27c7ecb528266fc5d))
+
 ## [1.212.1](https://github.com/vm0-ai/vm0/compare/api-v1.212.0...api-v1.212.1) (2026-07-03)
 
 

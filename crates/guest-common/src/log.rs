@@ -1,4 +1,14 @@
-//! Logging utilities for VM scripts.
+//! Structured guest logging utilities for VM scripts.
+//!
+//! Logging macros always emit one structured line to stderr. When an embedding
+//! runtime has installed a guest system log with [`set_system_log_file`], they
+//! synchronously attempt to append the same line before returning.
+//! Without a configured system log, logging falls back to stderr-only behavior.
+//! System log append failures are reported to stderr and do not suppress the
+//! original stderr line.
+//!
+//! Embedding runtimes may persist or upload the configured system log; this
+//! module only owns the local logging sinks.
 
 use std::fs::File;
 use std::io::{self, IoSlice, Write};
@@ -95,10 +105,10 @@ pub fn timestamp() -> String {
 /// Updating this path drops any cached file handle, including same-path
 /// updates. This lets callers force the next write to reopen the path.
 ///
-/// The file is still opened lazily by the next log line. System log writes are
-/// synchronous and complete before the logging macro returns. This matters for
-/// guest-agent's final telemetry upload, which reads the same file immediately
-/// after some fatal-path log lines are emitted.
+/// The file is still opened lazily by the next log line. System log append
+/// attempts are synchronous and finish before the logging macro returns. This
+/// matters for guest-agent's final telemetry upload, which reads the same file
+/// immediately after some fatal-path log lines are emitted.
 pub fn set_system_log_file(path: impl AsRef<Path>) {
     let mut guard = SYSTEM_LOG.lock().unwrap_or_else(|e| e.into_inner());
     guard.set_path(path.as_ref().to_path_buf());
@@ -123,8 +133,8 @@ fn write_stderr_line(line: &str) {
     let _ = stderr.flush();
 }
 
-/// Emit one formatted log line to stderr and, when enabled, the guest-side
-/// system log file.
+/// Emit one formatted log line to stderr and attempt to append it to the
+/// configured guest-side system log.
 pub fn emit(level: &str, tag: &str, args: std::fmt::Arguments<'_>) {
     let line = format!("[{}] [{level}] [{tag}] {args}", timestamp());
     if let Err(e) = append_system_log_line(&line) {
@@ -136,7 +146,11 @@ pub fn emit(level: &str, tag: &str, args: std::fmt::Arguments<'_>) {
     write_stderr_line(&line);
 }
 
-/// Log an info message to stderr.
+/// Log an info message to stderr and attempt to append it to the configured
+/// guest system log.
+///
+/// If no guest system log has been installed with
+/// [`crate::log::set_system_log_file`], the message is emitted to stderr only.
 #[macro_export]
 macro_rules! log_info {
     ($tag:expr, $($arg:tt)*) => {
@@ -144,7 +158,11 @@ macro_rules! log_info {
     };
 }
 
-/// Log a warning message to stderr.
+/// Log a warning message to stderr and attempt to append it to the configured
+/// guest system log.
+///
+/// If no guest system log has been installed with
+/// [`crate::log::set_system_log_file`], the message is emitted to stderr only.
 #[macro_export]
 macro_rules! log_warn {
     ($tag:expr, $($arg:tt)*) => {
@@ -152,7 +170,11 @@ macro_rules! log_warn {
     };
 }
 
-/// Log an error message to stderr.
+/// Log an error message to stderr and attempt to append it to the configured
+/// guest system log.
+///
+/// If no guest system log has been installed with
+/// [`crate::log::set_system_log_file`], the message is emitted to stderr only.
 #[macro_export]
 macro_rules! log_error {
     ($tag:expr, $($arg:tt)*) => {

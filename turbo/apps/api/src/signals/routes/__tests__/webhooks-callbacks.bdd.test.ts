@@ -425,6 +425,72 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     expect(membershipDeleted.body).toBe("OK");
   });
 
+  it("bootstraps limited-free orgs after verified Clerk org creation events", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    api.configureClerkWebhookSecret();
+    bdd.acceptAgentStorageWrites();
+
+    const admin = bdd.user();
+    api.verifyNextClerkWebhook({
+      type: "organization.created",
+      data: {
+        id: orgOf(admin),
+        created_by: admin.userId,
+      },
+    });
+    const created = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(created.body).toBe("OK");
+    await flushWaitUntilForTest();
+
+    const billing = await runs.readBillingStatus(admin);
+    expect(billing).toMatchObject({
+      credits: 1000,
+      tier: "limited-free-1",
+      onboardingPaymentPending: false,
+    });
+
+    api.verifyNextClerkWebhook({
+      type: "organizationMembership.created",
+      data: {
+        id: "mem_bdd_created",
+        organization: { id: orgOf(admin) },
+        publicUserData: { userId: admin.userId },
+        role: "org:admin",
+      },
+    });
+    const duplicate = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(duplicate.body).toBe("OK");
+    await flushWaitUntilForTest();
+
+    const repeatedBilling = await runs.readBillingStatus(admin);
+    expect(repeatedBilling).toMatchObject({
+      credits: 1000,
+      tier: "limited-free-1",
+      onboardingPaymentPending: false,
+    });
+
+    const status = await bdd.readOnboardingStatus(admin);
+    expect(status).toMatchObject({
+      needsOnboarding: false,
+      isAdmin: true,
+      hasOrg: true,
+      hasDefaultAgent: true,
+      defaultAgentMetadata: {
+        displayName: "Zero",
+        sound: "professional",
+      },
+    });
+    expect(status.defaultAgentId).toBeTruthy();
+
+    const agents = await bdd.listAgents(admin);
+    expect(
+      agents.filter((agent) => {
+        return agent.displayName === "Zero";
+      }),
+    ).toHaveLength(1);
+  });
+
   // The membership-deleted automation-suspension scenario was removed with
   // the automation -> workflow cutover (#19959): the frozen legacy API can
   // no longer create automations. Poller-level owner-suspension coverage
