@@ -3,6 +3,7 @@ import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogPermissionDetail,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { CONNECTOR_REF_MAX_LENGTH } from "@vm0/api-contracts/contracts/connector-ref";
 import { accept } from "../lib/accept.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { connectorsReloadVersion$ } from "./external/connectors.ts";
@@ -13,6 +14,11 @@ interface FirewallPermissionMetadataParams {
 }
 
 const FIREWALL_PERMISSION_METADATA_CACHE_LIMIT = 256;
+const MISSING_FIREWALL_PERMISSION_METADATA$ = computed(
+  (): Promise<PublicConnectorCatalogPermissionDetail | null> => {
+    return Promise.resolve(null);
+  },
+);
 
 function evictOldestCacheEntry<K, V>(cache: Map<K, V>): void {
   const oldest = cache.keys().next();
@@ -30,6 +36,9 @@ function createFirewallPermissionMetadataFactory(): (
   >();
   return (params) => {
     const key = params.connectorRef;
+    if (key.length === 0 || key.length > CONNECTOR_REF_MAX_LENGTH) {
+      return MISSING_FIREWALL_PERMISSION_METADATA$;
+    }
     const existing = cache.get(key);
     if (existing) {
       return existing;
