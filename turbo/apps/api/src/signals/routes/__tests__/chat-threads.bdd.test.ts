@@ -687,6 +687,29 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       selectedModel: null,
     });
 
+    const { providerId: byokProviderId } = await api.createOrgModelProvider(
+      actor,
+      {
+        type: "anthropic-api-key",
+        secret: "sk-ant-limited-free-byok",
+      },
+    );
+    const byokSelection = await chat.requestUpdateThreadModelSelection(
+      actor,
+      thread.id,
+      {
+        modelProviderId: byokProviderId,
+        selectedModel: "claude-sonnet-4-6",
+      },
+      [402],
+    );
+    expectApiError(byokSelection.body);
+    expect(byokSelection.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
+      modelProviderId: null,
+      selectedModel: null,
+    });
+
     await chat.updateThreadModelSelection(actor, thread.id, {
       modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
       selectedModel: "claude-sonnet-4-6",
