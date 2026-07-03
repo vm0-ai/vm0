@@ -20,6 +20,7 @@ pub const EXECVE_STRING_MAX_BYTES: usize = 128 * 1024 - 1;
 pub const EXECVE_ARG_ENV_MAX_BYTES: usize = 2 * 1024 * 1024;
 
 const EXECVE_POINTER_OVERHEAD_BYTES: usize = std::mem::size_of::<usize>();
+const EXECVE_POINTER_TABLE_TERMINATOR_BYTES: usize = EXECVE_POINTER_OVERHEAD_BYTES * 2;
 
 /// Process boundary value kind.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -129,7 +130,7 @@ fn validate_exec_boundary_sizes_with_budget(
     values: impl IntoIterator<Item = ExecBoundaryValue>,
     aggregate_max_bytes: usize,
 ) -> Result<(), ExecBoundarySizeError> {
-    let mut aggregate_bytes = EXECVE_POINTER_OVERHEAD_BYTES;
+    let mut aggregate_bytes = EXECVE_POINTER_TABLE_TERMINATOR_BYTES;
 
     for value in values {
         if value.bytes > EXECVE_STRING_MAX_BYTES {
@@ -244,6 +245,32 @@ mod tests {
                 bytes,
                 max_bytes
             } if bytes > string_only_bytes && max_bytes == string_only_bytes
+        ));
+    }
+
+    #[test]
+    fn aggregate_pointer_overhead_counts_argv_and_envp_null_terminators() {
+        let value_count = 2usize;
+        let string_bytes = "/bin/bash".len() + 1 + "A=".len() + 1;
+        let budget_missing_envp_null =
+            string_bytes + ((value_count + 1) * EXECVE_POINTER_OVERHEAD_BYTES);
+        let expected_bytes = budget_missing_envp_null + EXECVE_POINTER_OVERHEAD_BYTES;
+
+        let error = validate_exec_boundary_sizes_with_budget(
+            [
+                ExecBoundaryValue::arg("argv[0]", "/bin/bash"),
+                ExecBoundaryValue::env("A", ""),
+            ],
+            budget_missing_envp_null,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            ExecBoundarySizeError::AggregateTooLarge {
+                bytes,
+                max_bytes
+            } if bytes == expected_bytes && max_bytes == budget_missing_envp_null
         ));
     }
 }
