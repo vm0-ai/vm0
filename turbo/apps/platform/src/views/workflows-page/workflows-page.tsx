@@ -90,11 +90,11 @@ function initials(label: string): string {
 function triggerDotClass(entry: WorkflowTriggerAutomationEntry): string {
   const trigger = entry.trigger;
   if (trigger.kind === "schedule") {
-    return "bg-blue-500";
+    return "bg-[radial-gradient(circle_at_40%_35%,#93c5fd,#2563eb)] ring-2 ring-blue-400/20";
   }
   return trigger.eventType === "webhook-received"
-    ? "bg-amber-500"
-    : "bg-emerald-500";
+    ? "bg-[radial-gradient(circle_at_40%_35%,#fcd34d,#d97706)] ring-2 ring-amber-400/25"
+    : "bg-[radial-gradient(circle_at_40%_35%,#6ee7b7,#059669)] ring-2 ring-emerald-400/20";
 }
 
 function connectorNames(
@@ -116,7 +116,7 @@ function connectorPillClassName({
   readonly muted?: boolean;
 }) {
   return cn(
-    "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border-[0.7px] border-border/80 bg-white px-2 text-[11px] font-normal leading-none shadow-sm",
+    "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border-[0.7px] border-border/80 bg-white px-2 text-[11px] font-medium leading-none shadow-sm",
     muted ? "text-muted-foreground" : "text-foreground/70",
     interactive &&
       "cursor-pointer transition-colors hover:border-border hover:bg-gray-50 hover:text-foreground",
