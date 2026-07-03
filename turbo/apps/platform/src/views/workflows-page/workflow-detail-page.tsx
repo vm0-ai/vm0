@@ -2324,6 +2324,108 @@ function GoogleCalendarTriggerCreateMenuItems({
   );
 }
 
+function GoogleMeetTriggerCreateMenuItem({
+  onSelect,
+}: {
+  readonly onSelect: () => void;
+}) {
+  return (
+    <TriggerCreateMenuItem
+      title="Google Meet transcript ready"
+      description="Run when Meet finishes generating a transcript."
+      icon={
+        <IconVideo
+          size={15}
+          stroke={1.5}
+          className="mt-0.5 shrink-0 text-muted-foreground"
+        />
+      }
+      onSelect={onSelect}
+    />
+  );
+}
+
+function BaseTriggerCreateMenuItems({
+  onSelect,
+}: {
+  readonly onSelect: (kind: TriggerCreateDialogKind) => void;
+}) {
+  return (
+    <>
+      <TriggerCreateMenuItem
+        title="Interval"
+        description="Run this workflow on a fixed interval."
+        icon={
+          <IconRepeat
+            size={15}
+            stroke={1.5}
+            className="mt-0.5 shrink-0 text-muted-foreground"
+          />
+        }
+        onSelect={() => {
+          onSelect("interval");
+        }}
+      />
+      <TriggerCreateMenuItem
+        title="Scheduled time"
+        description="Run this workflow from a time rule."
+        icon={
+          <IconClock
+            size={15}
+            stroke={1.5}
+            className="mt-0.5 shrink-0 text-muted-foreground"
+          />
+        }
+        onSelect={() => {
+          onSelect("scheduled");
+        }}
+      />
+      <TriggerCreateMenuItem
+        title="One-time run"
+        description="Run this workflow once at a date and time."
+        icon={
+          <IconClock
+            size={15}
+            stroke={1.5}
+            className="mt-0.5 shrink-0 text-muted-foreground"
+          />
+        }
+        onSelect={() => {
+          onSelect("once");
+        }}
+      />
+      <TriggerCreateMenuItem
+        title="Gmail new message"
+        description="Run this workflow from matching email."
+        icon={
+          <IconMail
+            size={15}
+            stroke={1.5}
+            className="mt-0.5 shrink-0 text-muted-foreground"
+          />
+        }
+        onSelect={() => {
+          onSelect("gmail");
+        }}
+      />
+      <TriggerCreateMenuItem
+        title="Gmail label applied"
+        description="Run when a named Gmail label is applied."
+        icon={
+          <IconMail
+            size={15}
+            stroke={1.5}
+            className="mt-0.5 shrink-0 text-muted-foreground"
+          />
+        }
+        onSelect={() => {
+          onSelect("gmail-label");
+        }}
+      />
+    </>
+  );
+}
+
 function TriggerCreateMenu({
   onSelect,
   githubLabelTriggersEnabled,
@@ -2349,76 +2451,7 @@ function TriggerCreateMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <TriggerCreateMenuItem
-          title="Interval"
-          description="Run this workflow on a fixed interval."
-          icon={
-            <IconRepeat
-              size={15}
-              stroke={1.5}
-              className="mt-0.5 shrink-0 text-muted-foreground"
-            />
-          }
-          onSelect={() => {
-            onSelect("interval");
-          }}
-        />
-        <TriggerCreateMenuItem
-          title="Scheduled time"
-          description="Run this workflow from a time rule."
-          icon={
-            <IconClock
-              size={15}
-              stroke={1.5}
-              className="mt-0.5 shrink-0 text-muted-foreground"
-            />
-          }
-          onSelect={() => {
-            onSelect("scheduled");
-          }}
-        />
-        <TriggerCreateMenuItem
-          title="One-time run"
-          description="Run this workflow once at a date and time."
-          icon={
-            <IconClock
-              size={15}
-              stroke={1.5}
-              className="mt-0.5 shrink-0 text-muted-foreground"
-            />
-          }
-          onSelect={() => {
-            onSelect("once");
-          }}
-        />
-        <TriggerCreateMenuItem
-          title="Gmail new message"
-          description="Run this workflow from matching email."
-          icon={
-            <IconMail
-              size={15}
-              stroke={1.5}
-              className="mt-0.5 shrink-0 text-muted-foreground"
-            />
-          }
-          onSelect={() => {
-            onSelect("gmail");
-          }}
-        />
-        <TriggerCreateMenuItem
-          title="Gmail label applied"
-          description="Run when a named Gmail label is applied."
-          icon={
-            <IconMail
-              size={15}
-              stroke={1.5}
-              className="mt-0.5 shrink-0 text-muted-foreground"
-            />
-          }
-          onSelect={() => {
-            onSelect("gmail-label");
-          }}
-        />
+        <BaseTriggerCreateMenuItems onSelect={onSelect} />
         {githubLabelTriggersEnabled ? (
           <GithubLabelTriggerCreateMenuItem
             onSelect={() => {
@@ -2430,16 +2463,7 @@ function TriggerCreateMenu({
           <GoogleCalendarTriggerCreateMenuItems onSelect={onSelect} />
         ) : null}
         {googleMeetTriggersEnabled ? (
-          <TriggerCreateMenuItem
-            title="Google Meet transcript ready"
-            description="Run when Meet finishes generating a transcript."
-            icon={
-              <IconVideo
-                size={15}
-                stroke={1.5}
-                className="mt-0.5 shrink-0 text-muted-foreground"
-              />
-            }
+          <GoogleMeetTriggerCreateMenuItem
             onSelect={() => {
               onSelect("google-meet-transcript-generated");
             }}

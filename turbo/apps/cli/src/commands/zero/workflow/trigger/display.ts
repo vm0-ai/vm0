@@ -137,8 +137,18 @@ function formatWorkflowTriggerEntry(
   ) {
     return `Google Calendar event cancelled: ${trigger.eventConfig.calendarId}`;
   }
+  if (
+    trigger.kind === "event" &&
+    trigger.eventType === "google-meet-transcript-generated"
+  ) {
+    return "Google Meet transcript ready: meetings you organize";
+  }
   if (isWebhookTrigger(trigger)) {
     return `Webhook: ${trigger.webhookUrl}`;
+  }
+
+  if (trigger.kind !== "schedule") {
+    return workflowTriggerKindLabel(trigger);
   }
 
   const { schedule } = trigger;
@@ -173,6 +183,8 @@ function workflowTriggerKindLabel(trigger: ZeroWorkflowTriggerSummary): string {
       return "Google Calendar event updated";
     case "google-calendar-event-cancelled":
       return "Google Calendar event cancelled";
+    case "google-meet-transcript-generated":
+      return "Google Meet transcript ready";
     case "webhook-received":
       return "Webhook";
   }

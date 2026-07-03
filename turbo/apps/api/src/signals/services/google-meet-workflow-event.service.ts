@@ -46,7 +46,7 @@ const GOOGLE_WORKSPACE_EVENTS_API_BASE =
   "https://workspaceevents.googleapis.com/v1";
 const GOOGLE_MEET_TRANSCRIPT_GENERATED_EVENT_TYPE =
   "google-meet-transcript-generated";
-export const GOOGLE_MEET_TRANSCRIPT_FILE_GENERATED_EVENT_TYPE =
+const GOOGLE_MEET_TRANSCRIPT_FILE_GENERATED_EVENT_TYPE =
   "google.workspace.meet.transcript.v2.fileGenerated";
 const GOOGLE_WORKSPACE_SUBSCRIPTION_TTL_SECONDS = 7 * 24 * 60 * 60;
 const GOOGLE_WORKSPACE_RENEWAL_WINDOW_MS = 24 * 60 * 60 * 1000;
