@@ -398,6 +398,7 @@ pub struct HeartbeatState {
     pub allocated_vcpu: u32,
     pub allocated_memory_mb: u32,
     pub running_count: usize,
+    pub available_profiles: Vec<String>,
     pub held_session_states: Vec<HeldSessionState>,
     pub mode: String,
 }
@@ -1042,6 +1043,7 @@ mod tests {
             allocated_vcpu: 6,
             allocated_memory_mb: 6144,
             running_count: 2,
+            available_profiles: vec!["vm0/default".into()],
             held_session_states: vec![HeldSessionState {
                 session_id: "session-abc".into(),
                 last_completed_at: "2026-05-28T00:00:00.000Z".into(),
@@ -1057,6 +1059,7 @@ mod tests {
         assert_eq!(json["allocatedVcpu"], 6);
         assert_eq!(json["allocatedMemoryMb"], 6144);
         assert_eq!(json["runningCount"], 2);
+        assert_eq!(json["availableProfiles"], json!(["vm0/default"]));
         assert_eq!(
             json["heldSessionStates"],
             json!([{

@@ -3760,6 +3760,13 @@
       "when": 1783069319153,
       "tag": "0536_whole_blacklash",
       "breakpoints": true
+    },
+    {
+      "idx": 537,
+      "version": "7",
+      "when": 1783082516015,
+      "tag": "0537_tense_namora",
+      "breakpoints": true
     }
   ]
 }

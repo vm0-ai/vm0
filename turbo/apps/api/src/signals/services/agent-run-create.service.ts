@@ -363,6 +363,7 @@ interface LockedRunPersistenceRow extends Record<string, unknown> {
 interface DerivedPersistenceResult {
   readonly status: RunStatus;
   readonly sandboxId?: string;
+  readonly runnerJobCreatedAt?: Date;
 }
 
 type RunnerJobPayload = ReturnType<typeof queuedRunnerJobPayload>;
@@ -379,6 +380,7 @@ type AtomicLaunchCommitResult =
       readonly kind: "pending";
       readonly run: RunRecord;
       readonly runnerJobPayload: RunnerJobPayload;
+      readonly runnerJobCreatedAt: Date;
       readonly runContextSnapshot: RunContextAxiomSnapshot;
     }
   | {
@@ -5209,6 +5211,97 @@ async function lockRunForDerivedPersistence(
   return row.sandboxId ? { status, sandboxId: row.sandboxId } : { status };
 }
 
+async function insertRunnerJobQueueRow(
+  tx: DbTransaction,
+  args: {
+    readonly runId: string;
+    readonly payload: RunnerJobPayload;
+  },
+): Promise<Date> {
+  const [runnerJob] = await tx
+    .insert(runnerJobQueue)
+    .values({
+      runId: args.runId,
+      runnerGroup: args.payload.runnerGroup,
+      profile: args.payload.profile,
+      cliAgentSessionId: args.payload.cliAgentSessionId,
+      executionContext: args.payload.executionContext,
+      expiresAt: sql`now() + interval '2 hours'`,
+    })
+    .returning({ createdAt: runnerJobQueue.createdAt });
+  if (!runnerJob) {
+    throw new Error("Runner job queue insert returned no row");
+  }
+  return runnerJob.createdAt;
+}
+
+async function persistRunnerJobQueueForDispatch(
+  db: Db,
+  args: {
+    readonly runId: string;
+    readonly payload: RunnerJobPayload;
+    readonly timing: ApiDispatchTimingCollector;
+  },
+): Promise<DerivedPersistenceResult> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_persist_runner_job_queue",
+    "top_level",
+    async () => {
+      return await db.transaction(async (tx) => {
+        const currentRun = await measureApiDispatchTiming(
+          args.timing,
+          "api_dispatch_lock_run_for_queue_persistence",
+          "nested",
+          async () => {
+            return await lockRunForDerivedPersistence(tx, args.runId);
+          },
+        );
+        if (!currentRun) {
+          throw new Error("Run disappeared before runner job persistence");
+        }
+        if (currentRun.status !== "pending") {
+          return currentRun;
+        }
+
+        const runnerJobCreatedAt = await measureApiDispatchTiming(
+          args.timing,
+          "api_dispatch_insert_runner_job_queue",
+          "nested",
+          async () => {
+            return await insertRunnerJobQueueRow(tx, {
+              runId: args.runId,
+              payload: args.payload,
+            });
+          },
+        );
+
+        await measureApiDispatchTiming(
+          args.timing,
+          "api_dispatch_update_run_runner_group",
+          "nested",
+          async () => {
+            await tx
+              .update(agentRuns)
+              .set({ runnerGroup: args.payload.runnerGroup })
+              .where(
+                and(
+                  eq(agentRuns.id, args.runId),
+                  eq(agentRuns.status, "pending"),
+                ),
+              );
+          },
+        );
+
+        return {
+          status: "pending" as const,
+          runnerJobCreatedAt,
+        };
+      });
+    },
+  );
+}
+
 function dispatchRun(
   db: Db,
   args: {
@@ -5262,72 +5355,23 @@ function dispatchRun(
     );
     const payload = launch.runnerJobPayload;
 
-    const persisted = await measureApiDispatchTiming(
-      args.timing,
-      "api_dispatch_persist_runner_job_queue",
-      "top_level",
-      async () => {
-        return await db.transaction(async (tx) => {
-          const currentRun = await measureApiDispatchTiming(
-            args.timing,
-            "api_dispatch_lock_run_for_queue_persistence",
-            "nested",
-            async () => {
-              return await lockRunForDerivedPersistence(tx, args.run.id);
-            },
-          );
-          if (!currentRun) {
-            throw new Error("Run disappeared before runner job persistence");
-          }
-          if (currentRun.status !== "pending") {
-            return currentRun;
-          }
-
-          await measureApiDispatchTiming(
-            args.timing,
-            "api_dispatch_insert_runner_job_queue",
-            "nested",
-            async () => {
-              await tx.insert(runnerJobQueue).values({
-                runId: args.run.id,
-                runnerGroup: payload.runnerGroup,
-                profile: payload.profile,
-                cliAgentSessionId: payload.cliAgentSessionId,
-                executionContext: payload.executionContext,
-                expiresAt: sql`now() + interval '2 hours'`,
-              });
-            },
-          );
-
-          await measureApiDispatchTiming(
-            args.timing,
-            "api_dispatch_update_run_runner_group",
-            "nested",
-            async () => {
-              await tx
-                .update(agentRuns)
-                .set({ runnerGroup: payload.runnerGroup })
-                .where(
-                  and(
-                    eq(agentRuns.id, args.run.id),
-                    eq(agentRuns.status, "pending"),
-                  ),
-                );
-            },
-          );
-
-          return { status: "pending" as const };
-        });
-      },
-    );
+    const persisted = await persistRunnerJobQueueForDispatch(db, {
+      runId: args.run.id,
+      payload,
+      timing: args.timing,
+    });
 
     if (persisted.status === "pending") {
+      if (!persisted.runnerJobCreatedAt) {
+        throw new Error("Pending runner job persistence missing createdAt");
+      }
       ingestRunContextSnapshot(launch.runContextSnapshot);
-      await notifyRunnerJob({
+      await notifyRunnerJob(db, {
         runnerGroup: payload.runnerGroup,
         runId: args.run.id,
         profile: payload.profile,
         cliAgentSessionId: payload.cliAgentSessionId,
+        createdAt: persisted.runnerJobCreatedAt,
       });
       args.timing.flush({
         runId: args.run.id,
@@ -5597,21 +5641,17 @@ async function commitPendingPreparedLaunch(
     status: "pending",
     runnerGroup: payload.runnerGroup,
   });
-  await args.timing.measure(
+  const runnerJobCreatedAt = await args.timing.measure(
     "api_dispatch_persist_runner_job_queue",
     "top_level",
     async () => {
-      await args.timing.measure(
+      return await args.timing.measure(
         "api_dispatch_insert_runner_job_queue",
         "nested",
         async () => {
-          await tx.insert(runnerJobQueue).values({
+          return await insertRunnerJobQueueRow(tx, {
             runId: args.identity.runId,
-            runnerGroup: payload.runnerGroup,
-            profile: payload.profile,
-            cliAgentSessionId: payload.cliAgentSessionId,
-            executionContext: payload.executionContext,
-            expiresAt: sql`now() + interval '2 hours'`,
+            payload,
           });
         },
       );
@@ -5621,6 +5661,7 @@ async function commitPendingPreparedLaunch(
     kind: "pending",
     run,
     runnerJobPayload: payload,
+    runnerJobCreatedAt,
     runContextSnapshot: args.launch.runContextSnapshot,
   };
 }
@@ -6870,11 +6911,12 @@ async function committedAtomicLaunchResponse(args: {
   }
 
   ingestRunContextSnapshot(args.committed.runContextSnapshot);
-  await notifyRunnerJob({
+  await notifyRunnerJob(args.db, {
     runnerGroup: args.committed.runnerJobPayload.runnerGroup,
     runId: args.committed.run.id,
     profile: args.committed.runnerJobPayload.profile,
     cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
+    createdAt: args.committed.runnerJobCreatedAt,
   });
   args.timing.flush({
     runId: args.committed.run.id,

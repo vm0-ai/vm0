@@ -78,6 +78,7 @@ interface RunnerNotification {
   readonly runnerGroup: string;
   readonly profile: string;
   readonly cliAgentSessionId: string | null;
+  readonly createdAt: Date;
 }
 
 type PromoteQueuedCandidateResult =
@@ -163,7 +164,7 @@ async function insertPromotedRunnerJob(
     readonly queuedAt: Date;
     readonly payload: QueuedRunnerJobPayload;
   },
-): Promise<void> {
+): Promise<Date> {
   const promotedAt = now();
   const [remainingRow] = await tx
     .select({ depth: count() })
@@ -181,17 +182,24 @@ async function insertPromotedRunnerJob(
     },
   });
 
-  await tx.insert(runnerJobQueue).values({
-    runId: args.runId,
-    runnerGroup: args.payload.runnerGroup,
-    profile: args.payload.profile,
-    cliAgentSessionId: args.payload.cliAgentSessionId,
-    executionContext: {
-      ...args.payload.executionContext,
-      apiStartTime: promotedAt,
-    },
-    expiresAt: sql`now() + interval '2 hours'`,
-  });
+  const [runnerJob] = await tx
+    .insert(runnerJobQueue)
+    .values({
+      runId: args.runId,
+      runnerGroup: args.payload.runnerGroup,
+      profile: args.payload.profile,
+      cliAgentSessionId: args.payload.cliAgentSessionId,
+      executionContext: {
+        ...args.payload.executionContext,
+        apiStartTime: promotedAt,
+      },
+      expiresAt: sql`now() + interval '2 hours'`,
+    })
+    .returning({ createdAt: runnerJobQueue.createdAt });
+  if (!runnerJob) {
+    throw new Error("Promoted runner job queue insert returned no row");
+  }
+  return runnerJob.createdAt;
 }
 
 async function loadDrainCandidates(
@@ -336,7 +344,7 @@ async function promoteQueuedCandidate(
       };
     }
 
-    await insertPromotedRunnerJob(tx, {
+    const runnerJobCreatedAt = await insertPromotedRunnerJob(tx, {
       orgId: args.orgId,
       runId: args.row.runId,
       queuedAt: args.row.createdAt,
@@ -350,6 +358,7 @@ async function promoteQueuedCandidate(
         runnerGroup: args.payload.runnerGroup,
         profile: args.payload.profile,
         cliAgentSessionId: args.payload.cliAgentSessionId,
+        createdAt: runnerJobCreatedAt,
       },
     };
   });
@@ -430,7 +439,7 @@ async function publishPromotedQueueSideEffects(
   }
 
   if (args.runnerNotification) {
-    await tapError(notifyRunnerJob(args.runnerNotification), (error) => {
+    await tapError(notifyRunnerJob(db, args.runnerNotification), (error) => {
       L.error("Failed to notify runner after queued run promotion", {
         runId: args.runnerNotification?.runId,
         runnerGroup: args.runnerNotification?.runnerGroup,

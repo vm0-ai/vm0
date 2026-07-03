@@ -426,6 +426,7 @@ export const heartbeatBodySchema = z.object({
   allocatedVcpu: z.number().int().nonnegative(),
   allocatedMemoryMb: z.number().int().nonnegative(),
   runningCount: z.number().int().nonnegative(),
+  availableProfiles: z.array(z.string()).optional(),
   heldSessionStates: z.array(heldSessionStateSchema).max(1024),
   mode: z.enum(["running", "draining", "stopping"]),
 });
