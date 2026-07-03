@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.539.0](https://github.com/vm0-ai/vm0/compare/app-v0.538.0...app-v0.539.0) (2026-07-03)
+
+
+### Features
+
+* add automations empty-state illustration and polish trigger list UI ([#19995](https://github.com/vm0-ai/vm0/issues/19995)) ([373f4eb](https://github.com/vm0-ai/vm0/commit/373f4eb5f753f080a1b37fe1fab32aa833eff9db))
+* add trigger icon and hover description to workflow detail header ([#19976](https://github.com/vm0-ai/vm0/issues/19976)) ([bab972e](https://github.com/vm0-ai/vm0/commit/bab972ee7511f5fad8ddf4806c5f7e6bda24d2d8))
+* rename Without automation workflow filter pill to Manual ([#19993](https://github.com/vm0-ai/vm0/issues/19993)) ([7a4f0d6](https://github.com/vm0-ai/vm0/commit/7a4f0d640e9363d5dda8a67fd914ed14e5a4bb99))
+
+
+### Bug Fixes
+
+* coalesce runner direct candidate bursts ([#19969](https://github.com/vm0-ai/vm0/issues/19969)) ([1135a51](https://github.com/vm0-ai/vm0/commit/1135a514c5e5ca21bb0b929885e98e9061fe581b))
+* keep event-sourced chat header on thread meta ([#19988](https://github.com/vm0-ai/vm0/issues/19988)) ([06252d4](https://github.com/vm0-ai/vm0/commit/06252d4ce14b8a32200337eb01113d675476fe51))
+* render event-sourced chat threads from local cache first ([#19979](https://github.com/vm0-ai/vm0/issues/19979)) ([7e28376](https://github.com/vm0-ai/vm0/commit/7e28376d6fec39973ab38fd8d1141b96f1a2907b))
+* run goal continuations from the full objective prompt ([#19991](https://github.com/vm0-ai/vm0/issues/19991)) ([05a2ef8](https://github.com/vm0-ai/vm0/commit/05a2ef8136d310b8068f53d70e485992ee891639))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.147.1
+    * @vm0/core bumped to 8.391.4
+
 ## [0.538.0](https://github.com/vm0-ai/vm0/compare/app-v0.537.0...app-v0.538.0) (2026-07-03)
 
 

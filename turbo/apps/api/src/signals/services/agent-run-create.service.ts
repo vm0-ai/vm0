@@ -384,6 +384,7 @@ type AtomicLaunchCommitResult =
   | {
       readonly kind: "queued";
       readonly run: RunRecord;
+      readonly runnerJobPayload: RunnerJobPayload;
       readonly queueDepth: number;
       readonly telemetryTimestamp: string;
       readonly runContextSnapshot: RunContextAxiomSnapshot;
@@ -5578,6 +5579,7 @@ async function commitQueuedPreparedLaunch(
   return {
     kind: "queued",
     run,
+    runnerJobPayload: payload,
     queueDepth: Number(depthRow?.depth ?? 0),
     telemetryTimestamp: nowDate().toISOString(),
     runContextSnapshot: args.launch.runContextSnapshot,
@@ -6851,6 +6853,18 @@ async function committedAtomicLaunchResponse(args: {
     await publishQueueChangedSafely({
       orgId: args.createArgs.orgId,
       runId: args.committed.run.id,
+    });
+    args.timing.flush({
+      runId: args.committed.run.id,
+      runnerGroup: args.committed.runnerJobPayload.runnerGroup,
+      profile: args.committed.runnerJobPayload.profile,
+      dispatchPath: "direct",
+      ...(args.createArgs.timingDimensions
+        ? { dimensions: args.createArgs.timingDimensions }
+        : {}),
+      ...(args.createArgs.body.triggerSource
+        ? { triggerSource: args.createArgs.body.triggerSource }
+        : {}),
     });
     return createdRunResponse(args.committed.run, { status: "queued" });
   }

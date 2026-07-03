@@ -40,6 +40,25 @@ function triggersClient() {
   return setupApp({ context })(zeroWorkflowTriggersContract);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event) && event.run_id === runId;
+    });
+  });
+}
+
 async function setupFixture(): Promise<{
   readonly fixture: WorkflowsFixture;
   readonly agentId: string;
@@ -166,7 +185,10 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
       throw new Error("Expected webhook URL token");
     }
 
-    const rawBody = JSON.stringify({ event: "ping", value: 42 });
+    const rawBody = JSON.stringify({
+      event: "vm0-timing-sensitive-ping",
+      value: "vm0-timing-secret-value",
+    });
     const timestamp = Math.floor(now() / 1000);
     const first = await postWorkflowWebhook({
       token,
@@ -198,6 +220,41 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     expect(runsAfterFirst).toStrictEqual([
       { id: first.body.runId, triggerSource: "workflow-event" },
     ]);
+    const timingEvents = sandboxOperationEventsForRun(first.body.runId);
+    const actionTypes = new Set(
+      timingEvents.map((event) => {
+        return event.op_type;
+      }),
+    );
+    for (const actionType of [
+      "api_dispatch_pre_create_zero_workflow_trigger_entrypoint_gap",
+      "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+      "api_dispatch_pre_create_zero_workflow_event_check_feature_gate",
+      "api_dispatch_pre_create_zero_workflow_event_match_triggers",
+      "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
+      "api_dispatch_pre_create_zero_workflow_event_build_run_input",
+      "api_dispatch_pre_create_zero_workflow_event_handoff_run",
+    ]) {
+      expect(actionTypes).toContain(actionType);
+    }
+    expect(timingEvents).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_workflow_event_handoff_run",
+          workflow_event_source: "webhook",
+          trigger_source: "workflow-event",
+          zero_run_origin: "workflow_trigger",
+          span_kind: "nested",
+        }),
+      ]),
+    );
+    const serializedTiming = JSON.stringify(timingEvents);
+    expect(serializedTiming).not.toContain("vm0-timing-sensitive-ping");
+    expect(serializedTiming).not.toContain("vm0-timing-secret-value");
+    expect(serializedTiming).not.toContain(created.body.id);
+    expect(serializedTiming).not.toContain(WORKFLOW_NAME);
+    expect(serializedTiming).not.toContain(token);
+    expect(serializedTiming).not.toContain(created.body.webhookSecret);
 
     const second = await postWorkflowWebhook({
       token,

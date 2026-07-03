@@ -1,11 +1,20 @@
 import {
   type FirewallConfig,
+  hasUnsafeFirewallPath,
   hasBaseUrlParams,
   validateAuthBaseUrl,
   validateBaseUrl,
 } from "./firewall-types";
 import { hasRawWhitespace, hasUnsafeUrlCodepoint } from "./firewall-url-utils";
 import { parseSegment, splitPathSegments } from "./segment-parser";
+
+type SegmentParseResult = ReturnType<typeof parseSegment>;
+type MatchableSegment = Exclude<SegmentParseResult, { kind: "error" }>;
+type SegmentMatchParser = (
+  segment: string,
+  patternIndex: number,
+  lastPatternIndex: number,
+) => MatchableSegment | null;
 
 type PathSpecificity = readonly [
   literalSegments: number,
@@ -19,10 +28,6 @@ type PathSpecificity = readonly [
 
 export interface FindMatchingPermissionsOptions {
   apiBase?: string;
-}
-
-export interface FindMatchingRoutingPermissionsOptions extends FindMatchingPermissionsOptions {
-  serviceName?: string;
 }
 
 export interface FirewallBaseUrlMatch {
@@ -41,6 +46,34 @@ export interface FirewallRoutingPermissionApi {
   readonly routes: readonly FirewallRoutingPermissionRoute[];
 }
 
+export type FirewallRequestBlockReason =
+  | "permission_denied"
+  | "unknown_endpoint"
+  | "malformed_firewall_config"
+  | "malformed_network_policy"
+  | "unsafe_path";
+
+export type FirewallRequestDecision =
+  | {
+      readonly kind: "no_match";
+    }
+  | {
+      readonly kind: "allow";
+      readonly firewallName: string;
+      readonly base: string;
+      readonly relativePath: string;
+      readonly permission?: string;
+      readonly rule?: string;
+    }
+  | {
+      readonly kind: "block";
+      readonly firewallName: string;
+      readonly base: string;
+      readonly relativePath: string;
+      readonly reason: FirewallRequestBlockReason;
+      readonly permissions: readonly string[];
+    };
+
 interface ApiMatchState {
   bestSpecificity: PathSpecificity | null;
   matched: string[];
@@ -53,6 +86,74 @@ interface PermissionRuleSet {
 
 interface PermissionMatchApi {
   readonly permissionRuleSets: readonly PermissionRuleSet[];
+}
+
+type UnknownPolicy = "allow" | "deny" | "ask";
+
+interface CompiledNetworkPolicy {
+  readonly blockedPermissions: ReadonlySet<string>;
+  readonly unknownPolicy: UnknownPolicy;
+  readonly permissionMalformed: boolean;
+  readonly unknownPolicyMalformed: boolean;
+}
+
+interface CompiledNetworkPolicies {
+  readonly policies: ReadonlyMap<string, CompiledNetworkPolicy>;
+  readonly topLevelMalformed: boolean;
+}
+
+interface DecisionRule {
+  readonly permission: string;
+  readonly raw: string;
+  readonly method: string;
+  readonly path: string;
+  readonly specificity: PathSpecificity;
+}
+
+interface DecisionApi {
+  readonly rawBase: string;
+  readonly baseMalformed: boolean;
+  readonly authMalformed: boolean;
+  readonly hasMalformedRules: boolean;
+  readonly rules: readonly DecisionRule[];
+}
+
+interface DecisionFirewall {
+  readonly name: string;
+  readonly nameMalformed: boolean;
+  readonly apis: readonly DecisionApi[];
+}
+
+interface DecisionBaseMatch {
+  readonly firewallName: string;
+  readonly base: string;
+  readonly allowBase: string;
+  readonly relativePath: string;
+}
+
+interface DecisionAllowedRuleMatch {
+  readonly firewallName: string;
+  readonly base: string;
+  readonly relativePath: string;
+  readonly permission: string;
+  readonly rule: string;
+}
+
+interface DecisionBlockMatch {
+  readonly firewallName: string;
+  readonly base: string;
+  readonly relativePath: string;
+}
+
+interface FirewallDecisionState {
+  bestBaseScore: number | null;
+  bestRuleSpecificity: PathSpecificity | null;
+  baseMatch: DecisionBaseMatch | null;
+  allowedMatch: DecisionAllowedRuleMatch | null;
+  deniedMatch: DecisionBlockMatch | null;
+  deniedPermissionNames: string[];
+  malformedConfigMatch: DecisionBlockMatch | null;
+  malformedPolicyMatch: DecisionBlockMatch | null;
 }
 
 const VALID_RULE_METHODS = new Set([
@@ -137,6 +238,28 @@ function isInvalidGreedyParam(
   suffix: string,
 ): boolean {
   return patternIndex !== lastPatternIndex || prefix !== "" || suffix !== "";
+}
+
+function parseStrictMatchSegment(
+  segment: string,
+  patternIndex: number,
+  lastPatternIndex: number,
+): MatchableSegment | null {
+  const parsed = parseSegment(segment);
+  if (parsed.kind === "error") return null;
+  if (
+    parsed.kind === "param" &&
+    parsed.greedy !== "" &&
+    isInvalidGreedyParam(
+      patternIndex,
+      lastPatternIndex,
+      parsed.prefix,
+      parsed.suffix,
+    )
+  ) {
+    return null;
+  }
+  return parsed;
 }
 
 function pathSpecificity(pattern: string): PathSpecificity | null {
@@ -226,6 +349,20 @@ function matchingRulePath(rule: string, upperMethod: string): string | null {
   if (!VALID_RULE_METHODS.has(ruleMethod)) return null;
   if (ruleMethod !== "ANY" && ruleMethod !== upperMethod) return null;
   return rule.slice(spaceIdx + 1);
+}
+
+function compileDecisionRule(
+  permission: string,
+  rule: string,
+): DecisionRule | null {
+  const spaceIdx = rule.indexOf(" ");
+  if (spaceIdx === -1) return null;
+  const method = rule.slice(0, spaceIdx);
+  if (!VALID_RULE_METHODS.has(method)) return null;
+  const path = rule.slice(spaceIdx + 1);
+  const specificity = pathSpecificity(path);
+  if (specificity === null) return null;
+  return { permission, raw: rule, method, path, specificity };
 }
 
 function isValidPermissionName(permissionName: string): boolean {
@@ -340,6 +477,201 @@ function getPermissionRules(permission: unknown): string[] {
   return rules;
 }
 
+function rawObjectHasOwn(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function isValidAuthConfigForDecision(
+  auth: unknown,
+  serviceName: string,
+): boolean {
+  try {
+    return isValidAuthConfig(auth, serviceName);
+  } catch {
+    return false;
+  }
+}
+
+function compileDecisionApi(
+  api: Record<string, unknown>,
+  serviceName: string,
+  nameMalformed: boolean,
+): DecisionApi | null {
+  if (typeof api.base !== "string") return null;
+
+  let baseMalformed = false;
+  try {
+    validateBaseUrl(api.base, serviceName);
+  } catch {
+    baseMalformed = true;
+  }
+  const authMalformed = !isValidAuthConfigForDecision(api.auth, serviceName);
+  const rules: DecisionRule[] = [];
+  const seenPermissionNames = new Set<string>();
+  let hasMalformedRules = nameMalformed;
+  const rawPermissions = api.permissions;
+
+  if (Array.isArray(rawPermissions)) {
+    for (const rawPermission of rawPermissions) {
+      if (!isObjectRecord(rawPermission)) {
+        hasMalformedRules = true;
+        continue;
+      }
+      const permissionName = rawPermission.name;
+      if (
+        typeof permissionName !== "string" ||
+        !isValidPermissionName(permissionName)
+      ) {
+        hasMalformedRules = true;
+        continue;
+      }
+      if (seenPermissionNames.has(permissionName)) {
+        hasMalformedRules = true;
+        continue;
+      }
+      seenPermissionNames.add(permissionName);
+
+      const rawRules = rawPermission.rules;
+      if (!Array.isArray(rawRules)) {
+        hasMalformedRules = true;
+        continue;
+      }
+      if (rawRules.length === 0) {
+        hasMalformedRules = true;
+      }
+
+      for (const rawRule of rawRules) {
+        if (typeof rawRule !== "string") {
+          hasMalformedRules = true;
+          continue;
+        }
+        const compiledRule = compileDecisionRule(permissionName, rawRule);
+        if (compiledRule === null) {
+          hasMalformedRules = true;
+          continue;
+        }
+        rules.push(compiledRule);
+      }
+    }
+  } else if (rawObjectHasOwn(api, "permissions")) {
+    hasMalformedRules = true;
+  }
+
+  return {
+    rawBase: api.base,
+    baseMalformed,
+    authMalformed,
+    hasMalformedRules,
+    rules,
+  };
+}
+
+function compileDecisionFirewall(
+  rawFirewall: unknown,
+): DecisionFirewall | null {
+  if (!isObjectRecord(rawFirewall)) return null;
+
+  const rawName = rawFirewall.name;
+  const nameMalformed = typeof rawName !== "string" || rawName === "";
+  const name = typeof rawName === "string" ? rawName : "";
+  const rawApis = rawFirewall.apis;
+  if (!Array.isArray(rawApis)) return null;
+
+  const apis: DecisionApi[] = [];
+  for (const rawApi of rawApis) {
+    if (!isObjectRecord(rawApi)) continue;
+    const api = compileDecisionApi(rawApi, name, nameMalformed);
+    if (api !== null) {
+      apis.push(api);
+    }
+  }
+
+  if (apis.length === 0) return null;
+  return { name, nameMalformed, apis };
+}
+
+function compileDecisionFirewalls(rawFirewalls: unknown): DecisionFirewall[] {
+  if (!Array.isArray(rawFirewalls) || rawFirewalls.length === 0) return [];
+
+  const firewalls: DecisionFirewall[] = [];
+  for (const rawFirewall of rawFirewalls) {
+    const firewall = compileDecisionFirewall(rawFirewall);
+    if (firewall !== null) {
+      firewalls.push(firewall);
+    }
+  }
+  return firewalls;
+}
+
+function compilePermissionSet(rawValue: unknown): {
+  readonly values: ReadonlySet<string>;
+  readonly malformed: boolean;
+} {
+  if (rawValue === undefined || rawValue === null) {
+    return { values: new Set<string>(), malformed: false };
+  }
+  if (
+    !Array.isArray(rawValue) ||
+    rawValue.some((item) => {
+      return typeof item !== "string";
+    })
+  ) {
+    return { values: new Set<string>(), malformed: true };
+  }
+  return { values: new Set(rawValue), malformed: false };
+}
+
+function compileNetworkPolicies(
+  rawNetworkPolicies: unknown,
+): CompiledNetworkPolicies {
+  if (rawNetworkPolicies === undefined || rawNetworkPolicies === null) {
+    return { policies: new Map(), topLevelMalformed: false };
+  }
+  if (!isObjectRecord(rawNetworkPolicies)) {
+    return { policies: new Map(), topLevelMalformed: true };
+  }
+
+  const policies = new Map<string, CompiledNetworkPolicy>();
+  for (const [firewallName, grant] of Object.entries(rawNetworkPolicies)) {
+    if (!isObjectRecord(grant)) {
+      policies.set(firewallName, {
+        blockedPermissions: new Set<string>(),
+        unknownPolicy: "allow",
+        permissionMalformed: true,
+        unknownPolicyMalformed: false,
+      });
+      continue;
+    }
+
+    const allow = compilePermissionSet(grant.allow);
+    const deny = compilePermissionSet(grant.deny);
+    const ask = compilePermissionSet(grant.ask);
+    const blockedPermissions = new Set<string>([...deny.values, ...ask.values]);
+
+    let unknownPolicy: UnknownPolicy = "allow";
+    let unknownPolicyMalformed = false;
+    const rawUnknownPolicy = grant.unknownPolicy;
+    if (
+      rawUnknownPolicy === "allow" ||
+      rawUnknownPolicy === "deny" ||
+      rawUnknownPolicy === "ask"
+    ) {
+      unknownPolicy = rawUnknownPolicy;
+    } else if (rawUnknownPolicy !== undefined && rawUnknownPolicy !== null) {
+      unknownPolicyMalformed = true;
+    }
+
+    policies.set(firewallName, {
+      blockedPermissions,
+      unknownPolicy,
+      permissionMalformed: allow.malformed || deny.malformed || ask.malformed,
+      unknownPolicyMalformed,
+    });
+  }
+
+  return { policies, topLevelMalformed: false };
+}
+
 function getApiPermissionRuleSetsForMatch(
   api: FirewallConfig["apis"][number],
   serviceName: string,
@@ -363,41 +695,6 @@ function getApiPermissionRuleSetsForMatch(
     });
   }
   return permissionRuleSets;
-}
-
-function getRoutingApiPermissionRuleSetsForMatch(
-  api: FirewallRoutingPermissionApi,
-  serviceName: string,
-  apiBase: string | null,
-): PermissionRuleSet[] | null {
-  if (!isObjectRecord(api)) return null;
-  if (typeof api.base !== "string") return null;
-  try {
-    validateBaseUrl(api.base, serviceName);
-  } catch {
-    return null;
-  }
-  if (apiBase !== null && stripTrailingSlash(api.base) !== apiBase) return null;
-  if (!Array.isArray(api.routes)) return null;
-
-  const rulesByPermission = new Map<string, string[]>();
-  for (const route of api.routes) {
-    if (!isObjectRecord(route)) continue;
-    if (typeof route.permissionName !== "string") continue;
-    if (!isValidPermissionName(route.permissionName)) continue;
-    if (typeof route.rule !== "string") continue;
-
-    const rules = rulesByPermission.get(route.permissionName);
-    if (rules) {
-      rules.push(route.rule);
-    } else {
-      rulesByPermission.set(route.permissionName, [route.rule]);
-    }
-  }
-
-  return [...rulesByPermission.entries()].map(([name, rules]) => {
-    return { name, rules };
-  });
 }
 
 function recordPermissionMatch(
@@ -435,6 +732,87 @@ function stripUrlQueryAndFragment(url: string): string {
   if (queryIndex !== -1) end = Math.min(end, queryIndex);
   if (fragmentIndex !== -1) end = Math.min(end, fragmentIndex);
   return url.slice(0, end);
+}
+
+function rawUrlAuthorityBounds(url: string): {
+  readonly authorityStart: number;
+  readonly authorityEnd: number;
+} | null {
+  const schemeEnd = url.indexOf("://");
+  if (schemeEnd === -1) return null;
+
+  const authorityStart = schemeEnd + 3;
+  let authorityEnd = url.length;
+  for (const delimiter of ["/", "?", "#"]) {
+    const delimiterIndex = url.indexOf(delimiter, authorityStart);
+    if (delimiterIndex !== -1)
+      authorityEnd = Math.min(authorityEnd, delimiterIndex);
+  }
+
+  return { authorityStart, authorityEnd };
+}
+
+function replaceRawUrlAuthority(
+  url: string,
+  bounds: { readonly authorityStart: number; readonly authorityEnd: number },
+  authority: string,
+): string {
+  return `${url.slice(0, bounds.authorityStart)}${authority}${url.slice(bounds.authorityEnd)}`;
+}
+
+function stripRawUrlUserinfo(url: string): string {
+  const bounds = rawUrlAuthorityBounds(url);
+  if (bounds === null) return url;
+
+  const authority = url.slice(bounds.authorityStart, bounds.authorityEnd);
+  const userinfoEnd = authority.lastIndexOf("@");
+  if (userinfoEnd === -1) return url;
+
+  return replaceRawUrlAuthority(url, bounds, authority.slice(userinfoEnd + 1));
+}
+
+function rawAuthorityPortIsMalformed(port: string): boolean {
+  if (port === "") return true;
+  if (
+    ![...port].every((char) => {
+      return char >= "0" && char <= "9";
+    })
+  ) {
+    return true;
+  }
+  return Number(port) > 65535;
+}
+
+function stripRawUrlMalformedPort(url: string): string {
+  const bounds = rawUrlAuthorityBounds(url);
+  if (bounds === null) return url;
+
+  const authority = url.slice(bounds.authorityStart, bounds.authorityEnd);
+  if (authority.startsWith("[")) {
+    const closeBracketIndex = authority.indexOf("]");
+    if (closeBracketIndex === -1) return url;
+    const portPrefix = authority.slice(closeBracketIndex + 1);
+    if (!portPrefix.startsWith(":")) return url;
+    if (!rawAuthorityPortIsMalformed(portPrefix.slice(1))) return url;
+    return replaceRawUrlAuthority(
+      url,
+      bounds,
+      authority.slice(0, closeBracketIndex + 1),
+    );
+  }
+
+  const portSeparator = authority.lastIndexOf(":");
+  if (portSeparator === -1) return url;
+  if (authority.indexOf(":") !== portSeparator) return url;
+  if (!rawAuthorityPortIsMalformed(authority.slice(portSeparator + 1))) {
+    return url;
+  }
+  return replaceRawUrlAuthority(url, bounds, authority.slice(0, portSeparator));
+}
+
+function rawBaseForDecisionMatch(rawBase: string): string | null {
+  if (stripUrlQueryAndFragment(rawBase).includes("\\")) return null;
+  return stripRawUrlMalformedPort(stripRawUrlUserinfo(rawBase));
 }
 
 function rawPathFromUrl(url: string): string {
@@ -572,11 +950,7 @@ function scoreLiteralSegment(segment: string): number {
   return LITERAL_SEGMENT_SCORE + codePointLength(segment);
 }
 
-function scorePatternSegment(segment: string, allowParams: boolean): number {
-  if (!allowParams) return scoreLiteralSegment(segment);
-
-  const parsed = parseSegment(segment);
-  if (parsed.kind === "error") return 0;
+function scoreParsedPatternSegment(parsed: MatchableSegment): number {
   if (parsed.kind === "literal") {
     return scoreLiteralSegment(parsed.value);
   }
@@ -591,19 +965,38 @@ function scorePatternSegment(segment: string, allowParams: boolean): number {
   return PLAIN_PARAM_SEGMENT_SCORE;
 }
 
-function scorePatternSegments(
-  segments: string[],
-  allowParams: boolean,
-): number {
+function scoreStaticSegments(segments: string[]): number {
   return segments.reduce((score, segment) => {
-    return score + scorePatternSegment(segment, allowParams);
+    return score + scoreLiteralSegment(segment);
   }, 0);
 }
 
-function scorePathPattern(path: string, allowParams: boolean): number {
+function scorePatternSegmentsWithParser(
+  segments: string[],
+  parsePatternSegment: SegmentMatchParser,
+): number {
+  const lastPatternIndex = segments.length - 1;
+  let score = 0;
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index]!;
+    const parsed = parsePatternSegment(segment, index, lastPatternIndex);
+    if (parsed !== null) {
+      score += scoreParsedPatternSegment(parsed);
+    }
+  }
+  return score;
+}
+
+function scorePathPattern(
+  path: string,
+  parsePatternSegment: SegmentMatchParser | null,
+): number {
   if (path === "") return 0;
   if (path === "/") return ROOT_PATH_SCORE;
-  return scorePatternSegments(splitPathSegments(path), allowParams);
+  const segments = splitPathSegments(path);
+  return parsePatternSegment === null
+    ? scoreStaticSegments(segments)
+    : scorePatternSegmentsWithParser(segments, parsePatternSegment);
 }
 
 function splitAuthoritySegments(authority: string): string[] {
@@ -614,16 +1007,31 @@ function splitAuthoritySegments(authority: string): string[] {
   return normalized === "" ? [] : normalized.split(".");
 }
 
-function baseUrlSpecificityScore(rawBase: string, hasParams: boolean): number {
-  const baseForMatch = stripTrailingSlash(rawBase);
-  const authorityScore = scorePatternSegments(
-    splitAuthoritySegments(rawAuthorityFromUrl(baseForMatch) ?? ""),
-    hasParams,
-  );
-  const pathScore = scorePathPattern(
-    rawBasePathFromUrl(baseForMatch),
-    hasParams,
-  );
+function baseUrlSpecificityScore({
+  authority,
+  path,
+  hasParams,
+  tolerateMalformedBaseParams = false,
+}: {
+  readonly authority: string;
+  readonly path: string;
+  readonly hasParams: boolean;
+  readonly tolerateMalformedBaseParams?: boolean;
+}): number {
+  const patternParser = hasParams
+    ? tolerateMalformedBaseParams
+      ? parseMalformedTolerantBaseSegment
+      : parseStrictMatchSegment
+    : null;
+  const authoritySegments = splitAuthoritySegments(authority);
+  const authorityScore =
+    patternParser === null
+      ? scoreStaticSegments(authoritySegments)
+      : scorePatternSegmentsWithParser(
+          [...authoritySegments].reverse(),
+          patternParser,
+        );
+  const pathScore = scorePathPattern(path, patternParser);
   return (
     pathScore * PATH_SCORE_MULTIPLIER +
     authorityScore * AUTHORITY_SCORE_MULTIPLIER +
@@ -702,6 +1110,9 @@ function normalizedUrlAuthority(
 function matchStaticFirewallBaseUrl(
   url: string,
   rawBase: string,
+  options: {
+    readonly tolerateMalformedBaseParams?: boolean;
+  } = {},
 ): FirewallBaseUrlMatch | null {
   const parsedUrl = new URL(url);
   const parsedBase = new URL(rawBase);
@@ -717,14 +1128,23 @@ function matchStaticFirewallBaseUrl(
   });
   if (urlAuthority === null || baseAuthority === null) return null;
   if (baseHasParams) {
-    if (matchFirewallHost(urlAuthority, baseAuthority) === null) return null;
+    const hostParams =
+      options.tolerateMalformedBaseParams === true
+        ? matchFirewallHostForMalformedBaseDecision(urlAuthority, baseAuthority)
+        : matchFirewallHost(urlAuthority, baseAuthority);
+    if (hostParams === null) return null;
   } else if (urlAuthority !== baseAuthority) {
     return null;
   }
 
   const basePath = rawBasePathFromUrl(baseForMatch);
   const relativePath = baseHasParams
-    ? matchFirewallPathPrefix(rawPathFromUrl(url), basePath)
+    ? options.tolerateMalformedBaseParams === true
+      ? matchFirewallPathPrefixForMalformedBaseDecision(
+          rawPathFromUrl(url),
+          basePath,
+        )
+      : matchFirewallPathPrefix(rawPathFromUrl(url), basePath)
     : matchStaticBasePathPrefix(rawPathFromUrl(url), basePath);
   if (relativePath === null) return null;
 
@@ -732,8 +1152,387 @@ function matchStaticFirewallBaseUrl(
   return {
     displayBase,
     relativePath,
-    score: baseUrlSpecificityScore(rawBase, baseHasParams),
+    score: baseUrlSpecificityScore({
+      authority: baseAuthority,
+      path: basePath,
+      hasParams: baseHasParams,
+      tolerateMalformedBaseParams: options.tolerateMalformedBaseParams === true,
+    }),
   };
+}
+
+function runtimeUrlCanMatchFirewallBase(url: string): boolean {
+  if (
+    hasUnsafeUrlCodepoint(url) ||
+    hasRawWhitespace(url) ||
+    !url.includes("://") ||
+    hasMalformedRuntimeAuthoritySyntax(url)
+  ) {
+    return false;
+  }
+
+  const runtimeAuthorityOrigin = runtimeAuthorityOriginForHostValidation(url);
+  if (runtimeAuthorityOrigin === null) return true;
+
+  try {
+    validateBaseUrl(runtimeAuthorityOrigin, "runtime");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function matchFirewallBaseUrlForDecision(
+  url: string,
+  rawBase: string,
+): FirewallBaseUrlMatch | null {
+  if (!runtimeUrlCanMatchFirewallBase(url)) return null;
+  const baseForMatch = rawBaseForDecisionMatch(rawBase);
+  if (baseForMatch === null) return null;
+
+  try {
+    const match = matchStaticFirewallBaseUrl(url, baseForMatch, {
+      tolerateMalformedBaseParams: true,
+    });
+    if (match === null) return null;
+    return { ...match, displayBase: stripTrailingSlash(rawBase) };
+  } catch {
+    return null;
+  }
+}
+
+function createDecisionState(): FirewallDecisionState {
+  return {
+    bestBaseScore: null,
+    bestRuleSpecificity: null,
+    baseMatch: null,
+    allowedMatch: null,
+    deniedMatch: null,
+    deniedPermissionNames: [],
+    malformedConfigMatch: null,
+    malformedPolicyMatch: null,
+  };
+}
+
+function acceptDecisionBaseMatch(
+  state: FirewallDecisionState,
+  match: DecisionBaseMatch,
+  score: number,
+): boolean {
+  if (state.bestBaseScore === null || score > state.bestBaseScore) {
+    state.bestBaseScore = score;
+    state.bestRuleSpecificity = null;
+    state.baseMatch = null;
+    state.allowedMatch = null;
+    state.deniedMatch = null;
+    state.deniedPermissionNames = [];
+    state.malformedConfigMatch = null;
+    state.malformedPolicyMatch = null;
+  } else if (score < state.bestBaseScore) {
+    return false;
+  }
+
+  state.baseMatch ??= match;
+  return true;
+}
+
+function canRuleSpecificityAffectDecision(
+  state: FirewallDecisionState,
+  specificity: PathSpecificity,
+): boolean {
+  if (state.bestRuleSpecificity === null) return true;
+  const comparison = comparePathSpecificity(
+    specificity,
+    state.bestRuleSpecificity,
+  );
+  if (comparison > 0) return true;
+  if (comparison < 0) return false;
+  return state.allowedMatch === null;
+}
+
+function acceptRuleSpecificity(
+  state: FirewallDecisionState,
+  specificity: PathSpecificity,
+): boolean {
+  if (state.bestRuleSpecificity === null) {
+    state.bestRuleSpecificity = specificity;
+    return true;
+  }
+
+  const comparison = comparePathSpecificity(
+    specificity,
+    state.bestRuleSpecificity,
+  );
+  if (comparison > 0) {
+    state.bestRuleSpecificity = specificity;
+    state.allowedMatch = null;
+    state.deniedMatch = null;
+    state.deniedPermissionNames = [];
+    return true;
+  }
+  return comparison === 0;
+}
+
+function recordDeniedRule(
+  state: FirewallDecisionState,
+  match: DecisionBlockMatch,
+  permission: string,
+): void {
+  if (!state.deniedPermissionNames.includes(permission)) {
+    state.deniedPermissionNames.push(permission);
+  }
+  state.deniedMatch ??= match;
+}
+
+function resolveFirewallDecision(
+  state: FirewallDecisionState,
+  networkPolicies: CompiledNetworkPolicies,
+): FirewallRequestDecision {
+  const baseMatch = state.baseMatch;
+  if (baseMatch === null) {
+    return { kind: "no_match" };
+  }
+
+  if (state.allowedMatch !== null) {
+    return {
+      kind: "allow",
+      firewallName: state.allowedMatch.firewallName,
+      base: state.allowedMatch.base,
+      relativePath: state.allowedMatch.relativePath,
+      permission: state.allowedMatch.permission,
+      rule: state.allowedMatch.rule,
+    };
+  }
+
+  if (state.deniedMatch !== null) {
+    return {
+      kind: "block",
+      firewallName: state.deniedMatch.firewallName,
+      base: state.deniedMatch.base,
+      relativePath: state.deniedMatch.relativePath,
+      reason: "permission_denied",
+      permissions: state.deniedPermissionNames,
+    };
+  }
+
+  if (state.malformedPolicyMatch !== null) {
+    return {
+      kind: "block",
+      firewallName: state.malformedPolicyMatch.firewallName,
+      base: state.malformedPolicyMatch.base,
+      relativePath: state.malformedPolicyMatch.relativePath,
+      reason: "malformed_network_policy",
+      permissions: [],
+    };
+  }
+
+  if (state.malformedConfigMatch !== null) {
+    return {
+      kind: "block",
+      firewallName: state.malformedConfigMatch.firewallName,
+      base: state.malformedConfigMatch.base,
+      relativePath: state.malformedConfigMatch.relativePath,
+      reason: "malformed_firewall_config",
+      permissions: [],
+    };
+  }
+
+  const policy = networkPolicies.policies.get(baseMatch.firewallName);
+  if (policy === undefined) {
+    return {
+      kind: "allow",
+      firewallName: baseMatch.firewallName,
+      base: baseMatch.allowBase,
+      relativePath: baseMatch.relativePath,
+    };
+  }
+  if (policy.unknownPolicyMalformed) {
+    return {
+      kind: "block",
+      firewallName: baseMatch.firewallName,
+      base: baseMatch.base,
+      relativePath: baseMatch.relativePath,
+      reason: "malformed_network_policy",
+      permissions: [],
+    };
+  }
+  if (policy.unknownPolicy === "allow") {
+    return {
+      kind: "allow",
+      firewallName: baseMatch.firewallName,
+      base: baseMatch.allowBase,
+      relativePath: baseMatch.relativePath,
+    };
+  }
+
+  return {
+    kind: "block",
+    firewallName: baseMatch.firewallName,
+    base: baseMatch.base,
+    relativePath: baseMatch.relativePath,
+    reason: "unknown_endpoint",
+    permissions: [],
+  };
+}
+
+function unsafePathBlockDecision(
+  firewall: DecisionFirewall,
+  baseMatch: FirewallBaseUrlMatch,
+): FirewallRequestDecision {
+  return {
+    kind: "block",
+    firewallName: firewall.name,
+    base: baseMatch.displayBase,
+    relativePath: baseMatch.relativePath,
+    reason: "unsafe_path",
+    permissions: [],
+  };
+}
+
+function recordMalformedDecisionState(
+  state: FirewallDecisionState,
+  api: DecisionApi,
+  blockMatch: DecisionBlockMatch,
+): void {
+  if (api.baseMalformed || api.authMalformed || api.hasMalformedRules) {
+    state.malformedConfigMatch ??= blockMatch;
+  }
+}
+
+function apiCannotEvaluateRules(
+  firewall: DecisionFirewall,
+  api: DecisionApi,
+): boolean {
+  return firewall.nameMalformed || api.baseMalformed || api.authMalformed;
+}
+
+function policyCannotEvaluateRules(
+  networkPolicies: CompiledNetworkPolicies,
+  policy: CompiledNetworkPolicy | undefined,
+): boolean {
+  return (
+    networkPolicies.topLevelMalformed ||
+    (policy !== undefined && policy.permissionMalformed)
+  );
+}
+
+function evaluateDecisionRule({
+  state,
+  rule,
+  policy,
+  blockMatch,
+  baseMatch,
+  upperMethod,
+}: {
+  readonly state: FirewallDecisionState;
+  readonly rule: DecisionRule;
+  readonly policy: CompiledNetworkPolicy | undefined;
+  readonly blockMatch: DecisionBlockMatch;
+  readonly baseMatch: DecisionBaseMatch;
+  readonly upperMethod: string;
+}): void {
+  if (rule.method !== "ANY" && rule.method !== upperMethod) return;
+  if (!canRuleSpecificityAffectDecision(state, rule.specificity)) return;
+
+  const permissionBlocked =
+    policy !== undefined && policy.blockedPermissions.has(rule.permission);
+  if (matchFirewallPath(baseMatch.relativePath, rule.path) === null) return;
+  if (!acceptRuleSpecificity(state, rule.specificity)) return;
+
+  if (permissionBlocked) {
+    recordDeniedRule(state, blockMatch, rule.permission);
+    return;
+  }
+
+  state.allowedMatch ??= {
+    firewallName: baseMatch.firewallName,
+    base: baseMatch.allowBase,
+    relativePath: baseMatch.relativePath,
+    permission: rule.permission,
+    rule: rule.raw,
+  };
+}
+
+function evaluateDecisionRules({
+  state,
+  api,
+  policy,
+  blockMatch,
+  baseMatch,
+  upperMethod,
+}: {
+  readonly state: FirewallDecisionState;
+  readonly api: DecisionApi;
+  readonly policy: CompiledNetworkPolicy | undefined;
+  readonly blockMatch: DecisionBlockMatch;
+  readonly baseMatch: DecisionBaseMatch;
+  readonly upperMethod: string;
+}): void {
+  for (const rule of api.rules) {
+    evaluateDecisionRule({
+      state,
+      rule,
+      policy,
+      blockMatch,
+      baseMatch,
+      upperMethod,
+    });
+  }
+}
+
+function evaluateDecisionApi({
+  state,
+  firewall,
+  api,
+  url,
+  unsafePath,
+  networkPolicies,
+  upperMethod,
+}: {
+  readonly state: FirewallDecisionState;
+  readonly firewall: DecisionFirewall;
+  readonly api: DecisionApi;
+  readonly url: string;
+  readonly unsafePath: boolean;
+  readonly networkPolicies: CompiledNetworkPolicies;
+  readonly upperMethod: string;
+}): FirewallRequestDecision | null {
+  const policy = networkPolicies.policies.get(firewall.name);
+  const baseMatch = matchFirewallBaseUrlForDecision(url, api.rawBase);
+  if (baseMatch === null) return null;
+  if (unsafePath) return unsafePathBlockDecision(firewall, baseMatch);
+
+  const decisionBaseMatch: DecisionBaseMatch = {
+    firewallName: firewall.name,
+    base: baseMatch.displayBase,
+    allowBase: api.rawBase,
+    relativePath: baseMatch.relativePath,
+  };
+  const blockMatch: DecisionBlockMatch = {
+    firewallName: decisionBaseMatch.firewallName,
+    base: decisionBaseMatch.base,
+    relativePath: decisionBaseMatch.relativePath,
+  };
+  if (!acceptDecisionBaseMatch(state, decisionBaseMatch, baseMatch.score)) {
+    return null;
+  }
+
+  recordMalformedDecisionState(state, api, blockMatch);
+  if (apiCannotEvaluateRules(firewall, api)) return null;
+  if (policyCannotEvaluateRules(networkPolicies, policy)) {
+    state.malformedPolicyMatch ??= blockMatch;
+    return null;
+  }
+
+  evaluateDecisionRules({
+    state,
+    api,
+    policy,
+    blockMatch,
+    baseMatch: decisionBaseMatch,
+    upperMethod,
+  });
+  return null;
 }
 
 export function matchFirewallBaseUrl(
@@ -760,16 +1559,45 @@ export function matchFirewallBaseUrl(
   }
 }
 
-/**
- * Match a runtime host/authority against a firewall base host pattern.
- *
- * Host comparison is case-insensitive and mirrors the runner's right-to-left
- * host matcher. Non-default ports are part of the normalized authority and
- * therefore participate in the final host segment comparison.
- */
-export function matchFirewallHost(
+export function matchFirewallRequestDecision(
+  firewalls: unknown,
+  method: string,
+  url: string,
+  networkPolicies: unknown = undefined,
+): FirewallRequestDecision {
+  const decisionFirewalls = compileDecisionFirewalls(firewalls);
+  if (decisionFirewalls.length === 0) return { kind: "no_match" };
+
+  const compiledNetworkPolicies = compileNetworkPolicies(networkPolicies);
+  const upperMethod = method.toUpperCase();
+  const state = createDecisionState();
+  const unsafePath =
+    url.includes("\\") || hasUnsafeFirewallPath(rawPathFromUrl(url));
+
+  for (const firewall of decisionFirewalls) {
+    for (const api of firewall.apis) {
+      const immediateDecision = evaluateDecisionApi({
+        state,
+        firewall,
+        api,
+        url,
+        unsafePath,
+        networkPolicies: compiledNetworkPolicies,
+        upperMethod,
+      });
+      if (immediateDecision !== null) {
+        return immediateDecision;
+      }
+    }
+  }
+
+  return resolveFirewallDecision(state, compiledNetworkPolicies);
+}
+
+function matchFirewallHostWithParser(
   host: string,
   pattern: string,
+  parsePatternSegment: SegmentMatchParser,
 ): Record<string, string> | null {
   const hostSegsOrig = host.split(".");
   const hostSegsLower = hostSegsOrig.map((segment) => {
@@ -790,8 +1618,8 @@ export function matchFirewallHost(
     patternIndex++
   ) {
     const seg = patternSegs[patternIndex]!;
-    const parsed = parseSegment(seg);
-    if (parsed.kind === "error") return null;
+    const parsed = parsePatternSegment(seg, patternIndex, lastPatternIndex);
+    if (parsed === null) return null;
     if (parsed.kind === "literal") {
       if (
         hi >= hostSegsLower.length ||
@@ -805,15 +1633,11 @@ export function matchFirewallHost(
 
     const { name, prefix, suffix, greedy } = parsed;
     if (greedy === "+") {
-      if (isInvalidGreedyParam(patternIndex, lastPatternIndex, prefix, suffix))
-        return null;
       if (hi >= hostSegsOrig.length) return null;
       params[name] = hostSegsOrig.slice(hi).reverse().join(".");
       return params;
     }
     if (greedy === "*") {
-      if (isInvalidGreedyParam(patternIndex, lastPatternIndex, prefix, suffix))
-        return null;
       params[name] = hostSegsOrig.slice(hi).reverse().join(".");
       return params;
     }
@@ -836,14 +1660,64 @@ export function matchFirewallHost(
 }
 
 /**
- * Match a runtime path against the beginning of a firewall base path pattern.
+ * Match a runtime host/authority against a firewall base host pattern.
  *
- * Unlike matchFirewallPath(), this intentionally allows extra runtime path
- * segments and returns the remaining relative path after the base prefix.
+ * Host comparison is case-insensitive and mirrors the runner's right-to-left
+ * host matcher. Non-default ports are part of the normalized authority and
+ * therefore participate in the final host segment comparison.
  */
-export function matchFirewallPathPrefix(
+export function matchFirewallHost(
+  host: string,
+  pattern: string,
+): Record<string, string> | null {
+  return matchFirewallHostWithParser(host, pattern, parseStrictMatchSegment);
+}
+
+function parseMalformedTolerantBaseSegment(
+  segment: string,
+  patternIndex: number,
+  lastPatternIndex: number,
+): MatchableSegment {
+  const parsed = parseSegment(segment);
+  if (parsed.kind === "error") {
+    return {
+      kind: "param",
+      prefix: "",
+      name: `__malformed_base_segment_${patternIndex}`,
+      suffix: "",
+      greedy: "",
+    };
+  }
+  if (
+    parsed.kind === "param" &&
+    parsed.greedy !== "" &&
+    isInvalidGreedyParam(
+      patternIndex,
+      lastPatternIndex,
+      parsed.prefix,
+      parsed.suffix,
+    )
+  ) {
+    return { ...parsed, greedy: "" };
+  }
+  return parsed;
+}
+
+function matchFirewallHostForMalformedBaseDecision(
+  host: string,
+  pattern: string,
+): Record<string, string> | null {
+  return matchFirewallHostWithParser(
+    host,
+    pattern,
+    parseMalformedTolerantBaseSegment,
+  );
+}
+
+function matchFirewallPathPrefixWithParser(
   path: string,
   pattern: string,
+  parsePatternSegment: SegmentMatchParser,
 ): string | null {
   const pathSegs = splitPathSegments(path);
   const patternSegs = splitPathSegments(pattern);
@@ -856,8 +1730,8 @@ export function matchFirewallPathPrefix(
     patternIndex++
   ) {
     const seg = patternSegs[patternIndex]!;
-    const parsed = parseSegment(seg);
-    if (parsed.kind === "error") return null;
+    const parsed = parsePatternSegment(seg, patternIndex, lastPatternIndex);
+    if (parsed === null) return null;
     if (parsed.kind === "literal") {
       if (pi >= pathSegs.length || pathSegs[pi] !== parsed.value) return null;
       pi += 1;
@@ -866,16 +1740,12 @@ export function matchFirewallPathPrefix(
 
     const { prefix, suffix, greedy } = parsed;
     if (greedy === "+") {
-      if (isInvalidGreedyParam(patternIndex, lastPatternIndex, prefix, suffix))
-        return null;
       if (pi >= pathSegs.length || !hasNonEmptySegment(pathSegs, pi)) {
         return null;
       }
       return "/";
     }
     if (greedy === "*") {
-      if (isInvalidGreedyParam(patternIndex, lastPatternIndex, prefix, suffix))
-        return null;
       return "/";
     }
     if (pi >= pathSegs.length) return null;
@@ -890,6 +1760,34 @@ export function matchFirewallPathPrefix(
   }
 
   return relativePathFromSegments(pathSegs, pi);
+}
+
+/**
+ * Match a runtime path against the beginning of a firewall base path pattern.
+ *
+ * Unlike matchFirewallPath(), this intentionally allows extra runtime path
+ * segments and returns the remaining relative path after the base prefix.
+ */
+export function matchFirewallPathPrefix(
+  path: string,
+  pattern: string,
+): string | null {
+  return matchFirewallPathPrefixWithParser(
+    path,
+    pattern,
+    parseStrictMatchSegment,
+  );
+}
+
+function matchFirewallPathPrefixForMalformedBaseDecision(
+  path: string,
+  pattern: string,
+): string | null {
+  return matchFirewallPathPrefixWithParser(
+    path,
+    pattern,
+    parseMalformedTolerantBaseSegment,
+  );
 }
 
 /**
@@ -994,33 +1892,6 @@ export function findMatchingPermissions(
     const permissionRuleSets = getApiPermissionRuleSetsForMatch(
       api,
       config.name,
-      apiBase,
-    );
-    if (permissionRuleSets !== null) {
-      matchApis.push({ permissionRuleSets });
-    }
-  }
-
-  return findMatchingPermissionRuleSets(method, path, matchApis);
-}
-
-export function findMatchingRoutingPermissions(
-  method: string,
-  path: string,
-  apis: readonly FirewallRoutingPermissionApi[],
-  options: FindMatchingRoutingPermissionsOptions = {},
-): string[] {
-  if (!Array.isArray(apis)) return [];
-
-  const serviceName = options.serviceName ?? "routing";
-  const apiBase =
-    options.apiBase === undefined ? null : stripTrailingSlash(options.apiBase);
-  const matchApis: PermissionMatchApi[] = [];
-
-  for (const api of apis) {
-    const permissionRuleSets = getRoutingApiPermissionRuleSetsForMatch(
-      api,
-      serviceName,
       apiBase,
     );
     if (permissionRuleSets !== null) {

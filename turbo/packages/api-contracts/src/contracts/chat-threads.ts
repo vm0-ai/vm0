@@ -127,6 +127,7 @@ const chatThreadUnreadAgentsSchema = z.object({
 });
 
 const chatThreadEventIdSchema = z.string().uuid();
+const codexServiceTierSchema = z.enum(["fast"]);
 
 const chatThreadListItemSchema = z.object({
   id: z.string(),
@@ -384,6 +385,7 @@ const chatThreadDetailSchema = z.object({
     .nullable()
     .optional(),
   selectedModel: z.string().nullable().optional(),
+  codexServiceTier: codexServiceTierSchema.nullable().optional(),
   /**
    * ISO timestamp at which the user manually renamed this thread. Null/undefined
    * means never renamed. When set, automated title generation is suppressed.
@@ -419,8 +421,6 @@ const modelSelectionRequestSchema = z
       });
     }
   });
-
-const codexServiceTierSchema = z.enum(["fast"]);
 
 const chatRunOptionsRequestSchema = z.object({
   codexServiceTier: codexServiceTierSchema.optional(),
@@ -806,6 +806,7 @@ export const chatThreadModelSelectionContract = c.router({
     pathParams: chatThreadIdPathParamsSchema,
     body: z.object({
       modelSelection: modelSelectionRequestSchema.nullable(),
+      codexServiceTier: codexServiceTierSchema.nullable().optional(),
     }),
     responses: {
       204: c.noBody(),

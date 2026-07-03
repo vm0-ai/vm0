@@ -2,20 +2,77 @@ import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { chatThreadModelSelectionContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { nowDate } from "../external/time";
-import { notFound } from "../../lib/error";
-import { resolveModelSelectionPin } from "../services/zero-model-selection.service";
+import { badRequestMessage, notFound } from "../../lib/error";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
+import {
+  resolveModelFirstProviderAdmission,
+  resolveModelSelectionPin,
+  type ModelFirstPin,
+} from "../services/zero-model-selection.service";
 import type { RouteEntry } from "../route-entry";
 
 const modelSelectionBody$ = bodyResultOf(
   chatThreadModelSelectionContract.update,
 );
+
+function isCodexFastServiceTierModel(
+  model: string | null | undefined,
+): boolean {
+  const bareModel = model?.startsWith("openai/")
+    ? model.slice("openai/".length)
+    : model;
+  return bareModel === "gpt-5.5";
+}
+
+async function validateCodexServiceTierPatch(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly pin: ModelFirstPin;
+  readonly codexServiceTier: "fast" | null | undefined;
+}) {
+  if (params.codexServiceTier !== "fast") {
+    return undefined;
+  }
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    params.db,
+    params.orgId,
+    params.userId,
+  );
+  if (!isFeatureEnabled(FeatureSwitchKey.CodexFastMode, featureSwitchContext)) {
+    return badRequestMessage(
+      "Codex fast mode is not enabled for this workspace",
+    );
+  }
+  const providerAdmission = await resolveModelFirstProviderAdmission({
+    db: params.db,
+    orgId: params.orgId,
+    userId: params.userId,
+    modelPin: params.pin,
+    requestedModelProvider: undefined,
+  });
+  if (providerAdmission.error) {
+    return providerAdmission.error;
+  }
+  if (
+    providerAdmission.effectiveModelProvider === "codex-oauth-token" &&
+    isCodexFastServiceTierModel(params.pin.selectedModel)
+  ) {
+    return undefined;
+  }
+  return badRequestMessage(
+    "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 runs",
+  );
+}
 
 const updateModelSelectionInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -46,6 +103,17 @@ const updateModelSelectionInner$ = command(
     if ("status" in pin) {
       return pin;
     }
+    const codexServiceTierError = await validateCodexServiceTierPatch({
+      db: writeDb,
+      orgId: auth.orgId,
+      userId: auth.userId,
+      pin,
+      codexServiceTier: body.data.codexServiceTier,
+    });
+    signal.throwIfAborted();
+    if (codexServiceTierError) {
+      return codexServiceTierError;
+    }
 
     const updated = await writeDb
       .update(chatThreads)
@@ -54,6 +122,7 @@ const updateModelSelectionInner$ = command(
         modelProviderType: pin.modelProviderType,
         modelProviderCredentialScope: pin.modelProviderCredentialScope,
         selectedModel: pin.selectedModel,
+        codexServiceTier: body.data.codexServiceTier ?? null,
         updatedAt: nowDate(),
       })
       .where(

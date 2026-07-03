@@ -612,7 +612,42 @@ describe("zero doctor check-connector command", () => {
       expect(output).toContain('"admin" is in the deny list');
     });
 
-    it("should report unmatched permission falling through to unknown policy", async () => {
+    it("should report permission in ask list", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(connectedResponse);
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json(runContextResponse);
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+        "--check-permission",
+        "actions:write",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("ask list:   [actions:write]");
+      expect(output).toContain('"actions:write" is in the ask list');
+      expect(output).toContain("blocked until approval");
+    });
+
+    it("should report unmatched permission as allowed by permission policy", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
@@ -643,9 +678,11 @@ describe("zero doctor check-connector command", () => {
 
       const output = getOutput();
       expect(output).toContain(
-        '"some-unknown-perm" is not in any permission list',
+        '"some-unknown-perm" is not in the deny or ask list',
       );
-      expect(output).toContain("unknown endpoint policy: allow");
+      expect(output).toContain(
+        "the unknown endpoint policy only applies when no named permission matches a request",
+      );
     });
   });
 
@@ -753,7 +790,7 @@ describe("zero doctor check-connector command", () => {
 
       const output = getOutput();
       expect(output).toContain(
-        "zero doctor check-connector --env-name GH_TOKEN",
+        "zero doctor check-connector --env-name 'GH_TOKEN'",
       );
     });
 
@@ -788,7 +825,7 @@ describe("zero doctor check-connector command", () => {
 
       const output = getOutput();
       expect(output).toContain(
-        "zero doctor check-connector --env-name GH_TOKEN --check-permission contents:read",
+        "zero doctor check-connector --env-name 'GH_TOKEN' --check-permission 'contents:read'",
       );
     });
   });
@@ -831,7 +868,7 @@ describe("zero doctor check-connector command", () => {
         "Step 3: Permission policy check (auto-detected from URL)",
       );
       expect(output).toContain(
-        "zero doctor check-connector --url https://api.github.com/repos/owner/repo",
+        "zero doctor check-connector --url 'https://api.github.com/repos/owner/repo'",
       );
     });
 
@@ -932,6 +969,69 @@ describe("zero doctor check-connector command", () => {
       expect(output).toContain("  - https://acme.zendesk.com");
     });
 
+    it("should keep resolved run context bases for connectors without permission routes", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        stubAvailableConnectors(["altium-365"]),
+        http.get("https://app.vm0.ai/api/zero/connectors/altium-365", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            type: "altium-365",
+            authMethod: "api-token",
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["altium-365"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                kind: "builtin",
+                name: "altium-365",
+                baseUrlVars: {
+                  ALTIUM365_WORKSPACE_URL: "https://acme.365.altium.com",
+                },
+              },
+            ],
+            networkPolicies: {
+              "altium-365": {
+                allow: [],
+                deny: [],
+                ask: [],
+                unknownPolicy: "deny" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://acme.365.altium.com/api/v1/projects",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("matches the Altium 365 connector");
+      expect(output).toContain("Matched base URL: https://acme.365.altium.com");
+      expect(output).toContain("Relative path:    /api/v1/projects");
+      expect(output).toContain(
+        "No named permission matches GET /api/v1/projects. This request falls through to the unknown-endpoint policy.",
+      );
+      expect(output).toContain(
+        "Result: No permission matched. The unknown endpoint policy applies: deny.",
+      );
+    });
+
     it("should reject compact built-in run context base URL vars outside host policy", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
@@ -999,14 +1099,8 @@ describe("zero doctor check-connector command", () => {
             ...runContextResponse,
             firewalls: [
               {
+                kind: "builtin",
                 name: "xero",
-                apis: [
-                  { base: "https://api.xero.com", permissions: [] },
-                  {
-                    base: "https://api.xero.com/api.xro/2.0",
-                    permissions: [],
-                  },
-                ],
               },
             ],
             networkPolicies: {
@@ -1025,7 +1119,7 @@ describe("zero doctor check-connector command", () => {
         "node",
         "cli",
         "--url",
-        "https://API.XERO.COM.:443/api.xro/2.0/Accounts?where=Name#ignored",
+        "https://API.XERO.COM.:443/api.xro/2.0/Accounts?token=secret-token#ignored",
       ]);
 
       const output = getOutput();
@@ -1038,6 +1132,45 @@ describe("zero doctor check-connector command", () => {
         "Matched permissions: [accounting.settings.read]",
       );
       expect(output).not.toContain("Matched permissions: [connections");
+      expect(output).not.toContain("secret-token");
+      expect(output).not.toContain("token=");
+      expect(output).not.toContain("#ignored");
+    });
+
+    it("should shell-quote sanitized URL in re-diagnose hint", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(connectedResponse);
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json(runContextResponse);
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://api.github.com/repos/owner/repo'$(touch-pwn)?token=secret-token#ignored",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain(
+        "zero doctor check-connector --url 'https://api.github.com/repos/owner/repo'\\''$(touch-pwn)'",
+      );
+      expect(output).not.toContain("secret-token");
+      expect(output).not.toContain("token=");
+      expect(output).not.toContain("#ignored");
     });
 
     it("should not resolve connector base paths without a segment boundary", async () => {
@@ -1051,7 +1184,7 @@ describe("zero doctor check-connector command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("No connector found for URL"),
+        expect.stringContaining("No connector found for provided URL"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -1350,6 +1483,142 @@ describe("zero doctor check-connector command", () => {
       );
     });
 
+    it("should allow matched permissions that are not denied or asked", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        stubAvailableConnectors(["test-oauth"]),
+        http.get("https://app.vm0.ai/api/zero/connectors/test-oauth", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            type: "test-oauth",
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["test-oauth"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                name: "test-oauth",
+                apis: [
+                  {
+                    base: "https://tenant-123.{pr}.vm6.ai/api/test/oauth-provider",
+                    permissions: [
+                      {
+                        name: "echo",
+                        description:
+                          "Test echo endpoint used to verify token injection",
+                        rules: ["GET /echo"],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            networkPolicies: {
+              "test-oauth": {
+                allow: [],
+                deny: [],
+                ask: [],
+                unknownPolicy: "deny" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://tenant-123.pr-123.vm6.ai/api/test/oauth-provider/echo",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("Matched permissions: [echo]");
+      expect(output).toContain(
+        'Result: "echo" is not blocked by the deny or ask list',
+      );
+      expect(output).not.toContain("unknown endpoint policy applies: deny");
+    });
+
+    it("should not describe unsafe paths as unknown endpoints", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        stubAvailableConnectors(["test-oauth"]),
+        http.get("https://app.vm0.ai/api/zero/connectors/test-oauth", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            type: "test-oauth",
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["test-oauth"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                name: "test-oauth",
+                apis: [
+                  {
+                    base: "https://tenant-123.{pr}.vm6.ai/api/test/oauth-provider",
+                    permissions: [
+                      {
+                        name: "full",
+                        rules: ["ANY /{path+}"],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            networkPolicies: {
+              "test-oauth": {
+                allow: ["full"],
+                deny: [],
+                ask: [],
+                unknownPolicy: "allow" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://tenant-123.pr-123.vm6.ai/api/test/oauth-provider/users/%2e%2e/admin",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain(
+        "Permission matching could not complete because the request path contains unsafe path syntax.",
+      );
+      expect(output).toContain(
+        "Result: The request path contains unsafe path syntax, so the request is blocked.",
+      );
+      expect(output).not.toContain(
+        "falls through to the unknown-endpoint policy",
+      );
+    });
+
     it("should fail for unrecognized URL", async () => {
       await expect(async () => {
         await checkConnectorCommand.parseAsync([
@@ -1361,7 +1630,7 @@ describe("zero doctor check-connector command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("No connector found for URL"),
+        expect.stringContaining("No connector found for provided URL"),
       );
     });
 
@@ -1406,7 +1675,7 @@ describe("zero doctor check-connector command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("No connector found for URL"),
+        expect.stringContaining("No connector found for provided URL"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -1442,7 +1711,7 @@ describe("zero doctor check-connector command", () => {
 
       const output = getOutput();
       expect(output).toContain(
-        "zero doctor check-connector --url https://api.github.com/repos/owner/repo --method POST",
+        "zero doctor check-connector --url 'https://api.github.com/repos/owner/repo' --method 'POST'",
       );
     });
   });
