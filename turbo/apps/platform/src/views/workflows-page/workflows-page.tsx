@@ -206,6 +206,10 @@ function ConnectorPopoverList({
         </span>
       </div>
       {entries.map((entry) => {
+        const ruleLabel = humanReadableTriggerRuleLabel(
+          entry.trigger,
+          displayTimezone,
+        );
         return (
           <div
             key={entry.trigger.id}
@@ -215,8 +219,11 @@ function ConnectorPopoverList({
               <ConnectorPillMarker dotClassName={triggerDotClass(entry)} />
               {triggerTypeLabel(entry.trigger)}
             </span>
-            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-              {humanReadableTriggerRuleLabel(entry.trigger, displayTimezone)}
+            <span
+              title={ruleLabel}
+              className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+            >
+              {ruleLabel}
             </span>
             <WorkflowTriggerEnabledSwitch entry={entry} size="sm" />
           </div>
@@ -267,7 +274,10 @@ function ConnectorCell({
           <TooltipContent side="bottom">View automations</TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <PopoverContent align="end" className="w-80 p-1">
+      <PopoverContent
+        align="end"
+        className="w-max min-w-[16rem] max-w-[min(28rem,var(--radix-popover-content-available-width))] p-1"
+      >
         <ConnectorPopoverList
           entries={entries}
           displayTimezone={displayTimezone}

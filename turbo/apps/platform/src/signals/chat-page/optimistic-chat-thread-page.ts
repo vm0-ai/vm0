@@ -6,6 +6,7 @@ import {
   chatMessagesContract,
   chatThreadsContract,
   type AttachFile,
+  type ChatThreadEvent,
   type GenerationTemplateRequest,
   type ChatThreadListItem,
   type ModelSelectionRequest,
@@ -73,6 +74,7 @@ import {
   runOptionsFromModelProviderSelection,
 } from "./model-selection-request.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
+import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
 
 export type { OptimisticChatPane };
 export { optimisticChatThread$ };
@@ -158,6 +160,7 @@ function newThreadSendBody({
   agentId,
   threadId,
   clientMessageId,
+  chatThreadEventId,
   prepared,
   modelSelection,
   codexFastModeEnabled,
@@ -167,6 +170,7 @@ function newThreadSendBody({
   agentId: string;
   threadId: string;
   clientMessageId: string;
+  chatThreadEventId: string;
   prepared: PreparedNewThreadPayload;
   modelSelection: ModelProviderSelection | null;
   codexFastModeEnabled: boolean;
@@ -181,6 +185,7 @@ function newThreadSendBody({
     agentId,
     prompt: prepared.prompt,
     clientThreadId: threadId,
+    chatThreadEventId,
     hasTextContent: prepared.hasTextContent,
     clientMessageId,
     modelSelection: modelSelectionRequestFromSelection(modelSelection),
@@ -419,22 +424,61 @@ const mintOptimisticPendingThread$ = command(
   },
 );
 
-async function createChatThread(
-  createClient: ZeroClientFactory,
-  agentId: string,
-  signal: AbortSignal,
-  title: string | undefined,
-  clientThreadId: string,
-): Promise<void> {
-  const client = createClient(chatThreadsContract);
+const mintOptimisticPendingThreadWithEvent$ = command(
+  async (
+    { set },
+    args: {
+      readonly threadId: string;
+      readonly eventId: string;
+      readonly agentId: string;
+      readonly pendingRunId?: string;
+      readonly computerUseHostId?: string | null;
+    },
+    signal: AbortSignal,
+  ): Promise<{
+    createdAt: string;
+    pendingThread: ChatThreadSignals;
+  }> => {
+    const result = await set(
+      mintOptimisticPendingThread$,
+      {
+        threadId: args.threadId,
+        agentId: args.agentId,
+        pendingRunId: args.pendingRunId,
+        computerUseHostId: args.computerUseHostId,
+      },
+      signal,
+    );
+    set(registerOptimisticChatThreadEvent$, {
+      id: args.eventId,
+      kind: "created",
+      chatThreadId: args.threadId,
+      agentId: args.agentId,
+      title: null,
+      createdAt: result.createdAt,
+    } satisfies ChatThreadEvent);
+    return result;
+  },
+);
+
+async function createChatThread(args: {
+  readonly createClient: ZeroClientFactory;
+  readonly agentId: string;
+  readonly signal: AbortSignal;
+  readonly title: string | undefined;
+  readonly clientThreadId: string;
+  readonly eventId: string;
+}): Promise<void> {
+  const client = args.createClient(chatThreadsContract);
   await accept(
     client.create({
       body: {
-        agentId,
-        clientThreadId,
-        ...(title ? { title } : {}),
+        agentId: args.agentId,
+        clientThreadId: args.clientThreadId,
+        eventId: args.eventId,
+        ...(args.title ? { title: args.title } : {}),
       },
-      fetchOptions: { signal },
+      fetchOptions: { signal: args.signal },
     }),
     [201],
   );
@@ -448,22 +492,24 @@ const createNewChatThread$ = command(
     signal: AbortSignal,
   ): Promise<PendingChatThread> => {
     const threadId = crypto.randomUUID();
+    const eventId = crypto.randomUUID();
     const { createdAt, pendingThread } = await set(
-      mintOptimisticPendingThread$,
-      { threadId, agentId },
+      mintOptimisticPendingThreadWithEvent$,
+      { threadId, eventId, agentId },
       signal,
     );
 
     const createClient = get(zeroClient$);
     L.debug("createNewChatThread$ POST chat-threads start", { threadId });
     const settleResult = (async (): Promise<void> => {
-      await createChatThread(
+      await createChatThread({
         createClient,
         agentId,
         signal,
-        undefined,
-        threadId,
-      );
+        title: undefined,
+        clientThreadId: threadId,
+        eventId,
+      });
       L.debug("createNewChatThread$ POST chat-threads 201", { threadId });
       signal.throwIfAborted();
     })();
@@ -687,6 +733,7 @@ const sendNewThreadMessage$ = command(
     }
     const threadId = crypto.randomUUID();
     const clientMessageId = crypto.randomUUID();
+    const chatThreadEventId = crypto.randomUUID();
     set(
       appendOptimisticChatMessage$,
       createNewThreadOptimisticMessageEntry({
@@ -697,9 +744,10 @@ const sendNewThreadMessage$ = command(
       }),
     );
     const { createdAt, pendingThread } = await set(
-      mintOptimisticPendingThread$,
+      mintOptimisticPendingThreadWithEvent$,
       {
         threadId,
+        eventId: chatThreadEventId,
         agentId,
         pendingRunId: `pending-${threadId}`,
         computerUseHostId,
@@ -711,10 +759,6 @@ const sendNewThreadMessage$ = command(
     const createClient = get(zeroClient$);
     const queuedOptimisticMessages$ =
       createQueuedOptimisticUserMessagesForThread(threadId);
-    L.debug("sendNewThreadMessage$ POST chat/messages start", {
-      threadId,
-      clientMessageId,
-    });
     const sendResult = (async (): Promise<SendNewThreadMessageResult> => {
       const [, result] = await Promise.all([
         clearDraftResult,
@@ -724,6 +768,7 @@ const sendNewThreadMessage$ = command(
               agentId,
               threadId,
               clientMessageId,
+              chatThreadEventId,
               prepared,
               modelSelection,
               codexFastModeEnabled: codexFastModeSwitchEnabled(

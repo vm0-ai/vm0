@@ -14,6 +14,7 @@ import { z } from "zod";
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
+import { db$ } from "../external/db";
 import { notFound } from "../../lib/error";
 import {
   applyGoogleDriveArtifactSyncStatuses,
@@ -31,6 +32,10 @@ import {
   zeroChatThreadUnreads,
 } from "../services/zero-chat-thread.service";
 import { zeroChatThreadGithubPrs$ } from "../services/chat-thread-github-prs.service";
+import {
+  getChatThreadEventsSince,
+  getChatThreadSnapshot,
+} from "../services/zero-chat-thread-event.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifacts-sync";
@@ -87,6 +92,54 @@ const getChatThreadInner$ = computed(async (get) => {
   }
 
   return { status: 200 as const, body: thread };
+});
+
+const getChatThreadSnapshotInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const db = get(db$);
+  const snapshot = await getChatThreadSnapshot(db, {
+    userId: auth.userId,
+    orgId: auth.orgId,
+  });
+
+  return {
+    status: 200 as const,
+    body: {
+      chatThreads: [...snapshot.chatThreads],
+      latestEventId: snapshot.latestEventId,
+    },
+  };
+});
+
+const listChatThreadEventsInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const query = get(queryOf(chatThreadsContract.events));
+  const db = get(db$);
+  const result = await getChatThreadEventsSince(db, {
+    userId: auth.userId,
+    orgId: auth.orgId,
+    sinceEventId: query.sinceEventId,
+  });
+
+  if (result.kind === "expired") {
+    return {
+      status: 410 as const,
+      body: {
+        error: {
+          message: "Chat thread events cursor has expired",
+          code: "CHAT_THREAD_EVENTS_EXPIRED",
+        },
+      },
+    };
+  }
+
+  return {
+    status: 200 as const,
+    body: {
+      events: [...result.events],
+      hasMore: result.hasMore,
+    },
+  };
 });
 
 const listChatThreadMessagesInner$ = computed(async (get) => {
@@ -311,6 +364,20 @@ const searchChatInner$ = computed(async (get) => {
 });
 
 export const zeroChatThreadRoutes: readonly RouteEntry[] = [
+  {
+    route: chatThreadsContract.snapshot,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      getChatThreadSnapshotInner$,
+    ),
+  },
+  {
+    route: chatThreadsContract.events,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      listChatThreadEventsInner$,
+    ),
+  },
   {
     route: chatThreadsContract.list,
     handler: authRoute(

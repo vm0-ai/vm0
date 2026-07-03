@@ -126,6 +126,8 @@ const chatThreadUnreadAgentsSchema = z.object({
   agentIds: z.array(z.string()),
 });
 
+const chatThreadEventIdSchema = z.string().uuid();
+
 const chatThreadListItemSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
@@ -157,6 +159,33 @@ const chatThreadListItemSchema = z.object({
    * Optional for back-compat with fixtures that predate the field.
    */
   renamedAt: z.string().nullable().optional(),
+});
+
+const chatThreadSnapshotProjectionSchema = z.object({
+  id: z.string().uuid(),
+  agentId: z.string().uuid(),
+  title: z.string().nullable(),
+  sortAt: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  pinnedAt: z.string().nullable(),
+  renamedAt: z.string().nullable(),
+});
+
+const chatThreadEventSchema = z.object({
+  id: chatThreadEventIdSchema,
+  kind: z.enum([
+    "created",
+    "renamed",
+    "deleted",
+    "pinned",
+    "unpinned",
+    "sort_touched",
+  ]),
+  chatThreadId: z.string().uuid(),
+  agentId: z.string().uuid(),
+  title: z.string().nullable(),
+  createdAt: z.string(),
 });
 
 const chatMessageUsageProviderBreakdownSchema = z.object({
@@ -396,6 +425,38 @@ const chatRunOptionsRequestSchema = z.object({
  * Chat threads list route contract (/api/chat-threads)
  */
 export const chatThreadsContract = c.router({
+  snapshot: {
+    method: "GET",
+    path: "/api/zero/chat-threads/snapshot",
+    headers: authHeadersSchema,
+    responses: {
+      200: z.object({
+        chatThreads: z.array(chatThreadSnapshotProjectionSchema),
+        latestEventId: chatThreadEventIdSchema.nullable(),
+      }),
+      401: apiErrorSchema,
+    },
+    summary:
+      "Get the compacted chat thread snapshot for the caller's current organization.",
+  },
+  events: {
+    method: "GET",
+    path: "/api/zero/chat-threads/events",
+    headers: authHeadersSchema,
+    query: z.object({
+      sinceEventId: chatThreadEventIdSchema.optional(),
+    }),
+    responses: {
+      200: z.object({
+        events: z.array(chatThreadEventSchema),
+        hasMore: z.boolean(),
+      }),
+      401: apiErrorSchema,
+      410: apiErrorSchema,
+    },
+    summary:
+      "List chat thread lifecycle events after an optional event id cursor.",
+  },
   create: {
     method: "POST",
     path: "/api/zero/chat-threads",
@@ -403,6 +464,7 @@ export const chatThreadsContract = c.router({
     body: z.object({
       agentId: z.string().min(1),
       clientThreadId: z.string().uuid().optional(),
+      eventId: chatThreadEventIdSchema.optional(),
       title: z.string().optional(),
     }),
     responses: {
@@ -567,6 +629,7 @@ export const chatThreadByIdContract = c.router({
     path: "/api/zero/chat-threads/:id",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
+    query: z.object({ eventId: chatThreadEventIdSchema.optional() }).optional(),
     responses: {
       204: c.noBody(),
       400: apiErrorSchema,
@@ -645,6 +708,7 @@ export const chatThreadPinContract = c.router({
     path: "/api/zero/chat-threads/:id/pin",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
+    query: z.object({ eventId: chatThreadEventIdSchema.optional() }).optional(),
     body: c.noBody(),
     responses: {
       204: c.noBody(),
@@ -662,6 +726,7 @@ export const chatThreadUnpinContract = c.router({
     path: "/api/zero/chat-threads/:id/unpin",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
+    query: z.object({ eventId: chatThreadEventIdSchema.optional() }).optional(),
     body: c.noBody(),
     responses: {
       204: c.noBody(),
@@ -688,7 +753,10 @@ export const chatThreadRenameContract = c.router({
     path: "/api/zero/chat-threads/:id/rename",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
-    body: z.object({ title: z.string().min(1) }),
+    body: z.object({
+      title: z.string().min(1),
+      eventId: chatThreadEventIdSchema.optional(),
+    }),
     responses: {
       204: c.noBody(),
       400: apiErrorSchema,
@@ -784,6 +852,7 @@ export const chatMessagesContract = c.router({
         prompt: z.string().min(1),
         threadId: z.string().optional(),
         clientThreadId: z.string().uuid().optional(),
+        chatThreadEventId: chatThreadEventIdSchema.optional(),
         modelProvider: z.string().optional(),
         /**
          * Per-run model override; persisted on the thread so subsequent runs
@@ -820,6 +889,7 @@ export const chatMessagesContract = c.router({
         clientMessageId: z.string().uuid().optional(),
         prompt: z.undefined().optional(),
         clientThreadId: z.undefined().optional(),
+        chatThreadEventId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
         runOptions: z.undefined().optional(),
@@ -838,6 +908,7 @@ export const chatMessagesContract = c.router({
         clientMessageId: z.string().uuid().optional(),
         prompt: z.undefined().optional(),
         clientThreadId: z.undefined().optional(),
+        chatThreadEventId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
         runOptions: z.undefined().optional(),
@@ -1112,6 +1183,8 @@ export type ChatSearchMessage = z.infer<typeof chatSearchMessageSchema>;
 
 export {
   chatThreadListItemSchema,
+  chatThreadSnapshotProjectionSchema,
+  chatThreadEventSchema,
   chatThreadDetailSchema,
   chatThreadMetadataSchema,
   modelSelectionRequestSchema,
@@ -1172,6 +1245,10 @@ export type WorkflowGenerationTemplateRequest = z.infer<
 
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
 export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
+export type ChatThreadSnapshotProjection = z.infer<
+  typeof chatThreadSnapshotProjectionSchema
+>;
+export type ChatThreadEvent = z.infer<typeof chatThreadEventSchema>;
 export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
 export type ChatThreadMetadata = z.infer<typeof chatThreadMetadataSchema>;
 export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
