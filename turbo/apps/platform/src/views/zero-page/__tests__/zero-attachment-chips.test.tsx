@@ -885,9 +885,18 @@ describe("zero attachment chips", () => {
     const imagePreview = await screen.findByLabelText("Preview photo.png");
     const videoPreview = screen.getByLabelText("Preview screencast.mp4");
 
-    expect(imagePreview).toHaveClass("aspect-[10/9]", "w-[50px]", "max-w-full");
-    expect(videoPreview).toHaveClass("aspect-[10/9]", "w-[50px]", "max-w-full");
-    expect(videoPreview).toHaveClass("cursor-pointer", "bg-muted/30");
+    const inlineMediaPreviewSizeClasses = [
+      "aspect-[10/9]",
+      "w-[50px]",
+      "max-w-full",
+    ];
+
+    expect(imagePreview).toHaveClass(...inlineMediaPreviewSizeClasses);
+    expect(videoPreview).toHaveClass(...inlineMediaPreviewSizeClasses);
+    expect(videoPreview).toHaveClass("cursor-pointer", "bg-black");
+    expect(
+      within(videoPreview).getByTestId("chat-video-preview-poster"),
+    ).toHaveClass("h-full", "w-full");
     expect(videoPreview).not.toHaveClass("w-[min(100%,400px)]");
     expect(screen.getByText("this is the screencast")).toBeInTheDocument();
   });
