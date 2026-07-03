@@ -74,11 +74,17 @@ enum RefreshTrigger {
     Scheduled,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RefreshAttemptStatus {
+    Applied,
+    NotApplied,
+}
+
 struct RefreshRequest {
     run_id: RunId,
     connector_ref: String,
     trigger: RefreshTrigger,
-    completion: Option<oneshot::Sender<()>>,
+    completion: Option<oneshot::Sender<RefreshAttemptStatus>>,
 }
 
 impl RefreshTrigger {
@@ -213,6 +219,12 @@ impl ConnectorPolicyRefreshCore {
 
         if let Some(refreshes) = registration.refreshes {
             for (connector_ref, refresh) in refreshes {
+                if initial_refresh_connector_refs
+                    .iter()
+                    .any(|initial| initial == connector_ref)
+                {
+                    continue;
+                }
                 self.replace_schedule(
                     registration.run_id,
                     connector_ref,
@@ -223,12 +235,25 @@ impl ConnectorPolicyRefreshCore {
         }
 
         for connector_ref in initial_refresh_connector_refs {
-            self.refresh_initial_connector_until_cancelled(
-                registration.run_id,
-                connector_ref,
-                &run_cancel,
-            )
-            .await;
+            let status = self
+                .refresh_initial_connector_until_cancelled(
+                    registration.run_id,
+                    connector_ref.clone(),
+                    &run_cancel,
+                )
+                .await;
+            if status == Some(RefreshAttemptStatus::NotApplied)
+                && let Some(refresh) = registration
+                    .refreshes
+                    .and_then(|refreshes| refreshes.get(&connector_ref))
+            {
+                self.replace_schedule(
+                    registration.run_id,
+                    &connector_ref,
+                    Some(refresh.next_refresh_at.clone()),
+                )
+                .await;
+            }
         }
     }
 
@@ -299,7 +324,7 @@ impl ConnectorPolicyRefreshCore {
         run_id: RunId,
         connector_ref: String,
         cancel: &CancellationToken,
-    ) {
+    ) -> Option<RefreshAttemptStatus> {
         let (completion_tx, completion_rx) = oneshot::channel();
         let sent = self
             .enqueue_refresh_until_cancelled(
@@ -313,19 +338,26 @@ impl ConnectorPolicyRefreshCore {
             )
             .await;
         if !sent {
-            return;
+            return None;
         }
 
-        tokio::select! {
+        let status = tokio::select! {
             biased;
-            () = self.inner.cancel.cancelled() => {}
-            () = cancel.cancelled() => {}
+            () = self.inner.cancel.cancelled() => None,
+            () = cancel.cancelled() => None,
             result = completion_rx => {
-                if result.is_err() && !self.inner.cancel.is_cancelled() && !cancel.is_cancelled() {
-                    warn!(run_id = %run_id, "initial connector policy refresh worker stopped before completion");
+                match result {
+                    Ok(status) => Some(status),
+                    Err(_) => {
+                        if !self.inner.cancel.is_cancelled() && !cancel.is_cancelled() {
+                            warn!(run_id = %run_id, "initial connector policy refresh worker stopped before completion");
+                        }
+                        None
+                    }
                 }
             }
-        }
+        };
+        status
     }
 
     async fn enqueue_refresh_until_cancelled(
@@ -384,9 +416,9 @@ impl ConnectorPolicyRefreshCore {
         run_id: RunId,
         connector_ref: String,
         trigger: RefreshTrigger,
-    ) {
+    ) -> RefreshAttemptStatus {
         let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await else {
-            return;
+            return RefreshAttemptStatus::NotApplied;
         };
 
         let response = match self
@@ -406,7 +438,7 @@ impl ConnectorPolicyRefreshCore {
                 if trigger.fail_closed_on_error() {
                     fail_closed_connector_policy(run_id, &connector_ref, snapshot).await;
                 }
-                return;
+                return RefreshAttemptStatus::NotApplied;
             }
         };
 
@@ -422,11 +454,11 @@ impl ConnectorPolicyRefreshCore {
             {
                 fail_closed_connector_policy(run_id, &connector_ref, snapshot).await;
             }
-            return;
+            return RefreshAttemptStatus::NotApplied;
         }
 
         let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await else {
-            return;
+            return RefreshAttemptStatus::NotApplied;
         };
         match patch_connector_policy(run_id, &connector_ref, snapshot, response.network_policy)
             .await
@@ -439,9 +471,11 @@ impl ConnectorPolicyRefreshCore {
                 );
                 self.replace_schedule(run_id, &connector_ref, response.next_refresh_at)
                     .await;
+                RefreshAttemptStatus::Applied
             }
             Ok(false) => {
                 self.unregister_run(run_id).await;
+                RefreshAttemptStatus::NotApplied
             }
             Err(error) => {
                 warn!(
@@ -455,6 +489,7 @@ impl ConnectorPolicyRefreshCore {
                 {
                     fail_closed_connector_policy(run_id, &connector_ref, snapshot).await;
                 }
+                RefreshAttemptStatus::NotApplied
             }
         }
     }
@@ -570,23 +605,23 @@ async fn run_refresh_worker(
                     trigger,
                     completion,
                 } = request;
-                let completed = tokio::select! {
+                let status = tokio::select! {
                     () = handle.inner.cancel.cancelled() => {
-                        false
+                        None
                     }
-                    () = handle.refresh_connector_now(
+                    status = handle.refresh_connector_now(
                         run_id,
                         connector_ref,
                         trigger,
                     ) => {
-                        true
+                        Some(status)
                     }
                 };
-                if !completed {
+                let Some(status) = status else {
                     break;
-                }
+                };
                 if let Some(completion) = completion {
-                    let _ = completion.send(());
+                    let _ = completion.send(status);
                 }
             }
         }
@@ -1144,6 +1179,121 @@ mod tests {
         assert_eq!(policy["deny"], json!(["chat:write"]));
         assert_eq!(policy["ask"], json!([]));
         assert_eq!(policy["unknownPolicy"], json!("deny"));
+
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn register_run_initial_refresh_supersedes_claim_schedule() {
+        let server = MockServer::start();
+        let run_id = RunId::nil();
+        let refresh_mock = server.mock(|when, then| {
+            when.method(POST).path(format!(
+                "/api/runners/runs/{run_id}/connector-network-policy"
+            ));
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "connectorRef": "slack",
+                    "networkPolicy": {
+                        "allow": ["files:write"],
+                        "deny": ["chat:write"],
+                        "ask": [],
+                        "unknownPolicy": "deny",
+                    },
+                    "nextRefreshAt": null,
+                }));
+        });
+        let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
+        let (_dir, registry, registry_path, _lock_path) = registered_slack_registry(run_id).await;
+        let refreshes = HashMap::from([(
+            "slack".to_string(),
+            ConnectorPolicyRefresh {
+                next_refresh_at: "1970-01-01T00:00:00Z".to_string(),
+            },
+        )]);
+
+        handle
+            .core
+            .register_run(ConnectorPolicyRefreshRegistration {
+                run_id,
+                source_ip: "10.200.0.2",
+                registry,
+                connector_refs: HashSet::from(["slack".to_string()]),
+                initial_refresh_connector_refs: HashSet::from(["slack".to_string()]),
+                refreshes: Some(&refreshes),
+            })
+            .await;
+
+        let policy = load_slack_policy(&registry_path).await;
+        assert_eq!(policy["unknownPolicy"], json!("deny"));
+        assert!(
+            handle
+                .core
+                .inner
+                .active_runs
+                .lock()
+                .await
+                .get(&run_id)
+                .is_some_and(|active| active.refresh_tasks.is_empty()),
+            "fresh initial refresh response should replace the stale claim schedule"
+        );
+        refresh_mock.assert_calls_async(1).await;
+
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn register_run_restores_claim_schedule_after_initial_refresh_failure() {
+        let server = MockServer::start();
+        let run_id = RunId::nil();
+        server.mock(|when, then| {
+            when.method(POST).path(format!(
+                "/api/runners/runs/{run_id}/connector-network-policy"
+            ));
+            then.status(500)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "error": {
+                        "code": "INTERNAL_SERVER_ERROR",
+                        "message": "refresh failed",
+                    },
+                }));
+        });
+        let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
+        let (_dir, registry, registry_path, _lock_path) = registered_slack_registry(run_id).await;
+        let refreshes = HashMap::from([(
+            "slack".to_string(),
+            ConnectorPolicyRefresh {
+                next_refresh_at: "2999-01-01T00:00:00Z".to_string(),
+            },
+        )]);
+
+        handle
+            .core
+            .register_run(ConnectorPolicyRefreshRegistration {
+                run_id,
+                source_ip: "10.200.0.2",
+                registry,
+                connector_refs: HashSet::from(["slack".to_string()]),
+                initial_refresh_connector_refs: HashSet::from(["slack".to_string()]),
+                refreshes: Some(&refreshes),
+            })
+            .await;
+
+        let policy = load_slack_policy(&registry_path).await;
+        assert_original_policy(&policy);
+        assert!(
+            handle
+                .core
+                .inner
+                .active_runs
+                .lock()
+                .await
+                .get(&run_id)
+                .is_some_and(|active| active.refresh_tasks.len() == 1),
+            "claim schedule should remain as fallback when initial refresh cannot apply"
+        );
 
         handle.shutdown().await;
     }
