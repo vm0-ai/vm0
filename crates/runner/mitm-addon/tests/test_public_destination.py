@@ -35,6 +35,8 @@ import public_destination
         ("127.0.0.1.", False),
         ("0x7f.0.0.1", False),
         ("127\u30020\u30020\u30021\u3002", False),
+        ("127\uff0e0\uff0e0\uff0e1\uff0e", False),
+        ("127\uff610\uff610\uff611\uff61", False),
         ("2130706433", False),
         ("2130706433.", False),
         ("127.1", False),

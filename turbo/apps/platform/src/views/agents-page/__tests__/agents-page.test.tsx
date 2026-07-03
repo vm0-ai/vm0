@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
@@ -171,5 +171,24 @@ describe("agents page", () => {
     expect(
       within(agentCard("Private Ops")).queryByLabelText("Unread"),
     ).not.toBeInTheDocument();
+  });
+
+  it("opens shortcut help from the sidebar layout", async () => {
+    context.mocks.data.team(agents);
+    context.mocks.data.orgMembers({ members: [] });
+
+    detachedSetupPage({ context, path: "/agents" });
+
+    await waitFor(() => {
+      expect(agentCard("Research Agent")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Keyboard Shortcuts",
+    });
+    expect(within(dialog).getByText("Toggle sidebar")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Rename chat")).not.toBeInTheDocument();
   });
 });

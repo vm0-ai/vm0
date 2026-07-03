@@ -201,10 +201,6 @@ import {
 import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
-  chatShortcutHelpOpen$,
-  setChatShortcutHelpOpen$,
-} from "../../signals/chat-page/chat-shortcut-help.ts";
-import {
   agentGithubPrTrackingAvailable$,
   githubPrTrackingOpenThreadId$,
   chatThreadGithubPrs$,
@@ -235,7 +231,6 @@ import {
   toggleOrgAutomationEnabled$,
 } from "../../signals/zero-page/zero-automations.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
-import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 import {
   closeChatThreadEmojiMenu$,
   emojiMenuThreadId$,
@@ -349,42 +344,6 @@ import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-devic
 type RecommendedFollowup = NonNullable<
   Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
 >[number];
-
-const CHAT_SHORTCUT_SECTIONS = [
-  {
-    title: "Global",
-    shortcuts: [
-      { key: "shift+/", label: "Show shortcuts" },
-      { key: "mod+b", label: "Toggle sidebar" },
-      { key: "mod+shift+o", label: "New chat" },
-      { key: "mod+shift+a", label: "Open agent list" },
-      { key: "f2", label: "Rename chat" },
-      { key: "shift+f2", label: "Change icon" },
-      { key: "ctrl+shift+1", label: "Set icon (Ctrl+Shift+1-9)" },
-      { key: "ctrl+shift+0", label: "Clear icon" },
-    ],
-  },
-  {
-    title: "Messages",
-    shortcuts: [
-      { key: "mod+arrowup", label: "Scroll to top" },
-      { key: "mod+arrowdown", label: "Scroll to bottom" },
-      { key: "mod+shift+arrowup", label: "Previous thread" },
-      { key: "mod+shift+arrowdown", label: "Next thread" },
-    ],
-  },
-  {
-    title: "Composer",
-    shortcuts: [
-      { key: "enter", label: "Send message" },
-      { key: "escape", label: "Blur composer" },
-    ],
-  },
-] as const;
-
-function isChatThreadEmojiShortcutKey(key: string): boolean {
-  return key === "shift+f2" || key === "ctrl+shift+1" || key === "ctrl+shift+0";
-}
 
 function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
   return <ArtifactsButtonInner thread={thread} />;
@@ -3198,11 +3157,6 @@ function ChatThreadArea({
 }
 
 export function ZeroChatThreadPage() {
-  const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
-  const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
-  const features = useLastResolved(featureSwitch$);
-  const chatThreadEmojiEnabled =
-    features?.[FeatureSwitchKey.ChatThreadEmoji] ?? false;
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
@@ -3238,19 +3192,6 @@ export function ZeroChatThreadPage() {
       />
     </div>
   ) : null;
-  const shortcutSections = chatThreadEmojiEnabled
-    ? CHAT_SHORTCUT_SECTIONS
-    : CHAT_SHORTCUT_SECTIONS.map((section) => {
-        if (section.title !== "Global") {
-          return section;
-        }
-        return {
-          ...section,
-          shortcuts: section.shortcuts.filter((shortcut) => {
-            return !isChatThreadEmojiShortcutKey(shortcut.key);
-          }),
-        };
-      });
 
   return (
     <>
@@ -3308,12 +3249,6 @@ export function ZeroChatThreadPage() {
         typeof document !== "undefined" &&
         presentationEditor &&
         createPortal(presentationEditor, document.body)}
-      <ShortcutHelpDialog
-        open={shortcutHelpOpen}
-        onOpenChange={setShortcutHelpOpen}
-        description="Available shortcuts on this page"
-        sections={shortcutSections}
-      />
       <ChatConnectorActionConnectModal />
     </>
   );

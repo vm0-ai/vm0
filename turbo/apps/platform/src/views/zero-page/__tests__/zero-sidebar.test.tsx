@@ -1400,6 +1400,26 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("opens shortcut help from the agent chat page when composer is not focused", async () => {
+    prepareAgentTeam();
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      expect(sidebar()).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Keyboard Shortcuts",
+    });
+    expect(within(dialog).getByText("Show shortcuts")).toBeInTheDocument();
+  });
+
   it("ignores global shortcuts while a dialog is open", async () => {
     prepareAgentTeam();
     context.mocks.api(chatThreadsContract.list, ({ respond }) => {

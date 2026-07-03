@@ -82,17 +82,8 @@ impl JobCandidate {
 
     pub(crate) fn local(run_id: RunId, profile_name: String, job_path: PathBuf) -> Self {
         Self {
-            run_id,
-            profile_name,
             local_job_path: Some(job_path),
-            discovered_at: Instant::now(),
-            local_admission_started_at: None,
-            discovery_source: None,
-            poll_reason: None,
-            poll_due_to_job_discovered_elapsed: None,
-            poll_http_request_elapsed: None,
-            cli_agent_session_id: None,
-            affinity_protected_until: None,
+            ..Self::new(run_id, profile_name)
         }
     }
 
@@ -196,17 +187,8 @@ impl JobCandidate {
         local_admission_started_at: Option<Instant>,
     ) -> Self {
         Self {
-            run_id,
-            profile_name,
-            local_job_path: None,
-            discovered_at,
             local_admission_started_at,
-            discovery_source: None,
-            poll_reason: None,
-            poll_due_to_job_discovered_elapsed: None,
-            poll_http_request_elapsed: None,
-            cli_agent_session_id: None,
-            affinity_protected_until: None,
+            ..Self::new_with_discovered_at(run_id, profile_name, discovered_at)
         }
     }
 }
