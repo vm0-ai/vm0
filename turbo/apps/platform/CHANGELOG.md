@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.541.0](https://github.com/vm0-ai/vm0/compare/app-v0.540.0...app-v0.541.0) (2026-07-03)
+
+
+### Features
+
+* migrate legacy automations to workflow schedule triggers globally ([#20033](https://github.com/vm0-ai/vm0/issues/20033)) ([eeb91c2](https://github.com/vm0-ai/vm0/commit/eeb91c258a50f67b05a341ebbbbb7e1b872d0030))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.392.0
+
 ## [0.540.0](https://github.com/vm0-ai/vm0/compare/app-v0.539.0...app-v0.540.0) (2026-07-03)
 
 
