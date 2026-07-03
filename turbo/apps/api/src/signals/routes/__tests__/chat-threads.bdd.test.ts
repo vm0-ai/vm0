@@ -587,11 +587,16 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     chat.mockObjectStorageObjectsExist();
     await authOrg.deleteAgent(actor, deletedAgent.agentId);
 
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    mockNow(now() + 8 * 24 * 60 * 60 * 1000);
     const incrementalCompact = await compactChatThreadSnapshots();
     expect(incrementalCompact.eventsApplied).toBeGreaterThanOrEqual(1);
     expect(
       incrementalCompact.removedDeletedAgentThreads,
     ).toBeGreaterThanOrEqual(1);
+    expect(incrementalCompact.eventsPruned).toBeGreaterThanOrEqual(1);
 
     const compactedSnapshot = await chat.getThreadSnapshot(actor);
     expect(compactedSnapshot.latestEventId).toBe(renameEventId);
@@ -603,6 +608,31 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         renamedAt: expect.any(String),
       }),
     ]);
+
+    const prunedCursor = await chat.requestThreadEvents(
+      actor,
+      { sinceEventId: liveCreateEventId },
+      [410],
+    );
+    expect(prunedCursor.body).toStrictEqual({
+      error: {
+        message: "Chat thread events cursor has expired",
+        code: "CHAT_THREAD_EVENTS_EXPIRED",
+      },
+    });
+
+    const retainedAnchorCursor = await chat.requestThreadEvents(
+      actor,
+      { sinceEventId: renameEventId },
+      [200],
+    );
+    expect(retainedAnchorCursor.status).toBe(200);
+    if (retainedAnchorCursor.status !== 200) {
+      throw new Error(
+        "Expected retained snapshot anchor event to be queryable",
+      );
+    }
+    expect(retainedAnchorCursor.body.events).toStrictEqual([]);
   });
 
   it("falls back to the first run model on detail after the explicit pin is cleared", async () => {
