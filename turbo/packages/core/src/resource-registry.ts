@@ -98,10 +98,6 @@ export interface ResourceCandidateSlice {
   };
 }
 
-export const PRESENTATION_REQUIRED_RESOURCE_IDS = [
-  "tool:presentation-deck-tools",
-] as const;
-
 const RESOURCE_REGISTRY_REPO = "nexu-io/open-design";
 const RESOURCE_REGISTRY_COMMIT = "3fb620af423534643677c7c6fae76be088fa770a";
 const VM0_SKILLS_REPO = "vm0-ai/vm0-skills";
@@ -127,8 +123,6 @@ function privateR2ArchiveSource(
 }
 
 const PRESENTATION_RESOURCE_ARCHIVE_SHA256 = {
-  presentationDeckTools:
-    "00897f9278c014d2d7fcb95f3d03ee954c3d9c281cdef280fb92597be6609b38",
   colorSystemBauhausPrimary:
     "f42a1d62462f24b1a411889f8011b07bd3f1bb1db82a339cc59cf5ab5be2f475",
   colorSystemBerryPop:
@@ -262,17 +256,6 @@ const VIDEO_TEMPLATE_REGISTRY: readonly VideoTemplateRegistryEntry[] = [
 ];
 
 const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
-  {
-    id: "tool:presentation-deck-tools",
-    kind: "tool",
-    name: "Presentation Deck Tools",
-    description:
-      "Shared HTML presentation deck shell, device primitives, render scripts, and QA gate required for vm0 presentation generation.",
-    source: privateR2ArchiveSource(
-      "presentation-runtime/html-ppt-deck-tools",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.presentationDeckTools,
-    ),
-  },
   {
     id: "skill:article-magazine",
     kind: "skill",

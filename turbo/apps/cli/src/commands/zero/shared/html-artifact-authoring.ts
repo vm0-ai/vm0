@@ -2,7 +2,6 @@ import {
   type GenerationOutputKind,
   type ResourceCandidateSlice,
   type GenerationTarget,
-  PRESENTATION_REQUIRED_RESOURCE_IDS,
   selectResourceCandidates,
 } from "./resource-registry";
 
@@ -113,8 +112,9 @@ export function createHtmlArtifactAuthoringPacket(
   }`;
   const title = titleForKind(options.kind);
   const candidateSlice = selectResourceCandidates(options.kind);
-  const requiredResources =
-    options.kind === "presentation" ? PRESENTATION_REQUIRED_RESOURCE_IDS : [];
+  // Presentation generation no longer injects a shared deck-tools resource;
+  // runbook packages are self-contained and freeform decks author standalone.
+  const requiredResources: readonly string[] = [];
   const selectionSchema = {
     skills: "string[]",
     template: "string",
