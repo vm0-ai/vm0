@@ -849,6 +849,61 @@ describe("zero attachment chips", () => {
     ).toBeTruthy();
   });
 
+  it("renders user video attachments at the same size as image attachments", async () => {
+    const imageUrl = "https://cdn.vm7.io/artifacts/test/media/photo.png";
+    const videoUrl = "https://cdn.vm7.io/artifacts/test/media/screencast.mp4";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-image-video-attachments",
+          role: "user",
+          content: "this is the screencast",
+          attachFiles: [
+            {
+              id: "attachment-photo",
+              filename: "photo.png",
+              contentType: "image/png",
+              size: 2048,
+              url: imageUrl,
+            },
+            {
+              id: "attachment-screencast",
+              filename: "screencast.mp4",
+              contentType: "video/mp4",
+              size: 4096,
+              url: videoUrl,
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const imagePreview = await screen.findByLabelText("Preview photo.png");
+    const videoPreview = screen.getByLabelText("Preview screencast.mp4");
+
+    const inlineMediaPreviewSizeClasses = [
+      "aspect-[10/9]",
+      "w-[50px]",
+      "max-w-full",
+    ];
+
+    expect(imagePreview).toHaveClass(...inlineMediaPreviewSizeClasses);
+    expect(videoPreview).toHaveClass(...inlineMediaPreviewSizeClasses);
+    expect(videoPreview).toHaveClass("cursor-pointer", "bg-black");
+    expect(
+      within(videoPreview).getByTestId("chat-video-preview-poster"),
+    ).toHaveClass("h-full", "w-full");
+    expect(
+      within(videoPreview).getByTestId("chat-video-preview-poster"),
+    ).toBeEmptyDOMElement();
+    expect(videoPreview).not.toHaveClass("w-[min(100%,400px)]");
+    expect(screen.getByText("this is the screencast")).toBeInTheDocument();
+  });
+
   it("opens persisted audio, video, and document attachments from chat history", async () => {
     const audioUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-audio/briefing.mp3";
