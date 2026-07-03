@@ -1,0 +1,833 @@
+//! Sandbox preparation, reuse, and post-run cleanup glue.
+
+use std::panic::AssertUnwindSafe;
+use std::time::{Duration, Instant};
+
+use futures_util::FutureExt;
+use sandbox::{Sandbox, SandboxConfig, SandboxFactory, SandboxId};
+use tracing::{info, warn};
+
+use super::agent_run::{AgentExecutionResult, RunControls, RunStart, run_in_sandbox};
+use super::cli_framework::{
+    EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
+};
+use super::diagnostics::{
+    AgentStdoutStreamDiagnostics, append_stdout_stream_diagnostics_to_stream_log, copy_guest_logs,
+    read_guest_cli_agent_session_id,
+};
+use super::session_id::{
+    canonical_codex_thread_id, invalid_session_id_diagnostic_preview, is_valid_session_id,
+};
+use super::telemetry::record_workspace_cache_result;
+use super::{
+    ExecuteOutcome, ExecutionFailure, ExecutorConfig, JobParams, NewSandboxDispatch, RunnerError,
+    RunnerResult, SandboxPreparedNotifier, SandboxReuseResult,
+};
+use crate::duration::duration_ms;
+use crate::ids::RunId;
+use crate::network_log_manager::NetworkLogSession;
+use crate::proxy;
+use crate::telemetry::JobTelemetry;
+use crate::types::ExecutionContext;
+use crate::workspace_image_cache::{
+    WorkspaceCacheCheckoutResult, WorkspaceImageLease, WorkspaceImageLeaseIdentity,
+    WorkspaceImagePrepareRequest,
+};
+use crate::workspace_mount::ensure_workspace_drive_mounted;
+use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+
+const SLOW_PROXY_REGISTER_THRESHOLD: Duration = Duration::from_secs(3);
+const RUNNER_FRESH_WORKSPACE_IMAGE_PREPARE: &str = "runner_fresh_workspace_image_prepare";
+const RUNNER_FRESH_SANDBOX_FACTORY_CREATE: &str = "runner_fresh_sandbox_factory_create";
+const RUNNER_FRESH_SANDBOX_PROXY_REGISTER: &str = "runner_fresh_sandbox_proxy_register";
+const RUNNER_FRESH_SANDBOX_START: &str = "runner_fresh_sandbox_start";
+const RUNNER_FRESH_SANDBOX_RETRY_WITHOUT_WORKSPACE_IMAGE: &str =
+    "runner_fresh_sandbox_retry_without_workspace_image";
+
+const WORKSPACE_IMAGE_PREPARE_INVALID_WORKING_DIR: &str =
+    "workspace_image_prepare_invalid_working_dir";
+const WORKSPACE_IMAGE_PREPARE_LOCK_BUSY: &str = "workspace_image_prepare_lock_busy";
+const WORKSPACE_IMAGE_PREPARE_INVALID_METADATA: &str = "workspace_image_prepare_invalid_metadata";
+const WORKSPACE_IMAGE_PREPARE_DISK_PRESSURE: &str = "workspace_image_prepare_disk_pressure";
+const SANDBOX_FACTORY_CREATE_FAILED: &str = "sandbox_factory_create_failed";
+const SANDBOX_PROXY_REGISTER_FAILED: &str = "sandbox_proxy_register_failed";
+const SANDBOX_START_FAILED: &str = "sandbox_start_failed";
+
+#[cfg(test)]
+pub(super) async fn execute_new_sandbox(
+    factory: &dyn SandboxFactory,
+    context: &ExecutionContext,
+    dispatch: NewSandboxDispatch,
+    config: &ExecutorConfig,
+    params: &JobParams,
+    telemetry: &mut JobTelemetry,
+    cancel: tokio_util::sync::CancellationToken,
+) -> RunnerResult<ExecuteOutcome> {
+    execute_new_sandbox_with_prepared_notifier(
+        factory,
+        context,
+        dispatch,
+        config,
+        params,
+        telemetry,
+        NewSandboxHooks {
+            controls: RunControls::new(cancel, None),
+            sandbox_prepared: None,
+        },
+    )
+    .await
+}
+
+pub(super) async fn execute_new_sandbox_with_prepared_notifier(
+    factory: &dyn SandboxFactory,
+    context: &ExecutionContext,
+    dispatch: NewSandboxDispatch,
+    config: &ExecutorConfig,
+    params: &JobParams,
+    telemetry: &mut JobTelemetry,
+    hooks: NewSandboxHooks<'_>,
+) -> RunnerResult<ExecuteOutcome> {
+    let NewSandboxDispatch {
+        id: sandbox_id,
+        reuse_result,
+    } = dispatch;
+    let NewSandboxHooks {
+        controls,
+        sandbox_prepared,
+    } = hooks;
+    let prepare_started = Instant::now();
+    let mut workspace_image = prepare_workspace_image(
+        context,
+        sandbox_id,
+        config,
+        &params.profile_name,
+        params.workspace_disk_mb,
+        telemetry,
+    )
+    .await;
+    let prepared = match create_started_sandbox(
+        factory,
+        context,
+        sandbox_id,
+        config,
+        params,
+        telemetry,
+        StartSandboxOptions {
+            workspace_image: workspace_image.as_ref(),
+            sandbox_prepared,
+        },
+    )
+    .await
+    {
+        Ok(prepared) => prepared,
+        Err(e)
+            if e.retry_without_workspace_image
+                && workspace_image
+                    .as_ref()
+                    .is_some_and(WorkspaceImageLease::is_cache_hit) =>
+        {
+            let error = e.error;
+            invalidate_workspace_cache_hit(
+                workspace_image.as_ref(),
+                context.run_id,
+                "sandbox_prepare_failed",
+            )
+            .await;
+            warn!(
+                run_id = %context.run_id,
+                sandbox_id = %sandbox_id,
+                error = %error,
+                "workspace image cache hit failed during sandbox preparation; retrying with fresh workspace image"
+            );
+            telemetry.record(
+                RUNNER_FRESH_SANDBOX_RETRY_WITHOUT_WORKSPACE_IMAGE,
+                Duration::ZERO,
+                true,
+                None,
+            );
+            workspace_image = None;
+            match create_started_sandbox(
+                factory,
+                context,
+                sandbox_id,
+                config,
+                params,
+                telemetry,
+                StartSandboxOptions {
+                    workspace_image: None,
+                    sandbox_prepared,
+                },
+            )
+            .await
+            {
+                Ok(prepared) => prepared,
+                Err(e) => {
+                    let error = e.error;
+                    telemetry.record(
+                        "runner_fresh_sandbox_prepare",
+                        prepare_started.elapsed(),
+                        false,
+                        Some(&error.to_string()),
+                    );
+                    return Err(error);
+                }
+            }
+        }
+        Err(e) => {
+            let error = e.error;
+            telemetry.record(
+                "runner_fresh_sandbox_prepare",
+                prepare_started.elapsed(),
+                false,
+                Some(&error.to_string()),
+            );
+            return Err(error);
+        }
+    };
+    telemetry.record(
+        "runner_fresh_sandbox_prepare",
+        prepare_started.elapsed(),
+        true,
+        None,
+    );
+
+    let mut outcome = execute_prepared_sandbox_run(
+        prepared,
+        context,
+        config,
+        RunStart {
+            restore_guest_state: params.restore_guest_state,
+            reuse_result,
+            prev_storage: workspace_image
+                .as_ref()
+                .and_then(WorkspaceImageLease::previous_storage),
+        },
+        telemetry,
+        controls,
+    )
+    .await;
+    outcome.workspace_image = workspace_image;
+    Ok(outcome)
+}
+
+pub(super) struct PreparedSandboxRun {
+    pub(super) sandbox: Box<dyn Sandbox>,
+    pub(super) source_ip: String,
+    pub(super) network_log_session: NetworkLogSession,
+}
+
+pub(super) struct SandboxPrepareError {
+    error: RunnerError,
+    retry_without_workspace_image: bool,
+}
+
+pub(super) struct NewSandboxHooks<'a> {
+    pub(super) controls: RunControls,
+    pub(super) sandbox_prepared: Option<&'a SandboxPreparedNotifier>,
+}
+
+struct StartSandboxOptions<'a> {
+    workspace_image: Option<&'a WorkspaceImageLease>,
+    sandbox_prepared: Option<&'a SandboxPreparedNotifier>,
+}
+
+impl SandboxPrepareError {
+    fn retry(error: RunnerError) -> Self {
+        Self {
+            error,
+            retry_without_workspace_image: true,
+        }
+    }
+
+    fn fatal(error: RunnerError) -> Self {
+        Self {
+            error,
+            retry_without_workspace_image: false,
+        }
+    }
+}
+
+pub(super) async fn prepare_workspace_image(
+    context: &ExecutionContext,
+    sandbox_id: SandboxId,
+    config: &ExecutorConfig,
+    profile_name: &str,
+    workspace_disk_mb: u32,
+    telemetry: &mut JobTelemetry,
+) -> Option<WorkspaceImageLease> {
+    let cache = config.workspace_cache.as_ref()?;
+    let prepare_started = Instant::now();
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: context.run_id,
+                sandbox_id,
+                profile_name,
+                cli_agent_session_id: context.cli_agent_session_id(),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
+            },
+            workspace_drive_required: true,
+        })
+        .await;
+    let prepare_error = workspace_image_prepare_error(lease.result());
+    telemetry.record(
+        RUNNER_FRESH_WORKSPACE_IMAGE_PREPARE,
+        prepare_started.elapsed(),
+        prepare_error.is_none(),
+        prepare_error,
+    );
+    record_workspace_cache_result(telemetry, lease.result());
+    Some(lease)
+}
+
+fn workspace_image_prepare_error(result: WorkspaceCacheCheckoutResult) -> Option<&'static str> {
+    match result {
+        WorkspaceCacheCheckoutResult::Hit
+        | WorkspaceCacheCheckoutResult::Miss
+        | WorkspaceCacheCheckoutResult::NoSession => None,
+        WorkspaceCacheCheckoutResult::InvalidWorkingDir => {
+            Some(WORKSPACE_IMAGE_PREPARE_INVALID_WORKING_DIR)
+        }
+        WorkspaceCacheCheckoutResult::LockBusy => Some(WORKSPACE_IMAGE_PREPARE_LOCK_BUSY),
+        WorkspaceCacheCheckoutResult::InvalidMetadata => {
+            Some(WORKSPACE_IMAGE_PREPARE_INVALID_METADATA)
+        }
+        WorkspaceCacheCheckoutResult::DiskPressure => Some(WORKSPACE_IMAGE_PREPARE_DISK_PRESSURE),
+    }
+}
+
+async fn create_started_sandbox(
+    factory: &dyn SandboxFactory,
+    context: &ExecutionContext,
+    sandbox_id: SandboxId,
+    config: &ExecutorConfig,
+    params: &JobParams,
+    telemetry: &mut JobTelemetry,
+    options: StartSandboxOptions<'_>,
+) -> Result<PreparedSandboxRun, SandboxPrepareError> {
+    let StartSandboxOptions {
+        workspace_image,
+        sandbox_prepared,
+    } = options;
+    let sandbox_config = SandboxConfig {
+        id: sandbox_id,
+        resources: sandbox::ResourceLimits {
+            cpu_count: params.vcpu,
+            memory_mb: params.memory_mb,
+        },
+        device_rate_limits: params.device_rate_limits.clone(),
+        workspace_drive: workspace_image.map_or_else(
+            || {
+                Some(sandbox::WorkspaceDriveConfig {
+                    size_mb: params.workspace_disk_mb,
+                    seed_image: None,
+                })
+            },
+            WorkspaceImageLease::workspace_drive_config,
+        ),
+    };
+
+    info!(run_id = %context.run_id, sandbox_id = %sandbox_id, "creating sandbox");
+    let t = Instant::now();
+    let factory_create_started = Instant::now();
+    let mut sandbox = match factory.create(sandbox_config).await {
+        Ok(s) => {
+            telemetry.record(
+                RUNNER_FRESH_SANDBOX_FACTORY_CREATE,
+                factory_create_started.elapsed(),
+                true,
+                None,
+            );
+            s
+        }
+        Err(e) => {
+            telemetry.record(
+                RUNNER_FRESH_SANDBOX_FACTORY_CREATE,
+                factory_create_started.elapsed(),
+                false,
+                Some(SANDBOX_FACTORY_CREATE_FAILED),
+            );
+            telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
+            return Err(SandboxPrepareError::retry(e.into()));
+        }
+    };
+
+    let source_ip = sandbox.source_ip().to_string();
+    let proxy_register_started = Instant::now();
+    let network_log_session = match register_proxy(config, context, &source_ip).await {
+        Ok(session) => {
+            let proxy_register_elapsed = proxy_register_started.elapsed();
+            telemetry.record(
+                RUNNER_FRESH_SANDBOX_PROXY_REGISTER,
+                proxy_register_elapsed,
+                true,
+                None,
+            );
+            log_proxy_register_success(
+                context.run_id,
+                sandbox_id,
+                &params.profile_name,
+                proxy_register_elapsed,
+            );
+            session
+        }
+        Err(e) => {
+            let proxy_register_elapsed = proxy_register_started.elapsed();
+            telemetry.record(
+                RUNNER_FRESH_SANDBOX_PROXY_REGISTER,
+                proxy_register_elapsed,
+                false,
+                Some(SANDBOX_PROXY_REGISTER_FAILED),
+            );
+            log_proxy_register_failure(
+                context.run_id,
+                sandbox_id,
+                &params.profile_name,
+                proxy_register_elapsed,
+                &e.to_string(),
+            );
+            telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
+            destroy_sandbox_panic_safe(factory, sandbox).await;
+            return Err(SandboxPrepareError::fatal(e));
+        }
+    };
+
+    let sandbox_start_started = Instant::now();
+    if let Err(e) = sandbox.start().await {
+        telemetry.record(
+            RUNNER_FRESH_SANDBOX_START,
+            sandbox_start_started.elapsed(),
+            false,
+            Some(SANDBOX_START_FAILED),
+        );
+        telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
+        if let Err(unregister_error) = unregister_proxy_registry(config, &source_ip).await {
+            warn!(
+                run_id = %context.run_id,
+                error = %unregister_error,
+                "failed to unregister VM from proxy after sandbox start failure"
+            );
+        }
+        network_log_session
+            .close_for_upload(context.run_id, &config.network_log_drain)
+            .await;
+        destroy_sandbox_panic_safe(factory, sandbox).await;
+        return Err(SandboxPrepareError::retry(e.into()));
+    }
+    telemetry.record(
+        RUNNER_FRESH_SANDBOX_START,
+        sandbox_start_started.elapsed(),
+        true,
+        None,
+    );
+    telemetry.record("vm_create", t.elapsed(), true, None);
+
+    let mount_started = Instant::now();
+    if let Err(e) = ensure_workspace_drive_mounted(sandbox.as_ref(), context.run_id).await {
+        telemetry.record(
+            "workspace_drive_mount",
+            mount_started.elapsed(),
+            false,
+            Some(&e.to_string()),
+        );
+        if let Err(unregister_error) = unregister_proxy_registry(config, &source_ip).await {
+            warn!(
+                run_id = %context.run_id,
+                error = %unregister_error,
+                "failed to unregister VM from proxy after workspace mount failure"
+            );
+        }
+        network_log_session
+            .close_for_upload(context.run_id, &config.network_log_drain)
+            .await;
+        destroy_sandbox_panic_safe(factory, sandbox).await;
+        return Err(SandboxPrepareError::retry(e));
+    }
+    telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
+    if let Some(notifier) = sandbox_prepared {
+        notifier.notify(context.run_id, sandbox_id).await;
+    }
+
+    Ok(PreparedSandboxRun {
+        sandbox,
+        source_ip,
+        network_log_session,
+    })
+}
+
+pub(super) async fn invalidate_workspace_cache_hit(
+    workspace_image: Option<&WorkspaceImageLease>,
+    run_id: RunId,
+    reason: &str,
+) {
+    let Some(workspace_image) = workspace_image else {
+        return;
+    };
+    if !workspace_image.is_cache_hit() {
+        return;
+    }
+    if let Err(e) = workspace_image.invalidate(run_id, reason).await {
+        warn!(
+            run_id = %run_id,
+            reason,
+            error = %e,
+            "failed to invalidate workspace image cache entry"
+        );
+    }
+}
+
+pub(super) async fn destroy_sandbox_panic_safe(
+    factory: &dyn SandboxFactory,
+    sandbox: Box<dyn Sandbox>,
+) {
+    if AssertUnwindSafe(factory.destroy(sandbox))
+        .catch_unwind()
+        .await
+        .is_err()
+    {
+        warn!("sandbox destroy panicked after start failure");
+    }
+}
+
+/// Run a job inside a reused (kept-alive) sandbox.
+///
+/// Skips create + start. Re-registers proxy, fixes clock/entropy, then runs.
+pub(super) async fn execute_reused_sandbox(
+    sandbox: Box<dyn Sandbox>,
+    source_ip: &str,
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    prev_storage: &crate::storage_fingerprints::StorageFingerprints,
+    telemetry: &mut JobTelemetry,
+    controls: RunControls,
+) -> ExecuteOutcome {
+    info!(
+        run_id = %context.run_id,
+        sandbox_id = %sandbox.id(),
+        "reusing kept-alive sandbox"
+    );
+
+    let source_ip = source_ip.to_string();
+    let prepare_started = Instant::now();
+    let network_log_session = match register_proxy(config, context, &source_ip).await {
+        Ok(session) => session,
+        Err(e) => {
+            telemetry.record(
+                "runner_reused_sandbox_prepare",
+                prepare_started.elapsed(),
+                false,
+                Some(&e.to_string()),
+            );
+            return ExecuteOutcome {
+                failure: Some(ExecutionFailure::from_error(e.to_string())),
+                sandbox: Some(sandbox),
+                source_ip,
+                network_log_session: None,
+                workspace_image: None,
+                discovered_cli_agent_session_id: None,
+                restored_session_identity: None,
+            };
+        }
+    };
+
+    let mount_started = Instant::now();
+    if let Err(e) = ensure_workspace_drive_mounted(sandbox.as_ref(), context.run_id).await {
+        telemetry.record(
+            "workspace_drive_mount",
+            mount_started.elapsed(),
+            false,
+            Some(&e.to_string()),
+        );
+        if let Err(unregister_error) = unregister_proxy_registry(config, &source_ip).await {
+            warn!(
+                run_id = %context.run_id,
+                error = %unregister_error,
+                "failed to unregister VM from proxy after reused sandbox mount failure"
+            );
+        }
+        telemetry.record(
+            "runner_reused_sandbox_prepare",
+            prepare_started.elapsed(),
+            false,
+            Some(&e.to_string()),
+        );
+        return ExecuteOutcome {
+            failure: Some(ExecutionFailure::from_error(e.to_string())),
+            sandbox: Some(sandbox),
+            source_ip,
+            network_log_session: Some(network_log_session),
+            workspace_image: None,
+            discovered_cli_agent_session_id: None,
+            restored_session_identity: None,
+        };
+    }
+    telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
+    telemetry.record(
+        "runner_reused_sandbox_prepare",
+        prepare_started.elapsed(),
+        true,
+        None,
+    );
+
+    execute_prepared_sandbox_run(
+        PreparedSandboxRun {
+            sandbox,
+            source_ip,
+            network_log_session,
+        },
+        context,
+        config,
+        RunStart {
+            restore_guest_state: true,
+            reuse_result: SandboxReuseResult::Reused,
+            prev_storage: Some(prev_storage),
+        },
+        telemetry,
+        controls,
+    )
+    .await
+}
+
+pub(super) async fn execute_prepared_sandbox_run(
+    run: PreparedSandboxRun,
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    start: RunStart<'_>,
+    telemetry: &mut JobTelemetry,
+    controls: RunControls,
+) -> ExecuteOutcome {
+    let PreparedSandboxRun {
+        sandbox,
+        source_ip,
+        network_log_session,
+    } = run;
+    let cleanup_cancel = controls.cancel.clone();
+
+    let result = run_in_sandbox(
+        sandbox.as_ref(),
+        context,
+        config,
+        start,
+        telemetry,
+        controls,
+    )
+    .await;
+
+    let stdout_stream_diagnostics = result.as_ref().map_or_else(
+        |_| AgentStdoutStreamDiagnostics::default(),
+        |result| result.stdout_stream_diagnostics,
+    );
+    let restored_session_identity = result
+        .as_ref()
+        .ok()
+        .and_then(|result| result.restored_session_identity.clone());
+
+    let cleanup_result = post_job_cleanup(
+        sandbox.as_ref(),
+        config,
+        context,
+        &source_ip,
+        cleanup_cancel.is_cancelled(),
+        stdout_stream_diagnostics,
+    )
+    .await;
+
+    let mut agent_result = match result {
+        Ok(result) => result,
+        Err(e) => AgentExecutionResult::failure_from_error(e.to_string()),
+    };
+    if let Err(e) = cleanup_result {
+        warn!(
+            run_id = %context.run_id,
+            error = %e,
+            "post-job proxy cleanup failed"
+        );
+        if agent_result.failure.is_none() {
+            agent_result.failure = Some(ExecutionFailure::from_error(format!(
+                "post-job proxy cleanup failed: {e}"
+            )));
+        }
+    }
+
+    // Read CLI-generated session ID for first-run parking.
+    let discovered_cli_agent_session_id =
+        if agent_result.exit_code() == 0 && context.cli_agent_session_id().is_none() {
+            let id = read_guest_cli_agent_session_id(sandbox.as_ref(), context.run_id)
+                .await
+                .and_then(|id| normalize_guest_cli_agent_session_id_for_parking(context, id));
+            if let Some(ref sid) = id {
+                info!(
+                    run_id = %context.run_id,
+                    session_id = %sid,
+                    "read guest session ID for parking"
+                );
+            }
+            id
+        } else {
+            None
+        };
+
+    ExecuteOutcome {
+        failure: agent_result.failure,
+        sandbox: Some(sandbox),
+        source_ip,
+        network_log_session: Some(network_log_session),
+        workspace_image: None,
+        discovered_cli_agent_session_id,
+        restored_session_identity,
+    }
+}
+
+fn normalize_guest_cli_agent_session_id_for_parking(
+    context: &ExecutionContext,
+    session_id: String,
+) -> Option<String> {
+    match effective_cli_framework(&context.cli_agent_type) {
+        EffectiveCliFramework::Codex => canonical_codex_thread_id(&session_id).or_else(|| {
+            warn!(
+                run_id = %context.run_id,
+                framework = "codex",
+                session_id = %invalid_session_id_diagnostic_preview(&session_id),
+                "ignoring invalid guest session ID for framework"
+            );
+            None
+        }),
+        EffectiveCliFramework::ClaudeCode => {
+            if is_valid_session_id(&session_id) {
+                Some(session_id)
+            } else {
+                warn!(
+                    run_id = %context.run_id,
+                    framework = "claude-code",
+                    session_id = %invalid_session_id_diagnostic_preview(&session_id),
+                    "ignoring invalid guest session ID for framework"
+                );
+                None
+            }
+        }
+    }
+}
+
+/// Register a VM in the proxy registry and network log manager.
+pub(super) async fn register_proxy(
+    config: &ExecutorConfig,
+    context: &ExecutionContext,
+    source_ip: &str,
+) -> RunnerResult<NetworkLogSession> {
+    let network_log_path = config.log_paths.network_log(context.run_id);
+    let proxy_log_path = config.log_paths.proxy_log(context.run_id);
+    let run_id_str = context.run_id.to_string();
+    let cli_agent_type = normalized_cli_agent_type(&context.cli_agent_type);
+    let registration = proxy::VmRegistration {
+        run_id: &run_id_str,
+        cli_agent_type,
+        sandbox_token: &context.sandbox_token,
+        network_log_path: &network_log_path,
+        proxy_log_path: &proxy_log_path,
+        firewalls: context.firewalls.as_deref(),
+        network_policies: context.network_policies.as_ref(),
+        encrypted_secrets: context.encrypted_secrets.as_deref(),
+        secret_connector_map: context.secret_connector_map.as_ref(),
+        secret_connector_metadata_map: context.secret_connector_metadata_map.as_ref(),
+        vars: context.vars.as_ref(),
+        capture_network_bodies: context.capture_network_bodies.unwrap_or(false),
+        billable_firewalls: &context.billable_firewalls,
+        model_usage_provider: context.model_usage_provider.as_deref(),
+    };
+    config
+        .registry
+        .register_vm(source_ip, &registration)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("register VM in proxy registry: {e}")))?;
+    Ok(config
+        .network_log_manager
+        .register_source_ip(source_ip, network_log_path)
+        .await)
+}
+
+pub(super) fn log_proxy_register_success(
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    profile: &str,
+    elapsed: Duration,
+) {
+    if elapsed < SLOW_PROXY_REGISTER_THRESHOLD {
+        info!(
+            stage = "proxy_register",
+            elapsed_ms = duration_ms(elapsed),
+            threshold_ms = duration_ms(SLOW_PROXY_REGISTER_THRESHOLD),
+            success = true,
+            run_id = %run_id,
+            sandbox_id = %sandbox_id,
+            profile,
+            "proxy register timing"
+        );
+        return;
+    }
+    warn!(
+        stage = "proxy_register",
+        elapsed_ms = duration_ms(elapsed),
+        threshold_ms = duration_ms(SLOW_PROXY_REGISTER_THRESHOLD),
+        success = true,
+        run_id = %run_id,
+        sandbox_id = %sandbox_id,
+        profile,
+        "slow proxy register"
+    );
+}
+
+pub(super) fn log_proxy_register_failure(
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    profile: &str,
+    elapsed: Duration,
+    error: &str,
+) {
+    warn!(
+        stage = "proxy_register",
+        elapsed_ms = duration_ms(elapsed),
+        success = false,
+        run_id = %run_id,
+        sandbox_id = %sandbox_id,
+        profile,
+        error,
+        "proxy register failed"
+    );
+}
+
+/// Unregister a VM from the proxy registry.
+pub(super) async fn unregister_proxy_registry(
+    config: &ExecutorConfig,
+    source_ip: &str,
+) -> RunnerResult<()> {
+    config
+        .registry
+        .unregister_vm(source_ip)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("unregister VM from proxy registry: {e}")))
+}
+
+/// Post-job cleanup: copy logs, unregister proxy registry.
+///
+/// Called after `run_in_sandbox` completes, whether the sandbox will be
+/// parked (keep-alive) or destroyed. Rust-side network-log attribution stays
+/// open until `sandbox_finalization` quiesces the sandbox and closes the returned
+/// `NetworkLogSession`; the HTTP upload remains deferred after `provider.complete`.
+pub(super) async fn post_job_cleanup(
+    sandbox: &dyn Sandbox,
+    config: &ExecutorConfig,
+    context: &ExecutionContext,
+    source_ip: &str,
+    cancelled: bool,
+    stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
+) -> RunnerResult<()> {
+    copy_guest_logs(sandbox, context, &config.log_paths, cancelled).await;
+    append_stdout_stream_diagnostics_to_stream_log(
+        context.run_id,
+        &config.log_paths.system_stream_log(context.run_id),
+        stdout_stream_diagnostics,
+    )
+    .await;
+    unregister_proxy_registry(config, source_ip).await
+}

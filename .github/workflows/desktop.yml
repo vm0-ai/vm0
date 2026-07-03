@@ -1,0 +1,366 @@
+name: Desktop
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/desktop.yml"
+      - "turbo/apps/desktop/**"
+      - "turbo/package.json"
+      - "turbo/pnpm-lock.yaml"
+      - "turbo/turbo.json"
+      - "turbo/packages/typescript-config/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/desktop.yml"
+      - "turbo/apps/desktop/**"
+      - "turbo/package.json"
+      - "turbo/pnpm-lock.yaml"
+      - "turbo/turbo.json"
+      - "turbo/packages/typescript-config/**"
+
+concurrency:
+  group: desktop-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    name: build-macos-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-latest
+          - arch: x64
+            runner: macos-15-intel
+    defaults:
+      run:
+        working-directory: turbo
+    env:
+      DESKTOP_ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: turbo/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --strict-peer-dependencies
+
+      - name: Type check desktop
+        run: pnpm -F @vm0/desktop check-types
+
+      - name: Lint desktop
+        run: pnpm -F @vm0/desktop lint
+
+      - name: Test desktop
+        run: pnpm -F @vm0/desktop test
+
+      - name: Test native helper
+        run: pnpm -F @vm0/desktop test:native
+
+      - name: Resolve PR preview desktop URL
+        id: preview
+        if: github.event_name == 'pull_request'
+        run: |
+          preview_domain="${{ vars.PREVIEW_DOMAIN }}"
+          if [ -z "$preview_domain" ]; then
+            echo "::error::PREVIEW_DOMAIN is required to build the PR preview desktop artifact"
+            exit 1
+          fi
+
+          platform_url="https://pr-${{ github.event.pull_request.number }}-app.${preview_domain}"
+          echo "platform-url=${platform_url}" >> "$GITHUB_OUTPUT"
+          echo "PR preview desktop URL: ${platform_url}"
+
+      - name: Build unsigned production macOS artifact
+        id: build-prod
+        env:
+          SENTRY_DSN_DESKTOP: ${{ secrets.SENTRY_DSN_DESKTOP }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT_DESKTOP: ${{ vars.SENTRY_PROJECT_DESKTOP }}
+          SENTRY_ENVIRONMENT: production
+        run: |
+          rm -f apps/desktop/desktop-runtime-config.json
+          rm -rf apps/desktop/out
+
+          pnpm -F @vm0/desktop build
+          pnpm -F @vm0/desktop upload:sentry
+          node apps/desktop/scripts/run-forge-make-with-retry.js \
+            --platform darwin \
+            --arch "$DESKTOP_ARCH" \
+            --targets @electron-forge/maker-zip
+
+          desktop_dir="$PWD/apps/desktop"
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          forge_zip="$desktop_dir/out/make/zip/darwin/$DESKTOP_ARCH/Zero Computer Use-darwin-$DESKTOP_ARCH-$version.zip"
+          artifact_path="apps/desktop/out/Zero-darwin-$DESKTOP_ARCH.zip"
+
+          if [ ! -f "$forge_zip" ]; then
+            echo "No Forge zip artifact found: $forge_zip"
+            find "$desktop_dir/out" -maxdepth 6 -type f -print || true
+            exit 1
+          fi
+
+          cp "$forge_zip" "$artifact_path"
+          echo "path=$artifact_path" >> "$GITHUB_OUTPUT"
+
+      - name: Verify production artifact
+        run: |
+          artifact_path="apps/desktop/out/Zero-darwin-$DESKTOP_ARCH.zip"
+          app_dir="apps/desktop/out/Zero Computer Use-darwin-$DESKTOP_ARCH/Zero Computer Use.app"
+          plist="$app_dir/Contents/Info.plist"
+          case "$DESKTOP_ARCH" in
+            arm64) expected_mach_arch="arm64" ;;
+            x64) expected_mach_arch="x86_64" ;;
+            *) echo "Unsupported desktop architecture: $DESKTOP_ARCH"; exit 1 ;;
+          esac
+          if [ ! -f "$artifact_path" ]; then
+            echo "No desktop zip artifact found"
+            find apps/desktop/out -maxdepth 5 -type f -print || true
+            exit 1
+          fi
+          if [ ! -d "$app_dir" ]; then
+            echo "No packaged app found: $app_dir"
+            find apps/desktop/out -maxdepth 4 -type d -print || true
+            exit 1
+          fi
+          if [ ! -f "$app_dir/Contents/Resources/app/dist/main.js" ]; then
+            echo "No packaged app main process bundle found"
+            find "$app_dir/Contents/Resources" -maxdepth 2 -print || true
+            exit 1
+          fi
+          if [ ! -f "$app_dir/Contents/Resources/app/dist/bootstrap.js" ]; then
+            echo "No packaged app bootstrap bundle found"
+            find "$app_dir/Contents/Resources" -maxdepth 2 -print || true
+            exit 1
+          fi
+          if [ ! -x "$app_dir/Contents/Resources/native/computer-use-helper" ]; then
+            echo "No executable native Computer Use helper found"
+            find "$app_dir/Contents/Resources" -maxdepth 3 -print || true
+            exit 1
+          fi
+          if [ -e "$app_dir/Contents/Resources/app/src" ]; then
+            echo "Packaged app should not contain desktop source files"
+            find "$app_dir/Contents/Resources/app/src" -maxdepth 2 -print || true
+            exit 1
+          fi
+          if [ -e "$app_dir/Contents/Resources/app/native" ]; then
+            echo "Packaged app should not contain native helper source files"
+            find "$app_dir/Contents/Resources/app/native" -maxdepth 3 -print || true
+            exit 1
+          fi
+          if [ -e "$app_dir/Contents/Resources/app/desktop-runtime-config.json" ]; then
+            echo "Production artifact should not contain desktop runtime config"
+            exit 1
+          fi
+
+          minimum_system_version=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$plist" 2>/dev/null || true)
+          if [ "$minimum_system_version" != "14.0" ]; then
+            echo "::error::Expected LSMinimumSystemVersion 14.0, found ${minimum_system_version:-missing}"
+            exit 1
+          fi
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero Computer Use"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero Computer Use"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero Computer Use"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.vm0.zero.desktop"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$plist" | grep -qx "icon.icns"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Zero Desktop Auth"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "ai.vm0.zero.desktop"
+          file "$app_dir/Contents/MacOS/Zero Computer Use" | grep -q "$expected_mach_arch"
+          file "$app_dir/Contents/Resources/native/computer-use-helper" | grep -q "$expected_mach_arch"
+          cmp -s apps/desktop/assets/icon.icns "$app_dir/Contents/Resources/icon.icns"
+          cmp -s apps/desktop/assets/icon.png "$app_dir/Contents/Resources/app/assets/icon.png"
+
+          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/MacOS/Zero Computer Use"
+          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/icon.icns"
+          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/native/computer-use-helper"
+          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/app/dist/main.js"
+          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/app/dist/bootstrap.js"
+          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/app/assets/icon.png"
+
+      - name: Smoke test production artifact launch
+        run: node apps/desktop/scripts/smoke-test-packaged-app.js
+
+      - name: Upload unsigned macOS artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: zero-desktop-macos-${{ matrix.arch }}-unsigned
+          path: turbo/${{ steps.build-prod.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Build unsigned PR preview macOS artifact
+        id: build-preview
+        if: github.event_name == 'pull_request'
+        env:
+          VM0_DESKTOP_PLATFORM_URL: ${{ steps.preview.outputs.platform-url }}
+          SENTRY_DSN_DESKTOP: ${{ secrets.SENTRY_DSN_DESKTOP }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT_DESKTOP: ${{ vars.SENTRY_PROJECT_DESKTOP }}
+          SENTRY_ENVIRONMENT: preview
+        run: |
+          cleanup_runtime_config() {
+            rm -f apps/desktop/desktop-runtime-config.json
+          }
+          trap cleanup_runtime_config EXIT
+
+          rm -rf apps/desktop/out
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          fs.writeFileSync(
+            "apps/desktop/desktop-runtime-config.json",
+            `${JSON.stringify(
+              { platformUrl: process.env.VM0_DESKTOP_PLATFORM_URL },
+              null,
+              2,
+            )}\n`,
+          );
+          NODE
+
+          pnpm -F @vm0/desktop build
+          pnpm -F @vm0/desktop upload:sentry
+          node apps/desktop/scripts/run-forge-make-with-retry.js \
+            --platform darwin \
+            --arch "$DESKTOP_ARCH" \
+            --targets @electron-forge/maker-zip
+
+          desktop_dir="$PWD/apps/desktop"
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          forge_zip="$desktop_dir/out/make/zip/darwin/$DESKTOP_ARCH/Zero CU Dev-darwin-$DESKTOP_ARCH-$version.zip"
+          artifact_path="apps/desktop/out/ZeroCUDev-darwin-$DESKTOP_ARCH-preview.zip"
+
+          if [ ! -f "$forge_zip" ]; then
+            echo "No Forge preview zip artifact found: $forge_zip"
+            find "$desktop_dir/out" -maxdepth 6 -type f -print || true
+            exit 1
+          fi
+
+          cp "$forge_zip" "$artifact_path"
+          echo "path=$artifact_path" >> "$GITHUB_OUTPUT"
+
+      - name: Verify PR preview artifact
+        if: github.event_name == 'pull_request'
+        env:
+          EXPECTED_PLATFORM_URL: ${{ steps.preview.outputs.platform-url }}
+        run: |
+          artifact_path="apps/desktop/out/ZeroCUDev-darwin-$DESKTOP_ARCH-preview.zip"
+          app_dir="apps/desktop/out/Zero CU Dev-darwin-$DESKTOP_ARCH/Zero CU Dev.app"
+          plist="$app_dir/Contents/Info.plist"
+          runtime_config="$app_dir/Contents/Resources/app/desktop-runtime-config.json"
+          case "$DESKTOP_ARCH" in
+            arm64) expected_mach_arch="arm64" ;;
+            x64) expected_mach_arch="x86_64" ;;
+            *) echo "Unsupported desktop architecture: $DESKTOP_ARCH"; exit 1 ;;
+          esac
+          if [ ! -f "$artifact_path" ]; then
+            echo "No desktop preview zip artifact found"
+            find apps/desktop/out -maxdepth 5 -type f -print || true
+            exit 1
+          fi
+          if [ ! -d "$app_dir" ]; then
+            echo "No packaged preview app found: $app_dir"
+            find apps/desktop/out -maxdepth 4 -type d -print || true
+            exit 1
+          fi
+          if [ ! -f "$app_dir/Contents/Resources/app/dist/main.js" ]; then
+            echo "No packaged preview app main process bundle found"
+            find "$app_dir/Contents/Resources" -maxdepth 2 -print || true
+            exit 1
+          fi
+          if [ ! -f "$app_dir/Contents/Resources/app/dist/bootstrap.js" ]; then
+            echo "No packaged preview app bootstrap bundle found"
+            find "$app_dir/Contents/Resources" -maxdepth 2 -print || true
+            exit 1
+          fi
+          if [ ! -x "$app_dir/Contents/Resources/native/computer-use-helper" ]; then
+            echo "No executable native Computer Use helper found"
+            find "$app_dir/Contents/Resources" -maxdepth 3 -print || true
+            exit 1
+          fi
+          if [ -e "$app_dir/Contents/Resources/app/src" ]; then
+            echo "Packaged preview app should not contain desktop source files"
+            find "$app_dir/Contents/Resources/app/src" -maxdepth 2 -print || true
+            exit 1
+          fi
+          if [ -e "$app_dir/Contents/Resources/app/native" ]; then
+            echo "Packaged preview app should not contain native helper source files"
+            find "$app_dir/Contents/Resources/app/native" -maxdepth 3 -print || true
+            exit 1
+          fi
+          if [ ! -f "$runtime_config" ]; then
+            echo "Packaged preview app should contain desktop runtime config"
+            exit 1
+          fi
+
+          RUNTIME_CONFIG="$runtime_config" node <<'NODE'
+          const fs = require("node:fs");
+
+          const config = JSON.parse(
+            fs.readFileSync(process.env.RUNTIME_CONFIG, "utf8"),
+          );
+          if (config.platformUrl !== process.env.EXPECTED_PLATFORM_URL) {
+            console.error(
+              `Expected ${process.env.EXPECTED_PLATFORM_URL}, received ${config.platformUrl}`,
+            );
+            process.exit(1);
+          }
+          NODE
+
+          minimum_system_version=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$plist" 2>/dev/null || true)
+          if [ "$minimum_system_version" != "14.0" ]; then
+            echo "::error::Expected LSMinimumSystemVersion 14.0, found ${minimum_system_version:-missing}"
+            exit 1
+          fi
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero CU Dev"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero CU Dev"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero CU Dev"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.vm0.zero.desktop.dev"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$plist" | grep -qx "icon.icns"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Zero CU Dev Desktop Auth"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "ai.vm0.zero.desktop.dev"
+          file "$app_dir/Contents/MacOS/Zero CU Dev" | grep -q "$expected_mach_arch"
+          file "$app_dir/Contents/Resources/native/computer-use-helper" | grep -q "$expected_mach_arch"
+          cmp -s apps/desktop/assets/icon.icns "$app_dir/Contents/Resources/icon.icns"
+          cmp -s apps/desktop/assets/icon.png "$app_dir/Contents/Resources/app/assets/icon.png"
+
+          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/MacOS/Zero CU Dev"
+          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/icon.icns"
+          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/native/computer-use-helper"
+          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/dist/main.js"
+          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/dist/bootstrap.js"
+          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/assets/icon.png"
+          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/desktop-runtime-config.json"
+
+      - name: Smoke test PR preview artifact launch
+        if: github.event_name == 'pull_request'
+        env:
+          VM0_DESKTOP_PLATFORM_URL: ${{ steps.preview.outputs.platform-url }}
+        run: node apps/desktop/scripts/smoke-test-packaged-app.js
+
+      - name: Upload unsigned PR preview macOS artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: zero-desktop-macos-${{ matrix.arch }}-preview-unsigned
+          path: turbo/${{ steps.build-preview.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14

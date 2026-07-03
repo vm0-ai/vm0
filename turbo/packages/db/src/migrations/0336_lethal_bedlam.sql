@@ -1,0 +1,2 @@
+ALTER TABLE "zero_agent_schedules" ADD COLUMN "prefer_personal_provider" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "zero_agents" ADD COLUMN "prefer_personal_provider" boolean DEFAULT false NOT NULL;

@@ -1,0 +1,41 @@
+- name: Derive runner architecture metadata
+  command:
+    argv:
+      - bash
+      - -c
+      - |
+        set -euo pipefail
+        . "$1"
+        runner_image_expected_uname_m "$2"
+        runner_image_release_tag "$3"
+        runner_image_release_asset_name "$3" "$2"
+      - bash
+      - "{{ playbook_dir }}/../../.github/scripts/runner-image-target.sh"
+      - "{{ runner_target | default('') }}"
+      - "{{ runner_version | default('') }}"
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  register: runner_architecture_metadata
+
+- name: Store runner architecture metadata
+  set_fact:
+    derived_expected_runner_uname_m: "{{ runner_architecture_metadata.stdout_lines[0] }}"
+    derived_runner_release_tag: "{{ runner_architecture_metadata.stdout_lines[1] }}"
+    derived_runner_release_asset_name: "{{ runner_architecture_metadata.stdout_lines[2] }}"
+
+- name: Probe remote architecture
+  command: uname -m
+  register: remote_uname_m
+  check_mode: false
+  changed_when: false
+
+- name: Assert remote architecture matches runner target
+  assert:
+    that:
+      - (remote_uname_m.stdout | trim) == derived_expected_runner_uname_m
+    fail_msg: >-
+      Refusing to use runner target '{{ runner_target }}' on remote
+      architecture '{{ remote_uname_m.stdout | trim }}' (expected
+      '{{ derived_expected_runner_uname_m }}').

@@ -1,0 +1,7053 @@
+// TODO(#8609): split large components to comply with max-lines-per-function (128)
+// oxlint-disable max-lines-per-function
+import type {
+  ChangeEvent,
+  CSSProperties,
+  DragEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+} from "react";
+import {
+  useGet,
+  useSet,
+  useLoadable,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
+import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
+import {
+  IconAlertTriangle,
+  IconArrowUp,
+  IconColorSwatch,
+  IconDeviceDesktop,
+  IconDownload,
+  IconPresentation,
+  IconLoader2,
+  IconMicrophone,
+  IconPaperclip,
+  IconPalette,
+  IconPlayerPlay,
+  IconPlayerStop,
+  IconPlug,
+  IconPhoto,
+  IconPlus,
+  IconQuote,
+  IconRoute,
+  IconSearch,
+  IconTarget,
+  IconTemplate,
+  IconVideo,
+  IconX,
+} from "@tabler/icons-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@vm0/ui/components/ui/dialog";
+import {
+  Button,
+  Card,
+  CardContent,
+  Input,
+  Popover,
+  PopoverClose,
+  PopoverContent,
+  PopoverTrigger,
+  Skeleton,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  cn,
+  matchShortcut,
+  processShortcut,
+  type KeyboardEventLike,
+} from "@vm0/ui";
+import {
+  bestEffort,
+  detach,
+  onDomEventFn,
+  Reason,
+  settle,
+  tapError,
+} from "../../signals/utils.ts";
+import { sendMode$ } from "../../signals/send-mode.ts";
+import {
+  activeGoalDialogGoal$,
+  activeGoalDialogThreadId$,
+  closeChatThreadGoalDialog$,
+  openChatThreadGoalDialog$,
+} from "../../signals/chat-page/chat-goal.ts";
+import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
+import type { Command, Computed } from "ccstate";
+import {
+  zeroChatAttachments$ as singletonAttachments$,
+  zeroChatAttachmentUploadSummary$ as singletonAttachmentUploadSummary$,
+  uploadZeroAttachment$ as singletonUpload$,
+  restoreZeroAttachments$ as singletonRestore$,
+  removeZeroAttachment$ as singletonRemove$,
+  canSendZeroChat$ as singletonCanSend$,
+  zeroDragOver$ as singletonDragOver$,
+  setZeroDragOver$ as singletonSetDragOver$,
+  composerFileInput$ as singletonComposerFileInput$,
+  setComposerFileInput$ as singletonSetComposerFileInput$,
+} from "../../signals/chat-page/chat-message.ts";
+import type {
+  GenerationTemplateRequest,
+  PersistedAttachment,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { AttachmentChips } from "./zero-attachment-chips.tsx";
+import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
+import computerUseIllustration from "./assets/computer-use-illustration.png";
+import type { ComposerPasteEvent } from "./composer-input-types.ts";
+import {
+  parsePresentationEditDraft,
+  previewPresentationHtml,
+  type PresentationEditDraft,
+} from "./presentation-html-edit-protocol.ts";
+import { readableAttachmentResourceUrl } from "./zero-attachment-url.ts";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  VIDEO_TEMPLATE_ITEMS,
+  WORKFLOW_TEMPLATE_ITEMS,
+  findVideoTemplateItem,
+  findWorkflowTemplateItem,
+  r2ImageTransformUrl,
+  type IllustrationTemplateItem,
+  type PresentationTemplateItem,
+  type VideoTemplateItem,
+  type WorkflowTemplateItem,
+} from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import type { ConnectorType } from "@vm0/connectors/connectors";
+import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
+import { getModelDisplayName } from "@vm0/core/model-display-name";
+import {
+  ModelProviderPicker,
+  type ModelProviderSelection,
+} from "./components/model-provider-picker.tsx";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
+import {
+  allConnectorTypes$,
+  matchesConnectorSearch,
+  selectedConnectorType$,
+  setSelectedConnectorType$,
+  justConnectedTypes$,
+  pollingOAuthAuthCodeConnectorType$,
+  type ConnectorTypeWithStatus,
+} from "../../signals/zero-page/settings/connectors.ts";
+import { LoadingSwitch } from "../components/loading-switch.tsx";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  zeroDesktopDownloadSupportStatus$,
+  ZERO_DESKTOP_INTEL_DOWNLOAD_URL,
+  ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL,
+  ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
+} from "../../signals/zero-page/computer-use-hosts.ts";
+import {
+  zeroAuthorizedConnectors$,
+  authorizeConnector$,
+  deauthorizeConnector$,
+} from "../../signals/zero-page/zero-connectors.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import {
+  showAddDialog$,
+  setShowAddDialog$,
+  pendingConnectType$,
+  setPendingConnectType$,
+  composerSavingType$,
+  setComposerSavingType$,
+  computerUseDownloadDialogOpen$,
+  addDialogSearch$,
+  setAddDialogSearch$,
+  popoverSearch$,
+  setPopoverSearch$,
+  popoverSortOrder$,
+  setPopoverSortOrder$,
+  modelPickerOpen$,
+  setModelPickerOpen$,
+  templatePickerOpen$,
+  setTemplatePickerOpen$,
+  templatePickerCategory$,
+  setTemplatePickerCategory$,
+  templatePickerSearch$,
+  setTemplatePickerSearch$,
+  templatePickerPreviewSlug$,
+  setTemplatePickerPreviewSlug$,
+  restoreTemplatePickerPresentationScroll$,
+  setTemplatePickerPresentationScrollTop$,
+  setComputerUseDownloadDialogOpen$,
+  illustrationVariantIndex$,
+  setIllustrationVariantIndex$,
+  templateCardHover$,
+  setTemplateCardHover$,
+  templateCardLoadedHtmlFrameUrls$,
+  setTemplateCardLoadedHtmlFrameUrl$,
+  templateCardThemeIdBySlug$,
+  setTemplateCardThemeId$,
+  templateCardHtmlPreview$,
+  setTemplateCardHtmlPreview$,
+  templateCardDefaultHtmlPreviews$,
+  setTemplateCardDefaultHtmlPreview$,
+  type TemplateCardHtmlPreviewState,
+  templateDetailHtmlPreview$,
+  setTemplateDetailHtmlPreview$,
+  templateDetailThemeIdBySlug$,
+  setTemplateDetailThemeId$,
+  templateDetailSlideIndexBySlug$,
+  setTemplateDetailSlideIndex$,
+} from "../../signals/zero-page/zero-chat-composer.ts";
+import {
+  audioInputAvailable$,
+  audioInputQuota$,
+  sttRecording$,
+  sttStarting$,
+  sttTranscribing$,
+  sttVoiceLevel$,
+  startRecording$,
+  stopAndTranscribe$,
+} from "../../signals/voice-io/voice-io-stt.ts";
+import {
+  setActiveOrgManageTab$,
+  setBillingSubPage$,
+} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
+import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
+import type { FeedbackItem } from "../../signals/zero-page/chat-feedback.ts";
+import { Markdown } from "../components/markdown.tsx";
+
+const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
+
+// iOS auto-focus pops the on-screen keyboard and scrolls the viewport, which is
+// jarring when landing on a chat page. Desktop/Android behavior is unchanged.
+function isIOSDevice(): boolean {
+  const ua = navigator.userAgent;
+  return (
+    /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+function isHappyDomTestEnvironment(): boolean {
+  return (
+    typeof globalThis.window !== "undefined" && "happyDOM" in globalThis.window
+  );
+}
+
+function shouldLoadTemplateDetailHtmlPreviewInHappyDom(): boolean {
+  return (
+    Reflect.get(globalThis, "vm0LoadTemplateDetailHtmlPreviewInHappyDom") ===
+    true
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
+
+interface ZeroChatComposerProps {
+  input: string;
+  onInputChange: (value: string) => void;
+  onSend: (
+    message: string,
+    generationTemplate: GenerationTemplateRequest | undefined,
+  ) => void;
+  onQueue?: (
+    message: string,
+    generationTemplate: GenerationTemplateRequest | undefined,
+  ) => void;
+  sending?: boolean;
+  queueWhileSending?: boolean;
+  /**
+   * Cancel the active run. When provided, the Send button switches to a Stop
+   * button while sending and the composer is empty; with content present the
+   * Send button stays visible and clicks queue the message instead.
+   * Clicking Stop while a queue exists recalls the queued messages.
+   */
+  onCancel?: () => void;
+  displayName: string;
+  className?: string;
+  /** Auto-focus the textarea when mounted. */
+  autoFocus?: boolean;
+  /** When set, reduces this instance to a single-line resting height on mobile. */
+  enableMobileSingleLine?: boolean;
+  /** Per-instance draft signals (from ChatThreadSignals factory). When omitted, falls back to singleton signals. */
+  draft?: DraftSignals;
+  /** Composer file input element reference. When omitted, falls back to singleton. */
+  composerFileInput$?: Computed<HTMLElement | null>;
+  /** Set the composer file input element. When omitted, falls back to singleton. */
+  setComposerFileInput$?: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
+  /** Register the textarea element for external focus control. */
+  setInputRef?: (el: HTMLElement | null) => void;
+  /** Current chat thread id. Used by thread-scoped goal controls. */
+  chatThreadId?: string;
+  /** Called after attachment upload/remove mutations so the caller can trigger side-effects (e.g. draft sync). */
+  onDraftChange?: () => void;
+  /**
+   * When true, render skeleton placeholders in place of the right-side
+   * action cluster (model picker, mic, send/stop). Used during thread switch
+   * while thread data is still resolving — prevents briefly flashing stale
+   * picker state and a wrong send/stop button derived from prior
+   * `allFinished`.
+   */
+  actionsLoading?: boolean;
+  /**
+   * Per-run model picker wiring. When present, a compact picker is rendered
+   * immediately to the left of the Send button; the parent owns the selected
+   * value and decides when to include it in the send payload. Undefined
+   * hides the picker entirely (e.g. callers that haven't opted in).
+   */
+  modelPicker?: {
+    value: ModelProviderSelection | null;
+    onChange: (value: ModelProviderSelection | null) => void;
+    // When true, picker is read-only for the current composer state.
+    disabled?: boolean;
+    /** Effective default model from user preference, then workspace default. */
+    defaultSelection?: ModelProviderSelection | null;
+  };
+  templatePicker?: {
+    value: GenerationTemplateRequest | undefined;
+    onChange: (value: GenerationTemplateRequest | undefined) => void;
+  };
+  onCreateWorkflowPrompt?: () => void;
+  computerUse?: {
+    hosts: readonly ComposerComputerUseHost[];
+    loading: boolean;
+    selectedHostId: string | null;
+    onChange: (hostId: string | null) => void;
+    downloadUrl: string;
+  };
+  /** When true, render a skeleton in the model picker slot. */
+  modelPickerLoading?: boolean;
+  submitBlocker?: {
+    message: string;
+    actionLabel: string;
+    onAction: () => void;
+  };
+  /**
+   * Pending sends that landed while a run was active. Rendered as a compact
+   * strip above the textarea so the user can see what's queued without
+   * having those messages re-appear as bubbles in the conversation.
+   */
+  queuedItems?: QueuedComposerItem[];
+  /** Cancels a queued message (routed to the recall flow by the caller). */
+  onRemoveQueuedItem?: (id: string) => void;
+  /**
+   * The thread's active goal. Rendered as a row beneath the queued messages in
+   * the strip above the composer — a goal runs only once the queue drains, so it
+   * sits closest to the composer to read as lower priority than the queue.
+   * Absent when the thread has no in-progress goal.
+   */
+  activeGoal?: ActiveGoalComposerItem;
+  /** Cancels the active goal through the goal API. */
+  onCancelActiveGoal?: () => void;
+  /**
+   * Inline feedback drafted from selected assistant text. When at least one
+   * quoted fragment is present the composer swaps its textarea for the stacked
+   * quote + note rows and its Send button dispatches the feedback turn — so the
+   * feedback lives inside the composer instead of a separate panel above it.
+   */
+  feedback?: ComposerFeedback;
+}
+
+export interface ComposerFeedback {
+  items: readonly FeedbackItem[];
+  /** Fragments carrying a non-empty note — what Send will dispatch. */
+  sendCount: number;
+  onChangeNote: (id: number, note: string) => void;
+  onRemove: (id: number) => void;
+  onSubmit: () => void;
+  onDismiss: () => void;
+}
+
+export interface QueuedComposerItem {
+  id: string;
+  text: string;
+}
+
+interface ActiveGoalComposerItem {
+  /** The goal's brief objective — the human-readable text shown in the row. */
+  objective: string;
+}
+
+interface ComposerComputerUseHost {
+  id: string;
+  hostName: string;
+  displayName: string;
+  status: "online" | "offline";
+}
+
+type ComposerModelPicker = NonNullable<ZeroChatComposerProps["modelPicker"]>;
+type ComposerTemplatePicker = NonNullable<
+  ZeroChatComposerProps["templatePicker"]
+>;
+type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
+
+const TEMPLATE_CARD_PREVIEW_SIZE = { width: 480, height: 270 } as const;
+const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
+const ILLUSTRATION_PREWARM_IMAGE_COUNT = 24;
+const ILLUSTRATION_EAGER_IMAGE_COUNT = 24;
+const ILLUSTRATION_SCROLL_PREWARM_LOOKAHEAD_COUNT = 12;
+const ILLUSTRATION_SCROLL_PREWARM_IMAGE_COUNT = 24;
+const ILLUSTRATION_CARD_PREVIEW_SIZE = {
+  width: 1024,
+  quality: 72,
+} as const;
+const ILLUSTRATION_VARIANT_THUMB_SIZE = {
+  width: 96,
+  height: 96,
+  fit: "cover",
+  quality: 65,
+} as const;
+const SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE = {
+  width: 40,
+  height: 40,
+  fit: "cover",
+} as const;
+type TemplatePreviewImageSize = Parameters<typeof r2ImageTransformUrl>[1];
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+interface ComposerConnectorItem {
+  type: ConnectorType;
+  label: string;
+  helpText: string;
+  tags: readonly string[];
+  connected: boolean;
+  authorized: boolean;
+  available: boolean;
+}
+
+function resolveComposerModelForSelection(
+  modelPicker: ComposerModelPicker | undefined,
+  selection: ModelProviderSelection | null,
+): ModelProviderSelection | null {
+  if (!modelPicker) {
+    return null;
+  }
+  if (selection) {
+    return selection;
+  }
+  if (modelPicker.defaultSelection) {
+    return modelPicker.defaultSelection;
+  }
+  return null;
+}
+
+interface VisualAttachmentUnsupportedState {
+  currentModelName: string;
+}
+
+interface VisualAttachmentCandidate {
+  contentType: string;
+  filename: string;
+}
+
+function getVisualAttachmentUnsupportedState(
+  modelPicker: ComposerModelPicker | undefined,
+  selection: ModelProviderSelection | null = modelPicker?.value ?? null,
+): VisualAttachmentUnsupportedState | null {
+  const currentModel = resolveComposerModelForSelection(modelPicker, selection);
+  if (
+    getModelImageInputSupport(currentModel?.selectedModel) !== "unsupported" ||
+    !currentModel
+  ) {
+    return null;
+  }
+  return {
+    currentModelName: getModelDisplayName(currentModel.selectedModel),
+  };
+}
+
+function isVisualAttachmentFile(file: File): boolean {
+  return isVisualAttachment({
+    contentType: file.type,
+    filename: file.name,
+  });
+}
+
+function showVisualAttachmentUnsupportedToast(
+  state: VisualAttachmentUnsupportedState,
+): void {
+  toast.error(
+    `${state.currentModelName} cannot recognize images or videos. Switch to a vision-capable model to attach them.`,
+    { id: "visual-attachment-unsupported" },
+  );
+}
+
+function resolveVisibleAttachments<T extends VisualAttachmentCandidate>(
+  attachments: T[],
+  visualAttachmentUnsupported: VisualAttachmentUnsupportedState | null,
+): T[] {
+  if (!visualAttachmentUnsupported) {
+    return attachments;
+  }
+  return attachments.filter((attachment) => {
+    return !isVisualAttachment(attachment);
+  });
+}
+
+function resolveComposerCanSend({
+  draftCanSend,
+  input,
+  visibleAttachmentCount,
+  uploadsReady,
+}: {
+  draftCanSend: boolean;
+  input: string;
+  visibleAttachmentCount: number;
+  uploadsReady: boolean;
+}): boolean {
+  return (
+    uploadsReady &&
+    draftCanSend &&
+    (input.trim() !== "" || visibleAttachmentCount > 0)
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Queued messages strip — separate card stacked behind the composer with a
+// vertical-only stagger. The composer card sits on top (z-10) and covers the
+// strip's bottom edge so it reads as one tucked-behind queue layer.
+// ---------------------------------------------------------------------------
+
+// The three-bar "queue" mark, sized to sit inline beside the goal's target so a
+// queued row and the goal row differ only by their leading icon.
+function ComposerQueueGlyph() {
+  return (
+    <span
+      className="inline-flex h-4 w-4 items-center justify-center gap-[2px]"
+      aria-hidden="true"
+    >
+      <span className="h-3 w-[3px] rounded-sm bg-emerald-800" />
+      <span className="h-3 w-[3px] rounded-sm bg-emerald-800/60" />
+      <span className="h-3 w-[3px] rounded-sm bg-emerald-800/30" />
+    </span>
+  );
+}
+
+// A single strip row — a queued message or the active goal. Both share one
+// layout so they read as the same kind of pending item; only the leading icon
+// distinguishes them. Queued messages keep the inline popover; goals open a
+// modal because their full objective is fetched lazily by thread.
+function ComposerStripRow({
+  kind,
+  text,
+  onRemove,
+  onOpenDetail,
+  removeAriaLabel,
+}: {
+  kind: "queued" | "goal";
+  text: string;
+  onRemove?: () => void;
+  onOpenDetail?: () => void;
+  removeAriaLabel: string;
+}) {
+  const isGoal = kind === "goal";
+  return (
+    <div
+      role="listitem"
+      aria-label={isGoal ? "Active goal" : "Queued message"}
+      className="group flex items-center gap-2 rounded-md pl-2 pr-1 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent"
+    >
+      {isGoal && onOpenDetail ? (
+        <button
+          type="button"
+          className="-ml-1 flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={onOpenDetail}
+          aria-label="Open goal details"
+        >
+          <IconTarget
+            size={16}
+            stroke={1.5}
+            className="shrink-0 text-emerald-800"
+            aria-hidden="true"
+          />
+          <span className="min-w-0 flex-1 truncate">{text}</span>
+        </button>
+      ) : (
+        <>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="shrink-0 rounded-md p-1 text-emerald-800 transition-colors hover:bg-[hsl(var(--gray-200))] focus-visible:bg-[hsl(var(--gray-200))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={
+                  isGoal ? "About this goal" : "About this queued message"
+                }
+              >
+                {isGoal ? (
+                  <IconTarget size={16} stroke={1.5} aria-hidden="true" />
+                ) : (
+                  <ComposerQueueGlyph />
+                )}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              side="top"
+              align="start"
+              className="w-80 rounded-lg p-3"
+            >
+              <p className="text-xs font-semibold text-foreground">
+                {isGoal ? "Goal" : "Queued message"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {isGoal
+                  ? "Runs after the queue drains and keeps running until you cancel it."
+                  : "Waits in line and sends once the current run finishes."}
+              </p>
+              <div className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 px-2.5 py-2 text-sm text-foreground">
+                {text}
+              </div>
+            </PopoverContent>
+          </Popover>
+          <span className="min-w-0 flex-1 truncate">{text}</span>
+        </>
+      )}
+      <button
+        type="button"
+        className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => {
+          onRemove?.();
+        }}
+        aria-label={removeAriaLabel}
+      >
+        <IconX size={16} stroke={1.5} />
+      </button>
+    </div>
+  );
+}
+
+function ActiveGoalObjectiveDialog({ threadId }: { threadId?: string }) {
+  const dialogThreadId = useGet(activeGoalDialogThreadId$);
+  const goalLoadable = useLoadable(activeGoalDialogGoal$);
+  const closeDialog = useSet(closeChatThreadGoalDialog$);
+  const open = threadId !== undefined && dialogThreadId === threadId;
+  const goal = goalLoadable.state === "hasData" ? goalLoadable.data : undefined;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          closeDialog();
+        }
+      }}
+    >
+      <DialogContent
+        className="w-[calc(100vw-2rem)] max-w-2xl gap-5 p-5 sm:p-6"
+        aria-describedby={undefined}
+      >
+        <DialogHeader>
+          <DialogTitle className="text-base">Goal</DialogTitle>
+          <DialogDescription className="leading-6">
+            Runs after the queue drains and keeps running until you cancel it.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[min(60vh,520px)] overflow-y-auto rounded-lg bg-muted/40 px-3 py-3 text-sm text-foreground sm:px-4">
+          {goalLoadable.state === "loading" ? (
+            <div className="flex min-h-28 items-center justify-center gap-2 text-muted-foreground">
+              <IconLoader2
+                size={16}
+                stroke={1.7}
+                className="animate-spin"
+                aria-hidden="true"
+              />
+              <span>Loading goal...</span>
+            </div>
+          ) : goalLoadable.state === "hasError" ? (
+            <div className="flex min-h-28 flex-col justify-center gap-1 text-muted-foreground">
+              <p className="font-medium text-foreground">
+                Couldn&apos;t load this goal
+              </p>
+              <p className="text-xs">
+                Close the dialog and open it again to retry.
+              </p>
+            </div>
+          ) : goal ? (
+            <Markdown
+              source={goal.objective}
+              escapeHtml
+              mathEnabled
+              style={{ fontSize: "inherit", lineHeight: "inherit" }}
+            />
+          ) : (
+            <div className="flex min-h-28 items-center text-muted-foreground">
+              This goal is no longer available.
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function QueuedMessagesStrip({
+  items,
+  onRemove,
+  activeGoal,
+  onCancelGoal,
+  onOpenGoal,
+}: {
+  items: QueuedComposerItem[] | undefined;
+  onRemove?: (id: string) => void;
+  activeGoal?: ActiveGoalComposerItem;
+  onCancelGoal?: () => void;
+  onOpenGoal?: () => void;
+}) {
+  const queued = items ?? [];
+  if (queued.length === 0 && !activeGoal) {
+    return null;
+  }
+  const count = queued.length;
+  const label = `${count} ${count === 1 ? "message" : "messages"} waiting to send`;
+  return (
+    <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-100">
+      {count > 0 ? (
+        <div className="px-5 pt-3 pb-2">
+          <span className="text-sm text-muted-foreground">{label}</span>
+        </div>
+      ) : null}
+      <div
+        className={cn(
+          "max-h-[200px] overflow-y-auto px-2 pb-7",
+          count > 0 ? "pt-1" : "pt-3",
+        )}
+        role="list"
+      >
+        {queued.map((item) => {
+          return (
+            <ComposerStripRow
+              key={item.id}
+              kind="queued"
+              text={item.text}
+              onRemove={() => {
+                onRemove?.(item.id);
+              }}
+              removeAriaLabel="Remove queued message"
+            />
+          );
+        })}
+        {/* The active goal sits last — below every queued message — because a
+            goal only runs once the queue drains, so it reads as lower priority
+            than the queue. Like a queued message it can be cancelled; cancelling
+            blocks the goal so it no longer runs behind the queue. */}
+        {activeGoal ? (
+          <ComposerStripRow
+            kind="goal"
+            text={activeGoal.objective}
+            onOpenDetail={onOpenGoal}
+            onRemove={() => {
+              onCancelGoal?.();
+            }}
+            removeAriaLabel="Cancel goal"
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Inline feedback rows — the docked feedback stack, rendered inside the
+// composer card in place of the textarea. Each selected passage is a quote line
+// above a borderless, composer-styled note input; fragments append to the
+// bottom so reading order matches selection order, and they share the
+// composer's toolbar and Send button.
+// ---------------------------------------------------------------------------
+
+// Grow the note input to fit its content so multi-line comments expand the
+// composer instead of scrolling inside a single row.
+function autoGrowFeedbackNote(element: HTMLTextAreaElement | null): void {
+  if (!element) {
+    return;
+  }
+  element.style.height = "auto";
+  element.style.height = `${element.scrollHeight}px`;
+}
+
+function autoGrowFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
+  autoGrowFeedbackNote(element);
+}
+
+function focusFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
+  element?.focus();
+  autoGrowFeedbackNote(element);
+}
+
+function ComposerFeedbackRow({
+  item,
+  autoFocus,
+  showDivider,
+  fill,
+  onChangeNote,
+  onRemove,
+  onKeyDown,
+}: {
+  item: FeedbackItem;
+  autoFocus: boolean;
+  showDivider: boolean;
+  fill: boolean;
+  onChangeNote: (note: string) => void;
+  onRemove: () => void;
+  onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        // Bottom padding on every row; top padding only when a dashed divider
+        // separates stacked fragments. The first row gets no top inset so the
+        // quote chip sits as high as the attachment chips do (matching the
+        // composer's pt-3), letting the card extend upward instead of leaving a
+        // gap above the chip.
+        "flex flex-col gap-1.5 pb-1.5",
+        showDivider && "border-t border-dashed border-border/60 pt-1.5",
+      )}
+    >
+      {/* Quote reference reuses the selected-template chip treatment (bordered
+          pill, icon square, in-pill remove) so feedback references read the same
+          as template chips. */}
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted">
+            <IconQuote
+              size={12}
+              stroke={1.5}
+              className="-scale-x-100 text-muted-foreground"
+            />
+          </span>
+          <span className="min-w-0 truncate text-xs font-medium">
+            {item.quote}
+          </span>
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label="Remove feedback"
+            title="Remove feedback"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
+      </div>
+      <textarea
+        ref={autoFocus ? focusFeedbackNoteRef : autoGrowFeedbackNoteRef}
+        value={item.note}
+        onChange={(event) => {
+          autoGrowFeedbackNote(event.target);
+          return onChangeNote(event.target.value);
+        }}
+        onKeyDown={onKeyDown}
+        rows={1}
+        placeholder="What should change about this?"
+        className={cn(
+          "w-full resize-none overflow-hidden border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0",
+          // The active (newest) note carries the composer's resting height so the
+          // ghost text stays anchored above the toolbar — matching the textarea
+          // body. Quote chips then stack above it and grow the card upward,
+          // mirroring the attachment-chips layout, instead of the chip eating
+          // into a fixed-height container and pushing the ghost text down.
+          fill && "min-h-[96px]",
+        )}
+      />
+    </div>
+  );
+}
+
+function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter sends, Shift+Enter inserts a newline — matching the main composer.
+    // Escape clears the drafted feedback.
+    if (matchShortcut("enter", event)) {
+      event.preventDefault();
+      feedback.onSubmit();
+    } else if (matchShortcut("escape", event)) {
+      event.preventDefault();
+      feedback.onDismiss();
+    }
+  };
+
+  // Newest fragment sits at the bottom (nearest Send) and takes focus.
+  const newestId = feedback.items[feedback.items.length - 1]?.id;
+
+  return (
+    // px-4 / pt-3 mirror the attachment-chips inset so the feedback chip lines
+    // up with attachments on both the left and top edges. The resting height
+    // lives on the newest note (via `fill`) rather than this container, so the
+    // quote chip grows the card upward instead of being capped inside a fixed
+    // height — keeping the layout consistent with the attachment-chips band.
+    <div className="flex flex-col px-4 pb-2 pt-3">
+      {feedback.items.map((item, index) => {
+        return (
+          <ComposerFeedbackRow
+            key={item.id}
+            item={item}
+            autoFocus={item.id === newestId}
+            showDivider={index > 0}
+            fill={item.id === newestId}
+            onChangeNote={(note) => {
+              return feedback.onChangeNote(item.id, note);
+            }}
+            onRemove={() => {
+              return feedback.onRemove(item.id);
+            }}
+            onKeyDown={handleKeyDown}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Connector sub-components
+// ---------------------------------------------------------------------------
+
+function isSelectedPresentationTemplate(
+  item: PresentationTemplateItem,
+  value: GenerationTemplateRequest | undefined,
+): boolean {
+  return (
+    value?.type === "presentation" &&
+    value.selection.designSystemId === item.designSystemId &&
+    value.selection.templateId === item.templateId
+  );
+}
+
+function toPresentationGenerationTemplate(
+  item: PresentationTemplateItem,
+  colorSystemId = presentationTemplateColorSystemId(
+    defaultPresentationTemplateThemeId(item),
+  ),
+): GenerationTemplateRequest {
+  return {
+    type: "presentation",
+    selection: {
+      colorSystemId,
+      designSystemId: item.designSystemId,
+      templateId: item.templateId,
+      previewUrl: item.embedUrl,
+    },
+  };
+}
+
+function selectedTemplateTitle(
+  value: GenerationTemplateRequest | undefined,
+): string | undefined {
+  if (value?.type === "video") {
+    return selectedVideoTemplateItem(value)?.title;
+  }
+  if (value?.type === "workflow") {
+    return selectedWorkflowTemplateItem(value)?.title;
+  }
+  return (
+    selectedPresentationTemplateItem(value)?.title ??
+    selectedIllustrationTemplateItem(value)?.title
+  );
+}
+
+function selectedPresentationTemplateItem(
+  value: GenerationTemplateRequest | undefined,
+): PresentationTemplateItem | undefined {
+  if (value?.type !== "presentation") {
+    return undefined;
+  }
+  return PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+    return isSelectedPresentationTemplate(item, value);
+  });
+}
+
+function isSelectedIllustrationTemplate(
+  item: IllustrationTemplateItem,
+  value: GenerationTemplateRequest | undefined,
+): boolean {
+  return (
+    value?.type === "illustration" &&
+    value.selection.illustrationStyleId === item.illustrationStyleId
+  );
+}
+
+function toIllustrationGenerationTemplate(
+  item: IllustrationTemplateItem,
+): GenerationTemplateRequest {
+  return {
+    type: "illustration",
+    selection: {
+      illustrationStyleId: item.illustrationStyleId,
+    },
+  };
+}
+
+function selectedIllustrationTemplateItem(
+  value: GenerationTemplateRequest | undefined,
+): IllustrationTemplateItem | undefined {
+  if (value?.type !== "illustration") {
+    return undefined;
+  }
+  return ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
+    return isSelectedIllustrationTemplate(item, value);
+  });
+}
+
+function formatPresentationTemplateKind(templateId: string): string {
+  const label = templateId
+    .replace(/^template:/, "")
+    .replace(/^html-ppt-/, "")
+    .replace(/-/g, " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function presentationTemplateMatchesSearch(
+  item: PresentationTemplateItem,
+  query: string,
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  const searchable = [
+    item.title,
+    item.designSystemId,
+    item.templateId,
+    formatPresentationTemplateKind(item.templateId),
+  ].join(" ");
+  return searchable.toLowerCase().includes(normalizedQuery);
+}
+
+function illustrationTemplateMatchesSearch(
+  item: IllustrationTemplateItem,
+  query: string,
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  const searchable = [item.title, item.illustrationStyleId].join(" ");
+  return searchable.toLowerCase().includes(normalizedQuery);
+}
+
+function isSelectedVideoTemplate(
+  item: VideoTemplateItem,
+  value: GenerationTemplateRequest | undefined,
+): boolean {
+  return (
+    value?.type === "video" &&
+    findVideoTemplateItem(value.selection.stylePresetId)?.id === item.id
+  );
+}
+
+function toVideoGenerationTemplate(
+  item: VideoTemplateItem,
+): GenerationTemplateRequest {
+  return {
+    type: "video",
+    selection: { stylePresetId: item.id },
+  };
+}
+
+function selectedVideoTemplateItem(
+  value: GenerationTemplateRequest | undefined,
+): VideoTemplateItem | undefined {
+  if (value?.type !== "video") {
+    return undefined;
+  }
+  return findVideoTemplateItem(value.selection.stylePresetId);
+}
+
+function videoTemplateMatchesSearch(
+  item: VideoTemplateItem,
+  query: string,
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  const searchable = [
+    item.title,
+    item.id,
+    item.slug,
+    item.description,
+    item.sourcePath,
+  ].join(" ");
+  return searchable.toLowerCase().includes(normalizedQuery);
+}
+
+function isSelectedWorkflowTemplate(
+  item: WorkflowTemplateItem,
+  value: GenerationTemplateRequest | undefined,
+): boolean {
+  return (
+    value?.type === "workflow" && value.selection.workflowTemplateId === item.id
+  );
+}
+
+function toWorkflowGenerationTemplate(
+  item: WorkflowTemplateItem,
+): GenerationTemplateRequest {
+  return {
+    type: "workflow",
+    selection: { workflowTemplateId: item.id },
+  };
+}
+
+function selectedWorkflowTemplateItem(
+  value: GenerationTemplateRequest | undefined,
+): WorkflowTemplateItem | undefined {
+  if (value?.type !== "workflow") {
+    return undefined;
+  }
+  return findWorkflowTemplateItem(value.selection.workflowTemplateId);
+}
+
+function workflowTemplateMatchesSearch(
+  item: WorkflowTemplateItem,
+  query: string,
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  const searchable = [item.title, item.id, item.description].join(" ");
+  return searchable.toLowerCase().includes(normalizedQuery);
+}
+
+function playVideoTemplatePreview(video: HTMLVideoElement | null): void {
+  if (!video) {
+    return;
+  }
+  video.defaultMuted = true;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "metadata";
+  detach(video.play(), Reason.DomCallback);
+}
+
+function markVideoTemplatePreviewPlaying(
+  video: HTMLVideoElement | null,
+  playing: boolean,
+): void {
+  if (!video) {
+    return;
+  }
+  video.dataset.previewPlaying = playing ? "true" : "false";
+}
+
+function resetVideoTemplatePreview(video: HTMLVideoElement | null): void {
+  if (!video) {
+    return;
+  }
+  video.pause();
+  video.currentTime = 0;
+  markVideoTemplatePreviewPlaying(video, false);
+}
+
+function toggleVideoTemplatePreview(video: HTMLVideoElement | null): void {
+  if (!video || (!video.paused && !video.ended)) {
+    return;
+  }
+  playVideoTemplatePreview(video);
+}
+
+function videoTemplatePosterImage(item: VideoTemplateItem): string {
+  if (item.cardPreviewImage !== undefined) {
+    return r2ImageTransformUrl(
+      item.cardPreviewImage,
+      TEMPLATE_CARD_PREVIEW_SIZE,
+    );
+  }
+  return r2ImageTransformUrl(item.previewImage, TEMPLATE_CARD_PREVIEW_SIZE);
+}
+
+function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
+  const posterImage = videoTemplatePosterImage(item);
+  return (
+    <div
+      data-video-template-preview=""
+      className="group/video-template-preview relative h-full w-full overflow-hidden bg-muted"
+      onMouseEnter={(event) => {
+        toggleVideoTemplatePreview(event.currentTarget.querySelector("video"));
+      }}
+      onMouseLeave={(event) => {
+        resetVideoTemplatePreview(event.currentTarget.querySelector("video"));
+      }}
+    >
+      <video
+        poster={posterImage}
+        className="peer h-full w-full object-cover"
+        preload="none"
+        playsInline
+        muted
+        loop
+        onPlaying={(event) => {
+          markVideoTemplatePreviewPlaying(event.currentTarget, true);
+        }}
+        onPause={(event) => {
+          markVideoTemplatePreviewPlaying(event.currentTarget, false);
+        }}
+        onEnded={(event) => {
+          resetVideoTemplatePreview(event.currentTarget);
+        }}
+        onError={(event) => {
+          markVideoTemplatePreviewPlaying(event.currentTarget, false);
+        }}
+      >
+        <source src={item.previewWebm} type="video/webm; codecs=vp9" />
+        <source src={item.previewVideo} type="video/mp4" />
+      </video>
+      <img
+        src={posterImage}
+        alt=""
+        aria-hidden="true"
+        data-video-template-poster=""
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-200 peer-data-[preview-playing=true]:opacity-0"
+      />
+      <button
+        type="button"
+        aria-label={`Play video template preview ${item.title}`}
+        className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/0 text-white opacity-100 transition-colors duration-200 hover:bg-black/25 focus-visible:bg-black/25 focus-visible:outline-none peer-data-[preview-playing=true]:pointer-events-none peer-data-[preview-playing=true]:!opacity-0"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          toggleVideoTemplatePreview(
+            event.currentTarget.parentElement?.querySelector("video") ?? null,
+          );
+        }}
+      >
+        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-template-preview:scale-105">
+          <IconPlayerPlay size={20} stroke={1.8} />
+        </span>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Soft, cool-tinted card shadow matching the home chat composer
+ * (`--zero-card-shadow`). The token is scoped to `.zero-app`, but the template
+ * picker renders through a Radix portal on `document.body` — outside that
+ * scope — so the value is inlined here instead of referencing the CSS var.
+ * Replaces Tailwind `shadow-sm`, whose hard black tint reads muddy on white.
+ */
+const TEMPLATE_CARD_SHADOW =
+  "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
+
+function VideoTemplateCard({
+  item,
+  selected,
+  onSelect,
+}: {
+  item: VideoTemplateItem;
+  selected: boolean;
+  onSelect: (item: VideoTemplateItem) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20",
+        TEMPLATE_CARD_SHADOW,
+        selected ? "border-primary ring-1 ring-primary" : "border-border",
+      )}
+    >
+      <div className="relative h-44 shrink-0 overflow-hidden bg-muted">
+        <VideoTemplatePreview item={item} />
+      </div>
+      <div className="flex flex-1 items-center justify-between gap-3 px-3.5 py-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground">
+            {item.title}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center">
+          <button
+            type="button"
+            aria-label={`Select video template ${item.title}`}
+            aria-pressed={selected}
+            onClick={() => {
+              onSelect(item);
+            }}
+            className={cn(
+              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              selected
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-border bg-background text-foreground hover:bg-muted",
+            )}
+          >
+            Use
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VideoTemplateGrid({
+  items,
+  value,
+  onSelect,
+}: {
+  items: readonly VideoTemplateItem[];
+  value: GenerationTemplateRequest | undefined;
+  onSelect: (item: VideoTemplateItem) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => {
+        return (
+          <VideoTemplateCard
+            key={item.id}
+            item={item}
+            selected={isSelectedVideoTemplate(item, value)}
+            onSelect={onSelect}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function WorkflowTemplateCard({
+  item,
+  selected,
+  onSelect,
+}: {
+  item: WorkflowTemplateItem;
+  selected: boolean;
+  onSelect: (item: WorkflowTemplateItem) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "group flex min-h-44 flex-col rounded-lg border bg-card p-4 transition-colors hover:bg-muted/20",
+        TEMPLATE_CARD_SHADOW,
+        selected ? "border-primary ring-1 ring-primary" : "border-border",
+      )}
+    >
+      <div className="flex min-w-0 flex-1 gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          <IconRoute size={18} stroke={1.7} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground">{item.title}</p>
+          <p className="mt-2 line-clamp-4 text-sm leading-5 text-muted-foreground">
+            {item.description}
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 flex justify-end">
+        <button
+          type="button"
+          aria-label={`Select workflow template ${item.title}`}
+          aria-pressed={selected}
+          onClick={() => {
+            onSelect(item);
+          }}
+          className={cn(
+            "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            selected
+              ? "border-primary/40 bg-primary/10 text-primary"
+              : "border-border bg-background text-foreground hover:bg-muted",
+          )}
+        >
+          Use
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowTemplateGrid({
+  items,
+  value,
+  onSelect,
+}: {
+  items: readonly WorkflowTemplateItem[];
+  value: GenerationTemplateRequest | undefined;
+  onSelect: (item: WorkflowTemplateItem) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => {
+        return (
+          <WorkflowTemplateCard
+            key={item.id}
+            item={item}
+            selected={isSelectedWorkflowTemplate(item, value)}
+            onSelect={onSelect}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function TemplateEmptyPanel({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex min-h-40 flex-1 items-center justify-center rounded-[22px] border-2 border-dashed border-border bg-background px-6 py-10 text-center">
+      <div className="flex max-w-xl flex-col items-center">
+        <IconSearch
+          className="mb-4 h-8 w-8 text-muted-foreground/70"
+          stroke={1.7}
+        />
+        <p className="text-sm font-semibold text-muted-foreground">{title}</p>
+        <p className="mt-2 text-sm text-muted-foreground/80">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+function presentationTemplateSlideImages(
+  item: PresentationTemplateItem,
+): readonly string[] {
+  return item.previewImages;
+}
+
+function presentationTemplateSlideCount(
+  item: PresentationTemplateItem,
+): number {
+  return Math.max(item.slideCount ?? item.previewImages.length, 1);
+}
+
+function presentationTemplateThemedCardPreviewSource(
+  item: PresentationTemplateItem,
+  theme: PresentationTemplateThemeOption | undefined,
+): string | undefined {
+  if (theme === undefined) {
+    return item.cardPreviewImage;
+  }
+  return item.cardPreviewImagesByTheme?.[theme.id] ?? item.cardPreviewImage;
+}
+
+function presentationTemplateCardSlideImage(
+  item: PresentationTemplateItem,
+  index: number,
+  theme?: PresentationTemplateThemeOption,
+  size: TemplatePreviewImageSize = TEMPLATE_CARD_PREVIEW_SIZE,
+): string {
+  const cardPreviewSource =
+    index === 0
+      ? presentationTemplateThemedCardPreviewSource(item, theme)
+      : undefined;
+  if (cardPreviewSource !== undefined) {
+    return r2ImageTransformUrl(cardPreviewSource, size);
+  }
+  return presentationTemplateFallbackSlideImage(item, index, size);
+}
+
+function presentationTemplateFallbackSlideImage(
+  item: PresentationTemplateItem,
+  index: number,
+  size: TemplatePreviewImageSize = TEMPLATE_CARD_PREVIEW_SIZE,
+): string {
+  const slideImages = presentationTemplateSlideImages(item);
+  const safeIndex = Math.max(0, Math.min(index, slideImages.length - 1));
+  const image = slideImages[safeIndex] ?? item.previewImage;
+  return r2ImageTransformUrl(image, size);
+}
+
+interface TemplatePreviewPrewarmCache {
+  readonly preloads: Map<string, HTMLImageElement>;
+}
+
+function templatePreviewPrewarmCache(): TemplatePreviewPrewarmCache {
+  const cacheKey = "vm0TemplatePreviewPrewarmCache";
+  const existingCache = Reflect.get(globalThis, cacheKey) as
+    | TemplatePreviewPrewarmCache
+    | undefined;
+  if (existingCache !== undefined) {
+    return existingCache;
+  }
+
+  const cache: TemplatePreviewPrewarmCache = {
+    preloads: new Map<string, HTMLImageElement>(),
+  };
+  Reflect.set(globalThis, cacheKey, cache);
+  return cache;
+}
+
+function prewarmTemplatePreviewImage(url: string): void {
+  if (typeof Image === "undefined") {
+    return;
+  }
+
+  const cache = templatePreviewPrewarmCache();
+  const cachedImage = cache.preloads.get(url);
+  if (cachedImage !== undefined) {
+    return;
+  }
+
+  const image = new Image();
+  image.decoding = "async";
+  image.loading = "eager";
+  image.fetchPriority = "high";
+  image.src = url;
+  cache.preloads.set(url, image);
+  if (image.decode !== undefined) {
+    detach(bestEffort(image.decode()), Reason.DomCallback);
+  }
+}
+
+function uniqueTemplatePreviewImageUrls(
+  imageUrls: readonly string[],
+): string[] {
+  const uniqueUrls: string[] = [];
+  const seenUrls = new Set<string>();
+  for (const imageUrl of imageUrls) {
+    if (seenUrls.has(imageUrl)) {
+      continue;
+    }
+    seenUrls.add(imageUrl);
+    uniqueUrls.push(imageUrl);
+  }
+  return uniqueUrls;
+}
+
+function prewarmTemplatePreviewImages(
+  imageUrls: readonly string[],
+  count = TEMPLATE_PREWARM_IMAGE_COUNT,
+): void {
+  const uniqueUrls = uniqueTemplatePreviewImageUrls(imageUrls);
+  for (const imageUrl of uniqueUrls.slice(0, count)) {
+    prewarmTemplatePreviewImage(imageUrl);
+  }
+}
+
+function presentationPreviewImageUrlsForItems(
+  items: readonly PresentationTemplateItem[],
+  themeIdBySlug: Readonly<Record<string, string>> = {},
+): string[] {
+  return items.map((item) => {
+    const theme = findPresentationTemplateTheme(
+      themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
+    );
+    return presentationTemplateCardSlideImage(item, 0, theme);
+  });
+}
+
+function illustrationPreviewImageUrlsForItems({
+  items,
+  variantIndexBySlug,
+}: {
+  items: readonly IllustrationTemplateItem[];
+  variantIndexBySlug: Readonly<Record<string, number>>;
+}): string[] {
+  return items.map((item) => {
+    const images = item.previewImages;
+    const activeIndex = Math.max(
+      0,
+      Math.min(variantIndexBySlug[item.slug] ?? 0, images.length - 1),
+    );
+    return illustrationHeroImageUrl(images[activeIndex] ?? item.previewImage);
+  });
+}
+
+function videoPreviewImageUrlsForItems(
+  items: readonly VideoTemplateItem[],
+): string[] {
+  return items.map((item) => {
+    return videoTemplatePosterImage(item);
+  });
+}
+
+function initialTemplatePreviewImageUrlsForCategory({
+  category,
+  hasPptTab,
+  hasIllustrationTab,
+  hasVideoTab,
+  presentationThemeIdBySlug,
+}: {
+  category: string;
+  hasPptTab: boolean;
+  hasIllustrationTab: boolean;
+  hasVideoTab: boolean;
+  presentationThemeIdBySlug?: Readonly<Record<string, string>>;
+}): string[] {
+  if (category === "slides" && hasPptTab) {
+    return presentationPreviewImageUrlsForItems(
+      PRESENTATION_TEMPLATE_PICKER_ITEMS,
+      presentationThemeIdBySlug,
+    );
+  }
+  if (category === "illustration" && hasIllustrationTab) {
+    return illustrationPreviewImageUrlsForItems({
+      items: ILLUSTRATION_TEMPLATE_ITEMS,
+      variantIndexBySlug: {},
+    });
+  }
+  if (category === "video" && hasVideoTab) {
+    return videoPreviewImageUrlsForItems(VIDEO_TEMPLATE_ITEMS);
+  }
+  return [];
+}
+
+function templatePreviewPrewarmImageCountForCategory(category: string): number {
+  if (category === "illustration") {
+    return ILLUSTRATION_PREWARM_IMAGE_COUNT;
+  }
+  return TEMPLATE_PREWARM_IMAGE_COUNT;
+}
+
+function prewarmIllustrationPreviewImagesNearScroll({
+  items,
+  scrollContainer,
+  variantIndexBySlug,
+}: {
+  items: readonly IllustrationTemplateItem[];
+  scrollContainer: HTMLElement;
+  variantIndexBySlug: Readonly<Record<string, number>>;
+}): void {
+  const scrollableHeight =
+    scrollContainer.scrollHeight - scrollContainer.clientHeight;
+  if (items.length === 0 || scrollableHeight <= 0) {
+    return;
+  }
+
+  const progress = Math.min(
+    1,
+    Math.max(0, scrollContainer.scrollTop / scrollableHeight),
+  );
+  const lookaheadIndex =
+    Math.floor(progress * items.length) +
+    ILLUSTRATION_SCROLL_PREWARM_LOOKAHEAD_COUNT;
+  const bucket = Math.floor(
+    lookaheadIndex / ILLUSTRATION_SCROLL_PREWARM_IMAGE_COUNT,
+  );
+  const startIndex = Math.min(
+    items.length,
+    Math.max(
+      ILLUSTRATION_PREWARM_IMAGE_COUNT,
+      bucket * ILLUSTRATION_SCROLL_PREWARM_IMAGE_COUNT,
+    ),
+  );
+  const firstPrewarmItem = items[startIndex];
+  const key = [
+    String(items.length),
+    String(bucket),
+    firstPrewarmItem?.slug ?? "",
+  ].join(":");
+  if (scrollContainer.dataset.illustrationPreviewPrewarmBucket === key) {
+    return;
+  }
+  scrollContainer.dataset.illustrationPreviewPrewarmBucket = key;
+
+  prewarmTemplatePreviewImages(
+    illustrationPreviewImageUrlsForItems({
+      items: items.slice(
+        startIndex,
+        startIndex + ILLUSTRATION_SCROLL_PREWARM_IMAGE_COUNT,
+      ),
+      variantIndexBySlug,
+    }),
+    ILLUSTRATION_SCROLL_PREWARM_IMAGE_COUNT,
+  );
+}
+
+interface PresentationTemplateThemeOption {
+  readonly id: string;
+  readonly name: string;
+  readonly group: "multi-accent" | "single-accent";
+  readonly paletteName: string;
+  readonly colors: readonly [
+    bg: string,
+    surface: string,
+    ink: string,
+    inkSoft: string,
+    accent: string,
+    support1: string,
+    support2: string,
+    support3: string,
+    placeholder: string,
+  ];
+}
+
+const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOption[] =
+  [
+    {
+      id: "prism",
+      name: "Prism",
+      group: "multi-accent",
+      paletteName: "Prism",
+      colors: [
+        "#FFFFFF",
+        "#F7F7FA",
+        "#1A1726",
+        "#5C5870",
+        "#7257E6",
+        "#FF6B4A",
+        "#AEE63E",
+        "#3FA9F5",
+        "#ECECF2",
+      ],
+    },
+    {
+      id: "carnival",
+      name: "Carnival",
+      group: "multi-accent",
+      paletteName: "Carnival",
+      colors: [
+        "#FFFDF7",
+        "#FFFFFF",
+        "#221C14",
+        "#5E564A",
+        "#FF7A1A",
+        "#E5388E",
+        "#F5B73E",
+        "#1FB6A6",
+        "#EFEADF",
+      ],
+    },
+    {
+      id: "pop-art",
+      name: "Pop Art",
+      group: "multi-accent",
+      paletteName: "Pop Art",
+      colors: [
+        "#111016",
+        "#1B1A22",
+        "#F4F2FA",
+        "#A09CB0",
+        "#3D7BFF",
+        "#FF3D9A",
+        "#C6FF4A",
+        "#FF7A1A",
+        "#26242E",
+      ],
+    },
+    {
+      id: "warm-sand",
+      name: "Warm Sand",
+      group: "single-accent",
+      paletteName: "Warm Sand",
+      colors: [
+        "#FFFDF8",
+        "#FFFFFF",
+        "#262626",
+        "#5A5A5A",
+        "#F19B3A",
+        "#8DACE5",
+        "#DDB8D9",
+        "#516049",
+        "#ECECEC",
+      ],
+    },
+    {
+      id: "bauhaus-primary",
+      name: "Bauhaus Primary",
+      group: "single-accent",
+      paletteName: "Bauhaus Primary",
+      colors: [
+        "#F5F1E6",
+        "#FFFFFF",
+        "#1A1A1A",
+        "#4A4A4A",
+        "#E63327",
+        "#2C5BD6",
+        "#F2B705",
+        "#1A1A1A",
+        "#E2DDD0",
+      ],
+    },
+    {
+      id: "nordic-frost",
+      name: "Nordic Frost",
+      group: "single-accent",
+      paletteName: "Nordic Frost",
+      colors: [
+        "#FBFCFD",
+        "#FFFFFF",
+        "#1F2933",
+        "#5B6B7B",
+        "#3E8EDE",
+        "#7BC6C9",
+        "#B8C4D0",
+        "#1F2933",
+        "#E8EDF1",
+      ],
+    },
+    {
+      id: "forest-editorial",
+      name: "Forest Editorial",
+      group: "single-accent",
+      paletteName: "Forest Editorial",
+      colors: [
+        "#F7F6F1",
+        "#FFFFFF",
+        "#1E2B22",
+        "#4F5C52",
+        "#5B7553",
+        "#C97B4A",
+        "#E4DFD0",
+        "#1E2B22",
+        "#E6E8E1",
+      ],
+    },
+    {
+      id: "coral-studio",
+      name: "Coral Studio",
+      group: "single-accent",
+      paletteName: "Coral Studio",
+      colors: [
+        "#FFF9F6",
+        "#FFFFFF",
+        "#3A2A26",
+        "#6E5B55",
+        "#FF6F5E",
+        "#FFB199",
+        "#2BB3A3",
+        "#3A2A26",
+        "#F0E7E2",
+      ],
+    },
+    {
+      id: "slate-corporate",
+      name: "Slate Corporate",
+      group: "single-accent",
+      paletteName: "Slate Corporate",
+      colors: [
+        "#FFFFFF",
+        "#F6F8FB",
+        "#16243B",
+        "#5A6678",
+        "#2F5BD0",
+        "#6E8BB8",
+        "#F0A03A",
+        "#16243B",
+        "#E9EDF3",
+      ],
+    },
+    {
+      id: "terracotta-clay",
+      name: "Terracotta Clay",
+      group: "single-accent",
+      paletteName: "Terracotta Clay",
+      colors: [
+        "#FBF4EC",
+        "#FFFFFF",
+        "#3B2A20",
+        "#6B5546",
+        "#C36A3F",
+        "#D9A441",
+        "#7A7A52",
+        "#EAD9C6",
+        "#ECE0D2",
+      ],
+    },
+    {
+      id: "berry-pop",
+      name: "Berry Pop",
+      group: "single-accent",
+      paletteName: "Berry Pop",
+      colors: [
+        "#FFFAFC",
+        "#FFFFFF",
+        "#2E1A2C",
+        "#6A5566",
+        "#D63A8E",
+        "#8E5BD0",
+        "#F4B8D4",
+        "#2E1A2C",
+        "#F0E6EC",
+      ],
+    },
+    {
+      id: "citrus-fresh",
+      name: "Citrus Fresh",
+      group: "single-accent",
+      paletteName: "Citrus Fresh",
+      colors: [
+        "#FFFFFB",
+        "#FFFFFF",
+        "#232318",
+        "#5C5C4E",
+        "#FF8A1E",
+        "#FFD23E",
+        "#8FB339",
+        "#4FA3A3",
+        "#EDEDE3",
+      ],
+    },
+    {
+      id: "mauve-dusk",
+      name: "Mauve Dusk",
+      group: "single-accent",
+      paletteName: "Mauve Dusk",
+      colors: [
+        "#FAF7FB",
+        "#FFFFFF",
+        "#2B2533",
+        "#635B70",
+        "#9C7BB8",
+        "#8AA0C9",
+        "#E0B6C9",
+        "#2B2533",
+        "#ECE7F0",
+      ],
+    },
+    {
+      id: "mono-ink",
+      name: "Mono Ink",
+      group: "single-accent",
+      paletteName: "Mono Ink",
+      colors: [
+        "#FFFFFF",
+        "#FAFAFA",
+        "#0A0A0A",
+        "#6B6B6B",
+        "#E5392E",
+        "#0A0A0A",
+        "#BFBFBF",
+        "#0A0A0A",
+        "#EEEEEE",
+      ],
+    },
+    {
+      id: "sunset-maroon",
+      name: "Sunset Maroon",
+      group: "single-accent",
+      paletteName: "Sunset Maroon",
+      colors: [
+        "#FFF7F2",
+        "#FFFFFF",
+        "#3A1F22",
+        "#6E4A4C",
+        "#F26B3A",
+        "#E0457B",
+        "#F2A93B",
+        "#3A1F22",
+        "#F0E2DA",
+      ],
+    },
+    {
+      id: "mint-tech",
+      name: "Mint Tech",
+      group: "single-accent",
+      paletteName: "Mint Tech",
+      colors: [
+        "#FBFFFD",
+        "#FFFFFF",
+        "#1B2A26",
+        "#56655F",
+        "#16B981",
+        "#4FA3E0",
+        "#9AE6C8",
+        "#3A4A45",
+        "#E6F0EB",
+      ],
+    },
+    {
+      id: "midnight-mono",
+      name: "Midnight Mono",
+      group: "single-accent",
+      paletteName: "Midnight Mono",
+      colors: [
+        "#121316",
+        "#1C1E22",
+        "#F2F2F0",
+        "#A0A3A8",
+        "#C6FF4A",
+        "#6B7280",
+        "#3A3D44",
+        "#C6FF4A",
+        "#2A2C31",
+      ],
+    },
+    {
+      id: "ocean-deep",
+      name: "Ocean Deep",
+      group: "single-accent",
+      paletteName: "Ocean Deep",
+      colors: [
+        "#0E2A33",
+        "#143840",
+        "#EAF6F4",
+        "#9DB8B8",
+        "#38C7B4",
+        "#5A93A8",
+        "#1F4A52",
+        "#38C7B4",
+        "#1B454E",
+      ],
+    },
+    {
+      id: "gold-luxe",
+      name: "Gold Luxe",
+      group: "single-accent",
+      paletteName: "Gold Luxe",
+      colors: [
+        "#16140F",
+        "#211E16",
+        "#F3EEE2",
+        "#ADA48E",
+        "#C9A24B",
+        "#8A6E3A",
+        "#3A352A",
+        "#C9A24B",
+        "#2A271E",
+      ],
+    },
+  ];
+
+function defaultPresentationTemplateThemeId(
+  item: PresentationTemplateItem,
+): string {
+  return item.colorSystemId?.replace("color-system:", "") ?? "warm-sand";
+}
+
+function presentationTemplateColorSystemId(themeId: string): string {
+  return `color-system:${themeId}`;
+}
+
+function findPresentationTemplateTheme(
+  themeId: string,
+): PresentationTemplateThemeOption {
+  return (
+    PRESENTATION_TEMPLATE_THEME_OPTIONS.find((theme) => {
+      return theme.id === themeId;
+    }) ?? PRESENTATION_TEMPLATE_THEME_OPTIONS[0]!
+  );
+}
+
+function presentationTemplateThemePreviewSwatches(
+  theme: PresentationTemplateThemeOption,
+): readonly { readonly color: string; readonly id: string }[] {
+  const background = theme.colors[0];
+  const accents = theme.colors.slice(4, 8);
+  return [
+    { id: "background", color: background },
+    ...accents.slice(0, 3).map((accent, accentIndex) => {
+      return { id: `accent-${accentIndex + 1}`, color: accent };
+    }),
+  ];
+}
+
+function isPresentationTemplateSupport2SwatchSlug(slug: string): boolean {
+  return (
+    slug === "playful-launch-presentation" ||
+    slug === "crayon-learning-deck" ||
+    slug === "mosaic-geometric-pitch"
+  );
+}
+
+function presentationTemplateAccentSwatchColor(
+  item: PresentationTemplateItem,
+  theme: PresentationTemplateThemeOption,
+): { readonly color: string; readonly id: string } {
+  if (item.slug === "landing-consulting-deck") {
+    return { id: "support-1", color: theme.colors[5] };
+  }
+  if (isPresentationTemplateSupport2SwatchSlug(item.slug)) {
+    return { id: "support-2", color: theme.colors[6] };
+  }
+  return { id: "accent", color: theme.colors[4] };
+}
+
+function presentationTemplateThemeAccentSwatches(
+  item: PresentationTemplateItem,
+  theme: PresentationTemplateThemeOption,
+): readonly { readonly color: string; readonly id: string }[] {
+  return [
+    { id: "background", color: theme.colors[0] },
+    presentationTemplateAccentSwatchColor(item, theme),
+  ];
+}
+
+function hexLuminance(hexColor: string): number {
+  const normalized = hexColor.replace("#", "");
+  const channels = [0, 2, 4].map((index) => {
+    const value = Number.parseInt(normalized.slice(index, index + 2), 16) / 255;
+    return value <= 0.039_28
+      ? value / 12.92
+      : Math.pow((value + 0.055) / 1.055, 2.4);
+  });
+  return (
+    0.2126 * (channels[0] ?? 0) +
+    0.7152 * (channels[1] ?? 0) +
+    0.0722 * (channels[2] ?? 0)
+  );
+}
+
+function contrastRatio(colorA: string, colorB: string): number {
+  const luminanceA = hexLuminance(colorA);
+  const luminanceB = hexLuminance(colorB);
+  return (
+    (Math.max(luminanceA, luminanceB) + 0.05) /
+    (Math.min(luminanceA, luminanceB) + 0.05)
+  );
+}
+
+function hexToRgb(hexColor: string): readonly [number, number, number] {
+  const normalized = hexColor.replace("#", "");
+  return [
+    Number.parseInt(normalized.slice(0, 2), 16),
+    Number.parseInt(normalized.slice(2, 4), 16),
+    Number.parseInt(normalized.slice(4, 6), 16),
+  ];
+}
+
+function rgbToHex(rgb: readonly [number, number, number]): string {
+  return `#${rgb
+    .map((value) => {
+      return Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0");
+    })
+    .join("")}`;
+}
+
+function mixRgb(
+  colorA: readonly [number, number, number],
+  colorB: readonly [number, number, number],
+  amount: number,
+): readonly [number, number, number] {
+  return [
+    Math.round(colorA[0] * (1 - amount) + colorB[0] * amount),
+    Math.round(colorA[1] * (1 - amount) + colorB[1] * amount),
+    Math.round(colorA[2] * (1 - amount) + colorB[2] * amount),
+  ];
+}
+
+function previewTextColorOn(background: string): string {
+  return hexLuminance(background) > 0.45 ? "#15151A" : "#FFFFFF";
+}
+
+function safePreviewGround(accent: string): readonly [string, string] {
+  const text = hexLuminance(accent) < 0.5 ? "#FFFFFF" : "#15131C";
+  const target: readonly [number, number, number] =
+    text === "#FFFFFF" ? [10, 9, 14] : [255, 255, 255];
+  const accentRgb = hexToRgb(accent);
+  for (let amount = 0; amount <= 1.0001; amount += 0.04) {
+    const ground = rgbToHex(mixRgb(accentRgb, target, amount));
+    if (contrastRatio(text, ground) >= 4.6) {
+      return [ground, text];
+    }
+  }
+  return [accent, text];
+}
+
+function presentationTemplateThemeCss(
+  theme: PresentationTemplateThemeOption,
+): string {
+  const [bg, surface, ink, soft, accent, s1, s2, s3, ph] = theme.colors;
+  const accents = [accent, s1, s2, s3] as const;
+  const accentVariables = accents
+    .map((accent, index) => {
+      const [ground, text] = safePreviewGround(accent);
+      return `--g${index}:${ground};--t${index}:${text};`;
+    })
+    .join("");
+  return `
+    :root {
+      --bg:${bg};
+      --surface:${surface};
+      --ink:${ink};
+      --soft:${soft};
+      --ph:${ph};
+      --accent:${accent};
+      --s1:${s1};
+      --s2:${s2};
+      --s3:${s3};
+      --oa:${previewTextColorOn(accent)};
+      --o1:${previewTextColorOn(s1)};
+      --o2:${previewTextColorOn(s2)};
+      --o3:${previewTextColorOn(s3)};
+      --ka:${contrastRatio(accent, bg) >= 4.5 ? accent : ink};
+      --kad:${contrastRatio(accent, ink) >= 4.5 ? accent : bg};
+      --k1:${contrastRatio(s1, bg) >= 4.5 ? s1 : ink};
+      --k2:${contrastRatio(s2, bg) >= 4.5 ? s2 : ink};
+      --k3:${contrastRatio(s3, bg) >= 4.5 ? s3 : ink};
+      ${accentVariables}
+    }
+    #sw {
+      display: none !important;
+    }
+  `;
+}
+
+function themedPreviewPresentationHtml(params: {
+  readonly activeSlideId: string;
+  readonly draft: PresentationEditDraft;
+  readonly theme: PresentationTemplateThemeOption;
+}): string {
+  return previewPresentationHtml({
+    activeSlideId: params.activeSlideId,
+    additionalHeadStyle: presentationTemplateThemeCss(params.theme),
+    html: params.draft.html,
+  });
+}
+
+async function loadPresentationTemplateHtmlPreview(params: {
+  readonly item: PresentationTemplateItem;
+}): Promise<PresentationEditDraft | null> {
+  const response = await fetch(
+    readableAttachmentResourceUrl(params.item.embedUrl),
+    {
+      credentials: "omit",
+      mode: "cors",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to load template HTML (${response.status})`);
+  }
+
+  const draft = parsePresentationEditDraft(await response.text());
+  return draft.slides.length > 0 ? draft : null;
+}
+
+interface PresentationTemplateHtmlPreviewCache {
+  readonly drafts: Map<string, PresentationEditDraft>;
+  readonly failed: Set<string>;
+  readonly pendingLoads: Map<string, Promise<PresentationEditDraft | null>>;
+  readonly activeTokens: Map<string, symbol>;
+  readonly activeIndexes: Map<string, number>;
+  readonly detailTokens: Map<string, symbol>;
+  pendingSlideAnimationFrames: Map<string, number>;
+  pendingSlideIndexes: Map<string, number>;
+}
+
+function presentationTemplateHtmlPreviewCache(): PresentationTemplateHtmlPreviewCache {
+  const cacheKey = "vm0PresentationTemplateHtmlPreviewCache";
+  const existingCache = Reflect.get(globalThis, cacheKey) as
+    | PresentationTemplateHtmlPreviewCache
+    | undefined;
+  if (existingCache !== undefined) {
+    existingCache.pendingSlideAnimationFrames ??= new Map<string, number>();
+    existingCache.pendingSlideIndexes ??= new Map<string, number>();
+    return existingCache;
+  }
+
+  const cache: PresentationTemplateHtmlPreviewCache = {
+    activeIndexes: new Map<string, number>(),
+    activeTokens: new Map<string, symbol>(),
+    detailTokens: new Map<string, symbol>(),
+    drafts: new Map<string, PresentationEditDraft>(),
+    failed: new Set<string>(),
+    pendingLoads: new Map<string, Promise<PresentationEditDraft | null>>(),
+    pendingSlideAnimationFrames: new Map<string, number>(),
+    pendingSlideIndexes: new Map<string, number>(),
+  };
+  Reflect.set(globalThis, cacheKey, cache);
+  return cache;
+}
+
+function schedulePresentationTemplateCardSlideIndex(params: {
+  readonly apply: (index: number) => void;
+  readonly embedUrl: string;
+  readonly index: number;
+}): void {
+  const cache = presentationTemplateHtmlPreviewCache();
+  cache.pendingSlideIndexes.set(params.embedUrl, params.index);
+  if (cache.pendingSlideAnimationFrames.has(params.embedUrl)) {
+    return;
+  }
+
+  const frameId = window.requestAnimationFrame(() => {
+    const nextIndex = cache.pendingSlideIndexes.get(params.embedUrl);
+    cache.pendingSlideAnimationFrames.delete(params.embedUrl);
+    cache.pendingSlideIndexes.delete(params.embedUrl);
+    if (nextIndex === undefined) {
+      return;
+    }
+    cache.activeIndexes.set(params.embedUrl, nextIndex);
+    params.apply(nextIndex);
+  });
+  cache.pendingSlideAnimationFrames.set(params.embedUrl, frameId);
+}
+
+function cancelPresentationTemplateCardSlideIndex(embedUrl: string): void {
+  const cache = presentationTemplateHtmlPreviewCache();
+  const frameId = cache.pendingSlideAnimationFrames.get(embedUrl);
+  if (frameId !== undefined) {
+    window.cancelAnimationFrame(frameId);
+  }
+  cache.pendingSlideAnimationFrames.delete(embedUrl);
+  cache.pendingSlideIndexes.delete(embedUrl);
+}
+
+function revokePresentationTemplateHtmlPreviewUrl(url: string | null): void {
+  if (url !== null) {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function createThemedPresentationPreviewUrl(params: {
+  readonly activeSlideId: string;
+  readonly draft: PresentationEditDraft;
+  readonly theme: PresentationTemplateThemeOption;
+}): string {
+  return URL.createObjectURL(
+    new Blob(
+      [
+        createThemedPresentationPreviewHtml({
+          activeSlideId: params.activeSlideId,
+          draft: params.draft,
+          theme: params.theme,
+        }),
+      ],
+      { type: "text/html;charset=utf-8" },
+    ),
+  );
+}
+
+function createThemedPresentationPreviewHtml(params: {
+  readonly activeSlideId: string;
+  readonly draft: PresentationEditDraft;
+  readonly theme: PresentationTemplateThemeOption;
+}): string {
+  return themedPreviewPresentationHtml({
+    activeSlideId: params.activeSlideId,
+    draft: params.draft,
+    theme: params.theme,
+  });
+}
+
+type PresentationTemplateThemeVariables = CSSProperties &
+  Record<`--${string}`, string>;
+
+function presentationTemplateThemeVariables(
+  theme: PresentationTemplateThemeOption,
+): PresentationTemplateThemeVariables {
+  const [bg, surface, ink, soft, accent, s1, s2, s3, ph] = theme.colors;
+  const [g0, t0] = safePreviewGround(accent);
+  const [g1, t1] = safePreviewGround(s1);
+  const [g2, t2] = safePreviewGround(s2);
+  const [g3, t3] = safePreviewGround(s3);
+  return {
+    "--bg": bg,
+    "--surface": surface,
+    "--ink": ink,
+    "--soft": soft,
+    "--ph": ph,
+    "--accent": accent,
+    "--s1": s1,
+    "--s2": s2,
+    "--s3": s3,
+    "--oa": previewTextColorOn(accent),
+    "--o1": previewTextColorOn(s1),
+    "--o2": previewTextColorOn(s2),
+    "--o3": previewTextColorOn(s3),
+    "--ka": contrastRatio(accent, bg) >= 4.5 ? accent : ink,
+    "--kad": contrastRatio(accent, ink) >= 4.5 ? accent : bg,
+    "--k1": contrastRatio(s1, bg) >= 4.5 ? s1 : ink,
+    "--k2": contrastRatio(s2, bg) >= 4.5 ? s2 : ink,
+    "--k3": contrastRatio(s3, bg) >= 4.5 ? s3 : ink,
+    "--g0": g0,
+    "--t0": t0,
+    "--g1": g1,
+    "--t1": t1,
+    "--g2": g2,
+    "--t2": t2,
+    "--g3": g3,
+    "--t3": t3,
+  };
+}
+
+interface PresentationTemplateThumbnailCache {
+  readonly htmlByHost: WeakMap<HTMLDivElement, string>;
+  readonly previewHtmlsByDraft: WeakMap<
+    PresentationEditDraft,
+    Map<string, string>
+  >;
+  readonly themeVariablesByTheme: WeakMap<
+    PresentationTemplateThemeOption,
+    PresentationTemplateThemeVariables
+  >;
+}
+
+function presentationTemplateThumbnailCache(): PresentationTemplateThumbnailCache {
+  const cacheKey = "vm0PresentationTemplateThumbnailCache";
+  const existingCache = Reflect.get(globalThis, cacheKey) as
+    | PresentationTemplateThumbnailCache
+    | undefined;
+  if (existingCache !== undefined) {
+    return existingCache;
+  }
+
+  const cache: PresentationTemplateThumbnailCache = {
+    htmlByHost: new WeakMap<HTMLDivElement, string>(),
+    previewHtmlsByDraft: new WeakMap<
+      PresentationEditDraft,
+      Map<string, string>
+    >(),
+    themeVariablesByTheme: new WeakMap<
+      PresentationTemplateThemeOption,
+      PresentationTemplateThemeVariables
+    >(),
+  };
+  Reflect.set(globalThis, cacheKey, cache);
+  return cache;
+}
+
+function getPresentationTemplateThumbnailThemeVariables(
+  theme: PresentationTemplateThemeOption,
+): PresentationTemplateThemeVariables {
+  const cache = presentationTemplateThumbnailCache();
+  const cachedVariables = cache.themeVariablesByTheme.get(theme);
+  if (cachedVariables !== undefined) {
+    return cachedVariables;
+  }
+
+  const variables = presentationTemplateThemeVariables(theme);
+  cache.themeVariablesByTheme.set(theme, variables);
+  return variables;
+}
+
+function getPresentationTemplateThumbnailPreviewHtml(
+  draft: PresentationEditDraft,
+  slideId: string,
+): string {
+  const cache = presentationTemplateThumbnailCache();
+  let htmls = cache.previewHtmlsByDraft.get(draft);
+  if (htmls === undefined) {
+    htmls = new Map<string, string>();
+    cache.previewHtmlsByDraft.set(draft, htmls);
+  }
+  const cachedHtml = htmls.get(slideId);
+  if (cachedHtml !== undefined) {
+    return cachedHtml;
+  }
+
+  const html = previewPresentationHtml({
+    activeSlideId: slideId,
+    html: draft.html,
+  });
+  htmls.set(slideId, html);
+  return html;
+}
+
+function applyPresentationTemplateThumbnailTheme(
+  host: HTMLDivElement,
+  themeVariables: PresentationTemplateThemeVariables,
+): void {
+  const root = host.shadowRoot?.querySelector<HTMLElement>(
+    ".vm0-shadow-preview-root",
+  );
+  if (root === undefined || root === null) {
+    return;
+  }
+
+  for (const [name, value] of Object.entries(themeVariables)) {
+    if (name.startsWith("--")) {
+      root.style.setProperty(name, value);
+    }
+  }
+}
+
+function renderPresentationTemplateShadowThumbnail(
+  host: HTMLDivElement,
+  html: string,
+  themeVariables: PresentationTemplateThemeVariables,
+): void {
+  const cache = presentationTemplateThumbnailCache();
+  if (cache.htmlByHost.get(host) === html) {
+    applyPresentationTemplateThumbnailTheme(host, themeVariables);
+    return;
+  }
+  cache.htmlByHost.set(host, html);
+
+  const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  shadow.replaceChildren();
+
+  const resetStyle = document.createElement("style");
+  resetStyle.textContent = `
+    :host {
+      all: initial;
+      contain: strict;
+      display: block;
+      height: 100%;
+      overflow: hidden;
+      position: relative;
+      width: 100%;
+    }
+    .vm0-shadow-preview-root {
+      background: #fff;
+      height: 100%;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+      position: absolute;
+      user-select: none;
+      width: 100%;
+    }
+    .vm0-shadow-preview-root *,
+    .vm0-shadow-preview-root *:hover,
+    .vm0-shadow-preview-root *:focus,
+    .vm0-shadow-preview-root *:focus-visible {
+      caret-color: transparent !important;
+      outline: 0 !important;
+      pointer-events: none !important;
+      user-select: none !important;
+    }
+  `;
+  shadow.append(resetStyle);
+  for (const node of Array.from(doc.head.childNodes)) {
+    const clone = node.cloneNode(true);
+    if (clone instanceof HTMLStyleElement && clone.textContent !== null) {
+      clone.textContent = clone.textContent.replaceAll(
+        ":root",
+        ":host, .vm0-shadow-preview-root",
+      );
+    }
+    shadow.append(clone);
+  }
+  const root = document.createElement("div");
+  root.className = "vm0-shadow-preview-root";
+  root.append(
+    ...Array.from(doc.body.childNodes).map((node) => {
+      return node.cloneNode(true);
+    }),
+  );
+  for (const element of Array.from(root.querySelectorAll<HTMLElement>("*"))) {
+    element.removeAttribute("contenteditable");
+    element.removeAttribute("tabindex");
+  }
+  shadow.append(root);
+  applyPresentationTemplateThumbnailTheme(host, themeVariables);
+}
+
+function PresentationTemplateShadowThumbnail({
+  draft,
+  fallbackImage,
+  slideId,
+  themeVariables,
+  title,
+}: {
+  readonly draft: PresentationEditDraft | undefined;
+  readonly fallbackImage: string;
+  readonly slideId: string | null;
+  readonly themeVariables: PresentationTemplateThemeVariables;
+  readonly title: string;
+}) {
+  const hasHtmlThumbnail = draft !== undefined && slideId !== null;
+  return (
+    <>
+      {hasHtmlThumbnail ? null : (
+        <img
+          src={fallbackImage}
+          alt=""
+          loading="lazy"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      )}
+      {hasHtmlThumbnail ? (
+        <div
+          ref={(node) => {
+            if (node !== null) {
+              renderPresentationTemplateShadowThumbnail(
+                node,
+                getPresentationTemplateThumbnailPreviewHtml(draft, slideId),
+                themeVariables,
+              );
+            }
+          }}
+          aria-label={title}
+          className="pointer-events-none absolute inset-0"
+          style={themeVariables}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function createPresentationTemplateHtmlPreviewState(params: {
+  readonly draft: PresentationEditDraft;
+  readonly index: number;
+  readonly item: PresentationTemplateItem;
+  readonly previousFrameUrl: string | null;
+  readonly theme: PresentationTemplateThemeOption;
+}): TemplateCardHtmlPreviewState | null {
+  const slide =
+    params.draft.slides[Math.min(params.index, params.draft.slides.length - 1)];
+  if (slide === undefined) {
+    return null;
+  }
+
+  revokePresentationTemplateHtmlPreviewUrl(params.previousFrameUrl);
+  const frameUrl = URL.createObjectURL(
+    new Blob(
+      [
+        themedPreviewPresentationHtml({
+          activeSlideId: slide.id,
+          draft: params.draft,
+          theme: params.theme,
+        }),
+      ],
+      { type: "text/html;charset=utf-8" },
+    ),
+  );
+
+  return {
+    slug: params.item.slug,
+    embedUrl: params.item.embedUrl,
+    themeId: params.theme.id,
+    loading: false,
+    failed: false,
+    frameUrl,
+    slideCount: params.draft.slides.length,
+  };
+}
+
+function createPresentationTemplateCardHtmlPreviewState(params: {
+  readonly draft: PresentationEditDraft;
+  readonly index: number;
+  readonly item: PresentationTemplateItem;
+  readonly previousFrameUrl: string | null;
+  readonly theme: PresentationTemplateThemeOption;
+}): TemplateCardHtmlPreviewState | null {
+  if (params.index === 0) {
+    revokePresentationTemplateHtmlPreviewUrl(params.previousFrameUrl);
+    return null;
+  }
+  return createPresentationTemplateHtmlPreviewState(params);
+}
+
+function presentationTemplateCardFrameUrls(params: {
+  readonly currentFrameUrl: string | null;
+  readonly loadedFrameUrl: string | null;
+}): {
+  readonly overlayFrameUrl: string | null;
+  readonly primaryFrameUrl: string | null;
+} {
+  if (
+    params.currentFrameUrl === null ||
+    params.loadedFrameUrl === null ||
+    params.loadedFrameUrl === params.currentFrameUrl
+  ) {
+    return {
+      overlayFrameUrl: null,
+      primaryFrameUrl: params.currentFrameUrl,
+    };
+  }
+
+  return {
+    overlayFrameUrl: params.currentFrameUrl,
+    primaryFrameUrl: params.loadedFrameUrl,
+  };
+}
+
+function revokeLoadedTemplateCardFrameAfterReplacement(params: {
+  readonly frameUrl: string;
+  readonly previousLoadedFrameUrl: string | null;
+}): void {
+  if (
+    params.previousLoadedFrameUrl === null ||
+    params.previousLoadedFrameUrl === params.frameUrl
+  ) {
+    return;
+  }
+  revokePresentationTemplateHtmlPreviewUrl(params.previousLoadedFrameUrl);
+}
+
+function presentationTemplateCardActiveFrameUrlForImmediateRevocation(params: {
+  readonly activeFrameUrl: string | null;
+  readonly loadedFrameUrl: string | null;
+}): string | null {
+  if (
+    params.activeFrameUrl === null ||
+    params.activeFrameUrl === params.loadedFrameUrl
+  ) {
+    return null;
+  }
+  return params.activeFrameUrl;
+}
+
+function revealTemplatePreviewFrameAfterPaint(params: {
+  readonly frame: HTMLIFrameElement;
+  readonly frameUrl: string;
+  readonly onFrameLoad: (frameUrl: string) => void;
+}): void {
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      if (!params.frame.isConnected) {
+        return;
+      }
+      params.frame.dataset.loaded = "true";
+      params.onFrameLoad(params.frameUrl);
+    });
+  });
+}
+
+function TemplatePreviewFrames({
+  fallbackImageUrl,
+  loading,
+  onFrameLoad,
+  overlayFrameUrl,
+  primaryFrameUrl,
+  title,
+}: {
+  readonly fallbackImageUrl: string;
+  readonly loading: boolean;
+  readonly onFrameLoad: (frameUrl: string) => void;
+  readonly overlayFrameUrl: string | null;
+  readonly primaryFrameUrl: string | null;
+  readonly title: string;
+}) {
+  const frameUrls: readonly string[] =
+    primaryFrameUrl === null
+      ? []
+      : [
+          primaryFrameUrl,
+          ...(overlayFrameUrl === null ? [] : [overlayFrameUrl]),
+        ];
+
+  return (
+    <>
+      <img
+        key={fallbackImageUrl}
+        src={fallbackImageUrl}
+        alt=""
+        aria-hidden="true"
+        data-testid={`${title} card image preview`}
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+        loading="eager"
+        decoding="async"
+        fetchPriority="high"
+      />
+      {frameUrls.map((frameUrl) => {
+        return (
+          <iframe
+            key={frameUrl ?? "empty"}
+            title={
+              frameUrl === overlayFrameUrl
+                ? `${title} active HTML preview`
+                : `${title} HTML preview`
+            }
+            data-testid={
+              frameUrl === overlayFrameUrl || overlayFrameUrl === null
+                ? `${title} card HTML preview`
+                : undefined
+            }
+            src={frameUrl}
+            sandbox="allow-same-origin"
+            tabIndex={-1}
+            className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 data-[loaded=true]:opacity-100"
+            onLoad={(event) => {
+              revealTemplatePreviewFrameAfterPaint({
+                frame: event.currentTarget,
+                frameUrl,
+                onFrameLoad,
+              });
+            }}
+          />
+        );
+      })}
+      {loading ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-0.5 overflow-hidden bg-muted">
+          <div className="h-full w-1/3 animate-pulse bg-muted-foreground/40" />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function TemplatePreview({
+  item,
+  onPreview,
+  theme,
+}: {
+  item: PresentationTemplateItem;
+  onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
+  priority?: boolean;
+  theme?: PresentationTemplateThemeOption;
+}) {
+  const hover = useGet(templateCardHover$);
+  const setHover = useSet(setTemplateCardHover$);
+  const htmlPreview = useGet(templateCardHtmlPreview$);
+  const setHtmlPreview = useSet(setTemplateCardHtmlPreview$);
+  const loadedHtmlFrameUrls = useGet(templateCardLoadedHtmlFrameUrls$);
+  const setLoadedHtmlFrameUrl = useSet(setTemplateCardLoadedHtmlFrameUrl$);
+  const fallbackSlideCount = presentationTemplateSlideCount(item);
+  const hoverSlideIndex = Math.max(
+    0,
+    Math.min(
+      hover?.slug === item.slug ? hover.index : 0,
+      fallbackSlideCount - 1,
+    ),
+  );
+  const previewTheme =
+    theme ??
+    findPresentationTemplateTheme(defaultPresentationTemplateThemeId(item));
+  const fallbackImageUrl = presentationTemplateCardSlideImage(
+    item,
+    hoverSlideIndex,
+    previewTheme,
+  );
+  const activeHtmlPreview =
+    htmlPreview?.slug === item.slug &&
+    htmlPreview.embedUrl === item.embedUrl &&
+    htmlPreview.themeId === previewTheme.id
+      ? htmlPreview
+      : null;
+  const loadedHtmlFrameKey = `card:${item.embedUrl}:${previewTheme.id}:loaded`;
+  const loadedFrameUrl = loadedHtmlFrameUrls[loadedHtmlFrameKey] ?? null;
+  const previousActiveFrameUrlForImmediateRevocation =
+    presentationTemplateCardActiveFrameUrlForImmediateRevocation({
+      activeFrameUrl: activeHtmlPreview?.frameUrl ?? null,
+      loadedFrameUrl,
+    });
+  const scrubSlideCount = activeHtmlPreview?.slideCount ?? fallbackSlideCount;
+  const currentPreviewSlideIndex = () => {
+    const cache = presentationTemplateHtmlPreviewCache();
+    const index =
+      cache.pendingSlideIndexes.get(item.embedUrl) ??
+      cache.activeIndexes.get(item.embedUrl) ??
+      hoverSlideIndex;
+    return Math.max(0, Math.min(index, scrubSlideCount - 1));
+  };
+  const currentFrameUrl =
+    currentPreviewSlideIndex() === 0
+      ? null
+      : (activeHtmlPreview?.frameUrl ?? null);
+  const { overlayFrameUrl, primaryFrameUrl } =
+    presentationTemplateCardFrameUrls({
+      currentFrameUrl,
+      loadedFrameUrl,
+    });
+  const openPreview = () => {
+    onPreview(item, currentPreviewSlideIndex());
+  };
+  const handleFrameLoad = (frameUrl: string) => {
+    revokeLoadedTemplateCardFrameAfterReplacement({
+      frameUrl,
+      previousLoadedFrameUrl: loadedFrameUrl,
+    });
+    setLoadedHtmlFrameUrl(loadedHtmlFrameKey, frameUrl);
+  };
+
+  const startHtmlPreviewLoad = () => {
+    const cache = presentationTemplateHtmlPreviewCache();
+    const activeIndex = cache.activeIndexes.get(item.embedUrl) ?? 0;
+    const cachedDraft = cache.drafts.get(item.embedUrl);
+    if (cachedDraft !== undefined) {
+      const previewState = createPresentationTemplateCardHtmlPreviewState({
+        draft: cachedDraft,
+        index: activeIndex,
+        item,
+        previousFrameUrl: previousActiveFrameUrlForImmediateRevocation,
+        theme: previewTheme,
+      });
+      setHtmlPreview(previewState);
+      return;
+    }
+
+    if (cache.failed.has(item.embedUrl)) {
+      setHtmlPreview({
+        slug: item.slug,
+        embedUrl: item.embedUrl,
+        themeId: previewTheme.id,
+        loading: false,
+        failed: true,
+        frameUrl: null,
+        slideCount: fallbackSlideCount,
+      });
+      return;
+    }
+
+    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
+    if (pendingLoad === undefined) {
+      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
+      cache.pendingLoads.set(item.embedUrl, pendingLoad);
+    }
+
+    const activeToken = Symbol(item.embedUrl);
+    cache.activeTokens.set(item.embedUrl, activeToken);
+    setHtmlPreview({
+      slug: item.slug,
+      embedUrl: item.embedUrl,
+      themeId: previewTheme.id,
+      loading: true,
+      failed: false,
+      frameUrl: null,
+      slideCount: fallbackSlideCount,
+    });
+    detach(
+      (async () => {
+        const result = await settle(pendingLoad);
+        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
+          cache.pendingLoads.delete(item.embedUrl);
+        }
+
+        if (!result.ok || result.value === null) {
+          cache.failed.add(item.embedUrl);
+          if (cache.activeTokens.get(item.embedUrl) === activeToken) {
+            setHtmlPreview({
+              slug: item.slug,
+              embedUrl: item.embedUrl,
+              themeId: previewTheme.id,
+              loading: false,
+              failed: true,
+              frameUrl: null,
+              slideCount: fallbackSlideCount,
+            });
+          }
+          return;
+        }
+
+        cache.drafts.set(item.embedUrl, result.value);
+        if (cache.activeTokens.get(item.embedUrl) === activeToken) {
+          setHtmlPreview(
+            createPresentationTemplateCardHtmlPreviewState({
+              draft: result.value,
+              index: cache.activeIndexes.get(item.embedUrl) ?? 0,
+              item,
+              previousFrameUrl: previousActiveFrameUrlForImmediateRevocation,
+              theme: previewTheme,
+            }),
+          );
+        }
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  const applySlideIndex = (index: number) => {
+    const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
+      item.embedUrl,
+    );
+    setHover({ slug: item.slug, index });
+    if (cachedDraft !== undefined) {
+      setHtmlPreview(
+        createPresentationTemplateCardHtmlPreviewState({
+          draft: cachedDraft,
+          index,
+          item,
+          previousFrameUrl: previousActiveFrameUrlForImmediateRevocation,
+          theme: previewTheme,
+        }),
+      );
+    }
+  };
+
+  const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const cache = presentationTemplateHtmlPreviewCache();
+    if (!cache.drafts.has(item.embedUrl)) {
+      return;
+    }
+    if (scrubSlideCount < 2) {
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) {
+      return;
+    }
+    const offsetX = Math.min(
+      rect.width - 1,
+      Math.max(0, event.clientX - rect.left),
+    );
+    const nextIndex = Math.min(
+      scrubSlideCount - 1,
+      Math.round((offsetX / rect.width) * (scrubSlideCount - 1)),
+    );
+    const currentIndex =
+      cache.pendingSlideIndexes.get(item.embedUrl) ??
+      currentPreviewSlideIndex();
+    if (nextIndex === currentIndex) {
+      return;
+    }
+    schedulePresentationTemplateCardSlideIndex({
+      apply: applySlideIndex,
+      embedUrl: item.embedUrl,
+      index: nextIndex,
+    });
+    event.currentTarget.dataset.targetSlideIndex = String(nextIndex);
+  };
+
+  return (
+    <div
+      className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted"
+      onMouseEnter={() => {
+        cancelPresentationTemplateCardSlideIndex(item.embedUrl);
+        presentationTemplateHtmlPreviewCache().activeIndexes.set(
+          item.embedUrl,
+          0,
+        );
+        setHover({ slug: item.slug, index: 0 });
+        startHtmlPreviewLoad();
+      }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={(event) => {
+        delete event.currentTarget.dataset.targetSlideIndex;
+        const cache = presentationTemplateHtmlPreviewCache();
+        cancelPresentationTemplateCardSlideIndex(item.embedUrl);
+        cache.activeIndexes.delete(item.embedUrl);
+        cache.activeTokens.delete(item.embedUrl);
+        setHover(null);
+        revokePresentationTemplateHtmlPreviewUrl(
+          previousActiveFrameUrlForImmediateRevocation,
+        );
+        setHtmlPreview(null);
+      }}
+    >
+      <TemplatePreviewFrames
+        fallbackImageUrl={fallbackImageUrl}
+        loading={activeHtmlPreview?.loading === true}
+        onFrameLoad={handleFrameLoad}
+        overlayFrameUrl={overlayFrameUrl}
+        primaryFrameUrl={primaryFrameUrl}
+        title={item.title}
+      />
+      <button
+        type="button"
+        aria-label={`Preview ${item.title} at current slide`}
+        className="absolute inset-0 z-10 cursor-zoom-in bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        onClick={openPreview}
+      />
+    </div>
+  );
+}
+
+const TEMPLATE_DETAIL_FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  '[tabindex]:not([tabindex="-1"]):not([role="group"])',
+].join(",");
+
+function templateDetailFocusableElements(root: HTMLElement): HTMLElement[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(TEMPLATE_DETAIL_FOCUSABLE_SELECTOR),
+  ).filter((element) => {
+    return (
+      element.tabIndex >= 0 &&
+      !element.hasAttribute("disabled") &&
+      !element.closest("[inert]")
+    );
+  });
+}
+
+function handleTemplateDetailTabKeyDown(
+  event: ReactKeyboardEvent<HTMLElement>,
+): void {
+  if (event.key !== "Tab") {
+    return;
+  }
+
+  const candidates = templateDetailFocusableElements(event.currentTarget);
+  if (candidates.length === 0) {
+    return;
+  }
+
+  const target =
+    event.target instanceof HTMLElement ? event.target : document.activeElement;
+  const currentIndex = candidates.findIndex((candidate) => {
+    return target instanceof Node && candidate.contains(target);
+  });
+  const direction = event.shiftKey ? -1 : 1;
+  const nextIndex =
+    currentIndex === -1
+      ? event.shiftKey
+        ? candidates.length - 1
+        : 0
+      : (currentIndex + direction + candidates.length) % candidates.length;
+
+  event.preventDefault();
+  candidates[nextIndex]?.focus();
+}
+
+interface PresentationTemplateDetailPreviewState {
+  readonly embedUrl: string;
+  readonly failed: boolean;
+  readonly frameUrl: string | null;
+  readonly index: number;
+  readonly loading: boolean;
+  readonly slideCount: number;
+  readonly slug: string;
+  readonly themeId: string;
+}
+
+type SetPresentationTemplateDetailPreview = (
+  value: PresentationTemplateDetailPreviewState | null,
+) => void;
+
+type SetPresentationTemplateDetailSlideIndex = (
+  slug: string,
+  index: number,
+) => void;
+
+function setLoadedPresentationTemplateDetailPreview({
+  draft,
+  index,
+  item,
+  previousFrameUrl,
+  selectedTheme,
+  setDetailPreview,
+}: {
+  readonly draft: PresentationEditDraft;
+  readonly index: number;
+  readonly item: PresentationTemplateItem;
+  readonly previousFrameUrl: string | null;
+  readonly selectedTheme: PresentationTemplateThemeOption;
+  readonly setDetailPreview: SetPresentationTemplateDetailPreview;
+}) {
+  const slide = draft.slides[Math.min(index, draft.slides.length - 1)];
+  if (slide === undefined) {
+    return;
+  }
+  revokePresentationTemplateHtmlPreviewUrl(previousFrameUrl);
+  const frameUrl = createThemedPresentationPreviewUrl({
+    activeSlideId: slide.id,
+    draft,
+    theme: selectedTheme,
+  });
+  setDetailPreview({
+    slug: item.slug,
+    embedUrl: item.embedUrl,
+    themeId: selectedTheme.id,
+    index,
+    loading: false,
+    failed: false,
+    frameUrl,
+    slideCount: draft.slides.length,
+  });
+}
+
+function selectPresentationTemplateDetailSlide({
+  detailPreview,
+  detailSlideCount,
+  index,
+  item,
+  selectedTheme,
+  setDetailPreview,
+  setSlideIndex,
+}: {
+  readonly detailPreview: PresentationTemplateDetailPreviewState | null;
+  readonly detailSlideCount: number;
+  readonly index: number;
+  readonly item: PresentationTemplateItem;
+  readonly selectedTheme: PresentationTemplateThemeOption;
+  readonly setDetailPreview: SetPresentationTemplateDetailPreview;
+  readonly setSlideIndex: SetPresentationTemplateDetailSlideIndex;
+}) {
+  const nextIndex = Math.max(0, Math.min(detailSlideCount - 1, index));
+  setSlideIndex(item.slug, nextIndex);
+  const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
+    item.embedUrl,
+  );
+  if (cachedDraft !== undefined) {
+    setLoadedPresentationTemplateDetailPreview({
+      draft: cachedDraft,
+      index: nextIndex,
+      item,
+      previousFrameUrl: detailPreview?.frameUrl ?? null,
+      selectedTheme,
+      setDetailPreview,
+    });
+  }
+}
+
+function TemplatePreviewPage({
+  item,
+  onBack,
+  onSelect,
+}: {
+  item: PresentationTemplateItem;
+  onBack: () => void;
+  onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
+}) {
+  const detailPreview = useGet(templateDetailHtmlPreview$);
+  const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
+  const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
+  const setThemeId = useSet(setTemplateDetailThemeId$);
+  const setCardThemeId = useSet(setTemplateCardThemeId$);
+  const slideIndexBySlug = useGet(templateDetailSlideIndexBySlug$);
+  const setSlideIndex = useSet(setTemplateDetailSlideIndex$);
+  const selectedThemeId =
+    themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item);
+  const selectedTheme = findPresentationTemplateTheme(selectedThemeId);
+  const activeSlideIndex = slideIndexBySlug[item.slug] ?? 0;
+  const visibleDetailPreview =
+    detailPreview?.slug === item.slug &&
+    detailPreview.embedUrl === item.embedUrl &&
+    detailPreview.themeId === selectedTheme.id &&
+    detailPreview.index === activeSlideIndex
+      ? detailPreview
+      : null;
+  const fallbackSlideCount = presentationTemplateSlideCount(item);
+  const detailSlideCount =
+    visibleDetailPreview?.slideCount ?? fallbackSlideCount;
+  const cachedDetailDraft = presentationTemplateHtmlPreviewCache().drafts.get(
+    item.embedUrl,
+  );
+  const thumbnailThemeVariables =
+    getPresentationTemplateThumbnailThemeVariables(selectedTheme);
+  const detailFallbackImage = presentationTemplateFallbackSlideImage(
+    item,
+    activeSlideIndex,
+  );
+
+  const setLoadedDetailPreview = (params: {
+    readonly draft: PresentationEditDraft;
+    readonly index: number;
+    readonly previousFrameUrl: string | null;
+    readonly theme: PresentationTemplateThemeOption;
+  }) => {
+    setLoadedPresentationTemplateDetailPreview({
+      draft: params.draft,
+      index: params.index,
+      item,
+      previousFrameUrl: params.previousFrameUrl,
+      selectedTheme: params.theme,
+      setDetailPreview,
+    });
+  };
+
+  const loadDetailHtmlPreviewAfterMount = (node: HTMLDivElement | null) => {
+    const hasVisibleDetailPreviewResult =
+      visibleDetailPreview !== null &&
+      (visibleDetailPreview.frameUrl !== null || visibleDetailPreview.failed);
+    if (
+      node === null ||
+      hasVisibleDetailPreviewResult ||
+      (isHappyDomTestEnvironment() &&
+        !shouldLoadTemplateDetailHtmlPreviewInHappyDom())
+    ) {
+      return;
+    }
+
+    const cache = presentationTemplateHtmlPreviewCache();
+    const detailTokenKey = `detail:${item.embedUrl}`;
+    const detailToken = Symbol(detailTokenKey);
+    cache.detailTokens.set(detailTokenKey, detailToken);
+    const isActive = () => {
+      return (
+        node.isConnected &&
+        cache.detailTokens.get(detailTokenKey) === detailToken
+      );
+    };
+    const cachedDraft = cache.drafts.get(item.embedUrl);
+    if (cachedDraft !== undefined) {
+      if (isActive()) {
+        setLoadedDetailPreview({
+          draft: cachedDraft,
+          index: activeSlideIndex,
+          previousFrameUrl: detailPreview?.frameUrl ?? null,
+          theme: selectedTheme,
+        });
+      }
+      return;
+    }
+
+    if (cache.failed.has(item.embedUrl)) {
+      if (isActive()) {
+        setDetailPreview({
+          slug: item.slug,
+          embedUrl: item.embedUrl,
+          themeId: selectedTheme.id,
+          index: activeSlideIndex,
+          loading: false,
+          failed: true,
+          frameUrl: null,
+          slideCount: fallbackSlideCount,
+        });
+      }
+      return;
+    }
+
+    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
+    if (pendingLoad === undefined) {
+      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
+      cache.pendingLoads.set(item.embedUrl, pendingLoad);
+    }
+    if (visibleDetailPreview?.loading !== true) {
+      setDetailPreview({
+        slug: item.slug,
+        embedUrl: item.embedUrl,
+        themeId: selectedTheme.id,
+        index: activeSlideIndex,
+        loading: true,
+        failed: false,
+        frameUrl: null,
+        slideCount: fallbackSlideCount,
+      });
+    }
+    detach(
+      (async () => {
+        const result = await settle(pendingLoad);
+        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
+          cache.pendingLoads.delete(item.embedUrl);
+        }
+        if (!result.ok || result.value === null) {
+          cache.failed.add(item.embedUrl);
+          if (!isActive()) {
+            return;
+          }
+          setDetailPreview({
+            slug: item.slug,
+            embedUrl: item.embedUrl,
+            themeId: selectedTheme.id,
+            index: activeSlideIndex,
+            loading: false,
+            failed: true,
+            frameUrl: null,
+            slideCount: fallbackSlideCount,
+          });
+          return;
+        }
+        cache.drafts.set(item.embedUrl, result.value);
+        if (isActive()) {
+          setLoadedDetailPreview({
+            draft: result.value,
+            index: activeSlideIndex,
+            previousFrameUrl: detailPreview?.frameUrl ?? null,
+            theme: selectedTheme,
+          });
+        }
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  const selectDetailSlide = (index: number) => {
+    selectPresentationTemplateDetailSlide({
+      detailPreview,
+      detailSlideCount,
+      index,
+      item,
+      selectedTheme,
+      setDetailPreview,
+      setSlideIndex,
+    });
+  };
+
+  const selectDetailTheme = (theme: PresentationTemplateThemeOption) => {
+    setThemeId(item.slug, theme.id);
+    const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
+      item.embedUrl,
+    );
+    if (cachedDraft !== undefined) {
+      setLoadedDetailPreview({
+        draft: cachedDraft,
+        index: activeSlideIndex,
+        previousFrameUrl: detailPreview?.frameUrl ?? null,
+        theme,
+      });
+    }
+  };
+  const handleDetailSlideKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (event.key === "ArrowLeft" && activeSlideIndex > 0) {
+      event.preventDefault();
+      selectDetailSlide(activeSlideIndex - 1);
+    }
+    if (event.key === "ArrowRight" && activeSlideIndex < detailSlideCount - 1) {
+      event.preventDefault();
+      selectDetailSlide(activeSlideIndex + 1);
+    }
+  };
+  const multiAccentThemes = PRESENTATION_TEMPLATE_THEME_OPTIONS.filter(
+    (theme) => {
+      return theme.group === "multi-accent";
+    },
+  );
+  const singleAccentThemes = PRESENTATION_TEMPLATE_THEME_OPTIONS.filter(
+    (theme) => {
+      return theme.group === "single-accent";
+    },
+  );
+
+  return (
+    <>
+      <DialogHeader
+        data-presentation-template-detail-header=""
+        className="shrink-0 border-b border-border py-4 pl-5 pr-14 text-left sm:pr-16"
+      >
+        <DialogTitle className="flex min-w-0 max-w-full items-center justify-start gap-1.5 text-left text-base leading-none">
+          <button
+            type="button"
+            className="inline-flex shrink-0 items-center p-0 leading-none text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onBack}
+          >
+            Template
+          </button>
+          <span className="shrink-0 text-muted-foreground">/</span>
+          <span className="block min-w-0 truncate leading-none">
+            {item.title}
+          </span>
+        </DialogTitle>
+      </DialogHeader>
+      <div
+        ref={loadDetailHtmlPreviewAfterMount}
+        className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden"
+      >
+        <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
+          <div
+            role="group"
+            aria-label={`${item.title} slide preview`}
+            tabIndex={0}
+            onKeyDown={handleDetailSlideKeyDown}
+            className="relative aspect-[16/9] overflow-hidden rounded-lg bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <img
+              key={detailFallbackImage}
+              src={detailFallbackImage}
+              alt=""
+              aria-hidden="true"
+              data-testid={`${item.title} detail image preview`}
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+              loading="eager"
+              decoding="async"
+              fetchPriority="high"
+            />
+            <iframe
+              key={
+                visibleDetailPreview?.frameUrl ??
+                `${item.slug}:${selectedTheme.id}:${activeSlideIndex}:pending`
+              }
+              title={`${item.title} HTML preview`}
+              data-testid={`${item.title} detail HTML preview`}
+              src={visibleDetailPreview?.frameUrl ?? undefined}
+              sandbox="allow-same-origin"
+              tabIndex={-1}
+              className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 data-[loaded=true]:opacity-100"
+              onLoad={(event) => {
+                const frameUrl = visibleDetailPreview?.frameUrl;
+                if (!frameUrl) {
+                  return;
+                }
+                revealTemplatePreviewFrameAfterPaint({
+                  frame: event.currentTarget,
+                  frameUrl,
+                  onFrameLoad: () => {},
+                });
+              }}
+            />
+            <button
+              type="button"
+              aria-label="Preview previous slide"
+              disabled={activeSlideIndex === 0}
+              tabIndex={-1}
+              onClick={() => {
+                selectDetailSlide(activeSlideIndex - 1);
+              }}
+              className="absolute inset-y-0 left-0 w-1/2 cursor-w-resize bg-transparent focus:outline-none disabled:cursor-default"
+            />
+            <button
+              type="button"
+              aria-label="Preview next slide"
+              disabled={activeSlideIndex >= detailSlideCount - 1}
+              tabIndex={-1}
+              onClick={() => {
+                selectDetailSlide(activeSlideIndex + 1);
+              }}
+              className="absolute inset-y-0 right-0 w-1/2 cursor-e-resize bg-transparent focus:outline-none disabled:cursor-default"
+            />
+            {visibleDetailPreview?.loading ||
+            !visibleDetailPreview?.frameUrl ? (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-muted">
+                <div className="h-full w-1/3 animate-pulse bg-muted-foreground/40" />
+              </div>
+            ) : null}
+          </div>
+          <div
+            className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-1.5 lg:grid-cols-8"
+            onKeyDown={handleDetailSlideKeyDown}
+          >
+            {Array.from(
+              { length: Math.min(detailSlideCount, 15) },
+              (_, index) => {
+                return index + 1;
+              },
+            ).map((slideNumber) => {
+              const slideIndex = slideNumber - 1;
+              const active = slideIndex === activeSlideIndex;
+              const thumbnailImage = presentationTemplateFallbackSlideImage(
+                item,
+                slideIndex,
+              );
+              const thumbnailSlide =
+                cachedDetailDraft?.slides[slideIndex] ?? null;
+              return (
+                <button
+                  key={slideNumber}
+                  type="button"
+                  aria-label={`Preview slide ${slideNumber}`}
+                  aria-pressed={active}
+                  onClick={() => {
+                    selectDetailSlide(slideIndex);
+                  }}
+                  className={cn(
+                    "relative aspect-[16/9] overflow-hidden rounded-md border bg-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    active
+                      ? "border-ring ring-1 ring-ring"
+                      : "border-border hover:border-muted-foreground/50",
+                  )}
+                >
+                  <PresentationTemplateShadowThumbnail
+                    draft={cachedDetailDraft}
+                    fallbackImage={thumbnailImage}
+                    slideId={thumbnailSlide?.id ?? null}
+                    themeVariables={thumbnailThemeVariables}
+                    title={`${item.title} slide ${slideNumber} preview`}
+                  />
+                  <span className="absolute bottom-1 right-1 rounded border border-border bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold text-foreground shadow-sm backdrop-blur">
+                    {slideNumber}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex flex-col lg:sticky lg:top-0">
+          <div className="rounded-lg border border-border bg-background p-4 shadow-sm">
+            <h3 className="text-xl font-semibold text-foreground">
+              {item.title}
+            </h3>
+            <div className="my-5 border-t border-border" />
+            <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <IconPalette size={14} stroke={1.9} />
+              <span>Theme</span>
+            </p>
+            <div className="mt-3 space-y-4">
+              <div className="space-y-2">
+                <p className="px-1 text-xs font-medium text-muted-foreground">
+                  Multi-accent
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {multiAccentThemes.map((theme) => {
+                    const active = theme.id === selectedTheme.id;
+                    return (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        aria-label={`Select style ${theme.name}`}
+                        aria-pressed={active}
+                        onClick={() => {
+                          selectDetailTheme(theme);
+                        }}
+                        className={cn(
+                          "relative h-7 w-14 overflow-hidden rounded-lg border bg-background transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          active
+                            ? "border-ring ring-1 ring-ring"
+                            : "border-border hover:border-muted-foreground/60",
+                        )}
+                      >
+                        <span className="flex h-full overflow-hidden rounded-md">
+                          {presentationTemplateThemePreviewSwatches(theme).map(
+                            (swatch) => {
+                              return (
+                                <span
+                                  key={`${theme.id}-${swatch.id}`}
+                                  className="flex-1"
+                                  style={{ backgroundColor: swatch.color }}
+                                />
+                              );
+                            },
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="px-1 text-xs font-medium text-muted-foreground">
+                  Single-accent
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {singleAccentThemes.map((theme) => {
+                    const active = theme.id === selectedTheme.id;
+                    const swatches = presentationTemplateThemeAccentSwatches(
+                      item,
+                      theme,
+                    );
+                    return (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        aria-label={`Select style ${theme.name}`}
+                        aria-pressed={active}
+                        onClick={() => {
+                          selectDetailTheme(theme);
+                        }}
+                        className={cn(
+                          "relative h-7 w-7 overflow-hidden rounded-md border transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          active
+                            ? "border-ring ring-1 ring-ring"
+                            : "border-border hover:border-muted-foreground/60",
+                        )}
+                      >
+                        <span className="flex h-full">
+                          {swatches.map((swatch) => {
+                            return (
+                              <span
+                                key={`${theme.id}-${swatch.id}`}
+                                className="flex-1"
+                                style={{ backgroundColor: swatch.color }}
+                              />
+                            );
+                          })}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              aria-label={`Select template ${item.title}`}
+              className="mt-4 h-12 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              onClick={() => {
+                setCardThemeId(item.slug, selectedTheme.id);
+                onSelect(
+                  item,
+                  presentationTemplateColorSystemId(selectedTheme.id),
+                );
+              }}
+            >
+              Use this template
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function PptCard({
+  item,
+  selected,
+  onSelect,
+  onPreview,
+}: {
+  item: PresentationTemplateItem;
+  selected: boolean;
+  onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
+  onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
+  priority?: boolean;
+}) {
+  const themeIdBySlug = useGet(templateCardThemeIdBySlug$);
+  const selectedTheme = findPresentationTemplateTheme(
+    themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
+  );
+
+  return (
+    <div
+      className={cn(
+        "group flex flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20",
+        TEMPLATE_CARD_SHADOW,
+        selected ? "border-primary ring-1 ring-primary" : "border-border",
+      )}
+    >
+      <TemplatePreview
+        item={item}
+        onPreview={onPreview}
+        theme={selectedTheme}
+      />
+      <div className="flex flex-1 flex-wrap items-center gap-2 px-3.5 py-3">
+        <div className="min-w-0 flex-1">
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <p className="min-w-0 cursor-default truncate text-sm font-semibold leading-5 text-foreground">
+                  {item.title}
+                </p>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{item.title}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        <button
+          type="button"
+          aria-label={`Select template ${item.title}`}
+          aria-pressed={selected}
+          onClick={() => {
+            onSelect(item, presentationTemplateColorSystemId(selectedTheme.id));
+          }}
+          className={cn(
+            "h-8 shrink-0 rounded-md border border-border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            selected
+              ? "bg-primary/10 text-primary"
+              : "bg-background text-foreground hover:bg-muted",
+          )}
+        >
+          Use
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function IllustrationTemplateHero({
+  item,
+  images,
+  activeIndex,
+  priority = false,
+  source,
+  onVariantChange,
+}: {
+  item: IllustrationTemplateItem;
+  images: readonly string[];
+  activeIndex: number;
+  priority?: boolean;
+  source: string;
+  onVariantChange: (slug: string, index: number) => void;
+}) {
+  const heroImage = illustrationHeroImageUrl(source);
+  const navigable = images.length > 1;
+  const variantAt = (direction: -1 | 1): number => {
+    return (activeIndex + direction + images.length) % images.length;
+  };
+  const preloadNeighbors = (): void => {
+    preloadIllustrationVariant(images, variantAt(1));
+    preloadIllustrationVariant(images, variantAt(-1));
+  };
+
+  return (
+    <div
+      className="relative w-full overflow-hidden bg-muted"
+      style={{ aspectRatio: `${String(item.width)} / ${String(item.height)}` }}
+    >
+      <img
+        key={source}
+        src={heroImage}
+        alt={`${item.title} illustration preview`}
+        className={cn(
+          "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100",
+          navigable && "cursor-pointer",
+        )}
+        loading={priority ? "eager" : "lazy"}
+        decoding="async"
+        fetchPriority={priority ? "high" : "low"}
+        onMouseEnter={navigable ? preloadNeighbors : undefined}
+        onClick={
+          navigable
+            ? (event) => {
+                // Navigate by clicking the image halves instead of overlay
+                // buttons, so the native context menu (copy image) stays usable.
+                const rect = event.currentTarget.getBoundingClientRect();
+                const direction =
+                  event.clientX - rect.left < rect.width / 2 ? -1 : 1;
+                selectIllustrationVariant({
+                  card: event.currentTarget.closest<HTMLElement>(
+                    "[data-illustration-template-card]",
+                  ),
+                  index: variantAt(direction),
+                  item,
+                  onVariantChange,
+                });
+              }
+            : undefined
+        }
+        onLoad={(event) => {
+          const image = event.currentTarget;
+          detach(
+            markIllustrationPreviewImageLoaded(heroImage, image),
+            Reason.DomCallback,
+          );
+        }}
+        onError={(event) => {
+          event.currentTarget.parentElement
+            ?.querySelector<HTMLElement>("[data-illustration-preview-error]")
+            ?.removeAttribute("hidden");
+        }}
+      />
+      <div
+        data-illustration-preview-error=""
+        hidden
+        className="absolute inset-0 flex items-center justify-center bg-muted text-muted-foreground"
+      >
+        <IconTemplate size={28} stroke={1.5} />
+      </div>
+    </div>
+  );
+}
+
+interface IllustrationPreviewImageCache {
+  readonly decoded: Set<string>;
+  readonly pendingDecodes: Map<string, Promise<void>>;
+  readonly preloads: Map<string, HTMLImageElement>;
+}
+
+function illustrationPreviewImageCache(): IllustrationPreviewImageCache {
+  const cacheKey = "vm0IllustrationPreviewImageDecodeCache";
+  const existingCache = Reflect.get(globalThis, cacheKey) as
+    | IllustrationPreviewImageCache
+    | undefined;
+  if (existingCache !== undefined) {
+    return existingCache;
+  }
+
+  const cache: IllustrationPreviewImageCache = {
+    decoded: new Set<string>(),
+    pendingDecodes: new Map<string, Promise<void>>(),
+    preloads: new Map<string, HTMLImageElement>(),
+  };
+  Reflect.set(globalThis, cacheKey, cache);
+  return cache;
+}
+
+function illustrationHeroImageUrl(source: string): string {
+  return r2ImageTransformUrl(source, ILLUSTRATION_CARD_PREVIEW_SIZE);
+}
+
+function preloadIllustrationPreviewImage(
+  url: string,
+): HTMLImageElement | undefined {
+  if (typeof Image === "undefined") {
+    return undefined;
+  }
+
+  const cache = illustrationPreviewImageCache();
+  const cachedImage = cache.preloads.get(url);
+  if (cachedImage !== undefined) {
+    return cachedImage;
+  }
+
+  const image = new Image();
+  image.decoding = "async";
+  image.loading = "eager";
+  image.fetchPriority = "high";
+  image.src = url;
+  cache.preloads.set(url, image);
+  return image;
+}
+
+async function decodeIllustrationPreviewImage(url: string): Promise<void> {
+  const cache = illustrationPreviewImageCache();
+  if (cache.decoded.has(url)) {
+    return;
+  }
+
+  if (isHappyDomTestEnvironment()) {
+    cache.decoded.add(url);
+    return;
+  }
+
+  const pendingDecode = cache.pendingDecodes.get(url);
+  if (pendingDecode !== undefined) {
+    await pendingDecode;
+    return;
+  }
+
+  const image = preloadIllustrationPreviewImage(url);
+  if (image === undefined) {
+    return;
+  }
+
+  if (image.decode === undefined) {
+    if (image.complete && image.naturalWidth > 0) {
+      cache.decoded.add(url);
+    }
+    return;
+  }
+
+  const decode = markIllustrationPreviewImageDecoded(url, image);
+  cache.pendingDecodes.set(url, decode);
+  await decode;
+}
+
+async function markIllustrationPreviewImageDecoded(
+  url: string,
+  image: HTMLImageElement,
+): Promise<void> {
+  const cache = illustrationPreviewImageCache();
+  await tapError(image.decode(), () => {});
+  if (image.complete && image.naturalWidth > 0) {
+    cache.decoded.add(url);
+  }
+  cache.pendingDecodes.delete(url);
+}
+
+async function markIllustrationPreviewImageLoaded(
+  url: string,
+  image: HTMLImageElement,
+): Promise<void> {
+  const cache = illustrationPreviewImageCache();
+  if (image.decode !== undefined) {
+    await tapError(image.decode(), () => {});
+  }
+  if (image.complete && image.naturalWidth > 0) {
+    cache.decoded.add(url);
+  }
+  image.dataset.loaded = "true";
+  image.parentElement
+    ?.querySelector<HTMLElement>("[data-illustration-preview-error]")
+    ?.setAttribute("hidden", "");
+}
+
+function illustrationPreviewImageDecoded(url: string): boolean {
+  return illustrationPreviewImageCache().decoded.has(url);
+}
+
+async function selectDecodedIllustrationVariant({
+  card,
+  imageUrl,
+  index,
+  item,
+  onVariantChange,
+}: {
+  card: HTMLElement;
+  imageUrl: string;
+  index: number;
+  item: IllustrationTemplateItem;
+  onVariantChange: (slug: string, index: number) => void;
+}): Promise<void> {
+  await decodeIllustrationPreviewImage(imageUrl);
+  if (
+    card.dataset.targetVariantIndex === String(index) &&
+    illustrationPreviewImageDecoded(imageUrl)
+  ) {
+    onVariantChange(item.slug, index);
+  }
+}
+
+function selectIllustrationVariant({
+  card,
+  index,
+  item,
+  onVariantChange,
+}: {
+  card: HTMLElement | null;
+  index: number;
+  item: IllustrationTemplateItem;
+  onVariantChange: (slug: string, index: number) => void;
+}): void {
+  const image = item.previewImages[index];
+  if (image === undefined) {
+    return;
+  }
+
+  const imageUrl = illustrationHeroImageUrl(image);
+  // Swap immediately only when the target hero is already decoded; otherwise
+  // decode it off-screen first so the hero never flashes a blank/loading frame.
+  if (card === null || illustrationPreviewImageDecoded(imageUrl)) {
+    onVariantChange(item.slug, index);
+    return;
+  }
+
+  card.dataset.targetVariantIndex = String(index);
+  detach(
+    selectDecodedIllustrationVariant({
+      card,
+      imageUrl,
+      index,
+      item,
+      onVariantChange,
+    }),
+    Reason.DomCallback,
+  );
+}
+
+function preloadIllustrationVariant(
+  images: readonly string[],
+  index: number,
+): void {
+  const image = images[index];
+  if (image === undefined) {
+    return;
+  }
+
+  detach(
+    decodeIllustrationPreviewImage(illustrationHeroImageUrl(image)),
+    Reason.DomCallback,
+  );
+}
+
+type IllustrationThumbnailScrollDirection = -1 | 1;
+
+const ILLUSTRATION_THUMBNAIL_REVEAL_COUNT = 2;
+const ILLUSTRATION_THUMBNAIL_EDGE_TOLERANCE_PX = 1;
+
+type IllustrationThumbnailScrollTarget = {
+  element: HTMLElement;
+  targetIsBoundary: boolean;
+};
+
+function illustrationThumbnailScrollTarget(
+  node: HTMLElement,
+  direction: IllustrationThumbnailScrollDirection,
+): IllustrationThumbnailScrollTarget {
+  let target = node;
+  for (let i = 0; i < ILLUSTRATION_THUMBNAIL_REVEAL_COUNT; i += 1) {
+    const sibling =
+      direction > 0 ? target.nextElementSibling : target.previousElementSibling;
+    if (!(sibling instanceof HTMLElement)) {
+      return {
+        element: target,
+        targetIsBoundary: true,
+      };
+    }
+    target = sibling;
+  }
+  const boundarySibling =
+    direction > 0 ? target.nextElementSibling : target.previousElementSibling;
+  return {
+    element: target,
+    targetIsBoundary: !(boundarySibling instanceof HTMLElement),
+  };
+}
+
+function maxIllustrationThumbnailScrollLeft(
+  thumbnailStrip: HTMLElement,
+): number {
+  return Math.max(0, thumbnailStrip.scrollWidth - thumbnailStrip.clientWidth);
+}
+
+function scrollIllustrationThumbnailIntoView(
+  node: HTMLButtonElement | null,
+  direction: IllustrationThumbnailScrollDirection,
+): void {
+  if (node === null) {
+    return;
+  }
+
+  const thumbnailStrip = node.closest<HTMLElement>(
+    "[data-illustration-variant-strip]",
+  );
+  if (thumbnailStrip === null) {
+    return;
+  }
+
+  const { element: target, targetIsBoundary } =
+    illustrationThumbnailScrollTarget(node, direction);
+
+  if (direction < 0) {
+    if (targetIsBoundary) {
+      if (thumbnailStrip.scrollLeft > 0) {
+        thumbnailStrip.scrollTo({
+          left: 0,
+        });
+      }
+      return;
+    }
+
+    const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const leftOverflow = thumbnailStripRect.left - targetRect.left;
+    if (leftOverflow > 0) {
+      thumbnailStrip.scrollTo({
+        left: Math.max(0, thumbnailStrip.scrollLeft - leftOverflow),
+      });
+    }
+    return;
+  }
+
+  if (targetIsBoundary) {
+    const maxScrollLeft = maxIllustrationThumbnailScrollLeft(thumbnailStrip);
+    if (thumbnailStrip.scrollLeft < maxScrollLeft) {
+      thumbnailStrip.scrollTo({
+        left: maxScrollLeft,
+      });
+    }
+    return;
+  }
+
+  const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const rightOverflow = targetRect.right - thumbnailStripRect.right;
+  if (rightOverflow > 0) {
+    thumbnailStrip.scrollTo({
+      left: Math.max(0, thumbnailStrip.scrollLeft + rightOverflow),
+    });
+  }
+}
+
+function activeIllustrationThumbnailScrollDirection(
+  node: HTMLButtonElement,
+): IllustrationThumbnailScrollDirection | null {
+  const thumbnailStrip = node.closest<HTMLElement>(
+    "[data-illustration-variant-strip]",
+  );
+  if (thumbnailStrip === null) {
+    return null;
+  }
+
+  const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
+  const thumbnailRect = node.getBoundingClientRect();
+  const maxScrollLeft = maxIllustrationThumbnailScrollLeft(thumbnailStrip);
+
+  if (
+    thumbnailRect.right >=
+      thumbnailStripRect.right - ILLUSTRATION_THUMBNAIL_EDGE_TOLERANCE_PX &&
+    (node.nextElementSibling instanceof HTMLElement ||
+      thumbnailStrip.scrollLeft < maxScrollLeft)
+  ) {
+    return 1;
+  }
+
+  if (
+    thumbnailRect.left <=
+      thumbnailStripRect.left + ILLUSTRATION_THUMBNAIL_EDGE_TOLERANCE_PX &&
+    (node.previousElementSibling instanceof HTMLElement ||
+      thumbnailStrip.scrollLeft > 0)
+  ) {
+    return -1;
+  }
+
+  return null;
+}
+
+function IllustrationTemplateCard({
+  item,
+  selected,
+  activeIndex,
+  priority = false,
+  onSelect,
+  onVariantChange,
+}: {
+  item: IllustrationTemplateItem;
+  selected: boolean;
+  activeIndex: number;
+  priority?: boolean;
+  onSelect: (item: IllustrationTemplateItem) => void;
+  onVariantChange: (slug: string, index: number) => void;
+}) {
+  const images = item.previewImages;
+  const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1));
+  const heroSource = images[safeIndex] ?? item.previewImage;
+  const hasMultipleVariants = images.length > 1;
+
+  return (
+    <div
+      data-illustration-template-card=""
+      className={cn(
+        "group mb-4 break-inside-avoid overflow-hidden rounded-xl border bg-card transition-colors",
+        TEMPLATE_CARD_SHADOW,
+        selected
+          ? "border-primary ring-1 ring-primary"
+          : "border-border hover:border-muted-foreground/30",
+      )}
+    >
+      <IllustrationTemplateHero
+        item={item}
+        images={images}
+        activeIndex={safeIndex}
+        priority={priority}
+        source={heroSource}
+        onVariantChange={onVariantChange}
+      />
+      {hasMultipleVariants && (
+        <div
+          data-illustration-variant-strip=""
+          className="flex items-center gap-2 overflow-x-auto px-3 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {images.map((image, index) => {
+            const active = index === safeIndex;
+            const thumbnailImage = r2ImageTransformUrl(
+              image,
+              ILLUSTRATION_VARIANT_THUMB_SIZE,
+            );
+            return (
+              <button
+                key={image}
+                type="button"
+                aria-label={`Show variant ${index + 1}`}
+                aria-pressed={active}
+                className={cn(
+                  "relative h-12 w-12 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  active ? "border-primary" : "border-border",
+                )}
+                onFocus={() => {
+                  preloadIllustrationPreviewImage(
+                    illustrationHeroImageUrl(image),
+                  );
+                }}
+                onMouseEnter={() => {
+                  preloadIllustrationPreviewImage(
+                    illustrationHeroImageUrl(image),
+                  );
+                }}
+                onClick={(event) => {
+                  selectIllustrationVariant({
+                    card: event.currentTarget.closest<HTMLElement>(
+                      "[data-illustration-template-card]",
+                    ),
+                    index,
+                    item,
+                    onVariantChange,
+                  });
+                  const scrollDirection = active
+                    ? activeIllustrationThumbnailScrollDirection(
+                        event.currentTarget,
+                      )
+                    : index > safeIndex
+                      ? 1
+                      : -1;
+                  if (scrollDirection !== null) {
+                    scrollIllustrationThumbnailIntoView(
+                      event.currentTarget,
+                      scrollDirection,
+                    );
+                  }
+                }}
+              >
+                <img
+                  src={thumbnailImage}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-3 px-3.5 py-3">
+        <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+          {item.title}
+        </p>
+        <button
+          type="button"
+          aria-label={`Select template ${item.title}`}
+          aria-pressed={selected}
+          onClick={() => {
+            onSelect(item);
+          }}
+          className={cn(
+            "h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            selected
+              ? "border-primary/40 bg-primary/10 text-primary"
+              : "border-border bg-background text-foreground hover:bg-muted",
+          )}
+        >
+          Use
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function resolveTemplatePickerCategory({
+  category,
+  hasPptTab,
+  hasIllustrationTab,
+  hasVideoTab,
+  hasWorkflowTab,
+}: {
+  category: string;
+  hasPptTab: boolean;
+  hasIllustrationTab: boolean;
+  hasVideoTab: boolean;
+  hasWorkflowTab: boolean;
+}): string {
+  const categories: string[] = [];
+  if (hasPptTab) {
+    categories.push("slides");
+  }
+  if (hasIllustrationTab) {
+    categories.push("illustration");
+  }
+  if (hasVideoTab) {
+    categories.push("video");
+  }
+  if (hasWorkflowTab) {
+    categories.push("workflow");
+  }
+  const defaultCategory = categories[0] ?? "slides";
+  return categories.includes(category) ? category : defaultCategory;
+}
+
+function TemplatePickerTabs({
+  selectedCategory,
+  hasPptTab,
+  hasIllustrationTab,
+  hasVideoTab,
+  hasWorkflowTab,
+  onChange,
+}: {
+  selectedCategory: string;
+  hasPptTab: boolean;
+  hasIllustrationTab: boolean;
+  hasVideoTab: boolean;
+  hasWorkflowTab: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div
+      data-template-picker-tabs-scroll=""
+      className="-mx-5 w-[calc(100%+2.5rem)] overflow-x-auto px-5 pb-1 [scrollbar-color:hsl(var(--muted-foreground)/0.24)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/25 [&::-webkit-scrollbar-track]:bg-transparent sm:mx-0 sm:w-auto sm:overflow-visible sm:px-0 sm:pb-0 sm:[scrollbar-color:auto] sm:[scrollbar-width:auto] sm:[&::-webkit-scrollbar]:hidden"
+    >
+      <Tabs
+        value={selectedCategory}
+        onValueChange={onChange}
+        className="-mb-px min-w-max"
+      >
+        <TabsList className="h-auto gap-6 rounded-none bg-transparent p-0">
+          {hasPptTab && (
+            <TabsTrigger
+              value="slides"
+              className={cn(
+                "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
+                selectedCategory === "slides"
+                  ? "border-foreground text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <IconPresentation
+                className={cn(
+                  "h-5 w-5",
+                  selectedCategory === "slides"
+                    ? "text-blue-500"
+                    : "text-muted-foreground",
+                )}
+                stroke={1.8}
+              />
+              Presentation
+            </TabsTrigger>
+          )}
+          {hasIllustrationTab && (
+            <TabsTrigger
+              value="illustration"
+              className={cn(
+                "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
+                selectedCategory === "illustration"
+                  ? "border-foreground text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <IconPhoto
+                className={cn(
+                  "h-5 w-5",
+                  selectedCategory === "illustration"
+                    ? "text-emerald-500"
+                    : "text-muted-foreground",
+                )}
+                stroke={1.8}
+              />
+              Illustration
+            </TabsTrigger>
+          )}
+          {hasVideoTab && (
+            <TabsTrigger
+              value="video"
+              className={cn(
+                "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
+                selectedCategory === "video"
+                  ? "border-foreground text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <IconVideo
+                className={cn(
+                  "h-5 w-5",
+                  selectedCategory === "video"
+                    ? "text-purple-500"
+                    : "text-muted-foreground",
+                )}
+                stroke={1.8}
+              />
+              Video
+            </TabsTrigger>
+          )}
+          {hasWorkflowTab && (
+            <TabsTrigger
+              value="workflow"
+              className={cn(
+                "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
+                selectedCategory === "workflow"
+                  ? "border-foreground text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <IconRoute
+                className={cn(
+                  "h-5 w-5",
+                  selectedCategory === "workflow"
+                    ? "text-sky-500"
+                    : "text-muted-foreground",
+                )}
+                stroke={1.8}
+              />
+              Workflow
+            </TabsTrigger>
+          )}
+        </TabsList>
+      </Tabs>
+    </div>
+  );
+}
+
+function IllustrationTemplateGrid({
+  items,
+  value,
+  variantIndexBySlug,
+  onSelect,
+  onVariantChange,
+}: {
+  items: IllustrationTemplateItem[];
+  value: GenerationTemplateRequest | undefined;
+  variantIndexBySlug: Readonly<Record<string, number>>;
+  onSelect: (item: IllustrationTemplateItem) => void;
+  onVariantChange: (slug: string, index: number) => void;
+}) {
+  // CSS multi-column masonry mirrors www.vm0.ai/illustration: each tile renders
+  // the full illustration at its native aspect ratio (no cropping, letterbox,
+  // or fixed height), and the column count adapts to the dialog width.
+  return (
+    <div className="columns-[244px] gap-4">
+      {items.map((item, index) => {
+        return (
+          <IllustrationTemplateCard
+            key={item.illustrationStyleId}
+            item={item}
+            selected={isSelectedIllustrationTemplate(item, value)}
+            activeIndex={variantIndexBySlug[item.slug] ?? 0}
+            priority={index < ILLUSTRATION_EAGER_IMAGE_COUNT}
+            onSelect={onSelect}
+            onVariantChange={onVariantChange}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function PptTemplateGrid({
+  items,
+  value,
+  onSelect,
+  onPreview,
+}: {
+  items: PresentationTemplateItem[];
+  value: GenerationTemplateRequest | undefined;
+  onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
+  onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => {
+        return (
+          <PptCard
+            key={item.slug}
+            item={item}
+            selected={isSelectedPresentationTemplate(item, value)}
+            onSelect={onSelect}
+            onPreview={onPreview}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function TemplatePickerDialog({
+  value,
+  onChange,
+  onClose,
+  hasPptTab,
+  presentationItems,
+  hasIllustrationTab,
+  hasVideoTab,
+  hasWorkflowTab,
+}: {
+  value: GenerationTemplateRequest | undefined;
+  onChange: (value: GenerationTemplateRequest | undefined) => void;
+  onClose: () => void;
+  hasPptTab: boolean;
+  presentationItems: readonly PresentationTemplateItem[];
+  hasIllustrationTab: boolean;
+  hasVideoTab: boolean;
+  hasWorkflowTab: boolean;
+}) {
+  const category = useGet(templatePickerCategory$);
+  const setCategory = useSet(setTemplatePickerCategory$);
+  const search = useGet(templatePickerSearch$);
+  const setSearch = useSet(setTemplatePickerSearch$);
+  const previewSlug = useGet(templatePickerPreviewSlug$);
+  const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const restorePresentationGridScroll = useSet(
+    restoreTemplatePickerPresentationScroll$,
+  );
+  const setPresentationGridScrollTop = useSet(
+    setTemplatePickerPresentationScrollTop$,
+  );
+  const detailPreview = useGet(templateDetailHtmlPreview$);
+  const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
+  const detailThemeIdBySlug = useGet(templateDetailThemeIdBySlug$);
+  const setDetailThemeId = useSet(setTemplateDetailThemeId$);
+  const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
+  const detailSlideIndexBySlug = useGet(templateDetailSlideIndexBySlug$);
+  const setDetailSlideIndex = useSet(setTemplateDetailSlideIndex$);
+  const illustrationVariantIndex = useGet(illustrationVariantIndex$);
+  const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
+  const previewItem =
+    presentationItems.find((item) => {
+      return item.slug === previewSlug;
+    }) ?? null;
+  const isPreviewing = Boolean(previewItem);
+  const dialogContentClassName = cn(
+    "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
+    // The auto-rendered close button defaults to top-4, which is tuned for the
+    // default p-6 dialog. This dialog uses a custom py-4 header, so re-center the
+    // 36px (size-9) close button within the 50px header.
+    "[&>button[aria-label=Close]]:top-[7px]",
+    isPreviewing
+      ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto"
+      : "flex h-[min(82vh,760px)] max-w-4xl flex-col",
+  );
+  const filteredPptItems = presentationItems.filter((item) => {
+    return presentationTemplateMatchesSearch(item, search);
+  });
+  const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS.filter(
+    (item) => {
+      return illustrationTemplateMatchesSearch(item, search);
+    },
+  );
+  const filteredVideoItems = VIDEO_TEMPLATE_ITEMS.filter((item) => {
+    return videoTemplateMatchesSearch(item, search);
+  });
+  const filteredWorkflowItems = WORKFLOW_TEMPLATE_ITEMS.filter((item) => {
+    return workflowTemplateMatchesSearch(item, search);
+  });
+
+  const selectedCategory = resolveTemplatePickerCategory({
+    category,
+    hasPptTab,
+    hasIllustrationTab,
+    hasVideoTab,
+    hasWorkflowTab,
+  });
+
+  const filteredIllustrationItemsForSearch = (value: string) => {
+    return ILLUSTRATION_TEMPLATE_ITEMS.filter((item) => {
+      return illustrationTemplateMatchesSearch(item, value);
+    });
+  };
+
+  const filteredPresentationItemsForSearch = (value: string) => {
+    return presentationItems.filter((item) => {
+      return presentationTemplateMatchesSearch(item, value);
+    });
+  };
+
+  const filteredVideoItemsForSearch = (value: string) => {
+    return VIDEO_TEMPLATE_ITEMS.filter((item) => {
+      return videoTemplateMatchesSearch(item, value);
+    });
+  };
+
+  const previewImageUrlsForCategory = (
+    targetCategory: string,
+    query: string,
+  ) => {
+    if (targetCategory === "slides" && hasPptTab) {
+      return presentationPreviewImageUrlsForItems(
+        filteredPresentationItemsForSearch(query),
+        cardThemeIdBySlug,
+      );
+    }
+    if (targetCategory === "illustration" && hasIllustrationTab) {
+      return illustrationPreviewImageUrlsForItems({
+        items: filteredIllustrationItemsForSearch(query),
+        variantIndexBySlug: illustrationVariantIndex,
+      });
+    }
+    if (targetCategory === "video" && hasVideoTab) {
+      return videoPreviewImageUrlsForItems(filteredVideoItemsForSearch(query));
+    }
+    return [];
+  };
+
+  const prewarmTemplatePreviewsForCategory = (
+    targetCategory: string,
+    query = search,
+  ) => {
+    prewarmTemplatePreviewImages(
+      previewImageUrlsForCategory(targetCategory, query),
+      templatePreviewPrewarmImageCountForCategory(targetCategory),
+    );
+  };
+
+  const closeTemplatePicker = () => {
+    setPresentationGridScrollTop(0);
+    onClose();
+  };
+
+  const handleSelectPresentation = (
+    item: PresentationTemplateItem,
+    colorSystemId?: string,
+  ) => {
+    onChange(toPresentationGenerationTemplate(item, colorSystemId));
+    closeTemplatePicker();
+  };
+
+  const handleSelectVideo = (item: VideoTemplateItem) => {
+    onChange(toVideoGenerationTemplate(item));
+    closeTemplatePicker();
+  };
+
+  const handleSelectWorkflow = (item: WorkflowTemplateItem) => {
+    onChange(toWorkflowGenerationTemplate(item));
+    closeTemplatePicker();
+  };
+
+  const handleSelectIllustration = (item: IllustrationTemplateItem) => {
+    onChange(toIllustrationGenerationTemplate(item));
+    closeTemplatePicker();
+  };
+
+  const handlePreview = (item: PresentationTemplateItem, slideIndex = 0) => {
+    const selectedTheme = findPresentationTemplateTheme(
+      cardThemeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
+    );
+    const selectedSlideIndex = Math.max(0, Math.floor(slideIndex));
+    setDetailThemeId(item.slug, selectedTheme.id);
+    setDetailSlideIndex(item.slug, selectedSlideIndex);
+    const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
+      item.embedUrl,
+    );
+    if (cachedDraft !== undefined) {
+      setLoadedPresentationTemplateDetailPreview({
+        draft: cachedDraft,
+        index: selectedSlideIndex,
+        item,
+        previousFrameUrl: detailPreview?.frameUrl ?? null,
+        selectedTheme,
+        setDetailPreview,
+      });
+    }
+    setPreviewSlug(item.slug);
+  };
+
+  const previewDetailNavigationState = () => {
+    if (previewItem === null) {
+      return null;
+    }
+    const selectedThemeId =
+      detailThemeIdBySlug[previewItem.slug] ??
+      defaultPresentationTemplateThemeId(previewItem);
+    const selectedTheme = findPresentationTemplateTheme(selectedThemeId);
+    const visibleDetailPreview =
+      detailPreview?.slug === previewItem.slug &&
+      detailPreview.embedUrl === previewItem.embedUrl &&
+      detailPreview.themeId === selectedTheme.id
+        ? detailPreview
+        : null;
+    const detailSlideCount =
+      visibleDetailPreview?.slideCount ??
+      Math.max(presentationTemplateSlideImages(previewItem).length, 1);
+    return {
+      activeSlideIndex: detailSlideIndexBySlug[previewItem.slug] ?? 0,
+      detailSlideCount,
+      selectedTheme,
+      visibleDetailPreview,
+    };
+  };
+
+  const selectPreviewDetailSlide = (index: number) => {
+    if (previewItem === null) {
+      return;
+    }
+    const navigationState = previewDetailNavigationState();
+    if (navigationState === null) {
+      return;
+    }
+    selectPresentationTemplateDetailSlide({
+      detailPreview: navigationState.visibleDetailPreview,
+      detailSlideCount: navigationState.detailSlideCount,
+      index,
+      item: previewItem,
+      selectedTheme: navigationState.selectedTheme,
+      setDetailPreview,
+      setSlideIndex: setDetailSlideIndex,
+    });
+  };
+
+  const handleDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!isPreviewing || event.defaultPrevented) {
+      return;
+    }
+    const navigationState = previewDetailNavigationState();
+    if (navigationState === null) {
+      return;
+    }
+    if (event.key === "ArrowLeft") {
+      if (navigationState.activeSlideIndex > 0) {
+        event.preventDefault();
+        selectPreviewDetailSlide(navigationState.activeSlideIndex - 1);
+      }
+    }
+    if (event.key === "ArrowRight") {
+      if (
+        navigationState.activeSlideIndex <
+        navigationState.detailSlideCount - 1
+      ) {
+        event.preventDefault();
+        selectPreviewDetailSlide(navigationState.activeSlideIndex + 1);
+      }
+    }
+  };
+
+  const handleCategoryChange = (nextCategory: string) => {
+    setCategory(nextCategory);
+    if (!isPreviewing) {
+      prewarmTemplatePreviewsForCategory(nextCategory);
+    }
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    if (!isPreviewing) {
+      prewarmTemplatePreviewsForCategory(selectedCategory, value);
+    }
+  };
+
+  const restorePresentationGridScrollNode = (node: HTMLDivElement | null) => {
+    if (node === null) {
+      return;
+    }
+    restorePresentationGridScroll(node);
+  };
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) {
+          if (isPreviewing) {
+            setPreviewSlug(null);
+            return;
+          }
+          closeTemplatePicker();
+        }
+      }}
+    >
+      <DialogContent
+        className={dialogContentClassName}
+        aria-describedby={undefined}
+        onKeyDown={handleDialogKeyDown}
+        onKeyDownCapture={
+          isPreviewing ? handleTemplateDetailTabKeyDown : undefined
+        }
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          if (!isPreviewing) {
+            prewarmTemplatePreviewsForCategory(selectedCategory);
+          }
+        }}
+      >
+        {previewItem ? (
+          <TemplatePreviewPage
+            item={previewItem}
+            onBack={() => {
+              setPreviewSlug(null);
+            }}
+            onSelect={handleSelectPresentation}
+          />
+        ) : (
+          <>
+            <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
+              <DialogTitle>Create with template</DialogTitle>
+            </DialogHeader>
+            <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 pt-3 sm:flex-row sm:items-start sm:justify-between">
+              <TemplatePickerTabs
+                selectedCategory={selectedCategory}
+                hasPptTab={hasPptTab}
+                hasIllustrationTab={hasIllustrationTab}
+                hasVideoTab={hasVideoTab}
+                hasWorkflowTab={hasWorkflowTab}
+                onChange={handleCategoryChange}
+              />
+              <div className="w-full pb-3 sm:w-64">
+                <div className="relative">
+                  <IconSearch
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                    stroke={1.8}
+                  />
+                  <Input
+                    aria-label="Search templates"
+                    className="h-8 pl-9 text-sm"
+                    value={search}
+                    onChange={(event) => {
+                      handleSearchChange(event.target.value);
+                    }}
+                    placeholder="Search templates"
+                  />
+                </div>
+              </div>
+            </div>
+            {selectedCategory === "slides" && hasPptTab && (
+              <div
+                data-presentation-template-grid-scroll=""
+                ref={restorePresentationGridScrollNode}
+                className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto px-5 py-4"
+                onScroll={(event) => {
+                  setPresentationGridScrollTop(event.currentTarget.scrollTop);
+                }}
+              >
+                {filteredPptItems.length > 0 ? (
+                  <PptTemplateGrid
+                    items={filteredPptItems}
+                    value={value}
+                    onSelect={handleSelectPresentation}
+                    onPreview={handlePreview}
+                  />
+                ) : (
+                  <TemplateEmptyPanel
+                    title="No matches"
+                    description="Try a different search."
+                  />
+                )}
+              </div>
+            )}
+            {selectedCategory === "illustration" && (
+              <div
+                data-illustration-template-grid-scroll=""
+                className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+                onScroll={(event) => {
+                  prewarmIllustrationPreviewImagesNearScroll({
+                    items: filteredIllustrationItems,
+                    scrollContainer: event.currentTarget,
+                    variantIndexBySlug: illustrationVariantIndex,
+                  });
+                }}
+              >
+                {filteredIllustrationItems.length > 0 ? (
+                  <IllustrationTemplateGrid
+                    items={filteredIllustrationItems}
+                    value={value}
+                    variantIndexBySlug={illustrationVariantIndex}
+                    onSelect={handleSelectIllustration}
+                    onVariantChange={setIllustrationVariantIndex}
+                  />
+                ) : (
+                  <TemplateEmptyPanel
+                    title="No matches"
+                    description="Try a different search."
+                  />
+                )}
+              </div>
+            )}
+            {selectedCategory === "video" && hasVideoTab && (
+              <div
+                data-video-template-grid-scroll=""
+                className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+              >
+                {filteredVideoItems.length > 0 ? (
+                  <VideoTemplateGrid
+                    items={filteredVideoItems}
+                    value={value}
+                    onSelect={handleSelectVideo}
+                  />
+                ) : (
+                  <TemplateEmptyPanel
+                    title="No matches"
+                    description="Try a different search."
+                  />
+                )}
+              </div>
+            )}
+            {selectedCategory === "workflow" && hasWorkflowTab && (
+              <div
+                data-workflow-template-grid-scroll=""
+                className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+              >
+                {filteredWorkflowItems.length > 0 ? (
+                  <WorkflowTemplateGrid
+                    items={filteredWorkflowItems}
+                    value={value}
+                    onSelect={handleSelectWorkflow}
+                  />
+                ) : (
+                  <TemplateEmptyPanel
+                    title="No matches"
+                    description="Try a different search."
+                  />
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SelectedTemplateChip({
+  colorSystemId,
+  item,
+  onOpen,
+  onRemove,
+}: {
+  colorSystemId?: string;
+  item: PresentationTemplateItem;
+  onOpen: () => void;
+  onRemove: () => void;
+}) {
+  const label = item.title;
+  return (
+    <div className="px-4 pt-3">
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview template ${label}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <SelectedPresentationTemplateChipPreview
+                colorSystemId={colorSystemId}
+                item={item}
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Presentation
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {label}
+            </span>
+          </button>
+          <button
+            type="button"
+            aria-label={`Remove template ${label}`}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onRemove}
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 h-px bg-border/50" />
+    </div>
+  );
+}
+
+function SelectedPresentationTemplateChipPreview({
+  colorSystemId,
+  item,
+}: {
+  colorSystemId?: string;
+  item: PresentationTemplateItem;
+}) {
+  const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
+  const defaultHtmlPreviews = useGet(templateCardDefaultHtmlPreviews$);
+  const setDefaultHtmlPreview = useSet(setTemplateCardDefaultHtmlPreview$);
+  const selectedTheme = findPresentationTemplateTheme(
+    colorSystemId?.replace("color-system:", "") ??
+      themeIdBySlug[item.slug] ??
+      defaultPresentationTemplateThemeId(item),
+  );
+  const previewKey = `${item.embedUrl}#selected-chip:${selectedTheme.id}`;
+  const htmlPreview = defaultHtmlPreviews[previewKey] ?? null;
+  const fallbackImageUrl = presentationTemplateCardSlideImage(
+    item,
+    0,
+    selectedTheme,
+    SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+  );
+
+  const loadChipHtmlPreviewAfterMount = (node: HTMLElement | null) => {
+    if (node === null || isHappyDomTestEnvironment() || htmlPreview !== null) {
+      return;
+    }
+
+    const cache = presentationTemplateHtmlPreviewCache();
+    const setChipPreview = (draft: PresentationEditDraft) => {
+      if (!node.isConnected) {
+        return;
+      }
+      const previewState = createPresentationTemplateHtmlPreviewState({
+        draft,
+        index: 0,
+        item,
+        previousFrameUrl: null,
+        theme: selectedTheme,
+      });
+      if (previewState !== null) {
+        setDefaultHtmlPreview(previewKey, previewState);
+      }
+    };
+
+    const cachedDraft = cache.drafts.get(item.embedUrl);
+    if (cachedDraft !== undefined) {
+      setChipPreview(cachedDraft);
+      return;
+    }
+
+    if (cache.failed.has(item.embedUrl)) {
+      return;
+    }
+
+    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
+    if (pendingLoad === undefined) {
+      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
+      cache.pendingLoads.set(item.embedUrl, pendingLoad);
+    }
+    detach(
+      (async () => {
+        const result = await settle(pendingLoad);
+        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
+          cache.pendingLoads.delete(item.embedUrl);
+        }
+        if (!result.ok || result.value === null) {
+          cache.failed.add(item.embedUrl);
+          return;
+        }
+        cache.drafts.set(item.embedUrl, result.value);
+        setChipPreview(result.value);
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return htmlPreview?.frameUrl ? (
+    <iframe
+      title={`${item.title} selected template preview`}
+      src={htmlPreview.frameUrl}
+      sandbox="allow-same-origin"
+      tabIndex={-1}
+      className="pointer-events-none absolute left-0 top-0 h-[800%] w-[800%] origin-top-left scale-[0.125] border-0 bg-background"
+    />
+  ) : (
+    <img
+      ref={loadChipHtmlPreviewAfterMount}
+      src={fallbackImageUrl}
+      alt=""
+      className="h-full w-full object-cover"
+      loading="lazy"
+    />
+  );
+}
+
+function SelectedVideoTemplateChip({
+  item,
+  onOpen,
+  onRemove,
+}: {
+  item: VideoTemplateItem;
+  onOpen: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="px-4 pt-3">
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview video template ${item.title}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <IconVideo
+                size={12}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Video
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {item.title}
+            </span>
+          </button>
+          <button
+            type="button"
+            aria-label={`Remove video template ${item.title}`}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onRemove}
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 h-px bg-border/50" />
+    </div>
+  );
+}
+
+function SelectedIllustrationTemplateChip({
+  item,
+  onOpen,
+  onRemove,
+}: {
+  item: IllustrationTemplateItem;
+  onOpen: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="px-4 pt-3">
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview template ${item.title}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <img
+                src={r2ImageTransformUrl(
+                  item.previewImage,
+                  SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+                )}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Illustration
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {item.title}
+            </span>
+          </button>
+          <button
+            type="button"
+            aria-label={`Remove template ${item.title}`}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onRemove}
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 h-px bg-border/50" />
+    </div>
+  );
+}
+
+function SelectedWorkflowTemplateChip({
+  item,
+  onOpen,
+  onRemove,
+}: {
+  item: WorkflowTemplateItem;
+  onOpen: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="px-4 pt-3">
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview workflow template ${item.title}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <IconRoute
+                size={12}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Workflow
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {item.title}
+            </span>
+          </button>
+          <button
+            type="button"
+            aria-label={`Remove workflow template ${item.title}`}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onRemove}
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 h-px bg-border/50" />
+    </div>
+  );
+}
+
+function SelectedTemplateChipSlot({
+  picker,
+  onDraftChange,
+}: {
+  picker: ComposerTemplatePicker | undefined;
+  onDraftChange: (() => void) | undefined;
+}) {
+  const setOpen = useSet(setTemplatePickerOpen$);
+  const setCategory = useSet(setTemplatePickerCategory$);
+  const setSearch = useSet(setTemplatePickerSearch$);
+  const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
+  const presentationItem = selectedPresentationTemplateItem(picker?.value);
+  const illustrationItem = selectedIllustrationTemplateItem(picker?.value);
+  const videoItem = selectedVideoTemplateItem(picker?.value);
+  const workflowItem = selectedWorkflowTemplateItem(picker?.value);
+  if (!picker) {
+    return null;
+  }
+  // Reopen the picker on the tab matching the selected template's type so the
+  // user can re-preview and switch styles. Mirrors TemplatePickerButton's reset.
+  const openPicker = (category: string) => {
+    prewarmTemplatePreviewImages(
+      initialTemplatePreviewImageUrlsForCategory({
+        category,
+        hasPptTab: true,
+        hasIllustrationTab: true,
+        hasVideoTab: true,
+        presentationThemeIdBySlug: cardThemeIdBySlug,
+      }),
+      templatePreviewPrewarmImageCountForCategory(category),
+    );
+    setSearch("");
+    setPreviewSlug(null);
+    setCategory(category);
+    setOpen(true);
+  };
+  if (presentationItem) {
+    return (
+      <SelectedTemplateChip
+        colorSystemId={
+          picker.value?.type === "presentation"
+            ? picker.value.selection.colorSystemId
+            : undefined
+        }
+        item={presentationItem}
+        onOpen={() => {
+          return openPicker("slides");
+        }}
+        onRemove={() => {
+          picker.onChange(undefined);
+          onDraftChange?.();
+        }}
+      />
+    );
+  }
+  if (videoItem) {
+    return (
+      <SelectedVideoTemplateChip
+        item={videoItem}
+        onOpen={() => {
+          return openPicker("video");
+        }}
+        onRemove={() => {
+          picker.onChange(undefined);
+          onDraftChange?.();
+        }}
+      />
+    );
+  }
+  if (illustrationItem) {
+    return (
+      <SelectedIllustrationTemplateChip
+        item={illustrationItem}
+        onOpen={() => {
+          return openPicker("illustration");
+        }}
+        onRemove={() => {
+          picker.onChange(undefined);
+          onDraftChange?.();
+        }}
+      />
+    );
+  }
+  if (workflowItem) {
+    return (
+      <SelectedWorkflowTemplateChip
+        item={workflowItem}
+        onOpen={() => {
+          return openPicker("workflow");
+        }}
+        onRemove={() => {
+          picker.onChange(undefined);
+          onDraftChange?.();
+        }}
+      />
+    );
+  }
+  return null;
+}
+
+function TemplatePickerButton({
+  picker,
+  hasPptTab,
+  presentationItems,
+  hasIllustrationTab,
+  hasVideoTab,
+  hasWorkflowTab,
+}: {
+  picker: ComposerTemplatePicker;
+  hasPptTab: boolean;
+  presentationItems: readonly PresentationTemplateItem[];
+  hasIllustrationTab: boolean;
+  hasVideoTab: boolean;
+  hasWorkflowTab: boolean;
+}) {
+  const open = useGet(templatePickerOpen$);
+  const category = useGet(templatePickerCategory$);
+  const setOpen = useSet(setTemplatePickerOpen$);
+  const setSearch = useSet(setTemplatePickerSearch$);
+  const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
+  const selectedTitle = selectedTemplateTitle(picker.value);
+  const selectedCategory = resolveTemplatePickerCategory({
+    category,
+    hasPptTab,
+    hasIllustrationTab,
+    hasVideoTab,
+    hasWorkflowTab,
+  });
+  const prewarmPicker = () => {
+    prewarmTemplatePreviewImages(
+      initialTemplatePreviewImageUrlsForCategory({
+        category: selectedCategory,
+        hasPptTab,
+        hasIllustrationTab,
+        hasVideoTab,
+        presentationThemeIdBySlug: cardThemeIdBySlug,
+      }),
+      templatePreviewPrewarmImageCountForCategory(selectedCategory),
+    );
+  };
+
+  return (
+    <>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
+                picker.value && "bg-accent text-foreground",
+              )}
+              aria-label="Template"
+              aria-pressed={picker.value !== undefined}
+              onPointerEnter={prewarmPicker}
+              onFocus={prewarmPicker}
+              onPointerDown={prewarmPicker}
+              onClick={() => {
+                prewarmPicker();
+                setSearch("");
+                setPreviewSlug(null);
+                setOpen(true);
+              }}
+            >
+              <IconColorSwatch size={18} stroke={1.5} aria-hidden="true" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs">
+            {selectedTitle ? `Template: ${selectedTitle}` : "Template"}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      {open && (
+        <TemplatePickerDialog
+          value={picker.value}
+          onChange={picker.onChange}
+          onClose={() => {
+            setOpen(false);
+          }}
+          hasPptTab={hasPptTab}
+          presentationItems={presentationItems}
+          hasIllustrationTab={hasIllustrationTab}
+          hasVideoTab={hasVideoTab}
+          hasWorkflowTab={hasWorkflowTab}
+        />
+      )}
+    </>
+  );
+}
+
+function ComposerTemplatePickerSlot({
+  picker,
+  workflowAutomationEnabled,
+}: {
+  picker: ComposerTemplatePicker | undefined;
+  workflowAutomationEnabled: boolean;
+}) {
+  const hasPptTab = true;
+  const hasIllustrationTab = true;
+  const hasVideoTab = true;
+  const hasWorkflowTab = workflowAutomationEnabled;
+  const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
+  if (!picker) {
+    return null;
+  }
+  return (
+    <TemplatePickerButton
+      picker={picker}
+      hasPptTab={hasPptTab}
+      presentationItems={presentationItems}
+      hasIllustrationTab={hasIllustrationTab}
+      hasVideoTab={hasVideoTab}
+      hasWorkflowTab={hasWorkflowTab}
+    />
+  );
+}
+
+function CreateWorkflowPromptButton({
+  onCreateWorkflowPrompt,
+}: {
+  onCreateWorkflowPrompt: () => void;
+}) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9"
+            aria-label="Create workflow"
+            onClick={onCreateWorkflowPrompt}
+          >
+            <IconRoute size={18} stroke={1.5} aria-hidden="true" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          Create workflow
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ComposerWorkflowPromptSlot({
+  workflowAutomationEnabled,
+  onCreateWorkflowPrompt,
+}: {
+  workflowAutomationEnabled: boolean;
+  onCreateWorkflowPrompt: (() => void) | undefined;
+}) {
+  if (!workflowAutomationEnabled || !onCreateWorkflowPrompt) {
+    return null;
+  }
+  return (
+    <CreateWorkflowPromptButton
+      onCreateWorkflowPrompt={onCreateWorkflowPrompt}
+    />
+  );
+}
+
+function ConnectorTriggerIcons({
+  connectors,
+  hasComputerUse,
+}: {
+  connectors: ComposerConnectorItem[];
+  hasComputerUse: boolean;
+}) {
+  const enabled = connectors
+    .filter((c) => {
+      return c.authorized;
+    })
+    .slice(0, 3);
+  if (enabled.length === 0 && !hasComputerUse) {
+    return <IconPlug size={18} stroke={1.5} />;
+  }
+  return (
+    <span className="flex items-center -space-x-2 sm:-space-x-1.5">
+      {enabled.map((c) => {
+        return (
+          <span key={c.type} className="relative shrink-0">
+            <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background zero-border sm:h-7 sm:w-7">
+              <ConnectorIcon type={c.type} size={16} />
+            </span>
+          </span>
+        );
+      })}
+      {hasComputerUse && (
+        <span className="relative shrink-0">
+          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-primary zero-border sm:h-7 sm:w-7">
+            <IconDeviceDesktop size={16} stroke={1.5} />
+          </span>
+        </span>
+      )}
+    </span>
+  );
+}
+
+function AddConnectorsDialog({
+  unconnected,
+  pollingType,
+  onClose,
+  onSelect,
+}: {
+  unconnected: ConnectorTypeWithStatus[];
+  pollingType: string | null;
+  onClose: () => void;
+  onSelect: (type: ConnectorType) => void;
+}) {
+  const search = useGet(addDialogSearch$);
+  const setSearch = useSet(setAddDialogSearch$);
+  const filtered = unconnected.filter((item) => {
+    return matchesConnectorSearch(search, item);
+  });
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        return !open && onClose();
+      }}
+    >
+      <DialogContent
+        className="max-w-2xl flex flex-col max-h-[80vh]"
+        aria-describedby={undefined}
+      >
+        <DialogHeader className="shrink-0">
+          <DialogTitle>
+            Available connectors to connect ({unconnected.length})
+          </DialogTitle>
+        </DialogHeader>
+        <div className="shrink-0">
+          <Input
+            type="text"
+            placeholder="Find connectors..."
+            value={search}
+            onChange={(e) => {
+              return setSearch(e.target.value);
+            }}
+            autoFocus
+          />
+        </div>
+        <div className="overflow-y-auto -mx-6 px-6">
+          <div className="grid grid-cols-2 gap-3">
+            {filtered.map((item) => {
+              return (
+                <button
+                  type="button"
+                  key={item.type}
+                  onClick={() => {
+                    return onSelect(item.type);
+                  }}
+                  disabled={pollingType === item.type}
+                  aria-label={`Connect ${item.label}`}
+                  className="rounded-lg bg-card overflow-hidden transition-colors hover:bg-muted/30 cursor-pointer text-left w-full"
+                  style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+                >
+                  <div className="flex items-center gap-2.5 px-4 pt-4 pb-1">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+                      <ConnectorIcon type={item.type} size={20} />
+                    </span>
+                    <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
+                      {item.label}
+                    </span>
+                    {pollingType === item.type ? (
+                      <IconLoader2
+                        size={16}
+                        stroke={1.5}
+                        className="shrink-0 text-muted-foreground animate-spin"
+                      />
+                    ) : (
+                      <span className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
+                        <IconPlus size={14} stroke={1.5} />
+                      </span>
+                    )}
+                  </div>
+                  <div className="px-4 pb-4 pt-1">
+                    <div className="text-xs text-muted-foreground line-clamp-2">
+                      {item.helpText}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ComputerUseConnectorMenuSection({
+  computerUse,
+  onOpenDownloadDialog,
+}: {
+  computerUse: ComposerComputerUse;
+  onOpenDownloadDialog: () => void;
+}) {
+  return (
+    <div className="shrink-0 border-t border-border/50 bg-gray-50 p-1 dark:bg-gray-100">
+      <div className="px-2 pb-1 pt-1 text-xs text-muted-foreground">
+        Your computer
+      </div>
+      {computerUse.loading ? (
+        <div className="flex flex-col animate-pulse">
+          {Array.from({ length: 2 }, (_, i) => {
+            return (
+              <div key={i} className="flex items-center gap-2 px-2 py-2">
+                <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                <span className="h-3.5 w-24 rounded bg-muted/50 flex-1" />
+                <span className="h-3 w-6 rounded-full bg-muted/50" />
+              </div>
+            );
+          })}
+        </div>
+      ) : computerUse.hosts.length > 0 ? (
+        <div
+          className="flex max-h-[108px] flex-col overflow-y-auto"
+          role="group"
+          aria-label="Computer Use hosts"
+        >
+          {computerUse.hosts.map((host) => {
+            const checked = computerUse.selectedHostId === host.id;
+            return (
+              <div
+                key={host.id}
+                onClick={() => {
+                  computerUse.onChange(checked ? null : host.id);
+                }}
+                className={cn(
+                  "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors",
+                  checked
+                    ? "bg-primary/5"
+                    : "hover:bg-gray-100 dark:hover:bg-gray-200",
+                )}
+              >
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
+                  <IconDeviceDesktop size={16} stroke={1.5} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm text-foreground">
+                    {host.displayName}
+                  </span>
+                  {host.status === "offline" && (
+                    <span className="block text-[11px] leading-3 text-muted-foreground">
+                      Offline
+                    </span>
+                  )}
+                </span>
+                <span
+                  className="flex shrink-0 items-center"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                  }}
+                >
+                  <LoadingSwitch
+                    checked={checked}
+                    onCheckedChange={onDomEventFn((nextChecked) => {
+                      computerUse.onChange(nextChecked ? host.id : null);
+                    })}
+                    loading={false}
+                    ariaLabel={`${checked ? "Disconnect" : "Connect"} ${host.displayName}`}
+                    size="sm"
+                  />
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 px-2 py-2 text-sm text-muted-foreground">
+          <IconDeviceDesktop
+            size={16}
+            stroke={1.5}
+            className="shrink-0 text-muted-foreground"
+          />
+          No online computers
+        </div>
+      )}
+      <PopoverClose asChild>
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-foreground transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
+          onClick={onOpenDownloadDialog}
+        >
+          <IconPlug
+            size={16}
+            stroke={1.5}
+            className="shrink-0 text-muted-foreground"
+          />
+          Connect my computer
+        </button>
+      </PopoverClose>
+    </div>
+  );
+}
+
+function ConnectorsPopoverButton({
+  agentConnectors,
+  connectorsLoading,
+  savingType,
+  computerUse,
+  onOpenAddDialog,
+  onToggle,
+}: {
+  agentConnectors: ComposerConnectorItem[];
+  connectorsLoading: boolean;
+  savingType: string | null;
+  computerUse: ComposerComputerUse | undefined;
+  onOpenAddDialog: () => void;
+  onToggle: (type: ConnectorType, checked: boolean) => void | Promise<void>;
+}) {
+  const search = useGet(popoverSearch$);
+  const setSearch = useSet(setPopoverSearch$);
+  const sortOrder = useGet(popoverSortOrder$);
+  const setSortOrder = useSet(setPopoverSortOrder$);
+  const downloadDialogOpen = useGet(computerUseDownloadDialogOpen$);
+  const setDownloadDialogOpen = useSet(setComputerUseDownloadDialogOpen$);
+  const showSearch = agentConnectors.length > 20;
+
+  // Use snapshot order if available, otherwise preserve catalog order.
+  const sorted = sortOrder
+    ? [...agentConnectors].sort((a, b) => {
+        const ai = sortOrder.indexOf(a.type);
+        const bi = sortOrder.indexOf(b.type);
+        if (ai === -1 && bi === -1) {
+          return 0;
+        }
+        if (ai === -1) {
+          return 1;
+        }
+        if (bi === -1) {
+          return -1;
+        }
+        return ai - bi;
+      })
+    : agentConnectors;
+
+  const visibleConnectors =
+    showSearch && search.trim()
+      ? sorted.filter((c) => {
+          return matchesConnectorSearch(search, c);
+        })
+      : sorted;
+
+  const handleOpenChange = (open: boolean) => {
+    if (open) {
+      // Snapshot the sort order when popover opens
+      const freshSort = agentConnectors.map((c) => {
+        return c.type;
+      });
+      setSortOrder(freshSort);
+    } else {
+      setSortOrder(null);
+      setSearch("");
+    }
+  };
+
+  return (
+    <Popover onOpenChange={handleOpenChange}>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <PopoverTrigger asChild>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5"
+                aria-label="Connectors"
+              >
+                <ConnectorTriggerIcons
+                  connectors={agentConnectors}
+                  hasComputerUse={Boolean(computerUse?.selectedHostId)}
+                />
+              </button>
+            </TooltipTrigger>
+          </PopoverTrigger>
+          <TooltipContent side="top" className="text-xs">
+            Connectors
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <PopoverContent
+        side="top"
+        align="start"
+        className="flex max-h-[var(--radix-popover-content-available-height)] w-72 flex-col overflow-hidden rounded-lg p-0"
+      >
+        {(agentConnectors.length > 0 || connectorsLoading) && (
+          <div className="flex min-h-0 flex-col py-1">
+            {showSearch && (
+              <div className="px-3 py-1 border-b border-border/50">
+                <input
+                  type="text"
+                  placeholder="Find connectors..."
+                  value={search}
+                  onChange={(e) => {
+                    return setSearch(e.target.value);
+                  }}
+                  className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+                />
+              </div>
+            )}
+            {connectorsLoading ? (
+              <div className="flex flex-col animate-pulse">
+                {Array.from({ length: 3 }, (_, i) => {
+                  return (
+                    <div key={i} className="flex items-center gap-2 px-3 py-2">
+                      <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                      <span className="h-3.5 w-20 rounded bg-muted/50 flex-1" />
+                      <span className="h-3 w-6 rounded-full bg-muted/50" />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex max-h-64 min-h-0 flex-col overflow-y-auto">
+                {visibleConnectors.map((item) => {
+                  return (
+                    <label
+                      key={item.type}
+                      className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                    >
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                        <ConnectorIcon type={item.type} size={16} />
+                      </span>
+                      <span className="text-sm flex-1 truncate text-foreground">
+                        {item.label}
+                      </span>
+                      <LoadingSwitch
+                        checked={item.authorized}
+                        onCheckedChange={onDomEventFn(async (checked) => {
+                          await onToggle(item.type, checked);
+                        })}
+                        loading={savingType === item.type}
+                        ariaLabel={`${item.authorized ? "Remove" : "Add"} ${item.label}`}
+                        size="sm"
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="flex shrink-0 flex-col p-1">
+          {(agentConnectors.length > 0 || connectorsLoading) && (
+            <div className="mx-2 mb-1 border-t border-border/50" />
+          )}
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
+            onClick={() => {
+              return onOpenAddDialog();
+            }}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
+              <IconPlus size={13} stroke={1.5} />
+            </span>
+            Add connectors
+          </button>
+        </div>
+        {computerUse && (
+          <ComputerUseConnectorMenuSection
+            computerUse={computerUse}
+            onOpenDownloadDialog={() => {
+              setDownloadDialogOpen(true);
+            }}
+          />
+        )}
+      </PopoverContent>
+      {computerUse && (
+        <ComputerUseDownloadDialog
+          open={downloadDialogOpen}
+          onOpenChange={setDownloadDialogOpen}
+          downloadUrl={computerUse.downloadUrl}
+        />
+      )}
+    </Popover>
+  );
+}
+
+function ComputerUseDownloadDialog({
+  open,
+  onOpenChange,
+  downloadUrl,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  downloadUrl: string;
+}) {
+  const downloadSupportLoadable = useLoadable(
+    zeroDesktopDownloadSupportStatus$,
+  );
+  const downloadSupportStatus =
+    downloadSupportLoadable.state === "hasData"
+      ? downloadSupportLoadable.data
+      : "checking";
+  const features = useGet(featureSwitch$);
+  const showIntelDownload =
+    features[FeatureSwitchKey.DesktopX64Download] ?? false;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md gap-0 overflow-hidden p-0">
+        <div className="flex h-44 items-center justify-center border-b border-border bg-gray-50">
+          <img
+            src={computerUseIllustration}
+            alt=""
+            className="h-40 w-40 object-contain"
+          />
+        </div>
+        <DialogHeader className="space-y-2 px-6 pt-5 text-left">
+          <DialogTitle className="text-xl leading-7">
+            Let Zero use your computer
+          </DialogTitle>
+          <DialogDescription className="leading-6">
+            So Zero can work in your browser and apps for you, even ones with no
+            connector like LinkedIn or Reddit.
+          </DialogDescription>
+          <p className="text-sm leading-5 text-muted-foreground">
+            {ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL}
+          </p>
+        </DialogHeader>
+        <div className="px-6 pb-6 pt-4">
+          {showIntelDownload ? (
+            <div className="flex flex-col items-center gap-3">
+              <Button asChild size="lg" className="w-full">
+                <a
+                  href={downloadUrl}
+                  aria-label="Download for Mac Apple Silicon"
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => {
+                    onOpenChange(false);
+                  }}
+                >
+                  <IconDownload size={16} stroke={1.5} />
+                  Download for Mac (Apple Silicon)
+                </a>
+              </Button>
+              <p className="text-sm text-muted-foreground">
+                On an Intel Mac?{" "}
+                <a
+                  href={ZERO_DESKTOP_INTEL_DOWNLOAD_URL}
+                  aria-label="Download for Mac Intel"
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => {
+                    onOpenChange(false);
+                  }}
+                  className="font-medium text-primary hover:underline"
+                >
+                  Download here
+                </a>
+              </p>
+            </div>
+          ) : downloadSupportStatus === "unsupported-intel-mac" ? (
+            <Button type="button" size="lg" className="w-full" disabled>
+              <IconAlertTriangle size={16} stroke={1.5} />
+              {ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL}
+            </Button>
+          ) : downloadSupportStatus === "checking" ? (
+            <Button type="button" size="lg" className="w-full" disabled>
+              Checking compatibility
+            </Button>
+          ) : (
+            <Button asChild size="lg" className="w-full">
+              <a
+                href={downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => {
+                  onOpenChange(false);
+                }}
+              >
+                <IconDownload size={16} stroke={1.5} />
+                Download for macOS
+              </a>
+            </Button>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Voice input mic button
+// ---------------------------------------------------------------------------
+
+function MicButton({
+  onTranscribed,
+}: {
+  onTranscribed: (text: string) => void;
+}) {
+  const available = useLastResolved(audioInputAvailable$) ?? false;
+  const quota = useLastResolved(audioInputQuota$) ?? null;
+  const recording = useGet(sttRecording$);
+  const starting = useGet(sttStarting$);
+  const transcribing = useGet(sttTranscribing$);
+  const voiceLevel = useGet(sttVoiceLevel$);
+  const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
+  const startRec = useSet(startRecording$);
+  const stopAndTranscribe = useSet(stopAndTranscribe$);
+  const setTab = useSet(setActiveOrgManageTab$);
+  const setSubPage = useSet(setBillingSubPage$);
+  const openOrgManage = useSet(setOrgManageDialogOpen$);
+  const signal = useGet(pageSignal$);
+
+  if (!available) {
+    return null;
+  }
+
+  const handleClick = () => {
+    if (starting || transcribing) {
+      return;
+    }
+    if (recording) {
+      detach(
+        (async () => {
+          const text = await stopAndTranscribe(signal);
+          if (text) {
+            onTranscribed(text);
+          }
+        })(),
+        Reason.DomCallback,
+      );
+    } else {
+      if (quota && !quota.allowed) {
+        setTab("billing");
+        setSubPage(true);
+        detach(openOrgManage(true, signal), Reason.DomCallback);
+        return;
+      }
+      detach(startRec(signal), Reason.DomCallback);
+    }
+  };
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
+              recording || starting || transcribing
+                ? "bg-[#2E9E9F] text-white hover:bg-[#279394]"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            )}
+            onClick={handleClick}
+            disabled={starting || transcribing}
+            aria-label={
+              recording
+                ? "Stop recording"
+                : starting
+                  ? "Starting voice input"
+                  : transcribing
+                    ? "Transcribing"
+                    : "Voice input"
+            }
+          >
+            {starting || transcribing ? (
+              <span className="mic-starting-spinner" aria-hidden="true" />
+            ) : recording ? (
+              <>
+                <span
+                  className="mic-volume-icon-meter"
+                  aria-hidden="true"
+                  style={
+                    {
+                      "--mic-volume-fill": voiceLevelFill,
+                    } as CSSProperties
+                  }
+                />
+                <IconMicrophone size={17} stroke={1.8} className="relative" />
+              </>
+            ) : (
+              <IconMicrophone size={18} stroke={1.5} />
+            )}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {recording
+            ? "Stop recording"
+            : starting
+              ? "Opening microphone..."
+              : transcribing
+                ? "Transcribing..."
+                : "Voice input"}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Signal resolution — resolves draft/file-input with singleton fallback
+// ---------------------------------------------------------------------------
+
+function useResolvedComposerSignals(
+  input: string,
+  draft: DraftSignals | undefined,
+  composerFileInputProp$: Computed<HTMLElement | null> | undefined,
+  setComposerFileInputProp$:
+    | Command<(() => void) | undefined, [HTMLElement | null]>
+    | undefined,
+) {
+  const attachments = useGet(
+    draft ? draft.attachments$ : singletonAttachments$,
+  );
+  const attachmentUploadSummary = useLoadable(
+    draft ? draft.attachmentUploadSummary$ : singletonAttachmentUploadSummary$,
+  );
+  const canSendSingleton = useGet(singletonCanSend$);
+  const canSend = draft
+    ? input.trim() !== "" || attachments.length > 0
+    : canSendSingleton;
+  const uploadAttachment = useSet(
+    draft ? draft.uploadAttachment$ : singletonUpload$,
+  );
+  const restoreAttachments = useSet(
+    draft ? draft.restoreAttachments$ : singletonRestore$,
+  );
+  const removeAttachment = useSet(
+    draft ? draft.removeAttachment$ : singletonRemove$,
+  );
+  const fileInputEl = useGet(
+    composerFileInputProp$ ?? singletonComposerFileInput$,
+  );
+  const setFileInputEl = useSet(
+    setComposerFileInputProp$ ?? singletonSetComposerFileInput$,
+  );
+  const dragOver = useGet(draft ? draft.dragOver$ : singletonDragOver$);
+  const setDragOver = useSet(
+    draft ? draft.setDragOver$ : singletonSetDragOver$,
+  );
+
+  return {
+    canSend,
+    attachments,
+    attachmentUploadSummary,
+    uploadAttachment,
+    restoreAttachments,
+    removeAttachment,
+    fileInputEl,
+    setFileInputEl,
+    dragOver,
+    setDragOver,
+  };
+}
+
+function insertPastedText(
+  target: HTMLElement,
+  currentValue: string,
+  pastedText: string,
+): string {
+  if (!pastedText) {
+    return currentValue;
+  }
+  if (!(target instanceof HTMLTextAreaElement)) {
+    return [currentValue.trimEnd(), pastedText].filter(Boolean).join("\n");
+  }
+  const start = target.selectionStart;
+  const end = target.selectionEnd;
+  return `${currentValue.slice(0, start)}${pastedText}${currentValue.slice(end)}`;
+}
+
+function toPersistedAttachments(
+  attachments: readonly {
+    id: string | null;
+    url: string;
+    filename: string;
+    contentType: string;
+    size: number;
+  }[],
+): PersistedAttachment[] {
+  return attachments
+    .filter((attachment): attachment is PersistedAttachment => {
+      return attachment.id !== null;
+    })
+    .map((attachment) => {
+      return {
+        id: attachment.id,
+        url: attachment.url,
+        filename: attachment.filename,
+        contentType: attachment.contentType,
+        size: attachment.size,
+      };
+    });
+}
+
+type KeyboardSendAction = "none" | "send" | "queue";
+
+function ComposerTextarea({
+  input,
+  onInputChange,
+  sending,
+  autoFocus,
+  setInputRef,
+  onKeyDown,
+  onPaste,
+  onAfterInputChange,
+  onPointerSelectionChange,
+  singleLineOnMobile,
+}: {
+  readonly input: string;
+  readonly onInputChange: (value: string) => void;
+  readonly sending: boolean | undefined;
+  readonly autoFocus: boolean | undefined;
+  readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
+  readonly onKeyDown: (e: KeyboardEventLike) => void;
+  readonly onPaste: (e: ComposerPasteEvent) => void;
+  readonly onAfterInputChange?: (textarea: HTMLTextAreaElement) => void;
+  readonly onPointerSelectionChange?: (textarea: HTMLTextAreaElement) => void;
+  readonly singleLineOnMobile: boolean;
+}) {
+  return (
+    <textarea
+      ref={(el) => {
+        if (el && autoFocus && !isIOSDevice()) {
+          el.focus();
+        }
+        setInputRef?.(el);
+      }}
+      className={cn(
+        "relative z-10 w-full resize-none bg-transparent px-4 pt-4 pb-0 text-[0.9375rem] leading-6 text-foreground caret-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0 selection:bg-primary/20",
+        // The resting height is floored by min-height; rows is kept at 1 so the
+        // floor governs. Mobile rests at a single line and grows back to the
+        // three-line desktop height from the md breakpoint up.
+        singleLineOnMobile ? "min-h-[44px] md:min-h-[96px]" : "min-h-[96px]",
+      )}
+      rows={singleLineOnMobile ? 1 : 3}
+      placeholder={
+        sending
+          ? "Type your next message\u2026"
+          : "Ask me to automate workflows, manage tasks..."
+      }
+      value={input}
+      onChange={(e) => {
+        onInputChange(e.target.value);
+        onAfterInputChange?.(e.target);
+      }}
+      onClick={(e) => {
+        onPointerSelectionChange?.(e.currentTarget);
+      }}
+      onKeyUp={(e) => {
+        onPointerSelectionChange?.(e.currentTarget);
+      }}
+      onSelect={(e) => {
+        onPointerSelectionChange?.(e.currentTarget);
+      }}
+      enterKeyHint="enter"
+      onKeyDown={onKeyDown}
+      onPaste={onPaste}
+    />
+  );
+}
+
+function ComposerInputSlot({
+  input,
+  onInputChange,
+  onDraftChange,
+  sending,
+  autoFocus,
+  enableMobileSingleLine,
+  setInputRef,
+  onKeyDown,
+  onPaste,
+}: {
+  readonly input: string;
+  readonly onInputChange: (value: string) => void;
+  readonly onDraftChange: (() => void) | undefined;
+  readonly sending: boolean | undefined;
+  readonly autoFocus: boolean | undefined;
+  readonly enableMobileSingleLine: boolean;
+  readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
+  readonly onKeyDown: (e: KeyboardEventLike) => void;
+  readonly onPaste: (e: ComposerPasteEvent) => void;
+}) {
+  const slashWorkflowCommandsEnabled = useWorkflowAutomationEnabled();
+  const singleLineOnMobile = enableMobileSingleLine;
+
+  if (slashWorkflowCommandsEnabled) {
+    return (
+      <TiptapWorkflowComposer
+        input={input}
+        onInputChange={onInputChange}
+        onDraftChange={onDraftChange}
+        sending={sending}
+        autoFocus={autoFocus}
+        setInputRef={setInputRef}
+        onKeyDown={onKeyDown}
+        onPaste={onPaste}
+        singleLineOnMobile={singleLineOnMobile}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "relative",
+        singleLineOnMobile ? "min-h-[44px] md:min-h-[96px]" : "min-h-[96px]",
+      )}
+    >
+      <ComposerTextarea
+        input={input}
+        onInputChange={onInputChange}
+        sending={sending}
+        autoFocus={autoFocus}
+        setInputRef={setInputRef}
+        onKeyDown={onKeyDown}
+        onPaste={onPaste}
+        singleLineOnMobile={singleLineOnMobile}
+      />
+    </div>
+  );
+}
+
+function resolveKeyboardSendAction({
+  canSend,
+  sending,
+  queueWhileSending,
+  hasQueueHandler,
+}: {
+  canSend: boolean;
+  sending: boolean | undefined;
+  queueWhileSending: boolean;
+  hasQueueHandler: boolean;
+}): KeyboardSendAction {
+  if (!canSend || (sending && (!queueWhileSending || !hasQueueHandler))) {
+    return "none";
+  }
+  return sending ? "queue" : "send";
+}
+
+function resolveActiveFeedback(
+  feedback: ComposerFeedback | undefined,
+): ComposerFeedback | null {
+  if (feedback && feedback.items.length > 0) {
+    return feedback;
+  }
+  return null;
+}
+
+// Stop while an empty composer is mid-run; otherwise Send. In feedback mode the
+// same button dispatches the feedback turn and stays disabled until a note is
+// written.
+function ComposerSendButton({
+  showStopButton,
+  onCancel,
+  activeFeedback,
+  sendAction,
+  onSend,
+}: {
+  showStopButton: boolean;
+  onCancel: (() => void) | undefined;
+  activeFeedback: ComposerFeedback | null;
+  sendAction: KeyboardSendAction;
+  onSend: () => void;
+}) {
+  if (showStopButton && !activeFeedback) {
+    return (
+      <Button
+        size="sm"
+        variant="destructive"
+        className="rounded-lg h-9 w-9 p-0 shrink-0"
+        onClick={onCancel}
+        aria-label="Stop"
+      >
+        <IconPlayerStop size={16} />
+      </Button>
+    );
+  }
+  if (activeFeedback) {
+    return (
+      <Button
+        size="sm"
+        className="rounded-lg h-9 w-9 p-0 shrink-0"
+        onClick={activeFeedback.onSubmit}
+        disabled={activeFeedback.sendCount === 0}
+        aria-label="Send feedback"
+      >
+        <IconArrowUp size={18} stroke={2} />
+      </Button>
+    );
+  }
+  return (
+    <Button
+      size="sm"
+      className="rounded-lg h-9 w-9 p-0 shrink-0"
+      onClick={onSend}
+      disabled={sendAction === "none"}
+      aria-label="Send"
+    >
+      <IconArrowUp size={18} stroke={2} />
+    </Button>
+  );
+}
+
+function ModelConfigurationWarning({
+  blocker,
+}: {
+  blocker: NonNullable<ZeroChatComposerProps["submitBlocker"]>;
+}) {
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={blocker.onAction}
+            aria-label={`${blocker.actionLabel}: ${blocker.message}`}
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-amber-600 transition-colors hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
+          >
+            <IconAlertTriangle size={15} stroke={1.75} />
+            <span className="hidden sm:inline">{blocker.actionLabel}</span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs text-xs leading-relaxed">
+          {blocker.message}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ComposerModelPickerSlot({
+  actionsLoading,
+  modelPicker,
+  modelPickerLoading,
+  submitBlocker,
+  codexFastModeEnabled,
+  modelPickerOpen,
+  onModelPickerChange,
+  onModelPickerOpenChange,
+}: {
+  actionsLoading: boolean;
+  modelPicker: ComposerModelPicker | undefined;
+  modelPickerLoading: boolean;
+  submitBlocker: ZeroChatComposerProps["submitBlocker"];
+  codexFastModeEnabled: boolean;
+  modelPickerOpen: boolean;
+  onModelPickerChange: (value: ModelProviderSelection | null) => void;
+  onModelPickerOpenChange: (open: boolean) => void;
+}) {
+  if (actionsLoading) {
+    return (
+      <Skeleton
+        className={cn(
+          "h-9 rounded-md",
+          modelPicker || modelPickerLoading ? "w-[184px]" : "w-20",
+        )}
+      />
+    );
+  }
+
+  if (modelPickerLoading) {
+    return <Skeleton className="h-9 w-9 rounded-md sm:w-32" />;
+  }
+
+  return (
+    <>
+      {submitBlocker && <ModelConfigurationWarning blocker={submitBlocker} />}
+      {modelPicker && (
+        <ModelProviderPicker
+          value={modelPicker.value}
+          onChange={onModelPickerChange}
+          placeholder="Default"
+          triggerClassName={cn(
+            "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
+            "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
+            "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+          )}
+          compactTrigger
+          mobileIconTrigger
+          codexFastModeEnabled={codexFastModeEnabled}
+          open={modelPickerOpen}
+          onOpenChange={onModelPickerOpenChange}
+          disabled={modelPicker.disabled}
+        />
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main composer
+// ---------------------------------------------------------------------------
+
+function useWorkflowAutomationEnabled(): boolean {
+  const features = useLastResolved(featureSwitch$);
+  return features?.[FeatureSwitchKey.WorkflowAutomation] ?? false;
+}
+
+function useCodexFastModeEnabled(): boolean {
+  const features = useLastResolved(featureSwitch$);
+  return features?.[FeatureSwitchKey.CodexFastMode] ?? false;
+}
+
+export function ZeroChatComposer({
+  input,
+  onInputChange,
+  onSend,
+  onQueue,
+  sending,
+  queueWhileSending = false,
+  onCancel,
+  displayName,
+  className,
+  autoFocus,
+  enableMobileSingleLine = false,
+  draft,
+  composerFileInput$: composerFileInputProp$,
+  setComposerFileInput$: setComposerFileInputProp$,
+  setInputRef,
+  chatThreadId,
+  onDraftChange,
+  actionsLoading = false,
+  modelPicker,
+  templatePicker,
+  onCreateWorkflowPrompt,
+  computerUse,
+  modelPickerLoading = false,
+  submitBlocker,
+  queuedItems,
+  onRemoveQueuedItem,
+  activeGoal,
+  onCancelActiveGoal,
+  feedback,
+}: ZeroChatComposerProps) {
+  const showAddDialog = useGet(showAddDialog$);
+  const setShowAddDialog = useSet(setShowAddDialog$);
+  const modelPickerOpen = useGet(modelPickerOpen$);
+  const setModelPickerOpen = useSet(setModelPickerOpen$);
+  const openGoalDialog = useSet(openChatThreadGoalDialog$);
+  const workflowAutomationEnabled = useWorkflowAutomationEnabled();
+  const codexFastModeEnabled = useCodexFastModeEnabled();
+
+  const resolved = useResolvedComposerSignals(
+    input,
+    draft,
+    composerFileInputProp$,
+    setComposerFileInputProp$,
+  );
+  const {
+    canSend: draftCanSend,
+    attachments,
+    attachmentUploadSummary,
+    uploadAttachment,
+    restoreAttachments,
+    removeAttachment,
+    fileInputEl,
+    setFileInputEl,
+    dragOver,
+    setDragOver,
+  } = resolved;
+
+  const ensurePushSubscription = useSet(ensurePushSubscription$);
+  const rootSignal = useGet(rootSignal$);
+  const visualAttachmentUnsupported =
+    getVisualAttachmentUnsupportedState(modelPicker);
+  const visibleAttachments = resolveVisibleAttachments(
+    attachments,
+    visualAttachmentUnsupported,
+  );
+  const canSend = resolveComposerCanSend({
+    draftCanSend,
+    input,
+    visibleAttachmentCount: visibleAttachments.length,
+    uploadsReady:
+      attachmentUploadSummary.state === "hasData" &&
+      attachmentUploadSummary.data.readyCount ===
+        attachmentUploadSummary.data.attachmentCount,
+  });
+  const canSubmit = canSend && !submitBlocker;
+
+  // When feedback fragments are present the composer is in "feedback mode": the
+  // textarea is replaced by the stacked quote + note rows and Send dispatches
+  // the feedback turn instead of the draft.
+  const activeFeedback = resolveActiveFeedback(feedback);
+
+  // File upload handlers (paste / drag-drop)
+  const handlePaste = (e: ComposerPasteEvent) => {
+    if (!e.clipboardData) {
+      return;
+    }
+    const chatPayload = readChatMessageFromClipboard(e.clipboardData);
+    if (chatPayload && chatPayload.attachments.length > 0) {
+      const persistedAttachments = toPersistedAttachments(
+        chatPayload.attachments,
+      );
+      if (persistedAttachments.length > 0) {
+        const allowedAttachments = visualAttachmentUnsupported
+          ? persistedAttachments.filter((attachment) => {
+              return !isVisualAttachment({
+                contentType: attachment.contentType,
+                filename: attachment.filename,
+              });
+            })
+          : persistedAttachments;
+        if (allowedAttachments.length < persistedAttachments.length) {
+          showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported!);
+        }
+        e.preventDefault();
+        const nextInput = insertPastedText(
+          e.currentTarget,
+          input,
+          chatPayload.text,
+        );
+        if (nextInput !== input) {
+          onInputChange(nextInput);
+        }
+        if (allowedAttachments.length > 0) {
+          restoreAttachments(allowedAttachments);
+        }
+        onDraftChange?.();
+        return;
+      }
+    }
+
+    const items = e.clipboardData?.items;
+    if (!items) {
+      return;
+    }
+    const plainText = e.clipboardData.getData("text/plain");
+    let pastedPlainText = false;
+    const applyPlainText = () => {
+      if (pastedPlainText || !plainText) {
+        return;
+      }
+      const nextInput = insertPastedText(e.currentTarget, input, plainText);
+      if (nextInput !== input) {
+        onInputChange(nextInput);
+      }
+      pastedPlainText = true;
+    };
+    for (const item of items) {
+      if (item.kind !== "file") {
+        continue;
+      }
+      const file = item.getAsFile();
+      if (!file) {
+        continue;
+      }
+      if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
+        e.preventDefault();
+        applyPlainText();
+        showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
+        continue;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`${file.name} exceeds the 1 GB limit`);
+        continue;
+      }
+      e.preventDefault();
+      applyPlainText();
+      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
+      onDraftChange?.();
+    }
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = e.dataTransfer?.files;
+    if (!files) {
+      return;
+    }
+    let uploaded = false;
+    for (const file of files) {
+      if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
+        showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
+        continue;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`${file.name} exceeds the 1 GB limit`);
+        continue;
+      }
+      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
+      uploaded = true;
+    }
+    if (uploaded) {
+      onDraftChange?.();
+    }
+  };
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setDragOver(false);
+    }
+  };
+
+  // Connectors: connected (org-level) + authorized (agent-level) → available
+  const allTypesLoadable = useLastLoadable(allConnectorTypes$);
+  const authorizedConnectorsLoadable = useLastLoadable(
+    zeroAuthorizedConnectors$,
+  );
+  const pageSignal = useGet(pageSignal$);
+  const selectedConnType = useGet(selectedConnectorType$);
+  const pendingConnectType = useGet(pendingConnectType$);
+  const setPendingConnectType = useSet(setPendingConnectType$);
+  const setSelectedConnType = useSet(setSelectedConnectorType$);
+  const pollingConnType = useGet(pollingOAuthAuthCodeConnectorType$);
+  const authorizeFn = useSet(authorizeConnector$);
+  const deauthorizeFn = useSet(deauthorizeConnector$);
+  const optimisticConnected = useGet(justConnectedTypes$);
+
+  const savingType = useGet(composerSavingType$);
+  const setSavingType = useSet(setComposerSavingType$);
+
+  const connectorsLoading =
+    allTypesLoadable.state !== "hasData" ||
+    authorizedConnectorsLoadable.state !== "hasData";
+
+  const allConnectors =
+    allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+  const connectorMap = new Map(
+    allConnectors.map((c) => {
+      return [c.type, c];
+    }),
+  );
+  const authorizedConnectors =
+    authorizedConnectorsLoadable.state === "hasData"
+      ? authorizedConnectorsLoadable.data
+      : [];
+  const authorizedSet = new Set(authorizedConnectors);
+
+  const unconnectedConnectors = allConnectors.filter((c) => {
+    return !c.connected;
+  });
+
+  // Show all org-connected services so user can toggle authorization on/off per agent.
+  // available = connected ∧ authorized → the connector is actually usable in this agent.
+  const connectedTypes = allConnectors.filter((c) => {
+    return c.connected || optimisticConnected.has(c.type);
+  });
+  const agentConnectors: ComposerConnectorItem[] = connectedTypes.map((c) => {
+    const connected = c.connected || optimisticConnected.has(c.type);
+    const authorized = authorizedSet.has(c.type);
+    return {
+      type: c.type,
+      label: c.label,
+      helpText: c.helpText,
+      tags: c.tags,
+      connected,
+      authorized,
+      available: connected && authorized,
+    };
+  });
+
+  const handleConnectSuccess = async (type: ConnectorType) => {
+    const label = connectorMap.get(type)?.label ?? type;
+    const authorized = await tapError(
+      (async () => {
+        await authorizeFn(type, pageSignal);
+        return true;
+      })(),
+      () => {
+        toast.error(
+          `${label} connected but could not be authorized for ${displayName}`,
+          {
+            id: `connector-save-error-${type}`,
+          },
+        );
+      },
+    );
+    if (authorized !== true) {
+      return false;
+    }
+    toast.success(`${label} connected and authorized for ${displayName}`, {
+      id: `connector-connected-${type}`,
+    });
+    return true;
+  };
+
+  const handleToggle = async (type: ConnectorType, checked: boolean) => {
+    setSavingType(type);
+    await bestEffort(
+      checked ? authorizeFn(type, pageSignal) : deauthorizeFn(type, pageSignal),
+    );
+    setSavingType(null);
+  };
+
+  const sendAction = resolveKeyboardSendAction({
+    canSend: canSubmit,
+    sending,
+    queueWhileSending,
+    hasQueueHandler: onQueue !== undefined,
+  });
+
+  const handleSend = () => {
+    if (sendAction === "send") {
+      // Fire-and-forget: request push permission on first send, never blocks
+      detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
+      onSend(input.trim(), templatePicker?.value);
+      return;
+    }
+    if (sendAction === "queue") {
+      onQueue?.(input.trim(), templatePicker?.value);
+    }
+  };
+
+  // Stop button replaces Send only when there is nothing to dispatch — i.e.
+  // the composer is empty during an active run. With draft content present
+  // the Send button stays visible so the click can queue the message.
+  const showStopButton = Boolean(sending && onCancel) && !canSend;
+
+  // Routes a button click to the queue path while the current thread is sending,
+  // otherwise to the normal send path.
+  const handleButtonSend = () => {
+    if (submitBlocker) {
+      return;
+    }
+    if (sending && queueWhileSending && onQueue) {
+      onQueue(input.trim(), templatePicker?.value);
+    } else {
+      handleSend();
+    }
+  };
+
+  const sendModeLoadable = useLastLoadable(sendMode$);
+  const sendMode =
+    sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
+
+  const handleKeyDown = (e: KeyboardEventLike) => {
+    if (window.matchMedia("(pointer: coarse)").matches) {
+      return;
+    }
+    const send = () => {
+      handleSend();
+    };
+    processShortcut(
+      {
+        ...(sendMode === "enter" ? { enter: send } : { "mod+enter": send }),
+        escape: () => {
+          (e.target as HTMLElement).blur();
+        },
+      },
+      e,
+    );
+  };
+
+  const handleFileSelect = () => {
+    fileInputEl?.click();
+  };
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) {
+      return;
+    }
+    let uploaded = false;
+    for (const file of files) {
+      if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
+        showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
+        continue;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`${file.name} exceeds the 1 GB limit`);
+        continue;
+      }
+      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
+      uploaded = true;
+    }
+    if (uploaded) {
+      onDraftChange?.();
+    }
+    e.target.value = "";
+  };
+
+  const handleModelPickerChange = (
+    selection: ModelProviderSelection | null,
+  ) => {
+    const nextUnsupported = getVisualAttachmentUnsupportedState(
+      modelPicker,
+      selection,
+    );
+    if (
+      nextUnsupported &&
+      attachments.some((attachment) => {
+        return isVisualAttachment(attachment);
+      })
+    ) {
+      showVisualAttachmentUnsupportedToast(nextUnsupported);
+    }
+    modelPicker?.onChange(selection);
+  };
+
+  return (
+    <>
+      <input
+        ref={setFileInputEl}
+        type="file"
+        className="hidden"
+        accept="image/*,audio/*,video/mp4,video/webm,video/quicktime,.pdf,.txt,.csv,.tsv,.md,.json,.xml,.yaml,.yml,.html,.htm,.doc,.docx,.docm,.dotx,.dotm,.odt,.rtf,.xls,.xlsx,.xlsm,.xlsb,.xltx,.xltm,.ods,.ppt,.pptx,.pptm,.potx,.potm,.ppsx,.ppsm,.odp,.zip,.rar,.7z,.tar,.tar.gz,.tgz,.gz,.bz2,.xz,.pages,.numbers,.key,.heic,.heif,.tif,.tiff,.bmp,.parquet,.sqlite,.sqlite3,.db,.epub,.psd,.ai"
+        multiple
+        onChange={handleFileChange}
+      />
+      <div className={cn("relative flex flex-col", className)}>
+        <QueuedMessagesStrip
+          items={queuedItems}
+          onRemove={onRemoveQueuedItem}
+          activeGoal={activeGoal}
+          onCancelGoal={onCancelActiveGoal}
+          onOpenGoal={
+            chatThreadId
+              ? () => {
+                  openGoalDialog(chatThreadId);
+                }
+              : undefined
+          }
+        />
+        <Card
+          className={cn(
+            "zero-composer relative z-10 overflow-visible",
+            dragOver && "outline outline-2 outline-blue-400/60",
+          )}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+        >
+          <CardContent className="p-0">
+            <div className="flex flex-col">
+              {/* Template + attachment chips are shared by both modes: a feedback
+                  turn can also carry a template or attachments, so they render
+                  above the feedback rows just as they do above the textarea. */}
+              <SelectedTemplateChipSlot
+                picker={templatePicker}
+                onDraftChange={onDraftChange}
+              />
+              {visibleAttachments.length > 0 && (
+                <AttachmentChips
+                  attachments={visibleAttachments}
+                  onRemove={(attachment) => {
+                    removeAttachment(attachment);
+                    onDraftChange?.();
+                  }}
+                />
+              )}
+              {activeFeedback ? (
+                <ComposerFeedbackRows feedback={activeFeedback} />
+              ) : (
+                <>
+                  <ComposerInputSlot
+                    input={input}
+                    onInputChange={onInputChange}
+                    onDraftChange={onDraftChange}
+                    sending={sending}
+                    autoFocus={autoFocus}
+                    enableMobileSingleLine={enableMobileSingleLine}
+                    setInputRef={setInputRef}
+                    onKeyDown={handleKeyDown}
+                    onPaste={handlePaste}
+                  />
+                </>
+              )}
+              <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
+                <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]"
+                          aria-label="Attach"
+                          onClick={handleFileSelect}
+                        >
+                          <IconPaperclip size={18} stroke={1.5} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">
+                        Attach
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <ComposerTemplatePickerSlot
+                    picker={templatePicker}
+                    workflowAutomationEnabled={workflowAutomationEnabled}
+                  />
+                  <ComposerWorkflowPromptSlot
+                    workflowAutomationEnabled={workflowAutomationEnabled}
+                    onCreateWorkflowPrompt={onCreateWorkflowPrompt}
+                  />
+                  <ConnectorsPopoverButton
+                    agentConnectors={agentConnectors}
+                    connectorsLoading={connectorsLoading}
+                    savingType={savingType}
+                    computerUse={computerUse}
+                    onOpenAddDialog={() => {
+                      return setShowAddDialog(true);
+                    }}
+                    onToggle={handleToggle}
+                  />
+                </div>
+                <div className="flex items-center gap-1 sm:gap-2">
+                  <ComposerModelPickerSlot
+                    actionsLoading={actionsLoading}
+                    modelPicker={modelPicker}
+                    modelPickerLoading={modelPickerLoading}
+                    submitBlocker={submitBlocker}
+                    codexFastModeEnabled={codexFastModeEnabled}
+                    modelPickerOpen={modelPickerOpen}
+                    onModelPickerChange={handleModelPickerChange}
+                    onModelPickerOpenChange={setModelPickerOpen}
+                  />
+                  {actionsLoading ? null : (
+                    <>
+                      <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
+                      <MicButton
+                        onTranscribed={(text) => {
+                          const base = input;
+                          const separator =
+                            base.length > 0 && !base.endsWith(" ") ? " " : "";
+                          onInputChange(base + separator + text);
+                          onDraftChange?.();
+                        }}
+                      />
+                      <ComposerSendButton
+                        showStopButton={showStopButton}
+                        onCancel={onCancel}
+                        activeFeedback={activeFeedback}
+                        sendAction={sendAction}
+                        onSend={handleButtonSend}
+                      />
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <ActiveGoalObjectiveDialog threadId={chatThreadId} />
+      </div>
+      {selectedConnType && (
+        <ConnectModal
+          onClose={() => {
+            return setSelectedConnType(null);
+          }}
+          onSuccess={async () => {
+            const type = pendingConnectType ?? selectedConnType;
+            if (type && !authorizedSet.has(type)) {
+              const authorized = await handleConnectSuccess(type);
+              if (!authorized) {
+                setPendingConnectType(null);
+                return;
+              }
+            }
+            setPendingConnectType(null);
+            setShowAddDialog(false);
+          }}
+        />
+      )}
+      {showAddDialog && (
+        <AddConnectorsDialog
+          unconnected={unconnectedConnectors}
+          pollingType={pollingConnType}
+          onClose={() => {
+            setPendingConnectType(null);
+            return setShowAddDialog(false);
+          }}
+          onSelect={(type) => {
+            setPendingConnectType(type);
+            setSelectedConnType(type);
+          }}
+        />
+      )}
+    </>
+  );
+}

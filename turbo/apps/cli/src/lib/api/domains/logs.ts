@@ -1,0 +1,161 @@
+import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import {
+  runSystemLogContract,
+  runMetricsContract,
+  runAgentEventsContract,
+  runNetworkLogsContract,
+  logsSearchContract,
+  type AgentEventsResponse,
+  type LogsSearchResponse,
+  type MetricsResponse,
+  type NetworkLogsResponse,
+  type SystemLogResponse,
+} from "@vm0/api-contracts/contracts/runs";
+import { getClientConfig, handleError } from "../core/client-factory";
+
+// Re-export types used by consumer commands (logs/index.ts, logs/search.ts)
+export type {
+  RunEvent,
+  TelemetryMetric,
+  NetworkLogEntry,
+  LogsSearchResponse,
+} from "@vm0/api-contracts/contracts/runs";
+
+interface LogPaginationOptions {
+  readonly since?: number;
+  readonly sinceTime?: number;
+  readonly cursor?: string;
+  readonly limit?: number;
+  readonly order?: "asc" | "desc";
+}
+
+export async function getSystemLog(
+  runId: string,
+  options?: LogPaginationOptions,
+): Promise<SystemLogResponse> {
+  const config = await getClientConfig();
+  const client = initClient(runSystemLogContract, config);
+
+  const result = await client.getSystemLog({
+    params: { id: runId },
+    query: {
+      since: options?.since,
+      sinceTime: options?.sinceTime,
+      cursor: options?.cursor,
+      limit: options?.limit,
+      order: options?.order,
+    },
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to fetch system log");
+}
+
+export async function getMetrics(
+  runId: string,
+  options?: LogPaginationOptions,
+): Promise<MetricsResponse> {
+  const config = await getClientConfig();
+  const client = initClient(runMetricsContract, config);
+
+  const result = await client.getMetrics({
+    params: { id: runId },
+    query: {
+      since: options?.since,
+      sinceTime: options?.sinceTime,
+      cursor: options?.cursor,
+      limit: options?.limit,
+      order: options?.order,
+    },
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to fetch metrics");
+}
+
+export async function getAgentEvents(
+  runId: string,
+  options?: LogPaginationOptions,
+): Promise<AgentEventsResponse> {
+  const config = await getClientConfig();
+  const client = initClient(runAgentEventsContract, config);
+
+  const result = await client.getAgentEvents({
+    params: { id: runId },
+    query: {
+      since: options?.since,
+      sinceTime: options?.sinceTime,
+      cursor: options?.cursor,
+      limit: options?.limit,
+      order: options?.order,
+    },
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to fetch agent events");
+}
+
+export async function getNetworkLogs(
+  runId: string,
+  options?: LogPaginationOptions,
+): Promise<NetworkLogsResponse> {
+  const config = await getClientConfig();
+  const client = initClient(runNetworkLogsContract, config);
+
+  const result = await client.getNetworkLogs({
+    params: { id: runId },
+    query: {
+      since: options?.since,
+      sinceTime: options?.sinceTime,
+      cursor: options?.cursor,
+      limit: options?.limit,
+      order: options?.order,
+    },
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to fetch network logs");
+}
+
+export async function searchLogs(options: {
+  keyword: string;
+  agentId?: string;
+  runId?: string;
+  since?: number;
+  limit?: number;
+  before?: number;
+  after?: number;
+}): Promise<LogsSearchResponse> {
+  const config = await getClientConfig();
+  const client = initClient(logsSearchContract, config);
+
+  const result = await client.searchLogs({
+    query: {
+      keyword: options.keyword,
+      agentId: options.agentId,
+      runId: options.runId,
+      since: options.since,
+      limit: options.limit,
+      before: options.before,
+      after: options.after,
+    },
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to search logs");
+}

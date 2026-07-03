@@ -1,0 +1,40 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "zero-host-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-13",
+  "routes": [
+    {
+      "pattern": "*.sites.vm0.io/*",
+      "zone_name": "vm0.io",
+    },
+  ],
+  "vars": {
+    "HOST_DOMAIN": "sites.vm0.io",
+  },
+  "r2_buckets": [
+    {
+      "binding": "HOSTED_SITES_BUCKET",
+      "bucket_name": "vm0-hosted-sites",
+    },
+  ],
+  "env": {
+    "test": {
+      "routes": [
+        {
+          "pattern": "*.sites.vm7.io/*",
+          "zone_name": "vm7.io",
+        },
+      ],
+      "vars": {
+        "HOST_DOMAIN": "sites.vm7.io",
+      },
+      "r2_buckets": [
+        {
+          "binding": "HOSTED_SITES_BUCKET",
+          "bucket_name": "vm0-hosted-sites-dev",
+        },
+      ],
+    },
+  },
+}

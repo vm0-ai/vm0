@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "idx_telegram_user_links_vm0_installation" ON "telegram_user_links" USING btree ("vm0_user_id","installation_id");

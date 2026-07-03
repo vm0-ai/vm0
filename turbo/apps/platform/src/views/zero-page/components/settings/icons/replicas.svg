@@ -1,0 +1,11 @@
+<svg width="360" height="360" viewBox="0 0 360 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g transform="translate(67.5 30)">
+    <path d="M0 0H75V75H0V0Z" fill="#3eeba3"/>
+    <path d="M75 0H150V75H75V0Z" fill="#3eeba3"/>
+    <path d="M150 75H225V150H150V75Z" fill="#3eeba3"/>
+    <path d="M0 150H75V225H0V150Z" fill="#3eeba3"/>
+    <path d="M75 150H150V225H75V150Z" fill="#3eeba3"/>
+    <path d="M0 225H75V300H0V225Z" fill="#3eeba3"/>
+    <path d="M150 225H225V300H150V225Z" fill="#3eeba3"/>
+  </g>
+</svg>

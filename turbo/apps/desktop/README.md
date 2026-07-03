@@ -1,0 +1,139 @@
+# Zero Desktop
+
+Electron POC for launching the hosted Zero platform app.
+
+This pass is macOS-only. Windows packaging, native push, tray behavior, and
+auto-update are intentionally out of scope. Computer Use setup lives in the
+hosted Platform UI, while this app exposes the Desktop bridge and native macOS
+host runtime that page uses.
+
+Zero Computer Use supports macOS 14+ (macOS 14 or newer). Packaged app
+metadata, native helper builds, and release verification all use the same
+minimum for Apple Silicon artifacts and future Intel artifacts.
+
+When the user is signed in and the feature switch is enabled, the main process
+registers a Desktop Computer Use host through the Zero API command queue. It
+uses the Electron session for auth, polls queued commands, executes them with a
+native macOS `computer-use-helper`, and completes commands back to the API.
+Electron only owns the app shell and command bridge; the helper owns macOS
+Accessibility, target-window screenshot capture, and targeted CGEvent input
+dispatch.
+
+## Development
+
+For quick Electron development without macOS bundle behavior, use:
+
+```bash
+pnpm desktop:dev:forge
+```
+
+This launches the generic Electron app from `node_modules`, so macOS URL scheme
+handlers, bundle identifiers, Dock identity, and permission prompts do not match
+the packaged Desktop app.
+
+From the monorepo root, start a packaged development app against the local proxy
+with:
+
+```bash
+pnpm desktop:dev
+```
+
+This packages and runs `Zero CU Dev.app` with `VM0_DESKTOP_PLATFORM_URL` set to the
+local proxy. Use it for sign-in callback, URL scheme, and permission testing.
+Non-CI packaged desktop builds require the `Developer ID Application: Max &
+Zoe, Inc. (C5UWSXYB67)` signing identity in the local keychain. This keeps the
+app's code requirement stable across rebuilds so macOS Accessibility and Screen
+Recording permissions are not reset by ad-hoc signatures.
+
+The desktop build compiles both Electron entrypoints and the Swift native helper:
+
+```bash
+pnpm -F @vm0/desktop build
+```
+
+Create a macOS artifact with:
+
+```bash
+pnpm desktop:make
+```
+
+This builds the production `Zero Computer Use.app`, signs it with the local Developer ID
+Application identity, submits it to Apple's notary service, staples the
+notarization ticket, and writes the zip artifact under `apps/desktop/out/make`.
+Local notarized builds use the `notarytool` Keychain profile
+`vm0-desktop-notary` by default. Set `VM0_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE` to
+override the profile and `VM0_DESKTOP_NOTARIZE_KEYCHAIN` to override the
+Keychain path, or set `VM0_DESKTOP_NOTARIZE_API_KEY_PATH`,
+`VM0_DESKTOP_NOTARIZE_API_KEY_ID`, and `VM0_DESKTOP_NOTARIZE_API_ISSUER` to use
+an API key file directly.
+
+The helper source lives under `apps/desktop/native/computer-use-helper`. Build
+output is copied to `apps/desktop/native/dist/native/computer-use-helper`, which
+is also the path included in packaged macOS artifacts.
+
+Point it at a local or staging platform URL with:
+
+```bash
+VM0_DESKTOP_PLATFORM_URL=https://staging-app.vm6.ai pnpm -F @vm0/desktop dev:packaged
+VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @vm0/desktop dev:packaged
+VM0_DESKTOP_PLATFORM_URL=http://localhost:3002 pnpm -F @vm0/desktop dev:packaged
+```
+
+The desktop app does not start platform/web/api/proxy services itself. Start the
+target platform surface separately, then pass its URL through
+`VM0_DESKTOP_PLATFORM_URL`.
+
+## Internal macOS artifacts
+
+The `Desktop` GitHub Actions workflow builds macOS artifacts for internal
+testing. Run the workflow manually from GitHub Actions, then download the
+artifact that matches the target Mac:
+
+- `zero-desktop-macos-arm64-unsigned` for Apple Silicon Macs
+- `zero-desktop-macos-x64-unsigned` for Intel Macs
+
+The downloaded GitHub artifact contains `Zero-darwin-<arch>.zip`. Unzip both
+layers, then open `Zero Computer Use.app`.
+
+These artifacts are ad-hoc signed, not Developer ID signed, and not notarized.
+macOS Gatekeeper may require right-clicking the app and choosing Open, or
+removing quarantine locally:
+
+```bash
+xattr -dr com.apple.quarantine "Zero Computer Use.app"
+```
+
+## Release artifacts
+
+Desktop releases are versioned by release-please. Changes under
+`turbo/apps/desktop` with release-worthy Conventional Commit types update
+`package.json`, this changelog, and the manifest entry, then create a
+`desktop-vX.Y.Z` GitHub Release.
+
+When release-please creates the `desktop-vX.Y.Z` GitHub Release, the
+`build-desktop-release` jobs in the release-please workflow check out the
+matching tag, build the production `Zero Computer Use.app` for Apple Silicon
+and Intel Macs, sign each app with the Developer ID Application certificate,
+notarize them for direct distribution outside the Mac App Store, validate the
+stapled tickets, and upload `Zero-darwin-arm64-X.Y.Z.zip`,
+`Zero-darwin-arm64-X.Y.Z.dmg`, `Zero-darwin-x64-X.Y.Z.zip`, and
+`Zero-darwin-x64-X.Y.Z.dmg` to the matching GitHub Release. After both
+architectures finish, the release workflow updates the Desktop update manifest.
+
+Use the DMG for manual installation. It opens with a styled Finder background,
+`Zero Computer Use.app` on the left, and an `/Applications` symlink on the right
+for drag-to-install. The update manifest continues to point at the ZIP artifact
+because the auto-update feed consumes ZIP releases.
+
+This does not submit or publish the app to the Mac App Store. The App Store
+Connect API key is only used as notarytool authentication for Apple's
+notarization service.
+
+The release job requires these GitHub secrets:
+
+- `MACOS_CERTIFICATE_P12_BASE64`
+- `MACOS_CERTIFICATE_PASSWORD`
+- `MACOS_KEYCHAIN_PASSWORD`
+- `APP_STORE_CONNECT_API_KEY_BASE64`
+- `APP_STORE_CONNECT_API_KEY_ID`
+- `APP_STORE_CONNECT_API_ISSUER_ID`

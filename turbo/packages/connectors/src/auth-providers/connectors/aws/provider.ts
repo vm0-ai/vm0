@@ -1,0 +1,136 @@
+import { z } from "zod";
+
+import type {
+  ExternalCodeConnectorAuthProvider,
+  RefreshTokenAccessProvider,
+} from "../../types";
+import {
+  AWS_SIGNIN_CROSS_DEVICE_CLIENT_ID,
+  buildAwsSigninAuthorizationUrl,
+  createAwsExternalCodeProviderState,
+  exchangeAwsSigninAuthorizationCode,
+  parseAwsSigninVerificationCode,
+  refreshAwsSigninToken,
+} from "./signin";
+import { getAwsCallerIdentity, type AwsCallerIdentity } from "./sts";
+
+const AWS_EXTERNAL_CODE_SESSION_EXPIRES_IN_SECONDS = 10 * 60;
+
+const awsExternalCodeProviderStateSchema = z.object({
+  version: z.literal(1),
+  state: z.string().min(1).max(128),
+  codeVerifier: z.string().min(43).max(128),
+  dpopKey: z.string().min(1),
+  redirectUri: z.string().url(),
+  signinRegion: z.string().regex(/^[a-z]{2}(?:-gov)?-[a-z]+-\d$/),
+  runtimeRegion: z.string().regex(/^[a-z]{2}(?:-gov)?-[a-z]+-\d$/),
+});
+
+function createAwsExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider<
+  "aws",
+  "cli"
+>["grant"] {
+  return {
+    kind: "external-code",
+    startExternalCodeAuthorization: async (args) => {
+      const providerState = createAwsExternalCodeProviderState();
+      return {
+        authorizationUrl: buildAwsSigninAuthorizationUrl({
+          clientId: args.authClient.clientId,
+          scopes: args.externalCodeGrant.scopes,
+          providerState,
+        }),
+        providerState: JSON.stringify(providerState),
+        expiresIn: AWS_EXTERNAL_CODE_SESSION_EXPIRES_IN_SECONDS,
+      };
+    },
+    completeExternalCodeAuthorization: async (args) => {
+      const providerState = parseAwsExternalCodeProviderState(
+        args.providerState,
+      );
+      const verificationCode = parseAwsSigninVerificationCode({
+        verificationCode: args.code,
+        expectedState: providerState.state,
+      });
+      const token = await exchangeAwsSigninAuthorizationCode({
+        clientId: args.authClient.clientId,
+        signinRegion: providerState.signinRegion,
+        code: verificationCode.code,
+        codeVerifier: providerState.codeVerifier,
+        dpopKey: providerState.dpopKey,
+        redirectUri: providerState.redirectUri,
+        signal: args.signal,
+      });
+      const identity = await getAwsCallerIdentity({
+        credentials: token.credentials,
+        region: providerState.runtimeRegion,
+        signal: args.signal,
+      });
+      return {
+        outputs: {
+          refreshToken: token.refreshToken,
+          dpopKey: providerState.dpopKey,
+          accessKeyId: token.credentials.accessKeyId,
+          secretAccessKey: token.credentials.secretAccessKey,
+          sessionToken: token.credentials.sessionToken,
+          signinRegion: providerState.signinRegion,
+          runtimeRegion: providerState.runtimeRegion,
+        },
+        expiresIn: token.expiresIn,
+        scopes: args.externalCodeGrant.scopes,
+        userInfo: awsConnectorUserInfo(identity),
+      };
+    },
+  };
+}
+
+function createAwsRefreshTokenAccessProvider(): RefreshTokenAccessProvider<
+  "aws",
+  "cli"
+> {
+  return {
+    kind: "refresh-token",
+    refresh: async (args) => {
+      const token = await refreshAwsSigninToken({
+        clientId: args.authClient.clientId,
+        signinRegion: args.inputs.signinRegion,
+        refreshToken: args.inputs.refreshToken,
+        dpopKey: args.inputs.dpopKey,
+        signal: args.signal,
+      });
+      return {
+        outputs: {
+          refreshToken: token.refreshToken,
+          accessKeyId: token.credentials.accessKeyId,
+          secretAccessKey: token.credentials.secretAccessKey,
+          sessionToken: token.credentials.sessionToken,
+        },
+        expiresIn: token.expiresIn,
+      };
+    },
+  };
+}
+
+function parseAwsExternalCodeProviderState(providerState: string) {
+  return awsExternalCodeProviderStateSchema.parse(
+    JSON.parse(providerState) as unknown,
+  );
+}
+
+function awsConnectorUserInfo(identity: AwsCallerIdentity) {
+  return {
+    id: identity.account,
+    username: `${identity.arn} (${identity.userId})`,
+    email: null,
+  };
+}
+
+export const awsProvider = {
+  grant: createAwsExternalCodeGrantProvider(),
+  access: createAwsRefreshTokenAccessProvider(),
+  revoke: { kind: "none" },
+} as const satisfies ExternalCodeConnectorAuthProvider<"aws", "cli"> & {
+  readonly access: RefreshTokenAccessProvider<"aws", "cli">;
+};
+
+export { AWS_SIGNIN_CROSS_DEVICE_CLIENT_ID };

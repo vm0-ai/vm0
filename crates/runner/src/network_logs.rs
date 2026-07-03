@@ -1,0 +1,852 @@
+use std::path::Path;
+
+use api_contracts::generated::routes;
+use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tracing::{info, warn};
+
+use crate::http::HttpClient;
+use crate::ids::RunId;
+
+/// Network log entry from the per-run JSONL file.
+///
+/// `NETWORK_LOG_FIELDS` — shared schema boundary is api-contracts; producers
+/// include mitmproxy plus Rust-side DNS/kmsg logging.
+/// Uses a transparent `serde_json::Value` wrapper so all fields pass through
+/// to Axiom without needing a struct field for each one. This avoids silently
+/// dropping fields added by any producer.
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(transparent)]
+struct NetworkLog(serde_json::Value);
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NetworkLogPayload {
+    run_id: String,
+    network_logs: Vec<NetworkLog>,
+}
+
+const NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES: usize = 500;
+const NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES: usize = 1024 * 1024;
+const NETWORK_LOG_UPLOAD_PAYLOAD_OVERHEAD_BYTES: usize = 64;
+const NETWORK_LOG_UPLOAD_ENTRY_OVERHEAD_BYTES: usize = 1;
+const NETWORK_LOG_UPLOAD_ERROR_BODY_MAX_BYTES: usize = 2048;
+const NETWORK_LOG_UPLOAD_ERROR_FIELD_MAX_CHARS: usize = 512;
+
+#[derive(Default)]
+struct UploadRejectionDetails {
+    error_code: Option<String>,
+    error_message: Option<String>,
+    body_truncated: bool,
+    body_read_error: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ApiErrorEnvelope {
+    error: ApiErrorDetails,
+}
+
+#[derive(Deserialize)]
+struct ApiErrorDetails {
+    code: Option<String>,
+    message: Option<String>,
+}
+
+/// Upload network logs from the per-run JSONL file.
+/// Reads the file at `path`, POSTs bounded batches to telemetry endpoint,
+/// and keeps the local file for debugging/log GC. Best-effort — failures only warn.
+pub async fn upload_network_logs(
+    http: &HttpClient,
+    run_id: RunId,
+    sandbox_token: &str,
+    path: &Path,
+) {
+    let file = match tokio::fs::File::open(path).await {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => {
+            warn!(run_id = %run_id, error = %e, "failed to read network logs");
+            return;
+        }
+    };
+
+    let mut lines = BufReader::new(file).lines();
+    let mut uploader = NetworkLogBatchUploader::new(http, run_id, sandbox_token);
+
+    loop {
+        let line = match lines.next_line().await {
+            Ok(Some(line)) => line,
+            Ok(None) => break,
+            Err(e) => {
+                warn!(run_id = %run_id, error = %e, "failed to read network logs");
+                return;
+            }
+        };
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let log = match serde_json::from_str(line) {
+            Ok(log) => log,
+            Err(e) => {
+                warn!(run_id = %run_id, error = %e, "malformed network log line");
+                continue;
+            }
+        };
+        let entry_bytes = estimated_entry_bytes(line);
+
+        if !uploader.push(log, entry_bytes).await {
+            return;
+        }
+    }
+
+    if !uploader.finish().await {
+        return;
+    }
+
+    if uploader.total_uploaded() > 0 {
+        info!(
+            run_id = %run_id,
+            batches = uploader.batch_count(),
+            count = uploader.total_uploaded(),
+            "uploaded network logs"
+        );
+    }
+}
+
+struct NetworkLogBatchUploader<'a> {
+    http: &'a HttpClient,
+    run_id: RunId,
+    sandbox_token: &'a str,
+    batch: Vec<NetworkLog>,
+    batch_bytes: usize,
+    batch_index: usize,
+    total_uploaded: usize,
+}
+
+impl<'a> NetworkLogBatchUploader<'a> {
+    fn new(http: &'a HttpClient, run_id: RunId, sandbox_token: &'a str) -> Self {
+        Self {
+            http,
+            run_id,
+            sandbox_token,
+            batch: Vec::with_capacity(NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES),
+            batch_bytes: empty_batch_estimated_bytes(&run_id),
+            batch_index: 0,
+            total_uploaded: 0,
+        }
+    }
+
+    async fn push(&mut self, log: NetworkLog, entry_bytes: usize) -> bool {
+        if self.should_flush_before_push(entry_bytes) && !self.flush().await {
+            return false;
+        }
+
+        self.batch.push(log);
+        self.batch_bytes = self.batch_bytes.saturating_add(entry_bytes);
+
+        if self.should_flush_after_push() {
+            return self.flush().await;
+        }
+
+        true
+    }
+
+    async fn finish(&mut self) -> bool {
+        self.flush().await
+    }
+
+    fn total_uploaded(&self) -> usize {
+        self.total_uploaded
+    }
+
+    fn batch_count(&self) -> usize {
+        self.batch_index
+    }
+
+    fn should_flush_before_push(&self, entry_bytes: usize) -> bool {
+        !self.batch.is_empty()
+            && (self.batch.len() >= NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES
+                || self.batch_bytes.saturating_add(entry_bytes)
+                    > NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES)
+    }
+
+    fn should_flush_after_push(&self) -> bool {
+        self.batch.len() >= NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES
+            || self.batch_bytes >= NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES
+    }
+
+    async fn flush(&mut self) -> bool {
+        if self.batch.is_empty() {
+            return true;
+        }
+
+        self.batch_index += 1;
+        let batch_index = self.batch_index;
+        let logs = std::mem::replace(
+            &mut self.batch,
+            Vec::with_capacity(NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES),
+        );
+        self.batch_bytes = empty_batch_estimated_bytes(&self.run_id);
+        let count = logs.len();
+
+        info!(run_id = %self.run_id, batch_index, count, "uploading network log batch");
+
+        let payload = NetworkLogPayload {
+            run_id: self.run_id.to_string(),
+            network_logs: logs,
+        };
+
+        let result = self
+            .http
+            .request_route(routes::webhooks::agent::telemetry::SEND, self.sandbox_token)
+            .json(&payload)
+            .send()
+            .await;
+
+        match result {
+            Ok(resp) if resp.status().is_success() => {
+                // File is kept locally for debugging; gc_job_logs deletes after 7 days.
+                self.total_uploaded += count;
+                true
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let rejection = upload_rejection_details(resp).await;
+                warn!(
+                    run_id = %self.run_id,
+                    batch_index,
+                    status = %status,
+                    response_error_code = rejection.error_code.as_deref().unwrap_or(""),
+                    response_error_message = rejection.error_message.as_deref().unwrap_or(""),
+                    response_body_truncated = rejection.body_truncated,
+                    response_body_read_error = rejection.body_read_error.as_deref().unwrap_or(""),
+                    "network logs upload rejected"
+                );
+                false
+            }
+            Err(e) => {
+                warn!(
+                    run_id = %self.run_id,
+                    batch_index,
+                    error = %e,
+                    "network logs upload failed"
+                );
+                false
+            }
+        }
+    }
+}
+
+fn empty_batch_estimated_bytes(run_id: &RunId) -> usize {
+    NETWORK_LOG_UPLOAD_PAYLOAD_OVERHEAD_BYTES + run_id.to_string().len()
+}
+
+fn estimated_entry_bytes(line: &str) -> usize {
+    line.len()
+        .saturating_add(NETWORK_LOG_UPLOAD_ENTRY_OVERHEAD_BYTES)
+}
+
+async fn upload_rejection_details(mut resp: reqwest::Response) -> UploadRejectionDetails {
+    let mut body = Vec::new();
+    let mut body_truncated = false;
+
+    loop {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => {
+                let remaining = NETWORK_LOG_UPLOAD_ERROR_BODY_MAX_BYTES.saturating_sub(body.len());
+                if chunk.len() > remaining {
+                    if let Some(prefix) = chunk.get(..remaining) {
+                        body.extend_from_slice(prefix);
+                    }
+                    body_truncated = true;
+                    break;
+                }
+                body.extend_from_slice(&chunk);
+            }
+            Ok(None) => break,
+            Err(e) => {
+                return UploadRejectionDetails {
+                    body_read_error: Some(truncate_log_field(e.to_string())),
+                    ..Default::default()
+                };
+            }
+        }
+    }
+
+    parse_upload_rejection_body(&body, body_truncated)
+}
+
+fn parse_upload_rejection_body(body: &[u8], body_truncated: bool) -> UploadRejectionDetails {
+    let Ok(api_error) = serde_json::from_slice::<ApiErrorEnvelope>(body) else {
+        return UploadRejectionDetails {
+            body_truncated,
+            ..Default::default()
+        };
+    };
+
+    UploadRejectionDetails {
+        error_code: api_error.error.code.map(truncate_log_field),
+        error_message: api_error.error.message.map(truncate_log_field),
+        body_truncated,
+        body_read_error: None,
+    }
+}
+
+fn truncate_log_field(value: String) -> String {
+    let mut truncated = String::new();
+    for (index, ch) in value.chars().enumerate() {
+        if index == NETWORK_LOG_UPLOAD_ERROR_FIELD_MAX_CHARS {
+            truncated.push_str("...");
+            return truncated;
+        }
+        truncated.push(ch);
+    }
+    value
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use httpmock::prelude::*;
+    use serde_json::json;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
+
+    use crate::http::HttpClientConfig;
+
+    use super::*;
+
+    const SANDBOX_TOKEN: &str = "sandbox-token";
+
+    fn http_for_server(server: &MockServer) -> HttpClient {
+        HttpClient::new(HttpClientConfig {
+            api_url: server.base_url(),
+            vercel_bypass: None,
+        })
+        .unwrap()
+    }
+
+    fn network_log_file(dir: &tempfile::TempDir) -> std::path::PathBuf {
+        dir.path().join("network.jsonl")
+    }
+
+    fn network_log_content(logs: &[serde_json::Value]) -> String {
+        logs.iter()
+            .map(|log| serde_json::to_string(log).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n"
+    }
+
+    async fn capture_async_log_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+    where
+        F: std::future::Future,
+    {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        let output = future.await;
+        drop(guard);
+        (output, captured.entries())
+    }
+
+    fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+        events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|actual| actual == message)
+            })
+            .unwrap_or_else(|| panic!("missing event {message}; events={events:#?}"))
+    }
+
+    fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
+        let actual = event
+            .fields
+            .get(field)
+            .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+        assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
+    }
+
+    #[test]
+    fn network_log_preserves_all_fields() {
+        let json = r#"{"timestamp":"2026-02-15T10:00:00","action":"ALLOW","host":"api.github.com","port":443,"method":"GET","url":"https://api.github.com/repos/vm0-ai/vm0","status":200,"latency_ms":150,"request_size":0,"response_size":1024,"firewall_base":"https://api.github.com","firewall_name":"github","firewall_permission":"metadata:read","firewall_rule_match":"GET /repos/{owner}/{repo}"}"#;
+        let log: NetworkLog = serde_json::from_str(json).unwrap();
+        let v = &log.0;
+        assert_eq!(v["method"], "GET");
+        assert_eq!(v["status"], 200);
+        assert_eq!(v["firewall_name"], "github");
+        assert_eq!(v["firewall_permission"], "metadata:read");
+    }
+
+    #[test]
+    fn network_log_round_trip() {
+        let json = r#"{"timestamp":"2026-02-15T10:00:00","action":"DENY","host":"evil.com","port":443,"method":"GET","url":"https://evil.com","status":403,"latency_ms":5,"request_size":0,"response_size":0,"firewall_base":"https://evil.com","firewall_name":"blocked"}"#;
+        let log: NetworkLog = serde_json::from_str(json).unwrap();
+        let reserialized = serde_json::to_value(&log).unwrap();
+        assert_eq!(reserialized["action"], "DENY");
+        assert_eq!(reserialized["firewall_name"], "blocked");
+    }
+
+    #[test]
+    fn network_log_payload_uses_camel_case() {
+        let payload = NetworkLogPayload {
+            run_id: "abc".to_string(),
+            network_logs: vec![],
+        };
+        let json = serde_json::to_value(&payload).unwrap();
+        assert!(json.get("runId").is_some());
+        assert!(json.get("networkLogs").is_some());
+    }
+
+    #[test]
+    fn network_log_malformed_line_skipped() {
+        let valid = r#"{"timestamp":"2026-02-15T10:00:00"}"#;
+        let invalid = "not json at all";
+        assert!(serde_json::from_str::<NetworkLog>(valid).is_ok());
+        assert!(serde_json::from_str::<NetworkLog>(invalid).is_err());
+    }
+
+    #[test]
+    fn upload_rejection_body_parser_extracts_bounded_api_error_fields() {
+        let long_message = "x".repeat(NETWORK_LOG_UPLOAD_ERROR_FIELD_MAX_CHARS + 1);
+        let body = json!({
+            "error": {
+                "code": "BAD_REQUEST",
+                "message": long_message,
+            },
+        });
+        let details = parse_upload_rejection_body(body.to_string().as_bytes(), false);
+
+        assert_eq!(details.error_code.as_deref(), Some("BAD_REQUEST"));
+        assert_eq!(
+            details.error_message.unwrap().len(),
+            NETWORK_LOG_UPLOAD_ERROR_FIELD_MAX_CHARS + 3
+        );
+        assert!(!details.body_truncated);
+        assert!(details.body_read_error.is_none());
+    }
+
+    #[test]
+    fn upload_rejection_body_parser_ignores_malformed_body() {
+        let details = parse_upload_rejection_body(b"not-json", true);
+
+        assert_eq!(details.error_code, None);
+        assert_eq!(details.error_message, None);
+        assert!(details.body_truncated);
+        assert!(details.body_read_error.is_none());
+    }
+
+    #[tokio::test]
+    async fn upload_network_logs_posts_payload_and_keeps_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        let run_id = RunId::nil();
+        let first = json!({
+            "timestamp": "2026-02-15T10:00:00Z",
+            "action": "ALLOW",
+            "host": "api.github.com",
+            "status": 200,
+        });
+        let second = json!({
+            "timestamp": "2026-02-15T10:00:01Z",
+            "action": "DENY",
+            "host": "blocked.example",
+            "status": 403,
+        });
+        let content = format!(
+            "{}\n{}\n",
+            serde_json::to_string(&first).unwrap(),
+            serde_json::to_string(&second).unwrap()
+        );
+        tokio::fs::write(&path, &content).await.unwrap();
+
+        let server = MockServer::start_async().await;
+        let expected = json!({
+            "runId": run_id.to_string(),
+            "networkLogs": [first, second],
+        });
+        let upload = server
+            .mock_async(move |when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .header("authorization", format!("Bearer {SANDBOX_TOKEN}"))
+                    .json_body(expected.clone());
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .body(r#"{"success":true}"#);
+            })
+            .await;
+
+        let http = http_for_server(&server);
+        upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path).await;
+
+        upload.assert_calls_async(1).await;
+        assert_eq!(tokio::fs::read_to_string(&path).await.unwrap(), content);
+    }
+
+    #[tokio::test]
+    async fn upload_network_logs_splits_batches_by_entry_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        let run_id = RunId::nil();
+        let logs: Vec<_> = (0..=NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES)
+            .map(|idx| {
+                json!({
+                    "timestamp": "2026-02-15T10:00:00Z",
+                    "host": format!("host-{idx}.example"),
+                    "sequence": idx,
+                })
+            })
+            .collect();
+        let content = network_log_content(&logs);
+        tokio::fs::write(&path, &content).await.unwrap();
+
+        let server = MockServer::start_async().await;
+        let first_expected = json!({
+            "runId": run_id.to_string(),
+            "networkLogs": logs[..NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES].to_vec(),
+        });
+        let second_expected = json!({
+            "runId": run_id.to_string(),
+            "networkLogs": logs[NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES..].to_vec(),
+        });
+        let first_upload = server
+            .mock_async(move |when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .json_body(first_expected.clone());
+                then.status(200);
+            })
+            .await;
+        let second_upload = server
+            .mock_async(move |when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .json_body(second_expected.clone());
+                then.status(200);
+            })
+            .await;
+
+        let http = http_for_server(&server);
+        upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path).await;
+
+        first_upload.assert_calls_async(1).await;
+        second_upload.assert_calls_async(1).await;
+        assert_eq!(tokio::fs::read_to_string(&path).await.unwrap(), content);
+    }
+
+    #[tokio::test]
+    async fn upload_network_logs_splits_batches_by_estimated_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        let run_id = RunId::nil();
+        let large_value = "x".repeat(NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES / 2);
+        let first = json!({
+            "timestamp": "2026-02-15T10:00:00Z",
+            "host": "large-first.example",
+            "body": large_value,
+        });
+        let second = json!({
+            "timestamp": "2026-02-15T10:00:01Z",
+            "host": "large-second.example",
+            "body": large_value,
+        });
+        let logs = vec![first.clone(), second.clone()];
+        let content = network_log_content(&logs);
+        tokio::fs::write(&path, &content).await.unwrap();
+
+        let server = MockServer::start_async().await;
+        let first_expected = json!({
+            "runId": run_id.to_string(),
+            "networkLogs": [first],
+        });
+        let second_expected = json!({
+            "runId": run_id.to_string(),
+            "networkLogs": [second],
+        });
+        let first_upload = server
+            .mock_async(move |when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .json_body(first_expected.clone());
+                then.status(200);
+            })
+            .await;
+        let second_upload = server
+            .mock_async(move |when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .json_body(second_expected.clone());
+                then.status(200);
+            })
+            .await;
+
+        let http = http_for_server(&server);
+        upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path).await;
+
+        first_upload.assert_calls_async(1).await;
+        second_upload.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn upload_network_logs_uploads_single_oversized_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        let run_id = RunId::nil();
+        let oversized_value = "x".repeat(NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES);
+        let log = json!({
+            "timestamp": "2026-02-15T10:00:00Z",
+            "host": "oversized.example",
+            "body": oversized_value,
+        });
+        let logs = vec![log.clone()];
+        tokio::fs::write(&path, network_log_content(&logs))
+            .await
+            .unwrap();
+
+        let server = MockServer::start_async().await;
+        let expected = json!({
+            "runId": run_id.to_string(),
+            "networkLogs": [log],
+        });
+        let upload = server
+            .mock_async(move |when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .json_body(expected.clone());
+                then.status(200);
+            })
+            .await;
+
+        let http = http_for_server(&server);
+        upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path).await;
+
+        upload.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn upload_network_logs_skips_malformed_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        let run_id = RunId::nil();
+        let first = json!({
+            "timestamp": "2026-02-15T10:00:00Z",
+            "host": "first-valid.example",
+        });
+        let second = json!({
+            "timestamp": "2026-02-15T10:00:01Z",
+            "host": "second-valid.example",
+        });
+        tokio::fs::write(
+            &path,
+            format!(
+                "{}\nnot json with invalid.example\n{}\n\n",
+                serde_json::to_string(&first).unwrap(),
+                serde_json::to_string(&second).unwrap()
+            ),
+        )
+        .await
+        .unwrap();
+
+        let server = MockServer::start_async().await;
+        let expected = json!({
+            "runId": run_id.to_string(),
+            "networkLogs": [first, second],
+        });
+        let upload = server
+            .mock_async(move |when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .json_body(expected.clone());
+                then.status(200);
+            })
+            .await;
+
+        let http = http_for_server(&server);
+        upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path).await;
+
+        upload.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn upload_network_logs_stops_after_rejected_batch() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        let run_id = RunId::nil();
+        let logs: Vec<_> = (0..(NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES * 2 + 1))
+            .map(|idx| {
+                json!({
+                    "timestamp": "2026-02-15T10:00:00Z",
+                    "host": format!("host-{idx}.example"),
+                    "sequence": idx,
+                })
+            })
+            .collect();
+        tokio::fs::write(&path, network_log_content(&logs))
+            .await
+            .unwrap();
+
+        let server = MockServer::start_async().await;
+        let first_expected = json!({
+            "runId": run_id.to_string(),
+            "networkLogs": logs[..NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES].to_vec(),
+        });
+        let second_expected = json!({
+            "runId": run_id.to_string(),
+            "networkLogs": logs[NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES..NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES * 2].to_vec(),
+        });
+        let third_expected = json!({
+            "runId": run_id.to_string(),
+            "networkLogs": logs[NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES * 2..].to_vec(),
+        });
+        let first_upload = server
+            .mock_async(move |when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .json_body(first_expected.clone());
+                then.status(200);
+            })
+            .await;
+        let second_upload = server
+            .mock_async(move |when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .json_body(second_expected.clone());
+                then.status(500);
+            })
+            .await;
+        let third_upload = server
+            .mock_async(move |when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .json_body(third_expected.clone());
+                then.status(200);
+            })
+            .await;
+
+        let http = http_for_server(&server);
+        upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path).await;
+
+        first_upload.assert_calls_async(1).await;
+        second_upload.assert_calls_async(1).await;
+        third_upload.assert_calls_async(0).await;
+        assert!(path.exists());
+    }
+
+    #[tokio::test]
+    async fn upload_network_logs_returns_without_post_for_empty_missing_or_unreadable_input() {
+        let server = MockServer::start_async().await;
+        let upload = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/webhooks/agent/telemetry");
+                then.status(200);
+            })
+            .await;
+        let http = http_for_server(&server);
+        let run_id = RunId::nil();
+        let dir = tempfile::tempdir().unwrap();
+
+        upload_network_logs(&http, run_id, SANDBOX_TOKEN, &network_log_file(&dir)).await;
+
+        let empty = dir.path().join("empty.jsonl");
+        tokio::fs::write(&empty, " \n\t\n").await.unwrap();
+        upload_network_logs(&http, run_id, SANDBOX_TOKEN, &empty).await;
+
+        upload_network_logs(&http, run_id, SANDBOX_TOKEN, dir.path()).await;
+
+        upload.assert_calls_async(0).await;
+    }
+
+    #[tokio::test]
+    async fn upload_network_logs_returns_without_retry_when_server_rejects() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        tokio::fs::write(&path, r#"{"host":"reject.example"}"#)
+            .await
+            .unwrap();
+
+        let server = MockServer::start_async().await;
+        let upload = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/webhooks/agent/telemetry");
+                then.status(400)
+                    .header("content-type", "application/json")
+                    .json_body(json!({
+                        "error": {
+                            "code": "BAD_REQUEST",
+                            "message": "networkLogs.0.action: Invalid option: expected one of \"ALLOW\"|\"DENY\"|\"BLOCK\"",
+                        },
+                    }));
+            })
+            .await;
+
+        let http = http_for_server(&server);
+        let (_, events) = capture_async_log_events(upload_network_logs(
+            &http,
+            RunId::nil(),
+            SANDBOX_TOKEN,
+            &path,
+        ))
+        .await;
+
+        upload.assert_calls_async(1).await;
+        let event = captured_event(&events, "network logs upload rejected");
+        assert_event_field(event, "status", "400 Bad Request");
+        assert_event_field(event, "response_error_code", "BAD_REQUEST");
+        assert_event_field(
+            event,
+            "response_error_message",
+            "networkLogs.0.action: Invalid option: expected one of \"ALLOW\"|\"DENY\"|\"BLOCK\"",
+        );
+        assert_event_field(event, "response_body_truncated", "false");
+        assert!(path.exists());
+    }
+
+    #[tokio::test]
+    async fn upload_network_logs_returns_on_transport_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        tokio::fs::write(&path, r#"{"host":"transport-error.example"}"#)
+            .await
+            .unwrap();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let accept_attempts = attempts.clone();
+        let stop_accepting = Arc::new(tokio::sync::Notify::new());
+        let stop_signal = stop_accepting.clone();
+        let accept_once = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    accepted = listener.accept() => {
+                        if accepted.is_ok() {
+                            accept_attempts.fetch_add(1, Ordering::SeqCst);
+                        }
+                    }
+                    () = stop_signal.notified() => break,
+                }
+            }
+        });
+
+        let http = HttpClient::new(HttpClientConfig {
+            api_url,
+            vercel_bypass: None,
+        })
+        .unwrap();
+        upload_network_logs(&http, RunId::nil(), SANDBOX_TOKEN, &path).await;
+
+        stop_accepting.notify_one();
+        accept_once.await.unwrap();
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+        assert!(path.exists());
+    }
+}

@@ -1,0 +1,712 @@
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
+
+use tracing::{debug, info};
+
+use super::active_sessions::{ActiveCliAgentSessions, active_cli_agent_session_ids};
+use crate::config::ProfileConfig;
+use crate::idle_pool::IdlePool;
+use crate::provider::JobProvider;
+use crate::resource_budget::ResourceBudget;
+use crate::status::RunnerMode;
+use crate::types::{HeartbeatState, HeldSessionState, MAX_HELD_SESSION_STATES};
+use crate::workspace_image_cache::SessionWorkspaceCache;
+
+/// Period between routine heartbeat ticks sent to the server. First tick is
+/// deferred by one period via `interval_at`.
+pub(super) const HEARTBEAT_PERIOD: Duration = Duration::from_secs(10);
+
+/// References needed to collect and send a heartbeat.
+///
+/// Avoids passing 8+ arguments through `send_heartbeat`.
+pub(super) struct HeartbeatContext<'a> {
+    idle_pool: &'a Arc<tokio::sync::Mutex<IdlePool>>,
+    runner_id: &'a str,
+    name: &'a str,
+    group: &'a str,
+    profiles: &'a BTreeMap<String, ProfileConfig>,
+    budget: &'a ResourceBudget,
+    provider: &'a dyn JobProvider,
+    workspace_cache: Option<SessionWorkspaceCache>,
+    active_cli_agent_sessions: &'a ActiveCliAgentSessions,
+    held_session_snapshot: HeldSessionStateSnapshot,
+}
+
+pub(super) struct HeartbeatContextInit<'a> {
+    pub(super) idle_pool: &'a Arc<tokio::sync::Mutex<IdlePool>>,
+    pub(super) runner_id: &'a str,
+    pub(super) name: &'a str,
+    pub(super) group: &'a str,
+    pub(super) profiles: &'a BTreeMap<String, ProfileConfig>,
+    pub(super) budget: &'a ResourceBudget,
+    pub(super) provider: &'a dyn JobProvider,
+    pub(super) workspace_cache: Option<SessionWorkspaceCache>,
+    pub(super) active_cli_agent_sessions: &'a ActiveCliAgentSessions,
+    pub(super) held_session_snapshot: HeldSessionStateSnapshot,
+}
+
+impl<'a> HeartbeatContext<'a> {
+    pub(super) fn new(init: HeartbeatContextInit<'a>) -> Self {
+        Self {
+            idle_pool: init.idle_pool,
+            runner_id: init.runner_id,
+            name: init.name,
+            group: init.group,
+            profiles: init.profiles,
+            budget: init.budget,
+            provider: init.provider,
+            workspace_cache: init.workspace_cache,
+            active_cli_agent_sessions: init.active_cli_agent_sessions,
+            held_session_snapshot: init.held_session_snapshot,
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+pub(super) struct HeldSessionStateSnapshot {
+    inner: Arc<Mutex<HeldSessionStateSnapshotInner>>,
+}
+
+#[derive(Default)]
+struct HeldSessionStateSnapshotInner {
+    workspace_cache_states: Vec<HeldSessionState>,
+    workspace_cache_loaded: bool,
+}
+
+impl HeldSessionStateSnapshot {
+    pub(super) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(super) fn update_workspace_cache_states(&self, states: Vec<HeldSessionState>) {
+        let mut inner = self.lock_inner();
+        inner.workspace_cache_states = states;
+        inner.workspace_cache_loaded = true;
+    }
+
+    pub(super) fn might_contain_workspace_cache_session(&self, session_id: &str) -> bool {
+        let inner = self.lock_inner();
+        !inner.workspace_cache_loaded
+            || inner
+                .workspace_cache_states
+                .iter()
+                .any(|state| state.session_id == session_id)
+    }
+
+    pub(super) fn current_held_session_states(
+        &self,
+        idle_states: Vec<HeldSessionState>,
+        active_cli_agent_sessions: &ActiveCliAgentSessions,
+        extra_active_session: Option<&str>,
+    ) -> Vec<HeldSessionState> {
+        let workspace_cache_states = self.lock_inner().workspace_cache_states.clone();
+        merge_current_held_session_states(
+            idle_states,
+            workspace_cache_states,
+            active_cli_agent_sessions,
+            extra_active_session,
+        )
+    }
+
+    fn lock_inner(&self) -> MutexGuard<'_, HeldSessionStateSnapshotInner> {
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+/// Collect current runner state, refresh the local held-session snapshot, and
+/// send a heartbeat to the server.
+pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) {
+    let pool = hb.idle_pool.lock().await;
+    let mut state = collect_heartbeat_state(
+        hb.runner_id,
+        hb.name,
+        hb.group,
+        hb.profiles,
+        hb.budget,
+        &pool,
+        mode,
+    );
+    drop(pool);
+    let workspace_cache_states =
+        workspace_cache_held_session_states(hb.workspace_cache.as_ref()).await;
+    hb.held_session_snapshot
+        .update_workspace_cache_states(workspace_cache_states.clone());
+    state.held_session_states = merge_current_held_session_states(
+        state.held_session_states,
+        workspace_cache_states,
+        hb.active_cli_agent_sessions,
+        None,
+    );
+    info!(
+        mode = ?mode,
+        running = state.running_count,
+        sessions = state.held_session_states.len(),
+        "heartbeat"
+    );
+    debug!(
+        sessions = state.held_session_states.len(),
+        "heartbeat held session states"
+    );
+    hb.provider.heartbeat(&state).await;
+}
+
+async fn workspace_cache_held_session_states(
+    workspace_cache: Option<&SessionWorkspaceCache>,
+) -> Vec<HeldSessionState> {
+    let Some(cache) = workspace_cache else {
+        return Vec::new();
+    };
+
+    cache.held_session_states().await
+}
+
+fn merge_current_held_session_states(
+    idle_states: Vec<HeldSessionState>,
+    cache_states: Vec<HeldSessionState>,
+    active_cli_agent_sessions: &ActiveCliAgentSessions,
+    extra_active_session: Option<&str>,
+) -> Vec<HeldSessionState> {
+    let mut active_cli_agent_sessions = active_cli_agent_session_ids(active_cli_agent_sessions);
+    if let Some(session_id) = extra_active_session {
+        active_cli_agent_sessions.insert(session_id.to_owned());
+    }
+    merge_held_session_states(idle_states, cache_states, &active_cli_agent_sessions)
+}
+
+fn merge_held_session_states(
+    idle_states: Vec<HeldSessionState>,
+    cache_states: Vec<HeldSessionState>,
+    active_cli_agent_sessions: &std::collections::HashSet<String>,
+) -> Vec<HeldSessionState> {
+    let mut by_session = std::collections::BTreeMap::<String, HeldSessionState>::new();
+    for state in idle_states {
+        if active_cli_agent_sessions.contains(&state.session_id) {
+            continue;
+        }
+        by_session.insert(state.session_id.clone(), state);
+    }
+    for state in cache_states {
+        if active_cli_agent_sessions.contains(&state.session_id) {
+            continue;
+        }
+        match by_session.get(&state.session_id) {
+            Some(existing) if existing.last_completed_at >= state.last_completed_at => {}
+            _ => {
+                by_session.insert(state.session_id.clone(), state);
+            }
+        }
+    }
+    let mut states: Vec<HeldSessionState> = by_session.into_values().collect();
+    states.sort_unstable_by(|a, b| {
+        b.last_completed_at
+            .cmp(&a.last_completed_at)
+            .then_with(|| a.session_id.cmp(&b.session_id))
+    });
+    states.truncate(MAX_HELD_SESSION_STATES);
+    states.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
+    states
+}
+
+/// Collect current runner state for heartbeat reporting.
+pub(super) fn collect_heartbeat_state(
+    runner_id: &str,
+    name: &str,
+    group: &str,
+    profiles: &BTreeMap<String, ProfileConfig>,
+    budget: &ResourceBudget,
+    idle_pool: &IdlePool,
+    mode: RunnerMode,
+) -> HeartbeatState {
+    // Stopped is set only by `status.set_mode(Stopped)` immediately before
+    // `run()` returns, after the last heartbeat has been sent. If a caller
+    // reaches here with Stopped it means a new code path was added that
+    // heartbeats post-teardown, which breaks the contract that the server
+    // never sees mode=stopped on the wire. Debug-only: release still falls
+    // through to the defensive "stopping" mapping below.
+    debug_assert_ne!(
+        mode,
+        RunnerMode::Stopped,
+        "Stopped is never live-heartbeated",
+    );
+    let (allocated_vcpu, allocated_memory_mb, budget_running) = budget.allocated();
+    // budget.allocated() includes parked (idle) VMs that hold their budget.
+    // Report only actively running jobs so the scheduler sees real capacity.
+    let idle_count = idle_pool.len();
+    let running_count = budget_running.saturating_sub(idle_count);
+    HeartbeatState {
+        runner_id: runner_id.to_string(),
+        runner_name: name.to_string(),
+        group: group.to_string(),
+        profiles: profiles.keys().cloned().collect(),
+        total_vcpu: budget.effective_vcpu(),
+        total_memory_mb: budget.effective_memory_mb(),
+        max_concurrent: budget.max_concurrent(),
+        allocated_vcpu,
+        allocated_memory_mb,
+        running_count,
+        held_session_states: idle_pool.held_session_states(),
+        mode: match mode {
+            RunnerMode::Running => "running".to_string(),
+            RunnerMode::Draining => "draining".to_string(),
+            // Stopped caught by the debug_assert above; release falls here.
+            RunnerMode::Stopping | RunnerMode::Stopped => "stopping".to_string(),
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config;
+    use crate::idle_pool::{
+        IdlePoolConfig, ParkResult, ParkedIdleCandidate, test_support::ParkedIdleCandidateBuilder,
+    };
+    use crate::paths::RunnerPaths;
+    use crate::provider::mock::MockJobProvider;
+    use crate::workspace_image_cache::{
+        WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
+    };
+    use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+    use sandbox::SandboxId;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
+
+    fn test_profiles() -> BTreeMap<String, config::ProfileConfig> {
+        let mut m = BTreeMap::new();
+        m.insert(
+            "vm0/default".to_string(),
+            config::ProfileConfig {
+                rootfs_hash: "hash".into(),
+                snapshot_hash: "snap".into(),
+                vcpu: 2,
+                memory_mb: 4096,
+                rootfs_disk_mb: 8192,
+                workspace_disk_mb: 10240,
+            },
+        );
+        m
+    }
+
+    fn make_synthetic_parked_candidate(session_id: &str) -> ParkedIdleCandidate {
+        let budget = Arc::new(ResourceBudget::new(1, 1, 1.0, 0));
+        ParkedIdleCandidateBuilder::new(
+            session_id,
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+        )
+        .with_mock_sandbox_name("test")
+        .build()
+    }
+
+    async fn seed_workspace_cache_state(
+        cache: &SessionWorkspaceCache,
+        paths: &RunnerPaths,
+        session_id: &str,
+        completed_at: &str,
+    ) {
+        let run_id = crate::ids::RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                identity: WorkspaceImageLeaseIdentity {
+                    run_id,
+                    sandbox_id,
+                    profile_name: "vm0/default",
+                    cli_agent_session_id: Some(session_id),
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: b"image".len() as u64,
+                },
+                workspace_drive_required: true,
+            })
+            .await;
+        let active_image = paths.active_workspace_image(&sandbox_id);
+        tokio::fs::create_dir_all(active_image.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&active_image, b"image").await.unwrap();
+        assert!(
+            lease
+                .promote(
+                    run_id,
+                    None,
+                    WorkspaceCacheTerminalStatus::Success,
+                    completed_at.into(),
+                    &crate::storage_fingerprints::StorageFingerprints::default(),
+                )
+                .await
+                .unwrap()
+        );
+    }
+
+    async fn capture_heartbeat_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+    where
+        F: std::future::Future,
+    {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        let output = future.await;
+        drop(guard);
+        (output, captured.entries())
+    }
+
+    fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+        events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|actual| actual == message)
+            })
+            .unwrap_or_else(|| panic!("missing event {message:?}; captured={events:#?}"))
+    }
+
+    #[test]
+    fn heartbeat_running_count_no_idle() {
+        let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 4));
+        let _leases = [
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+        ];
+        let pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        let profiles = test_profiles();
+
+        let state = collect_heartbeat_state(
+            "r1",
+            "runner-1",
+            "vm0/test",
+            &profiles,
+            &budget,
+            &pool,
+            RunnerMode::Running,
+        );
+        assert_eq!(state.running_count, 2);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn send_heartbeat_logs_held_session_count_without_raw_session_state() {
+        let session_id = "sess-sensitive-heartbeat-17975";
+        let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 1,
+        })));
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        seed_workspace_cache_state(&cache, &paths, session_id, "2026-06-01T00:00:00.000Z").await;
+        let profiles = test_profiles();
+        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
+        let active_cli_agent_sessions =
+            super::super::active_sessions::new_active_cli_agent_sessions();
+        let (provider, _) = MockJobProvider::new(tokio_util::sync::CancellationToken::new());
+        let held_session_snapshot = HeldSessionStateSnapshot::new();
+        let hb = HeartbeatContext::new(HeartbeatContextInit {
+            idle_pool: &idle_pool,
+            runner_id: "runner-1",
+            name: "test-runner",
+            group: "vm0/test",
+            profiles: &profiles,
+            budget: &budget,
+            provider: provider.as_ref(),
+            workspace_cache: Some(cache),
+            active_cli_agent_sessions: &active_cli_agent_sessions,
+            held_session_snapshot: held_session_snapshot.clone(),
+        });
+
+        let ((), events) = capture_heartbeat_events(send_heartbeat(&hb, RunnerMode::Running)).await;
+
+        let debug_event = captured_event(&events, "heartbeat held session states");
+        assert_eq!(
+            debug_event.fields.get("sessions").map(String::as_str),
+            Some("1")
+        );
+        for event in &events {
+            for (field, value) in &event.fields {
+                assert!(
+                    !value.contains(session_id),
+                    "captured field {field} leaked raw session id {session_id:?}: {event:#?}"
+                );
+            }
+        }
+        let cached_states = held_session_snapshot.current_held_session_states(
+            Vec::new(),
+            &active_cli_agent_sessions,
+            None,
+        );
+        assert_eq!(cached_states.len(), 1);
+        assert_eq!(cached_states[0].session_id, session_id);
+    }
+
+    #[tokio::test]
+    async fn workspace_cache_held_session_states_filters_claimed_session_after_merge() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        seed_workspace_cache_state(&cache, &paths, "sess-cache", "2026-06-01T00:00:00.000Z").await;
+        seed_workspace_cache_state(&cache, &paths, "sess-claimed", "2026-06-01T00:00:01.000Z")
+            .await;
+        let active_cli_agent_sessions =
+            super::super::active_sessions::new_active_cli_agent_sessions();
+        let idle = vec![HeldSessionState {
+            session_id: "sess-idle".into(),
+            last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+        }];
+
+        let cache_states = workspace_cache_held_session_states(Some(&cache)).await;
+        let states = merge_current_held_session_states(
+            idle,
+            cache_states,
+            &active_cli_agent_sessions,
+            Some("sess-claimed"),
+        );
+
+        assert!(
+            states.iter().any(|state| state.session_id == "sess-idle"),
+            "idle session should remain advertised"
+        );
+        assert!(
+            states.iter().any(|state| state.session_id == "sess-cache"),
+            "unrelated workspace cache session should remain advertised"
+        );
+        assert!(
+            !states
+                .iter()
+                .any(|state| state.session_id == "sess-claimed"),
+            "currently claimed session should be filtered until the run finishes"
+        );
+    }
+
+    #[tokio::test]
+    async fn held_session_snapshot_merges_cached_states_and_filters_active_sessions() {
+        let snapshot = HeldSessionStateSnapshot::new();
+        snapshot.update_workspace_cache_states(vec![
+            HeldSessionState {
+                session_id: "sess-cache".into(),
+                last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+            },
+            HeldSessionState {
+                session_id: "sess-claimed".into(),
+                last_completed_at: "2026-06-01T00:00:03.000Z".into(),
+            },
+            HeldSessionState {
+                session_id: "sess-active".into(),
+                last_completed_at: "2026-06-01T00:00:04.000Z".into(),
+            },
+        ]);
+        let active_cli_agent_sessions =
+            super::super::active_sessions::new_active_cli_agent_sessions();
+        super::super::active_sessions::insert_active_cli_agent_session(
+            &active_cli_agent_sessions,
+            "sess-active",
+        );
+        let idle = vec![
+            HeldSessionState {
+                session_id: "sess-cache".into(),
+                last_completed_at: "2026-06-01T00:00:01.000Z".into(),
+            },
+            HeldSessionState {
+                session_id: "sess-idle".into(),
+                last_completed_at: "2026-06-01T00:00:05.000Z".into(),
+            },
+        ];
+
+        let states = snapshot.current_held_session_states(
+            idle,
+            &active_cli_agent_sessions,
+            Some("sess-claimed"),
+        );
+
+        assert_eq!(
+            states,
+            vec![
+                HeldSessionState {
+                    session_id: "sess-cache".into(),
+                    last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+                },
+                HeldSessionState {
+                    session_id: "sess-idle".into(),
+                    last_completed_at: "2026-06-01T00:00:05.000Z".into(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn held_session_snapshot_treats_unloaded_workspace_cache_as_unknown() {
+        let snapshot = HeldSessionStateSnapshot::new();
+
+        assert!(
+            snapshot.might_contain_workspace_cache_session("sess-cache"),
+            "unloaded snapshot should trigger one refresh for cache-enabled runners"
+        );
+
+        snapshot.update_workspace_cache_states(Vec::new());
+        assert!(
+            !snapshot.might_contain_workspace_cache_session("sess-cache"),
+            "loaded empty snapshot should not keep triggering cache refreshes"
+        );
+
+        snapshot.update_workspace_cache_states(vec![HeldSessionState {
+            session_id: "sess-cache".into(),
+            last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+        }]);
+        assert!(
+            snapshot.might_contain_workspace_cache_session("sess-cache"),
+            "loaded matching snapshot should trigger refresh when that session is claimed"
+        );
+    }
+
+    #[test]
+    fn merge_held_session_states_filters_active_sessions() {
+        let idle = vec![HeldSessionState {
+            session_id: "sess-active-idle".into(),
+            last_completed_at: "2026-06-01T00:00:01.000Z".into(),
+        }];
+        let cache = vec![HeldSessionState {
+            session_id: "sess-active".into(),
+            last_completed_at: "2026-06-01T00:00:00.000Z".into(),
+        }];
+        let active = std::collections::HashSet::from([
+            "sess-active".to_string(),
+            "sess-active-idle".to_string(),
+        ]);
+
+        let merged = merge_held_session_states(idle, cache, &active);
+
+        assert!(merged.is_empty());
+    }
+
+    #[test]
+    fn merge_held_session_states_keeps_newest_duplicate() {
+        let idle = vec![HeldSessionState {
+            session_id: "sess-1".into(),
+            last_completed_at: "2026-06-01T00:00:00.000Z".into(),
+        }];
+        let cache = vec![HeldSessionState {
+            session_id: "sess-1".into(),
+            last_completed_at: "2026-06-01T00:00:01.000Z".into(),
+        }];
+
+        let merged = merge_held_session_states(idle, cache, &std::collections::HashSet::new());
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].session_id, "sess-1");
+        assert_eq!(merged[0].last_completed_at, "2026-06-01T00:00:01.000Z");
+    }
+
+    #[test]
+    fn merge_held_session_states_prefers_idle_on_equal_timestamp() {
+        let idle = vec![HeldSessionState {
+            session_id: "sess-1".into(),
+            last_completed_at: "2026-06-01T00:00:00.000Z".into(),
+        }];
+        let cache = vec![HeldSessionState {
+            session_id: "sess-1".into(),
+            last_completed_at: "2026-06-01T00:00:00.000Z".into(),
+        }];
+
+        let merged = merge_held_session_states(idle, cache, &std::collections::HashSet::new());
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].last_completed_at, "2026-06-01T00:00:00.000Z");
+    }
+
+    #[test]
+    fn heartbeat_running_count_excludes_idle() {
+        let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 4));
+        let _leases = [
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+        ];
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        assert!(matches!(
+            pool.park(make_synthetic_parked_candidate("sess-1")),
+            ParkResult::Parked,
+        ));
+        let profiles = test_profiles();
+
+        let state = collect_heartbeat_state(
+            "r1",
+            "runner-1",
+            "vm0/test",
+            &profiles,
+            &budget,
+            &pool,
+            RunnerMode::Running,
+        );
+        assert_eq!(state.running_count, 2);
+        assert!(state.held_session_states.is_empty());
+    }
+
+    #[test]
+    fn heartbeat_running_count_all_idle() {
+        let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 4));
+        let _leases = [
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+        ];
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        assert!(matches!(
+            pool.park(make_synthetic_parked_candidate("sess-1")),
+            ParkResult::Parked,
+        ));
+        assert!(matches!(
+            pool.park(make_synthetic_parked_candidate("sess-2")),
+            ParkResult::Parked,
+        ));
+        let profiles = test_profiles();
+
+        let state = collect_heartbeat_state(
+            "r1",
+            "runner-1",
+            "vm0/test",
+            &profiles,
+            &budget,
+            &pool,
+            RunnerMode::Running,
+        );
+        assert_eq!(state.running_count, 0);
+    }
+
+    #[test]
+    fn heartbeat_running_count_saturates_on_transient_inconsistency() {
+        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        assert!(matches!(
+            pool.park(make_synthetic_parked_candidate("sess-1")),
+            ParkResult::Parked,
+        ));
+        assert_eq!(pool.len(), 1);
+        let profiles = test_profiles();
+
+        let state = collect_heartbeat_state(
+            "r1",
+            "runner-1",
+            "vm0/test",
+            &profiles,
+            &budget,
+            &pool,
+            RunnerMode::Running,
+        );
+        assert_eq!(state.running_count, 0);
+    }
+}

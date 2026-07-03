@@ -1,0 +1,1 @@
+ALTER TABLE "zero_agents" DROP COLUMN "allow_unknown_endpoints";

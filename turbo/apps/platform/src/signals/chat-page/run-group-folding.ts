@@ -1,0 +1,583 @@
+import { command, computed, state } from "ccstate";
+import type {
+  EnrichedChatMessage,
+  GroupedChatMessageGroup,
+} from "./chat-message.ts";
+import type { ChatMessageUsagePayload } from "@vm0/api-contracts/contracts/chat-threads";
+
+interface RunSegment {
+  readonly runId: string;
+  runGroupId: string | undefined;
+  readonly messages: EnrichedChatMessage[];
+  readonly startGroupIndex: number;
+  endGroupIndex: number;
+}
+
+interface LooseSegment {
+  readonly runId: undefined;
+  readonly runGroupId: undefined;
+  readonly messages: EnrichedChatMessage[];
+  readonly startGroupIndex: number;
+  endGroupIndex: number;
+}
+
+type MessageSegment = RunSegment | LooseSegment;
+
+type GroupedRunSegment = RunSegment & { runGroupId: string };
+
+export interface RunGroupFold {
+  readonly key: string;
+  readonly runGroupId: string;
+  readonly hiddenRunCount: number;
+  readonly hiddenGroups: GroupedChatMessageGroup[];
+  readonly labelGroups: GroupedChatMessageGroup[];
+}
+
+export interface RunGroupFolding {
+  readonly visibleGroups: GroupedChatMessageGroup[];
+  readonly foldsByNextGroupId: ReadonlyMap<string, readonly RunGroupFold[]>;
+}
+
+const internalRunGroupExpandedKeys$ = state<Set<string>>(new Set());
+
+export const runGroupExpandedKeys$ = computed((get): Set<string> => {
+  return get(internalRunGroupExpandedKeys$);
+});
+
+export const toggleRunGroupExpanded$ = command(({ set }, key: string) => {
+  set(internalRunGroupExpandedKeys$, (prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    return next;
+  });
+});
+
+function groupMessagesByRole(
+  messages: readonly EnrichedChatMessage[],
+): GroupedChatMessageGroup[] {
+  const groups: GroupedChatMessageGroup[] = [];
+  for (const message of messages) {
+    const last = groups[groups.length - 1];
+    if (last && last.role === message.role) {
+      last.messages.push(message);
+      continue;
+    }
+    groups.push({
+      beginMessageId: message.id,
+      role: message.role,
+      messages: [message],
+    });
+  }
+  return groups;
+}
+
+function firstRunIdForMessages(
+  messages: readonly EnrichedChatMessage[],
+): string | undefined {
+  return messages.find((message) => {
+    return message.runId !== undefined;
+  })?.runId;
+}
+
+function usageByRunIdFromGroups(
+  groups: readonly GroupedChatMessageGroup[],
+): Map<string, ChatMessageUsagePayload> {
+  const usageByRunId = new Map<string, ChatMessageUsagePayload>();
+  for (const group of groups) {
+    if (group.role !== "assistant" || group.usage === undefined) {
+      continue;
+    }
+    const runId = firstRunIdForMessages(group.messages);
+    if (runId !== undefined) {
+      usageByRunId.set(runId, group.usage);
+    }
+  }
+  return usageByRunId;
+}
+
+interface UsageBreakdownAccumulator {
+  readonly kind: string;
+  credits: number;
+  readonly providers: Map<string, number>;
+}
+
+function mergeUsagePayloads(
+  usages: readonly ChatMessageUsagePayload[],
+): ChatMessageUsagePayload | undefined {
+  if (usages.length === 0) {
+    return undefined;
+  }
+
+  let totalCredits = 0;
+  let settledAt = "";
+  const breakdownByKind = new Map<string, UsageBreakdownAccumulator>();
+
+  for (const usage of usages) {
+    totalCredits += usage.totalCredits;
+    settledAt = usage.settledAt;
+
+    for (const kindBreakdown of usage.breakdown) {
+      let accumulator = breakdownByKind.get(kindBreakdown.kind);
+      if (accumulator === undefined) {
+        accumulator = {
+          kind: kindBreakdown.kind,
+          credits: 0,
+          providers: new Map(),
+        };
+        breakdownByKind.set(kindBreakdown.kind, accumulator);
+      }
+
+      accumulator.credits += kindBreakdown.credits;
+
+      for (const providerBreakdown of kindBreakdown.providers) {
+        accumulator.providers.set(
+          providerBreakdown.provider,
+          (accumulator.providers.get(providerBreakdown.provider) ?? 0) +
+            providerBreakdown.credits,
+        );
+      }
+    }
+  }
+
+  return {
+    version: 1,
+    totalCredits,
+    settledAt,
+    breakdown: Array.from(breakdownByKind.values()).map((accumulator) => {
+      return {
+        kind: accumulator.kind,
+        credits: accumulator.credits,
+        providers: Array.from(accumulator.providers.entries()).map(
+          ([provider, credits]) => {
+            return { provider, credits };
+          },
+        ),
+      };
+    }),
+  };
+}
+
+function mergedUsageForRunSegments(
+  runSegments: readonly GroupedRunSegment[],
+  usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
+): ChatMessageUsagePayload | undefined {
+  const usages: ChatMessageUsagePayload[] = [];
+  for (const segment of runSegments) {
+    const usage = usageByRunId.get(segment.runId);
+    if (usage !== undefined) {
+      usages.push(usage);
+    }
+  }
+  return mergeUsagePayloads(usages);
+}
+
+function attachUsageToGroups(
+  groups: readonly GroupedChatMessageGroup[],
+  usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
+): GroupedChatMessageGroup[] {
+  return groups.map((group) => {
+    if (group.role !== "assistant") {
+      return group;
+    }
+    const runId = firstRunIdForMessages(group.messages);
+    const usage = runId === undefined ? undefined : usageByRunId.get(runId);
+    return usage === undefined ? group : { ...group, usage };
+  });
+}
+
+function segmentGroups(
+  segment: MessageSegment,
+  usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
+): GroupedChatMessageGroup[] {
+  return attachUsageToGroups(
+    groupMessagesByRole(segment.messages),
+    usageByRunId,
+  );
+}
+
+function messageSegmentsFromGroups(
+  groups: readonly GroupedChatMessageGroup[],
+): MessageSegment[] {
+  const segments: MessageSegment[] = [];
+
+  for (const [groupIndex, group] of groups.entries()) {
+    for (const message of group.messages) {
+      const runId = message.runId;
+      if (runId === undefined) {
+        segments.push({
+          runId: undefined,
+          runGroupId: undefined,
+          messages: [message],
+          startGroupIndex: groupIndex,
+          endGroupIndex: groupIndex + 1,
+        });
+        continue;
+      }
+
+      const last = segments[segments.length - 1];
+      if (last?.runId === runId) {
+        last.messages.push(message);
+        last.endGroupIndex = groupIndex + 1;
+        if (last.runGroupId === undefined) {
+          last.runGroupId = message.runGroupId;
+        }
+        continue;
+      }
+
+      segments.push({
+        runId,
+        runGroupId: message.runGroupId,
+        messages: [message],
+        startGroupIndex: groupIndex,
+        endGroupIndex: groupIndex + 1,
+      });
+    }
+  }
+
+  return segments;
+}
+
+function appendFoldsBeforeGroup(
+  foldsByNextGroupId: Map<string, RunGroupFold[]>,
+  nextGroupId: string,
+  folds: readonly RunGroupFold[],
+): void {
+  if (folds.length === 0) {
+    return;
+  }
+  const existing = foldsByNextGroupId.get(nextGroupId);
+  if (existing === undefined) {
+    foldsByNextGroupId.set(nextGroupId, [...folds]);
+    return;
+  }
+  existing.push(...folds);
+}
+
+function appendFoldBeforeGroup(
+  foldsByNextGroupId: Map<string, RunGroupFold[]>,
+  nextGroupId: string,
+  fold: RunGroupFold,
+): void {
+  appendFoldsBeforeGroup(foldsByNextGroupId, nextGroupId, [fold]);
+}
+
+function isGroupedRunSegment(
+  segment: MessageSegment | undefined,
+): segment is GroupedRunSegment {
+  return segment?.runId !== undefined && segment.runGroupId !== undefined;
+}
+
+function runGroupStreakEndIndex(
+  segments: readonly MessageSegment[],
+  startIndex: number,
+  runGroupId: string,
+): number {
+  let endIndex = startIndex + 1;
+  while (
+    endIndex < segments.length &&
+    isGroupedRunSegment(segments[endIndex]) &&
+    segments[endIndex].runGroupId === runGroupId
+  ) {
+    endIndex++;
+  }
+  return endIndex;
+}
+
+interface RunGroupVisualWindowItem {
+  readonly startGroupIndex: number;
+  readonly endGroupIndex: number;
+}
+
+function appendIndividualGroupWindowItems(
+  items: RunGroupVisualWindowItem[],
+  startGroupIndex: number,
+  endGroupIndex: number,
+  coveredGroupIndex: number,
+): number {
+  const start = Math.max(startGroupIndex, coveredGroupIndex);
+  for (let groupIndex = start; groupIndex < endGroupIndex; groupIndex++) {
+    items.push({
+      startGroupIndex: groupIndex,
+      endGroupIndex: groupIndex + 1,
+    });
+  }
+  return Math.max(coveredGroupIndex, endGroupIndex);
+}
+
+function runGroupVisualWindowItems(
+  groups: readonly GroupedChatMessageGroup[],
+): RunGroupVisualWindowItem[] {
+  const segments = messageSegmentsFromGroups(groups);
+  const items: RunGroupVisualWindowItem[] = [];
+  let coveredGroupIndex = 0;
+
+  for (let index = 0; index < segments.length; ) {
+    const segment = segments[index]!;
+    if (segment.endGroupIndex <= coveredGroupIndex) {
+      index++;
+      continue;
+    }
+
+    if (coveredGroupIndex < segment.startGroupIndex) {
+      coveredGroupIndex = appendIndividualGroupWindowItems(
+        items,
+        coveredGroupIndex,
+        segment.startGroupIndex,
+        coveredGroupIndex,
+      );
+    }
+
+    if (isGroupedRunSegment(segment)) {
+      const endIndex = runGroupStreakEndIndex(
+        segments,
+        index,
+        segment.runGroupId,
+      );
+      if (endIndex - index >= 2) {
+        const finalSegment = segments[endIndex - 1]!;
+        const startGroupIndex = Math.max(
+          segment.startGroupIndex,
+          coveredGroupIndex,
+        );
+        if (startGroupIndex < finalSegment.endGroupIndex) {
+          items.push({
+            startGroupIndex,
+            endGroupIndex: finalSegment.endGroupIndex,
+          });
+          coveredGroupIndex = finalSegment.endGroupIndex;
+        }
+        index = endIndex;
+        continue;
+      }
+    }
+
+    coveredGroupIndex = appendIndividualGroupWindowItems(
+      items,
+      segment.startGroupIndex,
+      segment.endGroupIndex,
+      coveredGroupIndex,
+    );
+    index++;
+  }
+
+  appendIndividualGroupWindowItems(
+    items,
+    coveredGroupIndex,
+    groups.length,
+    coveredGroupIndex,
+  );
+  return items;
+}
+
+function visualWindowItemIndexForGroupIndex(
+  items: readonly RunGroupVisualWindowItem[],
+  groupIndex: number,
+): number {
+  return items.findIndex((item) => {
+    return (
+      groupIndex >= item.startGroupIndex && groupIndex < item.endGroupIndex
+    );
+  });
+}
+
+function trailingRunGroupVisualWindowStartIndex(
+  items: readonly RunGroupVisualWindowItem[],
+  visibleItemCount: number,
+): number {
+  if (items.length === 0) {
+    return 0;
+  }
+  const startItemIndex = Math.max(0, items.length - visibleItemCount);
+  return items[startItemIndex]?.startGroupIndex ?? 0;
+}
+
+export function runGroupVisualWindowStartIndex(
+  groups: readonly GroupedChatMessageGroup[],
+  cursorGroupId: string | null,
+  visibleItemCount: number,
+): number {
+  if (groups.length === 0) {
+    return 0;
+  }
+  if (visibleItemCount <= 0) {
+    return groups.length;
+  }
+
+  const items = runGroupVisualWindowItems(groups);
+  if (cursorGroupId === null) {
+    return trailingRunGroupVisualWindowStartIndex(items, visibleItemCount);
+  }
+
+  const cursorGroupIndex = groups.findIndex((group) => {
+    return group.beginMessageId === cursorGroupId;
+  });
+  if (cursorGroupIndex === -1) {
+    return trailingRunGroupVisualWindowStartIndex(items, visibleItemCount);
+  }
+
+  const cursorItemIndex = visualWindowItemIndexForGroupIndex(
+    items,
+    cursorGroupIndex,
+  );
+  return cursorItemIndex === -1
+    ? trailingRunGroupVisualWindowStartIndex(items, visibleItemCount)
+    : (items[cursorItemIndex]?.startGroupIndex ?? 0);
+}
+
+export function previousRunGroupVisualWindowStartIndex(
+  groups: readonly GroupedChatMessageGroup[],
+  currentStartGroupIndex: number,
+  visibleItemCount: number,
+): number {
+  if (groups.length === 0) {
+    return 0;
+  }
+  if (visibleItemCount <= 0) {
+    return currentStartGroupIndex;
+  }
+
+  const items = runGroupVisualWindowItems(groups);
+  const currentItemIndex = visualWindowItemIndexForGroupIndex(
+    items,
+    currentStartGroupIndex,
+  );
+  const normalizedCurrentItemIndex =
+    currentItemIndex === -1
+      ? Math.max(0, items.length - visibleItemCount)
+      : currentItemIndex;
+  const previousItemIndex = Math.max(
+    0,
+    normalizedCurrentItemIndex - visibleItemCount,
+  );
+  return items[previousItemIndex]?.startGroupIndex ?? 0;
+}
+
+function buildFoldSection(
+  runSegments: readonly GroupedRunSegment[],
+  usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
+): {
+  readonly fold: RunGroupFold;
+  readonly expandedNextGroupId: string;
+  readonly collapsedNextGroupId: string;
+  readonly expandedGroups: GroupedChatMessageGroup[];
+  readonly collapsedGroups: GroupedChatMessageGroup[];
+} | null {
+  const hiddenSegments = runSegments.slice(0, -1);
+  const latestSegment = runSegments[runSegments.length - 1];
+  if (latestSegment === undefined) {
+    return null;
+  }
+
+  const hiddenGroups = hiddenSegments.flatMap((item) => {
+    return segmentGroups(item, usageByRunId);
+  });
+  const collapsedUsageByRunId = new Map(usageByRunId);
+  const collapsedUsage = mergedUsageForRunSegments(runSegments, usageByRunId);
+  if (collapsedUsage !== undefined) {
+    collapsedUsageByRunId.set(latestSegment.runId, collapsedUsage);
+  }
+  const collapsedGroups = segmentGroups(latestSegment, collapsedUsageByRunId);
+  const expandedGroups = runSegments.flatMap((item) => {
+    return segmentGroups(item, usageByRunId);
+  });
+  const firstHiddenRunId = hiddenSegments[0]?.runId;
+  const collapsedNextGroupId = collapsedGroups[0]?.beginMessageId;
+  const expandedNextGroupId = hiddenGroups[0]?.beginMessageId;
+
+  if (
+    firstHiddenRunId === undefined ||
+    collapsedNextGroupId === undefined ||
+    expandedNextGroupId === undefined
+  ) {
+    return null;
+  }
+
+  return {
+    fold: {
+      key: `${latestSegment.runGroupId}:${firstHiddenRunId}:${latestSegment.runId}`,
+      runGroupId: latestSegment.runGroupId,
+      hiddenRunCount: hiddenSegments.length,
+      hiddenGroups,
+      labelGroups: expandedGroups,
+    },
+    expandedNextGroupId,
+    collapsedNextGroupId,
+    expandedGroups,
+    collapsedGroups,
+  };
+}
+
+export function buildRunGroupFolding(
+  groups: readonly GroupedChatMessageGroup[],
+  expandedKeys?: ReadonlySet<string>,
+): RunGroupFolding | null {
+  const segments = messageSegmentsFromGroups(groups);
+  const usageByRunId = usageByRunIdFromGroups(groups);
+  const visibleGroups: GroupedChatMessageGroup[] = [];
+  const foldsByNextGroupId = new Map<string, RunGroupFold[]>();
+
+  for (let index = 0; index < segments.length; ) {
+    const segment = segments[index]!;
+    if (!isGroupedRunSegment(segment)) {
+      visibleGroups.push(...segmentGroups(segment, usageByRunId));
+      index++;
+      continue;
+    }
+
+    const endIndex = runGroupStreakEndIndex(
+      segments,
+      index,
+      segment.runGroupId,
+    );
+    const runCount = endIndex - index;
+    if (runCount < 2) {
+      visibleGroups.push(...segmentGroups(segment, usageByRunId));
+      index = endIndex;
+      continue;
+    }
+
+    const runSegments = segments
+      .slice(index, endIndex)
+      .filter(isGroupedRunSegment);
+    const foldSection = buildFoldSection(runSegments, usageByRunId);
+    if (foldSection === null) {
+      visibleGroups.push(
+        ...runSegments.flatMap((item) => {
+          return segmentGroups(item, usageByRunId);
+        }),
+      );
+      index = endIndex;
+      continue;
+    }
+
+    const expanded = expandedKeys?.has(foldSection.fold.key) ?? false;
+
+    if (expanded) {
+      visibleGroups.push(...foldSection.expandedGroups);
+      appendFoldBeforeGroup(
+        foldsByNextGroupId,
+        foldSection.expandedNextGroupId,
+        foldSection.fold,
+      );
+    } else {
+      visibleGroups.push(...foldSection.collapsedGroups);
+      appendFoldBeforeGroup(
+        foldsByNextGroupId,
+        foldSection.collapsedNextGroupId,
+        foldSection.fold,
+      );
+    }
+
+    index = endIndex;
+  }
+
+  if (foldsByNextGroupId.size === 0) {
+    return null;
+  }
+
+  return { visibleGroups, foldsByNextGroupId };
+}

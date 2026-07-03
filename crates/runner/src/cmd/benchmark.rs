@@ -1,0 +1,726 @@
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::ExitCode;
+use std::time::{Duration, Instant};
+
+use clap::Args;
+use sandbox::{
+    EXEC_OUTPUT_LIMIT_7_MIB, ExecRequest, ExecResult, ExecTermination, RuntimeProvider,
+    SandboxConfig, SandboxFactory, SandboxId, SandboxRuntime,
+};
+use tracing::{info, warn};
+
+use crate::config;
+use crate::deps::MITMPROXY_VERSION;
+use crate::error::{RunnerError, RunnerResult};
+use crate::executor;
+use crate::lock;
+use crate::paths::{HomePaths, RootfsPaths, RunnerPaths};
+use crate::prefetch;
+use crate::proxy;
+use crate::workspace_mount::ensure_workspace_drive_mounted;
+
+#[derive(Default)]
+struct Timing {
+    boot_ms: Option<u128>,
+    workspace_mount_ms: Option<u128>,
+    guest_restore_ms: Option<u128>,
+    exec_ms: Option<u128>,
+}
+
+const DEFAULT_BENCHMARK_TIMEZONE: &str = "UTC";
+
+/// Reject malformed entries so typos fail loud before benchmark startup.
+fn parse_env_args(env: &[String]) -> RunnerResult<Vec<(String, String)>> {
+    env.iter()
+        .enumerate()
+        .map(|(index, s)| {
+            let (key, value) = s.split_once('=').ok_or_else(|| {
+                RunnerError::Config(format!(
+                    "invalid --env entry {}: expected KEY=VALUE format",
+                    index + 1
+                ))
+            })?;
+            if !guest_contracts::env::is_shell_identifier_env_key(key) {
+                return Err(RunnerError::Config(format!(
+                    "invalid --env key in entry {}: expected shell identifier",
+                    index + 1
+                )));
+            }
+            Ok((key.to_string(), value.to_string()))
+        })
+        .collect()
+}
+
+fn validate_timezone_arg(timezone: &str) -> RunnerResult<()> {
+    if !timezone.is_empty() && executor::is_valid_guest_timezone_name(timezone) {
+        return Ok(());
+    }
+    Err(RunnerError::Config(format!(
+        "invalid --timezone {timezone:?}: expected a non-empty IANA timezone name"
+    )))
+}
+
+#[derive(Args)]
+pub struct BenchmarkArgs {
+    /// The bash command to execute in the VM
+    command: String,
+    /// Path to runner.yaml config file
+    #[arg(long, short)]
+    config: PathBuf,
+    /// Command timeout in seconds
+    #[arg(long, default_value_t = 300)]
+    timeout_secs: u64,
+    /// Environment variables to pass (KEY=VALUE), can be repeated
+    #[arg(long, short)]
+    env: Vec<String>,
+    /// System timezone to configure in the VM before running the command
+    #[arg(long, default_value = DEFAULT_BENCHMARK_TIMEZONE)]
+    timezone: String,
+    /// Run the command as root (sudo)
+    #[arg(long)]
+    sudo: bool,
+    /// Profile to benchmark
+    #[arg(long)]
+    profile: String,
+}
+
+pub async fn run_benchmark(
+    args: BenchmarkArgs,
+    runtime_provider: &dyn RuntimeProvider,
+) -> RunnerResult<ExitCode> {
+    let total = Instant::now();
+
+    // Validate --env up front so typos fail before proxy/sandbox startup.
+    let env_pairs = parse_env_args(&args.env)?;
+    validate_timezone_arg(&args.timezone)?;
+
+    // 1. Load config, force concurrency=1
+    let mut runner_config = config::load(&args.config).await?;
+    let registry_config_path = tokio::fs::canonicalize(&args.config).await.map_err(|e| {
+        RunnerError::Config(format!(
+            "canonicalize config path {} for live runner registry: {e}",
+            args.config.display()
+        ))
+    })?;
+    runner_config.sandbox.max_concurrent = 1;
+    crate::private_fs::ensure_private_dir(&runner_config.base_dir).await?;
+    let base_dir_canonical = runner_config.base_dir.canonicalize().map_err(|e| {
+        RunnerError::Config(format!(
+            "canonicalize base_dir {} for live runner registry: {e}",
+            runner_config.base_dir.display()
+        ))
+    })?;
+
+    let home = HomePaths::new()?;
+
+    // Look up the profile selected via --profile.
+    let profile_name = args.profile.as_str();
+    let profile_config = runner_config.profiles.get(profile_name).ok_or_else(|| {
+        RunnerError::Config(format!("profile '{profile_name}' not found in config"))
+    })?;
+
+    let rootfs_lock = lock::acquire_shared(home.rootfs_lock(&profile_config.rootfs_hash)).await?;
+    let rootfs_paths = RootfsPaths::new(&home, &profile_config.rootfs_hash);
+    let snapshot_lock =
+        lock::acquire_shared(home.snapshot_lock(&profile_config.snapshot_hash)).await?;
+    config::validate_profile_image_artifacts(profile_name, profile_config, &home).await?;
+    let resource_locks = (rootfs_lock, snapshot_lock);
+
+    // Block until memory.bin is in page cache so benchmark numbers are stable.
+    {
+        let path = rootfs_paths
+            .snapshot(&profile_config.snapshot_hash)
+            .memory_bin();
+        let _ = tokio::task::spawn_blocking(move || prefetch::prefetch_memory(&path)).await;
+    }
+
+    // 2. Start proxy (unconditional — benchmark always uses proxy)
+    let t = Instant::now();
+    let runner_paths = RunnerPaths::new(runner_config.base_dir.clone());
+    // Benchmark runs a single short-lived sandbox; crash recovery is not needed.
+    let (mut mitm, _crash_rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
+        mitmdump_bin: home.mitmdump_bin(MITMPROXY_VERSION),
+        ca_dir: runner_config.ca_dir.clone(),
+        addon_dir: runner_paths.mitm_addon_dir(),
+        registry_path: runner_paths.proxy_registry(),
+        registry_lock_path: runner_paths.proxy_registry_lock(),
+        api_url: runner_config.server.as_ref().map(|s| s.url.clone()),
+    })
+    .await?;
+    mitm.start().await?;
+    let proxy_ms = t.elapsed().as_millis();
+    info!(proxy_ms, port = mitm.port(), "proxy ready");
+
+    let live_runner_instance_handle = match crate::live_runner_instances::publish(
+        &home,
+        crate::live_runner_instances::LiveRunnerInstanceMetadata {
+            config_path: registry_config_path,
+            base_dir: base_dir_canonical,
+            runner_name: runner_config.name.clone(),
+            runner_group: runner_config.group.clone(),
+            subcommand: "benchmark".into(),
+        },
+    )
+    .await
+    {
+        Ok(handle) => handle,
+        Err(e) => {
+            stop_benchmark_proxy(&mut mitm, "live_runner_publish").await;
+            return Err(e);
+        }
+    };
+
+    // 3. Factory init (with proxy port) via sandbox runtime
+    let factory_config = runner_config.factory_config(profile_name, profile_config, &home);
+
+    let t = Instant::now();
+    let mut runtime = match runtime_provider
+        .create_runtime(sandbox::RuntimeConfig {
+            proxy_port: Some(mitm.port()),
+            dns_port: None, // benchmark does not use custom DNS proxy
+        })
+        .await
+    {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            drop(resource_locks);
+            stop_benchmark_proxy(&mut mitm, "runtime_create").await;
+            remove_benchmark_live_runner_instance(&live_runner_instance_handle, "runtime_create")
+                .await;
+            return Err(e.into());
+        }
+    };
+    let mut factory = match create_factory_or_shutdown_runtime(runtime.as_mut(), factory_config)
+        .await
+    {
+        Ok(factory) => factory,
+        Err(e) => {
+            drop(resource_locks);
+            stop_benchmark_proxy(&mut mitm, "factory_create").await;
+            remove_benchmark_live_runner_instance(&live_runner_instance_handle, "factory_create")
+                .await;
+            return Err(e.into());
+        }
+    };
+    let factory_ms = t.elapsed().as_millis();
+    info!(factory_ms, "factory ready");
+
+    // 4. Create + run sandbox — always shutdown factory and runtime afterwards
+    let sandbox_config = SandboxConfig {
+        id: SandboxId::new_v4(),
+        resources: sandbox::ResourceLimits {
+            cpu_count: profile_config.vcpu,
+            memory_mb: profile_config.memory_mb,
+        },
+        device_rate_limits: None,
+        workspace_drive: Some(sandbox::WorkspaceDriveConfig {
+            size_mb: profile_config.workspace_disk_mb,
+            seed_image: None,
+        }),
+    };
+    let (result, timing) = run_sandbox(&args, &env_pairs, &*factory, &mitm, sandbox_config).await;
+    let total_ms = total.elapsed().as_millis();
+    // Shutdown factory first (releases the COW pool), then runtime-owned pools.
+    factory.shutdown().await;
+    runtime.shutdown().await;
+    if let Err(e) = mitm.stop().await {
+        warn!(error = %e, "proxy stop failed");
+    }
+    remove_benchmark_live_runner_instance(&live_runner_instance_handle, "complete").await;
+
+    // 5. Log timing summary (always, even on error)
+    let Timing {
+        boot_ms,
+        workspace_mount_ms,
+        guest_restore_ms,
+        exec_ms,
+    } = timing;
+    match &result {
+        Ok(exec_result) => {
+            let exit_code = benchmark_exit_code(exec_result);
+            info!(
+                proxy_ms,
+                factory_ms,
+                boot_ms = ?boot_ms,
+                workspace_mount_ms = ?workspace_mount_ms,
+                guest_restore_ms = ?guest_restore_ms,
+                exec_ms = ?exec_ms,
+                total_ms,
+                termination = ?exec_result.termination,
+                exit_code,
+                "benchmark complete"
+            );
+        }
+        Err(e) => {
+            info!(proxy_ms, factory_ms, boot_ms = ?boot_ms, workspace_mount_ms = ?workspace_mount_ms, guest_restore_ms = ?guest_restore_ms, exec_ms = ?exec_ms, total_ms, error = %e, "benchmark failed");
+        }
+    }
+
+    let exec_result = result?;
+
+    // 6. Print stdout/stderr directly to terminal
+    let stdout = std::io::stdout();
+    let stderr = std::io::stderr();
+    write_benchmark_exec_output(&mut stdout.lock(), &mut stderr.lock(), &exec_result);
+
+    // 7. Propagate exit code
+    Ok(ExitCode::from(benchmark_exit_code(&exec_result)))
+}
+
+fn benchmark_exit_code(exec_result: &ExecResult) -> u8 {
+    match exec_result.termination {
+        ExecTermination::Exited { exit_code } => match u8::try_from(exit_code) {
+            Ok(code) => code,
+            Err(_) => {
+                warn!(exit_code, "exit code out of u8 range, using 1");
+                1
+            }
+        },
+        ExecTermination::TimedOut => 124,
+        ExecTermination::Cancelled | ExecTermination::StartFailed | ExecTermination::WaitFailed => {
+            1
+        }
+    }
+}
+
+fn write_benchmark_exec_output(
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+    result: &ExecResult,
+) {
+    let _ = stdout.write_all(&result.stdout);
+    let _ = stderr.write_all(&result.stderr);
+    let mut line_open = !result.stderr.is_empty() && !result.stderr.ends_with(b"\n");
+    write_benchmark_terminal_diagnostic(stderr, result, &mut line_open);
+}
+
+fn write_benchmark_terminal_diagnostic(
+    stderr: &mut impl Write,
+    result: &ExecResult,
+    line_open: &mut bool,
+) {
+    let (fallback, include_diagnostic) = match result.termination {
+        ExecTermination::Exited { .. } => (None, false),
+        ExecTermination::TimedOut => (Some("Timeout"), false),
+        ExecTermination::Cancelled => (Some("Cancelled"), true),
+        ExecTermination::StartFailed | ExecTermination::WaitFailed => (None, true),
+    };
+
+    if result.stderr.is_empty() {
+        if let Some(message) = fallback {
+            let _ = writeln!(stderr, "{message}");
+            *line_open = false;
+        }
+    } else if include_diagnostic && !result.diagnostic.is_empty() && *line_open {
+        let _ = writeln!(stderr);
+        *line_open = false;
+    }
+
+    if include_diagnostic && !result.diagnostic.is_empty() {
+        let _ = writeln!(stderr, "{}", result.diagnostic);
+        *line_open = false;
+    }
+}
+
+async fn stop_benchmark_proxy(mitm: &mut proxy::MitmProxy, phase: &'static str) {
+    if let Err(e) = mitm.stop().await {
+        warn!(error = %e, phase, "proxy stop failed during benchmark cleanup");
+    }
+}
+
+async fn remove_benchmark_live_runner_instance(
+    handle: &crate::live_runner_instances::LiveRunnerInstanceHandle,
+    phase: &'static str,
+) {
+    if let Err(e) = handle.remove_if_current().await {
+        warn!(error = %e, phase, "failed to remove benchmark live runner instance record");
+    }
+}
+
+async fn create_factory_or_shutdown_runtime(
+    runtime: &mut dyn SandboxRuntime,
+    factory_config: sandbox::FactoryConfig,
+) -> sandbox::Result<Box<dyn SandboxFactory>> {
+    match runtime.create_factory(factory_config).await {
+        Ok(factory) => Ok(factory),
+        Err(e) => {
+            runtime.shutdown().await;
+            Err(e)
+        }
+    }
+}
+
+/// Create, register, start, exec, stop, unregister, destroy.
+/// Timing is always returned even on error.
+/// Caller is responsible for `factory.shutdown()`.
+async fn run_sandbox(
+    args: &BenchmarkArgs,
+    env_pairs: &[(String, String)],
+    factory: &dyn SandboxFactory,
+    mitm: &proxy::MitmProxy,
+    sandbox_config: SandboxConfig,
+) -> (RunnerResult<ExecResult>, Timing) {
+    let mut sandbox = match factory.create(sandbox_config).await {
+        Ok(s) => s,
+        Err(e) => return (Err(e.into()), Timing::default()),
+    };
+
+    let source_ip = sandbox.source_ip().to_string();
+    let run_id = sandbox.id().to_string();
+    let network_log_path = std::path::PathBuf::from("/dev/null");
+    let proxy_log_path = std::path::PathBuf::from("/dev/null");
+    let registration = proxy::VmRegistration {
+        run_id: &run_id,
+        cli_agent_type: "claude-code",
+        sandbox_token: "",
+        network_log_path: &network_log_path,
+        proxy_log_path: &proxy_log_path,
+        firewalls: None,
+        network_policies: None,
+        encrypted_secrets: None,
+        secret_connector_map: None,
+        secret_connector_metadata_map: None,
+        vars: None,
+        capture_network_bodies: false,
+        billable_firewalls: &[],
+        model_usage_provider: None,
+    };
+    if let Err(e) = mitm.register_vm(&source_ip, &registration).await {
+        warn!(error = %e, "failed to register VM in proxy");
+    }
+
+    let (result, timing) = run_in_sandbox(args, env_pairs, sandbox.as_mut()).await;
+
+    if let Err(e) = mitm.unregister_vm(&source_ip).await {
+        warn!(error = %e, "failed to unregister VM from proxy");
+    }
+    if let Err(e) = sandbox.stop().await {
+        warn!(error = %e, "sandbox stop failed");
+    }
+    factory.destroy(sandbox).await;
+
+    (result, timing)
+}
+
+/// Images always contain a snapshot — restore guest state before the benchmark command.
+async fn setup_guest(sandbox: &dyn sandbox::Sandbox, timezone: &str) -> RunnerResult<()> {
+    executor::restore_guest_state_with_timezone(sandbox, timezone).await?;
+    Ok(())
+}
+
+/// Start sandbox, restore guest state, exec command. Returns result + timing.
+async fn run_in_sandbox(
+    args: &BenchmarkArgs,
+    env_pairs: &[(String, String)],
+    sandbox: &mut dyn sandbox::Sandbox,
+) -> (RunnerResult<ExecResult>, Timing) {
+    let mut timing = Timing::default();
+
+    let t_boot = Instant::now();
+    let start_result = sandbox.start().await;
+    timing.boot_ms = Some(t_boot.elapsed().as_millis());
+    if let Err(e) = start_result {
+        return (Err(e.into()), timing);
+    }
+
+    let t_mount = Instant::now();
+    let mount_result = ensure_workspace_drive_mounted(sandbox, sandbox.id()).await;
+    timing.workspace_mount_ms = Some(t_mount.elapsed().as_millis());
+    if let Err(e) = mount_result {
+        return (Err(e), timing);
+    }
+
+    let t_guest_restore = Instant::now();
+    let guest_restore_result = setup_guest(sandbox, &args.timezone).await;
+    timing.guest_restore_ms = Some(t_guest_restore.elapsed().as_millis());
+    if let Err(e) = guest_restore_result {
+        return (Err(e), timing);
+    }
+
+    let env_refs: Vec<(&str, &str)> = env_pairs
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+
+    let t_exec = Instant::now();
+    let result = sandbox
+        .exec_with_diagnostic_label(
+            &ExecRequest {
+                cmd: &args.command,
+                timeout: Duration::from_secs(args.timeout_secs),
+                env: &env_refs,
+                sudo: args.sudo,
+                stdin_bytes: None,
+                output_limits: EXEC_OUTPUT_LIMIT_7_MIB,
+            },
+            "benchmark-exec",
+        )
+        .await
+        .map_err(Into::into);
+    timing.exec_ms = Some(t_exec.elapsed().as_millis());
+
+    (result, timing)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use async_trait::async_trait;
+    use sandbox::{Sandbox, SandboxError, SandboxInitializationPhase};
+
+    #[test]
+    fn parse_env_args_accepts_key_value_pairs() {
+        let input = vec![
+            "FOO=bar".to_string(),
+            "_FOO=bar".to_string(),
+            "FOO_1=bar".to_string(),
+            "EMPTY=".to_string(),
+        ];
+        let parsed = parse_env_args(&input).unwrap();
+        assert_eq!(
+            parsed,
+            vec![
+                ("FOO".to_string(), "bar".to_string()),
+                ("_FOO".to_string(), "bar".to_string()),
+                ("FOO_1".to_string(), "bar".to_string()),
+                ("EMPTY".to_string(), String::new()),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_env_args_preserves_value_with_equals() {
+        let input = vec!["URL=https://a?x=1&y=2".to_string()];
+        let parsed = parse_env_args(&input).unwrap();
+        assert_eq!(
+            parsed,
+            vec![("URL".to_string(), "https://a?x=1&y=2".to_string())]
+        );
+    }
+
+    #[test]
+    fn parse_env_args_rejects_missing_equals() {
+        let input = vec!["FOO".to_string()];
+        let err = parse_env_args(&input).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("invalid --env entry 1: expected KEY=VALUE format"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_env_args_rejects_when_any_entry_is_missing_equals() {
+        let input = vec!["GOOD=ok".to_string(), "secret-without-equals".to_string()];
+        let err = parse_env_args(&input).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("invalid --env entry 2: expected KEY=VALUE format"),
+            "got: {err}"
+        );
+        assert!(
+            !err.to_string().contains("secret-without-equals"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_env_args_rejects_invalid_shell_identifier_keys() {
+        for value in [
+            "=secret-value",
+            "1BAD=secret-value",
+            "BAD-NAME=secret-value",
+        ] {
+            let input = vec![value.to_string()];
+            let err = parse_env_args(&input).unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains("invalid --env key in entry 1: expected shell identifier"),
+                "got: {err}"
+            );
+            assert!(!err.to_string().contains("secret-value"), "got: {err}");
+            assert!(!err.to_string().contains(value), "got: {err}");
+        }
+    }
+
+    #[test]
+    fn validate_timezone_arg_accepts_default_and_common_names() {
+        for timezone in [
+            DEFAULT_BENCHMARK_TIMEZONE,
+            "Asia/Shanghai",
+            "Etc/GMT+1",
+            "America/Argentina/Buenos_Aires",
+        ] {
+            validate_timezone_arg(timezone).unwrap();
+        }
+    }
+
+    #[test]
+    fn validate_timezone_arg_rejects_empty_and_shell_metacharacters() {
+        for timezone in ["", "UTC;id", "America/New York", "UTC'", "$(date)"] {
+            let err = validate_timezone_arg(timezone).unwrap_err();
+            assert!(
+                err.to_string().contains("invalid --timezone"),
+                "timezone {timezone:?} produced unexpected error: {err}"
+            );
+        }
+    }
+
+    fn exec_result(
+        termination: ExecTermination,
+        stdout: &[u8],
+        stderr: &[u8],
+        diagnostic: &str,
+    ) -> ExecResult {
+        ExecResult {
+            termination,
+            stdout: stdout.to_vec(),
+            stderr: stderr.to_vec(),
+            diagnostic: diagnostic.to_string(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+        }
+    }
+
+    #[test]
+    fn benchmark_output_preserves_timeout_stderr_fallback() {
+        let result = exec_result(ExecTermination::TimedOut, b"partial stdout\n", b"", "");
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        write_benchmark_exec_output(&mut stdout, &mut stderr, &result);
+
+        assert_eq!(stdout, b"partial stdout\n");
+        assert_eq!(stderr, b"Timeout\n");
+    }
+
+    #[test]
+    fn benchmark_output_starts_terminal_diagnostic_on_new_line() {
+        let result = exec_result(
+            ExecTermination::WaitFailed,
+            b"",
+            b"stderr clue",
+            "wait failed",
+        );
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        write_benchmark_exec_output(&mut stdout, &mut stderr, &result);
+
+        assert!(stdout.is_empty());
+        assert_eq!(stderr, b"stderr clue\nwait failed\n");
+    }
+
+    #[tokio::test]
+    async fn create_factory_or_shutdown_runtime_shuts_down_runtime_after_factory_error() {
+        let shutdowns = Arc::new(AtomicUsize::new(0));
+        let mut runtime = FailingFactoryRuntime {
+            shutdowns: Arc::clone(&shutdowns),
+        };
+
+        let result = create_factory_or_shutdown_runtime(&mut runtime, test_factory_config()).await;
+
+        assert!(matches!(
+            result,
+            Err(SandboxError::Initialization {
+                phase: SandboxInitializationPhase::Factory,
+                message,
+            }) if message == "factory failed"
+        ));
+        assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn create_factory_or_shutdown_runtime_returns_factory_without_shutdown() {
+        let shutdowns = Arc::new(AtomicUsize::new(0));
+        let mut runtime = SuccessfulFactoryRuntime {
+            shutdowns: Arc::clone(&shutdowns),
+        };
+
+        let factory = create_factory_or_shutdown_runtime(&mut runtime, test_factory_config())
+            .await
+            .unwrap();
+
+        assert_eq!(factory.name(), "test");
+        assert_eq!(shutdowns.load(Ordering::SeqCst), 0);
+    }
+
+    struct SuccessfulFactoryRuntime {
+        shutdowns: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl SandboxRuntime for SuccessfulFactoryRuntime {
+        async fn create_factory(
+            &self,
+            _config: sandbox::FactoryConfig,
+        ) -> sandbox::Result<Box<dyn SandboxFactory>> {
+            Ok(Box::new(TestFactory))
+        }
+
+        async fn shutdown(&mut self) {
+            self.shutdowns.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    struct FailingFactoryRuntime {
+        shutdowns: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl SandboxRuntime for FailingFactoryRuntime {
+        async fn create_factory(
+            &self,
+            _config: sandbox::FactoryConfig,
+        ) -> sandbox::Result<Box<dyn SandboxFactory>> {
+            Err(SandboxError::Initialization {
+                phase: SandboxInitializationPhase::Factory,
+                message: "factory failed".into(),
+            })
+        }
+
+        async fn shutdown(&mut self) {
+            self.shutdowns.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    struct TestFactory;
+
+    #[async_trait]
+    impl SandboxFactory for TestFactory {
+        fn name(&self) -> &str {
+            "test"
+        }
+
+        fn config_hash(&self) -> String {
+            "test".into()
+        }
+
+        async fn create(
+            &self,
+            _config: sandbox::SandboxConfig,
+        ) -> sandbox::Result<Box<dyn Sandbox>> {
+            panic!("benchmark lifecycle tests do not create sandboxes")
+        }
+
+        async fn destroy(&self, _sandbox: Box<dyn Sandbox>) {}
+
+        async fn shutdown(&mut self) {}
+    }
+
+    fn test_factory_config() -> sandbox::FactoryConfig {
+        sandbox::FactoryConfig {
+            profile: "vm0/test".into(),
+            binary_path: PathBuf::from("/firecracker"),
+            kernel_path: PathBuf::from("/vmlinux"),
+            rootfs_path: PathBuf::from("/rootfs.ext4"),
+            base_dir: PathBuf::from("/tmp/vm0-test"),
+            snapshot: None,
+        }
+    }
+}

@@ -1,0 +1,27 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 85.64 90.17"
+  role="img"
+  aria-label="connector logo"
+>
+  <defs>
+    <linearGradient
+      id="rentcast-mark-gradient"
+      x1="84.96"
+      y1="45.09"
+      x2="0.69"
+      y2="45.09"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#377DFF" />
+      <stop offset="0.03" stop-color="#3580FD" />
+      <stop offset="0.46" stop-color="#18A8EB" />
+      <stop offset="0.79" stop-color="#06C0DF" />
+      <stop offset="1" stop-color="#00C9DB" />
+    </linearGradient>
+  </defs>
+  <path
+    d="M42.76 50.08A4.74 4.74 0 0 1 38 45.27l0-32a7.08 7.08 0 0 0-14.15 0V62a4.77 4.77 0 0 1-4.76 4.86H19A4.85 4.85 0 0 1 14.17 62V34.46A7.08 7.08 0 0 0 0 34.46v48.63C0 93-.71 91.42 7.09 85l26.05-21.57c11.31-9.58 8-9.58 19.49 0L78.56 85c7.8 6.45 7.08 8 7.08-1.88v-76a7.08 7.08 0 0 0-14.15 0V62a4.84 4.84 0 0 1-4.84 4.86h-.09A4.76 4.76 0 0 1 61.81 62V24.2a7.08 7.08 0 0 0-14.15 0v21.07a4.75 4.75 0 0 1-4.8 4.81Z"
+    fill="url(#rentcast-mark-gradient)"
+  />
+</svg>

@@ -1,0 +1,1 @@
+ALTER TABLE "agent_runs" ADD COLUMN "sandbox_reuse_result" varchar(50);

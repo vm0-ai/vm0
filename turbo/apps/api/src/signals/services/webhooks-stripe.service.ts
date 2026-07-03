@@ -1,0 +1,2840 @@
+import type { Stripe } from "stripe";
+import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
+import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
+import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { command } from "ccstate";
+import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
+
+import { env } from "../../lib/env";
+import { logger } from "../../lib/log";
+import { now, nowDate } from "../../lib/time";
+import { clerk$ } from "../external/clerk";
+import { writeDb$, type Db } from "../external/db";
+import { getStripeClient } from "../external/stripe-client";
+import { settle } from "../utils";
+import { getCampaign } from "./one-time-products";
+import {
+  checkoutTierConflictMessage,
+  checkoutWouldReplaceWithSameOrLowerTier,
+  type SubscriptionCheckoutTier,
+  tierForKnownPriceId,
+  tierFromPriceId,
+} from "./zero-billing-checkout.service";
+import { isCurrentStripePreviewMetadata } from "./stripe-preview-metadata.service";
+import {
+  subscriptionScheduleCancellationEnd,
+  subscriptionScheduleId,
+} from "./stripe-subscription-schedules.service";
+import { downgradeSubscriptionForOrg } from "./zero-billing-downgrade.service";
+import {
+  BILLING_DOWNGRADE_PURPOSE,
+  BILLING_RESTORE_PURPOSE,
+} from "./zero-billing-payment-method.service";
+import { restoreSubscriptionForOrg } from "./zero-billing-restore.service";
+import { publishBillingChangedForOrg } from "./zero-billing-realtime.service";
+import { drainOrgQueueToCapacity$ } from "./zero-run-queue.service";
+import {
+  CONCURRENCY_SUBSCRIPTION_PURPOSE,
+  isConcurrencyPriceId,
+} from "./org-concurrency-entitlements.service";
+
+const L = logger("WebhookStripe");
+
+type BillingDowngradeCheckoutTargetTier = "pro-suspend" | "pro";
+
+type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type ClerkClient = ReturnType<typeof clerk$.read>;
+type ClerkClientProvider = () => ClerkClient;
+
+interface CheckoutSessionInput {
+  readonly id: string;
+  readonly invoice?: string | { readonly id: string } | null;
+  readonly subscription: string | { readonly id: string } | null;
+  readonly customer: string | { readonly id: string } | null;
+  readonly metadata: Record<string, string> | null;
+  readonly mode?: string | null;
+  readonly setup_intent?:
+    | string
+    | {
+        readonly id: string;
+        readonly payment_method?: string | { readonly id: string } | null;
+      }
+    | null;
+  readonly amount_subtotal?: number | null;
+  readonly amount_total?: number | null;
+  readonly payment_status?: string | null;
+}
+
+interface InvoiceInput {
+  readonly id: string;
+  readonly customer: string | { readonly id: string } | null;
+  readonly metadata: Record<string, string> | null;
+  readonly subtotal?: number | null;
+  readonly lines: {
+    readonly data: readonly {
+      readonly id?: string;
+      readonly quantity?: number | null;
+      readonly price?: { readonly id: string } | null;
+      readonly pricing?: {
+        readonly price_details?: {
+          readonly price?: string | { readonly id: string } | null;
+        } | null;
+      } | null;
+      readonly period: { readonly start?: number; readonly end: number };
+      readonly parent: {
+        readonly type: "subscription_item_details" | "invoice_item_details";
+      } | null;
+    }[];
+  };
+  readonly parent: {
+    readonly subscription_details: {
+      readonly metadata?: Record<string, string> | null;
+      readonly subscription: string | { readonly id: string };
+    } | null;
+  } | null;
+}
+
+type InvoiceLineInput = InvoiceInput["lines"]["data"][number];
+
+interface SubscriptionInput {
+  readonly id: string;
+  readonly customer?: string | { readonly id: string } | null;
+  readonly status: string;
+  readonly metadata?: Record<string, string> | null;
+  readonly trial_end?: number | null;
+  readonly cancel_at?: number | null;
+  readonly cancel_at_period_end: boolean;
+  readonly schedule?: string | { readonly id: string } | null;
+  readonly items: {
+    readonly data: readonly {
+      readonly price: { readonly id: string };
+      readonly quantity?: number | null;
+      readonly current_period_end?: number | null;
+    }[];
+  };
+}
+
+interface SubscriptionDeletedInput {
+  readonly id: string;
+  readonly metadata?: Record<string, string> | null;
+}
+
+interface SubscriptionPreviousAttributes {
+  readonly trial_end?: number | null;
+  readonly cancel_at?: number | null;
+  readonly cancel_at_period_end?: boolean;
+  readonly schedule?: string | { readonly id: string } | null;
+}
+
+interface SubscriptionScheduleInput {
+  readonly id: string;
+}
+
+interface CheckoutSubscriptionContext {
+  readonly customerId: string;
+  readonly subscriptionId: string;
+}
+
+interface BillingRestoreCheckoutOutcome {
+  readonly handled: boolean;
+  readonly orgId: string | null;
+}
+
+interface InvoicePaidOrg {
+  readonly orgId: string;
+  readonly lastProcessedInvoiceId: string | null;
+  readonly stripeSubscriptionId: string | null;
+  readonly subscriptionStatus: string | null;
+  readonly tier: string;
+}
+
+type LockedInvoicePaidOrg = InvoicePaidOrg;
+
+interface SubscriptionInvoiceDetails {
+  readonly subscription: SubscriptionInput;
+  readonly tier: SubscriptionCheckoutTier;
+  readonly credits: number;
+  readonly periodEndDate: Date;
+  readonly scheduledEndDate: Date | null;
+  readonly expiresAt: Date;
+}
+
+interface PaidWebhookOutcome {
+  readonly handled: boolean;
+  readonly drainOrgId: string | null;
+}
+
+interface AtomGrantInvoiceDetails {
+  readonly orgId: string;
+  readonly tier: "pro" | "team";
+  readonly grantExpiresAt: Date | null;
+  readonly creditExpiresAt: Date;
+  readonly customerId: string | null;
+  readonly credits: number;
+}
+
+function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
+  const periodEndUnix = subscription.items.data[0]?.current_period_end;
+  return typeof periodEndUnix === "number"
+    ? new Date(periodEndUnix * 1000)
+    : null;
+}
+
+function concurrencySubscriptionItem(subscription: SubscriptionInput):
+  | {
+      readonly price: { readonly id: string };
+      readonly quantity?: number | null;
+      readonly current_period_end?: number | null;
+    }
+  | undefined {
+  return subscription.items.data.find((item) => {
+    return isConcurrencyPriceId(item.price.id);
+  });
+}
+
+function concurrencySubscriptionPeriodEnd(
+  subscription: SubscriptionInput,
+): Date | null {
+  const periodEndUnix =
+    concurrencySubscriptionItem(subscription)?.current_period_end;
+  return typeof periodEndUnix === "number"
+    ? new Date(periodEndUnix * 1000)
+    : null;
+}
+
+function concurrencySubscriptionSlots(
+  subscription: SubscriptionInput,
+): number | null {
+  const quantity = concurrencySubscriptionItem(subscription)?.quantity;
+  return typeof quantity === "number" && quantity > 0 ? quantity : null;
+}
+
+function subscriptionCancelAt(subscription: SubscriptionInput): Date | null {
+  return typeof subscription.cancel_at === "number"
+    ? new Date(subscription.cancel_at * 1000)
+    : null;
+}
+
+function subscriptionWillCancel(subscription: SubscriptionInput): boolean {
+  return (
+    subscription.cancel_at_period_end ||
+    subscriptionCancelAt(subscription) !== null
+  );
+}
+
+async function subscriptionScheduledEnd(
+  stripe: ReturnType<typeof getStripeClient>,
+  subscription: SubscriptionInput,
+): Promise<Date | null> {
+  return (
+    subscriptionCancelAt(subscription) ??
+    (await subscriptionScheduleCancellationEnd(stripe, subscription)) ??
+    (subscription.cancel_at_period_end
+      ? subscriptionPeriodEnd(subscription)
+      : null)
+  );
+}
+
+function customerIdFromSubscription(
+  subscription: SubscriptionInput,
+): string | null {
+  return typeof subscription.customer === "string"
+    ? subscription.customer
+    : (subscription.customer?.id ?? null);
+}
+
+function subscriptionTrialEnd(subscription: SubscriptionInput): Date | null {
+  return typeof subscription.trial_end === "number"
+    ? new Date(subscription.trial_end * 1000)
+    : null;
+}
+
+function subscriptionPendingChangeCleared(
+  subscription: SubscriptionInput,
+  previousAttributes: SubscriptionPreviousAttributes | undefined,
+  willCancel: boolean,
+): boolean {
+  if (willCancel || subscriptionScheduleId(subscription)) {
+    return false;
+  }
+
+  return (
+    previousAttributes?.schedule !== undefined ||
+    previousAttributes?.cancel_at !== undefined ||
+    previousAttributes?.cancel_at_period_end === true
+  );
+}
+
+function requiredSubscriptionTrialEnd(subscription: SubscriptionInput): Date {
+  const trialEnd = subscriptionTrialEnd(subscription);
+  if (!trialEnd) {
+    throw new Error(
+      `trialing subscription has no trial_end (subscriptionId=${subscription.id})`,
+    );
+  }
+  return trialEnd;
+}
+
+function monthlyCreditsForTier(tier: OrgTier): number {
+  switch (tier) {
+    case "free": {
+      return 0;
+    }
+    case "limited-free-1": {
+      return 0;
+    }
+    case "pro-suspend": {
+      return 0;
+    }
+    case "pro": {
+      return 20_000;
+    }
+    case "team": {
+      return 120_000;
+    }
+  }
+}
+
+function subscriptionCreditExpiresAt(
+  subscription: SubscriptionInput,
+  periodEndDate: Date,
+): Date {
+  const atomGrantExpiresAt = atomDayGrantCreditExpiresAt(subscription);
+  if (atomGrantExpiresAt) {
+    return atomGrantExpiresAt;
+  }
+
+  if (subscription.status === "trialing") {
+    return requiredSubscriptionTrialEnd(subscription);
+  }
+
+  const expiresAt = new Date(periodEndDate);
+  expiresAt.setMonth(expiresAt.getMonth() + 1);
+  return expiresAt;
+}
+
+const CREDITS_PER_DOLLAR = 1000;
+const CREDIT_PURCHASE_EXPIRES_AT_METADATA_KEY = "creditsExpiresAt";
+const ATOM_GRANT_EXPIRES_AT_METADATA_KEY = "atomGrantExpiresAt";
+const ATOM_GRANT_PURPOSE = "atom_grant";
+const ATOM_GRANT_SUBSCRIPTION_STATUS = "atom_grant";
+
+function isAtomDayGrantSource(source: string | undefined): boolean {
+  return source === "atom_entitlement" || source === "atom_redeem_code";
+}
+
+function atomDayGrantCreditExpiresAt(
+  subscription: SubscriptionInput,
+): Date | null {
+  const metadata = subscription.metadata ?? {};
+  if (!isAtomDayGrantSource(metadata.source)) {
+    return null;
+  }
+
+  const duration = metadata.duration;
+  if (!duration || !/^\d+d$/.test(duration)) {
+    return null;
+  }
+
+  const cancelAt = subscriptionCancelAt(subscription);
+  if (!cancelAt) {
+    return null;
+  }
+
+  const metadataExpiresAt = metadata[ATOM_GRANT_EXPIRES_AT_METADATA_KEY];
+  if (metadataExpiresAt) {
+    const date = new Date(metadataExpiresAt);
+    if (
+      !Number.isNaN(date.getTime()) &&
+      Math.floor(date.getTime() / 1000) ===
+        Math.floor(cancelAt.getTime() / 1000)
+    ) {
+      return date;
+    }
+  }
+
+  return cancelAt;
+}
+
+function creditsFromAmountCents(
+  amountCents: number | null | undefined,
+): number {
+  if (amountCents === undefined || amountCents === null) {
+    return Number.NaN;
+  }
+  return Math.floor((amountCents * CREDITS_PER_DOLLAR) / 100);
+}
+
+function creditPurchaseAmount(session: CheckoutSessionInput): number {
+  const metadata = session.metadata ?? {};
+  if (metadata.creditsAmountMode === "amount_subtotal") {
+    return creditsFromAmountCents(
+      session.amount_subtotal ?? session.amount_total,
+    );
+  }
+  if (metadata.creditsAmountMode === "amount_total") {
+    return creditsFromAmountCents(session.amount_total);
+  }
+  return Number(metadata.creditsAmount);
+}
+
+function checkoutSessionInvoiceId(
+  session: CheckoutSessionInput,
+): string | null {
+  if (typeof session.invoice === "string") {
+    return session.invoice;
+  }
+  return session.invoice?.id ?? null;
+}
+
+function autoRechargeNeverExpiresAt(): Date {
+  return new Date("2999-12-31T00:00:00Z");
+}
+
+function parseMetadataDate(value: string): Date | null {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  const parsedDate = /^\d+$/.test(trimmedValue)
+    ? new Date(Number(trimmedValue) * 1000)
+    : new Date(trimmedValue);
+
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+}
+
+function creditPurchaseExpiresAt(
+  metadata: Readonly<Record<string, string>>,
+): Date | null {
+  const expiresAtValue = metadata[CREDIT_PURCHASE_EXPIRES_AT_METADATA_KEY];
+  if (!expiresAtValue) {
+    return autoRechargeNeverExpiresAt();
+  }
+
+  const expiresAt = parseMetadataDate(expiresAtValue);
+  if (!expiresAt || expiresAt.getTime() <= now()) {
+    return null;
+  }
+
+  return expiresAt;
+}
+
+function atomGrantPriceId(): string | null {
+  return env("ATOM_GRANT_PRICE") ?? null;
+}
+
+function invoiceAtomGrantLine(invoice: InvoiceInput): InvoiceLineInput | null {
+  const priceId = atomGrantPriceId();
+  if (!priceId) {
+    return null;
+  }
+  return (
+    invoice.lines.data.find((line) => {
+      return invoiceLinePriceId(line) === priceId;
+    }) ?? null
+  );
+}
+
+function isAtomGrantInvoice(invoice: InvoiceInput): boolean {
+  return (
+    invoice.metadata?.purpose === ATOM_GRANT_PURPOSE ||
+    invoice.metadata?.type === ATOM_GRANT_PURPOSE ||
+    invoiceAtomGrantLine(invoice) !== null
+  );
+}
+
+function atomGrantTier(value: string | undefined): "pro" | "team" | null {
+  return value === "pro" || value === "team" ? value : null;
+}
+
+function atomGrantExpiresAt(
+  metadata: Readonly<Record<string, string>>,
+  line: InvoiceLineInput | null,
+): Date | null {
+  const metadataExpiresAt = metadata[ATOM_GRANT_EXPIRES_AT_METADATA_KEY];
+  if (metadataExpiresAt) {
+    const expiresAt = parseMetadataDate(metadataExpiresAt);
+    if (expiresAt && expiresAt.getTime() > now()) {
+      return expiresAt;
+    }
+    return null;
+  }
+
+  if (metadata.duration === "forever") {
+    return null;
+  }
+
+  const periodEnd = line?.period.end;
+  if (!periodEnd) {
+    return null;
+  }
+
+  const expiresAt = new Date(periodEnd * 1000);
+  return expiresAt.getTime() > now() ? expiresAt : null;
+}
+
+function atomGrantCreditExpiresAt(grantExpiresAt: Date | null): Date {
+  if (grantExpiresAt) {
+    return grantExpiresAt;
+  }
+
+  return autoRechargeNeverExpiresAt();
+}
+
+function atomGrantInvoiceDetails(
+  invoice: InvoiceInput,
+): AtomGrantInvoiceDetails | null {
+  const metadata = invoice.metadata ?? {};
+  const line = invoiceAtomGrantLine(invoice);
+  const configuredPriceId = atomGrantPriceId();
+  if (!configuredPriceId) {
+    L.warn(
+      "atom grant invoice received but ATOM_GRANT_PRICE is not configured",
+      {
+        invoiceId: invoice.id,
+      },
+    );
+    return null;
+  }
+  if (!line) {
+    L.warn("atom grant invoice missing configured grant price", {
+      invoiceId: invoice.id,
+      configuredPriceId,
+    });
+    return null;
+  }
+
+  const orgId = metadata.orgId;
+  const tier = atomGrantTier(metadata.tier ?? metadata.planId);
+  const grantExpiresAt = atomGrantExpiresAt(metadata, line);
+  if (!orgId || !tier) {
+    L.warn("atom grant invoice has invalid metadata", {
+      invoiceId: invoice.id,
+      hasOrgId: Boolean(orgId),
+      tier: metadata.tier ?? metadata.planId ?? null,
+      metadata,
+    });
+    return null;
+  }
+  if (metadata.duration !== "forever" && !grantExpiresAt) {
+    L.warn("atom grant invoice has invalid grant expiration", {
+      invoiceId: invoice.id,
+      orgId,
+      duration: metadata.duration ?? null,
+      atomGrantExpiresAt: metadata[ATOM_GRANT_EXPIRES_AT_METADATA_KEY] ?? null,
+    });
+    return null;
+  }
+
+  return {
+    orgId,
+    tier,
+    grantExpiresAt,
+    creditExpiresAt: atomGrantCreditExpiresAt(grantExpiresAt),
+    customerId: customerIdFromInvoice(invoice),
+    credits: monthlyCreditsForTier(tier),
+  };
+}
+
+function atomGrantWouldReplaceWithSameOrLowerTier(args: {
+  readonly lockedOrg: LockedInvoicePaidOrg;
+  readonly targetTier: "pro" | "team";
+}): boolean {
+  if (
+    args.lockedOrg.subscriptionStatus === ATOM_GRANT_SUBSCRIPTION_STATUS &&
+    args.lockedOrg.stripeSubscriptionId === null &&
+    args.lockedOrg.tier === args.targetTier
+  ) {
+    return false;
+  }
+
+  return checkoutWouldReplaceWithSameOrLowerTier({
+    currentTier: args.lockedOrg.tier,
+    targetTier: args.targetTier,
+  });
+}
+
+function stripePreviewMetadataForEvent(
+  event: Stripe.Event,
+): readonly (Readonly<Record<string, string>> | null | undefined)[] | null {
+  switch (event.type) {
+    case "checkout.session.completed":
+    case "checkout.session.async_payment_succeeded": {
+      return [event.data.object.metadata];
+    }
+    case "invoice.paid": {
+      return [
+        event.data.object.metadata,
+        event.data.object.parent?.subscription_details?.metadata,
+      ];
+    }
+    case "customer.subscription.created":
+    case "customer.subscription.updated":
+    case "customer.subscription.deleted": {
+      return [event.data.object.metadata];
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
+function shouldHandleStripePreviewEvent(event: Stripe.Event): boolean {
+  const metadataCandidates = stripePreviewMetadataForEvent(event);
+  if (metadataCandidates === null) {
+    return true;
+  }
+  return metadataCandidates.some((metadata) => {
+    return isCurrentStripePreviewMetadata(metadata);
+  });
+}
+
+async function grantOrgCredits(
+  tx: WriteTx,
+  orgId: string,
+  amount: number,
+): Promise<void> {
+  await tx.execute(
+    sql`INSERT INTO org_metadata (org_id, credits, created_at, updated_at)
+        VALUES (${orgId}, ${amount}, now(), now())
+        ON CONFLICT (org_id)
+        DO UPDATE SET credits = org_metadata.credits + ${amount}, updated_at = now()`,
+  );
+}
+
+async function createExpiresRecord(
+  tx: WriteTx,
+  orgId: string,
+  params: {
+    readonly source: string;
+    readonly stripeInvoiceId: string;
+    readonly amount: number;
+    readonly expiresAt: Date;
+  },
+): Promise<boolean> {
+  const rows = await tx
+    .insert(creditExpiresRecord)
+    .values({
+      orgId,
+      source: params.source,
+      stripeInvoiceId: params.stripeInvoiceId,
+      amount: params.amount,
+      remaining: params.amount,
+      expiresAt: params.expiresAt,
+    })
+    .onConflictDoNothing()
+    .returning({ id: creditExpiresRecord.id });
+
+  return rows.length > 0;
+}
+
+async function lockInvoicePaidOrg(
+  tx: WriteTx,
+  orgId: string,
+): Promise<LockedInvoicePaidOrg | null> {
+  const [org] = await tx
+    .select({
+      orgId: orgMetadata.orgId,
+      lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      subscriptionStatus: orgMetadata.subscriptionStatus,
+      tier: orgMetadata.tier,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .for("update")
+    .limit(1);
+
+  return org ?? null;
+}
+
+async function existingTrialPlanCredits(
+  tx: WriteTx,
+  args: {
+    readonly orgId: string;
+    readonly credits: number;
+  },
+): Promise<boolean> {
+  const rows = await tx
+    .select({ id: creditExpiresRecord.id })
+    .from(creditExpiresRecord)
+    .where(
+      and(
+        eq(creditExpiresRecord.orgId, args.orgId),
+        eq(creditExpiresRecord.source, "subscription_renewal"),
+        eq(creditExpiresRecord.amount, args.credits),
+      ),
+    )
+    .for("update");
+
+  return rows.length > 0;
+}
+
+async function refreshTrialPlanCredits(
+  tx: WriteTx,
+  args: {
+    readonly orgId: string;
+    readonly credits: number;
+    readonly expiresAt: Date;
+  },
+): Promise<void> {
+  await tx
+    .update(creditExpiresRecord)
+    .set({ expiresAt: args.expiresAt })
+    .where(
+      and(
+        eq(creditExpiresRecord.orgId, args.orgId),
+        eq(creditExpiresRecord.source, "subscription_renewal"),
+        eq(creditExpiresRecord.amount, args.credits),
+        gt(creditExpiresRecord.remaining, 0),
+      ),
+    );
+}
+
+async function expireCredits(tx: WriteTx, orgId: string): Promise<number> {
+  const expired = await tx
+    .select({
+      id: creditExpiresRecord.id,
+      remaining: creditExpiresRecord.remaining,
+    })
+    .from(creditExpiresRecord)
+    .where(
+      and(
+        eq(creditExpiresRecord.orgId, orgId),
+        lte(creditExpiresRecord.expiresAt, nowDate()),
+        gt(creditExpiresRecord.remaining, 0),
+      ),
+    )
+    .for("update");
+
+  if (expired.length === 0) {
+    return 0;
+  }
+
+  const totalExpired = expired.reduce((sum, record) => {
+    return sum + record.remaining;
+  }, 0);
+
+  for (const record of expired) {
+    await tx
+      .update(creditExpiresRecord)
+      .set({ remaining: 0 })
+      .where(eq(creditExpiresRecord.id, record.id));
+  }
+
+  if (totalExpired > 0) {
+    await tx
+      .update(orgMetadata)
+      .set({
+        credits: sql`GREATEST(${orgMetadata.credits} - ${totalExpired}, 0)`,
+        updatedAt: nowDate(),
+      })
+      .where(eq(orgMetadata.orgId, orgId));
+  }
+
+  L.debug("expired credits settled", { orgId, totalExpired });
+  return totalExpired;
+}
+
+async function handleAutoRechargeInvoicePaid(
+  db: Db,
+  invoice: Pick<InvoiceInput, "id" | "metadata">,
+): Promise<PaidWebhookOutcome> {
+  const metadata = invoice.metadata;
+  if (!metadata || metadata.type !== "auto_recharge") {
+    return { handled: false, drainOrgId: null };
+  }
+
+  const orgId = metadata.orgId;
+  const creditsAmount = Number(metadata.creditsAmount);
+  if (!orgId || !creditsAmount || Number.isNaN(creditsAmount)) {
+    L.warn("Auto-recharge invoice has invalid metadata", {
+      invoiceId: invoice.id,
+      metadata,
+    });
+    return { handled: false, drainOrgId: null };
+  }
+
+  const grantResult = await db.transaction(
+    async (tx): Promise<"duplicate" | "granted"> => {
+      const inserted = await createExpiresRecord(tx, orgId, {
+        source: "auto_recharge",
+        stripeInvoiceId: invoice.id,
+        amount: creditsAmount,
+        expiresAt: autoRechargeNeverExpiresAt(),
+      });
+
+      if (!inserted) {
+        L.debug("Auto-recharge invoice already processed", {
+          orgId,
+          invoiceId: invoice.id,
+        });
+        return "duplicate";
+      }
+
+      await grantOrgCredits(tx, orgId, creditsAmount);
+      await tx
+        .update(orgMetadata)
+        .set({ autoRechargePendingAt: null, updatedAt: nowDate() })
+        .where(eq(orgMetadata.orgId, orgId));
+      return "granted";
+    },
+  );
+
+  if (grantResult === "granted") {
+    L.debug("Auto-recharge credits granted", {
+      orgId,
+      creditsAmount,
+      invoiceId: invoice.id,
+    });
+  }
+
+  return { handled: true, drainOrgId: orgId };
+}
+
+async function handleCreditPurchaseInvoicePaid(
+  db: Db,
+  invoice: Pick<InvoiceInput, "id" | "metadata" | "subtotal">,
+): Promise<PaidWebhookOutcome> {
+  const metadata = invoice.metadata;
+  if (
+    !metadata ||
+    (metadata.type !== "credit_purchase" &&
+      metadata.purpose !== "credit_purchase")
+  ) {
+    return { handled: false, drainOrgId: null };
+  }
+
+  const orgId = metadata.orgId;
+  const creditsAmount = creditsFromAmountCents(invoice.subtotal);
+  if (!orgId || !creditsAmount || Number.isNaN(creditsAmount)) {
+    L.warn("credit_purchase invoice has invalid metadata or subtotal", {
+      invoiceId: invoice.id,
+      hasOrgId: Boolean(orgId),
+      subtotal: invoice.subtotal ?? null,
+      metadata,
+    });
+    return { handled: true, drainOrgId: null };
+  }
+
+  const expiresAt = creditPurchaseExpiresAt(metadata);
+  if (!expiresAt) {
+    L.warn("credit_purchase invoice has invalid credits expiration metadata", {
+      invoiceId: invoice.id,
+      orgId,
+      creditsExpiresAt:
+        metadata[CREDIT_PURCHASE_EXPIRES_AT_METADATA_KEY] ?? null,
+    });
+    return { handled: true, drainOrgId: null };
+  }
+
+  await db.transaction(async (tx) => {
+    const inserted = await createExpiresRecord(tx, orgId, {
+      source: "credit_purchase",
+      stripeInvoiceId: invoice.id,
+      amount: creditsAmount,
+      expiresAt,
+    });
+
+    if (!inserted) {
+      L.debug("credit_purchase invoice already processed", {
+        invoiceId: invoice.id,
+        orgId,
+      });
+      return;
+    }
+
+    await grantOrgCredits(tx, orgId, creditsAmount);
+  });
+
+  return { handled: true, drainOrgId: orgId };
+}
+
+async function processAtomGrantInvoicePaid(
+  db: Db,
+  invoice: InvoiceInput,
+  details: AtomGrantInvoiceDetails,
+): Promise<boolean> {
+  return await db.transaction(async (tx) => {
+    await tx
+      .insert(orgMetadata)
+      .values({
+        orgId: details.orgId,
+        ...(details.customerId ? { stripeCustomerId: details.customerId } : {}),
+      })
+      .onConflictDoNothing({ target: orgMetadata.orgId });
+
+    const lockedOrg = await lockInvoicePaidOrg(tx, details.orgId);
+    if (!lockedOrg) {
+      return false;
+    }
+    if (lockedOrg.lastProcessedInvoiceId === invoice.id) {
+      L.debug("atom grant invoice already processed", {
+        invoiceId: invoice.id,
+        orgId: details.orgId,
+      });
+      return true;
+    }
+    if (
+      atomGrantWouldReplaceWithSameOrLowerTier({
+        lockedOrg,
+        targetTier: details.tier,
+      })
+    ) {
+      L.warn("atom grant invoice rejected tier replacement", {
+        invoiceId: invoice.id,
+        orgId: details.orgId,
+        currentTier: lockedOrg.tier,
+        targetTier: details.tier,
+        reason: checkoutTierConflictMessage({
+          currentTier: lockedOrg.tier,
+          targetTier: details.tier,
+        }),
+      });
+      return false;
+    }
+
+    await expireCredits(tx, details.orgId);
+    const inserted = await createExpiresRecord(tx, details.orgId, {
+      source: "subscription_renewal",
+      stripeInvoiceId: invoice.id,
+      amount: details.credits,
+      expiresAt: details.creditExpiresAt,
+    });
+    if (!inserted) {
+      L.debug("atom grant invoice credits already processed", {
+        invoiceId: invoice.id,
+        orgId: details.orgId,
+      });
+      return true;
+    }
+
+    await grantOrgCredits(tx, details.orgId, details.credits);
+    await tx
+      .update(orgMetadata)
+      .set({
+        tier: details.tier,
+        ...(details.customerId ? { stripeCustomerId: details.customerId } : {}),
+        stripeSubscriptionId: null,
+        subscriptionStatus: ATOM_GRANT_SUBSCRIPTION_STATUS,
+        cancelAtPeriodEnd: details.grantExpiresAt !== null,
+        onboardingPaymentPending: false,
+        lastProcessedInvoiceId: invoice.id,
+        currentPeriodEnd: details.grantExpiresAt,
+        pendingSubscriptionScheduleId: null,
+        pendingSubscriptionTargetTier: details.grantExpiresAt
+          ? "pro-suspend"
+          : null,
+        pendingSubscriptionChangeAt: details.grantExpiresAt,
+        updatedAt: nowDate(),
+      })
+      .where(eq(orgMetadata.orgId, details.orgId));
+    return true;
+  });
+}
+
+async function handleAtomGrantInvoicePaid(
+  db: Db,
+  invoice: InvoiceInput,
+): Promise<PaidWebhookOutcome> {
+  if (!isAtomGrantInvoice(invoice)) {
+    return { handled: false, drainOrgId: null };
+  }
+
+  const details = atomGrantInvoiceDetails(invoice);
+  if (!details) {
+    return { handled: true, drainOrgId: null };
+  }
+
+  const processed = await processAtomGrantInvoicePaid(db, invoice, details);
+  if (!processed) {
+    return { handled: true, drainOrgId: null };
+  }
+
+  L.debug("atom grant invoice processed", {
+    invoiceId: invoice.id,
+    orgId: details.orgId,
+    tier: details.tier,
+    grantExpiresAt: details.grantExpiresAt?.toISOString() ?? null,
+    creditExpiresAt: details.creditExpiresAt.toISOString(),
+  });
+  return { handled: true, drainOrgId: details.orgId };
+}
+
+async function handleOneTimePurchaseCompleted(
+  db: Db,
+  session: CheckoutSessionInput,
+): Promise<string | null> {
+  const metadata = session.metadata ?? {};
+  const orgId = metadata.orgId;
+  const campaignKey = metadata.campaignKey;
+
+  if (!orgId || !campaignKey) {
+    L.warn("one_time_purchase missing metadata", {
+      sessionId: session.id,
+      hasOrgId: Boolean(orgId),
+      hasCampaignKey: Boolean(campaignKey),
+    });
+    return null;
+  }
+
+  const campaign = getCampaign(campaignKey);
+  if (!campaign) {
+    L.warn("one_time_purchase unknown campaign; skipping", {
+      sessionId: session.id,
+      campaignKey,
+    });
+    return null;
+  }
+
+  const expiresAt = new Date(
+    now() + campaign.expiresDays * 24 * 60 * 60 * 1000,
+  );
+
+  await db.transaction(async (tx) => {
+    const inserted = await createExpiresRecord(tx, orgId, {
+      source: campaign.source,
+      stripeInvoiceId: session.id,
+      amount: campaign.credits,
+      expiresAt,
+    });
+
+    if (!inserted) {
+      L.debug("one_time_purchase already processed", {
+        sessionId: session.id,
+        orgId,
+      });
+      return;
+    }
+
+    await grantOrgCredits(tx, orgId, campaign.credits);
+  });
+
+  return orgId;
+}
+
+async function handleCreditPurchaseCompleted(
+  db: Db,
+  session: CheckoutSessionInput,
+): Promise<string | null> {
+  if (session.payment_status !== "paid") {
+    L.debug("credit_purchase checkout completed before payment settled", {
+      sessionId: session.id,
+      paymentStatus: session.payment_status ?? null,
+    });
+    return null;
+  }
+
+  const metadata = session.metadata ?? {};
+  const orgId = metadata.orgId;
+  const creditsAmount = creditPurchaseAmount(session);
+
+  if (!orgId || !creditsAmount || Number.isNaN(creditsAmount)) {
+    L.warn("credit_purchase checkout has invalid metadata or amount", {
+      sessionId: session.id,
+      hasOrgId: Boolean(orgId),
+      amountSubtotal: session.amount_subtotal ?? null,
+      amountTotal: session.amount_total ?? null,
+      metadata,
+    });
+    return null;
+  }
+
+  const expiresAt = creditPurchaseExpiresAt(metadata);
+  if (!expiresAt) {
+    L.warn("credit_purchase checkout has invalid credits expiration metadata", {
+      sessionId: session.id,
+      orgId,
+      creditsExpiresAt:
+        metadata[CREDIT_PURCHASE_EXPIRES_AT_METADATA_KEY] ?? null,
+    });
+    return null;
+  }
+
+  await db.transaction(async (tx) => {
+    const inserted = await createExpiresRecord(tx, orgId, {
+      source: "credit_purchase",
+      stripeInvoiceId: session.id,
+      amount: creditsAmount,
+      expiresAt,
+    });
+
+    if (!inserted) {
+      L.debug("credit_purchase checkout already processed", {
+        sessionId: session.id,
+        orgId,
+      });
+      return;
+    }
+
+    await grantOrgCredits(tx, orgId, creditsAmount);
+  });
+
+  return orgId;
+}
+
+async function handlePaidCheckoutPurpose(
+  db: Db,
+  session: CheckoutSessionInput,
+  purpose: "one_time_purchase",
+): Promise<PaidWebhookOutcome> {
+  if (session.metadata?.purpose !== purpose) {
+    return { handled: false, drainOrgId: null };
+  }
+
+  if (session.payment_status !== "paid") {
+    L.debug(`${purpose} checkout completed before payment settled`, {
+      sessionId: session.id,
+      paymentStatus: session.payment_status ?? null,
+    });
+    return { handled: true, drainOrgId: null };
+  }
+
+  const drainOrgId = await handleOneTimePurchaseCompleted(db, session);
+  return { handled: true, drainOrgId };
+}
+
+function checkoutSubscriptionContext(
+  session: CheckoutSessionInput,
+): CheckoutSubscriptionContext | null {
+  const subscriptionId =
+    typeof session.subscription === "string"
+      ? session.subscription
+      : session.subscription?.id;
+  if (!subscriptionId) {
+    L.warn("checkout.session.completed without subscription ID", {
+      sessionId: session.id,
+    });
+    return null;
+  }
+
+  const customerId =
+    typeof session.customer === "string"
+      ? session.customer
+      : session.customer?.id;
+  if (!customerId) {
+    L.warn("checkout.session.completed without customer ID", {
+      sessionId: session.id,
+    });
+    return null;
+  }
+
+  return { customerId, subscriptionId };
+}
+
+function checkoutCustomerId(session: CheckoutSessionInput): string | null {
+  return typeof session.customer === "string"
+    ? session.customer
+    : (session.customer?.id ?? null);
+}
+
+function setupIntentPaymentMethodId(value: unknown): string | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const setupIntent = value as {
+    readonly payment_method?: string | { readonly id: string } | null;
+  };
+  const paymentMethod = setupIntent.payment_method;
+  if (typeof paymentMethod === "string") {
+    return paymentMethod;
+  }
+  return paymentMethod?.id ?? null;
+}
+
+async function checkoutSetupPaymentMethodId(
+  stripe: ReturnType<typeof getStripeClient>,
+  session: CheckoutSessionInput,
+): Promise<string | null> {
+  const directPaymentMethodId = setupIntentPaymentMethodId(
+    session.setup_intent,
+  );
+  if (directPaymentMethodId) {
+    return directPaymentMethodId;
+  }
+
+  const refreshed = await stripe.checkout.sessions.retrieve(session.id, {
+    expand: ["setup_intent"],
+  });
+  return setupIntentPaymentMethodId(
+    (refreshed as { readonly setup_intent?: unknown }).setup_intent,
+  );
+}
+
+function billingRestoreCheckoutMetadata(
+  session: CheckoutSessionInput,
+): { readonly orgId: string; readonly subscriptionId: string } | null {
+  if (session.metadata?.purpose !== BILLING_RESTORE_PURPOSE) {
+    return null;
+  }
+
+  const orgId = session.metadata.orgId;
+  const subscriptionId = session.metadata.subscriptionId;
+  if (!orgId || !subscriptionId) {
+    L.warn("billing restore checkout missing metadata", {
+      sessionId: session.id,
+      orgId: orgId ?? null,
+      subscriptionId: subscriptionId ?? null,
+    });
+    return null;
+  }
+  return { orgId, subscriptionId };
+}
+
+function billingDowngradeTargetTier(
+  value: string | undefined,
+): BillingDowngradeCheckoutTargetTier | null {
+  if (value === "pro" || value === "pro-suspend") {
+    return value;
+  }
+  return null;
+}
+
+function billingDowngradeCheckoutMetadata(session: CheckoutSessionInput): {
+  readonly orgId: string;
+  readonly subscriptionId: string;
+  readonly targetTier: BillingDowngradeCheckoutTargetTier;
+} | null {
+  if (session.metadata?.purpose !== BILLING_DOWNGRADE_PURPOSE) {
+    return null;
+  }
+
+  const orgId = session.metadata.orgId;
+  const subscriptionId = session.metadata.subscriptionId;
+  const targetTier = billingDowngradeTargetTier(session.metadata.targetTier);
+  if (!orgId || !subscriptionId || !targetTier) {
+    L.warn("billing downgrade checkout missing metadata", {
+      sessionId: session.id,
+      orgId: orgId ?? null,
+      subscriptionId: subscriptionId ?? null,
+      targetTier: session.metadata.targetTier ?? null,
+    });
+    return null;
+  }
+  return { orgId, subscriptionId, targetTier };
+}
+
+async function applyBillingSetupPaymentMethod(
+  db: Db,
+  session: CheckoutSessionInput,
+  metadata: { readonly orgId: string; readonly subscriptionId: string },
+  logContext: string,
+): Promise<boolean> {
+  if (session.mode !== "setup") {
+    L.warn(`billing ${logContext} checkout completed with unexpected mode`, {
+      sessionId: session.id,
+      mode: session.mode ?? null,
+    });
+    return false;
+  }
+
+  const customerId = checkoutCustomerId(session);
+  if (!customerId) {
+    L.warn(`billing ${logContext} checkout completed without customer`, {
+      sessionId: session.id,
+      orgId: metadata.orgId,
+    });
+    return false;
+  }
+
+  const [org] = await db
+    .select({
+      stripeCustomerId: orgMetadata.stripeCustomerId,
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, metadata.orgId))
+    .limit(1);
+
+  if (
+    !org ||
+    org.stripeSubscriptionId !== metadata.subscriptionId ||
+    (org.stripeCustomerId !== null && org.stripeCustomerId !== customerId)
+  ) {
+    L.warn(
+      `billing ${logContext} checkout no longer matches org billing state`,
+      {
+        sessionId: session.id,
+        orgId: metadata.orgId,
+        customerId,
+        metadataSubscriptionId: metadata.subscriptionId,
+        orgStripeCustomerId: org?.stripeCustomerId ?? null,
+        orgStripeSubscriptionId: org?.stripeSubscriptionId ?? null,
+      },
+    );
+    return false;
+  }
+
+  const stripe = getStripeClient();
+  const paymentMethodId = await checkoutSetupPaymentMethodId(stripe, session);
+  if (!paymentMethodId) {
+    L.warn(`billing ${logContext} checkout has no setup payment method`, {
+      sessionId: session.id,
+      orgId: metadata.orgId,
+    });
+    return false;
+  }
+
+  await stripe.customers.update(customerId, {
+    invoice_settings: { default_payment_method: paymentMethodId },
+  });
+  return true;
+}
+
+async function handleBillingRestoreCheckoutCompleted(
+  db: Db,
+  session: CheckoutSessionInput,
+): Promise<BillingRestoreCheckoutOutcome> {
+  const metadata = billingRestoreCheckoutMetadata(session);
+  if (!metadata) {
+    return { handled: false, orgId: null };
+  }
+  const paymentMethodSet = await applyBillingSetupPaymentMethod(
+    db,
+    session,
+    metadata,
+    "restore",
+  );
+  if (!paymentMethodSet) {
+    return { handled: true, orgId: null };
+  }
+
+  const restoreResult = await restoreSubscriptionForOrg(db, {
+    orgId: metadata.orgId,
+    requirePaymentMethod: false,
+  });
+  if (!restoreResult.ok) {
+    L.warn("billing restore checkout could not restore subscription", {
+      sessionId: session.id,
+      orgId: metadata.orgId,
+      reason: restoreResult.reason,
+    });
+    return { handled: true, orgId: null };
+  }
+
+  return { handled: true, orgId: metadata.orgId };
+}
+
+async function handleBillingDowngradeCheckoutCompleted(
+  db: Db,
+  session: CheckoutSessionInput,
+): Promise<BillingRestoreCheckoutOutcome> {
+  const metadata = billingDowngradeCheckoutMetadata(session);
+  if (!metadata) {
+    return { handled: false, orgId: null };
+  }
+  const paymentMethodSet = await applyBillingSetupPaymentMethod(
+    db,
+    session,
+    metadata,
+    "downgrade",
+  );
+  if (!paymentMethodSet) {
+    return { handled: true, orgId: null };
+  }
+
+  const downgradeResult = await downgradeSubscriptionForOrg(db, {
+    orgId: metadata.orgId,
+    targetTier: metadata.targetTier,
+    requirePaymentMethod: false,
+  });
+  if (!downgradeResult.ok) {
+    L.warn("billing downgrade checkout could not downgrade subscription", {
+      sessionId: session.id,
+      orgId: metadata.orgId,
+      reason: downgradeResult.reason,
+    });
+    return { handled: true, orgId: null };
+  }
+
+  return { handled: true, orgId: metadata.orgId };
+}
+
+async function shouldSkipSubscriptionBinding(
+  db: Db,
+  args: {
+    readonly customerId: string;
+    readonly subscriptionId: string;
+    readonly tier: SubscriptionCheckoutTier;
+  },
+): Promise<boolean> {
+  const [existing] = await db
+    .select({
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      tier: orgMetadata.tier,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.stripeCustomerId, args.customerId))
+    .limit(1);
+
+  if (existing?.stripeSubscriptionId === args.subscriptionId) {
+    L.debug("subscription binding already processed", {
+      subscriptionId: args.subscriptionId,
+    });
+    return true;
+  }
+  if (
+    checkoutWouldReplaceWithSameOrLowerTier({
+      currentTier: existing?.tier,
+      targetTier: args.tier,
+    })
+  ) {
+    L.warn("subscription binding rejected tier replacement", {
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+      currentTier: existing?.tier ?? null,
+      targetTier: args.tier,
+      reason: checkoutTierConflictMessage({
+        currentTier: existing?.tier,
+        targetTier: args.tier,
+      }),
+    });
+    return true;
+  }
+
+  return false;
+}
+
+async function orgHasStripeCustomer(
+  db: Db,
+  customerId: string,
+): Promise<boolean> {
+  const [existing] = await db
+    .select({ orgId: orgMetadata.orgId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.stripeCustomerId, customerId))
+    .limit(1);
+
+  return Boolean(existing);
+}
+
+function isClerkNotFound(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  return (
+    Reflect.get(error, "statusCode") === 404 ||
+    Reflect.get(error, "code") === "NOT_FOUND" ||
+    Reflect.get(error, "name") === "NotFoundError"
+  );
+}
+
+async function clerkOrganizationExists(
+  clerk: ClerkClient,
+  orgId: string,
+): Promise<boolean> {
+  const result = await settle(
+    clerk.organizations.getOrganization({ organizationId: orgId }),
+  );
+  if (result.ok) {
+    return true;
+  }
+  if (isClerkNotFound(result.error)) {
+    return false;
+  }
+  throw result.error;
+}
+
+async function bindStripeCustomerToOrgMetadata(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly customerId: string;
+  },
+): Promise<boolean> {
+  const rows = await db
+    .update(orgMetadata)
+    .set({ stripeCustomerId: args.customerId, updatedAt: nowDate() })
+    .where(
+      and(
+        eq(orgMetadata.orgId, args.orgId),
+        isNull(orgMetadata.stripeCustomerId),
+      ),
+    )
+    .returning({ orgId: orgMetadata.orgId });
+
+  return rows.length > 0;
+}
+
+async function insertStripeCustomerForClerkOrg(
+  db: Db,
+  getClerk: ClerkClientProvider,
+  args: {
+    readonly orgId: string;
+    readonly customerId: string;
+    readonly subscriptionId: string;
+  },
+): Promise<boolean> {
+  const existsInClerk = await clerkOrganizationExists(getClerk(), args.orgId);
+  if (!existsInClerk) {
+    L.warn("stripe customer metadata references missing Clerk org", {
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+      orgId: args.orgId,
+    });
+    return false;
+  }
+
+  const rows = await db
+    .insert(orgMetadata)
+    .values({ orgId: args.orgId, stripeCustomerId: args.customerId })
+    .onConflictDoNothing({ target: orgMetadata.orgId })
+    .returning({ orgId: orgMetadata.orgId });
+
+  if (rows.length > 0) {
+    L.debug("inserted org metadata from Stripe customer metadata", {
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+      orgId: args.orgId,
+    });
+    return true;
+  }
+
+  return await bindStripeCustomerToOrgMetadata(db, args);
+}
+
+async function bindStripeCustomerFromMetadata(
+  db: Db,
+  getClerk: ClerkClientProvider,
+  args: {
+    readonly customerId: string;
+    readonly subscriptionId: string;
+  },
+): Promise<boolean> {
+  if (await orgHasStripeCustomer(db, args.customerId)) {
+    return true;
+  }
+
+  const stripe = getStripeClient();
+  const customer = await stripe.customers.retrieve(args.customerId);
+  if ("deleted" in customer && customer.deleted) {
+    L.warn("stripe customer was deleted before org binding", {
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+    });
+    return false;
+  }
+
+  const orgId = customer.metadata.orgId;
+  if (!orgId) {
+    L.warn("stripe customer has no org metadata", {
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+    });
+    return false;
+  }
+
+  if (
+    await bindStripeCustomerToOrgMetadata(db, {
+      orgId,
+      customerId: args.customerId,
+    })
+  ) {
+    return true;
+  }
+
+  const [org] = await db
+    .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+
+  if (!org) {
+    return await insertStripeCustomerForClerkOrg(db, getClerk, {
+      orgId,
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+    });
+  }
+
+  L.warn("stripe customer metadata could not bind org", {
+    customerId: args.customerId,
+    subscriptionId: args.subscriptionId,
+    orgId,
+    existingStripeCustomerId: org?.stripeCustomerId ?? null,
+  });
+  return false;
+}
+
+async function invoicePaidOrgForCustomer(
+  db: Db,
+  customerId: string,
+): Promise<InvoicePaidOrg | null> {
+  const [org] = await db
+    .select({
+      orgId: orgMetadata.orgId,
+      lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      subscriptionStatus: orgMetadata.subscriptionStatus,
+      tier: orgMetadata.tier,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.stripeCustomerId, customerId))
+    .limit(1);
+
+  return org ?? null;
+}
+
+async function invoicePaidOrgForCustomerOrMetadata(
+  db: Db,
+  getClerk: ClerkClientProvider,
+  args: {
+    readonly customerId: string;
+    readonly subscriptionId: string;
+  },
+): Promise<InvoicePaidOrg | null> {
+  const org = await invoicePaidOrgForCustomer(db, args.customerId);
+  if (org) {
+    return org;
+  }
+
+  const bound = await bindStripeCustomerFromMetadata(db, getClerk, args);
+  return bound ? await invoicePaidOrgForCustomer(db, args.customerId) : null;
+}
+
+interface ConcurrencyInvoiceEntitlementValue {
+  readonly orgId: string;
+  readonly stripeSubscriptionId: string;
+  readonly stripeInvoiceId: string;
+  readonly stripeInvoiceLineId: string;
+  readonly stripePriceId: string;
+  readonly slots: number;
+  readonly startsAt: Date;
+  readonly expiresAt: Date;
+}
+
+function concurrencyInvoiceEntitlementValue(args: {
+  readonly invoice: InvoiceInput;
+  readonly line: InvoiceLineInput;
+  readonly index: number;
+  readonly orgId: string;
+  readonly subscriptionId: string;
+}): ConcurrencyInvoiceEntitlementValue | null {
+  const priceId = invoiceLinePriceId(args.line);
+  const startsAtUnix = args.line.period.start;
+  const expiresAtUnix = args.line.period.end;
+  const slots = invoiceLineQuantity(args.line);
+  if (
+    !priceId ||
+    typeof startsAtUnix !== "number" ||
+    typeof expiresAtUnix !== "number" ||
+    !slots
+  ) {
+    L.warn("concurrency invoice line missing price or period", {
+      invoiceId: args.invoice.id,
+      orgId: args.orgId,
+      lineId: args.line.id ?? null,
+      hasPriceId: Boolean(priceId),
+      hasPeriodStart: typeof startsAtUnix === "number",
+      hasPeriodEnd: typeof expiresAtUnix === "number",
+      hasPositiveQuantity: slots !== null,
+    });
+    return null;
+  }
+
+  return {
+    orgId: args.orgId,
+    stripeSubscriptionId: args.subscriptionId,
+    stripeInvoiceId: args.invoice.id,
+    stripeInvoiceLineId: invoiceLineId(args.invoice, args.line, args.index),
+    stripePriceId: priceId,
+    slots,
+    startsAt: new Date(startsAtUnix * 1000),
+    expiresAt: new Date(expiresAtUnix * 1000),
+  };
+}
+
+function concurrencyInvoiceSubscriptionState(
+  values: readonly ConcurrencyInvoiceEntitlementValue[],
+): {
+  readonly stripePriceId: string;
+  readonly slots: number;
+  readonly currentPeriodEnd: Date;
+} | null {
+  const firstValue = values[0];
+  if (!firstValue) {
+    return null;
+  }
+
+  return {
+    stripePriceId: firstValue.stripePriceId,
+    slots: values.reduce((sum, value) => {
+      return sum + value.slots;
+    }, 0),
+    currentPeriodEnd: values.reduce((latest, value) => {
+      return value.expiresAt > latest ? value.expiresAt : latest;
+    }, firstValue.expiresAt),
+  };
+}
+
+async function upsertConcurrencySubscriptionFromInvoice(
+  tx: WriteTx,
+  args: {
+    readonly orgId: string;
+    readonly subscriptionId: string;
+    readonly values: readonly ConcurrencyInvoiceEntitlementValue[];
+  },
+): Promise<void> {
+  const state = concurrencyInvoiceSubscriptionState(args.values);
+  if (!state) {
+    return;
+  }
+
+  const updatedAt = nowDate();
+  await tx
+    .insert(orgConcurrencySubscriptions)
+    .values({
+      orgId: args.orgId,
+      stripeSubscriptionId: args.subscriptionId,
+      stripePriceId: state.stripePriceId,
+      slots: state.slots,
+      subscriptionStatus: "active",
+      currentPeriodEnd: state.currentPeriodEnd,
+      cancelAtPeriodEnd: false,
+      updatedAt,
+    })
+    .onConflictDoUpdate({
+      target: orgConcurrencySubscriptions.stripeSubscriptionId,
+      set: {
+        orgId: args.orgId,
+        stripePriceId: state.stripePriceId,
+        slots: state.slots,
+        subscriptionStatus: "active",
+        currentPeriodEnd: state.currentPeriodEnd,
+        cancelAtPeriodEnd: false,
+        updatedAt,
+      },
+    });
+}
+
+async function handleConcurrencyInvoicePaid(
+  db: Db,
+  getClerk: ClerkClientProvider,
+  invoice: InvoiceInput,
+): Promise<PaidWebhookOutcome> {
+  const lines = concurrencyInvoiceLines(invoice);
+  const hasConcurrencyPurpose = invoiceHasConcurrencyPurpose(invoice);
+  if (lines.length === 0 && !hasConcurrencyPurpose) {
+    return { handled: false, drainOrgId: null };
+  }
+
+  const subscriptionId = subscriptionIdFromInvoice(invoice);
+  if (!subscriptionId) {
+    L.warn("concurrency invoice.paid without subscription; skipping", {
+      invoiceId: invoice.id,
+    });
+    return { handled: true, drainOrgId: null };
+  }
+
+  const customerId = customerIdFromInvoice(invoice);
+  if (!customerId) {
+    L.warn("concurrency invoice.paid without customer ID", {
+      invoiceId: invoice.id,
+    });
+    return { handled: true, drainOrgId: null };
+  }
+
+  const org = await invoicePaidOrgForCustomerOrMetadata(db, getClerk, {
+    customerId,
+    subscriptionId,
+  });
+  if (!org) {
+    L.warn("concurrency invoice.paid for unknown customer", {
+      customerId,
+      invoiceId: invoice.id,
+      subscriptionId,
+    });
+    return { handled: true, drainOrgId: null };
+  }
+
+  const values = lines.flatMap(({ line, index }) => {
+    const value = concurrencyInvoiceEntitlementValue({
+      invoice,
+      line,
+      index,
+      orgId: org.orgId,
+      subscriptionId,
+    });
+    return value ? [value] : [];
+  });
+
+  if (values.length === 0) {
+    L.warn("concurrency invoice.paid had no usable entitlement lines", {
+      invoiceId: invoice.id,
+      orgId: org.orgId,
+      subscriptionId,
+    });
+    return { handled: true, drainOrgId: org.orgId };
+  }
+
+  const inserted = await db.transaction(async (tx) => {
+    const insertedRows = await tx
+      .insert(orgConcurrencyEntitlements)
+      .values(values)
+      .onConflictDoNothing()
+      .returning({ slots: orgConcurrencyEntitlements.slots });
+    await upsertConcurrencySubscriptionFromInvoice(tx, {
+      orgId: org.orgId,
+      subscriptionId,
+      values,
+    });
+    return insertedRows;
+  });
+
+  const slots = inserted.reduce((sum, row) => {
+    return sum + row.slots;
+  }, 0);
+  L.debug("concurrency invoice.paid processed", {
+    invoiceId: invoice.id,
+    orgId: org.orgId,
+    subscriptionId,
+    insertedLines: inserted.length,
+    slots,
+  });
+
+  return { handled: true, drainOrgId: org.orgId };
+}
+
+type BindSubscriptionToCustomerOrgArgs = {
+  readonly customerId: string;
+  readonly subscription: SubscriptionInput;
+} & (
+  | { readonly source: "checkout.session.completed" }
+  | {
+      readonly source: "customer.subscription.created";
+      readonly getClerk: ClerkClientProvider;
+    }
+);
+
+async function bindSubscriptionToCustomerOrg(
+  db: Db,
+  args: BindSubscriptionToCustomerOrgArgs,
+): Promise<readonly string[]> {
+  if (
+    args.source === "customer.subscription.created" &&
+    !(await bindStripeCustomerFromMetadata(db, args.getClerk, {
+      customerId: args.customerId,
+      subscriptionId: args.subscription.id,
+    }))
+  ) {
+    return [];
+  }
+
+  const priceId = args.subscription.items.data[0]?.price?.id;
+  if (!priceId) {
+    L.warn("subscription has no price ID", {
+      subscriptionId: args.subscription.id,
+      source: args.source,
+    });
+  } else if (isConcurrencyPriceId(priceId)) {
+    return [];
+  } else if (
+    await shouldSkipSubscriptionBinding(db, {
+      customerId: args.customerId,
+      subscriptionId: args.subscription.id,
+      tier: tierFromPriceId(priceId),
+    })
+  ) {
+    return [];
+  }
+
+  const rows = await db
+    .update(orgMetadata)
+    .set({
+      stripeSubscriptionId: args.subscription.id,
+      subscriptionStatus: args.subscription.status,
+      cancelAtPeriodEnd: subscriptionWillCancel(args.subscription),
+      updatedAt: nowDate(),
+    })
+    .where(eq(orgMetadata.stripeCustomerId, args.customerId))
+    .returning({ orgId: orgMetadata.orgId });
+
+  if (rows.length === 0) {
+    L.warn("subscription customer has no matching org", {
+      customerId: args.customerId,
+      subscriptionId: args.subscription.id,
+      source: args.source,
+    });
+  }
+  return rows.map((row) => {
+    return row.orgId;
+  });
+}
+
+function invoiceWouldReplaceWithSameOrLowerTier(args: {
+  readonly currentSubscriptionId: string | null;
+  readonly subscriptionId: string;
+  readonly currentTier: string;
+  readonly targetTier: SubscriptionCheckoutTier;
+}): boolean {
+  return (
+    args.currentSubscriptionId !== null &&
+    args.currentSubscriptionId !== args.subscriptionId &&
+    checkoutWouldReplaceWithSameOrLowerTier({
+      currentTier: args.currentTier,
+      targetTier: args.targetTier,
+    })
+  );
+}
+
+function replacedProSubscriptionId(args: {
+  readonly currentSubscriptionId: string | null;
+  readonly currentSubscriptionStatus: string | null;
+  readonly currentTier: string;
+  readonly newSubscriptionId: string;
+  readonly targetTier: SubscriptionCheckoutTier;
+}): string | null {
+  if (
+    args.targetTier !== "team" ||
+    !args.currentSubscriptionId ||
+    args.currentSubscriptionId === args.newSubscriptionId
+  ) {
+    return null;
+  }
+
+  if (
+    args.currentTier === "pro" ||
+    args.currentSubscriptionStatus === "trialing"
+  ) {
+    return args.currentSubscriptionId;
+  }
+
+  return null;
+}
+
+function tierFromSubscription(subscription: Stripe.Subscription) {
+  const priceId = subscription.items.data[0]?.price?.id;
+  if (!priceId) {
+    return null;
+  }
+
+  return tierForKnownPriceId(priceId);
+}
+
+function isReplaceableProSubscription(args: {
+  readonly orgId: string;
+  readonly newSubscriptionId: string;
+  readonly subscription: Stripe.Subscription;
+}): boolean {
+  const subscription = args.subscription;
+  return (
+    subscription.id !== args.newSubscriptionId &&
+    subscription.metadata?.orgId === args.orgId &&
+    (subscription.status === "active" || subscription.status === "trialing") &&
+    tierFromSubscription(subscription) === "pro"
+  );
+}
+
+function isStripeResourceMissingError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const candidate = error as {
+    readonly code?: unknown;
+    readonly raw?: { readonly code?: unknown };
+  };
+  return (
+    candidate.code === "resource_missing" ||
+    candidate.raw?.code === "resource_missing"
+  );
+}
+
+async function replacedProSubscriptionIdsForCustomer(args: {
+  readonly orgId: string;
+  readonly customerId: string;
+  readonly newSubscriptionId: string;
+  readonly targetTier: SubscriptionCheckoutTier;
+}): Promise<readonly string[]> {
+  if (args.targetTier !== "team") {
+    return [];
+  }
+
+  const stripe = getStripeClient();
+  const subscriptions = await stripe.subscriptions.list({
+    customer: args.customerId,
+    status: "all",
+    limit: 100,
+  });
+
+  return subscriptions.data
+    .filter((subscription) => {
+      return isReplaceableProSubscription({
+        orgId: args.orgId,
+        newSubscriptionId: args.newSubscriptionId,
+        subscription,
+      });
+    })
+    .map((subscription) => {
+      return subscription.id;
+    });
+}
+
+async function cancelReplacedProSubscriptions(args: {
+  readonly orgId: string;
+  readonly invoiceId: string;
+  readonly oldSubscriptionIds: readonly string[];
+  readonly newSubscriptionId: string;
+}): Promise<void> {
+  const stripe = getStripeClient();
+  for (const oldSubscriptionId of new Set(args.oldSubscriptionIds)) {
+    const cancelResult = await settle(
+      stripe.subscriptions.cancel(oldSubscriptionId, {
+        invoice_now: false,
+        prorate: false,
+      }),
+    );
+    if (!cancelResult.ok) {
+      if (!isStripeResourceMissingError(cancelResult.error)) {
+        throw cancelResult.error;
+      }
+      L.warn("replaced Pro subscription already absent during Team upgrade", {
+        orgId: args.orgId,
+        invoiceId: args.invoiceId,
+        oldSubscriptionId,
+        newSubscriptionId: args.newSubscriptionId,
+      });
+      continue;
+    }
+    L.debug("canceled replaced Pro subscription after Team invoice paid", {
+      orgId: args.orgId,
+      invoiceId: args.invoiceId,
+      oldSubscriptionId,
+      newSubscriptionId: args.newSubscriptionId,
+    });
+  }
+}
+
+async function cancelReplacedProSubscriptionsAfterTeamInvoice(args: {
+  readonly orgId: string;
+  readonly customerId: string;
+  readonly invoiceId: string;
+  readonly newSubscriptionId: string;
+  readonly targetTier: SubscriptionCheckoutTier;
+  readonly knownOldSubscriptionId: string | null;
+}): Promise<void> {
+  const replacedSubscriptionIds = [
+    ...(args.knownOldSubscriptionId ? [args.knownOldSubscriptionId] : []),
+    ...(await replacedProSubscriptionIdsForCustomer({
+      orgId: args.orgId,
+      customerId: args.customerId,
+      newSubscriptionId: args.newSubscriptionId,
+      targetTier: args.targetTier,
+    })),
+  ];
+  if (replacedSubscriptionIds.length === 0) {
+    return;
+  }
+
+  await cancelReplacedProSubscriptions({
+    orgId: args.orgId,
+    invoiceId: args.invoiceId,
+    oldSubscriptionIds: replacedSubscriptionIds,
+    newSubscriptionId: args.newSubscriptionId,
+  });
+}
+
+function subscriptionIdFromInvoice(invoice: InvoiceInput): string | null {
+  const subscription = invoice.parent?.subscription_details?.subscription;
+  return typeof subscription === "string"
+    ? subscription
+    : (subscription?.id ?? null);
+}
+
+function customerIdFromInvoice(invoice: InvoiceInput): string | null {
+  return typeof invoice.customer === "string"
+    ? invoice.customer
+    : (invoice.customer?.id ?? null);
+}
+
+function invoiceLinePriceId(line: InvoiceLineInput): string | null {
+  const pricingPrice = line.pricing?.price_details?.price;
+  if (typeof pricingPrice === "string") {
+    return line.price?.id ?? pricingPrice;
+  }
+  return line.price?.id ?? pricingPrice?.id ?? null;
+}
+
+function invoiceLineQuantity(line: InvoiceLineInput): number | null {
+  if (line.quantity === undefined || line.quantity === null) {
+    return 1;
+  }
+  return line.quantity > 0 ? line.quantity : null;
+}
+
+function invoiceLineId(
+  invoice: InvoiceInput,
+  line: InvoiceLineInput,
+  index: number,
+): string {
+  return line.id ?? `${invoice.id}:${index}`;
+}
+
+function invoiceHasConcurrencyPurpose(invoice: InvoiceInput): boolean {
+  return (
+    invoice.metadata?.purpose === CONCURRENCY_SUBSCRIPTION_PURPOSE ||
+    invoice.parent?.subscription_details?.metadata?.purpose ===
+      CONCURRENCY_SUBSCRIPTION_PURPOSE
+  );
+}
+
+function concurrencyInvoiceLines(
+  invoice: InvoiceInput,
+): readonly { readonly line: InvoiceLineInput; readonly index: number }[] {
+  return invoice.lines.data.flatMap((line, index) => {
+    const priceId = invoiceLinePriceId(line);
+    return priceId && isConcurrencyPriceId(priceId) ? [{ line, index }] : [];
+  });
+}
+
+function subscriptionPeriodEndFromInvoice(
+  invoice: InvoiceInput,
+  orgId: string,
+): Date {
+  const subscriptionLine = invoice.lines.data.find((line) => {
+    return line.parent?.type === "subscription_item_details";
+  });
+  const periodEndUnix = subscriptionLine?.period.end;
+  if (!periodEndUnix) {
+    throw new Error(
+      `invoice.paid has no subscription line item with period.end (invoiceId=${invoice.id}, orgId=${orgId})`,
+    );
+  }
+  return new Date(periodEndUnix * 1000);
+}
+
+async function subscriptionInvoiceDetails(
+  invoice: InvoiceInput,
+  args: {
+    readonly subscriptionId: string;
+    readonly orgId: string;
+  },
+): Promise<SubscriptionInvoiceDetails | null> {
+  const stripe = getStripeClient();
+  const subscription = await stripe.subscriptions.retrieve(args.subscriptionId);
+  const priceId = subscription.items.data[0]?.price?.id;
+  if (!priceId) {
+    L.warn("subscription has no price ID for credit grant", {
+      subscriptionId: args.subscriptionId,
+    });
+    return null;
+  }
+  if (isConcurrencyPriceId(priceId)) {
+    return null;
+  }
+
+  const tier = tierFromPriceId(priceId);
+  const credits = monthlyCreditsForTier(tier);
+  if (credits <= 0) {
+    L.warn("no credits to grant for tier", {
+      tier,
+      invoiceId: invoice.id,
+      orgId: args.orgId,
+    });
+    return null;
+  }
+
+  const periodEndDate = subscriptionPeriodEndFromInvoice(invoice, args.orgId);
+  const scheduledEndDate =
+    (await subscriptionScheduledEnd(stripe, subscription)) ??
+    (subscriptionWillCancel(subscription) ? periodEndDate : null);
+  return {
+    subscription,
+    tier,
+    credits,
+    periodEndDate,
+    scheduledEndDate,
+    expiresAt: subscriptionCreditExpiresAt(subscription, periodEndDate),
+  };
+}
+
+async function updateSubscriptionInvoiceMetadata(
+  tx: WriteTx,
+  args: {
+    readonly orgId: string;
+    readonly invoiceId: string;
+    readonly subscriptionId: string;
+    readonly details: SubscriptionInvoiceDetails;
+  },
+): Promise<void> {
+  const scheduleId = subscriptionScheduleId(args.details.subscription);
+  const willCancel =
+    subscriptionWillCancel(args.details.subscription) ||
+    args.details.scheduledEndDate !== null;
+  const pendingChangeAt = args.details.scheduledEndDate;
+
+  await tx
+    .update(orgMetadata)
+    .set({
+      tier: args.details.tier,
+      stripeSubscriptionId: args.subscriptionId,
+      subscriptionStatus: args.details.subscription.status,
+      cancelAtPeriodEnd: willCancel,
+      onboardingPaymentPending: false,
+      lastProcessedInvoiceId: args.invoiceId,
+      currentPeriodEnd: pendingChangeAt ?? args.details.periodEndDate,
+      pendingSubscriptionScheduleId: pendingChangeAt ? scheduleId : null,
+      pendingSubscriptionTargetTier: pendingChangeAt ? "pro-suspend" : null,
+      pendingSubscriptionChangeAt: pendingChangeAt,
+      updatedAt: nowDate(),
+    })
+    .where(eq(orgMetadata.orgId, args.orgId));
+}
+
+async function processSubscriptionInvoicePaid(
+  tx: WriteTx,
+  args: {
+    readonly invoice: InvoiceInput;
+    readonly customerId: string;
+    readonly subscriptionId: string;
+    readonly orgId: string;
+    readonly details: SubscriptionInvoiceDetails;
+  },
+): Promise<boolean> {
+  const lockedOrg = await lockInvoicePaidOrg(tx, args.orgId);
+  if (!lockedOrg) {
+    return false;
+  }
+  const replacedSubscriptionId = replacedProSubscriptionId({
+    currentSubscriptionId: lockedOrg.stripeSubscriptionId,
+    currentSubscriptionStatus: lockedOrg.subscriptionStatus,
+    currentTier: lockedOrg.tier,
+    newSubscriptionId: args.subscriptionId,
+    targetTier: args.details.tier,
+  });
+
+  if (lockedOrg.lastProcessedInvoiceId === args.invoice.id) {
+    await cancelReplacedProSubscriptionsAfterTeamInvoice({
+      orgId: args.orgId,
+      customerId: args.customerId,
+      invoiceId: args.invoice.id,
+      newSubscriptionId: args.subscriptionId,
+      targetTier: args.details.tier,
+      knownOldSubscriptionId: replacedSubscriptionId,
+    });
+    L.debug("invoice.paid already processed by concurrent delivery", {
+      invoiceId: args.invoice.id,
+      orgId: args.orgId,
+    });
+    return true;
+  }
+
+  if (
+    invoiceWouldReplaceWithSameOrLowerTier({
+      currentSubscriptionId: lockedOrg.stripeSubscriptionId,
+      subscriptionId: args.subscriptionId,
+      currentTier: lockedOrg.tier,
+      targetTier: args.details.tier,
+    })
+  ) {
+    L.warn("invoice.paid rejected tier replacement", {
+      customerId: args.customerId,
+      invoiceId: args.invoice.id,
+      subscriptionId: args.subscriptionId,
+      currentSubscriptionId: lockedOrg.stripeSubscriptionId,
+      currentTier: lockedOrg.tier,
+      targetTier: args.details.tier,
+      reason: checkoutTierConflictMessage({
+        currentTier: lockedOrg.tier,
+        targetTier: args.details.tier,
+      }),
+    });
+    return false;
+  }
+
+  const trialingExistingSubscription =
+    args.details.subscription.status === "trialing" &&
+    lockedOrg.stripeSubscriptionId === args.subscriptionId &&
+    lockedOrg.tier === args.details.tier &&
+    (await existingTrialPlanCredits(tx, {
+      orgId: args.orgId,
+      credits: args.details.credits,
+    }));
+
+  if (trialingExistingSubscription) {
+    await refreshTrialPlanCredits(tx, {
+      orgId: args.orgId,
+      credits: args.details.credits,
+      expiresAt: args.details.expiresAt,
+    });
+    await updateSubscriptionInvoiceMetadata(tx, {
+      orgId: args.orgId,
+      invoiceId: args.invoice.id,
+      subscriptionId: args.subscriptionId,
+      details: args.details,
+    });
+    return true;
+  }
+
+  await expireCredits(tx, args.orgId);
+
+  const inserted = await createExpiresRecord(tx, args.orgId, {
+    source: "subscription_renewal",
+    stripeInvoiceId: args.invoice.id,
+    amount: args.details.credits,
+    expiresAt: args.details.expiresAt,
+  });
+  if (!inserted) {
+    L.debug("invoice.paid already processed by concurrent delivery", {
+      invoiceId: args.invoice.id,
+      orgId: args.orgId,
+    });
+    return true;
+  }
+
+  await grantOrgCredits(tx, args.orgId, args.details.credits);
+  await updateSubscriptionInvoiceMetadata(tx, {
+    orgId: args.orgId,
+    invoiceId: args.invoice.id,
+    subscriptionId: args.subscriptionId,
+    details: args.details,
+  });
+  await cancelReplacedProSubscriptionsAfterTeamInvoice({
+    orgId: args.orgId,
+    customerId: args.customerId,
+    invoiceId: args.invoice.id,
+    newSubscriptionId: args.subscriptionId,
+    targetTier: args.details.tier,
+    knownOldSubscriptionId: replacedSubscriptionId,
+  });
+  return true;
+}
+
+async function handleCheckoutCompleted(
+  db: Db,
+  session: CheckoutSessionInput,
+): Promise<{
+  readonly drainOrgId: string | null;
+  readonly orgIds: readonly string[];
+}> {
+  const billingRestoreResult = await handleBillingRestoreCheckoutCompleted(
+    db,
+    session,
+  );
+  if (billingRestoreResult.handled) {
+    return {
+      drainOrgId: null,
+      orgIds:
+        billingRestoreResult.orgId === null ? [] : [billingRestoreResult.orgId],
+    };
+  }
+
+  const billingDowngradeResult = await handleBillingDowngradeCheckoutCompleted(
+    db,
+    session,
+  );
+  if (billingDowngradeResult.handled) {
+    return {
+      drainOrgId: null,
+      orgIds:
+        billingDowngradeResult.orgId === null
+          ? []
+          : [billingDowngradeResult.orgId],
+    };
+  }
+
+  if (session.metadata?.purpose === "credit_purchase") {
+    const invoiceId = checkoutSessionInvoiceId(session);
+    if (!invoiceId) {
+      const drainOrgId = await handleCreditPurchaseCompleted(db, session);
+      return {
+        drainOrgId,
+        orgIds: drainOrgId === null ? [] : [drainOrgId],
+      };
+    }
+
+    L.debug("credit_purchase checkout completed; waiting for invoice.paid", {
+      sessionId: session.id,
+      invoiceId,
+      paymentStatus: session.payment_status ?? null,
+    });
+    return { drainOrgId: null, orgIds: [] };
+  }
+
+  const oneTimePurchaseResult = await handlePaidCheckoutPurpose(
+    db,
+    session,
+    "one_time_purchase",
+  );
+  if (oneTimePurchaseResult.handled) {
+    return {
+      drainOrgId: oneTimePurchaseResult.drainOrgId,
+      orgIds:
+        oneTimePurchaseResult.drainOrgId === null
+          ? []
+          : [oneTimePurchaseResult.drainOrgId],
+    };
+  }
+
+  if (session.metadata?.purpose === CONCURRENCY_SUBSCRIPTION_PURPOSE) {
+    return { drainOrgId: null, orgIds: [] };
+  }
+
+  const checkoutContext = checkoutSubscriptionContext(session);
+  if (!checkoutContext) {
+    return { drainOrgId: null, orgIds: [] };
+  }
+  const { customerId, subscriptionId } = checkoutContext;
+
+  const stripe = getStripeClient();
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const orgIds = await bindSubscriptionToCustomerOrg(db, {
+    customerId,
+    subscription,
+    source: "checkout.session.completed",
+  });
+  return { drainOrgId: null, orgIds };
+}
+
+async function handleSubscriptionCreated(
+  db: Db,
+  getClerk: ClerkClientProvider,
+  subscription: SubscriptionInput,
+): Promise<readonly string[]> {
+  const customerId = customerIdFromSubscription(subscription);
+  if (!customerId) {
+    L.warn("customer.subscription.created without customer ID", {
+      subscriptionId: subscription.id,
+    });
+    return [];
+  }
+
+  return await bindSubscriptionToCustomerOrg(db, {
+    customerId,
+    subscription,
+    source: "customer.subscription.created",
+    getClerk,
+  });
+}
+
+async function handleInvoicePaid(
+  db: Db,
+  getClerk: ClerkClientProvider,
+  invoice: InvoiceInput,
+): Promise<string | null> {
+  const autoRechargeResult = await handleAutoRechargeInvoicePaid(db, invoice);
+  if (autoRechargeResult.handled) {
+    return autoRechargeResult.drainOrgId;
+  }
+
+  const creditPurchaseResult = await handleCreditPurchaseInvoicePaid(
+    db,
+    invoice,
+  );
+  if (creditPurchaseResult.handled) {
+    return creditPurchaseResult.drainOrgId;
+  }
+
+  const atomGrantResult = await handleAtomGrantInvoicePaid(db, invoice);
+  if (atomGrantResult.handled) {
+    return atomGrantResult.drainOrgId;
+  }
+
+  const concurrencyResult = await handleConcurrencyInvoicePaid(
+    db,
+    getClerk,
+    invoice,
+  );
+  if (concurrencyResult.handled) {
+    return concurrencyResult.drainOrgId;
+  }
+
+  const subscriptionId = subscriptionIdFromInvoice(invoice);
+  if (!subscriptionId) {
+    L.warn("invoice.paid without subscription; skipping", {
+      invoiceId: invoice.id,
+    });
+    return null;
+  }
+
+  const customerId = customerIdFromInvoice(invoice);
+  if (!customerId) {
+    L.warn("invoice.paid without customer ID", { invoiceId: invoice.id });
+    return null;
+  }
+
+  const org = await invoicePaidOrgForCustomerOrMetadata(db, getClerk, {
+    customerId,
+    subscriptionId,
+  });
+  if (!org) {
+    L.warn("invoice.paid for unknown customer", {
+      customerId,
+      invoiceId: invoice.id,
+    });
+    return null;
+  }
+
+  if (org.lastProcessedInvoiceId === invoice.id) {
+    await cancelReplacedProSubscriptionsAfterTeamInvoice({
+      orgId: org.orgId,
+      customerId,
+      invoiceId: invoice.id,
+      newSubscriptionId: subscriptionId,
+      targetTier: org.tier === "team" ? "team" : "pro",
+      knownOldSubscriptionId: null,
+    });
+    L.debug("invoice.paid already processed", {
+      invoiceId: invoice.id,
+      orgId: org.orgId,
+    });
+    return org.orgId;
+  }
+
+  const details = await subscriptionInvoiceDetails(invoice, {
+    subscriptionId,
+    orgId: org.orgId,
+  });
+  if (!details) {
+    return null;
+  }
+
+  const processed = await db.transaction(async (tx) => {
+    return await processSubscriptionInvoicePaid(tx, {
+      invoice,
+      customerId,
+      subscriptionId,
+      orgId: org.orgId,
+      details,
+    });
+  });
+  return processed ? org.orgId : null;
+}
+
+async function handleConcurrencySubscriptionUpdated(
+  db: Db,
+  subscription: SubscriptionInput,
+): Promise<readonly string[]> {
+  const item = concurrencySubscriptionItem(subscription);
+  const currentPeriodEnd = concurrencySubscriptionPeriodEnd(subscription);
+  const slots = concurrencySubscriptionSlots(subscription);
+  const updates = {
+    subscriptionStatus: subscription.status,
+    cancelAtPeriodEnd: subscriptionWillCancel(subscription),
+    updatedAt: nowDate(),
+    ...(item ? { stripePriceId: item.price.id } : {}),
+    ...(currentPeriodEnd ? { currentPeriodEnd } : {}),
+    ...(slots ? { slots } : {}),
+  };
+
+  const rows = await db
+    .update(orgConcurrencySubscriptions)
+    .set(updates)
+    .where(
+      eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
+    )
+    .returning({ orgId: orgConcurrencySubscriptions.orgId });
+
+  return rows.map((row) => {
+    return row.orgId;
+  });
+}
+
+async function handleSubscriptionUpdated(
+  db: Db,
+  subscription: SubscriptionInput,
+  previousAttributes: SubscriptionPreviousAttributes | undefined,
+): Promise<readonly string[]> {
+  const concurrencyOrgIds = await handleConcurrencySubscriptionUpdated(
+    db,
+    subscription,
+  );
+  if (concurrencyOrgIds.length > 0) {
+    return concurrencyOrgIds;
+  }
+  if (concurrencySubscriptionItem(subscription)) {
+    return [];
+  }
+
+  const stripe = getStripeClient();
+  const periodEnd = await subscriptionScheduledEnd(stripe, subscription);
+  const willCancel = subscriptionWillCancel(subscription) || periodEnd !== null;
+  const pendingScheduleId = subscriptionScheduleId(subscription);
+  const clearPendingChange = subscriptionPendingChangeCleared(
+    subscription,
+    previousAttributes,
+    willCancel,
+  );
+  const trialEnd = subscriptionTrialEnd(subscription);
+  const previousTrialEnd =
+    typeof previousAttributes?.trial_end === "number"
+      ? new Date(previousAttributes.trial_end * 1000)
+      : null;
+  const trialShortened =
+    subscription.status === "trialing" &&
+    trialEnd !== null &&
+    previousTrialEnd !== null &&
+    trialEnd < previousTrialEnd;
+
+  return await db.transaction(async (tx) => {
+    const rows = await tx
+      .update(orgMetadata)
+      .set({
+        subscriptionStatus: subscription.status,
+        cancelAtPeriodEnd: willCancel,
+        updatedAt: nowDate(),
+        ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
+        ...(periodEnd && pendingScheduleId
+          ? {
+              pendingSubscriptionScheduleId: pendingScheduleId,
+              pendingSubscriptionTargetTier: "pro-suspend",
+              pendingSubscriptionChangeAt: periodEnd,
+            }
+          : {}),
+        ...(clearPendingChange
+          ? {
+              pendingSubscriptionScheduleId: null,
+              pendingSubscriptionTargetTier: null,
+              pendingSubscriptionChangeAt: null,
+            }
+          : {}),
+        ...(trialShortened ? { currentPeriodEnd: trialEnd } : {}),
+      })
+      .where(eq(orgMetadata.stripeSubscriptionId, subscription.id))
+      .returning({ orgId: orgMetadata.orgId });
+
+    if (!trialShortened) {
+      return rows.map((row) => {
+        return row.orgId;
+      });
+    }
+
+    for (const row of rows) {
+      await tx
+        .update(creditExpiresRecord)
+        .set({ expiresAt: trialEnd })
+        .where(
+          and(
+            eq(creditExpiresRecord.orgId, row.orgId),
+            eq(creditExpiresRecord.source, "subscription_renewal"),
+            gt(creditExpiresRecord.expiresAt, trialEnd),
+            gt(creditExpiresRecord.remaining, 0),
+          ),
+        );
+    }
+    return rows.map((row) => {
+      return row.orgId;
+    });
+  });
+}
+
+async function handleSubscriptionScheduleReleased(
+  db: Db,
+  schedule: SubscriptionScheduleInput,
+): Promise<readonly string[]> {
+  const rows = await db
+    .update(orgMetadata)
+    .set({
+      cancelAtPeriodEnd: false,
+      pendingSubscriptionScheduleId: null,
+      pendingSubscriptionTargetTier: null,
+      pendingSubscriptionChangeAt: null,
+      updatedAt: nowDate(),
+    })
+    .where(eq(orgMetadata.pendingSubscriptionScheduleId, schedule.id))
+    .returning({ orgId: orgMetadata.orgId });
+
+  if (rows.length > 0) {
+    L.debug("subscription schedule released; cleared pending billing change", {
+      scheduleId: schedule.id,
+      orgIds: rows.map((row) => {
+        return row.orgId;
+      }),
+    });
+  }
+  return rows.map((row) => {
+    return row.orgId;
+  });
+}
+
+async function handleSubscriptionScheduleEnded(
+  db: Db,
+  schedule: SubscriptionScheduleInput,
+): Promise<readonly string[]> {
+  const rows = await db
+    .update(orgMetadata)
+    .set({
+      pendingSubscriptionScheduleId: null,
+      pendingSubscriptionTargetTier: null,
+      pendingSubscriptionChangeAt: null,
+      updatedAt: nowDate(),
+    })
+    .where(eq(orgMetadata.pendingSubscriptionScheduleId, schedule.id))
+    .returning({ orgId: orgMetadata.orgId });
+
+  if (rows.length > 0) {
+    L.debug("subscription schedule ended; cleared pending billing change", {
+      scheduleId: schedule.id,
+      orgIds: rows.map((row) => {
+        return row.orgId;
+      }),
+    });
+  }
+  return rows.map((row) => {
+    return row.orgId;
+  });
+}
+
+async function handleSubscriptionDeleted(
+  db: Db,
+  subscription: SubscriptionDeletedInput,
+): Promise<readonly string[]> {
+  const concurrencyRows = await db
+    .update(orgConcurrencySubscriptions)
+    .set({
+      subscriptionStatus: "canceled",
+      cancelAtPeriodEnd: false,
+      currentPeriodEnd: nowDate(),
+      updatedAt: nowDate(),
+    })
+    .where(
+      eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
+    )
+    .returning({ orgId: orgConcurrencySubscriptions.orgId });
+  if (concurrencyRows.length > 0) {
+    return concurrencyRows.map((row) => {
+      return row.orgId;
+    });
+  }
+
+  const rows = await db
+    .update(orgMetadata)
+    .set({
+      tier: "pro-suspend",
+      subscriptionStatus: "canceled",
+      stripeSubscriptionId: null,
+      cancelAtPeriodEnd: false,
+      currentPeriodEnd: null,
+      pendingSubscriptionScheduleId: null,
+      pendingSubscriptionTargetTier: null,
+      pendingSubscriptionChangeAt: null,
+      updatedAt: nowDate(),
+    })
+    .where(eq(orgMetadata.stripeSubscriptionId, subscription.id))
+    .returning({ orgId: orgMetadata.orgId });
+  return rows.map((row) => {
+    return row.orgId;
+  });
+}
+
+export const handleStripeWebhookEvent$ = command(
+  async (
+    { get, set },
+    event: Stripe.Event,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    const getClerk = (): ClerkClient => {
+      return get(clerk$);
+    };
+    let drainOrgId: string | null = null;
+    const billingChangedOrgIds = new Set<string>();
+    L.debug("stripe webhook received", { type: event.type, id: event.id });
+
+    if (!shouldHandleStripePreviewEvent(event)) {
+      L.debug("ignoring Stripe preview event for a different job", {
+        type: event.type,
+        id: event.id,
+      });
+      return;
+    }
+
+    switch (event.type) {
+      case "checkout.session.completed":
+      case "checkout.session.async_payment_succeeded": {
+        const result = await handleCheckoutCompleted(db, event.data.object);
+        signal.throwIfAborted();
+        drainOrgId = result.drainOrgId;
+        for (const orgId of result.orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
+        break;
+      }
+      case "invoice.paid": {
+        const paidDrainOrgId = await handleInvoicePaid(
+          db,
+          getClerk,
+          event.data.object,
+        );
+        signal.throwIfAborted();
+        drainOrgId = paidDrainOrgId;
+        if (paidDrainOrgId) {
+          billingChangedOrgIds.add(paidDrainOrgId);
+        }
+        break;
+      }
+      case "customer.subscription.created": {
+        const orgIds = await handleSubscriptionCreated(
+          db,
+          getClerk,
+          event.data.object,
+        );
+        signal.throwIfAborted();
+        for (const orgId of orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
+        break;
+      }
+      case "customer.subscription.updated": {
+        const orgIds = await handleSubscriptionUpdated(
+          db,
+          event.data.object,
+          event.data.previous_attributes,
+        );
+        signal.throwIfAborted();
+        for (const orgId of orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
+        break;
+      }
+      case "customer.subscription.deleted": {
+        const orgIds = await handleSubscriptionDeleted(db, event.data.object);
+        signal.throwIfAborted();
+        for (const orgId of orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
+        break;
+      }
+      case "subscription_schedule.released": {
+        const orgIds = await handleSubscriptionScheduleReleased(
+          db,
+          event.data.object,
+        );
+        signal.throwIfAborted();
+        for (const orgId of orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
+        break;
+      }
+      case "subscription_schedule.canceled":
+      case "subscription_schedule.aborted": {
+        const orgIds = await handleSubscriptionScheduleEnded(
+          db,
+          event.data.object,
+        );
+        signal.throwIfAborted();
+        for (const orgId of orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
+        break;
+      }
+      default: {
+        L.debug("ignoring unhandled Stripe event", { type: event.type });
+      }
+    }
+
+    signal.throwIfAborted();
+    for (const orgId of billingChangedOrgIds) {
+      await publishBillingChangedForOrg(db, orgId);
+      signal.throwIfAborted();
+    }
+
+    if (drainOrgId) {
+      await set(drainOrgQueueToCapacity$, { orgId: drainOrgId }, signal);
+      signal.throwIfAborted();
+    }
+  },
+);

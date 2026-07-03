@@ -1,0 +1,3246 @@
+import { createHash, randomUUID } from "node:crypto";
+
+import { HttpResponse, http } from "msw";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_ITEMS,
+  VIDEO_TEMPLATE_ITEMS,
+  WORKFLOW_TEMPLATE_ITEMS,
+} from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import {
+  chatMessagesContract,
+  type AttachFile,
+  type ChatRunOptionsRequest,
+  type GenerationTemplateRequest,
+  type ModelSelectionRequest,
+  type PagedChatMessage,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  TestChatMessagesStateActionBody,
+  TestChatMessagesStateActionResponse,
+} from "@vm0/api-contracts/contracts/test-chat-messages-state";
+import {
+  getModelProviderFirewall,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
+import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
+
+import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
+import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { server } from "../../../mocks/server";
+import {
+  createBddApi,
+  expectApiError,
+  type ApiTestUser,
+} from "./helpers/api-bdd";
+import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
+import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { testChatMessagesStateRoutes } from "../test-chat-messages-state";
+
+/**
+ * CHAT-02 / RUN-01 / CHAIN-CHAT: the web chat send route end to end.
+ *
+ * Every Given is constructed through public APIs (Stripe-webhook entitlement,
+ * org model provider/policy routes, runner heartbeat/claim, sandbox report
+ * webhooks, feature-switch and computer-use host routes) and every Then is a
+ * response body, messages page, thread/run read, queue read, claim payload,
+ * or captured chat-callback delivery — no database fixtures or row asserts.
+ */
+
+const context = testContext();
+const bdd = createBddApi(context);
+const api = createRunsAutomationsApi(context);
+const chat = createChatFilesBddApi(context);
+const webhooks = createWebhookCallbackApi(context);
+const chatCallbacks = createChatCallbacksApi(context);
+const cu = createComputerUseBddApi(context);
+const misc = createMiscRoutesApi(context);
+const routeMocks = createZeroRouteMocks(context);
+const MODEL_FIRST_SELECTION_PROVIDER_ID =
+  "00000000-0000-4000-8000-000000000000";
+const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
+  "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
+  "api_dispatch_pre_create_zero_web_chat_validate_revocation",
+  "api_dispatch_pre_create_zero_web_chat_check_active_run",
+  "api_dispatch_pre_create_zero_web_chat_create_normal_run",
+  "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
+  "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
+  "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
+] as const;
+const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_entrypoint_gap",
+] as const;
+const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
+  "org_id",
+  "user_id",
+  "connector",
+  "connector_name",
+  "agent_id",
+  "prompt",
+  "vars",
+  "secrets",
+  "secret_names",
+  "environment",
+  "execution_context",
+  "presigned_url",
+  "presignedUrl",
+  "archive_url",
+  "archiveUrl",
+  "manifest_url",
+  "manifestUrl",
+  "url",
+  "storage_name",
+  "storageName",
+  "artifact_name",
+  "artifactName",
+  "volume_name",
+  "volumeName",
+  "mount_path",
+  "mountPath",
+  "runner_id",
+  "runnerId",
+  "target_runner_id",
+  "targetRunnerId",
+  "cli_agent_session_id",
+  "cliAgentSessionId",
+  "sandbox_token",
+  "sandboxToken",
+  "api_key",
+  "apiKey",
+] as const;
+
+function base64UrlEncode(input: string): string {
+  return Buffer.from(input, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function unsignedJwt(payload: Record<string, unknown>): string {
+  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  return `${header}.${base64UrlEncode(JSON.stringify(payload))}.bdd-signature`;
+}
+
+function codexAuthJson(): string {
+  const accessExp = Math.floor(now() / 1000) + 7200;
+  return JSON.stringify({
+    OPENAI_API_KEY: null,
+    tokens: {
+      access_token: unsignedJwt({ exp: accessExp }),
+      refresh_token: "rt_bdd_chat_fast_mode",
+      account_id: "ws_acct_bdd_fast_mode",
+      id_token: unsignedJwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "ws_acct_bdd_fast_mode_id_token",
+          chatgpt_plan_type: "plus",
+          organization: { title: "BDD Chat Fast Mode" },
+        },
+        exp: accessExp,
+      }),
+    },
+  });
+}
+
+type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
+type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
+type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
+
+interface EntitledChatActor {
+  readonly actor: ApiTestUser;
+  readonly agentId: string;
+  readonly runnerGroup: string;
+  readonly providerId: string;
+}
+
+interface ChatRunSendBody {
+  readonly agentId: string;
+  readonly prompt: string;
+  readonly threadId?: string;
+  readonly clientThreadId?: string;
+  readonly clientMessageId?: string;
+  readonly modelSelection?: ModelSelectionRequest;
+  readonly runOptions?: ChatRunOptionsRequest;
+  readonly generationTemplate?: GenerationTemplateRequest;
+  readonly attachFiles?: readonly AttachFile[];
+  readonly computerUseHostId?: string | null;
+  readonly revokesMessageId?: string;
+}
+
+const openRouterBodySchema = z.object({
+  messages: z.array(z.object({ role: z.string(), content: z.string() })),
+});
+
+async function entitledChatActor(): Promise<EntitledChatActor> {
+  const actor = bdd.user();
+  chatCallbacks.acceptChatObjectStorage();
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+  chatCallbacks.disableVapid();
+  const runnerGroup = api.configureRunnerGroup();
+  await api.grantProEntitlement(actor);
+  const { providerId } = await api.ensureOrgModelProvider(actor);
+  const agent = await bdd.createAgent(actor, {
+    displayName: "BDD chat messages agent",
+    description: "Exercises the web chat send route.",
+    visibility: "private",
+  });
+  return { actor, agentId: agent.agentId, runnerGroup, providerId };
+}
+
+async function sendChatRun(
+  actor: ApiTestUser,
+  body: ChatRunSendBody,
+): Promise<{ readonly runId: string; readonly threadId: string }> {
+  const sent = await chat.requestSendMessage(actor, body, [201]);
+  if (sent.status !== 201 || sent.body.runId === null) {
+    throw new Error("Expected the entitled chat send to create a run");
+  }
+  return { runId: sent.body.runId, threadId: sent.body.threadId };
+}
+
+async function claimChatRun(
+  runnerGroup: string,
+  runId: string,
+): Promise<{
+  readonly claim: RunnerClaim;
+  readonly sandboxHeaders: { readonly authorization: string };
+}> {
+  await api.heartbeatRunner(runnerGroup);
+  const claim = await api.claimRunnerJob(runId);
+  return {
+    claim,
+    sandboxHeaders: { authorization: `Bearer ${claim.sandboxToken}` },
+  };
+}
+
+function claimEnvironment(claim: RunnerClaim): Record<string, string> {
+  if (!claim.environment) {
+    throw new Error("Expected the runner claim to carry an environment");
+  }
+  return claim.environment;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event) && event.run_id === runId;
+    });
+  });
+}
+
+function apiDispatchTimingEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return (
+      typeof event.op_type === "string" &&
+      event.op_type.startsWith("api_dispatch_")
+    );
+  });
+}
+
+function apiDispatchActionTypes(
+  events: readonly Record<string, unknown>[],
+): Set<unknown> {
+  return new Set(
+    events.map((event) => {
+      return event.op_type;
+    }),
+  );
+}
+
+function expectApiDispatchActions(
+  events: readonly Record<string, unknown>[],
+  expectedActionTypes: readonly string[],
+): void {
+  const observedActionTypes = apiDispatchActionTypes(events);
+  for (const actionType of expectedActionTypes) {
+    expect(observedActionTypes).toContain(actionType);
+  }
+}
+
+function expectNoApiDispatchActions(
+  events: readonly Record<string, unknown>[],
+  unexpectedActionTypes: readonly string[],
+): void {
+  const observedActionTypes = apiDispatchActionTypes(events);
+  for (const actionType of unexpectedActionTypes) {
+    expect(observedActionTypes).not.toContain(actionType);
+  }
+}
+
+function expectApiDispatchSpanKind(
+  events: readonly Record<string, unknown>[],
+  expectedActionTypes: readonly string[],
+  spanKind: string,
+): void {
+  for (const actionType of expectedActionTypes) {
+    const matchingEvents = events.filter((event) => {
+      return event.op_type === actionType;
+    });
+    expect(matchingEvents).toHaveLength(1);
+    expect(matchingEvents[0]).toStrictEqual(
+      expect.objectContaining({
+        span_kind: spanKind,
+      }),
+    );
+  }
+}
+
+function expectApiDispatchTimingEventsNotToLeak(
+  events: readonly Record<string, unknown>[],
+  forbiddenValues: readonly string[],
+): void {
+  for (const event of events) {
+    for (const forbiddenKey of FORBIDDEN_API_DISPATCH_TIMING_KEYS) {
+      expect(event).not.toHaveProperty(forbiddenKey);
+    }
+    const serialized = JSON.stringify(event);
+    for (const forbiddenValue of forbiddenValues) {
+      expect(serialized).not.toContain(forbiddenValue);
+    }
+  }
+}
+
+/** Sandbox-scoped zero token issued to the run, exposed via the claim env. */
+function zeroTokenFromClaim(claim: RunnerClaim): string {
+  const token = claimEnvironment(claim).ZERO_TOKEN;
+  if (!token || !token.startsWith("vm0_sandbox_")) {
+    throw new Error("Expected the claim environment to carry a ZERO_TOKEN");
+  }
+  return token;
+}
+
+async function waitForThreadMessages(
+  actor: ApiTestUser,
+  threadId: string,
+  predicate: (messages: readonly PagedChatMessage[]) => boolean,
+) {
+  let page: Awaited<ReturnType<typeof chat.listThreadMessages>> | undefined;
+  await expect
+    .poll(async () => {
+      page = await chat.listThreadMessages(actor, threadId);
+      return predicate(page.messages);
+    })
+    .toBe(true);
+  if (!page) {
+    throw new Error(`Expected chat thread ${threadId} messages to be readable`);
+  }
+  return page;
+}
+
+async function waitForRunStatus(
+  actor: ApiTestUser,
+  runId: string,
+  status: "cancelled" | "completed" | "failed" | "pending" | "running",
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      const run = await api.readRun(actor, runId);
+      return run.status;
+    })
+    .toBe(status);
+}
+
+async function waitForThreadTitle(
+  actor: ApiTestUser,
+  threadId: string,
+  title: string | null,
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      return (await chat.readThread(actor, threadId)).title;
+    })
+    .toBe(title);
+}
+
+/**
+ * Checkpoint + exitCode-0 complete (completing without a checkpoint fails the
+ * run).
+ */
+async function completeChatRunOk(
+  runId: string,
+  sandboxHeaders: { readonly authorization: string },
+  options: { readonly lastEventSequence?: number } = {},
+): Promise<void> {
+  const history = `bdd chat session history ${runId}`;
+  const historyHash = createHash("sha256").update(history).digest("hex");
+  await webhooks.requestAgentCheckpoint(
+    {
+      runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: `bdd-cli-${runId}`,
+      cliAgentSessionHistoryHash: historyHash,
+    },
+    sandboxHeaders,
+    [200],
+  );
+  await webhooks.requestAgentComplete(
+    {
+      runId,
+      exitCode: 0,
+      ...(options.lastEventSequence === undefined
+        ? {}
+        : { lastEventSequence: options.lastEventSequence }),
+    },
+    sandboxHeaders,
+    [200],
+  );
+}
+
+async function failChatRun(
+  runId: string,
+  sandboxHeaders: { readonly authorization: string },
+  error: string,
+): Promise<void> {
+  await webhooks.requestAgentComplete(
+    { runId, exitCode: 1, error },
+    sandboxHeaders,
+    [200],
+  );
+}
+
+async function cancelChatRun(actor: ApiTestUser, runId: string): Promise<void> {
+  await api.requestCancelRun(actor, runId, [200]);
+  await waitForRunStatus(actor, runId, "cancelled");
+}
+
+function assistantMessages(
+  messages: readonly PagedChatMessage[],
+): AssistantMessage[] {
+  return messages.flatMap((message) => {
+    return message.role === "assistant" ? [message] : [];
+  });
+}
+
+function userMessages(messages: readonly PagedChatMessage[]): UserMessage[] {
+  return messages.flatMap((message) => {
+    return message.role === "user" ? [message] : [];
+  });
+}
+
+function eventBackedContents(
+  messages: readonly PagedChatMessage[],
+  runId: string,
+): AssistantMessage[] {
+  return assistantMessages(messages).filter((message) => {
+    return (
+      message.runId === runId &&
+      message.content !== null &&
+      message.runLifecycleEvent === undefined
+    );
+  });
+}
+
+function assistantEvent(
+  sequenceNumber: number,
+  text: string,
+): Record<string, unknown> {
+  return {
+    eventType: "assistant",
+    sequenceNumber,
+    eventData: { message: { content: [{ type: "text", text }] } },
+  };
+}
+
+function modelProviderSecretPlaceholder(
+  type: ModelProviderType,
+  secretName: string,
+): string {
+  const placeholder =
+    getModelProviderFirewall(type)?.placeholders?.[secretName];
+  if (!placeholder) {
+    throw new Error(`Missing model provider placeholder for ${secretName}`);
+  }
+  return placeholder;
+}
+
+function modelProvidersClient() {
+  return setupApp({ context })(zeroModelProvidersMainContract);
+}
+
+function chatMessagesClient() {
+  return setupApp({ context })(chatMessagesContract);
+}
+
+function requestChatMessagesState(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: testChatMessagesStateRoutes,
+  });
+  return Promise.resolve(app.request(path, init));
+}
+
+async function postChatMessagesStateAction(
+  body: TestChatMessagesStateActionBody,
+): Promise<TestChatMessagesStateActionResponse> {
+  const response = await requestChatMessagesState(
+    "/api/test/chat-messages-state/action",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `chat messages state action ${body.action} failed with ${response.status}`,
+    );
+  }
+  return (await response.json()) as TestChatMessagesStateActionResponse;
+}
+
+type SeedThreadMessage = Extract<
+  TestChatMessagesStateActionBody,
+  { action: "seed-thread-messages" }
+>["messages"][number];
+
+async function seedThreadMessages(
+  threadId: string,
+  messages: readonly SeedThreadMessage[],
+): Promise<void> {
+  await postChatMessagesStateAction({
+    action: "seed-thread-messages",
+    thread_id: threadId,
+    messages: [...messages],
+  });
+}
+
+function sessionHeaders(actor: ApiTestUser): {
+  readonly authorization: string;
+} {
+  routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+  return { authorization: "Bearer clerk-session" };
+}
+
+describe("CHAT-02: chat thread message pagination", () => {
+  it("uses message id as the cursor tie-breaker and scopes cursors to the thread", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const threadId = randomUUID();
+    const otherThreadId = randomUUID();
+    await chat.createThread(actor, {
+      agentId,
+      title: "Cursor ties",
+      clientThreadId: threadId,
+    });
+    await chat.createThread(actor, {
+      agentId,
+      title: "Other cursor thread",
+      clientThreadId: otherThreadId,
+    });
+
+    const createdAt = "2026-06-09T10:00:00.000Z";
+    const ids = [
+      randomUUID(),
+      randomUUID(),
+      randomUUID(),
+      randomUUID(),
+    ].sort() as [string, string, string, string];
+
+    await seedThreadMessages(threadId, [
+      {
+        id: ids[0],
+        role: "user",
+        content: "first tied message",
+        created_at: createdAt,
+        sequence_number: null,
+      },
+      {
+        id: ids[1],
+        role: "assistant",
+        content: "second tied message",
+        created_at: createdAt,
+        sequence_number: null,
+      },
+      {
+        id: ids[2],
+        role: "assistant",
+        content: "third tied message",
+        created_at: createdAt,
+        sequence_number: null,
+      },
+      {
+        id: ids[3],
+        role: "assistant",
+        content: null,
+        created_at: createdAt,
+        sequence_number: null,
+        run_lifecycle_event: "completed",
+        recommended_followups: [
+          { prompt: "Turn this into a checklist", kind: "talk" },
+        ],
+      },
+    ]);
+
+    const otherMessageId = randomUUID();
+    await seedThreadMessages(otherThreadId, [
+      {
+        id: otherMessageId,
+        role: "user",
+        content: "other thread cursor",
+        created_at: "2026-06-09T09:59:59.000Z",
+        sequence_number: null,
+      },
+    ]);
+
+    const initial = await chat.listThreadMessages(actor, threadId, {
+      limit: 2,
+    });
+    expect(
+      initial.messages.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual([ids[2], ids[3]]);
+    expect(initial.hasHistoryBefore).toBeTruthy();
+
+    const afterFirst = await chat.listThreadMessages(actor, threadId, {
+      sinceId: ids[0],
+    });
+    expect(
+      afterFirst.messages.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual([ids[1], ids[2], ids[3]]);
+
+    const beforeLast = await chat.listThreadMessages(actor, threadId, {
+      beforeId: ids[3],
+    });
+    expect(
+      beforeLast.messages.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual([ids[0], ids[1], ids[2]]);
+
+    const foreignCursor = await chat.listThreadMessages(actor, threadId, {
+      sinceId: otherMessageId,
+    });
+    expect(foreignCursor.messages).toStrictEqual([]);
+
+    const marker = await chat.getThreadMessage(actor, threadId, ids[3]);
+    expect(marker).toMatchObject({
+      id: ids[3],
+      role: "assistant",
+      content: null,
+      runLifecycleEvent: "completed",
+      recommendedFollowups: [
+        { prompt: "Turn this into a checklist", kind: "talk" },
+      ],
+    });
+
+    const crossThreadRead = await chat.requestGetThreadMessage(
+      actor,
+      otherThreadId,
+      ids[3],
+      [404],
+    );
+    expect(crossThreadRead.status).toBe(404);
+  });
+
+  it("filters historical raw JSON syntax follow-up prompts when reading messages", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const threadId = randomUUID();
+    await chat.createThread(actor, {
+      agentId,
+      title: "Historical follow-up cleanup",
+      clientThreadId: threadId,
+    });
+
+    const markerId = randomUUID();
+    await seedThreadMessages(threadId, [
+      {
+        id: markerId,
+        role: "assistant",
+        content: null,
+        created_at: "2026-06-09T10:00:00.000Z",
+        sequence_number: null,
+        run_lifecycle_event: "completed",
+        recommended_followups: [
+          { prompt: "[", kind: "talk" },
+          { prompt: "{", kind: "talk" },
+          { prompt: '"prompt": "Investigate this",', kind: "talk" },
+          {
+            prompt: '{"prompt": "Investigate this", "kind": "talk"},',
+            kind: "talk",
+          },
+          {
+            prompt: '[{"prompt": "Investigate this", "kind": "talk"}',
+            kind: "talk",
+          },
+          { prompt: "}]", kind: "talk" },
+          { prompt: "}, {", kind: "talk" },
+          {
+            prompt: '}, {"prompt": "Investigate this", "kind": "talk"}',
+            kind: "talk",
+          },
+          { prompt: "Review the valid suggestion", kind: "talk" },
+          {
+            prompt: "Generate a follow-up website",
+            kind: "generate",
+            generationType: "website",
+          },
+        ],
+      },
+    ]);
+
+    const marker = await chat.getThreadMessage(actor, threadId, markerId);
+    expect(marker).toMatchObject({
+      id: markerId,
+      role: "assistant",
+      content: null,
+      runLifecycleEvent: "completed",
+      recommendedFollowups: [
+        { prompt: "Review the valid suggestion", kind: "talk" },
+        {
+          prompt: "Generate a follow-up website",
+          kind: "generate",
+          generationType: "website",
+        },
+      ],
+    });
+  });
+});
+
+/** Org-admin model provider upsert through the public route. */
+async function upsertOrgModelProvider(
+  actor: ApiTestUser,
+  body: {
+    readonly type:
+      | "anthropic-api-key"
+      | "deepseek-api-key"
+      | "openrouter-api-key"
+      | "vm0";
+    readonly secret?: string;
+  },
+): Promise<{ readonly providerId: string; readonly created: boolean }> {
+  const response = await accept(
+    modelProvidersClient().upsert({
+      headers: sessionHeaders(actor),
+      body,
+    }),
+    [200, 201],
+  );
+  return {
+    providerId: response.body.provider.id,
+    created: response.body.created,
+  };
+}
+
+async function overwriteOrgModelProviderSecret(
+  orgId: string,
+  name: string,
+  value: string,
+): Promise<void> {
+  await postChatMessagesStateAction({
+    action: "overwrite-org-model-provider-secret",
+    org_id: orgId,
+    name,
+    value,
+  });
+}
+
+async function readThreadComputerUseHostId(
+  threadId: string,
+): Promise<string | null> {
+  const response = await postChatMessagesStateAction({
+    action: "read-thread-computer-use-host-id",
+    thread_id: threadId,
+  });
+  return response.computer_use_host_id ?? null;
+}
+
+/**
+ * Raw chat send through the Hono app, for statuses the typed contract does
+ * not model (precedent: requestListAutomationsRaw in api-bdd-runs-automations).
+ */
+async function requestSendMessageRaw(
+  actor: ApiTestUser,
+  body: ChatRunSendBody,
+): Promise<{ readonly status: number; readonly body: unknown }> {
+  const headers = sessionHeaders(actor);
+  const app = createApp({ signal: context.signal });
+  const response = await app.request("/api/zero/chat/messages", {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const responseBody: unknown = await response.json();
+  return { status: response.status, body: responseBody };
+}
+
+/** Chat send authenticated by a run-scoped sandbox bearer token. */
+async function requestSendMessageWithBearer(
+  token: string,
+  body: { readonly agentId: string; readonly prompt: string },
+  statuses: readonly (201 | 401 | 403)[],
+) {
+  return await accept(
+    chatMessagesClient().send({
+      headers: { authorization: `Bearer ${token}` },
+      body,
+    }),
+    statuses,
+  );
+}
+
+describe("CHAT-02: web chat send and client-id idempotency", () => {
+  it("creates a web chat run and replays client ids idempotently", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const clientThreadId = randomUUID();
+    const clientMessageId = randomUUID();
+    const prompt = "hello from bdd web chat";
+    const first = await chat.requestSendMessage(
+      actor,
+      { agentId, prompt, clientThreadId, clientMessageId },
+      [201],
+    );
+    if (first.status !== 201 || first.body.runId === null) {
+      throw new Error("Expected the first chat send to create a run");
+    }
+    expect(first.body.threadId).toBe(clientThreadId);
+    expect(first.body.status).toBe("pending");
+    const runId = first.body.runId;
+
+    const timingEvents = apiDispatchTimingEventsForRun(runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+      "nested",
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      ["api_dispatch_pre_create_agent_run"],
+      "top_level",
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      prompt,
+      clientThreadId,
+      clientMessageId,
+      agentId,
+    ]);
+
+    const run = await api.readRun(actor, runId);
+    expect(run.prompt).toBe(prompt);
+    expect(run.appendSystemPrompt).toContain(
+      "You are currently running inside: Web",
+    );
+    expect(run.appendSystemPrompt).not.toContain("# Artifact Template Context");
+
+    const messages = await waitForThreadMessages(
+      actor,
+      clientThreadId,
+      (items) => {
+        return userMessages(items).length === 1;
+      },
+    );
+    expect(userMessages(messages.messages)).toHaveLength(1);
+    expect(userMessages(messages.messages)[0]).toMatchObject({
+      id: clientMessageId,
+      content: prompt,
+      runId,
+    });
+
+    const threads = await chat.listThreads(actor, { agentId });
+    expect(
+      [...threads.pinned, ...threads.threads].map((thread) => {
+        return thread.id;
+      }),
+    ).toContain(clientThreadId);
+
+    // Identical retry resolves through the associated client message.
+    const retry = await chat.requestSendMessage(
+      actor,
+      { agentId, prompt, clientThreadId, clientMessageId },
+      [201],
+    );
+    expect(retry.body).toStrictEqual(first.body);
+
+    // Same client thread with a fresh client message id resolves to the
+    // thread's first run instead of creating a second one.
+    const threadRetry = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "retried after losing the response",
+        clientThreadId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+    );
+    if (threadRetry.status !== 201) {
+      throw new Error("Expected the client-thread retry to resolve");
+    }
+    expect(threadRetry.body.runId).toBe(runId);
+    const afterRetries = await chat.listThreadMessages(actor, clientThreadId);
+    expect(userMessages(afterRetries.messages)).toHaveLength(1);
+
+    const { sandboxHeaders } = await claimChatRun(runnerGroup, runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(runId, sandboxHeaders);
+
+    const completedRetry = await chat.requestSendMessage(
+      actor,
+      { agentId, prompt, clientThreadId, clientMessageId },
+      [201],
+    );
+    expect(completedRetry.body).toStrictEqual({
+      ...first.body,
+      status: "completed",
+    });
+
+    // A pre-created client thread with no runs cannot be replayed into.
+    const emptyClientThreadId = randomUUID();
+    const created = await chat.createThread(actor, {
+      agentId,
+      title: "Pre-created client thread",
+      clientThreadId: emptyClientThreadId,
+    });
+    expect(created.id).toBe(emptyClientThreadId);
+    const emptyRetry = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "send into the pre-created thread",
+        clientThreadId: emptyClientThreadId,
+      },
+      [400],
+    );
+    expectApiError(emptyRetry.body);
+    expect(emptyRetry.body.error.message).toBe(
+      "Client thread id is already in use",
+    );
+  }, 90_000);
+
+  it("rejects unauthenticated, unknown-agent, and foreign private-agent sends", async () => {
+    const unauthenticated = await chat.requestSendMessage(
+      null,
+      { agentId: randomUUID(), prompt: "hello" },
+      [401],
+    );
+    expectApiError(unauthenticated.body);
+    expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
+
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Private chat-send guard agent",
+      visibility: "private",
+    });
+
+    const unknownAgent = await chat.requestSendMessage(
+      actor,
+      { agentId: randomUUID(), prompt: "hello" },
+      [404],
+    );
+    expectApiError(unknownAgent.body);
+    expect(unknownAgent.body.error.code).toBe("NOT_FOUND");
+
+    const peer = bdd.user({ orgId: actor.orgId });
+    const forbidden = await chat.requestSendMessage(
+      peer,
+      { agentId: agent.agentId, prompt: "hello" },
+      [403],
+    );
+    expectApiError(forbidden.body);
+    expect(forbidden.body.error.message).toBe(
+      "Only the private agent owner can run this agent",
+    );
+  }, 30_000);
+});
+
+describe("CHAT-02: interrupting active chat runs", () => {
+  it("interrupts an active run, guards interrupt ids, and feeds cancelled rounds into the next run", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "long task to interrupt",
+    });
+
+    const interruptId = randomUUID();
+    const interrupted = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        interruptsRunId: first.runId,
+        clientMessageId: interruptId,
+      },
+      [201],
+    );
+    if (interrupted.status !== 201) {
+      throw new Error("Expected the interrupt send to be accepted");
+    }
+    expect(interrupted.body.runId).toBeNull();
+    await waitForRunStatus(actor, first.runId, "cancelled");
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return (
+          userMessages(items).some((message) => {
+            return message.interruptsRunId === first.runId;
+          }) &&
+          assistantMessages(items).some((message) => {
+            return (
+              message.runId === first.runId &&
+              message.runLifecycleEvent === "cancelled"
+            );
+          })
+        );
+      },
+    );
+    const interruptRows = userMessages(messages.messages).filter((message) => {
+      return message.interruptsRunId === first.runId;
+    });
+    expect(interruptRows).toHaveLength(1);
+    expect(interruptRows[0]).toMatchObject({ id: interruptId, content: null });
+    expect(
+      assistantMessages(messages.messages).filter((message) => {
+        return (
+          message.runId === first.runId &&
+          message.runLifecycleEvent === "cancelled"
+        );
+      }),
+    ).toHaveLength(1);
+
+    // Replaying the interrupt (same or fresh client id) stays idempotent.
+    const replayedInterrupt = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        interruptsRunId: first.runId,
+        clientMessageId: interruptId,
+      },
+      [201],
+    );
+    expect(replayedInterrupt.body).toMatchObject({
+      runId: null,
+      threadId: first.threadId,
+    });
+    await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        interruptsRunId: first.runId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+    );
+    const afterReplays = await chat.listThreadMessages(actor, first.threadId);
+    expect(
+      userMessages(afterReplays.messages).filter((message) => {
+        return message.interruptsRunId === first.runId;
+      }),
+    ).toHaveLength(1);
+
+    // A run that went terminal without an interrupt row cannot be interrupted.
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "cancelled through the cancel api",
+    });
+    await cancelChatRun(actor, second.runId);
+    const lateInterrupt = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        interruptsRunId: second.runId,
+        clientMessageId: randomUUID(),
+      },
+      [400],
+    );
+    expectApiError(lateInterrupt.body);
+    expect(lateInterrupt.body.error.message).toBe(
+      "Only active chat runs can be interrupted",
+    );
+
+    // The interrupt's client message id is burned for normal sends.
+    const reusedInterruptId = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "reuse the interrupt client id",
+        clientMessageId: interruptId,
+      },
+      [409],
+    );
+    expectApiError(reusedInterruptId.body);
+    expect(reusedInterruptId.body.error.message).toBe(
+      "clientMessageId is already in use",
+    );
+
+    // Both cancelled rounds surface as incomplete context for the next run.
+    const third = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "resume after interruptions",
+    });
+    const thirdRun = await api.readRun(actor, third.runId);
+    const appended = thirdRun.appendSystemPrompt ?? "";
+    expect(appended).toContain("# Incomplete Rounds Context");
+    expect(appended).toContain("RUN_STATUS: cancelled");
+    expect(appended).toContain("User: long task to interrupt");
+    expect(appended).not.toContain("# Web Chat Run Context");
+    await cancelChatRun(actor, third.runId);
+  }, 90_000);
+});
+
+describe("CHAT-02: queueing and recalling messages", () => {
+  it("queues, retries, and recalls messages behind an active run", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor active run",
+    });
+
+    const queuedId = randomUUID();
+    const queued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "queued behind the active run",
+        clientMessageId: queuedId,
+      },
+      [201],
+    );
+    if (queued.status !== 201) {
+      throw new Error("Expected the queued send to be accepted");
+    }
+    expect(queued.body.runId).toBeNull();
+    const queuedRetry = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "queued behind the active run",
+        clientMessageId: queuedId,
+      },
+      [201],
+    );
+    expect(queuedRetry.body).toStrictEqual(queued.body);
+
+    const beforeRecall = await chat.listThreadMessages(actor, first.threadId);
+    expect(
+      userMessages(beforeRecall.messages).filter((message) => {
+        return message.id === queuedId;
+      }),
+    ).toHaveLength(1);
+
+    const recallId = randomUUID();
+    const recalled = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        revokesMessageId: queuedId,
+        clientMessageId: recallId,
+      },
+      [201],
+    );
+    if (recalled.status !== 201) {
+      throw new Error("Expected the recall send to be accepted");
+    }
+    expect(recalled.body.runId).toBeNull();
+    const afterRecall = await chat.listThreadMessages(actor, first.threadId);
+    const recallRows = userMessages(afterRecall.messages).filter((message) => {
+      return message.revokesMessageId === queuedId;
+    });
+    expect(recallRows).toHaveLength(1);
+    expect(recallRows[0]).toMatchObject({ id: recallId, content: null });
+
+    const repeatedRecall = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        revokesMessageId: queuedId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+    );
+    expect(repeatedRecall.body).toMatchObject({
+      runId: null,
+      threadId: first.threadId,
+    });
+    const afterRepeated = await chat.listThreadMessages(actor, first.threadId);
+    expect(
+      userMessages(afterRepeated.messages).filter((message) => {
+        return message.revokesMessageId === queuedId;
+      }),
+    ).toHaveLength(1);
+
+    // Run-associated messages cannot be recalled.
+    const associated = userMessages(afterRepeated.messages).find((message) => {
+      return message.runId === first.runId;
+    });
+    if (!associated) {
+      throw new Error("Expected the active run's user message to be listed");
+    }
+    const rejectedRecall = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        revokesMessageId: associated.id,
+        clientMessageId: randomUUID(),
+      },
+      [400],
+    );
+    expectApiError(rejectedRecall.body);
+    expect(rejectedRecall.body.error.message).toBe(
+      "Only queued user messages can be recalled",
+    );
+
+    // The recall's client message id is burned for normal sends.
+    const reusedRecallId = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "reuse the recall client id",
+        clientMessageId: recallId,
+      },
+      [409],
+    );
+    expectApiError(reusedRecallId.body);
+    expect(reusedRecallId.body.error.message).toBe(
+      "clientMessageId is already in use",
+    );
+
+    // Another user's send cannot claim the queued message's client id.
+    const stranger = bdd.user();
+    const strangerAgent = await bdd.createAgent(stranger, {
+      displayName: "Cross-user client-id agent",
+    });
+    const strangerThread = await chat.createThread(stranger, {
+      agentId: strangerAgent.agentId,
+      title: "Cross-user conflict thread",
+    });
+    const crossUser = await chat.requestSendMessage(
+      stranger,
+      {
+        agentId: strangerAgent.agentId,
+        threadId: strangerThread.id,
+        prompt: "cross-user retry",
+        clientMessageId: queuedId,
+      },
+      [409],
+    );
+    expectApiError(crossUser.body);
+    expect(crossUser.body.error.message).toBe(
+      "clientMessageId is already in use",
+    );
+    const strangerMessages = await chat.listThreadMessages(
+      stranger,
+      strangerThread.id,
+    );
+    expect(strangerMessages.messages).toStrictEqual([]);
+    const ownerMessages = await chat.listThreadMessages(actor, first.threadId);
+    expect(
+      ownerMessages.messages.some((message) => {
+        return message.content === "cross-user retry";
+      }),
+    ).toBeFalsy();
+
+    await cancelChatRun(actor, first.runId);
+    expect((await api.readRun(actor, first.runId)).status).toBe("cancelled");
+  }, 90_000);
+});
+
+describe("CHAT-02: org queue markers", () => {
+  it("drains queued chat runs when an interrupt request aborts post-cancel", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    const controller = new AbortController();
+
+    const blocker = await chat.requestSendMessage(
+      actor,
+      { agentId, prompt: "occupy org concurrency before interrupt abort" },
+      [201],
+    );
+    if (blocker.status !== 201 || blocker.body.runId === null) {
+      throw new Error("Expected the blocking send to create a run");
+    }
+    expect(blocker.body.status).toBe("pending");
+
+    const queued = await chat.requestSendMessage(
+      actor,
+      { agentId, prompt: "drain after interrupt abort" },
+      [201],
+    );
+    if (queued.status !== 201 || queued.body.runId === null) {
+      throw new Error("Expected the second send to create a queued run");
+    }
+    expect(queued.body.status).toBe("queued");
+
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        const error = new Error("abort after interrupt cancel commit");
+        error.name = "AbortError";
+        controller.abort(error);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: blocker.body.threadId,
+        interruptsRunId: blocker.body.runId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+      controller.signal,
+    );
+
+    await waitForRunStatus(actor, blocker.body.runId, "cancelled");
+    await waitForRunStatus(actor, queued.body.runId, "pending");
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(queued.body.runId);
+    expect(claim.prompt).toBe("drain after interrupt abort");
+
+    await api.requestCancelRun(actor, queued.body.runId, [200]);
+  });
+
+  it("marks queued chat runs and revokes the marker on dequeue", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+
+    const blocker = await chat.requestSendMessage(
+      actor,
+      { agentId, prompt: "occupy org concurrency" },
+      [201],
+    );
+    if (blocker.status !== 201 || blocker.body.runId === null) {
+      throw new Error("Expected the blocking send to create a run");
+    }
+    expect(blocker.body.status).toBe("pending");
+
+    const queuedRun = await chat.requestSendMessage(
+      actor,
+      { agentId, prompt: "wait behind the active run" },
+      [201],
+    );
+    if (queuedRun.status !== 201 || queuedRun.body.runId === null) {
+      throw new Error("Expected the second send to create a queued run");
+    }
+    expect(queuedRun.body.status).toBe("queued");
+
+    const queuedThread = queuedRun.body.threadId;
+    const beforeDequeue = await waitForThreadMessages(
+      actor,
+      queuedThread,
+      (items) => {
+        return (
+          userMessages(items).length === 1 &&
+          assistantMessages(items).some((message) => {
+            return message.runEventId === "queue:queued";
+          })
+        );
+      },
+    );
+    expect(userMessages(beforeDequeue.messages)).toHaveLength(1);
+    expect(userMessages(beforeDequeue.messages)[0]).toMatchObject({
+      content: "wait behind the active run",
+      runId: queuedRun.body.runId,
+    });
+    const marker = assistantMessages(beforeDequeue.messages).find((message) => {
+      return message.runEventId === "queue:queued";
+    });
+    if (!marker) {
+      throw new Error("Expected an assistant queue marker");
+    }
+    expect(marker).toMatchObject({
+      content: "Waiting in queue...",
+      runId: queuedRun.body.runId,
+    });
+
+    // The queued run still counts as the thread's active run, so a template
+    // send queues as an unassociated message carrying its template.
+    const template = PRESENTATION_TEMPLATE_ITEMS[0];
+    if (!template) {
+      throw new Error("Expected a registered presentation template");
+    }
+    const generationTemplate: GenerationTemplateRequest = {
+      type: "presentation",
+      selection: {
+        designSystemId: template.designSystemId,
+        templateId: template.templateId,
+      },
+    };
+    const templateMessageId = randomUUID();
+    const queuedTemplate = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: queuedThread,
+        prompt: "template queued deck",
+        generationTemplate,
+        clientMessageId: templateMessageId,
+      },
+      [201],
+    );
+    expect(queuedTemplate.body).toMatchObject({ runId: null });
+    const withTemplate = await chat.listThreadMessages(actor, queuedThread);
+    const templateMessage = userMessages(withTemplate.messages).find(
+      (message) => {
+        return message.id === templateMessageId;
+      },
+    );
+    expect(templateMessage?.generationTemplate).toStrictEqual(
+      generationTemplate,
+    );
+
+    const queueBefore = await api.readRunQueue(actor);
+    expect(queueBefore.body.queue).toHaveLength(1);
+    expect(queueBefore.body.queue[0]).toMatchObject({
+      runId: queuedRun.body.runId,
+    });
+
+    // Recall the queued template message so the dequeue does not auto-send it.
+    await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: queuedThread,
+        revokesMessageId: templateMessageId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+    );
+
+    // Interrupting the blocking run drains the org queue and revokes the
+    // queue marker on the dequeued run's thread.
+    await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: blocker.body.threadId,
+        interruptsRunId: blocker.body.runId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+    );
+
+    await waitForRunStatus(actor, blocker.body.runId, "cancelled");
+    await waitForRunStatus(actor, queuedRun.body.runId, "pending");
+    const afterDequeue = await waitForThreadMessages(
+      actor,
+      queuedThread,
+      (items) => {
+        return assistantMessages(items).some((message) => {
+          return message.runEventId === "queue:dequeued";
+        });
+      },
+    );
+    const revoker = assistantMessages(afterDequeue.messages).find((message) => {
+      return message.runEventId === "queue:dequeued";
+    });
+    if (!revoker) {
+      throw new Error("Expected an assistant queue-dequeued revoker");
+    }
+    expect(revoker).toMatchObject({
+      content: null,
+      runId: queuedRun.body.runId,
+      revokesMessageId: marker.id,
+    });
+    const queueAfter = await api.readRunQueue(actor);
+    expect(queueAfter.body.queue).toHaveLength(0);
+
+    await cancelChatRun(actor, queuedRun.body.runId);
+    expect((await api.readRun(actor, queuedRun.body.runId)).status).toBe(
+      "cancelled",
+    );
+  }, 90_000);
+});
+
+describe("CHAT-02: dispatch failure", () => {
+  it("fails the run and delivers the terminal chat callback when dispatch cannot start", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const routeRequests = chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", undefined);
+
+    const sent = await chat.requestSendMessage(
+      actor,
+      { agentId, prompt: "fail before worker start" },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected the failed dispatch to still create a run");
+    }
+    expect(sent.body.status).toBe("failed");
+
+    const run = await api.readRun(actor, sent.body.runId);
+    expect(run.status).toBe("failed");
+    expect(run.error).toContain("RUNNER_DEFAULT_GROUP");
+
+    const messages = await waitForThreadMessages(
+      actor,
+      sent.body.threadId,
+      (items) => {
+        return assistantMessages(items).some((message) => {
+          return (
+            message.runId === sent.body.runId &&
+            message.runLifecycleEvent === "failed"
+          );
+        });
+      },
+    );
+    const failedMarker = assistantMessages(messages.messages).find(
+      (message) => {
+        return (
+          message.runId === sent.body.runId &&
+          message.runLifecycleEvent === "failed"
+        );
+      },
+    );
+    if (!failedMarker) {
+      throw new Error("Expected a failed lifecycle marker");
+    }
+    expect(failedMarker.error).toStrictEqual(expect.any(String));
+    expect(routeRequests()).toBe(0);
+  }, 60_000);
+});
+
+describe("CHAT-02: admission without spendable credits", () => {
+  it("blocks admission for provider-pinned sends through visible chat messages", async () => {
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    await bdd.setupOnboarding(actor, {
+      displayName: "BDD pro-suspend admission agent",
+    });
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Pro-suspend chat agent",
+    });
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "vm0",
+    });
+
+    const clientMessageId = randomUUID();
+    const sendBody: ChatRunSendBody = {
+      agentId: agent.agentId,
+      prompt: "blocked by suspended plan",
+      modelSelection: {
+        modelProviderId: providerId,
+        selectedModel: "claude-sonnet-4-6",
+      },
+      clientMessageId,
+    };
+    const sent = await chat.requestSendMessage(actor, sendBody, [201]);
+    if (sent.status !== 201) {
+      throw new Error("Expected the blocked send to return 201 without a run");
+    }
+    expect(sent.body.runId).toBeNull();
+
+    const messages = await chat.listThreadMessages(actor, sent.body.threadId);
+    const blockedUser = userMessages(messages.messages)[0];
+    expect(blockedUser).toMatchObject({
+      id: clientMessageId,
+      content: "blocked by suspended plan",
+      error: "insufficient_credits",
+    });
+    expect(blockedUser?.runId).toBeUndefined();
+    const guidance = assistantMessages(messages.messages)[0];
+    expect(guidance?.content).toContain("Upgrade to Pro");
+    expect(guidance?.error).toBe("insufficient_credits");
+
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).toHaveLength(0);
+    expect(queue.body.concurrency.active).toBe(0);
+
+    const retry = await chat.requestSendMessage(
+      actor,
+      { ...sendBody, threadId: sent.body.threadId },
+      [201],
+    );
+    expect(retry.body).toStrictEqual(sent.body);
+    const afterRetry = await chat.listThreadMessages(actor, sent.body.threadId);
+    expect(afterRetry.messages).toHaveLength(2);
+  }, 60_000);
+});
+
+describe("CHAT-02: explicit provider pins", () => {
+  it("routes explicit provider pins into the runner claim", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const { providerId: deepseekId } = await upsertOrgModelProvider(actor, {
+      type: "deepseek-api-key",
+      secret: "selected-deepseek-key",
+    });
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "run with the selected deepseek provider",
+      modelSelection: {
+        modelProviderId: deepseekId,
+        selectedModel: "deepseek-v4-pro",
+      },
+    });
+
+    const { claim, sandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      run.runId,
+    );
+    const environment = claimEnvironment(claim);
+    expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
+      modelProviderSecretPlaceholder("deepseek-api-key", "DEEPSEEK_API_KEY"),
+    );
+    expect(environment.ANTHROPIC_BASE_URL).toBe(
+      "https://api.deepseek.com/anthropic",
+    );
+    expect(environment.ANTHROPIC_MODEL).toBe("deepseek-v4-pro");
+    expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
+    expect(environment.ANTHROPIC_API_KEY).toBeUndefined();
+
+    // Explicit pins persist on the thread as model-only state.
+    const thread = await chat.readThread(actor, run.threadId);
+    expect(thread.selectedModel).toBe("deepseek-v4-pro");
+    expect(thread.modelProviderId ?? null).toBeNull();
+
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(run.runId, sandboxHeaders);
+    expect((await api.readRun(actor, run.runId)).status).toBe("completed");
+
+    // A vm0 provider pin in an entitled org passes the spendable-credits
+    // admission. The outcome past admission is race-dependent on the shared
+    // database: 503 when no vm0 execution key exists (no public provisioning
+    // surface), 201 when another suite's alive legacy test has seeded a
+    // global vm0 key. Both prove the credits-ok admission arm.
+    const { providerId: vm0Id } = await upsertOrgModelProvider(actor, {
+      type: "vm0",
+    });
+    const vm0Send = await requestSendMessageRaw(actor, {
+      agentId,
+      prompt: "vm0-backed admission with spendable credits",
+      modelSelection: {
+        modelProviderId: vm0Id,
+        selectedModel: "claude-sonnet-4-6",
+      },
+    });
+    expect([201, 503]).toContain(vm0Send.status);
+    if (vm0Send.status === 503) {
+      expectApiError(vm0Send.body);
+      expect(vm0Send.body.error.message).toContain(
+        "No model provider configured",
+      );
+    } else {
+      const vm0Body = vm0Send.body as { readonly runId: string | null };
+      if (vm0Body.runId !== null) {
+        await api.requestCancelRun(actor, vm0Body.runId, [200]);
+      }
+    }
+  }, 90_000);
+
+  it("passes Codex fast mode only for feature-enabled ChatGPT subscription GPT-5.5 sends", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    const actorWithOrg = { ...actor, orgId };
+
+    await misc.upsertPersonalModelProvider(
+      actor,
+      {
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+        secrets: { CODEX_AUTH_JSON: codexAuthJson() },
+      },
+      [200, 201],
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+      {
+        model: "gpt-5.4",
+        isDefault: false,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
+
+    const switchOffThreadId = randomUUID();
+    const switchOff = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "run codex fast with switch off",
+        clientThreadId: switchOffThreadId,
+        modelSelection: {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel: "gpt-5.5",
+        },
+        runOptions: { codexServiceTier: "fast" },
+      },
+      [400],
+    );
+    expectApiError(switchOff.body);
+    expect(switchOff.body.error.message).toBe(
+      "Codex fast mode is not enabled for this workspace",
+    );
+    await chat.requestReadThread(actor, switchOffThreadId, [404]);
+
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.CodexFastMode]: true,
+    });
+
+    const fast = await sendChatRun(actor, {
+      agentId,
+      prompt: "run codex fast",
+      modelSelection: {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "gpt-5.5",
+      },
+      runOptions: { codexServiceTier: "fast" },
+    });
+    const { claim } = await claimChatRun(runnerGroup, fast.runId);
+    const environment = claimEnvironment(claim);
+    expect(claim.cliAgentType).toBe("codex");
+    expect(environment.OPENAI_MODEL).toBe("gpt-5.5");
+    expect(environment.VM0_CODEX_SERVICE_TIER).toBe("fast");
+    expect(environment.CHATGPT_ACCESS_TOKEN).toBe(
+      modelProviderSecretPlaceholder(
+        "codex-oauth-token",
+        "CHATGPT_ACCESS_TOKEN",
+      ),
+    );
+    await cancelChatRun(actor, fast.runId);
+
+    const rejectedThreadId = randomUUID();
+    const rejected = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "5.4 cannot fast",
+        clientThreadId: rejectedThreadId,
+        modelSelection: {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel: "gpt-5.4",
+        },
+        runOptions: { codexServiceTier: "fast" },
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 runs",
+    );
+    await chat.requestReadThread(actor, rejectedThreadId, [404]);
+  }, 90_000);
+
+  it("routes OpenRouter provider pins through runtime model aliases and firewall auth", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "openrouter-api-key",
+      secret: "test-openrouter-key",
+    });
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "run with the selected openrouter provider",
+      modelSelection: {
+        modelProviderId: providerId,
+        selectedModel: "claude-opus-4-7",
+      },
+    });
+
+    const { claim, sandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      run.runId,
+    );
+    const environment = claimEnvironment(claim);
+    expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
+      modelProviderSecretPlaceholder(
+        "openrouter-api-key",
+        "OPENROUTER_API_KEY",
+      ),
+    );
+    expect(environment.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
+    expect(environment.ANTHROPIC_API_KEY).toBe("");
+    expect(environment.ANTHROPIC_MODEL).toBe("anthropic/claude-opus-4.7");
+    expect(environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe(
+      "anthropic/claude-opus-4.7",
+    );
+    expect(environment.CLAUDE_CODE_SUBAGENT_MODEL).toBe(
+      "anthropic/claude-opus-4.7",
+    );
+    expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBeUndefined();
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected OpenRouter claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      sandboxHeaders,
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          claim.secretConnectorMetadataMap ?? undefined,
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected OpenRouter firewall auth to resolve");
+    }
+    expect(resolved.body.headers.Authorization).toBe(
+      "Bearer test-openrouter-key",
+    );
+    expect(resolved.body.resolvedSecrets).toStrictEqual(["OPENROUTER_API_KEY"]);
+
+    const thread = await chat.readThread(actor, run.threadId);
+    expect(thread.selectedModel).toBe("claude-opus-4-7");
+    expect(thread.modelProviderId ?? null).toBeNull();
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  }, 90_000);
+
+  it("routes vm0 Kimi through Moonshot attachment-disabled env bindings", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const keySuffix = randomUUID();
+
+    await postChatMessagesStateAction({
+      action: "replace-vm0-api-keys",
+      vendor: "moonshot",
+      model: "kimi-k2.7-code",
+      keys: [
+        {
+          api_key: `vm0-key-bdd-dev-seed-${keySuffix}`,
+          label: "dev-seed",
+        },
+      ],
+    });
+
+    let runId: string | null = null;
+    const cancelRunIfCreated = async () => {
+      if (runId) {
+        await api.requestCancelRun(actor, runId, [200]);
+      }
+    };
+    const deleteVm0KimiKeys = async () => {
+      await postChatMessagesStateAction({
+        action: "delete-vm0-api-keys",
+        vendor: "moonshot",
+        model: "kimi-k2.7-code",
+      });
+    };
+    const cleanupRunAndKeys = async () => {
+      await Promise.all([deleteVm0KimiKeys(), cancelRunIfCreated()]);
+    };
+
+    await (async () => {
+      const { providerId } = await upsertOrgModelProvider(actor, {
+        type: "vm0",
+      });
+
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "run with the selected vm0 kimi provider",
+        modelSelection: {
+          modelProviderId: providerId,
+          selectedModel: "kimi-k2.7-code",
+        },
+      });
+      runId = run.runId;
+
+      const { claim } = await claimChatRun(runnerGroup, run.runId);
+      const environment = claimEnvironment(claim);
+      expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
+        modelProviderSecretPlaceholder("moonshot-api-key", "MOONSHOT_API_KEY"),
+      );
+      expect(environment.ANTHROPIC_BASE_URL).toBe(
+        "https://api.moonshot.ai/anthropic",
+      );
+      expect(environment.ANTHROPIC_MODEL).toBe("kimi-k2.7-code");
+      expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
+    })().then(cleanupRunAndKeys, async (error: unknown) => {
+      await cleanupRunAndKeys();
+      throw error;
+    });
+  }, 90_000);
+
+  it("prefers dev-seed vm0 managed keys over concurrent test keys", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const keySuffix = randomUUID();
+    const fakeKey = `vm0-key-bdd-fake-${keySuffix}`;
+    const devSeedKey = `vm0-key-bdd-dev-seed-${keySuffix}`;
+
+    await postChatMessagesStateAction({
+      action: "replace-openrouter-vm0-api-keys",
+      model: "z-ai/glm-5.2",
+      keys: [
+        {
+          api_key: fakeKey,
+          label: `bdd-fake-${keySuffix}`,
+        },
+        {
+          api_key: devSeedKey,
+          label: "dev-seed",
+        },
+      ],
+    });
+
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "vm0",
+    });
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "run with the selected vm0 provider",
+      modelSelection: {
+        modelProviderId: providerId,
+        selectedModel: "glm-5.2",
+      },
+    });
+
+    const { claim, sandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      run.runId,
+    );
+    const environment = claimEnvironment(claim);
+    expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
+      modelProviderSecretPlaceholder(
+        "openrouter-api-key",
+        "OPENROUTER_API_KEY",
+      ),
+    );
+    expect(environment.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
+    expect(environment.ANTHROPIC_MODEL).toBe("z-ai/glm-5.2");
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected vm0 claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      sandboxHeaders,
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
+        },
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected vm0 firewall auth to resolve");
+    }
+    expect(resolved.body.headers.Authorization).toBe(`Bearer ${devSeedKey}`);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await postChatMessagesStateAction({
+      action: "delete-openrouter-vm0-api-keys",
+      model: "z-ai/glm-5.2",
+    });
+  }, 90_000);
+
+  it("rejects legacy blank OpenRouter provider secrets during firewall auth", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected entitled actor to have an org");
+    }
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "openrouter-api-key",
+      secret: "test-openrouter-key",
+    });
+    await overwriteOrgModelProviderSecret(orgId, "OPENROUTER_API_KEY", "   ");
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "run with a legacy blank openrouter provider",
+      modelSelection: {
+        modelProviderId: providerId,
+        selectedModel: "claude-opus-4-7",
+      },
+    });
+    const { claim, sandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      run.runId,
+    );
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected OpenRouter claim to carry encrypted secrets");
+    }
+
+    const rejected = await fw.requestFirewallAuth(
+      sandboxHeaders,
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          claim.secretConnectorMetadataMap ?? undefined,
+      },
+      [424],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  }, 60_000);
+});
+
+describe("CHAT-02: server-side model switches", () => {
+  it("switches models server-side and starts a fresh session with prior web context", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await chatCallbacks.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: false,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const firstPrompt = "first turn on the default opus policy";
+    const first = await sendChatRun(actor, { agentId, prompt: firstPrompt });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    expect(claimEnvironment(firstClaim.claim).ANTHROPIC_MODEL).toBe(
+      "claude-opus-4-6",
+    );
+    chatCallbacks.mockChatOutputEvents([assistantEvent(0, "opus answer")]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await waitForThreadMessages(actor, first.threadId, (items) => {
+      return eventBackedContents(items, first.runId).some((message) => {
+        return message.content === "opus answer";
+      });
+    });
+    expect((await chat.readThread(actor, first.threadId)).selectedModel).toBe(
+      "claude-opus-4-6",
+    );
+    expect(
+      (await api.readRun(actor, first.runId)).result?.agentSessionId,
+    ).toMatch(/[0-9a-f-]{36}/);
+
+    // Sentinel selection of another model starts a fresh session that carries
+    // the prior web round as context instead of resuming the CLI session.
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "switch to sonnet",
+      modelSelection: {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "claude-sonnet-4-6",
+      },
+    });
+    const secondRun = await api.readRun(actor, second.runId);
+    const appended = secondRun.appendSystemPrompt ?? "";
+    expect(appended).toContain("# Web Chat Run Context");
+    expect(appended).toContain(`- RUN_ID: ${first.runId}`);
+    expect(appended).toContain(`- LOG_COMMAND: zero logs ${first.runId} --all`);
+    expect(appended).toContain(`User: ${firstPrompt}`);
+    expect(appended).toContain("Assistant: opus answer");
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.resumeSession).toBeNull();
+    expect(claimEnvironment(secondClaim.claim).ANTHROPIC_MODEL).toBe(
+      "claude-sonnet-4-6",
+    );
+    expect((await chat.readThread(actor, first.threadId)).selectedModel).toBe(
+      "claude-sonnet-4-6",
+    );
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
+
+    // Same-model follow-ups resume the previous turn's CLI session.
+    const third = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue on sonnet",
+    });
+    const thirdClaim = await claimChatRun(runnerGroup, third.runId);
+    expect(thirdClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${second.runId}`,
+    );
+    await cancelChatRun(actor, third.runId);
+
+    // The sentinel selection also became the user's model preference, so a
+    // fresh thread without a selection pins the preferred model.
+    const fourth = await sendChatRun(actor, {
+      agentId,
+      prompt: "fresh thread uses the sentinel preference",
+    });
+    expect((await chat.readThread(actor, fourth.threadId)).selectedModel).toBe(
+      "claude-sonnet-4-6",
+    );
+    await cancelChatRun(actor, fourth.runId);
+  }, 90_000);
+
+  it("re-resolves the provider route from current policy on follow-up sends", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "pin sonnet model-first",
+      modelSelection: {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "claude-sonnet-4-6",
+      },
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    const pinned = await chat.readThread(actor, first.threadId);
+    expect(pinned.selectedModel).toBe("claude-sonnet-4-6");
+    expect(pinned.modelProviderId ?? null).toBeNull();
+
+    // Org providers are per-type singletons, so the public rotation surface
+    // is re-upserting the same provider with a new secret. The model-only
+    // thread pin re-resolves the policy route on every follow-up send.
+    const rotated = await upsertOrgModelProvider(actor, {
+      type: "anthropic-api-key",
+      secret: "rotated-anthropic-key",
+    });
+    expect(rotated).toStrictEqual({ providerId, created: false });
+
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "follow up after the provider rotation",
+    });
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    const environment = claimEnvironment(secondClaim.claim);
+    expect(environment.ANTHROPIC_API_KEY).toBe(
+      modelProviderSecretPlaceholder("anthropic-api-key", "ANTHROPIC_API_KEY"),
+    );
+    expect(environment.ANTHROPIC_MODEL).toBe("claude-sonnet-4-6");
+    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${first.runId}`,
+    );
+    const after = await chat.readThread(actor, first.threadId);
+    expect(after.selectedModel).toBe("claude-sonnet-4-6");
+    expect(after.modelProviderId ?? null).toBeNull();
+    await cancelChatRun(actor, second.runId);
+  }, 90_000);
+
+  it("rejects invalid model selections without creating visible state", async () => {
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Invalid model selection agent",
+    });
+
+    // A provider id from another workspace is unknown here.
+    const outsider = bdd.user();
+    const foreign = await upsertOrgModelProvider(outsider, {
+      type: "anthropic-api-key",
+      secret: "foreign-org-key",
+    });
+    const foreignThreadId = randomUUID();
+    const foreignPin = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "use a foreign provider",
+        clientThreadId: foreignThreadId,
+        modelSelection: {
+          modelProviderId: foreign.providerId,
+          selectedModel: "claude-sonnet-4-6",
+        },
+      },
+      [400],
+    );
+    expectApiError(foreignPin.body);
+    expect(foreignPin.body.error.message).toBe(
+      "Unknown model provider for this workspace",
+    );
+    await chat.requestReadThread(actor, foreignThreadId, [404]);
+
+    // A vm0 provider pin only accepts supported run models.
+    const vm0Provider = await upsertOrgModelProvider(actor, { type: "vm0" });
+    const vm0ThreadId = randomUUID();
+    const invalidVm0Model = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "use an unsupported vm0 model",
+        clientThreadId: vm0ThreadId,
+        modelSelection: {
+          modelProviderId: vm0Provider.providerId,
+          selectedModel: "codex",
+        },
+      },
+      [400],
+    );
+    expectApiError(invalidVm0Model.body);
+    expect(invalidVm0Model.body.error.message).toBe("Invalid model selection");
+    await chat.requestReadThread(actor, vm0ThreadId, [404]);
+
+    // Removed sentinel models fail contract validation.
+    for (const selectedModel of [
+      "claude-haiku-4-5",
+      "anthropic/claude-haiku-4.5",
+    ]) {
+      const removedThreadId = randomUUID();
+      const removed = await chat.requestSendMessage(
+        actor,
+        {
+          agentId: agent.agentId,
+          prompt: `removed ${selectedModel}`,
+          clientThreadId: removedThreadId,
+          modelSelection: {
+            modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+            selectedModel,
+          },
+        },
+        [400],
+      );
+      expectApiError(removed.body);
+      expect(removed.body.error).toMatchObject({
+        code: "BAD_REQUEST",
+        message: "modelSelection.selectedModel: Invalid model selection",
+      });
+      await chat.requestReadThread(actor, removedThreadId, [404]);
+    }
+
+    const threads = await chat.listThreads(actor, { agentId: agent.agentId });
+    expect(threads.pinned).toHaveLength(0);
+    expect(threads.threads).toHaveLength(0);
+  }, 60_000);
+});
+
+describe("CHAT-02: incomplete-round context", () => {
+  it("injects incomplete rounds and truncates old content chronologically", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "first incomplete",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    await failChatRun(first.runId, firstClaim.sandboxHeaders, "boom one");
+
+    const longPrompt = `second ${"x".repeat(4100)}`;
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: longPrompt,
+    });
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    await failChatRun(second.runId, secondClaim.sandboxHeaders, "boom two");
+
+    const third = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "retry after two failures",
+    });
+    const thirdRun = await api.readRun(actor, third.runId);
+    const appended = thirdRun.appendSystemPrompt ?? "";
+    expect(appended).toContain("# Incomplete Rounds Context");
+    expect(appended).not.toContain("# Web Chat Run Context");
+    expect(appended.split("RUN_STATUS: failed")).toHaveLength(3);
+    expect(appended).toContain("User: first incomplete");
+    expect(appended.indexOf("User: first incomplete")).toBeLessThan(
+      appended.indexOf("User: second"),
+    );
+    expect(appended).toContain("...[truncated]");
+    expect(appended).not.toContain("retry after two failures");
+    await cancelChatRun(actor, third.runId);
+  }, 90_000);
+});
+
+describe("CHAT-02: initial thinking indicator", () => {
+  it("persists a fast assistant thinking marker with paragraphs for active web chat runs", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
+
+    let upstreamAuthorization: string | null = null;
+    let promptPayload = "";
+    const thinkingResponse =
+      "Reviewing the launch request and recent context.\n\nOrganizing the checklist into practical sections before the main response starts.";
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          upstreamAuthorization = request.headers.get("authorization");
+          const payload = openRouterBodySchema.parse(await request.json());
+          promptPayload = payload.messages
+            .map((message) => {
+              return message.content;
+            })
+            .join("\n\n");
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: thinkingResponse },
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "Draft a launch checklist",
+    });
+
+    const page = await waitForThreadMessages(actor, run.threadId, (items) => {
+      return assistantMessages(items).some((message) => {
+        return (
+          message.runId === run.runId &&
+          message.content === null &&
+          message.thinking === thinkingResponse
+        );
+      });
+    });
+    const marker = assistantMessages(page.messages).find((message) => {
+      return (
+        message.runId === run.runId && message.thinking === thinkingResponse
+      );
+    });
+    expect(marker).toMatchObject({
+      role: "assistant",
+      content: null,
+      runId: run.runId,
+      runEventId: "thinking:initial",
+      thinking: thinkingResponse,
+    });
+    expect(upstreamAuthorization).toBe("Bearer thinking-key");
+    expect(promptPayload).toContain("few short paragraphs");
+    expect(promptPayload).toContain("Match the current user's language");
+    expect(promptPayload).toContain("Draft a launch checklist");
+
+    await cancelChatRun(actor, run.runId);
+  });
+});
+
+describe("CHAT-02: prior rounds and thread titles", () => {
+  it("carries prior completed rounds, generates the thread title, and rejects lifecycle follow-up revokes", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockOptionalEnv("OPENROUTER_API_KEY", "title-key");
+    let upstreamAuthorization: string | null = null;
+    let titleRequests = 0;
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          upstreamAuthorization = request.headers.get("authorization");
+          const payload = openRouterBodySchema.parse(await request.json());
+          const systemContent = payload.messages[0]?.content ?? "";
+          if (systemContent.includes("concise follow-up prompts")) {
+            return HttpResponse.json({
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify([
+                      { prompt: "Summarize the migration steps", kind: "talk" },
+                    ]),
+                  },
+                },
+              ],
+            });
+          }
+          if (systemContent.includes("Generate a short, descriptive title")) {
+            titleRequests += 1;
+            return HttpResponse.json({
+              choices: [{ message: { content: "**Migration Plan**" } }],
+            });
+          }
+          return HttpResponse.json({
+            choices: [{ message: { content: "Generated summary" } }],
+          });
+        },
+      ),
+    );
+
+    const firstPrompt = "plan the API migration";
+    const first = await sendChatRun(actor, { agentId, prompt: firstPrompt });
+    await waitForThreadTitle(actor, first.threadId, "Migration Plan");
+    expect(titleRequests).toBe(1);
+    expect(upstreamAuthorization).toBe("Bearer title-key");
+
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "Assistant migration answer"),
+    ]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const afterFirst = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return assistantMessages(items).some((message) => {
+          return (message.recommendedFollowups?.length ?? 0) > 0;
+        });
+      },
+    );
+    const recommender = assistantMessages(afterFirst.messages).find(
+      (message) => {
+        return (message.recommendedFollowups?.length ?? 0) > 0;
+      },
+    );
+    if (!recommender) {
+      throw new Error("Expected a recommended follow-ups message");
+    }
+    expect(recommender.runLifecycleEvent).toBe("completed");
+
+    const lifecycleFollowup = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "use the lifecycle follow-up",
+        revokesMessageId: recommender.id,
+      },
+      [400],
+    );
+    expectApiError(lifecycleFollowup.body);
+    expect(lifecycleFollowup.body.error.message).toBe(
+      "Recommended follow-up is no longer available",
+    );
+
+    const normalRecommender = assistantMessages(afterFirst.messages).find(
+      (message) => {
+        return (
+          message.runLifecycleEvent === undefined &&
+          (message.recommendedFollowups?.length ?? 0) > 0
+        );
+      },
+    );
+    expect(normalRecommender).toBeUndefined();
+
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "follow-up question",
+    });
+    expect((await chat.readThread(actor, first.threadId)).title).toBe(
+      "Migration Plan",
+    );
+    expect(titleRequests).toBe(1);
+    const secondRun = await api.readRun(actor, second.runId);
+    const appended = secondRun.appendSystemPrompt ?? "";
+    expect(appended).toContain("# Web Chat Run Context");
+    expect(appended).toContain(`- RUN_ID: ${first.runId}`);
+    expect(appended).toContain(`- LOG_COMMAND: zero logs ${first.runId} --all`);
+    expect(appended).toContain(`User: ${firstPrompt}`);
+    expect(appended).toContain("Assistant: Assistant migration answer");
+    expect(appended).toContain("- RELATIVE_INDEX: 0");
+    expect(appended).not.toContain("follow-up question");
+
+    await cancelChatRun(actor, second.runId);
+
+    await chat.renameThread(actor, first.threadId, "Manual Migration Title");
+    const third = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "manual title should stay",
+    });
+    expect((await chat.readThread(actor, first.threadId)).title).toBe(
+      "Manual Migration Title",
+    );
+    expect(titleRequests).toBe(1);
+    await cancelChatRun(actor, third.runId);
+  }, 90_000);
+});
+
+describe("CHAT-02: generation templates and attachments", () => {
+  it("renders generation template guidance into the run system prompt", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const template = PRESENTATION_TEMPLATE_ITEMS[0];
+    if (!template) {
+      throw new Error("Expected a registered presentation template");
+    }
+
+    const presentation = await sendChatRun(actor, {
+      agentId,
+      prompt: "make a launch deck",
+      generationTemplate: {
+        type: "presentation",
+        selection: {
+          colorSystemId: template.colorSystemId,
+          designSystemId: template.designSystemId,
+          templateId: template.templateId,
+        },
+      },
+    });
+    const presentationRun = await api.readRun(actor, presentation.runId);
+    expect(presentationRun.prompt).toBe("make a launch deck");
+    const presentationPrompt = presentationRun.appendSystemPrompt ?? "";
+    expect(presentationPrompt).toContain("# Artifact Template Context");
+    expect(presentationPrompt).toContain(
+      "The user deliberately selected this artifact template",
+    );
+    expect(presentationPrompt).toContain("- Artifact type: presentation");
+    expect(presentationPrompt).toContain(`(${template.designSystemId})`);
+    expect(presentationPrompt).toContain(`(${template.templateId})`);
+    if (template.colorSystemId) {
+      expect(presentationPrompt).toContain(`(${template.colorSystemId})`);
+      expect(presentationPrompt).toContain(
+        `Apply the selected color system (${template.colorSystemId})`,
+      );
+    }
+    expect(presentationPrompt).toContain(
+      "It does not force you to generate: the user's prompt decides the task",
+    );
+    expect(presentationPrompt).toContain(
+      `zero generate presentation --design-system ${template.designSystemId} --template ${template.templateId}`,
+    );
+    expect(presentationPrompt).toContain("--artifact-kind presentation-html");
+    await cancelChatRun(actor, presentation.runId);
+
+    const videoTemplate = VIDEO_TEMPLATE_ITEMS.find((item) => {
+      return item.id === "video-template:epic-grandeur";
+    });
+    if (!videoTemplate) {
+      throw new Error("Expected the epic-grandeur video template");
+    }
+    const video = await sendChatRun(actor, {
+      agentId,
+      prompt: "make a product video",
+      generationTemplate: {
+        type: "video",
+        selection: { stylePresetId: videoTemplate.id },
+      },
+    });
+    const videoRun = await api.readRun(actor, video.runId);
+    const videoPrompt = videoRun.appendSystemPrompt ?? "";
+    expect(videoPrompt).toContain("# Artifact Template Context");
+    expect(videoPrompt).toContain(
+      `Template: ${videoTemplate.title} (${videoTemplate.id})`,
+    );
+    expect(videoPrompt).toContain(
+      `zero generate video --provider built-in --template ${videoTemplate.id}`,
+    );
+    await cancelChatRun(actor, video.runId);
+  }, 90_000);
+
+  it("is one-shot: a follow-up without re-attaching the style relies on the replayed marker, not a live block", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+
+    // Turn 1: the user explicitly attaches the style — the live block is present.
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "draw a fox",
+      generationTemplate: {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      },
+    });
+    const firstPrompt = (await api.readRun(actor, first.runId))
+      .appendSystemPrompt;
+    expect(firstPrompt).toContain("# Artifact Template Context");
+    expect(firstPrompt).toContain(
+      `zero generate image --provider built-in --style ${style.illustrationStyleId}`,
+    );
+    expect(firstPrompt).toContain(style.illustrationStyleId);
+
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([assistantEvent(0, "here is a fox")]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await waitForThreadMessages(actor, first.threadId, (items) => {
+      return eventBackedContents(items, first.runId).some((message) => {
+        return message.content === "here is a fox";
+      });
+    });
+
+    // Turn 2: a follow-up without re-attaching the style gets no live block —
+    // there is no thread-sticky DB default (see resolveThreadGenerationTemplatePrompt).
+    // It only sees the selection via the marker replayed inside "# Web Chat Run
+    // Context" for turn 1's message.
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "another one",
+    });
+    const secondPrompt = (await api.readRun(actor, second.runId))
+      .appendSystemPrompt;
+    expect(secondPrompt).not.toContain("# Artifact Template Context");
+    expect(secondPrompt).toContain("# Web Chat Run Context");
+    expect(secondPrompt).toContain("Selected a template");
+    expect(secondPrompt).toContain(style.illustrationStyleId);
+    await cancelChatRun(actor, second.runId);
+
+    // Turn 3: attaching a video preset now only resolves the video template live
+    // — templates no longer merge across types via thread-sticky DB state.
+    const videoTemplate = VIDEO_TEMPLATE_ITEMS.find((item) => {
+      return item.id === "video-template:epic-grandeur";
+    });
+    if (!videoTemplate) {
+      throw new Error("Expected the epic-grandeur video template");
+    }
+    const third = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "now make a video",
+      generationTemplate: {
+        type: "video",
+        selection: { stylePresetId: videoTemplate.id },
+      },
+    });
+    const thirdPrompt = (await api.readRun(actor, third.runId))
+      .appendSystemPrompt;
+    expect(thirdPrompt).toContain(
+      `Template: ${videoTemplate.title} (${videoTemplate.id})`,
+    );
+    expect(thirdPrompt).toContain(
+      `zero generate video --provider built-in --template ${videoTemplate.id}`,
+    );
+    // The illustration style is gone entirely for this turn: it's not live
+    // (explicit selection this turn is video, not illustration), and turn 2's
+    // cancellation put an incomplete round in the thread, which suppresses the
+    // general "# Web Chat Run Context" replay (turn 1's marker included) in
+    // favor of resuming the existing session. An explicit selection this turn
+    // means there's nothing to fall back to either — see the "no explicit
+    // selection" case covered by the workflow test below.
+    expect(thirdPrompt).not.toContain(
+      `zero generate image --provider built-in --style ${style.illustrationStyleId}`,
+    );
+    expect(thirdPrompt).not.toContain(style.illustrationStyleId);
+    await cancelChatRun(actor, third.runId);
+
+    // A brand-new thread starts clean: neither template carries over — there is
+    // no DB-backed cross-thread state and no prior turns to replay a marker from.
+    const fresh = await sendChatRun(actor, { agentId, prompt: "draw a cat" });
+    const freshPrompt = (await api.readRun(actor, fresh.runId))
+      .appendSystemPrompt;
+    expect(freshPrompt).not.toContain("# Artifact Template Context");
+    // The base agent prompt always carries generic `zero generate` guidance, so
+    // assert the absence of the template-specific command, not the bare verb.
+    expect(freshPrompt).not.toContain(
+      "zero generate image --provider built-in --style",
+    );
+    expect(freshPrompt).not.toContain(style.illustrationStyleId);
+    await cancelChatRun(actor, fresh.runId);
+  }, 120_000);
+
+  it("injects workflow templates as one-shot context, independent of illustration template markers", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    const workflowTemplate = WORKFLOW_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    if (!workflowTemplate) {
+      throw new Error("Expected a registered workflow template");
+    }
+
+    const sticky = await sendChatRun(actor, {
+      agentId,
+      prompt: "draw a labeled inbox",
+      generationTemplate: {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      },
+    });
+    const stickyPrompt = (await api.readRun(actor, sticky.runId))
+      .appendSystemPrompt;
+    expect(stickyPrompt).toContain("# Artifact Template Context");
+    expect(stickyPrompt).toContain(style.illustrationStyleId);
+    await cancelChatRun(actor, sticky.runId);
+
+    const workflow = await sendChatRun(actor, {
+      agentId,
+      threadId: sticky.threadId,
+      prompt: "create the workflow version",
+      generationTemplate: {
+        type: "workflow",
+        selection: { workflowTemplateId: workflowTemplate.id },
+      },
+    });
+    const workflowPrompt = (await api.readRun(actor, workflow.runId))
+      .appendSystemPrompt;
+    expect(workflowPrompt).toContain("# Workflow Template Context");
+    expect(workflowPrompt).toContain(
+      `Auto-inbox label (${workflowTemplate.id})`,
+    );
+    expect(workflowPrompt).toContain("Use the workflow-setup skill");
+    expect(workflowPrompt).toContain("Gmail label-applied automation");
+    expect(workflowPrompt).not.toContain("# Artifact Template Context");
+    // The "sticky" run was cancelled, so it's now an incomplete round replayed
+    // via "# Incomplete Rounds Context" — its illustration marker legitimately
+    // shows up there. That's independent of (and doesn't contaminate) the live
+    // workflow block asserted above: workflow selections never get their own
+    // replay marker (checked below), so nothing here merges the two types.
+    expect(workflowPrompt).toContain("# Incomplete Rounds Context");
+    expect(workflowPrompt).toContain(style.illustrationStyleId);
+    await cancelChatRun(actor, workflow.runId);
+
+    const followUp = await sendChatRun(actor, {
+      agentId,
+      threadId: sticky.threadId,
+      prompt: "continue the thread",
+    });
+    const followUpPrompt = (await api.readRun(actor, followUp.runId))
+      .appendSystemPrompt;
+    // No explicit selection this turn, so there is no live block for either
+    // type. Both "sticky" and "workflow" were cancelled, so the general
+    // "# Web Chat Run Context" replay is suppressed in favor of resuming the
+    // existing session (see prepareRecentChatContext) — the illustration
+    // selection surfaces instead via the incomplete round replay's own
+    // marker. Workflow selections never get a marker at all (one-shot by
+    // design), so nothing carries the workflow template forward.
+    expect(followUpPrompt).not.toContain("# Workflow Template Context");
+    expect(followUpPrompt).not.toContain(workflowTemplate.id);
+    expect(followUpPrompt).not.toContain("# Artifact Template Context");
+    expect(followUpPrompt).not.toContain("# Web Chat Run Context");
+    expect(followUpPrompt).toContain("# Incomplete Rounds Context");
+    expect(followUpPrompt).toContain("Selected a template");
+    expect(followUpPrompt).toContain(style.illustrationStyleId);
+    await cancelChatRun(actor, followUp.runId);
+  }, 120_000);
+
+  it("rejects unknown generation template selections", async () => {
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Invalid template agent",
+    });
+    const template = PRESENTATION_TEMPLATE_ITEMS[0];
+    if (!template) {
+      throw new Error("Expected a registered presentation template");
+    }
+
+    const arms: readonly {
+      readonly generationTemplate: GenerationTemplateRequest;
+      readonly message: string;
+    }[] = [
+      {
+        generationTemplate: {
+          type: "presentation",
+          selection: {
+            designSystemId: template.designSystemId,
+            templateId: "template:missing",
+          },
+        },
+        message: "Unknown generation template",
+      },
+      {
+        generationTemplate: {
+          type: "presentation",
+          selection: {
+            designSystemId: "design-system:missing",
+            templateId: template.templateId,
+          },
+        },
+        message: "Unknown generation template design system",
+      },
+      {
+        generationTemplate: {
+          type: "presentation",
+          selection: {
+            colorSystemId: "color-system:missing",
+            designSystemId: template.designSystemId,
+            templateId: template.templateId,
+          },
+        },
+        message: "Unknown generation template color system",
+      },
+      {
+        generationTemplate: {
+          type: "presentation",
+          selection: {
+            designSystemId: template.designSystemId,
+            templateId: "template:web-prototype-taste-editorial",
+          },
+        },
+        message: "Generation template does not support the requested type",
+      },
+      {
+        generationTemplate: {
+          type: "video",
+          selection: { stylePresetId: "video-style:missing" },
+        },
+        message: "Unknown video template",
+      },
+      {
+        generationTemplate: {
+          type: "workflow",
+          selection: { workflowTemplateId: "workflow-template:missing" },
+        },
+        message: "Unknown workflow template",
+      },
+    ];
+    for (const arm of arms) {
+      const rejected = await chat.requestSendMessage(
+        actor,
+        {
+          agentId: agent.agentId,
+          prompt: "make something from a bad template",
+          generationTemplate: arm.generationTemplate,
+        },
+        [400],
+      );
+      expectApiError(rejected.body);
+      expect(rejected.body.error.message).toBe(arm.message);
+    }
+
+    const threads = await chat.listThreads(actor, { agentId: agent.agentId });
+    expect(threads.pinned).toHaveLength(0);
+    expect(threads.threads).toHaveLength(0);
+  }, 60_000);
+
+  it("persists attachments and injects them into the run prompt", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const fileId = randomUUID();
+    const filename = "diagram final 100%.png";
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "read this file",
+      attachFiles: [
+        { id: fileId, filename, contentType: "image/png", size: 42 },
+      ],
+    });
+
+    const created = await api.readRun(actor, run.runId);
+    expect(created.prompt).toContain(`[Web file] ${filename} (image/png)`);
+    expect(created.prompt).toContain(`[ID] ${fileId}`);
+    expect(created.appendSystemPrompt).toContain("zero web download-file -h");
+    expect(created.appendSystemPrompt).toContain("zero web upload-file -h");
+
+    const messages = await waitForThreadMessages(
+      actor,
+      run.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (message.attachFiles?.length ?? 0) > 0;
+        });
+      },
+    );
+    const attached = userMessages(messages.messages)[0]?.attachFiles?.[0];
+    expect(attached).toMatchObject({
+      id: fileId,
+      filename,
+      contentType: "image/png",
+      size: 42,
+      url: expect.stringContaining(`${fileId}/diagram_final_100_.png`),
+    });
+    await cancelChatRun(actor, run.runId);
+  }, 60_000);
+});
+
+describe("CHAT-02: queued attachments on auto-send", () => {
+  it("carries queued attachments into the auto-sent follow-up run", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor before the queued attachment",
+    });
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+
+    const fileId = randomUUID();
+    const queuedId = randomUUID();
+    const queued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: "queued with attachment",
+        clientMessageId: queuedId,
+        attachFiles: [
+          {
+            id: fileId,
+            filename: "notes.txt",
+            contentType: "text/plain",
+            size: 12,
+          },
+        ],
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+
+    // Completing the anchor run promotes the queued message into a fresh
+    // run whose prompt carries the resolved attachment references.
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesMessageId === queuedId && message.runId !== undefined
+          );
+        });
+      },
+    );
+    const promoted = userMessages(messages.messages).find((message) => {
+      return message.revokesMessageId === queuedId;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected the queued message to auto-send into a run");
+    }
+    expect(promoted.content).toBe("queued with attachment");
+    expect(promoted.attachFiles?.[0]).toMatchObject({
+      id: fileId,
+      filename: "notes.txt",
+      contentType: "text/plain",
+      size: 12,
+      url: expect.stringContaining(`${fileId}/notes.txt`),
+    });
+
+    const followUp = await api.readRun(actor, promoted.runId);
+    expect(followUp.prompt).toContain("queued with attachment");
+    expect(followUp.prompt).toContain("[Web file] notes.txt (text/plain)");
+    expect(followUp.prompt).toContain(`[ID] ${fileId}`);
+    await cancelChatRun(actor, promoted.runId);
+  }, 90_000);
+});
+
+describe("CHAT-02/FILE-03: computer-use host grants", () => {
+  it("grants computer-use capability only for a selected host", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const { hostId, hostToken } = await cu.startComputerUseHost(actor);
+
+    // The thread's sticky host is not exposed by any read route, so the
+    // grant is observed through the run token issued to each claim: a
+    // granted token can create write commands on the host, an ungranted
+    // token cannot, and no run token can ever post chat sends.
+    const plain = await sendChatRun(actor, {
+      agentId,
+      prompt: "no computer use selected",
+    });
+    const plainClaim = await claimChatRun(runnerGroup, plain.runId);
+    const plainToken = zeroTokenFromClaim(plainClaim.claim);
+    const deniedCommand = await cu.requestCreateComputerUseWriteCommand(
+      { bearer: plainToken },
+      [403],
+    );
+    expect(deniedCommand.status).toBe(403);
+    const deniedSend = await requestSendMessageWithBearer(
+      plainToken,
+      { agentId, prompt: "sandbox tokens cannot chat" },
+      [403],
+    );
+    expectApiError(deniedSend.body);
+    expect(deniedSend.body.error.message).toContain("agent-run:write");
+    await cancelChatRun(actor, plain.runId);
+
+    // Selecting an online host pins it to the thread and grants the run
+    // token computer-use write access on that host.
+    const granted = await sendChatRun(actor, {
+      agentId,
+      prompt: "open the remote browser",
+      computerUseHostId: hostId,
+    });
+    const grantedRun = await api.readRun(actor, granted.runId);
+    expect(grantedRun.appendSystemPrompt).toContain("# Computer Use");
+    expect(grantedRun.appendSystemPrompt).toContain(
+      "Computer Use is enabled for this run on Zero Desktop.",
+    );
+    expect(grantedRun.appendSystemPrompt).not.toContain(hostId);
+    const grantedClaim = await claimChatRun(runnerGroup, granted.runId);
+    await cu.heartbeatComputerUseHost(hostToken);
+    await cu.requestCreateComputerUseWriteCommand(
+      { bearer: zeroTokenFromClaim(grantedClaim.claim) },
+      [200],
+    );
+    await cancelChatRun(actor, granted.runId);
+
+    // Follow-up sends without the field stay granted via the sticky host.
+    const sticky = await sendChatRun(actor, {
+      agentId,
+      threadId: granted.threadId,
+      prompt: "keep using the same host",
+    });
+    const stickyClaim = await claimChatRun(runnerGroup, sticky.runId);
+    await cu.heartbeatComputerUseHost(hostToken);
+    await cu.requestCreateComputerUseWriteCommand(
+      { bearer: zeroTokenFromClaim(stickyClaim.claim) },
+      [200],
+    );
+    await cancelChatRun(actor, sticky.runId);
+
+    // An explicit null clears the sticky host: the next run on the same
+    // thread is no longer granted.
+    const cleared = await sendChatRun(actor, {
+      agentId,
+      threadId: granted.threadId,
+      prompt: "drop the host",
+      computerUseHostId: null,
+    });
+    const clearedClaim = await claimChatRun(runnerGroup, cleared.runId);
+    await cu.heartbeatComputerUseHost(hostToken);
+    await cu.requestCreateComputerUseWriteCommand(
+      { bearer: zeroTokenFromClaim(clearedClaim.claim) },
+      [403],
+    );
+    await cancelChatRun(actor, cleared.runId);
+
+    mockNow(now() + 91_000);
+    const staleGranted = await sendChatRun(actor, {
+      agentId,
+      threadId: granted.threadId,
+      prompt: "use the computer after it went offline",
+      computerUseHostId: hostId,
+    });
+    const staleRun = await api.readRun(actor, staleGranted.runId);
+    expect(staleRun.appendSystemPrompt).toContain(
+      "Computer Use is enabled for this run on Zero Desktop.",
+    );
+    clearMockNow();
+    const staleClaim = await claimChatRun(runnerGroup, staleGranted.runId);
+    await cu.heartbeatComputerUseHost(hostToken);
+    await cu.requestCreateComputerUseWriteCommand(
+      { bearer: zeroTokenFromClaim(staleClaim.claim) },
+      [200],
+    );
+    await cancelChatRun(actor, staleGranted.runId);
+  }, 120_000);
+
+  it("rejects unusable computer-use host selections", async () => {
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Computer-use guard agent",
+    });
+
+    const unknownHost = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "use an unknown host",
+        computerUseHostId: randomUUID(),
+      },
+      [404],
+    );
+    expectApiError(unknownHost.body);
+    expect(unknownHost.body.error.message).toBe("Computer-use host not found");
+
+    // Stopping a host revokes it, so an explicit selection reports it as
+    // missing rather than offline, and clears any thread binding immediately.
+    const stopped = await cu.startComputerUseHost(actor);
+    const stoppedPinned = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "pin the host before stopping it",
+        computerUseHostId: stopped.hostId,
+      },
+      [201],
+    );
+    if (stoppedPinned.status !== 201) {
+      throw new Error("Expected the stopped-host pin send to be accepted");
+    }
+    await cu.stopComputerUseHost(stopped.hostToken);
+    await expect(
+      readThreadComputerUseHostId(stoppedPinned.body.threadId),
+    ).resolves.toBeNull();
+    const revokedHost = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "use a stopped host",
+        computerUseHostId: stopped.hostId,
+      },
+      [404],
+    );
+    expectApiError(revokedHost.body);
+    expect(revokedHost.body.error.message).toBe("Computer-use host not found");
+
+    // Installation-backed hosts stop as temporary offline devices, so thread
+    // bindings survive and reconnect to the same host id on the next start.
+    const installationId = randomUUID();
+    const installed = await cu.startComputerUseHost(actor, { installationId });
+    const installedPinned = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "pin the durable host before stopping it",
+        computerUseHostId: installed.hostId,
+      },
+      [201],
+    );
+    if (installedPinned.status !== 201) {
+      throw new Error("Expected the installed-host pin send to be accepted");
+    }
+    await cu.stopComputerUseHost(installed.hostToken);
+    await expect(
+      readThreadComputerUseHostId(installedPinned.body.threadId),
+    ).resolves.toBe(installed.hostId);
+    const stoppedInstalledHost = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        threadId: installedPinned.body.threadId,
+        prompt: "use a stopped durable host",
+        computerUseHostId: installed.hostId,
+      },
+      [201],
+    );
+    expect(stoppedInstalledHost.body).toMatchObject({
+      threadId: installedPinned.body.threadId,
+    });
+    const reconnected = await cu.startComputerUseHost(actor, {
+      installationId,
+    });
+    expect(reconnected.hostId).toBe(installed.hostId);
+
+    // A deleted sticky host is cleared on the next send without the field.
+    // (The actor has no credits, so sends stop at admission — host selection
+    // and sticky-host updates still happen first.)
+    const sticky = await cu.startComputerUseHost(actor);
+    const pinned = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "pin the host before deleting it",
+        computerUseHostId: sticky.hostId,
+      },
+      [201],
+    );
+    if (pinned.status !== 201) {
+      throw new Error("Expected the pinned send to be accepted");
+    }
+    expect(pinned.body.runId).toBeNull();
+    await cu.deleteComputerUseHost(actor, sticky.hostId);
+    await expect(
+      readThreadComputerUseHostId(pinned.body.threadId),
+    ).resolves.toBeNull();
+    const clearedSend = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        threadId: pinned.body.threadId,
+        prompt: "send after the host vanished",
+      },
+      [201],
+    );
+    expect(clearedSend.body).toMatchObject({ threadId: pinned.body.threadId });
+
+    // A valid sticky host remains usable for later non-explicit sends.
+    const survivor = await cu.startComputerUseHost(actor);
+    const survivorThread = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "pin a host for a later sticky send",
+        computerUseHostId: survivor.hostId,
+      },
+      [201],
+    );
+    if (survivorThread.status !== 201) {
+      throw new Error("Expected the survivor send to be accepted");
+    }
+
+    // A host that stopped heartbeating goes stale-offline (status still
+    // online, not revoked), but explicit selections are still accepted so the
+    // run can use the host if it reconnects while running.
+    mockNow(now() + 91_000);
+    const offlineHostSend = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "use a stale host",
+        computerUseHostId: survivor.hostId,
+      },
+      [201],
+    );
+    expect(offlineHostSend.body).toMatchObject({ runId: null });
+
+    // The sticky-host fallthrough also tolerates a stale host instead of
+    // failing: a send without the field on the pinned thread is accepted.
+    const staleStickySend = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        threadId: survivorThread.body.threadId,
+        prompt: "send while the sticky host is stale",
+      },
+      [201],
+    );
+    clearMockNow();
+    expect(staleStickySend.body).toMatchObject({
+      threadId: survivorThread.body.threadId,
+    });
+  }, 90_000);
+});

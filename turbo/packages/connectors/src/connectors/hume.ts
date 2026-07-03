@@ -1,0 +1,39 @@
+import type { ConnectorConfig } from "../connector-config";
+
+export const hume = {
+  hume: {
+    label: "Hume",
+    category: "ai-voice-audio",
+    generation: ["audio"],
+    helpText:
+      "Connect your Hume account to access emotion AI, speech-to-speech, and expressive text-to-speech APIs",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to the [Hume Portal](https://app.hume.ai)\n2. Navigate to the **API Keys** page\n3. Copy your API key",
+        storage: {
+          secrets: ["HUME_TOKEN"],
+          variables: [],
+        },
+        grant: {
+          kind: "manual",
+          fields: {
+            HUME_TOKEN: {
+              label: "API Key",
+              publicId: "apiKey",
+              required: true,
+            },
+          },
+        },
+        access: {
+          kind: "static",
+          envBindings: {
+            HUME_TOKEN: "$secrets.HUME_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
+      },
+    },
+  },
+} as const satisfies Record<string, ConnectorConfig>;

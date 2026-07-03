@@ -1,0 +1,272 @@
+import { randomUUID } from "node:crypto";
+
+import { HttpResponse, http } from "msw";
+import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
+import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
+import { z } from "zod";
+
+import { mockOptionalEnv } from "../../../../lib/env";
+import { nowDate } from "../../../../lib/time";
+import { server } from "../../../../mocks/server";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
+import { zeroPushSubscriptionsRoutes } from "../../zero-push-subscriptions";
+import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
+import type { ApiTestUser } from "./api-bdd";
+import { createZeroRouteMocks } from "./zero-route-test";
+
+const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
+const OPENROUTER_COMPLETIONS_URL =
+  "https://openrouter.ai/api/v1/chat/completions";
+
+type OrgModelPolicies = z.infer<
+  (typeof zeroModelPoliciesMainContract.update)["body"]
+>["policies"];
+
+const openRouterCompletionBodySchema = z.object({
+  messages: z.array(z.object({ role: z.string(), content: z.string() })),
+});
+
+type OpenRouterCompletionBody = z.infer<typeof openRouterCompletionBodySchema>;
+
+interface StoredS3Object {
+  readonly bucket: string;
+  readonly key: string;
+  readonly size: number;
+}
+
+interface AuthHeaders {
+  readonly authorization?: string;
+}
+
+function authenticate(
+  context: TestContext,
+  actor: ApiTestUser | null,
+): AuthHeaders {
+  if (!actor) {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+    return {};
+  }
+
+  createZeroRouteMocks(context).clerk.session(
+    actor.userId,
+    actor.orgId,
+    actor.orgRole,
+  );
+  return { authorization: "Bearer clerk-session" };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function commandInput(command: unknown): Record<string, unknown> {
+  if (isRecord(command) && isRecord(command.input)) {
+    return command.input;
+  }
+  return {};
+}
+
+/**
+ * Latest run-context snapshot the API ingested into the (mocked) Axiom
+ * boundary for a run. The run-context read route queries this dataset back,
+ * so replaying the captured ingest keeps the read API working without
+ * fabricating snapshot data in tests.
+ */
+function capturedRunContextSnapshot(
+  context: TestContext,
+  runId: string,
+): readonly Record<string, unknown>[] {
+  const calls = context.mocks.axiom.ingest.mock.calls;
+  for (let index = calls.length - 1; index >= 0; index--) {
+    const call = calls[index];
+    if (!call || call[0] !== "run-context" || !Array.isArray(call[1])) {
+      continue;
+    }
+    const events: readonly unknown[] = call[1];
+    const snapshot = events.find((entry): entry is Record<string, unknown> => {
+      return isRecord(entry) && entry.runId === runId;
+    });
+    if (snapshot) {
+      return [snapshot];
+    }
+  }
+  return [];
+}
+
+export function createChatCallbacksApi(context: TestContext) {
+  function pushSubscriptionsClient() {
+    return setupAppWithRoutes({
+      context,
+      routes: zeroPushSubscriptionsRoutes,
+    })(pushSubscriptionsContract);
+  }
+
+  function modelPoliciesClient() {
+    return setupAppWithRoutes({
+      context,
+      routes: zeroModelPoliciesRoutes,
+    })(zeroModelPoliciesMainContract);
+  }
+
+  return {
+    failIfChatCallbackRouteIsFetched(): () => number {
+      let requests = 0;
+      server.use(
+        http.post(CHAT_CALLBACK_URL, () => {
+          requests += 1;
+          return HttpResponse.text(
+            "chat callback route should not be fetched",
+            {
+              status: 500,
+            },
+          );
+        }),
+      );
+      return () => {
+        return requests;
+      };
+    },
+
+    async registerPushSubscription(actor: ApiTestUser): Promise<string> {
+      const endpoint = `https://push.example.test/send/${randomUUID()}`;
+      await accept(
+        pushSubscriptionsClient().register({
+          headers: authenticate(context, actor),
+          body: {
+            endpoint,
+            keys: { p256dh: "bdd-p256dh", auth: "bdd-auth" },
+          },
+        }),
+        [201],
+      );
+      return endpoint;
+    },
+
+    enableVapid(): void {
+      mockOptionalEnv("VAPID_PUBLIC_KEY", "bdd-vapid-public-key");
+      mockOptionalEnv("VAPID_PRIVATE_KEY", "bdd-vapid-private-key");
+    },
+
+    disableVapid(): void {
+      mockOptionalEnv("VAPID_PUBLIC_KEY", undefined);
+      mockOptionalEnv("VAPID_PRIVATE_KEY", undefined);
+    },
+
+    /** Replaces the org model-first policy set through the public route. */
+    async updateOrgModelPolicies(
+      actor: ApiTestUser,
+      policies: OrgModelPolicies,
+    ): Promise<void> {
+      await accept(
+        modelPoliciesClient().update({
+          headers: authenticate(context, actor),
+          body: { policies },
+        }),
+        [200],
+      );
+    },
+
+    /**
+     * Single OpenRouter completions endpoint serving title, follow-up, run
+     * summary, and notification summary prompts. The handler branches on the
+     * system prompt and returns the completion text.
+     */
+    mockOpenRouterCompletions(
+      handler: (body: OpenRouterCompletionBody) => string | Promise<string>,
+    ): void {
+      server.use(
+        http.post(OPENROUTER_COMPLETIONS_URL, async ({ request }) => {
+          const body = openRouterCompletionBodySchema.parse(
+            await request.json(),
+          );
+          return HttpResponse.json({
+            choices: [{ message: { content: await handler(body) } }],
+          });
+        }),
+      );
+    },
+
+    mockOpenRouterFailure(): void {
+      server.use(
+        http.post(OPENROUTER_COMPLETIONS_URL, () => {
+          return new HttpResponse("Internal Server Error", { status: 500 });
+        }),
+      );
+    },
+
+    /**
+     * Persistent Axiom query fake: agent-run-event queries (the visibility
+     * barrier and the chat output read) resolve to `events`; run-context
+     * queries replay the snapshot the API itself ingested at run creation.
+     * Give events top-level contiguous `sequenceNumber` 0..lastEventSequence
+     * or the barrier burns its 2s poll window per callback.
+     */
+    mockChatOutputEvents(events: readonly Record<string, unknown>[]): void {
+      const snapshot = [...events];
+      context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+        const apl = typeof args[0] === "string" ? args[0] : "";
+        if (apl.includes("['run-context']")) {
+          const runId = /runId == "([^"]+)"/.exec(apl)?.[1];
+          return Promise.resolve(
+            runId ? capturedRunContextSnapshot(context, runId) : [],
+          );
+        }
+        return Promise.resolve(snapshot);
+      });
+    },
+
+    /**
+     * Object-storage fake for chat chains: session-history blobs download
+     * with deterministic content (so session resume works end to end),
+     * registered upload objects appear in prefix listings (upload complete),
+     * and every other command acks like the plain storage-write mock.
+     */
+    acceptChatObjectStorage(): {
+      addObject(object: StoredS3Object): void;
+    } {
+      const objects: StoredS3Object[] = [];
+      context.mocks.s3.send.mockImplementation((...args: unknown[]) => {
+        const input = commandInput(args[0]);
+        const key = typeof input.Key === "string" ? input.Key : "";
+        if (key.startsWith("blobs/") && key.endsWith(".blob")) {
+          const body = sessionHistoryBlobBodyForKey(context, key);
+          return Promise.resolve({
+            Body: {
+              async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
+                if (body) {
+                  yield body;
+                }
+              },
+            },
+          });
+        }
+        const bucket = typeof input.Bucket === "string" ? input.Bucket : "";
+        const prefix = typeof input.Prefix === "string" ? input.Prefix : "";
+        if (prefix !== "") {
+          const contents = objects
+            .filter((object) => {
+              return object.bucket === bucket && object.key.startsWith(prefix);
+            })
+            .map((object) => {
+              return {
+                Key: object.key,
+                Size: object.size,
+                LastModified: nowDate(),
+              };
+            });
+          return Promise.resolve({ Contents: contents });
+        }
+        return Promise.resolve({});
+      });
+      return {
+        addObject(object: StoredS3Object): void {
+          objects.push(object);
+        },
+      };
+    },
+  };
+}

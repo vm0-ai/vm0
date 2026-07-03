@@ -1,0 +1,2 @@
+DROP INDEX "idx_connector_oauth_device_authorization_sessions_owner_status";--> statement-breakpoint
+CREATE INDEX "idx_connector_oauth_device_authorization_sessions_owner_status" ON "connector_oauth_device_authorization_sessions" USING btree ("org_id","user_id","connector_type","auth_method","status");

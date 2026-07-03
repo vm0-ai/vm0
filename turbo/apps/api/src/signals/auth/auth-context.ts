@@ -1,0 +1,330 @@
+import { command, computed, state, type Computed } from "ccstate";
+
+import { waitUntil } from "../context/wait-until";
+import {
+  isPatToken,
+  isSandboxToken,
+  verifyCliToken,
+  verifySandboxToken,
+  verifyZeroToken,
+} from "./tokens";
+import { clerkSessionAuth$ } from "./clerk-session";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { AuthContext, CliAuth, ZeroAuthContext } from "../../types/auth";
+import {
+  cliTokenRecord,
+  getMemberRoleAndUpdateCache$,
+  updateCliTokenLastUsedAt$,
+} from "../services/auth.service";
+import { authorization$, cookie$ } from "../context/hono";
+
+export interface AuthOptions {
+  readonly requiredCapability?: ZeroCapability;
+  readonly acceptAnySandboxCapability?: boolean;
+  readonly requireOrganization?: boolean;
+  readonly missingOrganizationStatus?: 400 | 401;
+}
+
+export type AuthErrorResponse = {
+  readonly status: 400 | 401 | 403;
+  readonly body: {
+    readonly error: { readonly message: string; readonly code: string };
+  };
+};
+
+type OrganizationAuthContext = AuthContext & { readonly orgId: string };
+
+const innerAuthContext$ = state<AuthContext | null>(null);
+
+export const authContext$: Computed<AuthContext> = computed((get) => {
+  const ctx = get(innerAuthContext$);
+  if (ctx === null) {
+    throw new Error("authContext$ accessed outside an authRoute scope");
+  }
+  return ctx;
+});
+
+export const organizationAuthContext$: Computed<OrganizationAuthContext> =
+  computed((get): OrganizationAuthContext => {
+    const ctx = get(authContext$);
+    if (!ctx.orgId) {
+      throw new Error(
+        "organizationAuthContext$ accessed without requireOrganization auth",
+      );
+    }
+    return { ...ctx, orgId: ctx.orgId };
+  });
+
+export const setAuthContext$ = command(({ set }, ctx: AuthContext): void => {
+  set(innerAuthContext$, ctx);
+});
+
+const cliAuth$ = command(
+  async (
+    { get, set },
+    cliAuth: CliAuth,
+    signal: AbortSignal,
+  ): Promise<AuthContext | null> => {
+    const resolved = await get(cliTokenRecord(cliAuth));
+    signal.throwIfAborted();
+    if (!resolved) {
+      return null;
+    }
+
+    waitUntil(set(updateCliTokenLastUsedAt$, cliAuth.tokenId, signal));
+
+    const membership = await set(
+      getMemberRoleAndUpdateCache$,
+      resolved.orgId,
+      resolved.userId,
+      signal,
+    );
+    if (!membership) {
+      return {
+        tokenType: "pat",
+        userId: resolved.userId,
+      };
+    }
+
+    return {
+      tokenType: "pat",
+      userId: resolved.userId,
+      orgId: resolved.orgId,
+      orgRole: membership.role,
+    };
+  },
+);
+
+function resolveSandboxAuth(
+  token: string,
+  options: AuthOptions,
+): AuthContext | null {
+  const sandboxAuth = verifySandboxToken(token);
+  if (!sandboxAuth) {
+    return null;
+  }
+
+  if (options.acceptAnySandboxCapability) {
+    return {
+      tokenType: "sandbox",
+      userId: sandboxAuth.userId,
+      orgId: sandboxAuth.orgId,
+      runId: sandboxAuth.runId,
+    };
+  }
+
+  return null;
+}
+
+const zeroAuth$ = command(
+  async (
+    { set },
+    token: string,
+    options: AuthOptions,
+    signal: AbortSignal,
+  ): Promise<AuthContext | null> => {
+    const zeroAuth = verifyZeroToken(token);
+    if (!zeroAuth) {
+      return null;
+    }
+
+    if (!options.acceptAnySandboxCapability) {
+      if (!options.requiredCapability) {
+        return null;
+      }
+      const hasCapability = zeroAuth.capabilities.some((capability) => {
+        return capability === options.requiredCapability;
+      });
+      if (!hasCapability) {
+        return null;
+      }
+    }
+
+    const result: ZeroAuthContext = {
+      tokenType: "zero",
+      userId: zeroAuth.userId,
+      orgId: zeroAuth.orgId,
+      runId: zeroAuth.runId,
+      capabilities: [...zeroAuth.capabilities],
+      ...(zeroAuth.computerUseHostId
+        ? { computerUseHostId: zeroAuth.computerUseHostId }
+        : {}),
+    };
+
+    const membership = await set(
+      getMemberRoleAndUpdateCache$,
+      zeroAuth.orgId,
+      zeroAuth.userId,
+      signal,
+    );
+    if (!membership) {
+      return {
+        tokenType: "zero" as const,
+        userId: result.userId,
+        runId: result.runId,
+      };
+    }
+
+    return { ...result, orgRole: membership.role };
+  },
+);
+
+const sandboxTokenAuth$ = command(
+  async (
+    { set },
+    token: string,
+    options: AuthOptions,
+    signal: AbortSignal,
+  ): Promise<AuthContext | null> => {
+    const zeroResult = await set(zeroAuth$, token, options, signal);
+    if (zeroResult) {
+      return zeroResult;
+    }
+
+    if (!options.requiredCapability && !options.acceptAnySandboxCapability) {
+      return null;
+    }
+
+    const sandboxAuth = resolveSandboxAuth(token, options);
+    if (sandboxAuth) {
+      return sandboxAuth;
+    }
+
+    return null;
+  },
+);
+
+const resolvedAuthContext$ = command(
+  async (
+    { get, set },
+    options: AuthOptions,
+    signal: AbortSignal,
+  ): Promise<AuthContext | null> => {
+    const authHeader = get(authorization$);
+
+    if (!authHeader?.startsWith("Bearer ")) {
+      if (!get(cookie$)) {
+        return null;
+      }
+      return await get(clerkSessionAuth$);
+    }
+
+    const token = authHeader.substring(7);
+
+    if (isPatToken(token)) {
+      const cliAuth = verifyCliToken(token);
+      if (cliAuth) {
+        const result = await set(cliAuth$, cliAuth, signal);
+        if (result) {
+          return result;
+        }
+      }
+      return null;
+    }
+
+    if (isSandboxToken(token)) {
+      const result = await set(sandboxTokenAuth$, token, options, signal);
+      if (result) {
+        return result;
+      }
+      return null;
+    }
+
+    return await get(clerkSessionAuth$);
+  },
+);
+
+function missingCapabilityError(capability: ZeroCapability): AuthErrorResponse {
+  return {
+    status: 403,
+    body: {
+      error: {
+        message: `Missing required capability: ${capability}`,
+        code: "FORBIDDEN",
+      },
+    },
+  };
+}
+
+function missingOrganizationError(status: 400 | 401): AuthErrorResponse {
+  if (status === 401) {
+    return {
+      status: 401,
+      body: {
+        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+      },
+    };
+  }
+
+  return {
+    status: 400,
+    body: {
+      error: {
+        message: "Explicit org context required — ensure active org in session",
+        code: "BAD_REQUEST",
+      },
+    },
+  };
+}
+
+function sandboxTokenAuthError(
+  token: string,
+  options: AuthOptions,
+): AuthErrorResponse | null {
+  if (!isSandboxToken(token)) {
+    return null;
+  }
+
+  const sandboxAuth = verifySandboxToken(token);
+  const zeroAuth = sandboxAuth ? null : verifyZeroToken(token);
+  if (!sandboxAuth && !zeroAuth) {
+    return null;
+  }
+
+  if (options.requiredCapability) {
+    return missingCapabilityError(options.requiredCapability);
+  }
+
+  return {
+    status: 403,
+    body: {
+      error: {
+        message: "This endpoint is not available for sandbox tokens",
+        code: "FORBIDDEN",
+      },
+    },
+  };
+}
+
+export const requiredAuthContext$ = command(
+  async (
+    { get, set },
+    options: AuthOptions,
+    signal: AbortSignal,
+  ): Promise<AuthContext | AuthErrorResponse> => {
+    const authHeader = get(authorization$);
+    const authContext = await set(resolvedAuthContext$, options, signal);
+    if (authContext) {
+      if (options.requireOrganization && !authContext.orgId) {
+        return missingOrganizationError(
+          options.missingOrganizationStatus ?? 400,
+        );
+      }
+      return authContext;
+    }
+
+    if (authHeader?.startsWith("Bearer ")) {
+      const error = sandboxTokenAuthError(authHeader.substring(7), options);
+      if (error) {
+        return error;
+      }
+    }
+
+    return {
+      status: 401 as const,
+      body: {
+        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+      },
+    };
+  },
+);

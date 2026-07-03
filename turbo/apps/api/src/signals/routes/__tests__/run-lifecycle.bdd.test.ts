@@ -1,0 +1,6282 @@
+import { createHash, randomUUID } from "node:crypto";
+
+import {
+  DecryptCommand,
+  type DecryptCommandOutput,
+  GenerateDataKeyCommand,
+  type GenerateDataKeyCommandOutput,
+} from "@aws-sdk/client-kms";
+import {
+  getModelProviderFirewall,
+  getVm0ConcreteProviderType,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import {
+  UNKNOWN_PERMISSION_GRANT,
+  type ExecutionFirewallEntry,
+  type FirewallApi,
+} from "@vm0/connectors/firewall-types";
+import { getFirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
+import { HttpResponse, http } from "msw";
+import { describe, expect, it, onTestFinished } from "vitest";
+import { v5 as uuidv5 } from "uuid";
+
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { mockNow, now, nowDate } from "../../../lib/time";
+import { testContext } from "../../../__tests__/test-context";
+import { server } from "../../../mocks/server";
+import {
+  createBddApi,
+  expectApiError,
+  type ApiTestUser,
+} from "./helpers/api-bdd";
+import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
+import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
+import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
+import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
+import { createFirewallApi } from "./helpers/api-bdd-firewall";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { storageTextFile } from "./helpers/api-bdd-storage-files";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  deleteVm0ManagedDefaultModelKey,
+  enableAutomationsFakeKms,
+  readAutomationComposeHeadVersion,
+  readAutomationsFakeKmsDecryptCallCount,
+  resetAutomationsFakeKms,
+  seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
+} from "./helpers/automations";
+import {
+  setSecretKmsClientForTests,
+  type SecretKmsClient,
+} from "../../../lib/secret-kms-client";
+
+/**
+ * RUN-01..04 and CHAIN-RUN: successful run dispatch and lifecycle.
+ *
+ * The billing entitlement Given uses the public Stripe webhook contract
+ * (invoice.paid for a mocked subscription) and verifies the grant through the
+ * billing status API, so no DB fixtures are involved.
+ */
+
+const context = testContext();
+const ASSISTANT_MESSAGE_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
+const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
+
+// Sentinel provider id for model-first thread selections (the wire-protocol
+// value the chat composer sends when picking a model instead of a provider).
+const MODEL_FIRST_SELECTION_PROVIDER_ID =
+  "00000000-0000-4000-8000-000000000000";
+const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
+  "api_dispatch_insert_runner_job_queue",
+] as const;
+const CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES = [
+  "claim_route_request_prepare",
+  "claim_route_lookup_authorization",
+  "claim_route_context_parse",
+  "claim_route_feature_switch_context",
+  "claim_route_secret_materialization",
+  "claim_route_response_assembly",
+  "claim_route_transition_running",
+] as const;
+const CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES = [
+  "claim_route_transition_lock_run",
+  "claim_route_transition_lock_queue_job",
+  "claim_route_transition_update_run",
+  "claim_route_transition_delete_queue_job",
+] as const;
+const CLAIM_ROUTE_TIMING_ACTION_TYPES = [
+  ...CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES,
+  ...CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES,
+] as const;
+
+function assistantMessageIdForRunEvent(
+  runId: string,
+  runEventId: string,
+): string {
+  return uuidv5(`${runId}:${runEventId}`, ASSISTANT_MESSAGE_ID_NAMESPACE);
+}
+
+const RUNNER_POLL_TIMING_ACTION_TYPES = [
+  "runner_poll_pending_job_lookup",
+  "runner_poll_request_to_job_response",
+  "runner_queue_to_poll_response",
+] as const;
+const RUNNER_CLAIM_TELEMETRY_ACTION_TYPES = [
+  "runner_poll_due_to_job_discovered",
+  "runner_poll_http_request",
+] as const;
+const API_DISPATCH_TIMING_ACTION_TYPES = [
+  "api_dispatch_pre_create_agent_run",
+  "api_dispatch_check_org_tier",
+  "api_dispatch_prepare_run_context",
+  "api_dispatch_prepare_context_feature_switches",
+  "api_dispatch_prepare_context_resolve_compose",
+  "api_dispatch_prepare_context_load_persisted_environment",
+  "api_dispatch_prepare_context_build_resolved_body",
+  "api_dispatch_prepare_context_resolve_framework",
+  "api_dispatch_prepare_context_resolve_connector_scope",
+  "api_dispatch_prepare_context_resolve_model_provider",
+  "api_dispatch_prepare_context_load_connector_contexts",
+  "api_dispatch_prepare_context_load_stored_connectors",
+  "api_dispatch_prepare_context_load_custom_connectors",
+  "api_dispatch_prepare_context_build_permission_manifest",
+  "api_dispatch_prepare_context_validate_environment",
+  "api_dispatch_prepare_context_load_user_timezone",
+  "api_dispatch_prepare_context_prepare_output_metadata",
+  "api_dispatch_insert_run_with_concurrency",
+  "api_dispatch_build_runner_job_payload",
+  "api_dispatch_persist_runner_job_queue",
+  ...API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES,
+  "api_dispatch_admission_lock_wait",
+  "api_dispatch_check_concurrency_limit",
+  "api_dispatch_insert_run_record",
+  "api_dispatch_prepare_storage_manifest",
+  "api_dispatch_prepare_storage_manifest_resolve_inputs",
+  "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_lookup_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
+  "api_dispatch_prepare_storage_manifest_load_storage_index",
+  "api_dispatch_prepare_storage_manifest_build_entries",
+  "api_dispatch_prepare_storage_manifest_build_compose_entries",
+  "api_dispatch_prepare_storage_manifest_resolve_compose_versions",
+  "api_dispatch_prepare_storage_manifest_generate_compose_urls",
+  "api_dispatch_prepare_storage_manifest_build_additional_entries",
+  "api_dispatch_prepare_storage_manifest_resolve_additional_versions",
+  "api_dispatch_prepare_storage_manifest_generate_additional_urls",
+  "api_dispatch_prepare_storage_manifest_build_artifact_entries",
+  "api_dispatch_prepare_storage_manifest_resolve_artifact_versions",
+  "api_dispatch_prepare_storage_manifest_generate_artifact_urls",
+  "api_dispatch_prepare_storage_manifest_assemble",
+  "api_dispatch_build_stored_execution_context",
+] as const;
+const API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES = [
+  "api_dispatch_prepare_storage_manifest_resolve_inputs",
+  "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_lookup_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+  "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
+  "api_dispatch_prepare_storage_manifest_load_storage_index",
+  "api_dispatch_prepare_storage_manifest_build_entries",
+  "api_dispatch_prepare_storage_manifest_build_compose_entries",
+  "api_dispatch_prepare_storage_manifest_resolve_compose_versions",
+  "api_dispatch_prepare_storage_manifest_generate_compose_urls",
+  "api_dispatch_prepare_storage_manifest_build_additional_entries",
+  "api_dispatch_prepare_storage_manifest_resolve_additional_versions",
+  "api_dispatch_prepare_storage_manifest_generate_additional_urls",
+  "api_dispatch_prepare_storage_manifest_build_artifact_entries",
+  "api_dispatch_prepare_storage_manifest_resolve_artifact_versions",
+  "api_dispatch_prepare_storage_manifest_generate_artifact_urls",
+  "api_dispatch_prepare_storage_manifest_assemble",
+] as const;
+const API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES = [
+  "api_dispatch_pre_create_direct_parse_body",
+  "api_dispatch_pre_create_direct_prepare_args",
+] as const;
+const API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_parse_body",
+  "api_dispatch_pre_create_zero_prepare_args",
+  "api_dispatch_pre_create_zero_resolve_agent_id",
+  "api_dispatch_pre_create_zero_load_agent",
+  "api_dispatch_pre_create_zero_load_user_info",
+  "api_dispatch_pre_create_zero_resolve_trigger_context",
+  "api_dispatch_pre_create_zero_load_connector_scopes",
+  "api_dispatch_pre_create_zero_load_workflows",
+  "api_dispatch_pre_create_zero_resolve_permission_policies",
+  "api_dispatch_pre_create_zero_build_create_run_args",
+] as const;
+const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_entrypoint_gap",
+] as const;
+const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
+  "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
+  "api_dispatch_pre_create_zero_web_chat_validate_revocation",
+  "api_dispatch_pre_create_zero_web_chat_check_active_run",
+  "api_dispatch_pre_create_zero_web_chat_create_normal_run",
+  "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
+  "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
+  "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
+] as const;
+const API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES = [
+  "api_dispatch_prepare_context_load_stored_connector_rows",
+  "api_dispatch_prepare_context_filter_stored_connector_rows",
+  "api_dispatch_prepare_context_build_stored_connector_state",
+] as const;
+const API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES = [
+  "api_dispatch_prepare_context_load_stored_connector_secret_rows",
+] as const;
+const API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES = [
+  "api_dispatch_prepare_context_load_stored_connector_variable_rows",
+] as const;
+const API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES = [
+  ...API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
+  ...API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
+  ...API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES,
+] as const;
+const API_DISPATCH_CUSTOM_CONNECTOR_SUBSTEP_ACTION_TYPES = [
+  "api_dispatch_prepare_context_load_custom_connector_rows",
+  "api_dispatch_prepare_context_load_custom_connector_value_rows",
+  "api_dispatch_prepare_context_build_custom_connector_firewalls",
+] as const;
+const API_DISPATCH_CUSTOM_CONNECTOR_BUILD_PHASE_ACTION_TYPES = [
+  "api_dispatch_prepare_context_decrypt_custom_connector_values",
+  "api_dispatch_prepare_context_render_custom_connector_auth_templates",
+  "api_dispatch_prepare_context_render_custom_connector_prefixes",
+  "api_dispatch_prepare_context_assemble_custom_connector_firewalls",
+] as const;
+const API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES = [
+  ...API_DISPATCH_CUSTOM_CONNECTOR_SUBSTEP_ACTION_TYPES,
+  ...API_DISPATCH_CUSTOM_CONNECTOR_BUILD_PHASE_ACTION_TYPES,
+] as const;
+const CUSTOM_CONNECTOR_RUNTIME_BUCKET_DIMENSION_KEYS = [
+  "custom_connector_runtime_connector_count_bucket",
+  "custom_connector_runtime_configured_value_count_bucket",
+  "custom_connector_runtime_decrypted_value_count_bucket",
+  "custom_connector_runtime_prefix_template_count_bucket",
+  "custom_connector_runtime_rendered_api_count_bucket",
+  "custom_connector_runtime_missing_required_count_bucket",
+  "custom_connector_runtime_no_auth_injection_count_bucket",
+  "custom_connector_runtime_invalid_prefix_count_bucket",
+] as const;
+const API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES = [
+  "api_dispatch_prepare_context_load_builtin_permission_indexes",
+  "api_dispatch_prepare_context_apply_builtin_permission_policies",
+  "api_dispatch_prepare_context_apply_custom_permission_policies",
+  "api_dispatch_prepare_context_apply_model_provider_permission_policy",
+  "api_dispatch_prepare_context_merge_permission_manifest",
+] as const;
+const API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES = [
+  "api_dispatch_resolve_compose_by_compose_id",
+  "api_dispatch_resolve_compose_by_version_id",
+  "api_dispatch_resolve_compose_by_session_id",
+  "api_dispatch_resolve_compose_by_checkpoint_id",
+] as const;
+const API_DISPATCH_RESOLVE_COMPOSE_SUBSTEP_ACTION_TYPES = [
+  "api_dispatch_resolve_compose_lookup_compose",
+  "api_dispatch_resolve_compose_lookup_version",
+  "api_dispatch_resolve_compose_lookup_session",
+  "api_dispatch_resolve_compose_lookup_checkpoint",
+  "api_dispatch_resolve_compose_load_resume_session",
+  "api_dispatch_resolve_compose_resolve_session_history",
+  "api_dispatch_resolve_compose_lookup_session_vars",
+] as const;
+const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
+  "org_id",
+  "user_id",
+  "connector",
+  "connector_name",
+  "agent_id",
+  "prompt",
+  "vars",
+  "secrets",
+  "secret_names",
+  "environment",
+  "execution_context",
+  "presigned_url",
+  "presignedUrl",
+  "archive_url",
+  "archiveUrl",
+  "manifest_url",
+  "manifestUrl",
+  "url",
+  "storage_name",
+  "storageName",
+  "artifact_name",
+  "artifactName",
+  "volume_name",
+  "volumeName",
+  "mount_path",
+  "mountPath",
+  "runner_id",
+  "runnerId",
+  "target_runner_id",
+  "targetRunnerId",
+  "cli_agent_session_id",
+  "cliAgentSessionId",
+  "sandbox_token",
+  "sandboxToken",
+  "api_key",
+  "apiKey",
+] as const;
+const FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS = [
+  "org_id",
+  "user_id",
+  "connector",
+  "connector_name",
+  "agent_id",
+  "prompt",
+  "vars",
+  "secrets",
+  "secret_names",
+  "environment",
+  "execution_context",
+  "stored_context",
+  "sandbox_token",
+  "sandboxToken",
+  "presigned_url",
+  "response_body",
+] as const;
+
+function modelProviderPlaceholder(
+  type: ModelProviderType,
+  secretName: string,
+): string {
+  const placeholder =
+    getModelProviderFirewall(type)?.placeholders?.[secretName];
+  if (!placeholder) {
+    throw new Error(`Missing model provider placeholder for ${secretName}`);
+  }
+  return placeholder;
+}
+
+function connectorPlaceholder(type: string, secretName: string): string {
+  const placeholder =
+    getFirewallExecutionMetadata(type)?.placeholderValues[secretName];
+  if (!placeholder) {
+    throw new Error(`Missing connector placeholder for ${secretName}`);
+  }
+  return placeholder;
+}
+
+function firewallEntryName(entry: ExecutionFirewallEntry): string {
+  return entry.kind === "builtin" ? entry.name : entry.firewall.name;
+}
+
+function findFirewallEntry(
+  entries: readonly ExecutionFirewallEntry[] | undefined,
+  name: string,
+): ExecutionFirewallEntry | undefined {
+  return entries?.find((entry) => {
+    return firewallEntryName(entry) === name;
+  });
+}
+
+async function seedVm0ManagedDefaultModelKey(): Promise<string> {
+  onTestFinished(async () => {
+    await deleteVm0ManagedDefaultModelKey(context);
+  });
+  return await seedVm0ManagedDefaultModelKeyState(context);
+}
+
+function useSecretKmsClientForTests(args: {
+  readonly failAfterGenerateDataKeys?: number;
+  readonly onGenerateDataKey?: (callNumber: number) => void;
+}): void {
+  let generateDataKeyCalls = 0;
+  function send(
+    command: GenerateDataKeyCommand,
+  ): Promise<GenerateDataKeyCommandOutput>;
+  function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
+  function send(
+    command: GenerateDataKeyCommand | DecryptCommand,
+  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
+    if (command instanceof GenerateDataKeyCommand) {
+      generateDataKeyCalls += 1;
+      args.onGenerateDataKey?.(generateDataKeyCalls);
+      if (
+        args.failAfterGenerateDataKeys !== undefined &&
+        generateDataKeyCalls > args.failAfterGenerateDataKeys
+      ) {
+        return Promise.reject(
+          new Error("unexpected queued payload encryption"),
+        );
+      }
+      return Promise.resolve({
+        $metadata: {},
+        KeyId: command.input.KeyId,
+        CiphertextBlob: Buffer.from(
+          `encrypted-data-key:${command.input.KeyId}`,
+          "utf8",
+        ),
+        Plaintext: TEST_DATA_KEY,
+      });
+    }
+
+    return Promise.resolve({ $metadata: {}, Plaintext: TEST_DATA_KEY });
+  }
+
+  const client: SecretKmsClient = { send };
+  setSecretKmsClientForTests(client);
+}
+
+function failKmsAfterGenerateDataKeys(limit: number): void {
+  useSecretKmsClientForTests({ failAfterGenerateDataKeys: limit });
+}
+
+function advanceNowOnFirstGenerateDataKey(timestamp: number): void {
+  useSecretKmsClientForTests({
+    onGenerateDataKey: (callNumber) => {
+      if (callNumber === 1) {
+        mockNow(timestamp);
+      }
+    },
+  });
+}
+
+function inlineFirewallApis(
+  entries: readonly ExecutionFirewallEntry[] | undefined,
+  name: string,
+): readonly FirewallApi[] {
+  const entry = findFirewallEntry(entries, name);
+  if (!entry || entry.kind !== "inline") {
+    throw new Error(`Expected inline firewall entry: ${name}`);
+  }
+  return entry.firewall.apis;
+}
+
+async function waitForRunStatus(
+  api: ReturnType<typeof createRunsAutomationsApi>,
+  actor: ApiTestUser,
+  runId: string,
+  status: string,
+) {
+  await expect
+    .poll(async () => {
+      return (await api.readRun(actor, runId)).status;
+    })
+    .toBe(status);
+  return await api.readRun(actor, runId);
+}
+
+async function waitForRunQueueLength(
+  api: ReturnType<typeof createRunsAutomationsApi>,
+  actor: ApiTestUser,
+  length: number,
+) {
+  await expect
+    .poll(async () => {
+      return (await api.readRunQueue(actor)).body.queue.length;
+    })
+    .toBe(length);
+  return await api.readRunQueue(actor);
+}
+
+function base64UrlEncode(input: string): string {
+  return Buffer.from(input, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function unsignedJwt(payload: Record<string, unknown>): string {
+  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  return `${header}.${base64UrlEncode(JSON.stringify(payload))}.bdd-signature`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event) && event.run_id === runId;
+    });
+  });
+}
+
+function claimRouteTimingEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return (
+      typeof event.op_type === "string" &&
+      event.op_type.startsWith("claim_route_")
+    );
+  });
+}
+
+function apiDispatchTimingEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return (
+      typeof event.op_type === "string" &&
+      event.op_type.startsWith("api_dispatch_")
+    );
+  });
+}
+
+function apiDispatchActionTypes(
+  events: readonly Record<string, unknown>[],
+): Set<unknown> {
+  return new Set(
+    events.map((event) => {
+      return event.op_type;
+    }),
+  );
+}
+
+function expectApiDispatchActions(
+  events: readonly Record<string, unknown>[],
+  expectedActionTypes: readonly string[],
+): void {
+  const observedActionTypes = apiDispatchActionTypes(events);
+  for (const actionType of expectedActionTypes) {
+    expect(observedActionTypes).toContain(actionType);
+  }
+}
+
+function expectNoApiDispatchActions(
+  events: readonly Record<string, unknown>[],
+  unexpectedActionTypes: readonly string[],
+): void {
+  const observedActionTypes = apiDispatchActionTypes(events);
+  for (const actionType of unexpectedActionTypes) {
+    expect(observedActionTypes).not.toContain(actionType);
+  }
+}
+
+function expectApiDispatchSpanKind(
+  events: readonly Record<string, unknown>[],
+  expectedActionTypes: readonly string[],
+  spanKind: string,
+): void {
+  for (const actionType of expectedActionTypes) {
+    const matchingEvents = events.filter((event) => {
+      return event.op_type === actionType;
+    });
+    expect(matchingEvents).toHaveLength(1);
+    expect(matchingEvents[0]).toStrictEqual(
+      expect.objectContaining({
+        span_kind: spanKind,
+      }),
+    );
+  }
+}
+
+function singleApiDispatchEvent(
+  events: readonly Record<string, unknown>[],
+  actionType: string,
+): Record<string, unknown> {
+  const matchingEvents = events.filter((event) => {
+    return event.op_type === actionType;
+  });
+  expect(matchingEvents).toHaveLength(1);
+  return matchingEvents[0]!;
+}
+
+function expectCustomConnectorRuntimePhaseTimingEvents(
+  events: readonly Record<string, unknown>[],
+): void {
+  expectApiDispatchSpanKind(
+    events,
+    API_DISPATCH_CUSTOM_CONNECTOR_BUILD_PHASE_ACTION_TYPES,
+    "nested",
+  );
+  for (const actionType of API_DISPATCH_CUSTOM_CONNECTOR_BUILD_PHASE_ACTION_TYPES) {
+    const event = singleApiDispatchEvent(events, actionType);
+    for (const key of CUSTOM_CONNECTOR_RUNTIME_BUCKET_DIMENSION_KEYS) {
+      expect(typeof event[key]).toBe("string");
+    }
+  }
+}
+
+function expectApiDispatchTimingEventsNotToLeak(
+  events: readonly Record<string, unknown>[],
+  forbiddenValues: readonly string[],
+): void {
+  for (const event of events) {
+    for (const forbiddenKey of FORBIDDEN_API_DISPATCH_TIMING_KEYS) {
+      expect(event).not.toHaveProperty(forbiddenKey);
+    }
+    const serialized = JSON.stringify(event);
+    for (const forbiddenValue of forbiddenValues) {
+      expect(serialized).not.toContain(forbiddenValue);
+    }
+  }
+}
+
+function s3CommandName(command: unknown): string | undefined {
+  return (command as { readonly constructor?: { readonly name?: string } })
+    .constructor?.name;
+}
+
+function s3CommandKey(command: unknown): string | undefined {
+  return (command as { readonly input?: { readonly Key?: string } }).input?.Key;
+}
+
+function mockSessionHistoryBlob(hash: string, history: string): void {
+  context.mocks.s3.send.mockImplementation((command: unknown) => {
+    const input = (command as { readonly input?: { readonly Key?: string } })
+      .input;
+    if (input?.Key === `blobs/${hash}.blob`) {
+      if (
+        (command as { readonly constructor?: { readonly name?: string } })
+          .constructor?.name === "HeadObjectCommand"
+      ) {
+        return Promise.resolve({
+          ContentLength: Buffer.byteLength(history, "utf8"),
+        });
+      }
+      return Promise.resolve({
+        Body: {
+          async *[Symbol.asyncIterator]() {
+            yield Buffer.from(history, "utf8");
+          },
+        },
+      });
+    }
+    return Promise.resolve({});
+  });
+}
+
+/**
+ * Wire-shape `~/.codex/auth.json` paste payload for the personal
+ * codex-oauth-token provider upsert (the server parses and never stores it).
+ */
+function codexAuthJson(): string {
+  const accessExp = Math.floor(now() / 1000) + 7200;
+  return JSON.stringify({
+    OPENAI_API_KEY: null,
+    tokens: {
+      access_token: unsignedJwt({ exp: accessExp }),
+      refresh_token: "rt_bdd_personal_high_entropy",
+      account_id: "ws_acct_bdd",
+      id_token: unsignedJwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "ws_acct_bdd_id_token",
+          chatgpt_plan_type: "plus",
+          organization: { title: "BDD Personal" },
+        },
+        exp: accessExp,
+      }),
+    },
+  });
+}
+
+async function entitledRunActor(): Promise<{
+  readonly actor: ApiTestUser;
+  readonly agentId: string;
+  readonly runnerGroup: string;
+  readonly granted: {
+    readonly customerId: string;
+    readonly subscriptionId: string;
+  };
+}> {
+  const bdd = createBddApi(context);
+  const api = createRunsAutomationsApi(context);
+  const actor = bdd.user();
+  bdd.acceptAgentStorageWrites();
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  const runnerGroup = api.configureRunnerGroup();
+  const granted = await api.grantProEntitlement(actor);
+  await api.ensureOrgModelProvider(actor);
+  const agent = await bdd.createAgent(actor, {
+    displayName: "BDD lifecycle agent",
+    description: "Exercises the full run lifecycle.",
+    visibility: "private",
+  });
+  return { actor, agentId: agent.agentId, runnerGroup, granted };
+}
+
+async function zeroBackedDirectRunActor(args?: {
+  readonly visibility?: "private" | "public";
+}): Promise<{
+  readonly actor: ApiTestUser;
+  readonly orgId: string;
+  readonly agentId: string;
+  readonly runnerGroup: string;
+}> {
+  const bdd = createBddApi(context);
+  const api = createRunsAutomationsApi(context);
+  const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Zero-backed direct run tests require an org-scoped actor");
+  }
+  bdd.acceptAgentStorageWrites();
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  const runnerGroup = api.configureRunnerGroup();
+  await api.grantProEntitlement(actor);
+  await api.ensureOrgModelProvider(actor);
+
+  const agent = await bdd.createAgent(actor, {
+    displayName: "BDD zero-backed direct agent",
+    visibility: args?.visibility ?? "private",
+  });
+
+  return { actor, orgId: actor.orgId, agentId: agent.agentId, runnerGroup };
+}
+
+function zeroBackedDirectRunBody(args: {
+  readonly agentId: string;
+  readonly agentComposeVersionId?: string;
+  readonly prompt: string;
+}) {
+  return {
+    ...(args.agentComposeVersionId
+      ? { agentComposeVersionId: args.agentComposeVersionId }
+      : { agentComposeId: args.agentId }),
+    prompt: args.prompt,
+    modelProviderType: "anthropic-api-key" as const,
+    vars: { ZERO_AGENT_ID: args.agentId },
+    secrets: { ZERO_TOKEN: "bdd-zero-direct-token" },
+  };
+}
+
+async function readAgentHeadVersionId(agentId: string): Promise<string> {
+  return await readAutomationComposeHeadVersion(context, agentId);
+}
+
+const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
+
+function failIfChatCallbackRouteIsFetched(): void {
+  server.use(
+    http.post(CHAT_CALLBACK_URL, () => {
+      return HttpResponse.text("chat callback route should not be fetched", {
+        status: 500,
+      });
+    }),
+  );
+}
+
+async function sendChatRunMessage(
+  actor: ApiTestUser,
+  body: {
+    readonly agentId: string;
+    readonly prompt: string;
+    readonly threadId?: string;
+  },
+): Promise<{ readonly runId: string; readonly threadId: string }> {
+  const chat = createChatFilesBddApi(context);
+  const sent = await chat.requestSendMessage(
+    actor,
+    { ...body, modelProvider: "anthropic-api-key" },
+    [201],
+  );
+  if (sent.status !== 201 || sent.body.runId === null) {
+    throw new Error("Expected the entitled chat send to create a run");
+  }
+  return { runId: sent.body.runId, threadId: sent.body.threadId };
+}
+
+function assistantOutputEvent(
+  sequenceNumber: number,
+  text: string,
+): Record<string, unknown> {
+  return {
+    eventType: "assistant",
+    sequenceNumber,
+    eventData: { message: { content: [{ type: "text", text }] } },
+  };
+}
+
+describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
+  it("emits api dispatch timing for direct dispatch runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const prompt = "api dispatch timing should not leak prompt";
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+      "nested",
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES,
+      "nested",
+    );
+    expectApiDispatchActions(timingEvents, [
+      "api_dispatch_resolve_compose_by_compose_id",
+      "api_dispatch_resolve_compose_lookup_compose",
+    ]);
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_by_compose_id";
+      }),
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_SUBSTEP_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_lookup_compose";
+      }),
+    );
+    const observedActionTypes = apiDispatchActionTypes(timingEvents);
+    const preCreateEvents = timingEvents.filter((event) => {
+      return event.op_type === "api_dispatch_pre_create_agent_run";
+    });
+    expect(preCreateEvents).toHaveLength(1);
+    expect(preCreateEvents[0]).toStrictEqual(
+      expect.objectContaining({
+        span_kind: "top_level",
+      }),
+    );
+    expect(observedActionTypes).not.toContain("api_dispatch_check_vm0_credits");
+    expect(observedActionTypes).not.toContain("api_dispatch_notify_runner_job");
+
+    for (const actionType of API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES) {
+      const events = timingEvents.filter((event) => {
+        return event.op_type === actionType;
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
+        expect.objectContaining({
+          span_kind: "nested",
+        }),
+      );
+    }
+
+    for (const event of timingEvents) {
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          sandbox_type: "runner",
+          success: true,
+          run_id: created.runId,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          dispatch_path: "direct",
+          trigger_source: "web",
+        }),
+      );
+      expect(event.duration_ms).toStrictEqual(expect.any(Number));
+      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
+      expect(["top_level", "nested"]).toContain(event.span_kind);
+    }
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [prompt, agentId]);
+  });
+
+  it("emits api dispatch timing for direct create route runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor } = await entitledRunActor();
+    const prompt = "direct route api dispatch timing should not leak prompt";
+    const composeName = `bdd-direct-route-timing-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const headVersionId = await readAutomationComposeHeadVersion(
+      context,
+      compose.composeId,
+    );
+
+    const created = await api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt,
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES,
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES,
+      "nested",
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES,
+      "nested",
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      ["api_dispatch_pre_create_agent_run"],
+      "top_level",
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      prompt,
+      headVersionId,
+    ]);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("emits bucketed storage manifest shape dimensions without leaking storage identifiers", async () => {
+    const api = createRunsAutomationsApi(context);
+    const storages = createStoragesBddApi(context);
+    const { actor } = await entitledRunActor();
+    const prompt = "storage manifest dimensions should not leak prompt";
+    const storageName = `bdd-manifest-shape-${randomUUID().slice(0, 8)}`;
+    const mountPath = "/cache";
+    const storageFile = storageTextFile(
+      "cache.txt",
+      `manifest shape payload ${storageName}`,
+    );
+    const prepared = await storages.prepareStorage(actor, {
+      storageName,
+      storageType: "volume",
+      files: [storageFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName,
+      storageType: "volume",
+      versionId: prepared.versionId,
+      files: [storageFile],
+    });
+
+    const composeName = `bdd-manifest-shape-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      volumes: {
+        cache: {
+          name: storageName,
+          version: prepared.versionId,
+        },
+      },
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          volumes: [`cache:${mountPath}`],
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const headVersionId = await readAutomationComposeHeadVersion(
+      context,
+      compose.composeId,
+    );
+
+    const created = await api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt,
+      additionalVolumes: [
+        {
+          name: storageName,
+          version: prepared.versionId,
+          mountPath,
+        },
+      ],
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_requested_compose_count_bucket: "1",
+        storage_manifest_requested_additional_count_bucket: "1",
+        storage_manifest_requested_artifact_count_bucket: "1",
+        storage_manifest_deduped_artifact_count_bucket: "1",
+        storage_manifest_resolved_compose_count_bucket: "1",
+        storage_manifest_resolved_additional_count_bucket: "1",
+        storage_manifest_resolved_artifact_count_bucket: "1",
+        storage_manifest_final_storage_count_bucket: "1",
+        storage_manifest_final_artifact_count_bucket: "1",
+        storage_manifest_dropped_compose_count_bucket: "1",
+        storage_manifest_planned_presign_count_bucket: "2_4",
+        storage_manifest_duplicate_presign_candidate_count_bucket: "0",
+        storage_manifest_artifact_ensure_already_initialized_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_storage_count_bucket: "1",
+        storage_manifest_artifact_ensure_created_storage_count_bucket: "1",
+        storage_manifest_artifact_ensure_lost_create_race_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_head_version_count_bucket: "1",
+        storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+          "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_artifact_ensure_already_initialized_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_storage_count_bucket: "1",
+        storage_manifest_artifact_ensure_created_storage_count_bucket: "1",
+        storage_manifest_artifact_ensure_lost_create_race_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_head_version_count_bucket: "1",
+        storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+          "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_build_entries",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_resolved_compose_count_bucket: "1",
+        storage_manifest_resolved_additional_count_bucket: "1",
+        storage_manifest_resolved_artifact_count_bucket: "1",
+        storage_manifest_planned_presign_count_bucket: "2_4",
+        storage_manifest_duplicate_presign_candidate_count_bucket: "0",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_generate_compose_urls",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_compose_planned_presign_count_bucket: "0",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_generate_additional_urls",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_additional_planned_presign_count_bucket: "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_generate_artifact_urls",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_artifact_planned_presign_count_bucket: "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_assemble",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_final_storage_count_bucket: "1",
+        storage_manifest_final_artifact_count_bucket: "1",
+        storage_manifest_dropped_compose_count_bucket: "1",
+      }),
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      prompt,
+      storageName,
+      mountPath,
+      prepared.versionId,
+      headVersionId,
+      "https://r2.example.com",
+    ]);
+
+    const claim = await api.claimRunnerJob(created.runId);
+    const memoryArtifact = claim.storageManifest?.artifacts.find((artifact) => {
+      return artifact.vasStorageName === "memory";
+    });
+    expect(memoryArtifact).toMatchObject({
+      archiveUrl: expect.any(String),
+      vasStorageId: expect.any(String),
+      vasVersionId: expect.any(String),
+      missingRootPolicy: "preserveParentVersion",
+    });
+    if (!memoryArtifact) {
+      throw new Error("Expected the claim manifest to include memory");
+    }
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      memoryArtifact.archiveUrl,
+      memoryArtifact.vasStorageId,
+      memoryArtifact.vasVersionId,
+    ]);
+
+    const initialized = await api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt: "storage manifest dimensions initialized artifact path",
+      additionalVolumes: [
+        {
+          name: storageName,
+          version: prepared.versionId,
+          mountPath,
+        },
+      ],
+    });
+    const initializedTimingEvents = apiDispatchTimingEventsForRun(
+      initialized.runId,
+    );
+    expect(
+      singleApiDispatchEvent(
+        initializedTimingEvents,
+        "api_dispatch_prepare_storage_manifest",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_artifact_ensure_already_initialized_count_bucket: "1",
+        storage_manifest_artifact_ensure_missing_storage_count_bucket: "0",
+        storage_manifest_artifact_ensure_created_storage_count_bucket: "0",
+        storage_manifest_artifact_ensure_lost_create_race_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_head_version_count_bucket: "0",
+        storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+          "0",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        initializedTimingEvents,
+        "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_artifact_ensure_already_initialized_count_bucket: "1",
+        storage_manifest_artifact_ensure_missing_storage_count_bucket: "0",
+        storage_manifest_artifact_ensure_created_storage_count_bucket: "0",
+        storage_manifest_artifact_ensure_lost_create_race_count_bucket: "0",
+        storage_manifest_artifact_ensure_missing_head_version_count_bucket: "0",
+        storage_manifest_artifact_ensure_initialized_empty_version_count_bucket:
+          "0",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        initializedTimingEvents,
+        "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+      ).duration_ms,
+    ).toBe(0);
+    expect(
+      singleApiDispatchEvent(
+        initializedTimingEvents,
+        "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
+      ).duration_ms,
+    ).toBe(0);
+    expectApiDispatchTimingEventsNotToLeak(initializedTimingEvents, [
+      storageName,
+      mountPath,
+      prepared.versionId,
+      headVersionId,
+    ]);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+    await api.requestCancelRun(actor, initialized.runId, [200]);
+  });
+
+  it("keeps a committed artifact head when stale empty initialization finishes later", async () => {
+    const api = createRunsAutomationsApi(context);
+    const storages = createStoragesBddApi(context);
+    const { actor } = await entitledRunActor();
+    const composeName = `bdd-artifact-head-race-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const headVersionId = await readAutomationComposeHeadVersion(
+      context,
+      compose.composeId,
+    );
+
+    let releaseEmptyUploads = (): void => {};
+    const emptyUploadsGate = new Promise<void>((resolve) => {
+      releaseEmptyUploads = resolve;
+    });
+    let markEmptyUploadStarted = (): void => {};
+    const emptyUploadStarted = new Promise<void>((resolve) => {
+      markEmptyUploadStarted = resolve;
+    });
+
+    let blockedEmptyPutCount = 0;
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (
+        s3CommandName(command) === "PutObjectCommand" &&
+        s3CommandKey(command)?.includes("/artifact/memory/")
+      ) {
+        blockedEmptyPutCount += 1;
+        markEmptyUploadStarted();
+        return emptyUploadsGate.then(() => {
+          return {};
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    const staleInitializerRun = api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt: "stale empty artifact initialization must not overwrite head",
+    });
+    onTestFinished(async () => {
+      releaseEmptyUploads();
+      const created = await staleInitializerRun.then(
+        (run) => {
+          return run;
+        },
+        () => {
+          return undefined;
+        },
+      );
+      if (created) {
+        await api.requestCancelRun(actor, created.runId, [200]);
+      }
+    });
+
+    const gateResult = await Promise.race([
+      emptyUploadStarted.then(() => {
+        return "empty-upload-started" as const;
+      }),
+      staleInitializerRun.then(() => {
+        return "run-finished" as const;
+      }),
+    ]);
+    expect(gateResult).toBe("empty-upload-started");
+
+    const artifactFile = storageTextFile(
+      "artifact.txt",
+      `committed artifact ${randomUUID()}`,
+    );
+    const prepared = await storages.prepareStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      files: [artifactFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      versionId: prepared.versionId,
+      files: [artifactFile],
+    });
+    await expect(
+      storages.downloadStorage(actor, {
+        name: "memory",
+        type: "artifact",
+      }),
+    ).resolves.toStrictEqual(
+      expect.objectContaining({
+        versionId: prepared.versionId,
+        fileCount: 1,
+      }),
+    );
+
+    releaseEmptyUploads();
+    await staleInitializerRun;
+    expect(blockedEmptyPutCount).toBe(2);
+    await expect(
+      storages.downloadStorage(actor, {
+        name: "memory",
+        type: "artifact",
+      }),
+    ).resolves.toStrictEqual(
+      expect.objectContaining({
+        versionId: prepared.versionId,
+        fileCount: 1,
+      }),
+    );
+  });
+
+  it("keeps a direct launch claimable when run-context ingest fails", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const prompt = "run-context ingest should not block launch";
+    context.mocks.axiom.ingest.mockImplementation((dataset, events) => {
+      if (
+        dataset === "run-context" &&
+        Array.isArray(events) &&
+        events.some((event) => {
+          return isRecord(event) && event.prompt === prompt;
+        })
+      ) {
+        throw new Error("run-context ingest failed");
+      }
+      return true;
+    });
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(created.status).toBe("pending");
+    const claim = await api.claimRunnerJob(created.runId);
+    expect(claim.prompt).toBe(prompt);
+    expect(context.mocks.axiom.ingest).toHaveBeenCalledWith("run-context", [
+      expect.objectContaining({
+        runId: created.runId,
+        prompt,
+      }),
+    ]);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("keeps a direct launch claimable when sandbox telemetry ingest fails", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const prompt = "sandbox telemetry should not block launch";
+    context.mocks.axiom.sdkIngest.mockImplementation((dataset) => {
+      if (dataset === "vm0-sandbox-op-log-dev") {
+        throw new Error("sandbox telemetry ingest failed");
+      }
+      return true;
+    });
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(created.status).toBe("pending");
+    const claim = await api.claimRunnerJob(created.runId);
+    expect(claim.prompt).toBe(prompt);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("emits compose resolution timing for direct compose version runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor } = await entitledRunActor();
+    const prompt = "version timing should not leak prompt";
+    const composeName = `bdd-version-timing-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const headVersionId = await readAutomationComposeHeadVersion(
+      context,
+      compose.composeId,
+    );
+
+    const created = await api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt,
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expectApiDispatchActions(timingEvents, [
+      "api_dispatch_resolve_compose_by_version_id",
+      "api_dispatch_resolve_compose_lookup_version",
+    ]);
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_by_version_id";
+      }),
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_SUBSTEP_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_lookup_version";
+      }),
+    );
+    for (const event of timingEvents) {
+      expect(JSON.stringify(event)).not.toContain(prompt);
+      expect(JSON.stringify(event)).not.toContain(headVersionId);
+    }
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("emits compose resolution timing for session and checkpoint resume runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "start a checkpointed timing session",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(first.runId);
+    const history = `bdd timing session history ${first.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-timing-cli-${first.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    const completed = await api.readRun(actor, first.runId);
+    const checkpointId = completed.result?.checkpointId;
+    if (!checkpointId) {
+      throw new Error("Expected checkpointed timing run to expose checkpoint");
+    }
+
+    const resumed = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continue checkpointed timing session",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(resumed.sessionId).toBe(first.sessionId);
+    const sessionTimingEvents = apiDispatchTimingEventsForRun(resumed.runId);
+    expectApiDispatchActions(sessionTimingEvents, [
+      "api_dispatch_resolve_compose_by_session_id",
+      "api_dispatch_resolve_compose_lookup_session",
+      "api_dispatch_resolve_compose_lookup_compose",
+      "api_dispatch_resolve_compose_load_resume_session",
+      "api_dispatch_resolve_compose_resolve_session_history",
+      "api_dispatch_resolve_compose_lookup_session_vars",
+    ]);
+    expectNoApiDispatchActions(
+      sessionTimingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_by_session_id";
+      }),
+    );
+    for (const event of sessionTimingEvents) {
+      const serialized = JSON.stringify(event);
+      expect(serialized).not.toContain(history);
+      expect(serialized).not.toContain(historyHash);
+      expect(serialized).not.toContain(first.sessionId);
+    }
+
+    const checkpointZeroToken = "bdd-checkpoint-zero-token";
+    const checkpointRun = await api.createDirectRun(actor, {
+      checkpointId,
+      prompt: "resume checkpoint with timing",
+      secrets: { ZERO_TOKEN: checkpointZeroToken },
+    });
+    const checkpointTimingEvents = apiDispatchTimingEventsForRun(
+      checkpointRun.runId,
+    );
+    expectApiDispatchActions(checkpointTimingEvents, [
+      "api_dispatch_resolve_compose_by_checkpoint_id",
+      "api_dispatch_resolve_compose_lookup_checkpoint",
+      "api_dispatch_resolve_compose_lookup_version",
+      "api_dispatch_resolve_compose_load_resume_session",
+      "api_dispatch_resolve_compose_resolve_session_history",
+    ]);
+    expectNoApiDispatchActions(
+      checkpointTimingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_by_checkpoint_id";
+      }),
+    );
+    expectNoApiDispatchActions(checkpointTimingEvents, [
+      "api_dispatch_resolve_compose_lookup_session",
+      "api_dispatch_resolve_compose_lookup_compose",
+      "api_dispatch_resolve_compose_lookup_session_vars",
+    ]);
+    for (const event of checkpointTimingEvents) {
+      const serialized = JSON.stringify(event);
+      expect(serialized).not.toContain(history);
+      expect(serialized).not.toContain(historyHash);
+      expect(serialized).not.toContain(checkpointId);
+      expect(serialized).not.toContain(checkpointZeroToken);
+    }
+
+    await api.requestCancelRun(actor, resumed.runId, [200]);
+    await api.requestCancelRun(actor, checkpointRun.runId, [200]);
+  });
+
+  it("creates, dispatches, claims, reports, and completes a run through public APIs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt: "summarize the repository",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(created.status).toBe("pending");
+    expect(created.sessionId).toMatch(/[0-9a-f-]{36}/);
+
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.concurrency.tier).toBe("pro");
+    expect(queue.body.concurrency.active).toBe(1);
+
+    await api.heartbeatRunner(runnerGroup);
+    const poll = await api.pollRunner(runnerGroup);
+    expect(poll.body.job?.runId).toBe(created.runId);
+    expect(poll.body.job?.experimentalProfile).toBe("vm0/default");
+
+    const claim = await api.claimRunnerJob(created.runId);
+    expect(claim.sandboxToken).not.toBe("");
+    expect(claim.prompt).toBe("summarize the repository");
+    expect(claim.environment).toMatchObject({
+      ANTHROPIC_API_KEY: expect.stringMatching(/.+/),
+    });
+    expect(claim.cliAgentType).toBe("claude-code");
+
+    const running = await api.readRun(actor, created.runId);
+    expect(running.status).toBe("running");
+    expect(running.startedAt).toBeDefined();
+
+    const reclaimed = await api.requestClaimRunnerJob(
+      true,
+      created.runId,
+      [404],
+    );
+    expectApiError(reclaimed.body);
+
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+    await webhooks.requestAgentHeartbeat(
+      { runId: created.runId },
+      sandboxHeaders,
+      [200],
+    );
+
+    await webhooks.requestAgentTelemetry(
+      {
+        runId: created.runId,
+        systemLog: "runner booted",
+        metrics: [
+          {
+            ts: nowDate().toISOString(),
+            cpu: 1,
+            mem_used: 2,
+            mem_total: 4,
+            disk_used: 8,
+            disk_total: 16,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    await webhooks.requestAgentEvents(
+      {
+        runId: created.runId,
+        events: [{ type: "system", sequenceNumber: 0 }],
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    const historyHash = createHash("sha256")
+      .update(`bdd session history ${created.runId}`)
+      .digest("hex");
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: created.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${created.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    await webhooks.requestAgentComplete(
+      { runId: created.runId, exitCode: 0, lastEventSequence: 0 },
+      sandboxHeaders,
+      [200],
+    );
+
+    const completed = await api.readRun(actor, created.runId);
+    expect(completed.status).toBe("completed");
+    expect(completed.completedAt).toBeDefined();
+    expect(completed.result?.checkpointId).toBeDefined();
+
+    const drained = await api.readRunQueue(actor);
+    expect(drained.body.concurrency.active).toBe(0);
+
+    const uncancellable = await api.requestCancelRun(
+      actor,
+      created.runId,
+      [400],
+    );
+    expectApiError(uncancellable.body);
+  });
+
+  it("resumes the previous session when a run is created with the same sessionId", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "start a session",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const resumed = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continue the session",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(resumed.sessionId).toBe(first.sessionId);
+
+    const outsider = createBddApi(context).user();
+    const crossUser = await api.requestCreateRun(
+      outsider,
+      {
+        agentId,
+        sessionId: first.sessionId,
+        prompt: "steal the session",
+        modelProvider: "anthropic-api-key",
+      },
+      [402, 404],
+    );
+    expectApiError(crossUser.body);
+
+    await api.requestCancelRun(actor, resumed.runId, [200]);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    const cancelled = await api.readRun(actor, first.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("exposes same-session affinity metadata to runner poll responses", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "start affinity-protected session",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(first).toMatchObject({ status: "pending" });
+    const firstClaim = await api.claimRunnerJob(first.runId);
+    const cliAgentSessionId = `bdd-affinity-cli-${first.runId}`;
+    const history = `bdd affinity history ${first.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+
+    const protectedFollowUp = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continue affinity-protected session",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const protectedPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, profiles: ["vm0/default"] },
+      [200],
+    );
+    if (protectedPoll.status !== 200) {
+      throw new Error("Expected affinity poll to return 200");
+    }
+    expect(protectedPoll.body.job?.runId).toBe(protectedFollowUp.runId);
+    expect(protectedPoll.body.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(protectedPoll.body.job?.affinityProtectedUntil).toStrictEqual(
+      expect.any(String),
+    );
+
+    const protectedClaim = await api.claimRunnerJob(protectedFollowUp.runId);
+    expect(protectedClaim.prompt).toBe("continue affinity-protected session");
+    await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
+
+    const expiredFollowUp = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continue after affinity protection expires",
+      modelProvider: "anthropic-api-key",
+    });
+    mockNow(now() + 60_000);
+    const expiredClaim = await api.requestClaimRunnerJob(
+      true,
+      expiredFollowUp.runId,
+      [200],
+    );
+    if (expiredClaim.status !== 200) {
+      throw new Error("Expected expired affinity claim to succeed");
+    }
+    expect(expiredClaim.body.prompt).toBe(
+      "continue after affinity protection expires",
+    );
+    await api.requestCancelRun(actor, expiredFollowUp.runId, [200]);
+  });
+});
+
+describe("RUN-01: admission boundaries beyond request validation", () => {
+  it("rejects runs for onboarded organizations that never gained an entitlement", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.configureRunnerGroup();
+
+    await bdd.setupOnboarding(actor, { displayName: "BDD Suspended Agent" });
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD suspended-org agent",
+      description: "Covers the pro-suspend admission branch.",
+      visibility: "private",
+    });
+
+    const rejected = await api.requestCreateRun(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "should be rejected",
+        modelProvider: "anthropic-api-key",
+      },
+      [402],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+
+    // The suspension applies to vm0-managed runs as well.
+    const vm0Rejected = await api.requestCreateRun(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "should be rejected",
+        modelProvider: "vm0",
+      },
+      [402],
+    );
+    expectApiError(vm0Rejected.body);
+    expect(vm0Rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
+  it("does not require queued payload encryption while capacity is available", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    failKmsAfterGenerateDataKeys(1);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "capacity available run should not encrypt queued payload",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(run.status).toBe("pending");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("timestamps pending launches when the durable row is inserted", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const requestStartedAt = Date.UTC(2026, 0, 1, 12, 0, 0);
+    const payloadPreparedAt = requestStartedAt + 6 * 60_000;
+    mockNow(requestStartedAt);
+    advanceNowOnFirstGenerateDataKey(payloadPreparedAt);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "pending launch timestamp should reflect durable insert",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(run.status).toBe("pending");
+    if (!run.createdAt) {
+      throw new Error("Expected created run createdAt");
+    }
+    expect(new Date(run.createdAt).getTime()).toBe(payloadPreparedAt);
+
+    const stored = await api.readRun(actor, run.runId);
+    if (!stored.createdAt) {
+      throw new Error("Expected stored run createdAt");
+    }
+    expect(new Date(stored.createdAt).getTime()).toBe(payloadPreparedAt);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run one",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(first.status).toBe("pending");
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run two",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(second.status).toBe("pending");
+
+    const third = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run three",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(third.status).toBe("queued");
+
+    const queued = await api.readRunQueue(actor);
+    expect(queued.body.concurrency.active).toBe(2);
+    expect(queued.body.queue).toHaveLength(1);
+    expect(queued.body.queue[0]?.runId).toBe(third.runId);
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+
+    const promoted = await waitForRunStatus(api, actor, third.runId, "pending");
+    expect(promoted.status).toBe("pending");
+    const drained = await waitForRunQueueLength(api, actor, 0);
+    expect(drained.body.queue).toHaveLength(0);
+    await api.heartbeatRunner(runnerGroup);
+    const thirdClaim = await api.claimRunnerJob(third.runId);
+    expect(thirdClaim.prompt).toBe("queued run three");
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, third.runId, [200]);
+    const emptied = await api.readRunQueue(actor);
+    expect(emptied.body.concurrency.active).toBe(0);
+  });
+
+  it("counts promoted queued runs by promotion heartbeat for admission", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before old queue promotion one",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(first.status).toBe("pending");
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before old queue promotion two",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(second.status).toBe("pending");
+
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run promoted after pending ttl",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    mockNow(now() + 16 * 60_000);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
+    expect(promoted.status).toBe("pending");
+
+    const fresh = await api.createRun(actor, {
+      agentId,
+      prompt: "fresh run beside promoted queue item",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(fresh.status).toBe("pending");
+
+    const overLimit = await api.createRun(actor, {
+      agentId,
+      prompt: "run should queue behind promoted active item",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(overLimit.status).toBe("queued");
+
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.concurrency.active).toBe(2);
+    expect(queue.body.queue).toContainEqual(
+      expect.objectContaining({ runId: overLimit.runId }),
+    );
+
+    await api.requestCancelRun(actor, overLimit.runId, [200]);
+    await api.requestCancelRun(actor, fresh.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
+  it("finishes promoted queued run notifications after request abort", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const controller = new AbortController();
+    let queueChangedPublishes = 0;
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before abort promotion one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before abort promotion two",
+      modelProvider: "anthropic-api-key",
+    });
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should still notify after abort",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        queueChangedPublishes++;
+        if (queueChangedPublishes === 2) {
+          const error = new Error("abort after queued promotion commit");
+          error.name = "AbortError";
+          controller.abort(error);
+        }
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const cancelled = await api.requestCancelRunWithSignal(
+      actor,
+      first.runId,
+      controller.signal,
+    );
+    expect(cancelled.status).toBe(200);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
+    expect(promoted.status).toBe("pending");
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(
+          ([topic, payload]) => {
+            return (
+              topic === "job" &&
+              isRecord(payload) &&
+              payload.runId === queued.runId
+            );
+          },
+        );
+      })
+      .toBe(true);
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
+  });
+
+  it("drains queued runs after a cancel request aborts post-commit", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const controller = new AbortController();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before post-commit abort one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before post-commit abort two",
+      modelProvider: "anthropic-api-key",
+    });
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should drain after cancel abort",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        const error = new Error("abort after cancel commit");
+        error.name = "AbortError";
+        controller.abort(error);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const cancelled = await api.requestCancelRunWithSignal(
+      actor,
+      first.runId,
+      controller.signal,
+    );
+    expect(cancelled.status).toBe(200);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
+    expect(promoted.status).toBe("pending");
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(
+          ([topic, payload]) => {
+            return (
+              topic === "job" &&
+              isRecord(payload) &&
+              payload.runId === queued.runId
+            );
+          },
+        );
+      })
+      .toBe(true);
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
+  });
+
+  it("drains queued runs when queue changed publish fails after cancellation", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before publish failure one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before publish failure two",
+      modelProvider: "anthropic-api-key",
+    });
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should drain despite queue publish failure",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        return Promise.reject(new Error("queue changed publish failed"));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
+    expect(promoted.status).toBe("pending");
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(
+          ([topic, payload]) => {
+            return (
+              topic === "job" &&
+              isRecord(payload) &&
+              payload.runId === queued.runId
+            );
+          },
+        );
+      })
+      .toBe(true);
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
+  });
+
+  it("keeps a queued launch visible when enqueue telemetry fails", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before telemetry failure one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before telemetry failure two",
+      modelProvider: "anthropic-api-key",
+    });
+    context.mocks.axiom.sdkIngest.mockImplementation((dataset, events) => {
+      if (
+        dataset === "vm0-sandbox-op-log-dev" &&
+        Array.isArray(events) &&
+        events.some((event) => {
+          return isRecord(event) && event.op_type === "enqueue_zero_run";
+        })
+      ) {
+        throw new Error("enqueue telemetry failed");
+      }
+      return true;
+    });
+
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should survive telemetry failure",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(queued.status).toBe("queued");
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).toContainEqual(
+      expect.objectContaining({ runId: queued.runId }),
+    );
+    expect(sandboxOperationEventsForRun(queued.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "enqueue_zero_run",
+        run_id: queued.runId,
+      }),
+    );
+
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
+  it("keeps a queued launch visible when queue changed publish fails", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before queue publish failure one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before queue publish failure two",
+      modelProvider: "anthropic-api-key",
+    });
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("queue changed publish failed"),
+    );
+
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should survive queue publish failure",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(queued.status).toBe("queued");
+    const stored = await api.readRun(actor, queued.runId);
+    expect(stored.status).toBe("queued");
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).toContainEqual(
+      expect.objectContaining({ runId: queued.runId }),
+    );
+
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
+  it("records a failed queued launch when queue payload encryption fails", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before queued encryption failure one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before queued encryption failure two",
+      modelProvider: "anthropic-api-key",
+    });
+
+    mockEnv("SECRETS_KMS_KEY_ID", undefined);
+    const failed = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should fail when payload encryption fails",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe(
+      "SECRETS_KMS_KEY_ID is required for KMS secret encryption",
+    );
+    const stored = await api.readRun(actor, failed.runId);
+    expect(stored.status).toBe("failed");
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).not.toContainEqual(
+      expect.objectContaining({ runId: failed.runId }),
+    );
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
+  it("removes cancelled runs from the claimable queue", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "cancel before claim",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, run.runId, [200]);
+
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+
+    const claim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+    expectApiError(claim.body);
+
+    const missing = await api.requestClaimRunnerJob(true, randomUUID(), [404]);
+    expectApiError(missing.body);
+  });
+});
+
+describe("RUN-01: zero run request validation and token boundaries", () => {
+  it("rejects invalid zero run requests and run-scoped tokens without agent-run:write", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const unauthenticated = await api.requestCreateRun(
+      null,
+      { agentId: randomUUID(), prompt: "hello" },
+      [401],
+    );
+    expectApiError(unauthenticated.body);
+    expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
+
+    const missingAgent = await api.requestCreateRun(
+      actor,
+      { prompt: "hello" },
+      [400],
+    );
+    expectApiError(missingAgent.body);
+    expect(missingAgent.body.error.message).toBe("agentId is required");
+
+    const policiesRejected = await api.requestCreateRunUnchecked(
+      actor,
+      {
+        prompt: "hello",
+        agentId: randomUUID(),
+        permissionPolicies: { x: { policies: { "tweet.write": "allow" } } },
+      },
+      [400],
+    );
+    expectApiError(policiesRejected.body);
+    expect(policiesRejected.body.error.code).toBe("BAD_REQUEST");
+    expect(policiesRejected.body.error.message).toContain("permissionPolicies");
+
+    for (const tools of [[""], ["   "], ["Bash,Read"], ["--help"], [" -x"]]) {
+      const ambiguous = await api.requestCreateRun(
+        actor,
+        { prompt: "hello", agentId: randomUUID(), tools },
+        [400],
+      );
+      expectApiError(ambiguous.body);
+      expect(ambiguous.body.error.message).toContain("tools");
+      expect(ambiguous.body.error.message).toContain("Claude tool name");
+    }
+
+    const missingSession = await api.requestCreateRun(
+      actor,
+      { prompt: "hello", sessionId: randomUUID() },
+      [404],
+    );
+    expectApiError(missingSession.body);
+    expect(missingSession.body.error.message).toBe("Session not found");
+
+    // A claimed run exposes both run-scoped credentials: the agent-facing
+    // zero token (in the compose environment) and the sandbox webhook token.
+    // Neither carries agent-run:write, so nested run creation is forbidden.
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "issue run-scoped credentials",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const zeroToken = claim.environment?.ZERO_TOKEN;
+    if (!zeroToken) {
+      throw new Error(
+        "Expected claim.environment.ZERO_TOKEN to carry the run-scoped zero token",
+      );
+    }
+
+    const zeroTokenRejected = await api.requestCreateRunAs(
+      `Bearer ${zeroToken}`,
+      { agentId, prompt: "nested run" },
+      [403],
+    );
+    expectApiError(zeroTokenRejected.body);
+    expect(zeroTokenRejected.body.error.message).toContain(
+      "Missing required capability: agent-run:write",
+    );
+
+    const sandboxRejected = await api.requestCreateRunAs(
+      `Bearer ${claim.sandboxToken}`,
+      { agentId, prompt: "nested run" },
+      [403],
+    );
+    expectApiError(sandboxRejected.body);
+    expect(sandboxRejected.body.error.message).toContain(
+      "Missing required capability: agent-run:write",
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("limits private agents to their owner and infers the agent from a session", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    const memberRejected = await api.requestCreateRun(
+      member,
+      { agentId, prompt: "run someone else's private agent" },
+      [403],
+    );
+    expectApiError(memberRejected.body);
+    expect(memberRejected.body.error.message).toBe(
+      "Only the private agent owner can run this agent",
+    );
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "open a session",
+      modelProvider: "anthropic-api-key",
+    });
+    const inferred = await api.createRun(actor, {
+      sessionId: first.sessionId,
+      prompt: "continue without naming the agent",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(inferred.sessionId).toBe(first.sessionId);
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, inferred.runId, [200]);
+    const drained = await api.readRunQueue(actor);
+    expect(drained.body.concurrency.active).toBe(0);
+  });
+});
+
+describe("RUN-02: model provider selection and vm0 admission", () => {
+  it("gates vm0 runs on billing state and on unexpired credit grants", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+
+    // An org that never went through onboarding has no billing state at all,
+    // so vm0 runs are refused before provider resolution.
+    const uninitialized = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.configureRunnerGroup();
+    const bareAgent = await bdd.createAgent(uninitialized, {
+      displayName: "BDD uninitialized-org agent",
+      visibility: "private",
+    });
+    const noBilling = await api.requestCreateRun(
+      uninitialized,
+      { agentId: bareAgent.agentId, prompt: "vm0 run", modelProvider: "vm0" },
+      [402],
+    );
+    expectApiError(noBilling.body);
+    expect(noBilling.body.error.code).toBe("INSUFFICIENT_CREDITS");
+
+    // The credit expiry is the subscription period end plus one month, so a
+    // period that ended two months ago grants credits that are already
+    // expired and never settled — vm0 admission fails whether or not a
+    // managed key happens to resolve.
+    const actor = bdd.user();
+    await api.grantProEntitlement(actor, {
+      periodEndUnix: Math.floor(now() / 1000) - 60 * 86_400,
+    });
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD expired-credits agent",
+      visibility: "private",
+    });
+    const rejected = await api.requestCreateRun(
+      actor,
+      { agentId: agent.agentId, prompt: "vm0 run", modelProvider: "vm0" },
+      [402],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
+  it("claims vm0 runs with billable model firewall and usage provider", async () => {
+    const api = createRunsAutomationsApi(context);
+    const selectedModel = await seedVm0ManagedDefaultModelKey();
+    const concreteProvider = getVm0ConcreteProviderType(selectedModel);
+    const expectedFirewall = getModelProviderFirewall(concreteProvider)?.name;
+    if (!expectedFirewall) {
+      throw new Error(
+        `Missing model-provider firewall for ${concreteProvider}`,
+      );
+    }
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "vm0 built-in model provider",
+      modelProvider: "vm0",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain(expectedFirewall);
+    expect(claim.billableFirewalls).toContain(expectedFirewall);
+    expect(claim.modelUsageProvider).toBe(selectedModel);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("injects codex multi-auth provider credentials and proves them via firewall auth", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await fw.seedOrgCodexProvider(actor, {
+      accessToken: "chatgpt-access",
+      refreshToken: "chatgpt-refresh",
+      accountId: "workspace-id",
+      idToken: "chatgpt-id-token",
+      expiresIn: 3600,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "codex oauth provider",
+      modelProvider: "codex-oauth-token",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.cliAgentType).toBe("codex");
+    expect(claim.environment).toMatchObject({
+      CHATGPT_ACCESS_TOKEN: modelProviderPlaceholder(
+        "codex-oauth-token",
+        "CHATGPT_ACCESS_TOKEN",
+      ),
+      CHATGPT_ACCOUNT_ID: modelProviderPlaceholder(
+        "codex-oauth-token",
+        "CHATGPT_ACCOUNT_ID",
+      ),
+      OPENAI_MODEL: "gpt-5.5",
+    });
+    expect(claim.environment).not.toHaveProperty("CHATGPT_REFRESH_TOKEN");
+    expect(claim.environment).not.toHaveProperty("CHATGPT_ID_TOKEN");
+    expect(claim.secretConnectorMap).toMatchObject({
+      CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+    });
+    expect(claim.secretConnectorMap).not.toHaveProperty(
+      "CHATGPT_REFRESH_TOKEN",
+    );
+    expect(
+      claim.secretConnectorMetadataMap?.CHATGPT_ACCESS_TOKEN,
+    ).toStrictEqual({
+      sourceType: "model-provider",
+      sourceUserId: "__org__",
+      metadataKey: "codex-oauth-token",
+    });
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain("model-provider:codex-oauth-token");
+    expect(claim.billableFirewalls).toStrictEqual([]);
+    expect(claim.modelUsageProvider).toBe("gpt-5.5");
+
+    // The encrypted secrets resolve to the seeded plaintext through the
+    // firewall-auth webhook, which is the production read surface for them.
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the codex claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.CHATGPT_ACCESS_TOKEN }}`,
+          "ChatGPT-Account-ID": `\${{ secrets.CHATGPT_ACCOUNT_ID }}`,
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          claim.secretConnectorMetadataMap ?? undefined,
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected the codex firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer chatgpt-access",
+      "ChatGPT-Account-ID": "workspace-id",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("uses the requested provider instead of the caller's personal default", async () => {
+    const api = createRunsAutomationsApi(context);
+    const misc = createMiscRoutesApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await misc.upsertPersonalModelProvider(
+      actor,
+      { type: "claude-code-oauth-token", secret: "sk-ant-oat-bdd" },
+      [200, 201],
+    );
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "requested provider wins",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.cliAgentType).toBe("claude-code");
+    expect(claim.environment?.ANTHROPIC_API_KEY).toBe(
+      modelProviderPlaceholder("anthropic-api-key", "ANTHROPIC_API_KEY"),
+    );
+    expect(claim.environment?.ANTHROPIC_MODEL).toMatch(/.+/);
+    expect(claim.environment).not.toHaveProperty("CLAUDE_CODE_OAUTH_TOKEN");
+    expect(claim.billableFirewalls).toStrictEqual([]);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("runs thread-pinned member-scope providers and mounts codex workflows", async () => {
+    const api = createRunsAutomationsApi(context);
+    const bdd = createBddApi(context);
+    const chat = createChatFilesBddApi(context);
+    const misc = createMiscRoutesApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+    failIfChatCallbackRouteIsFetched();
+
+    const workflowName = "bdd-codex-kit";
+
+    await misc.upsertPersonalModelProvider(
+      actor,
+      {
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+        secrets: { CODEX_AUTH_JSON: codexAuthJson() },
+      },
+      [200, 201],
+    );
+
+    // A member-scoped policy routes the gpt-5.4-mini model through the
+    // personal provider; the org default stays on the anthropic provider.
+    const orgProvider = await api.ensureOrgModelProvider(actor);
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: orgProvider.providerId,
+      },
+      {
+        // Member-scope routes resolve the provider per caller at run time,
+        // so they must not pin a provider id.
+        model: "gpt-5.4-mini",
+        isDefault: false,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
+
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD codex skills agent",
+      visibility: "private",
+    });
+    // Workflows are created directly under the owning agent (agent-scoped 1:N).
+    await misc.createWorkflow(
+      actor,
+      agent.agentId,
+      workflowName,
+      { content: "# BDD codex kit\nUse this workflow for codex runs." },
+      [201],
+    );
+    const thread = await chat.createThread(actor, { agentId: agent.agentId });
+    const sent = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        threadId: thread.id,
+        prompt: "run on the pinned member provider",
+        modelSelection: {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel: "gpt-5.4-mini",
+        },
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected the pinned chat send to create a run");
+    }
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(sent.body.runId);
+    expect(claim.cliAgentType).toBe("codex");
+    expect(claim.environment?.OPENAI_MODEL).toBe("gpt-5.4-mini");
+    expect(claim.environment?.CHATGPT_ACCESS_TOKEN).toBe(
+      modelProviderPlaceholder("codex-oauth-token", "CHATGPT_ACCESS_TOKEN"),
+    );
+    expect(
+      claim.secretConnectorMetadataMap?.CHATGPT_ACCESS_TOKEN,
+    ).toMatchObject({
+      sourceType: "model-provider",
+      sourceUserId: actor.userId,
+    });
+
+    const mountPaths =
+      claim.storageManifest?.storages.map((storage) => {
+        return storage.mountPath;
+      }) ?? [];
+    expect(mountPaths).toContain(`/home/user/.codex/skills/${workflowName}`);
+    expect(
+      mountPaths.some((mountPath) => {
+        return mountPath.startsWith("/home/user/.claude/skills/");
+      }),
+    ).toBeFalsy();
+
+    await api.requestCancelRun(actor, sent.body.runId, [200]);
+    const cancelled = await api.readRun(actor, sent.body.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+});
+
+describe("RUN-02: stored connector injection into claimed runs", () => {
+  it("omits connected stored connectors when the Zero run allowlist is empty", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-unallowed-access",
+      refreshToken: "x-bdd-unallowed-refresh",
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "run without enabled stored connectors",
+      modelProvider: "anthropic-api-key",
+    });
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES,
+    );
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(claim.secretConnectorMap ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
+    expect(claim.billableFirewalls).not.toContain("x");
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("x");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("omits connected stored connectors when the Zero-backed direct run allowlist is empty", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-direct-unallowed-access",
+      refreshToken: "x-bdd-direct-unallowed-refresh",
+    });
+
+    const run = await api.createDirectRun(
+      actor,
+      zeroBackedDirectRunBody({
+        agentId,
+        prompt: "direct run without enabled stored connectors",
+      }),
+    );
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES,
+    );
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(claim.secretConnectorMap ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
+    expect(claim.billableFirewalls).not.toContain("x");
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("x");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("omits connected stored connectors for pinned Zero-backed direct run versions", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
+    const agentComposeVersionId = await readAgentHeadVersionId(agentId);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-version-unallowed-access",
+      refreshToken: "x-bdd-version-unallowed-refresh",
+    });
+
+    const run = await api.createDirectRun(
+      actor,
+      zeroBackedDirectRunBody({
+        agentId,
+        agentComposeVersionId,
+        prompt: "direct run pinned to a zero agent version",
+      }),
+    );
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES,
+    );
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.agentComposeVersionId).toBe(agentComposeVersionId);
+    expect(claim.environment ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("rejects same-org non-owner Zero-backed direct runs for private agents", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await zeroBackedDirectRunActor();
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+
+    const rejected = await api.requestDirectRun(
+      member,
+      zeroBackedDirectRunBody({
+        agentId,
+        prompt: "direct run someone else's private zero agent",
+      }),
+      [403],
+    );
+
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      "Only the private agent owner can run this agent",
+    );
+  });
+
+  it("allows same-org non-owner Zero-backed direct runs for public agents without owner connector leakage", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor({
+      visibility: "public",
+    });
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-public-owner-access",
+      refreshToken: "x-bdd-public-owner-refresh",
+    });
+    const enabled = await api.enableAgentConnectors(actor, agentId, ["x"]);
+    expect(enabled).toContain("x");
+
+    const run = await api.createDirectRun(
+      member,
+      zeroBackedDirectRunBody({
+        agentId,
+        prompt: "direct run someone else's public zero agent",
+      }),
+    );
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(claim.secretConnectorMap ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
+    expect(claim.billableFirewalls).not.toContain("x");
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("x");
+
+    await api.requestCancelRun(member, run.runId, [200]);
+  });
+
+  it("injects oauth connector tokens with billable firewalls and resolvable secrets", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-access",
+      refreshToken: "x-bdd-refresh",
+    });
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-bdd-unenabled-access",
+    });
+    const enabled = await api.enableAgentConnectors(actor, agentId, ["x"]);
+    expect(enabled).toContain("x");
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the x connector",
+      modelProvider: "anthropic-api-key",
+    });
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+    ]);
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      "x-bdd-access",
+      "x-bdd-refresh",
+      "X_TOKEN",
+      "SLACK_TOKEN",
+    ]);
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment?.X_TOKEN).toBe(
+      connectorPlaceholder("x", "X_TOKEN"),
+    );
+    expect(claim.environment).not.toHaveProperty("X_ACCESS_TOKEN");
+    expect(claim.environment).not.toHaveProperty("X_REFRESH_TOKEN");
+    expect(claim.secretConnectorMap).toMatchObject({ X_TOKEN: "x" });
+    expect(claim.secretConnectorMap).not.toHaveProperty("X_REFRESH_TOKEN");
+    expect(claim.secretConnectorMetadataMap ?? {}).not.toHaveProperty(
+      "X_TOKEN",
+    );
+
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain("x");
+    expect(findFirewallEntry(claim.firewalls, "x")).toStrictEqual({
+      kind: "builtin",
+      name: "x",
+    });
+    expect(claim.billableFirewalls).toContain("x");
+    expect(claim.networkPolicies?.x?.unknownPolicy).toBe("allow");
+    expect(claim.environment).not.toHaveProperty("SLACK_TOKEN");
+    expect(claim.secretConnectorMap).not.toHaveProperty("SLACK_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "slack")).toBeUndefined();
+    expect(claim.billableFirewalls).not.toContain("slack");
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("slack");
+
+    // The stored access token is only readable through the firewall-auth
+    // webhook with the claimed run's sandbox token.
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the x claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: { Authorization: `Bearer \${{ secrets.X_TOKEN }}` },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected the x firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer x-bdd-access",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("does not decrypt stored connector secrets overridden by body secrets", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-overridden-access",
+      refreshToken: "x-bdd-overridden-refresh",
+    });
+    const composeName = `bdd-overridden-connector-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "use overridden x connector secret",
+      secrets: { X_TOKEN: "body-x-token" },
+    });
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      0,
+    );
+
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
+    );
+    expectApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_load_stored_connector_secret_rows",
+    ]);
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+    ]);
+    const buildStoredConnectorStateEvent = singleApiDispatchEvent(
+      timingEvents,
+      "api_dispatch_prepare_context_build_stored_connector_state",
+    );
+    expect(buildStoredConnectorStateEvent).toStrictEqual(
+      expect.objectContaining({
+        connector_scope_source: "legacy_all",
+        stored_connector_count_bucket: "1",
+        stored_connector_secret_count_bucket: "0",
+      }),
+    );
+    expect(buildStoredConnectorStateEvent).not.toHaveProperty(
+      "zero_run_origin",
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      "x-bdd-overridden-access",
+      "x-bdd-overridden-refresh",
+      "body-x-token",
+      "X_TOKEN",
+    ]);
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment?.X_TOKEN).toBe(
+      connectorPlaceholder("x", "X_TOKEN"),
+    );
+    expect(claim.secretConnectorMap ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "x")).toStrictEqual({
+      kind: "builtin",
+      name: "x",
+    });
+    expect(claim.billableFirewalls).toContain("x");
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the x claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: { Authorization: `Bearer \${{ secrets.X_TOKEN }}` },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected the overridden x firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer body-x-token",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("does not decrypt stored connector secrets overridden by compose environment", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await connectors.connectManualGrant(actor, "agora", "api-token", {
+      AGORA_CUSTOMER_ID: "agora-customer-id",
+      AGORA_CUSTOMER_SECRET: "agora-customer-secret",
+      AGORA_APP_ID: "agora-app-id",
+      AGORA_APP_CERTIFICATE: "agora-stored-certificate",
+    });
+    const composeName = `bdd-compose-overrides-connector-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: {
+            ANTHROPIC_API_KEY: "bdd-inline-key",
+            AGORA_APP_CERTIFICATE: "inline-agora-certificate",
+          },
+        },
+      },
+    });
+
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "use compose-overridden agora certificate",
+    });
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      0,
+    );
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+    ]);
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.environment?.AGORA_CUSTOMER_ID).toBe(
+      connectorPlaceholder("agora", "AGORA_CUSTOMER_ID"),
+    );
+    expect(claim.environment?.AGORA_CUSTOMER_SECRET).toBe(
+      connectorPlaceholder("agora", "AGORA_CUSTOMER_SECRET"),
+    );
+    expect(claim.environment?.AGORA_APP_ID).toBe("agora-app-id");
+    expect(claim.environment?.AGORA_APP_CERTIFICATE).toBe(
+      "inline-agora-certificate",
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("maps stored connector variable sources to runtime aliases for permission manifests", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "test-oauth",
+      authMethod: "oauth",
+      accessToken: "test-oauth-bdd-access",
+      refreshToken: "test-oauth-bdd-refresh",
+    });
+    const composeName = `bdd-connector-var-alias-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "use stored connector variable aliases",
+    });
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(findFirewallEntry(claim.firewalls, "test-oauth")).toStrictEqual({
+      kind: "builtin",
+      name: "test-oauth",
+      baseUrlVars: {
+        TEST_OAUTH_TENANT_ID: "test-oauth-oauth-tenantId",
+      },
+    });
+    expect(claim.environment?.TEST_OAUTH_TENANT_ID).toBe(
+      "test-oauth-oauth-tenantId",
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("injects only enabled stored connectors for Zero-backed direct runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-direct-access",
+      refreshToken: "x-bdd-direct-refresh",
+    });
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-bdd-direct-unenabled-access",
+    });
+    const enabled = await api.enableAgentConnectors(actor, agentId, ["x"]);
+    expect(enabled).toContain("x");
+
+    const run = await api.createDirectRun(
+      actor,
+      zeroBackedDirectRunBody({
+        agentId,
+        prompt: "direct run with the x connector",
+      }),
+    );
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+    ]);
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment?.X_TOKEN).toBe(
+      connectorPlaceholder("x", "X_TOKEN"),
+    );
+    expect(claim.secretConnectorMap).toMatchObject({ X_TOKEN: "x" });
+    expect(findFirewallEntry(claim.firewalls, "x")).toStrictEqual({
+      kind: "builtin",
+      name: "x",
+    });
+    expect(claim.billableFirewalls).toContain("x");
+    expect(claim.networkPolicies?.x?.unknownPolicy).toBe("allow");
+    expect(claim.environment).not.toHaveProperty("SLACK_TOKEN");
+    expect(claim.secretConnectorMap).not.toHaveProperty("SLACK_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "slack")).toBeUndefined();
+    expect(claim.billableFirewalls).not.toContain("slack");
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("slack");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("injects manual-grant api-token connectors and their optional variables", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
+      GITLAB_TOKEN: "glpat-bdd",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["gitlab"]);
+
+    const withoutHost = await api.createRun(actor, {
+      agentId,
+      prompt: "use gitlab without the optional host",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const bareClaim = await api.claimRunnerJob(withoutHost.runId);
+    expect(bareClaim.environment?.GITLAB_TOKEN).toBe(
+      connectorPlaceholder("gitlab", "GITLAB_TOKEN"),
+    );
+    expect(bareClaim.environment).not.toHaveProperty("GITLAB_HOST");
+    expect(bareClaim.secretConnectorMap).toMatchObject({
+      GITLAB_TOKEN: "gitlab",
+    });
+
+    // Reconnecting with the optional variable threads it into the next run.
+    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
+      GITLAB_TOKEN: "glpat-bdd",
+      GITLAB_HOST: "gitlab.example.com",
+    });
+    const withHost = await api.createRun(actor, {
+      agentId,
+      prompt: "use gitlab with the optional host",
+      modelProvider: "anthropic-api-key",
+    });
+    const timingEvents = apiDispatchTimingEventsForRun(withHost.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES,
+    );
+    const hostClaim = await api.claimRunnerJob(withHost.runId);
+    expect(hostClaim.environment?.GITLAB_TOKEN).toBe(
+      connectorPlaceholder("gitlab", "GITLAB_TOKEN"),
+    );
+    expect(hostClaim.environment?.GITLAB_HOST).toBe("gitlab.example.com");
+
+    await api.requestCancelRun(actor, withoutHost.runId, [200]);
+    await api.requestCancelRun(actor, withHost.runId, [200]);
+    const drained = await api.readRunQueue(actor);
+    expect(drained.body.concurrency.active).toBe(0);
+  });
+
+  it("does not decrypt stored connector auth secrets during create-run", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-lazy-access",
+      refreshToken: "x-bdd-lazy-refresh",
+    });
+    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
+      GITLAB_TOKEN: "glpat-bdd-parallel",
+    });
+    await connectors.connectManualGrant(actor, "figma", "api-token", {
+      FIGMA_TOKEN: "figd_bdd-parallel",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["x", "gitlab", "figma"]);
+
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use lazy connector auth credentials",
+      modelProvider: "anthropic-api-key",
+    });
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      0,
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("uses the builtin Figma firewall for personal access tokens", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.connectManualGrant(actor, "figma", "api-token", {
+      FIGMA_TOKEN: "figd_bdd",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["figma"]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use figma personal access token",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    await expect
+      .poll(
+        async () => {
+          return (await api.pollRunner(runnerGroup)).body.job?.runId;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(run.runId);
+    const claim = await api.claimRunnerJob(run.runId);
+    const figmaTokenPlaceholder = connectorPlaceholder("figma", "FIGMA_TOKEN");
+    const figmaTokenTemplate = ["$", "{{ secrets.FIGMA_TOKEN }}"].join("");
+
+    expect(claim.environment?.FIGMA_TOKEN).toBe(figmaTokenPlaceholder);
+    expect(claim.secretConnectorMap).toMatchObject({ FIGMA_TOKEN: "figma" });
+
+    const figmaEntry = findFirewallEntry(claim.firewalls, "figma");
+    expect(figmaEntry).toStrictEqual({ kind: "builtin", name: "figma" });
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the figma claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          "X-Figma-Token": figmaTokenTemplate,
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected the figma firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      "X-Figma-Token": "figd_bdd",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  }, 15_000);
+
+  it("keeps refresh-owned connector secrets out of the sandbox environment", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.connectManualGrant(actor, "lark", "api-token", {
+      LARK_APP_ID: "lark-app-id",
+      LARK_APP_SECRET: "lark-app-secret",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["lark"]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use lark before any cached access token exists",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment?.LARK_TOKEN).toBe(
+      connectorPlaceholder("lark", "LARK_TOKEN"),
+    );
+    expect(claim.environment).not.toHaveProperty("LARK_APP_ID");
+    expect(claim.environment).not.toHaveProperty("LARK_APP_SECRET");
+    expect(claim.environment).not.toHaveProperty("LARK_ACCESS_TOKEN");
+    expect(claim.secretConnectorMap).toMatchObject({ LARK_TOKEN: "lark" });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("withholds platform secrets from the sandbox environment", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token-bdd");
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "google-ads",
+      authMethod: "oauth",
+      accessToken: "google-ads-bdd-access",
+      refreshToken: "google-ads-bdd-refresh",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["google-ads"]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use google ads",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment).not.toHaveProperty("GOOGLE_ADS_DEVELOPER_TOKEN");
+    expect(claim.secretConnectorMap).toMatchObject({
+      GOOGLE_ADS_TOKEN: "google-ads",
+    });
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain("google-ads");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("ignores plain user secrets named like connector tokens", async () => {
+    const api = createRunsAutomationsApi(context);
+    const authOrg = createAuthOrgAgentsBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    // axiom is enabled on the agent but never connected; a user secret with
+    // the connector's token name must not impersonate the connector.
+    await api.enableAgentConnectors(actor, agentId, ["axiom"]);
+    await authOrg.setSecret(actor, {
+      name: "AXIOM_TOKEN",
+      value: "xaat-plain-user-secret",
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "run without a connected axiom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment).not.toHaveProperty("AXIOM_TOKEN");
+    expect(
+      claim.firewalls?.some((firewall) => {
+        return firewallEntryName(firewall) === "axiom";
+      }),
+    ).toBeFalsy();
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("resolves compose secret references into direct run environments", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const authOrg = createAuthOrgAgentsBddApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await authOrg.setSecret(actor, {
+      name: "SHARED_TOKEN",
+      value: "user-shared-secret",
+    });
+    const composeName = `bdd-secret-refs-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: {
+            ANTHROPIC_API_KEY: "bdd-inline-key",
+            EXTERNAL_TOKEN: `\${{ secrets.SHARED_TOKEN }}`,
+          },
+        },
+      },
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "resolve referenced secrets",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.environment?.EXTERNAL_TOKEN).toBe("user-shared-secret");
+    expect(claim.secretValues).toContain("user-shared-secret");
+    expect(claim.firewalls ?? []).toStrictEqual([]);
+    expect(claim.networkPolicies ?? {}).toStrictEqual({});
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+});
+
+describe("RUN-02: custom connectors, grants, and network policies", () => {
+  it("injects enabled custom connector firewalls with resolvable org secrets", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const slug = `bdd-internal-${randomUUID().slice(0, 8)}`;
+    const custom = await connectors.createCustomConnector(actor, {
+      slug,
+      displayName: "BDD Internal API",
+      prefixes: ["https://*.internal.example.com/api/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "custom-secret-value",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES,
+    );
+    expectCustomConnectorRuntimePhaseTimingEvents(timingEvents);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      custom.id,
+      slug,
+      "custom-secret-value",
+    ]);
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
+    const secretKey = `CUSTOM_${custom.id.replaceAll("-", "")}_S_SECRET`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(customApis[0]?.base).toBe(
+      "https://{hostWildcard1}.internal.example.com/api/",
+    );
+    expect(customApis[0]?.auth?.headers?.Authorization).toBe(
+      `Bearer \${{ secrets.${secretKey} }}`,
+    );
+    expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the custom claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected the custom firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer custom-secret-value",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("injects only enabled custom connector firewalls for Zero-backed direct runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
+
+    const allowedSlug = `bdd-direct-internal-${randomUUID().slice(0, 8)}`;
+    const allowed = await connectors.createCustomConnector(actor, {
+      slug: allowedSlug,
+      displayName: "BDD Direct Internal API",
+      prefixes: ["https://*.direct.internal.example.com/api/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      allowed.id,
+      "direct-custom-secret-value",
+    );
+
+    const blockedSlug = `bdd-direct-blocked-${randomUUID().slice(0, 8)}`;
+    const blocked = await connectors.createCustomConnector(actor, {
+      slug: blockedSlug,
+      displayName: "BDD Direct Blocked API",
+      prefixes: ["https://*.blocked.internal.example.com/api/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      blocked.id,
+      "blocked-custom-secret-value",
+    );
+
+    await connectors.updateAgentCustomConnectors(actor, agentId, [allowed.id]);
+
+    const run = await api.createDirectRun(
+      actor,
+      zeroBackedDirectRunBody({
+        agentId,
+        prompt: "direct run with the custom connector",
+      }),
+    );
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES,
+    );
+    expectCustomConnectorRuntimePhaseTimingEvents(timingEvents);
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      allowed.id,
+      allowedSlug,
+      "direct-custom-secret-value",
+      blocked.id,
+      blockedSlug,
+      "blocked-custom-secret-value",
+    ]);
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const allowedInternalName = `custom_connector_${allowed.id.replaceAll("-", "")}`;
+    const blockedInternalName = `custom_connector_${blocked.id.replaceAll("-", "")}`;
+    expect(
+      findFirewallEntry(claim.firewalls, allowedInternalName),
+    ).toBeDefined();
+    expect(
+      findFirewallEntry(claim.firewalls, blockedInternalName),
+    ).toBeUndefined();
+    expect(claim.networkPolicies?.[allowedInternalName]?.unknownPolicy).toBe(
+      "allow",
+    );
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty(blockedInternalName);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("injects proposed custom connector fields into headers, query, and host templates", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Proposed Runtime",
+        prefixTemplates: [`https://{{variables.subdomain}}.${rand}.test/v1/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+          {
+            key: "subdomain",
+            label: "Subdomain",
+            kind: "variable",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [
+          {
+            name: "tenant",
+            valueTemplate: "{{variables.subdomain}}",
+          },
+        ],
+      },
+      values: [
+        { key: "api_key", kind: "secret", value: "runtime-proposal-secret" },
+        { key: "subdomain", kind: "variable", value: "acme" },
+      ],
+      agentId,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the proposed custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES,
+    );
+    expectCustomConnectorRuntimePhaseTimingEvents(timingEvents);
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      saved.connector.id,
+      rand,
+      "runtime-proposal-secret",
+      "acme",
+    ]);
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const idPart = saved.connector.id.replaceAll("-", "");
+    const internalName = `custom_connector_${idPart}`;
+    const secretKey = `CUSTOM_${idPart}_S_API_KEY`;
+    const variableKey = `CUSTOM_${idPart}_V_SUBDOMAIN`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(customApis[0]?.base).toBe(`https://acme.${rand}.test/v1/`);
+    expect(customApis[0]?.auth?.headers?.Authorization).toBe(
+      `Bearer \${{ secrets.${secretKey} }}`,
+    );
+    expect(customApis[0]?.auth?.query?.tenant).toBe(
+      `\${{ secrets.${variableKey} }}`,
+    );
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the custom claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+        authQuery: {
+          tenant: `\${{ secrets.${variableKey} }}`,
+        },
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected the custom firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer runtime-proposal-secret",
+    });
+    expect(resolved.body.query).toStrictEqual({ tenant: "acme" });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("omits custom connector auth entries backed only by missing optional fields", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Optional Runtime",
+        prefixTemplates: [`https://${rand}.optional.test/v1/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+          {
+            key: "secondary_token",
+            label: "Secondary token",
+            kind: "secret",
+            required: false,
+          },
+          {
+            key: "tenant_id",
+            label: "Tenant ID",
+            kind: "variable",
+            required: false,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+          {
+            name: "X-Secondary",
+            valueTemplate: "{{secrets.secondary_token}}",
+          },
+        ],
+        queryInjections: [
+          {
+            name: "tenant",
+            valueTemplate: "{{variables.tenant_id}}",
+          },
+        ],
+      },
+      values: [{ key: "api_key", kind: "secret", value: "optional-primary" }],
+      agentId,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the optional custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const idPart = saved.connector.id.replaceAll("-", "");
+    const internalName = `custom_connector_${idPart}`;
+    const secretKey = `CUSTOM_${idPart}_S_API_KEY`;
+    const secondarySecretKey = `CUSTOM_${idPart}_S_SECONDARY_TOKEN`;
+    const tenantVarKey = `CUSTOM_${idPart}_V_TENANT_ID`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(customApis[0]?.auth?.headers).toStrictEqual({
+      Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+    });
+    expect(customApis[0]?.auth?.query).toStrictEqual({});
+    expect(JSON.stringify(customApis)).not.toContain(secondarySecretKey);
+    expect(JSON.stringify(customApis)).not.toContain(tenantVarKey);
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the custom claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected the optional custom firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer optional-primary",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("skips custom connectors when all auth entries require missing optional fields", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Optional Only Runtime",
+        prefixTemplates: [`https://${rand}.optional-only.test/v1/`],
+        fields: [
+          {
+            key: "secret",
+            label: "API key",
+            kind: "secret",
+            required: false,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.secret}}",
+          },
+        ],
+        queryInjections: [],
+      },
+      values: [
+        {
+          key: "secret",
+          kind: "secret",
+          value: "optional-only-secret",
+        },
+      ],
+      agentId,
+    });
+    expect(saved.authorizedAgentId).toBe(agentId);
+    await connectors.deleteCustomConnectorSecret(actor, saved.connector.id);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the optional-only custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const internalName = `custom_connector_${saved.connector.id.replaceAll("-", "")}`;
+    expect(findFirewallEntry(claim.firewalls, internalName)).toBeUndefined();
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty(internalName);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("keeps connector-owned vars out of custom connector base urls", async () => {
+    const api = createRunsAutomationsApi(context);
+    const authOrg = createAuthOrgAgentsBddApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.connectManualGrant(actor, "zendesk", "api-token", {
+      ZENDESK_API_TOKEN: "zendesk-token-bdd",
+      ZENDESK_EMAIL: "connector@example.com",
+      ZENDESK_SUBDOMAIN: "connector-subdomain",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["zendesk"]);
+    await authOrg.setVariable(actor, {
+      name: "ZENDESK_SUBDOMAIN",
+      value: "user-subdomain",
+    });
+
+    // Built-in connector-owned vars must not leak into custom connector bases.
+    const slug = `bdd-vars-${randomUUID().slice(0, 8)}`;
+    const custom = await connectors.createCustomConnector(actor, {
+      slug,
+      displayName: "BDD Vars Custom",
+      prefixes: ["https://internal.example.com/api/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(actor, custom.id, "custom-bdd");
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "expand custom and connector bases",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain("zendesk");
+    expect(findFirewallEntry(claim.firewalls, "zendesk")).toStrictEqual({
+      kind: "builtin",
+      name: "zendesk",
+      baseUrlVars: { ZENDESK_SUBDOMAIN: "connector-subdomain" },
+    });
+    expect(customApis[0]?.base).toBe("https://internal.example.com/api/");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("rejects stored connector base URL vars outside their host policy", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    await connectors.connectManualGrant(actor, "jira", "api-token", {
+      JIRA_API_TOKEN: "jira-token-bdd",
+      JIRA_DOMAIN: "attacker.example",
+      JIRA_EMAIL: "connector@example.com",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["jira"]);
+
+    const rejected = await api.requestCreateRun(
+      actor,
+      {
+        agentId,
+        prompt: "use jira",
+        modelProvider: "anthropic-api-key",
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+  });
+
+  it("applies, scopes, expires, and snapshots user permission grants", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+
+    // The grants agent is public so a same-org member can write their own
+    // grants for it without being the owner.
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD grants agent",
+    });
+    const agentId = agent.agentId;
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-bdd-grants",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["slack"]);
+
+    async function claimSlackPolicy(prompt: string): Promise<{
+      readonly allow: readonly string[];
+      readonly deny: readonly string[];
+      readonly unknownPolicy?: string;
+    }> {
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt,
+        modelProvider: "anthropic-api-key",
+      });
+      const claim = await api.claimRunnerJob(run.runId);
+      await api.requestCancelRun(actor, run.runId, [200]);
+      const policy = claim.networkPolicies?.slack;
+      if (!policy) {
+        throw new Error("Expected a slack network policy on the claim");
+      }
+      return policy;
+    }
+
+    await api.heartbeatRunner(runnerGroup);
+    const defaults = await claimSlackPolicy("no grants yet");
+    expect(defaults.allow).toContain("conversations:read");
+    expect(defaults.allow).toContain("users:read");
+    expect(defaults.deny).toContain("chat:write");
+    expect(defaults.unknownPolicy).toBe("allow");
+
+    // Grants across every expiry arm; the list API shows the stored expiry.
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "chat:write",
+      action: "allow",
+      expiresIn: "1h",
+    });
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "files:read",
+      action: "allow",
+      expiresIn: "24h",
+    });
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "search:read",
+      action: "allow",
+      expiresIn: "7d",
+    });
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "conversations:read",
+      action: "allow",
+    });
+    const grants = await api.listUserPermissionGrants(actor, agentId);
+    const expiryByPermission = new Map(
+      grants.map((grant) => {
+        return [grant.permission, grant.expiresAt];
+      }),
+    );
+    expect(expiryByPermission.get("chat:write")).toStrictEqual(
+      expect.any(String),
+    );
+    expect(expiryByPermission.get("files:read")).toStrictEqual(
+      expect.any(String),
+    );
+    expect(expiryByPermission.get("search:read")).toStrictEqual(
+      expect.any(String),
+    );
+    expect(expiryByPermission.get("conversations:read")).toBeNull();
+
+    // A same-org member's own grant never leaks into the owner's runs.
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    await api.applyUserPermissionGrant(member, {
+      agentId,
+      connectorRef: "slack",
+      permission: "files:write",
+      action: "allow",
+    });
+
+    const granted = await claimSlackPolicy("granted permissions");
+    expect(granted.allow).toContain("chat:write");
+    expect(granted.allow).toContain("files:read");
+    expect(granted.deny).not.toContain("chat:write");
+    expect(granted.deny).toContain("files:write");
+
+    // Two hours later the 1h grant is expired while the 24h grant holds.
+    mockNow(now() + 2 * 3_600_000);
+    const expired = await claimSlackPolicy("after the 1h grant expired");
+    expect(expired.deny).toContain("chat:write");
+    expect(expired.allow).toContain("files:read");
+
+    // Unknown-permission grants flip only the unknown policy.
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: UNKNOWN_PERMISSION_GRANT,
+      action: "deny",
+    });
+    const unknownDenied = await claimSlackPolicy("deny unknown permissions");
+    expect(unknownDenied.unknownPolicy).toBe("deny");
+    expect(unknownDenied.allow).toContain("conversations:read");
+    expect(unknownDenied.deny).toContain("chat:write");
+
+    // The grant snapshot is baked into the queued run: flipping the grant
+    // after creation does not change the already-created run's policy.
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "chat:write",
+      action: "allow",
+    });
+    const snapshotRun = await api.createRun(actor, {
+      agentId,
+      prompt: "snapshot the grant state",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "chat:write",
+      action: "deny",
+    });
+    const snapshotClaim = await api.claimRunnerJob(snapshotRun.runId);
+    expect(snapshotClaim.networkPolicies?.slack?.allow).toContain("chat:write");
+    expect(snapshotClaim.networkPolicies?.slack?.deny).not.toContain(
+      "chat:write",
+    );
+
+    await api.requestCancelRun(actor, snapshotRun.runId, [200]);
+    const drained = await api.readRunQueue(actor);
+    expect(drained.body.concurrency.active).toBe(0);
+  });
+
+  it("uses connector-specific unknown endpoint defaults with user grant overrides", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD Cloudflare unknown policy agent",
+    });
+    const agentId = agent.agentId;
+    await fw.seedTestConnector(actor, {
+      connectorName: "cloudflare",
+      authMethod: "oauth",
+      accessToken: "cloudflare-bdd-token",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["cloudflare"]);
+
+    async function claimCloudflarePolicy(prompt: string): Promise<{
+      readonly allow: readonly string[];
+      readonly deny: readonly string[];
+      readonly unknownPolicy?: string;
+    }> {
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt,
+        modelProvider: "anthropic-api-key",
+      });
+      const claim = await api.claimRunnerJob(run.runId);
+      await api.requestCancelRun(actor, run.runId, [200]);
+      const policy = claim.networkPolicies?.cloudflare;
+      if (!policy) {
+        throw new Error("Expected a cloudflare network policy on the claim");
+      }
+      return policy;
+    }
+
+    await api.heartbeatRunner(runnerGroup);
+    const defaults = await claimCloudflarePolicy("default unknown policy");
+    expect(defaults.allow).toContain("dns-firewall.read");
+    expect(defaults.deny).toContain("dns-firewall.write");
+    expect(defaults.unknownPolicy).toBe("deny");
+
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "cloudflare",
+      permission: UNKNOWN_PERMISSION_GRANT,
+      action: "allow",
+    });
+
+    const overridden = await claimCloudflarePolicy("allow unknown endpoints");
+    expect(overridden.allow).toContain("dns-firewall.read");
+    expect(overridden.deny).toContain("dns-firewall.write");
+    expect(overridden.unknownPolicy).toBe("allow");
+  });
+
+  it("loads stored connectors and applies default named policies to direct runs without explicit policies", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "cloudflare",
+      authMethod: "oauth",
+      accessToken: "cloudflare-direct-bdd-token",
+    });
+    const composeName = `bdd-cloudflare-direct-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "direct run cloudflare defaults",
+    });
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+    ]);
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.environment?.CLOUDFLARE_TOKEN).toBe(
+      connectorPlaceholder("cloudflare", "CLOUDFLARE_TOKEN"),
+    );
+    expect(claim.secretConnectorMap).toMatchObject({
+      CLOUDFLARE_TOKEN: "cloudflare",
+    });
+    expect(findFirewallEntry(claim.firewalls, "cloudflare")).toStrictEqual({
+      kind: "builtin",
+      name: "cloudflare",
+    });
+
+    const policy = claim.networkPolicies?.cloudflare;
+    if (!policy) {
+      throw new Error("Expected a cloudflare network policy on the claim");
+    }
+    expect(policy.allow).toContain("dns-firewall.read");
+    expect(policy.deny).toContain("dns-firewall.write");
+    expect(policy.unknownPolicy).toBe("deny");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+});
+
+describe("RUN-01: zero runner context, queue promotion, and skills", () => {
+  it("injects agent identity, tool hints, and user info into the runner context", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+
+    await bdd.setupOnboarding(actor, {
+      displayName: "BDD Context Agent",
+      timezone: "America/Los_Angeles",
+    });
+    // Reading the current user caches the Clerk name/email used by the
+    // run context's user-info section.
+    await bdd.readMe(actor);
+    await api.grantProEntitlement(actor);
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Research Bot",
+      description: "Finds release details",
+      sound: "direct",
+      visibility: "private",
+    });
+
+    const run = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "summarize release",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const appendSystemPrompt = claim.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain("# Agent Identity");
+    expect(appendSystemPrompt).toContain("Your name is Research Bot.");
+    expect(appendSystemPrompt).toContain("Your role: Finds release details");
+    expect(appendSystemPrompt).toContain(
+      "Be brief and to the point. Skip pleasantries and filler",
+    );
+    expect(appendSystemPrompt).toContain("# Agent Tools");
+    for (const toolHint of [
+      "zero web download-file -h",
+      "Localhost URLs, local dev server ports, and processes started inside the agent runtime are generally only reachable inside that runtime",
+      "`agent-browser` for browser automation and inspection",
+      "Local dev servers are useful for agent-side verification",
+      "For static web artifacts, Zero provides `zero host <dir> --site <slug> [--spa]` to publish a directory containing `index.html` to a public URL that users can open; for HTML presentations, include `--artifact-kind presentation-html`",
+      "For apps or services that require a long-running backend, database, worker, external service, or framework-specific runtime",
+      "for HTML presentations, include `--artifact-kind presentation-html`; run `zero host --help`",
+      "zero connector status <type>",
+      "zero doctor check-connector --help",
+      "zero generate -h",
+      "zero doctor credit",
+      "zero credit <credits>",
+      "zero doctor permission-deny <connector-ref> --method <METHOD> --url <DENIED_URL>",
+      "Use the `url` field from the firewall denial response when present",
+      "zero doctor permission-change --help",
+      "--duration 1h|24h|7d|always",
+      "zero workflow --help",
+      "Local changes or newly-created workflow folders",
+      "runtime-only and will not persist, sync back, or affect future runs",
+      "zero workflow create|edit <name> --dir <path>",
+      "zero developer-support --help",
+      "zero maps --help",
+    ]) {
+      expect(appendSystemPrompt).toContain(toolHint);
+    }
+    for (const otherIntegrationHint of [
+      "zero slack download-file -h",
+      "zero github download-file -h",
+      "zero telegram download-file -h",
+      "zero phone download-file -h",
+    ]) {
+      expect(appendSystemPrompt).not.toContain(otherIntegrationHint);
+    }
+    expect(appendSystemPrompt).toContain("# Current User Info");
+    expect(appendSystemPrompt).toContain("Name: BDD User");
+    expect(appendSystemPrompt).toContain(`Email: ${actor.email}`);
+    expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
+
+    expect(claim.disallowedTools).toStrictEqual([
+      "CronCreate",
+      "CronList",
+      "CronDelete",
+      "ScheduleWakeup",
+      "AskUserQuestion",
+      "Skill(loop)",
+      "Skill(loop *)",
+    ]);
+    expect(claim.environment?.ZERO_AGENT_ID).toBe(agent.agentId);
+    const zeroToken = claim.environment?.ZERO_TOKEN;
+    expect(zeroToken).toMatch(/^vm0_sandbox_/);
+    if (!zeroToken) {
+      throw new Error("Expected the claim to expose the zero token");
+    }
+    expect(claim.secretValues).toContain(zeroToken);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("promotes queued runs with feature flags and a fresh api start time", async () => {
+    const api = createRunsAutomationsApi(context);
+    const computerUse = createComputerUseBddApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.MemoryViewer]: true,
+    });
+
+    const firstStartedAt = now();
+    mockNow(firstStartedAt);
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run two",
+      modelProvider: "anthropic-api-key",
+    });
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run three",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+    const queueState = await api.readRunQueue(actor);
+    expect(queueState.body.queue[0]?.runId).toBe(queued.runId);
+
+    // The promoted run's api start time is the promotion time, not the
+    // original request time (both stay inside the pending-run TTL window).
+    const promotedAt = firstStartedAt + 120_000;
+    mockNow(promotedAt);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
+    expect(promoted.status).toBe("pending");
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(queued.runId);
+    expect(claim.featureFlags).toMatchObject({
+      [FeatureSwitchKey.MemoryViewer]: true,
+    });
+    expect(claim.apiStartTime).toBe(promotedAt);
+
+    // A run-scoped zero token issued without a host binding cannot reach
+    // computer-use write routes.
+    const zeroToken = claim.environment?.ZERO_TOKEN;
+    if (!zeroToken) {
+      throw new Error("Expected the promoted claim to expose the zero token");
+    }
+    const writeRejected =
+      await computerUse.requestCreateComputerUseWriteCommand(
+        { bearer: zeroToken },
+        [403],
+      );
+    expectApiError(writeRejected.body);
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    const drained = await api.readRunQueue(actor);
+    expect(drained.body.concurrency.active).toBe(0);
+  });
+
+  it("mounts workflows for claude-code zero agents", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const misc = createMiscRoutesApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+
+    const workflowName = "bdd-claude-kit";
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD claude workflows agent",
+      visibility: "private",
+    });
+    // Workflows are created directly under the owning agent (agent-scoped 1:N).
+    await misc.createWorkflow(
+      actor,
+      agent.agentId,
+      workflowName,
+      { content: "# BDD claude kit\nUse this workflow in claude runs." },
+      [201],
+    );
+
+    const run = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "use the workflow",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.cliAgentType).toBe("claude-code");
+    expect(
+      claim.storageManifest?.storages.map((storage) => {
+        return storage.mountPath;
+      }),
+    ).toContain(`/home/user/.claude/skills/${workflowName}`);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+});
+
+describe("RUN-03: cancellation of dispatched and terminal runs", () => {
+  it("cancels a claimed running run and treats repeat cancellation as settled", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "cancel while running",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    await api.claimRunnerJob(run.runId);
+
+    const running = await api.readRun(actor, run.runId);
+    expect(running.status).toBe("running");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(
+          ([topic, payload]) => {
+            return (
+              topic === `run:changed:${run.runId}` &&
+              isRecord(payload) &&
+              payload.status === "cancelled"
+            );
+          },
+        );
+      })
+      .toBe(true);
+
+    const repeated = await api.requestCancelRun(actor, run.runId, [200]);
+    expect(repeated.status).toBe(200);
+  });
+});
+
+describe("RUN-03: user-runner protocol and runner authentication", () => {
+  it("dispatches, scopes, and claims runs through user API keys", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const apiKey = await api.createApiKey(actor);
+    const bearer = `Bearer ${apiKey.token}`;
+    const firstPrompt = "user runner job one";
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: firstPrompt,
+      modelProvider: "anthropic-api-key",
+    });
+    const polled = await api.requestPollRunnerAs(
+      bearer,
+      {
+        group: runnerGroup,
+        profiles: ["vm0/default"],
+        telemetry: { pollReason: "deferred" },
+      },
+      [200],
+    );
+    if (polled.status !== 200) {
+      throw new Error("Expected the user runner poll to succeed");
+    }
+    expect(polled.body.job?.runId).toBe(first.runId);
+
+    const claimed = await api.requestClaimRunnerJobAs(
+      bearer,
+      first.runId,
+      [200],
+      {
+        telemetry: {
+          discoverySource: "poll",
+          jobDiscoveredToClaimRequestMs: 1234,
+          localAdmissionToClaimRequestMs: 56,
+          pollDueToJobDiscoveredMs: 789,
+          pollHttpRequestMs: 321,
+          pollReason: "deferred",
+        },
+      },
+    );
+    if (claimed.status !== 200) {
+      throw new Error("Expected the user runner claim to succeed");
+    }
+    expect(claimed.body.prompt).toBe("user runner job one");
+    expect(claimed.body.sandboxToken).not.toBe("");
+    const claimRouteTimingEvents = claimRouteTimingEventsForRun(first.runId);
+    expect(claimRouteTimingEvents).toHaveLength(
+      CLAIM_ROUTE_TIMING_ACTION_TYPES.length,
+    );
+    const observedClaimRouteActionTypes = new Set(
+      claimRouteTimingEvents.map((event) => {
+        return event.op_type;
+      }),
+    );
+    for (const actionType of CLAIM_ROUTE_TIMING_ACTION_TYPES) {
+      expect(observedClaimRouteActionTypes).toContain(actionType);
+    }
+    for (const actionType of CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES) {
+      const events = claimRouteTimingEvents.filter((event) => {
+        return event.op_type === actionType;
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
+        expect.objectContaining({
+          span_kind: "top_level",
+        }),
+      );
+    }
+    for (const actionType of CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES) {
+      const events = claimRouteTimingEvents.filter((event) => {
+        return event.op_type === actionType;
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
+        expect.objectContaining({
+          span_kind: "nested",
+        }),
+      );
+    }
+    for (const event of claimRouteTimingEvents) {
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          sandbox_type: "runner",
+          success: true,
+          run_id: first.runId,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          auth_type: "user",
+          discovery_source: "poll",
+          poll_reason: "deferred",
+        }),
+      );
+      expect(event.duration_ms).toStrictEqual(expect.any(Number));
+      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
+      expect(["top_level", "nested"]).toContain(event.span_kind);
+      for (const forbiddenKey of FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS) {
+        expect(event).not.toHaveProperty(forbiddenKey);
+      }
+      const serialized = JSON.stringify(event);
+      expect(serialized).not.toContain(firstPrompt);
+      expect(serialized).not.toContain(claimed.body.sandboxToken);
+      expect(serialized).not.toContain(apiKey.token);
+    }
+    const timingEvents = sandboxOperationEventsForRun(first.runId);
+    expect(
+      timingEvents.find((event) => {
+        return event.op_type === "job_discovered_to_claim_request";
+      }),
+    ).toStrictEqual(
+      expect.objectContaining({
+        op_type: "job_discovered_to_claim_request",
+        sandbox_type: "runner",
+        run_id: first.runId,
+        duration_ms: 1234,
+        success: true,
+        profile: "vm0/default",
+        auth_type: "user",
+        discovery_source: "poll",
+        poll_reason: "deferred",
+      }),
+    );
+    expect(
+      timingEvents.find((event) => {
+        return event.op_type === "local_admission_to_claim_request";
+      }),
+    ).toStrictEqual(
+      expect.objectContaining({
+        op_type: "local_admission_to_claim_request",
+        sandbox_type: "runner",
+        run_id: first.runId,
+        duration_ms: 56,
+        success: true,
+        profile: "vm0/default",
+        auth_type: "user",
+        discovery_source: "poll",
+        poll_reason: "deferred",
+      }),
+    );
+    for (const actionType of RUNNER_POLL_TIMING_ACTION_TYPES) {
+      const events = timingEvents.filter((event) => {
+        return event.op_type === actionType;
+      });
+      expect(events).toHaveLength(1);
+      const event = events[0];
+      if (!event) {
+        throw new Error(`Missing ${actionType} timing event`);
+      }
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          sandbox_type: "runner",
+          run_id: first.runId,
+          success: true,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          auth_type: "user",
+          poll_reason: "deferred",
+        }),
+      );
+      expect(event.duration_ms).toStrictEqual(expect.any(Number));
+      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
+    }
+    for (const actionType of RUNNER_CLAIM_TELEMETRY_ACTION_TYPES) {
+      const events = timingEvents.filter((event) => {
+        return event.op_type === actionType;
+      });
+      expect(events).toHaveLength(1);
+      const event = events[0];
+      if (!event) {
+        throw new Error(`Missing ${actionType} timing event`);
+      }
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          sandbox_type: "runner",
+          run_id: first.runId,
+          success: true,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          auth_type: "user",
+          discovery_source: "poll",
+          poll_reason: "deferred",
+        }),
+      );
+    }
+    expect(
+      timingEvents.find((event) => {
+        return event.op_type === "runner_poll_due_to_job_discovered";
+      }),
+    ).toStrictEqual(
+      expect.objectContaining({
+        duration_ms: 789,
+      }),
+    );
+    expect(
+      timingEvents.find((event) => {
+        return event.op_type === "runner_poll_http_request";
+      }),
+    ).toStrictEqual(
+      expect.objectContaining({
+        duration_ms: 321,
+      }),
+    );
+    const newRunnerTimingActionTypes = new Set<string>([
+      ...RUNNER_POLL_TIMING_ACTION_TYPES,
+      ...RUNNER_CLAIM_TELEMETRY_ACTION_TYPES,
+    ]);
+    for (const event of timingEvents.filter((timingEvent) => {
+      return (
+        typeof timingEvent.op_type === "string" &&
+        newRunnerTimingActionTypes.has(timingEvent.op_type)
+      );
+    })) {
+      for (const forbiddenKey of FORBIDDEN_API_DISPATCH_TIMING_KEYS) {
+        expect(event).not.toHaveProperty(forbiddenKey);
+      }
+      const serialized = JSON.stringify(event);
+      expect(serialized).not.toContain("user runner job one");
+      expect(serialized).not.toContain(claimed.body.sandboxToken);
+      expect(serialized).not.toContain(apiKey.token);
+    }
+    const claimedRun = await api.readRun(actor, first.runId);
+    expect(claimedRun.status).toBe("running");
+
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "user runner job two",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const outsider = createBddApi(context).user();
+    const outsiderKey = await api.createApiKey(outsider);
+    const outsiderBearer = `Bearer ${outsiderKey.token}`;
+    const outsiderPoll = await api.requestPollRunnerAs(
+      outsiderBearer,
+      { group: runnerGroup, profiles: ["vm0/default"] },
+      [200],
+    );
+    if (outsiderPoll.status !== 200) {
+      throw new Error("Expected the outsider poll to succeed");
+    }
+    expect(outsiderPoll.body.job ?? null).toBeNull();
+    const crossClaim = await api.requestClaimRunnerJobAs(
+      outsiderBearer,
+      second.runId,
+      [403],
+    );
+    expectApiError(crossClaim.body);
+    expect(crossClaim.body.error.message).toBe("Job does not belong to user");
+
+    const tokenRequest = {
+      keyName: "bdd-key",
+      timestamp: 1_700_000_000_000,
+      capability: `{"runner-group:${runnerGroup}":["subscribe"]}`,
+      nonce: "bdd-nonce",
+      mac: "bdd-mac",
+    };
+    context.mocks.ably.createTokenRequest.mockResolvedValue(tokenRequest);
+    const realtime = await api.requestRunnerRealtimeTokenAs(
+      bearer,
+      { group: runnerGroup },
+      [200],
+    );
+    expect(realtime.body).toStrictEqual(tokenRequest);
+    const deniedRealtime = await api.requestRunnerRealtimeTokenAs(
+      bearer,
+      { group: "wrong-org/default" },
+      [403],
+    );
+    expectApiError(deniedRealtime.body);
+    expect(deniedRealtime.body.error.message).toBe(
+      "Only vm0/* runner groups are supported",
+    );
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+    const settled = await api.readRunQueue(actor);
+    expect(settled.body.concurrency.active).toBe(0);
+  });
+
+  it("rejects runner calls with malformed, revoked, or wrong runner credentials", async () => {
+    const api = createRunsAutomationsApi(context);
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const pollBody = { group: "vm0/bdd-auth", profiles: ["vm0/default"] };
+
+    const rejectedAuthorizations = [
+      "Basic vm0_official_credentials",
+      "Bearer not-a-runner-token",
+      "Bearer vm0_pat_not-a-valid-jwt",
+      "Bearer vm0_official_too-short",
+      `Bearer vm0_official_${"f".repeat(64)}`,
+    ];
+    for (const authorization of rejectedAuthorizations) {
+      const poll = await api.requestPollRunnerAs(
+        authorization,
+        pollBody,
+        [401],
+      );
+      expectApiError(poll.body);
+      expect(poll.body.error.message).toBe("Authentication required");
+    }
+
+    const apiKey = await api.createApiKey(actor);
+    const bearer = `Bearer ${apiKey.token}`;
+    await api.requestPollRunnerAs(bearer, pollBody, [200]);
+
+    await api.revokeApiKey(actor, apiKey.id);
+    const revokedPoll = await api.requestPollRunnerAs(bearer, pollBody, [401]);
+    expectApiError(revokedPoll.body);
+    const revokedClaim = await api.requestClaimRunnerJobAs(
+      bearer,
+      randomUUID(),
+      [401],
+    );
+    expectApiError(revokedClaim.body);
+    expect(revokedClaim.body.error.message).toBe("Not authenticated");
+    const revokedRealtime = await api.requestRunnerRealtimeTokenAs(
+      bearer,
+      { group: "vm0/bdd-auth" },
+      [401],
+    );
+    expectApiError(revokedRealtime.body);
+    expect(context.mocks.ably.createTokenRequest).not.toHaveBeenCalled();
+  });
+
+  it("drops queued jobs whose runs reached a terminal state before the claim", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "terminal before claim",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(run.status).toBe("pending");
+
+    const sandboxHeaders = {
+      authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+    };
+    await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 1,
+        error: "sandbox crashed before claim",
+        lastEventSequence: 0,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    const failed = await api.readRun(actor, run.runId);
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe("sandbox crashed before claim");
+
+    const claim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+    expectApiError(claim.body);
+    expect(claim.body.error.message).toBe("Run not found");
+
+    const reclaim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+    expectApiError(reclaim.body);
+    expect(reclaim.body.error.message).toBe("Job not found in queue");
+  });
+
+  it("returns null claim secretValues for direct compose runs without stored secrets", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    // A plain compose carries inline environment values but no body, model
+    // provider, or connector secrets, so no encrypted secrets map is stored
+    // with the queued job.
+    const composeName = `bdd-no-secrets-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "claim without stored secrets",
+    });
+    expect(run.status).toBe("pending");
+
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.secretValues).toBeNull();
+    expect(claim.prompt).toBe("claim without stored secrets");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+
+    // A compose pinned to a non-vm0 runner group fails dispatch at creation.
+    const foreignName = `bdd-foreign-${randomUUID().slice(0, 8)}`;
+    const foreignCompose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [foreignName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+          experimental_runner: { group: "other/test" },
+        },
+      },
+    });
+    const failedRun = await api.createDirectRun(actor, {
+      agentComposeId: foreignCompose.composeId,
+      prompt: "dispatch to a foreign runner group",
+    });
+    expect(failedRun.status).toBe("failed");
+    expect(failedRun.error).toBe("Only vm0/* runner groups are supported");
+    const storedFailedRun = await api.readRun(actor, failedRun.runId);
+    expect(storedFailedRun.status).toBe("failed");
+    const failedClaim = await api.requestClaimRunnerJob(
+      true,
+      failedRun.runId,
+      [404],
+    );
+    expectApiError(failedClaim.body);
+    expect(failedClaim.body.error.message).toBe("Job not found in queue");
+
+    const firstActive = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "active direct run one",
+    });
+    const secondActive = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "active direct run two",
+    });
+    const rejected = await api.requestDirectRun(
+      actor,
+      {
+        agentComposeId: foreignCompose.composeId,
+        prompt: "concurrency should win before runner payload validation",
+      },
+      [429],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("CONCURRENT_RUN_LIMIT");
+
+    await api.requestCancelRun(actor, firstActive.runId, [200]);
+    await api.requestCancelRun(actor, secondActive.runId, [200]);
+  });
+});
+
+describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () => {
+  it("delivers chat run callbacks through cancellation side effects without HTTP self-dispatch", async () => {
+    const api = createRunsAutomationsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "bdd-bypass");
+
+    let routeRequests = 0;
+    server.use(
+      http.post(CHAT_CALLBACK_URL, () => {
+        routeRequests += 1;
+        return HttpResponse.json({ error: "boom" }, { status: 500 });
+      }),
+    );
+
+    const first = await sendChatRunMessage(actor, {
+      agentId,
+      prompt: "first cancellable chat run",
+    });
+    await api.requestCancelRun(actor, first.runId, [200]);
+
+    const firstCancelled = await api.readRun(actor, first.runId);
+    expect(firstCancelled.status).toBe("cancelled");
+    await expect
+      .poll(async () => {
+        const messages = await chat.listThreadMessages(actor, first.threadId);
+        return messages.messages.some((message) => {
+          return (
+            message.role === "assistant" &&
+            message.runId === first.runId &&
+            message.runLifecycleEvent === "cancelled"
+          );
+        });
+      })
+      .toBe(true);
+    expect(routeRequests).toBe(0);
+
+    const second = await sendChatRunMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "second cancellable chat run",
+    });
+    await api.requestCancelRun(actor, second.runId, [200]);
+
+    const secondCancelled = await api.readRun(actor, second.runId);
+    expect(secondCancelled.status).toBe("cancelled");
+    await expect
+      .poll(async () => {
+        const messages = await chat.listThreadMessages(actor, first.threadId);
+        return messages.messages.some((message) => {
+          return (
+            message.role === "assistant" &&
+            message.runId === second.runId &&
+            message.runLifecycleEvent === "cancelled"
+          );
+        });
+      })
+      .toBe(true);
+    expect(routeRequests).toBe(0);
+
+    const third = await sendChatRunMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "third cancellable chat run",
+    });
+    await api.requestCancelRun(actor, third.runId, [200]);
+
+    const thirdCancelled = await api.readRun(actor, third.runId);
+    expect(thirdCancelled.status).toBe("cancelled");
+
+    let cancelNote:
+      | Awaited<ReturnType<typeof chat.listThreadMessages>>["messages"][number]
+      | undefined;
+    await expect
+      .poll(async () => {
+        const messages = await chat.listThreadMessages(actor, first.threadId);
+        cancelNote = messages.messages.find((message) => {
+          return message.role === "assistant" && message.runId === third.runId;
+        });
+        return cancelNote?.role;
+      })
+      .toBe("assistant");
+    if (!cancelNote || cancelNote.role !== "assistant") {
+      throw new Error(
+        "Expected the delivered chat callback to append an assistant message",
+      );
+    }
+    expect(cancelNote.runLifecycleEvent).toBe("cancelled");
+    expect(cancelNote.content).toStrictEqual(expect.any(String));
+    expect(routeRequests).toBe(0);
+  });
+});
+
+describe("HOOK-02: event-consumer dispatch failures", () => {
+  it("surfaces required event-consumer failures and recovers on retry", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "report events",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+
+    context.mocks.axiom.flush.mockResolvedValue(undefined);
+    context.mocks.axiom.flush.mockRejectedValueOnce(new Error("axiom down"));
+    const failed = await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [{ type: "system", sequenceNumber: 0 }],
+      },
+      sandboxHeaders,
+      [500],
+    );
+    expectApiError(failed.body);
+    expect(failed.body.error.message).toContain(
+      "Required event consumer dispatch failed",
+    );
+
+    const recovered = await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [{ type: "system", sequenceNumber: 1 }],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(recovered.status).toBe(200);
+  });
+});
+
+describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () => {
+  it("acknowledges late assistant events when completion cleanup already wrote the run sequence", async () => {
+    const api = createRunsAutomationsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const chatCallbacks = createChatCallbacksApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const { runId, threadId } = await sendChatRunMessage(actor, {
+      agentId,
+      prompt: "bdd cleanup wins before late event",
+    });
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(runId);
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+    chatCallbacks.mockChatOutputEvents([
+      assistantOutputEvent(0, "cleanup-first assistant text"),
+    ]);
+
+    const historyHash = createHash("sha256")
+      .update(`bdd cleanup-first session history ${runId}`)
+      .digest("hex");
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cleanup-first-${runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId, exitCode: 0, lastEventSequence: 0 },
+      sandboxHeaders,
+      [200],
+    );
+
+    await expect
+      .poll(async () => {
+        const page = await chat.listThreadMessages(actor, threadId);
+        return page.messages.filter((message) => {
+          return (
+            message.role === "assistant" &&
+            message.runId === runId &&
+            message.content === "cleanup-first assistant text"
+          );
+        }).length;
+      })
+      .toBe(1);
+
+    const late = await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              id: "msg_bdd_late_after_cleanup",
+              content: [{ type: "text", text: "late streamed text" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(late.status).toBe(200);
+
+    const afterLate = await chat.listThreadMessages(actor, threadId);
+    const assistantTexts = afterLate.messages.flatMap((message) => {
+      return message.role === "assistant" &&
+        message.runId === runId &&
+        message.content
+        ? [message.content]
+        : [];
+    });
+    expect(assistantTexts).toContain("cleanup-first assistant text");
+    expect(assistantTexts).not.toContain("late streamed text");
+  }, 90_000);
+
+  it("persists assistant events into the linked thread and swallows optional consumer failures", async () => {
+    const api = createRunsAutomationsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    failIfChatCallbackRouteIsFetched();
+
+    const { runId, threadId } = await sendChatRunMessage(actor, {
+      agentId,
+      prompt: "bdd assistant events",
+    });
+
+    const pending = await api.readRun(actor, runId);
+    expect(pending.status).toBe("pending");
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(runId);
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 1,
+            message: {
+              id: "msg_bdd_1",
+              content: [{ type: "text", text: "Hello from BDD events" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    const afterFirst = await chat.listThreadMessages(actor, threadId);
+    const firstAssistant = afterFirst.messages.find((message) => {
+      return message.role === "assistant" && message.runId === runId;
+    });
+    expect(firstAssistant?.id).toBe(
+      assistantMessageIdForRunEvent(runId, "msg_bdd_1"),
+    );
+    expect(firstAssistant?.content).toBe("Hello from BDD events");
+
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("chat assistant publish failed"),
+    );
+    const swallowed = await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 2,
+            message: {
+              id: "msg_bdd_2",
+              content: [{ type: "text", text: "Survives optional failure" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(swallowed.status).toBe(200);
+
+    const afterSecond = await chat.listThreadMessages(actor, threadId);
+    const persisted = afterSecond.messages.filter((message) => {
+      return message.role === "assistant" && message.runId === runId;
+    });
+    expect(persisted).toHaveLength(2);
+    expect(
+      persisted.map((message) => {
+        return message.content;
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining([
+        "Hello from BDD events",
+        "Survives optional failure",
+      ]),
+    );
+
+    // Codex item.completed batches persist only non-blank agent_message text.
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "item.completed",
+            sequenceNumber: 3,
+            item: {
+              id: "item_bdd_3",
+              type: "agent_message",
+              text: "Codex follow-up note",
+            },
+          },
+          {
+            type: "item.completed",
+            sequenceNumber: 4,
+            item: {
+              id: "cmd_bdd_4",
+              type: "command_execution",
+              command: "ls",
+              exit_code: 0,
+              output: "README.md",
+            },
+          },
+          {
+            type: "item.completed",
+            sequenceNumber: 5,
+            item: { id: "item_bdd_5", type: "agent_message", text: "   " },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    const afterCodex = await chat.listThreadMessages(actor, threadId);
+    const codexPersisted = afterCodex.messages.filter((message) => {
+      return message.role === "assistant" && message.runId === runId;
+    });
+    expect(codexPersisted).toHaveLength(3);
+    expect(
+      codexPersisted.map((message) => {
+        return message.content;
+      }),
+    ).toContain("Codex follow-up note");
+
+    // Assistant batches without visible text leave the thread unchanged.
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 6,
+            message: {
+              id: "msg_bdd_6",
+              content: [
+                { type: "tool_use", id: "tool_bdd_1", name: "bash", input: {} },
+              ],
+            },
+          },
+          {
+            type: "assistant",
+            sequenceNumber: 7,
+            message: {
+              id: "msg_bdd_7",
+              content: [{ type: "text", text: "" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    const afterSilent = await chat.listThreadMessages(actor, threadId);
+    expect(
+      afterSilent.messages.filter((message) => {
+        return message.role === "assistant" && message.runId === runId;
+      }),
+    ).toHaveLength(3);
+
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 8,
+            message: {
+              id: "msg_bdd_1",
+              content: [{ type: "text", text: "Duplicate text" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    const afterDuplicate = await chat.listThreadMessages(actor, threadId);
+    const duplicatedMessageId = assistantMessageIdForRunEvent(
+      runId,
+      "msg_bdd_1",
+    );
+    const matchingDuplicateRows = afterDuplicate.messages.filter((message) => {
+      return message.role === "assistant" && message.id === duplicatedMessageId;
+    });
+    expect(matchingDuplicateRows).toHaveLength(1);
+    expect(matchingDuplicateRows[0]?.content).toBe("Hello from BDD events");
+
+    // Assistant text on a run without a chat thread changes no thread state.
+    const threadsBefore = await chat.listThreads(actor, { agentId });
+    const detachedRun = await api.createRun(actor, {
+      agentId,
+      prompt: "report events without a thread",
+      modelProvider: "anthropic-api-key",
+    });
+    const detachedClaim = await api.claimRunnerJob(detachedRun.runId);
+    await webhooks.requestAgentEvents(
+      {
+        runId: detachedRun.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 1,
+            message: {
+              id: "msg_bdd_detached",
+              content: [{ type: "text", text: "No thread receives this" }],
+            },
+          },
+        ],
+      },
+      { authorization: `Bearer ${detachedClaim.sandboxToken}` },
+      [200],
+    );
+    const threadsAfter = await chat.listThreads(actor, { agentId });
+    expect(threadsAfter.threads).toHaveLength(threadsBefore.threads.length);
+
+    await api.requestCancelRun(actor, detachedRun.runId, [200]);
+    await api.requestCancelRun(actor, runId, [200]);
+    const cancelled = await api.readRun(actor, runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+});
+
+describe("BILL-02: usage reads for an entitled organization with runs", () => {
+  it("exposes usage runs, members, and processed usage events through public reads", async () => {
+    const api = createRunsAutomationsApi(context);
+    const billing = createBillingMediaApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "generate usage",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+
+    await webhooks.requestAgentUsageEvent(
+      {
+        runId: run.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider: "github",
+            category: "api_request",
+            quantity: 1,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await billing.processUsageEvents();
+
+    const usageRuns = await billing.readUsageRuns(actor, [200]);
+    if (usageRuns.status !== 200) {
+      throw new Error("Expected usage runs read to succeed");
+    }
+    const listedRun = usageRuns.body.runs.find((entry) => {
+      return entry.runId === run.runId;
+    });
+    expect(listedRun).toBeDefined();
+    expect(listedRun?.prompt).toBe("generate usage");
+    expect(usageRuns.body.pagination.total).toBeGreaterThanOrEqual(1);
+
+    const members = await billing.readUsageMembers(actor);
+    expect(members.body.period).not.toBeNull();
+
+    const record = await billing.readUsageRecord(actor);
+    expect(record.status).toBe(200);
+  });
+
+  it("aggregates usage members across organization users", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const billing = createBillingMediaApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const nonAdmin = bdd.user({
+      orgId: actor.orgId,
+      orgRole: "org:member",
+    });
+
+    const forbidden = await billing.requestUsageMembers(nonAdmin, {}, [403]);
+    expectApiError(forbidden.body);
+    expect(forbidden.body.error.code).toBe("FORBIDDEN");
+
+    const invalidTimezone = await billing.requestUsageMembers(
+      actor,
+      { tz: "Not/A/Timezone" },
+      [400],
+    );
+    expectApiError(invalidTimezone.body);
+    expect(invalidTimezone.body.error.code).toBe("BAD_REQUEST");
+
+    const beforeUsage = await billing.readUsageMembers(actor);
+    expect(beforeUsage.body.period).not.toBeNull();
+    expect(beforeUsage.body.members).toStrictEqual([]);
+
+    const member = bdd.user({ orgId: actor.orgId });
+    const memberAgent = await bdd.createAgent(member, {
+      displayName: "BDD member usage agent",
+      visibility: "private",
+    });
+
+    const actorRun = await api.createRun(actor, {
+      agentId,
+      prompt: "actor usage",
+      modelProvider: "anthropic-api-key",
+    });
+    const memberRun = await api.createRun(member, {
+      agentId: memberAgent.agentId,
+      prompt: "member usage",
+      modelProvider: "anthropic-api-key",
+    });
+
+    await api.heartbeatRunner(runnerGroup);
+    const actorClaim = await api.claimRunnerJob(actorRun.runId);
+    const memberClaim = await api.claimRunnerJob(memberRun.runId);
+
+    await webhooks.requestAgentUsageEvent(
+      {
+        runId: actorRun.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "image",
+            provider: "gpt-image-2",
+            category: "output_image.low.standard",
+            quantity: 1,
+          },
+        ],
+      },
+      { authorization: `Bearer ${actorClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentUsageEvent(
+      {
+        runId: memberRun.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "image",
+            provider: "gpt-image-2",
+            category: "output_image.low.standard",
+            quantity: 2,
+          },
+        ],
+      },
+      { authorization: `Bearer ${memberClaim.sandboxToken}` },
+      [200],
+    );
+    await billing.processUsageEvents();
+
+    const aggregated = await billing.readUsageMembers(actor, {
+      range: "7d",
+      tz: "UTC",
+    });
+    expect(aggregated.body.members).toHaveLength(2);
+    expect(
+      aggregated.body.members.map((entry) => {
+        return entry.userId;
+      }),
+    ).toStrictEqual([member.userId, actor.userId]);
+    expect(aggregated.body.members[0]).toMatchObject({
+      userId: member.userId,
+      email: expect.any(String),
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      creditsCharged: 14,
+    });
+    expect(aggregated.body.members[1]).toMatchObject({
+      userId: actor.userId,
+      email: expect.any(String),
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      creditsCharged: 7,
+    });
+
+    await api.requestCancelRun(actor, actorRun.runId, [200]);
+    await api.requestCancelRun(member, memberRun.runId, [200]);
+    const settled = await api.readRunQueue(actor);
+    expect(settled.body.concurrency.active).toBe(0);
+  });
+});
+
+describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhooks", () => {
+  it("reports artifacts, volumes, model usage, and telemetry through sandbox webhooks", async () => {
+    const api = createRunsAutomationsApi(context);
+    const storages = createStoragesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    // A committed volume version backs the versioned additional volume; the
+    // scratch volume stays versionless and storage-less on purpose.
+    const cacheVolume = `bdd-cache-${randomUUID().slice(0, 8)}`;
+    const scratchVolume = `bdd-scratch-${randomUUID().slice(0, 8)}`;
+    const cacheFile = {
+      path: "cache.txt",
+      hash: createHash("sha256")
+        .update(`bdd cache ${cacheVolume}`)
+        .digest("hex"),
+      size: 9,
+    };
+    const cachePrepared = await storages.prepareStorage(actor, {
+      storageName: cacheVolume,
+      storageType: "volume",
+      files: [cacheFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: cacheVolume,
+      storageType: "volume",
+      versionId: cachePrepared.versionId,
+      files: [cacheFile],
+    });
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt: "report snapshots and telemetry",
+      modelProvider: "anthropic-api-key",
+      additionalVolumes: [
+        {
+          name: cacheVolume,
+          version: cachePrepared.versionId,
+          mountPath: "/cache",
+        },
+        { name: scratchVolume, mountPath: "/scratch" },
+      ],
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(created.runId);
+    const mountPaths =
+      claim.storageManifest?.storages.map((storage) => {
+        return storage.mountPath;
+      }) ?? [];
+    expect(mountPaths).toContain("/cache");
+    const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
+
+    await webhooks.requestAgentTelemetry(
+      {
+        runId: created.runId,
+        networkLogs: [
+          {
+            timestamp: nowDate().toISOString(),
+            host: "api.example.test",
+            port: 443,
+            method: "GET",
+            url: "https://api.example.test/v1/status",
+            status: 200,
+            latency_ms: 12,
+            request_size: 100,
+            response_size: 256,
+          },
+          {
+            timestamp: nowDate().toISOString(),
+            type: "http",
+            action: "BLOCK",
+            host: "blocked.example.test",
+            port: 443,
+            method: "POST",
+            url: "https://blocked.example.test/v1/connect",
+            status: 424,
+            latency_ms: 4,
+            request_size: 0,
+            response_size: 128,
+            firewall_name: "blocked-service",
+            firewall_error: "connector_not_configured",
+          },
+        ],
+        sandboxOperations: [
+          {
+            ts: nowDate().toISOString(),
+            action_type: "session_history_download",
+            duration_ms: 8,
+            success: false,
+            error: "download timed out",
+            encoding: "gzip",
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    const networkIngestCall = context.mocks.axiom.ingest.mock.calls.find(
+      ([dataset]) => {
+        return dataset === "sandbox-telemetry-network";
+      },
+    );
+    expect(networkIngestCall).toBeDefined();
+    expect(networkIngestCall?.[1]).toHaveLength(2);
+    expect(networkIngestCall?.[1]).toStrictEqual([
+      expect.objectContaining({
+        runId: created.runId,
+        host: "api.example.test",
+        status: 200,
+      }),
+      expect.objectContaining({
+        runId: created.runId,
+        action: "BLOCK",
+        host: "blocked.example.test",
+        firewall_error: "connector_not_configured",
+      }),
+    ]);
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          op_type: "session_history_download",
+          run_id: created.runId,
+          success: false,
+          error: "download timed out",
+          encoding: "gzip",
+          source: "sandbox",
+        }),
+      ],
+    );
+
+    const observed = await webhooks.requestAgentModelUsageObservation(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            model: "claude-sonnet-4-6",
+            category: "tokens.input",
+            quantity: 120,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(observed.body).toStrictEqual({ success: true });
+
+    const artifactSnapshots = [
+      {
+        name: "workspace",
+        version: "a".repeat(64),
+        mountPath: "/workspace",
+      },
+      {
+        name: "site",
+        version: "b".repeat(64),
+        mountPath: "/site",
+        missingRootPolicy: "preserveParentVersion" as const,
+      },
+    ];
+    const historyHash = createHash("sha256")
+      .update(`bdd snapshot history ${created.runId}`)
+      .digest("hex");
+    const checkpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: created.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-snapshot-cli-${created.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+        artifactSnapshots,
+        volumeVersionsSnapshot: {
+          versions: { [cacheVolume]: cachePrepared.versionId },
+        },
+      },
+      sandboxHeaders,
+      [200],
+    );
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected the snapshot checkpoint to succeed");
+    }
+    expect(checkpoint.body.artifacts).toStrictEqual(artifactSnapshots);
+    expect(checkpoint.body.volumes).toStrictEqual({
+      [cacheVolume]: cachePrepared.versionId,
+    });
+
+    await webhooks.requestAgentComplete(
+      { runId: created.runId, exitCode: 0, lastEventSequence: 3 },
+      sandboxHeaders,
+      [200],
+    );
+
+    const completed = await api.readRun(actor, created.runId);
+    expect(completed.status).toBe("completed");
+    expect(completed.result?.artifact).toStrictEqual({
+      workspace: "a".repeat(64),
+      site: "b".repeat(64),
+    });
+    expect(completed.result?.volumes).toStrictEqual({
+      [cacheVolume]: cachePrepared.versionId,
+    });
+
+    // A late duplicate report cannot flip the settled run.
+    const duplicate = await webhooks.requestAgentComplete(
+      {
+        runId: created.runId,
+        exitCode: 1,
+        error: "late crash report",
+        lastEventSequence: 9,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    if (duplicate.status !== 200) {
+      throw new Error("Expected the duplicate completion to be accepted");
+    }
+    expect(duplicate.body).toStrictEqual({
+      success: true,
+      status: "completed",
+    });
+    const settled = await api.readRun(actor, created.runId);
+    expect(settled.status).toBe("completed");
+    expect(settled.error ?? null).toBeNull();
+  });
+});
+
+describe("RUN-03: sandbox completion reports against missing checkpoints and settled runs", () => {
+  it("fails a clean exit whose run never reported a checkpoint", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "complete without a checkpoint",
+      modelProvider: "anthropic-api-key",
+    });
+    const sandboxHeaders = {
+      authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+    };
+
+    const missing = await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      sandboxHeaders,
+      [404],
+    );
+    expectApiError(missing.body);
+    expect(missing.body.error.message).toBe("Checkpoint for run not found");
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `run:changed:${run.runId}`,
+      { status: "failed" },
+    );
+    const failed = await api.readRun(actor, run.runId);
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe("Checkpoint for run not found");
+  });
+
+  it("reports the settled status when a checkpoint-less completion races a cancellation", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "cancel before the completion report",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, run.runId, [200]);
+
+    const late = await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}` },
+      [200],
+    );
+    if (late.status !== 200) {
+      throw new Error("Expected the late completion to be acknowledged");
+    }
+    expect(late.body).toStrictEqual({ success: true, status: "failed" });
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("keeps a cancelled run settled when its checkpointed completion arrives late", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "checkpoint, cancel, then complete",
+      modelProvider: "anthropic-api-key",
+    });
+    const sandboxHeaders = {
+      authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+    };
+    const historyHash = createHash("sha256")
+      .update(`bdd cancelled checkpoint ${run.runId}`)
+      .digest("hex");
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cancelled-cli-${run.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await api.requestCancelRun(actor, run.runId, [200]);
+
+    const late = await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      sandboxHeaders,
+      [200],
+    );
+    if (late.status !== 200) {
+      throw new Error(
+        "Expected the checkpointed completion to be acknowledged",
+      );
+    }
+    expect(late.body).toStrictEqual({ success: true, status: "failed" });
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("checkpoints direct compose runs without vars and canonicalizes usage by event model", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    // Direct compose runs created without vars leave the stored vars null,
+    // and their zero-run rows carry no model provider or pinned model.
+    const composeName = `bdd-null-vars-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "checkpoint without vars",
+    });
+    const sandboxHeaders = {
+      authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+    };
+
+    // With no pinned model the event model drives canonicalization: the
+    // unsupported event is skipped while the supported one is recorded.
+    const observed = await webhooks.requestAgentModelUsageObservation(
+      {
+        runId: run.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            model: "claude-sonnet-4-6",
+            category: "tokens.input",
+            quantity: 50,
+          },
+          {
+            idempotencyKey: randomUUID(),
+            model: "custom-bdd-model",
+            category: "tokens.output",
+            quantity: 7,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(observed.body).toStrictEqual({ success: true });
+
+    const historyHash = createHash("sha256")
+      .update(`bdd null vars checkpoint ${run.runId}`)
+      .digest("hex");
+    const checkpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-null-vars-cli-${run.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected the null-vars checkpoint to succeed");
+    }
+    expect(checkpoint.body.artifacts).toBeUndefined();
+    expect(checkpoint.body.volumes).toBeUndefined();
+
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      sandboxHeaders,
+      [200],
+    );
+    const completed = await api.readRun(actor, run.runId);
+    expect(completed.status).toBe("completed");
+    expect(completed.result?.checkpointId).toBeDefined();
+  });
+});
+
+describe("BILL-01: billing entitlement reconciliation cron", () => {
+  function subscriptionEvent(args: {
+    readonly subscriptionId: string;
+    readonly customerId: string;
+    readonly status: string;
+    readonly periodEndUnix: number;
+  }): unknown {
+    return {
+      type: "customer.subscription.updated",
+      data: {
+        object: {
+          id: args.subscriptionId,
+          status: args.status,
+          customer: args.customerId,
+          cancel_at: args.periodEndUnix,
+          cancel_at_period_end: false,
+          schedule: null,
+          trial_end: null,
+          metadata: {},
+          items: {
+            data: [
+              {
+                price: { id: "price_bdd_pro" },
+                current_period_end: args.periodEndUnix,
+              },
+            ],
+          },
+        },
+      },
+    };
+  }
+
+  async function failSubscription(args: {
+    readonly subscriptionId: string;
+    readonly customerId: string;
+  }): Promise<void> {
+    const webhooks = createWebhookCallbackApi(context);
+    const event = subscriptionEvent({
+      ...args,
+      status: "past_due",
+      periodEndUnix: Math.floor(now() / 1000) - 2 * 86_400,
+    });
+    webhooks.configureStripeWebhookSecret();
+    webhooks.acceptNextStripeWebhookEvent(event);
+    await webhooks.requestStripeWebhook(
+      JSON.stringify(event),
+      { "stripe-signature": "t=1,v1=bdd" },
+      [200],
+    );
+  }
+
+  it("recovers payment-failed subscriptions that became active again", async () => {
+    const api = createRunsAutomationsApi(context);
+    const billing = createBillingMediaApi(context);
+    const { actor, granted } = await entitledRunActor();
+    await failSubscription(granted);
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: granted.subscriptionId,
+      status: "active",
+      customer: granted.customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: {},
+      items: {
+        data: [
+          {
+            price: { id: "price_bdd_pro" },
+            current_period_end: Math.floor(now() / 1000) + 30 * 86_400,
+          },
+        ],
+      },
+    });
+    const unauthorizedReconcile = await api.reconcileBillingCron(false);
+    expect(unauthorizedReconcile.status).toBe(401);
+    await api.reconcileBillingCron(true);
+
+    const status = await billing.readBillingStatus(actor);
+    expect(status.tier).toBe("pro");
+
+    await failSubscription(granted);
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: granted.subscriptionId,
+      status: "incomplete",
+      customer: granted.customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: {},
+      items: { data: [] },
+    });
+    await api.reconcileBillingCron(true);
+    const skipped = await billing.readBillingStatus(actor);
+    expect(skipped.tier).toBe("pro");
+  });
+
+  it("keeps recently paid-through subscriptions and downgrades stale ones", async () => {
+    const api = createRunsAutomationsApi(context);
+    const billing = createBillingMediaApi(context);
+    const { actor, granted } = await entitledRunActor();
+    await failSubscription(granted);
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: granted.subscriptionId,
+      status: "past_due",
+      customer: granted.customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: {},
+      items: {
+        data: [
+          {
+            price: { id: "price_bdd_pro" },
+            current_period_end: Math.floor(now() / 1000) + 7 * 86_400,
+          },
+        ],
+      },
+    });
+    await api.reconcileBillingCron(true);
+    const synced = await billing.readBillingStatus(actor);
+    expect(synced.tier).toBe("pro");
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: granted.subscriptionId,
+      status: "past_due",
+      customer: granted.customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: {},
+      items: {
+        data: [
+          {
+            price: { id: "price_bdd_pro" },
+            current_period_end: Math.floor(now() / 1000) - 2 * 86_400,
+          },
+        ],
+      },
+    });
+    await failSubscription(granted);
+    await api.reconcileBillingCron(true);
+
+    const downgraded = await billing.readBillingStatus(actor);
+    expect(downgraded.tier).not.toBe("pro");
+  });
+
+  it("clears cancelled subscriptions during reconciliation", async () => {
+    const api = createRunsAutomationsApi(context);
+    const billing = createBillingMediaApi(context);
+    const { actor, granted } = await entitledRunActor();
+    await failSubscription(granted);
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: granted.subscriptionId,
+      status: "canceled",
+      customer: granted.customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: {},
+      items: { data: [] },
+    });
+    await api.reconcileBillingCron(true);
+
+    const cleared = await billing.readBillingStatus(actor);
+    expect(cleared.tier).not.toBe("pro");
+  });
+});

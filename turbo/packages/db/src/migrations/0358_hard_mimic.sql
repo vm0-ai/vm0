@@ -1,0 +1,3 @@
+ALTER TABLE "chat_messages" ADD COLUMN "interrupts_run_id" uuid;--> statement-breakpoint
+ALTER TABLE "chat_messages" ADD CONSTRAINT "chat_messages_interrupts_run_id_agent_runs_id_fk" FOREIGN KEY ("interrupts_run_id") REFERENCES "public"."agent_runs"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "chat_messages_interrupts_run_id_unique" ON "chat_messages" USING btree ("interrupts_run_id");

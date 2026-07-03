@@ -1,0 +1,6 @@
+# Firewall metadata produced by @vm0/firewalls-generator at install time.
+src/firewall-metadata/*.generated.ts
+src/firewall-metadata/.metadata-*
+src/firewall-metadata/.*.previous-*
+src/firewall-metadata/permission-details/*
+src/firewall-metadata/routing-details/*

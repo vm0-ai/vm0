@@ -1,0 +1,1336 @@
+use std::collections::HashSet;
+use std::fs;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::process::{ChildStdin, Command, ExitStatus, Output, Stdio};
+use std::sync::mpsc::{self, Receiver};
+use std::thread::JoinHandle;
+use std::time::Duration;
+
+#[cfg(unix)]
+use guest_mock_claude::process_group_child::observe_child_exit_without_reaping;
+use guest_mock_claude::process_group_child::{self, ProcessGroupChild};
+use serde_json::Value;
+
+const ACTIVE_INPUT_READY_RESULT: &str = "READY_FOR_ACTIVE_INPUT";
+const CHILD_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
+const EVENT_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_STREAM_JSON_EVENTS: usize = 32;
+const MOCK_CAPTURE_LIMIT_BYTES: usize = 1024 * 1024;
+const LARGE_MOCK_OUTPUT_BYTES: usize = MOCK_CAPTURE_LIMIT_BYTES + 1024;
+const STDOUT_TRUNCATION_MARKER: &str = "[stdout truncated after 1048576 bytes]";
+const STDERR_TRUNCATION_MARKER: &str = "[stderr truncated after 1048576 bytes]";
+
+struct StreamJsonChild {
+    child: Option<ProcessGroupChild>,
+    stdin: Option<ChildStdin>,
+    rx: Receiver<Result<Value, String>>,
+    stdout_thread: Option<JoinHandle<()>>,
+}
+
+impl StreamJsonChild {
+    fn stdin_mut(&mut self) -> Result<&mut ChildStdin, Box<dyn std::error::Error>> {
+        self.stdin
+            .as_mut()
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stdin closed"))
+            .map_err(Into::into)
+    }
+
+    fn close_stdin(&mut self) {
+        self.stdin.take();
+    }
+
+    fn wait(mut self) -> Result<(ExitStatus, String), Box<dyn std::error::Error>> {
+        self.close_stdin();
+        let child = self.child.take().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "mock child already reaped")
+        })?;
+        let stdout_thread = self
+            .stdout_thread
+            .take()
+            .ok_or_else(|| std::io::Error::other("stdout reader thread already joined"))?;
+        wait_child(child, stdout_thread)
+    }
+}
+
+impl Drop for StreamJsonChild {
+    fn drop(&mut self) {
+        self.close_stdin();
+        if let Some(child) = self.child.take() {
+            child.terminate();
+        }
+        if let Some(stdout_thread) = self.stdout_thread.take() {
+            let _ = stdout_thread.join();
+        }
+    }
+}
+
+fn mock_claude() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_guest-mock-claude"))
+}
+
+fn spawn_managed_mock_child(command: &mut Command) -> std::io::Result<ProcessGroupChild> {
+    ProcessGroupChild::spawn(command)
+}
+
+fn missing_child_pipe(pipe_name: &str) -> std::io::Error {
+    std::io::Error::other(format!("mock child missing {pipe_name} pipe"))
+}
+
+fn child_exit_timed_out(error: &(dyn std::error::Error + 'static)) -> bool {
+    error
+        .downcast_ref::<std::io::Error>()
+        .is_some_and(|error| error.kind() == std::io::ErrorKind::TimedOut)
+}
+
+fn run_mock_output(command: &mut Command) -> Result<Output, Box<dyn std::error::Error>> {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    wait_child_output(spawn_managed_mock_child(command)?)
+}
+
+fn expected_history_path(home: &std::path::Path, session_id: &str) -> std::path::PathBuf {
+    let project_name = "home-user-workspace";
+    home.join(".claude")
+        .join("projects")
+        .join(format!("-{project_name}"))
+        .join(format!("{session_id}.jsonl"))
+}
+
+fn parse_jsonl(output: &[u8]) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+    let stdout = String::from_utf8(output.to_vec())?;
+    stdout
+        .lines()
+        .map(|line| Ok(serde_json::from_str::<Value>(line)?))
+        .collect()
+}
+
+fn init_session_id(events: &[Value]) -> Result<String, Box<dyn std::error::Error>> {
+    let session_id = events
+        .iter()
+        .find(|event| {
+            event.get("type").and_then(Value::as_str) == Some("system")
+                && event.get("subtype").and_then(Value::as_str) == Some("init")
+        })
+        .and_then(|event| event.get("session_id"))
+        .and_then(Value::as_str)
+        .ok_or("missing init session_id")?;
+    Ok(session_id.to_string())
+}
+
+fn event_kind(event: &Value) -> String {
+    let event_type = event.get("type").and_then(Value::as_str).unwrap_or("");
+    match event_type {
+        "system" | "result" => {
+            let subtype = event.get("subtype").and_then(Value::as_str).unwrap_or("");
+            format!("{event_type}/{subtype}")
+        }
+        "assistant" | "user" => {
+            let content_type = event
+                .pointer("/message/content/0/type")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            format!("{event_type}/{content_type}")
+        }
+        _ => event_type.to_string(),
+    }
+}
+
+fn tool_result_content(events: &[Value]) -> Result<&str, Box<dyn std::error::Error>> {
+    match events.iter().find_map(|event| {
+        if event.get("type").and_then(Value::as_str) != Some("user") {
+            return None;
+        }
+        event
+            .pointer("/message/content/0/content")
+            .and_then(Value::as_str)
+    }) {
+        Some(content) => Ok(content),
+        None => Err("missing tool result content".into()),
+    }
+}
+
+fn result_content(events: &[Value]) -> Result<&str, Box<dyn std::error::Error>> {
+    match events.iter().find_map(|event| {
+        if event.get("type").and_then(Value::as_str) != Some("result") {
+            return None;
+        }
+        event.get("result").and_then(Value::as_str)
+    }) {
+        Some(content) => Ok(content),
+        None => Err("missing result content".into()),
+    }
+}
+
+fn stream_json_user_frame(prompt: &str) -> String {
+    stream_json_user_frame_with_uuid(prompt, "mock-test-user-1")
+}
+
+fn stream_json_user_frame_with_uuid(prompt: &str, uuid: &str) -> String {
+    format!(
+        "{}\n",
+        serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": prompt,
+            },
+            "uuid": uuid,
+            "parent_tool_use_id": null,
+        })
+    )
+}
+
+fn spawn_stream_json_child(
+    home: &std::path::Path,
+    replay_user_messages: bool,
+) -> Result<StreamJsonChild, Box<dyn std::error::Error>> {
+    let mut command = mock_claude();
+    command.env("HOME", home).args([
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+    ]);
+    if replay_user_messages {
+        command.arg("--replay-user-messages");
+    }
+    command
+        .arg("--")
+        .arg("printf argv-wrong")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = spawn_managed_mock_child(&mut command)?;
+    let Some(stdin) = child.take_stdin() else {
+        child.terminate();
+        return Err(missing_child_pipe("stdin").into());
+    };
+    let Some(stdout) = child.take_stdout() else {
+        child.terminate();
+        return Err(missing_child_pipe("stdout").into());
+    };
+    let (tx, rx) = mpsc::channel();
+    let stdout_thread = std::thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            let line = match line {
+                Ok(line) => line,
+                Err(error) => {
+                    let _ = tx.send(Err(format!("read stdout line: {error}")));
+                    break;
+                }
+            };
+            if line.trim().is_empty() {
+                continue;
+            }
+            let event = serde_json::from_str::<Value>(&line)
+                .map_err(|error| format!("parse stdout JSONL: {error}; line={line:?}"));
+            if tx.send(event).is_err() {
+                break;
+            }
+        }
+    });
+
+    Ok(StreamJsonChild {
+        child: Some(child),
+        stdin: Some(stdin),
+        rx,
+        stdout_thread: Some(stdout_thread),
+    })
+}
+
+fn recv_event(rx: &Receiver<Result<Value, String>>) -> Result<Value, Box<dyn std::error::Error>> {
+    match rx.recv_timeout(EVENT_TIMEOUT) {
+        Ok(Ok(event)) => Ok(event),
+        Ok(Err(message)) => Err(std::io::Error::other(message).into()),
+        Err(error) => Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            format!("timed out waiting for mock event: {error}"),
+        )
+        .into()),
+    }
+}
+
+fn recv_until_result(
+    rx: &Receiver<Result<Value, String>>,
+    result: &str,
+) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+    let mut events = Vec::new();
+    for _ in 0..MAX_STREAM_JSON_EVENTS {
+        let event = recv_event(rx)?;
+        let matches_result = event.get("type").and_then(Value::as_str) == Some("result")
+            && event.get("result").and_then(Value::as_str) == Some(result);
+        events.push(event);
+        if matches_result {
+            return Ok(events);
+        }
+    }
+
+    Err(std::io::Error::other(format!(
+        "mock did not emit result {result:?} within {MAX_STREAM_JSON_EVENTS} events"
+    ))
+    .into())
+}
+
+fn wait_child(
+    mut child: ProcessGroupChild,
+    stdout_thread: JoinHandle<()>,
+) -> Result<(ExitStatus, String), Box<dyn std::error::Error>> {
+    let child_stderr = child.take_stderr();
+    let stderr_thread = std::thread::spawn(move || -> Result<String, std::io::Error> {
+        let mut stderr = String::new();
+        if let Some(mut child_stderr) = child_stderr {
+            child_stderr.read_to_string(&mut stderr)?;
+        }
+        Ok(stderr)
+    });
+
+    let status = match wait_child_status_and_cleanup_group(child) {
+        Err(error) if child_exit_timed_out(error.as_ref()) => return Err(error),
+        result => result,
+    };
+    let stdout_result = stdout_thread
+        .join()
+        .map_err(|_| std::io::Error::other("stdout reader thread panicked"));
+    let stderr_result = stderr_thread
+        .join()
+        .map_err(|_| std::io::Error::other("stderr reader thread panicked"));
+
+    let status = status?;
+    stdout_result?;
+    let stderr = stderr_result??;
+    Ok((status, stderr))
+}
+
+#[cfg(unix)]
+fn wait_child_status_and_cleanup_group(
+    child: ProcessGroupChild,
+) -> Result<ExitStatus, Box<dyn std::error::Error>> {
+    let pid = child.id();
+    let (tx, rx) = mpsc::channel();
+    let wait_thread = std::thread::spawn(move || {
+        let result = observe_child_exit_without_reaping(pid);
+        let _ = tx.send(result);
+    });
+
+    let child_observed = match rx.recv_timeout(CHILD_EXIT_TIMEOUT) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            process_group_child::terminate_child_by_pid(pid);
+            rx.recv_timeout(CHILD_EXIT_TIMEOUT).map_err(|error| {
+                std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("mock child did not exit after SIGKILL: {error}"),
+                )
+            })?
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::other(
+            "mock child wait thread exited without observing status",
+        )),
+    };
+
+    wait_thread
+        .join()
+        .map_err(|_| std::io::Error::other("child wait thread panicked"))?;
+    if let Err(error) = child_observed {
+        child.terminate();
+        return Err(error.into());
+    }
+    process_group_child::terminate_process_group(pid);
+    Ok(child.wait_direct_child()?)
+}
+
+#[cfg(not(unix))]
+fn wait_child_status_and_cleanup_group(
+    child: ProcessGroupChild,
+) -> Result<ExitStatus, Box<dyn std::error::Error>> {
+    wait_child_status(child)
+}
+
+#[cfg(not(unix))]
+fn wait_child_status(child: ProcessGroupChild) -> Result<ExitStatus, Box<dyn std::error::Error>> {
+    let pid = child.id();
+    let (tx, rx) = mpsc::channel();
+    let wait_thread = std::thread::spawn(move || {
+        let result = child.wait_direct_child();
+        let _ = tx.send(result);
+    });
+
+    let child_result = match rx.recv_timeout(CHILD_EXIT_TIMEOUT) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            process_group_child::terminate_child_by_pid(pid);
+            rx.recv_timeout(CHILD_EXIT_TIMEOUT).map_err(|error| {
+                std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("mock child did not exit after SIGKILL: {error}"),
+                )
+            })?
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::other(
+            "mock child wait thread exited without status",
+        )),
+    };
+
+    wait_thread
+        .join()
+        .map_err(|_| std::io::Error::other("child wait thread panicked"))?;
+    Ok(child_result?)
+}
+
+fn wait_child_output(mut child: ProcessGroupChild) -> Result<Output, Box<dyn std::error::Error>> {
+    let Some(mut child_stdout) = child.take_stdout() else {
+        child.terminate();
+        return Err(missing_child_pipe("stdout").into());
+    };
+    let Some(mut child_stderr) = child.take_stderr() else {
+        child.terminate();
+        return Err(missing_child_pipe("stderr").into());
+    };
+    let stdout_thread = std::thread::spawn(move || -> Result<Vec<u8>, std::io::Error> {
+        let mut stdout = Vec::new();
+        child_stdout.read_to_end(&mut stdout)?;
+        Ok(stdout)
+    });
+    let stderr_thread = std::thread::spawn(move || -> Result<Vec<u8>, std::io::Error> {
+        let mut stderr = Vec::new();
+        child_stderr.read_to_end(&mut stderr)?;
+        Ok(stderr)
+    });
+
+    let status = match wait_child_status_and_cleanup_group(child) {
+        Err(error) if child_exit_timed_out(error.as_ref()) => return Err(error),
+        result => result,
+    };
+    let stdout_result = stdout_thread
+        .join()
+        .map_err(|_| std::io::Error::other("stdout reader thread panicked"));
+    let stderr_result = stderr_thread
+        .join()
+        .map_err(|_| std::io::Error::other("stderr reader thread panicked"));
+
+    let status = status?;
+    let stdout = stdout_result??;
+    let stderr = stderr_result??;
+
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+fn mock_stream_json_shell_output(
+    home: &std::path::Path,
+    prompt: &str,
+) -> Result<Output, Box<dyn std::error::Error>> {
+    let mut command = mock_claude();
+    command
+        .env("HOME", home)
+        .args(["--output-format", "stream-json", "--", prompt])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    wait_child_output(spawn_managed_mock_child(&mut command)?)
+}
+
+#[cfg(target_os = "linux")]
+fn kill_pid_file(pid_file: &std::path::Path) {
+    if let Ok(pid) = fs::read_to_string(pid_file).map(|value| value.trim().to_string())
+        && let Ok(pid) = pid.parse::<libc::pid_t>()
+    {
+        unsafe {
+            libc::kill(pid, libc::SIGKILL);
+        }
+    }
+}
+
+#[test]
+fn echo_jsonl_outputs_valid_payload_unchanged() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let payload = [
+        r#"{"type":"system","subtype":"init","cwd":"/home/user/workspace","session_id":"preview-1","tools":["Bash"],"model":"mock-claude"}"#,
+        r#"{"type":"assistant","session_id":"preview-1","message":{"role":"assistant","content":[{"type":"text","text":"fixture response"}]}}"#,
+        r#"{"type":"result","subtype":"success","session_id":"preview-1","is_error":false,"duration_ms":100,"num_turns":1,"result":"Done.","total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0}}"#,
+    ]
+    .join("\n");
+    let prompt = format!("@ECHO@\n{payload}\n");
+
+    let mut command = mock_claude();
+    command
+        .env("HOME", home.path())
+        .args(["--output-format", "stream-json", "--", &prompt]);
+    let output = run_mock_output(&mut command)?;
+
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        format!("{payload}\n")
+    );
+    assert!(output.stderr.is_empty());
+
+    let history = fs::read_to_string(expected_history_path(home.path(), "preview-1"))?;
+    assert_eq!(history, format!("{payload}\n"));
+    Ok(())
+}
+
+#[test]
+fn echo_jsonl_without_init_skips_history() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let payload = r#"{"type":"assistant","session_id":"preview-no-init","message":{"role":"assistant","content":[{"type":"text","text":"hello"}]}}"#;
+    let prompt = format!("@ECHO@\n{payload}\n");
+
+    let mut command = mock_claude();
+    command
+        .env("HOME", home.path())
+        .args(["--output-format", "stream-json", "--", &prompt]);
+    let output = run_mock_output(&mut command)?;
+
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        format!("{payload}\n")
+    );
+    assert!(output.stderr.is_empty());
+    assert!(!home.path().join(".claude").exists());
+    Ok(())
+}
+
+#[test]
+fn stream_json_shell_writes_matching_session_history() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+
+    let mut command = mock_claude();
+    command
+        .env("HOME", home.path())
+        .args(["--output-format", "stream-json", "--", "printf hello"]);
+    let output = run_mock_output(&mut command)?;
+
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    let session_id = init_session_id(&events)?;
+    let stdout = String::from_utf8(output.stdout)?;
+    let history = fs::read_to_string(expected_history_path(home.path(), &session_id))?;
+
+    assert_eq!(history, stdout);
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        [
+            "system/init",
+            "assistant/text",
+            "assistant/tool_use",
+            "user/tool_result",
+            "result/success",
+        ]
+    );
+    assert_eq!(
+        events[2]
+            .pointer("/message/content/0/input/command")
+            .and_then(Value::as_str),
+        Some("printf hello")
+    );
+    assert_eq!(
+        events[3]
+            .pointer("/message/content/0/content")
+            .and_then(Value::as_str),
+        Some("hello")
+    );
+    assert_eq!(
+        events[4].get("result").and_then(Value::as_str),
+        Some("hello")
+    );
+    assert_eq!(
+        events[4].get("is_error").and_then(Value::as_bool),
+        Some(false)
+    );
+    Ok(())
+}
+
+#[test]
+fn stream_json_shell_background_child_does_not_hold_output_open()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+
+    let output = mock_stream_json_shell_output(home.path(), "sleep 30 & echo done")?;
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        [
+            "system/init",
+            "assistant/text",
+            "assistant/tool_use",
+            "user/tool_result",
+            "result/success",
+        ]
+    );
+    assert!(tool_result_content(&events)?.contains("done"));
+    assert!(result_content(&events)?.contains("done"));
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn stream_json_shell_escaped_child_does_not_hold_output_open()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let ready = home.path().join("escaped-child-ready");
+    let pid_file = home.path().join("escaped-child-pid");
+    let ready_path = ready.to_string_lossy();
+    let pid_path = pid_file.to_string_lossy();
+    let prompt = format!(
+        "setsid sh -c 'echo $$ > \"{pid_path}\"; echo ready > \"{ready_path}\"; exec sleep 30' & \
+         while [ ! -f \"{ready_path}\" ]; do :; done; echo done"
+    );
+
+    let output = mock_stream_json_shell_output(home.path(), &prompt);
+    kill_pid_file(&pid_file);
+    let output = output?;
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        [
+            "system/init",
+            "assistant/text",
+            "assistant/tool_use",
+            "user/tool_result",
+            "result/success",
+        ]
+    );
+    assert!(tool_result_content(&events)?.contains("done"));
+    assert!(result_content(&events)?.contains("done"));
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn stream_json_shell_truncated_escaped_stderr_writer_does_not_hold_output_open()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let ready = home.path().join("escaped-stderr-ready");
+    let pid_file = home.path().join("escaped-stderr-pid");
+    let ready_path = ready.to_string_lossy();
+    let pid_path = pid_file.to_string_lossy();
+    let prompt = format!(
+        "setsid sh -c 'echo $$ > \"{pid_path}\"; yes escaped-stderr | head -c {LARGE_MOCK_OUTPUT_BYTES} >&2; echo ready > \"{ready_path}\"; exec yes escaped-stderr >&2' & \
+         while [ ! -f \"{ready_path}\" ]; do :; done; echo done"
+    );
+
+    let output = mock_stream_json_shell_output(home.path(), &prompt);
+    kill_pid_file(&pid_file);
+    let output = output?;
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        [
+            "system/init",
+            "assistant/text",
+            "assistant/tool_use",
+            "user/tool_result",
+            "result/success",
+        ]
+    );
+    assert!(tool_result_content(&events)?.contains("done"));
+    assert!(result_content(&events)?.contains("done"));
+    assert!(!tool_result_content(&events)?.contains("escaped-stderr"));
+    assert!(!result_content(&events)?.contains("escaped-stderr"));
+    Ok(())
+}
+
+#[test]
+fn stream_json_input_reads_prompt_from_stdin() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let mut command = mock_claude();
+    command
+        .env("HOME", home.path())
+        .args([
+            "--input-format",
+            "stream-json",
+            "--output-format",
+            "stream-json",
+            "--",
+            "printf argv-wrong",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = spawn_managed_mock_child(&mut command)?;
+
+    let mut stdin = child.take_stdin().ok_or("missing stdin")?;
+    stdin.write_all(stream_json_user_frame("printf stdin-ok").as_bytes())?;
+    drop(stdin);
+
+    let output = wait_child_output(child)?;
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    let result = events
+        .iter()
+        .find(|event| event.get("type").and_then(Value::as_str) == Some("result"))
+        .and_then(|event| event.get("result"))
+        .and_then(Value::as_str)
+        .ok_or("missing result")?;
+    assert_eq!(result, "stdin-ok");
+
+    let command = events
+        .iter()
+        .find(|event| {
+            event.get("type").and_then(Value::as_str) == Some("assistant")
+                && event
+                    .pointer("/message/content/0/type")
+                    .and_then(Value::as_str)
+                    == Some("tool_use")
+        })
+        .and_then(|event| event.pointer("/message/content/0/input/command"))
+        .and_then(Value::as_str)
+        .ok_or("missing command")?;
+    assert_eq!(command, "printf stdin-ok");
+    Ok(())
+}
+
+#[test]
+fn stream_json_input_does_not_wait_for_stdin_eof() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let mut stream = spawn_stream_json_child(home.path(), false)?;
+
+    stream
+        .stdin_mut()?
+        .write_all(stream_json_user_frame("printf stdin-ok").as_bytes())?;
+    stream.stdin_mut()?.flush()?;
+
+    let events = recv_until_result(&stream.rx, "stdin-ok")?;
+    stream.close_stdin();
+
+    let (status, stderr) = stream.wait()?;
+    assert!(status.success(), "expected success, stderr: {stderr}");
+    assert!(stderr.is_empty());
+
+    let command = events
+        .iter()
+        .find(|event| {
+            event.get("type").and_then(Value::as_str) == Some("assistant")
+                && event
+                    .pointer("/message/content/0/type")
+                    .and_then(Value::as_str)
+                    == Some("tool_use")
+        })
+        .and_then(|event| event.pointer("/message/content/0/input/command"))
+        .and_then(Value::as_str)
+        .ok_or("missing command")?;
+    assert_eq!(command, "printf stdin-ok");
+    Ok(())
+}
+
+#[test]
+fn active_input_stream_reads_followups_after_ready() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let mut stream = spawn_stream_json_child(home.path(), false)?;
+
+    stream.stdin_mut()?.write_all(
+        stream_json_user_frame_with_uuid("@active-input-smoke:2", "active-initial").as_bytes(),
+    )?;
+    stream.stdin_mut()?.flush()?;
+
+    let mut events = recv_until_result(&stream.rx, ACTIVE_INPUT_READY_RESULT)?;
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        ["system/init", "result/success"]
+    );
+
+    stream
+        .stdin_mut()?
+        .write_all(stream_json_user_frame_with_uuid("first", "follow-up-1").as_bytes())?;
+    stream
+        .stdin_mut()?
+        .write_all(stream_json_user_frame_with_uuid("second", "follow-up-2").as_bytes())?;
+    stream.stdin_mut()?.flush()?;
+
+    events.extend(recv_until_result(&stream.rx, "RESULT=first+second")?);
+    stream.close_stdin();
+
+    let (status, stderr) = stream.wait()?;
+    assert!(status.success(), "expected success, stderr: {stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        ["system/init", "result/success", "result/success"]
+    );
+
+    let session_id = init_session_id(&events)?;
+    let history = fs::read_to_string(expected_history_path(home.path(), &session_id))?;
+    assert_eq!(parse_jsonl(history.as_bytes())?, events);
+    Ok(())
+}
+
+#[test]
+fn active_input_stream_replays_user_messages() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let mut stream = spawn_stream_json_child(home.path(), true)?;
+
+    stream.stdin_mut()?.write_all(
+        stream_json_user_frame_with_uuid("@active-input-smoke:2", "active-initial").as_bytes(),
+    )?;
+    stream.stdin_mut()?.flush()?;
+
+    let mut events = recv_until_result(&stream.rx, ACTIVE_INPUT_READY_RESULT)?;
+    stream
+        .stdin_mut()?
+        .write_all(stream_json_user_frame_with_uuid("first", "follow-up-1").as_bytes())?;
+    stream
+        .stdin_mut()?
+        .write_all(stream_json_user_frame_with_uuid("second", "follow-up-2").as_bytes())?;
+    stream.stdin_mut()?.flush()?;
+    events.extend(recv_until_result(&stream.rx, "RESULT=first+second")?);
+    stream.close_stdin();
+
+    let (status, stderr) = stream.wait()?;
+    assert!(status.success(), "expected success, stderr: {stderr}");
+    assert!(stderr.is_empty());
+
+    let session_id = init_session_id(&events)?;
+    let replayed_users = events
+        .iter()
+        .filter(|event| event.get("type").and_then(Value::as_str) == Some("user"))
+        .map(|event| {
+            (
+                event.get("uuid").and_then(Value::as_str),
+                event.pointer("/message/content").and_then(Value::as_str),
+                event.get("session_id").and_then(Value::as_str),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        replayed_users
+            .iter()
+            .map(|(uuid, content, _)| (*uuid, *content))
+            .collect::<Vec<_>>(),
+        [
+            (Some("active-initial"), Some("@active-input-smoke:2")),
+            (Some("follow-up-1"), Some("first")),
+            (Some("follow-up-2"), Some("second")),
+        ]
+    );
+    assert!(
+        replayed_users
+            .iter()
+            .all(|(_, _, replayed_session_id)| *replayed_session_id == Some(session_id.as_str()))
+    );
+
+    let history = fs::read_to_string(expected_history_path(home.path(), &session_id))?;
+    assert_eq!(parse_jsonl(history.as_bytes())?, events);
+    Ok(())
+}
+
+#[test]
+fn active_input_stream_rejects_early_eof() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let mut stream = spawn_stream_json_child(home.path(), false)?;
+
+    stream.stdin_mut()?.write_all(
+        stream_json_user_frame_with_uuid("@active-input-smoke:2", "active-initial").as_bytes(),
+    )?;
+    stream.stdin_mut()?.flush()?;
+    let _ = recv_until_result(&stream.rx, ACTIVE_INPUT_READY_RESULT)?;
+    stream.close_stdin();
+
+    let (status, stderr) = stream.wait()?;
+    assert!(!status.success());
+    assert!(
+        stderr.contains("active-input stdin closed after 0 of 2 follow-up user messages"),
+        "unexpected stderr: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn active_input_stream_rejects_non_user_followup() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let mut stream = spawn_stream_json_child(home.path(), false)?;
+
+    stream.stdin_mut()?.write_all(
+        stream_json_user_frame_with_uuid("@active-input-smoke:1", "active-initial").as_bytes(),
+    )?;
+    stream.stdin_mut()?.flush()?;
+    let _ = recv_until_result(&stream.rx, ACTIVE_INPUT_READY_RESULT)?;
+
+    stream.stdin_mut()?.write_all(
+        serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": "not a user frame",
+            },
+        })
+        .to_string()
+        .as_bytes(),
+    )?;
+    stream.stdin_mut()?.write_all(b"\n")?;
+    stream.close_stdin();
+
+    let (status, stderr) = stream.wait()?;
+    assert!(!status.success());
+    assert!(
+        stderr.contains("stream-json stdin follow-up message 1 must have type \"user\""),
+        "unexpected stderr: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn active_input_stream_rejects_invalid_followup_json() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let mut stream = spawn_stream_json_child(home.path(), false)?;
+
+    stream.stdin_mut()?.write_all(
+        stream_json_user_frame_with_uuid("@active-input-smoke:1", "active-initial").as_bytes(),
+    )?;
+    stream.stdin_mut()?.flush()?;
+    let _ = recv_until_result(&stream.rx, ACTIVE_INPUT_READY_RESULT)?;
+
+    stream.stdin_mut()?.write_all(b"{\"type\":\"user\"\n")?;
+    stream.close_stdin();
+
+    let (status, stderr) = stream.wait()?;
+    assert!(!status.success());
+    assert!(
+        stderr.contains("parse stream-json stdin follow-up message 1"),
+        "unexpected stderr: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn active_input_invalid_large_count_drains_stderr() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let mut stream = spawn_stream_json_child(home.path(), false)?;
+    let invalid_count = "x".repeat(128 * 1024);
+
+    stream.stdin_mut()?.write_all(
+        stream_json_user_frame_with_uuid(
+            &format!("@active-input-smoke:{invalid_count}"),
+            "active-initial",
+        )
+        .as_bytes(),
+    )?;
+    stream.close_stdin();
+
+    let (status, stderr) = stream.wait()?;
+    assert!(!status.success());
+    assert!(
+        stderr.contains("invalid @active-input-smoke follow-up count"),
+        "unexpected stderr prefix: {}",
+        stderr.chars().take(120).collect::<String>()
+    );
+    assert!(stderr.contains("(131072 bytes)"));
+    assert!(!stderr.contains(&invalid_count));
+    assert!(stderr.len() < 128);
+    Ok(())
+}
+
+#[test]
+fn concurrent_stream_json_ids_are_unique() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let children = (0..16)
+        .map(|_| {
+            let mut command = mock_claude();
+            command
+                .env("HOME", home.path())
+                .args(["--output-format", "stream-json", "--", "true"])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            spawn_managed_mock_child(&mut command)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut session_ids = HashSet::new();
+
+    for child in children {
+        let output = wait_child_output(child)?;
+        assert!(
+            output.status.success(),
+            "expected success, stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.stderr.is_empty());
+
+        let events = parse_jsonl(&output.stdout)?;
+        let session_id = init_session_id(&events)?;
+        assert!(
+            session_ids.insert(session_id.clone()),
+            "duplicate session id: {session_id}"
+        );
+        assert!(expected_history_path(home.path(), &session_id).exists());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn stream_json_shell_failure_writes_error_history() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+
+    let mut command = mock_claude();
+    command.env("HOME", home.path()).args([
+        "--output-format",
+        "stream-json",
+        "--",
+        "printf out; printf err >&2; exit 7",
+    ]);
+    let output = run_mock_output(&mut command)?;
+
+    assert_eq!(output.status.code(), Some(7));
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    let session_id = init_session_id(&events)?;
+    let stdout = String::from_utf8(output.stdout)?;
+    let history = fs::read_to_string(expected_history_path(home.path(), &session_id))?;
+
+    assert_eq!(history, stdout);
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        [
+            "system/init",
+            "assistant/text",
+            "assistant/tool_use",
+            "user/tool_result",
+            "result/error",
+        ]
+    );
+    assert_eq!(
+        events[3]
+            .pointer("/message/content/0/content")
+            .and_then(Value::as_str),
+        Some("outerr")
+    );
+    assert_eq!(
+        events[3]
+            .pointer("/message/content/0/is_error")
+            .and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        events[4].get("result").and_then(Value::as_str),
+        Some("outerr")
+    );
+    assert_eq!(
+        events[4].get("is_error").and_then(Value::as_bool),
+        Some(true)
+    );
+    Ok(())
+}
+
+#[test]
+fn stream_json_shell_large_stdout_is_bounded() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let prompt = format!("yes A | head -c {LARGE_MOCK_OUTPUT_BYTES}");
+
+    let output = mock_stream_json_shell_output(home.path(), &prompt)?;
+
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    let session_id = init_session_id(&events)?;
+    let stdout = String::from_utf8(output.stdout)?;
+    let history = fs::read_to_string(expected_history_path(home.path(), &session_id))?;
+    let tool_output = tool_result_content(&events)?;
+    let result_output = result_content(&events)?;
+
+    assert_eq!(history, stdout);
+    assert_eq!(tool_output, result_output);
+    assert!(tool_output.contains(STDOUT_TRUNCATION_MARKER));
+    assert!(!tool_output.contains(STDERR_TRUNCATION_MARKER));
+    assert!(tool_output.len() <= MOCK_CAPTURE_LIMIT_BYTES + 128);
+    Ok(())
+}
+
+#[test]
+fn stream_json_shell_large_stderr_failure_is_bounded() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let prompt = format!("printf out; yes E | head -c {LARGE_MOCK_OUTPUT_BYTES} >&2; exit 7");
+
+    let output = mock_stream_json_shell_output(home.path(), &prompt)?;
+
+    assert_eq!(output.status.code(), Some(7));
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    let tool_output = tool_result_content(&events)?;
+    let result_output = result_content(&events)?;
+
+    assert_eq!(tool_output, result_output);
+    assert!(tool_output.starts_with("out"));
+    assert!(tool_output.contains(STDERR_TRUNCATION_MARKER));
+    assert!(!tool_output.contains(STDOUT_TRUNCATION_MARKER));
+    assert!(tool_output.len() <= MOCK_CAPTURE_LIMIT_BYTES + 128);
+    Ok(())
+}
+
+#[test]
+fn stream_json_shell_large_stdout_and_stderr_do_not_deadlock()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let prompt = format!(
+        "yes O | head -c {LARGE_MOCK_OUTPUT_BYTES}; \
+         yes E | head -c {LARGE_MOCK_OUTPUT_BYTES} >&2; \
+         exit 8"
+    );
+
+    let output = mock_stream_json_shell_output(home.path(), &prompt)?;
+
+    assert_eq!(output.status.code(), Some(8));
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    let tool_output = tool_result_content(&events)?;
+    let result_output = result_content(&events)?;
+
+    assert_eq!(tool_output, result_output);
+    assert!(tool_output.contains(STDOUT_TRUNCATION_MARKER));
+    assert!(tool_output.contains(STDERR_TRUNCATION_MARKER));
+    assert!(tool_output.len() <= (MOCK_CAPTURE_LIMIT_BYTES * 2) + 256);
+    Ok(())
+}
+
+#[test]
+fn stream_json_shell_success_drains_stderr_without_exposing_it()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let prompt = format!("yes hidden-stderr | head -c {LARGE_MOCK_OUTPUT_BYTES} >&2; printf ok");
+
+    let output = mock_stream_json_shell_output(home.path(), &prompt)?;
+
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    let tool_output = tool_result_content(&events)?;
+    let result_output = result_content(&events)?;
+
+    assert_eq!(tool_output, "ok");
+    assert_eq!(result_output, "ok");
+    Ok(())
+}
+
+#[test]
+fn stream_json_shell_invalid_utf8_output_remains_valid_jsonl()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+
+    let output = mock_stream_json_shell_output(home.path(), "printf '\\377'")?;
+
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    let tool_output = tool_result_content(&events)?;
+    let result_output = result_content(&events)?;
+
+    assert_eq!(tool_output, "\u{fffd}");
+    assert_eq!(result_output, "\u{fffd}");
+    Ok(())
+}
+
+#[test]
+fn exit_after_result_writes_init_and_result_history() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+
+    let mut command = mock_claude();
+    command.env("HOME", home.path()).args([
+        "--output-format",
+        "stream-json",
+        "--",
+        "@exit-after-result",
+    ]);
+    let output = run_mock_output(&mut command)?;
+
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    let session_id = init_session_id(&events)?;
+    let stdout = String::from_utf8(output.stdout)?;
+    let history = fs::read_to_string(expected_history_path(home.path(), &session_id))?;
+
+    assert_eq!(history, stdout);
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        ["system/init", "result/success"]
+    );
+    assert_eq!(
+        events[0].get("model").and_then(Value::as_str),
+        Some("mock-claude")
+    );
+    assert_eq!(
+        events[0]
+            .get("tools")
+            .and_then(Value::as_array)
+            .and_then(|tools| tools.first())
+            .and_then(Value::as_str),
+        Some("Bash")
+    );
+    assert_eq!(
+        events[1].get("result").and_then(Value::as_str),
+        Some("Done.")
+    );
+    assert_eq!(
+        events[1].get("is_error").and_then(Value::as_bool),
+        Some(false)
+    );
+    Ok(())
+}
+
+#[cfg(any(
+    target_os = "linux",
+    target_vendor = "apple",
+    target_os = "freebsd",
+    target_os = "dragonfly",
+    target_os = "openbsd",
+    target_os = "netbsd",
+    target_os = "solaris",
+    target_os = "illumos",
+    target_os = "aix",
+    target_os = "haiku",
+    target_os = "hurd",
+    target_os = "nto",
+))]
+#[test]
+fn orphan_pipe_does_not_block_output_wait() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+
+    let mut command = mock_claude();
+    command
+        .env("HOME", home.path())
+        .args(["--output-format", "stream-json", "--", "@orphan-pipe"]);
+    let output = run_mock_output(&mut command)?;
+
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        ["system/init", "result/success"]
+    );
+    Ok(())
+}
+
+#[test]
+fn echo_jsonl_rejects_path_like_session_id_without_writing_history()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let payload = r#"{"type":"system","subtype":"init","cwd":"/home/user/workspace","session_id":"../escape","tools":["Bash"],"model":"mock-claude"}"#;
+    let prompt = format!("@ECHO@\n{payload}\n");
+
+    let mut command = mock_claude();
+    command
+        .env("HOME", home.path())
+        .args(["--output-format", "stream-json", "--", &prompt]);
+    let output = run_mock_output(&mut command)?;
+
+    assert!(!output.status.success());
+    assert!(
+        output.stdout.is_empty(),
+        "expected empty stdout, got: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("invalid @ECHO@ session_id"));
+    assert!(stderr.contains("../escape"));
+    assert!(!expected_history_path(home.path(), "../escape").exists());
+    assert!(
+        !home
+            .path()
+            .join(".claude")
+            .join("projects")
+            .join("escape.jsonl")
+            .exists()
+    );
+    Ok(())
+}
+
+#[test]
+fn echo_jsonl_rejects_invalid_json_line() -> Result<(), Box<dyn std::error::Error>> {
+    let mut command = mock_claude();
+    command.args(["--output-format", "stream-json", "--", "@ECHO@\n{\"type\""]);
+    let output = run_mock_output(&mut command)?;
+
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("invalid @ECHO@ JSONL line 2"));
+    Ok(())
+}
+
+#[test]
+fn echo_jsonl_rejects_empty_payload() -> Result<(), Box<dyn std::error::Error>> {
+    let mut command = mock_claude();
+    command.args(["--output-format", "stream-json", "--", "@ECHO@\n\n"]);
+    let output = run_mock_output(&mut command)?;
+
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("@ECHO@ payload must contain at least one JSONL event")
+    );
+    Ok(())
+}

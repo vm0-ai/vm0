@@ -1,0 +1,2 @@
+{"type":"thread.started","thread_id":"00000000-0000-0000-0000-000000000004"}
+{"type":"error","code":"invalid_api_key","message":"Incorrect API key provided"}

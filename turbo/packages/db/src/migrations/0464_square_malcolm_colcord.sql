@@ -1,0 +1,1 @@
+ALTER TABLE "connectors" ADD COLUMN "reconnect_reason" varchar(64);

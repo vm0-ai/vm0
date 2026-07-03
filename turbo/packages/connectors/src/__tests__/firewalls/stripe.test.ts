@@ -1,0 +1,376 @@
+import { beforeAll, describe, expect, it } from "vitest";
+
+import { findMatchingPermissions } from "../../firewall-rule-matcher";
+import {
+  extractSecretNamesFromApis,
+  type FirewallConfig,
+} from "../../firewall-types";
+import {
+  isNumberOrStringRecord,
+  isStringArray,
+  isStringRecord,
+  loadDefaultFirewallPolicies,
+  loadRequiredGeneratedConnectorFirewallExport,
+  loadRequiredConnectorFirewall,
+} from "../firewall-test-helpers";
+
+const RUNTIME_METHODS = [
+  "GET",
+  "HEAD",
+  "OPTIONS",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+] as const;
+
+let firewall: FirewallConfig;
+let stripeCategories: Record<string, string>;
+let stripeCategoryOrder: readonly string[];
+let stripeDefaultAllowed: readonly string[];
+let stripeGenerationStats: Record<string, number | string>;
+
+function getStripePermission(name: string) {
+  const permission = firewall.apis
+    .flatMap((api) => {
+      return api.permissions ?? [];
+    })
+    .find((candidate) => {
+      return candidate.name === name;
+    });
+
+  if (!permission) {
+    throw new Error(`Missing Stripe permission "${name}"`);
+  }
+  return permission;
+}
+
+function expectStripeRule(permissionName: string, rule: string): void {
+  const permission = getStripePermission(permissionName);
+  expect(permission.rules).toContain(rule);
+}
+
+function expectStripeMatches(
+  method: string,
+  path: string,
+  permissionNames: readonly string[],
+): void {
+  const matches = findMatchingPermissions(method, path, firewall);
+  expect([...matches].sort()).toStrictEqual([...permissionNames].sort());
+}
+
+function expandRuntimeRules(rule: string): string[] {
+  const spaceIndex = rule.indexOf(" ");
+  const method = rule.slice(0, spaceIndex);
+  const path = rule.slice(spaceIndex + 1);
+  if (method !== "ANY") return [rule];
+  return RUNTIME_METHODS.map((runtimeMethod) => {
+    return `${runtimeMethod} ${path}`;
+  });
+}
+
+describe("stripe firewall", () => {
+  beforeAll(async () => {
+    firewall = await loadRequiredConnectorFirewall("stripe");
+    stripeCategories = await loadRequiredGeneratedConnectorFirewallExport(
+      "stripe",
+      "stripeCategories",
+      isStringRecord,
+    );
+    stripeCategoryOrder = await loadRequiredGeneratedConnectorFirewallExport(
+      "stripe",
+      "stripeCategoryOrder",
+      isStringArray,
+    );
+    stripeDefaultAllowed = await loadRequiredGeneratedConnectorFirewallExport(
+      "stripe",
+      "stripeDefaultAllowed",
+      isStringArray,
+    );
+    stripeGenerationStats = await loadRequiredGeneratedConnectorFirewallExport(
+      "stripe",
+      "stripeGenerationStats",
+      isNumberOrStringRecord,
+    );
+  });
+
+  it("registers the Stripe firewall with API token auth", () => {
+    expect(firewall.name).toBe("stripe");
+    expect(firewall.apis).toHaveLength(1);
+    expect(firewall.apis[0]).toMatchObject({
+      base: "https://api.stripe.com",
+      auth: {
+        headers: {
+          Authorization: "Bearer ${{ secrets.STRIPE_TOKEN }}",
+        },
+      },
+    });
+    expect(
+      firewall.apis.some((api) => {
+        return new URL(api.base).hostname === "dashboard.stripe.com";
+      }),
+    ).toBe(false);
+    expect(extractSecretNamesFromApis([...firewall.apis])).toStrictEqual([
+      "STRIPE_TOKEN",
+    ]);
+  });
+
+  it("assigns one permission owner to every runtime route", () => {
+    const duplicates: string[] = [];
+    for (const api of firewall.apis) {
+      const owners = new Map<string, string>();
+      for (const permission of api.permissions ?? []) {
+        for (const rule of permission.rules) {
+          for (const runtimeRule of expandRuntimeRules(rule)) {
+            const key = `${api.base} ${runtimeRule}`;
+            const existing = owners.get(key);
+            if (existing) {
+              duplicates.push(`${key}: ${existing}, ${permission.name}`);
+              continue;
+            }
+            owners.set(key, permission.name);
+          }
+        }
+      }
+    }
+
+    expect(duplicates).toStrictEqual([]);
+  });
+
+  it("exposes official Stripe permission names for representative resources", () => {
+    expectStripeRule("customer_read", "GET /v1/customers");
+    expectStripeRule("customer_write", "POST /v1/customers");
+    expectStripeRule("payment_intent_read", "GET /v1/payment_intents/{intent}");
+    expectStripeRule(
+      "payment_intent_write",
+      "POST /v1/payment_intents/{intent}/confirm",
+    );
+    expectStripeRule(
+      "checkout_session_read",
+      "GET /v1/checkout/sessions/{session}",
+    );
+    expectStripeRule("checkout_session_write", "POST /v1/checkout/sessions");
+  });
+
+  it("maps documented Stripe permission aliases without guessing ambiguous resources", () => {
+    expectStripeRule("charge_read", "GET /v1/refunds");
+    expectStripeRule("charge_write", "POST /v1/refunds");
+    expectStripeRule(
+      "customer_portal_read",
+      "GET /v1/billing_portal/configurations",
+    );
+    expectStripeRule(
+      "payment_records_write",
+      "POST /v1/payment_records/report_payment",
+    );
+    expectStripeRule("payment_links_read", "GET /v1/payment_links");
+    expectStripeRule(
+      "payment_links_write",
+      "POST /v1/payment_links/{payment_link}",
+    );
+    expectStripeRule(
+      "billing_clock_read",
+      "GET /v1/test_helpers/test_clocks/{test_clock}",
+    );
+    expectStripeRule(
+      "billing_clock_write",
+      "POST /v1/test_helpers/test_clocks/{test_clock}/advance",
+    );
+    expectStripeRule(
+      "entitlement_read",
+      "GET /v1/entitlements/active_entitlements/{id}",
+    );
+    expectStripeRule(
+      "terminal_reader_read",
+      "GET /v1/terminal/readers/{reader}",
+    );
+  });
+
+  it("uses official Stripe API docs endpoint lists for rules without resource IDs", () => {
+    expectStripeRule(
+      "checkout_session_read",
+      "GET /v1/checkout/sessions/{session}/line_items",
+    );
+    expectStripeRule(
+      "credit_note_read",
+      "GET /v1/credit_notes/{credit_note}/lines",
+    );
+    expectStripeRule("quote_read", "GET /v1/quotes/{quote}/pdf");
+    expectStripeRule("source_read", "GET /v1/customers/{customer}/cards");
+    expectStripeRule(
+      "source_read",
+      "GET /v1/customers/{customer}/bank_accounts/{id}",
+    );
+    expectStripeRule("source_write", "POST /v1/customers/{customer}/sources");
+    expectStripeRule(
+      "source_write",
+      "POST /v1/customers/{customer}/sources/{id}/verify",
+    );
+    expectStripeRule(
+      "confirmation_token_client_write",
+      "POST /v1/test_helpers/confirmation_tokens",
+    );
+  });
+
+  it("uses OpenAPI resource IDs for Stripe restricted key resource permissions", () => {
+    expectStripeRule(
+      "forwarding_request_read",
+      "GET /v1/forwarding/requests/{id}",
+    );
+    expectStripeRule(
+      "forwarding_request_write",
+      "POST /v1/forwarding/requests",
+    );
+    expectStripeRule("climate_order_read", "GET /v1/climate/orders");
+    expectStripeRule("climate_order_write", "POST /v1/climate/orders");
+    expectStripeRule(
+      "identity_verification_session_write",
+      "POST /v1/identity/verification_sessions",
+    );
+    expectStripeRule(
+      "treasury_financial_account_read",
+      "GET /v1/treasury/financial_accounts/{financial_account}",
+    );
+    expectStripeRule(
+      "treasury_financial_account_write",
+      "POST /v1/treasury/financial_accounts",
+    );
+  });
+
+  it("maps legacy ambiguous Stripe unions to single resource owners", () => {
+    expectStripeRule(
+      "external_account_write",
+      "POST /v1/accounts/{account}/external_accounts",
+    );
+    expectStripeMatches("POST", "/v1/accounts/acct_123/external_accounts", [
+      "external_account_write",
+    ]);
+
+    expectStripeRule(
+      "external_account_read",
+      "GET /v1/accounts/{account}/external_accounts/{id}",
+    );
+    expectStripeMatches(
+      "GET",
+      "/v1/accounts/acct_123/external_accounts/ba_123",
+      ["external_account_read"],
+    );
+
+    expectStripeRule("source_write", "POST /v1/customers/{customer}/cards");
+    expectStripeMatches("POST", "/v1/customers/cus_123/cards", [
+      "source_write",
+    ]);
+
+    expectStripeRule("source_read", "GET /v1/customers/{customer}/sources");
+    expectStripeMatches("GET", "/v1/customers/cus_123/sources", [
+      "source_read",
+    ]);
+
+    expectStripeRule(
+      "source_read",
+      "GET /v1/customers/{customer}/sources/{id}",
+    );
+    expectStripeMatches("GET", "/v1/customers/cus_123/sources/src_123", [
+      "source_read",
+    ]);
+  });
+
+  it("uses official Stripe API v2 docs for resource permissions without OpenAPI resource IDs", () => {
+    expectStripeRule("v2_core_account_read", "GET /v2/core/accounts/{id}");
+    expectStripeRule("v2_core_account_write", "POST /v2/core/accounts/{id}");
+    expectStripeRule(
+      "v2_core_account_person_token_read",
+      "GET /v2/core/accounts/{account_id}/person_tokens/{id}",
+    );
+    expectStripeRule(
+      "v2_core_account_person_token_write",
+      "POST /v2/core/accounts/{account_id}/person_tokens",
+    );
+    expectStripeRule(
+      "webhook_write",
+      "POST /v2/core/event_destinations/{id}/ping",
+    );
+    expectStripeRule(
+      "billing_meter_event_write",
+      "POST /v2/billing/meter_event_stream",
+    );
+    expectStripeRule(
+      "product_catalog_import_read",
+      "GET /v2/commerce/product_catalog/imports/{id}",
+    );
+  });
+
+  it("reports generated mapping coverage with legacy single-owner overrides", () => {
+    const permissionCount = firewall.apis.reduce((count, api) => {
+      return count + (api.permissions?.length ?? 0);
+    }, 0);
+
+    expect(stripeGenerationStats.totalOperations).toBe(619);
+    expect(stripeGenerationStats.mappedOperations).toBe(619);
+    expect(stripeGenerationStats.docsMappedOperations).toBe(53);
+    expect(stripeGenerationStats.openApiResourceMappedOperations).toBe(239);
+    expect(stripeGenerationStats.legacyAmbiguousMappedOperations).toBe(16);
+    expect(stripeGenerationStats.unmappedOperations).toBe(0);
+    expect(stripeGenerationStats.ambiguousOperations).toBe(0);
+    expect(stripeGenerationStats.permissionCount).toBe(231);
+    expect(stripeGenerationStats.permissionCount).toBe(permissionCount);
+  });
+
+  it("groups Stripe permissions by product area", () => {
+    expect(stripeCategories.customer_read).toBe("Core");
+    expect(stripeCategories.invoice_write).toBe("Billing");
+    expect(stripeCategories.forwarding_request_write).toBe("Payments");
+    expect(stripeCategories.treasury_financial_account_write).toBe("Treasury");
+    expect(stripeCategories.v2_core_account_write).toBe("Core");
+    expect(stripeCategoryOrder).toContain("Core");
+    expect(stripeCategoryOrder).toContain("Billing");
+    expect(stripeCategoryOrder).toContain("Treasury");
+  });
+
+  it("defaults Stripe readonly permissions to allow", async () => {
+    const policy = await loadDefaultFirewallPolicies("stripe");
+
+    expect(policy.policies.customer_read).toBe("allow");
+    expect(policy.policies.charge_read).toBe("allow");
+    expect(policy.policies.invoice_read).toBe("allow");
+    expect(policy.policies.checkout_session_read).toBe("allow");
+    expect(policy.policies.event_read).toBe("allow");
+    expect(policy.policies.secret_read).toBe("allow");
+    expect(policy.policies.financial_connections_account_read).toBe("allow");
+    expect(policy.policies.identity_verification_report_read).toBe("allow");
+    expect(policy.policies.treasury_financial_account_read).toBe("allow");
+    expect(policy.policies.product_read).toBe("allow");
+    expect(policy.policies.plan_read).toBe("allow");
+    expect(policy.policies.coupon_read).toBe("allow");
+    expect(policy.policies.payment_method_domain_read).toBe("allow");
+    expect(policy.policies.tax_code_read).toBe("allow");
+    expect(policy.policies.payment_intent_write).toBe("deny");
+    expect(policy.policies.checkout_session_write).toBe("deny");
+    expect(policy.unknownPolicy).toBe("allow");
+  });
+
+  it("generates Stripe default-allowed permissions from readonly rules", () => {
+    const readOnlyPermissions = firewall.apis.flatMap((api) => {
+      return (api.permissions ?? [])
+        .filter((permission) => {
+          return permission.rules.every((rule) => {
+            return rule.startsWith("GET ") || rule.startsWith("HEAD ");
+          });
+        })
+        .map((permission) => {
+          return permission.name;
+        });
+    });
+
+    expect([...stripeDefaultAllowed].sort()).toStrictEqual(
+      readOnlyPermissions.sort(),
+    );
+    expect(stripeDefaultAllowed).toHaveLength(122);
+    expect(stripeDefaultAllowed).toContain("customer_read");
+    expect(stripeDefaultAllowed).toContain("charge_read");
+    expect(stripeDefaultAllowed).toContain("invoice_read");
+    expect(stripeDefaultAllowed).toContain("event_read");
+    expect(stripeDefaultAllowed).toContain("secret_read");
+    expect(stripeDefaultAllowed).not.toContain("customer_write");
+  });
+});

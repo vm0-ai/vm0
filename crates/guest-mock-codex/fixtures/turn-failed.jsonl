@@ -1,0 +1,3 @@
+{"type":"thread.started","thread_id":"00000000-0000-0000-0000-000000000002"}
+{"type":"item.completed","item":{"id":"item-msg-2","type":"agent_message","text":"Attempting the turn"}}
+{"type":"turn.failed","error":"Mock turn failure for fixture testing"}

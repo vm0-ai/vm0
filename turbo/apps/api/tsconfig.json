@@ -1,0 +1,14 @@
+{
+  "extends": "@vm0/typescript-config/base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noEmit": true,
+    "incremental": true,
+    "tsBuildInfoFile": "./.tsbuildinfo",
+    "types": ["node", "vitest/globals"],
+    "outDir": "./dist"
+  },
+  "include": ["src/**/*", "custom-eslint/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

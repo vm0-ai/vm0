@@ -1,0 +1,278 @@
+import { desktopUpdatesContract } from "@vm0/api-contracts/contracts/desktop-updates";
+import { HttpResponse, http } from "msw";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { createApp } from "../../../app-factory";
+import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { clearMockNow, mockNow } from "../../../lib/time";
+import { server } from "../../../mocks/server";
+
+const context = testContext();
+const DESKTOP_UPDATE_MANIFEST_URL =
+  "https://github.com/vm0-ai/vm0/releases/download/desktop-updates/desktop-update-manifest.json";
+
+interface DesktopUpdateRelease {
+  readonly version: string;
+  readonly name?: string;
+  readonly notes?: string;
+  readonly pubDate: string;
+  readonly platforms: Record<string, Record<string, { readonly url: string }>>;
+}
+
+interface DesktopUpdateManifest {
+  readonly schemaVersion: 1;
+  readonly channels: Record<
+    string,
+    { readonly latest: string; readonly blocked?: readonly string[] }
+  >;
+  readonly releases: Record<string, DesktopUpdateRelease>;
+}
+
+function client() {
+  return setupApp({ context })(desktopUpdatesContract);
+}
+
+function appRequest(path: string): Promise<Response> {
+  return Promise.resolve(
+    createApp({ signal: context.signal }).request(path, { method: "GET" }),
+  );
+}
+
+function mockDesktopUpdateManifest(manifest: DesktopUpdateManifest): void {
+  server.use(
+    http.get(DESKTOP_UPDATE_MANIFEST_URL, () => {
+      return HttpResponse.json(manifest);
+    }),
+  );
+}
+
+function stableManifest(
+  latest: string,
+  releases: DesktopUpdateManifest["releases"],
+  blocked: readonly string[] = [],
+): DesktopUpdateManifest {
+  return {
+    schemaVersion: 1,
+    channels: {
+      stable: { latest, blocked: [...blocked] },
+    },
+    releases,
+  };
+}
+
+function darwinRelease(version: string, arch: "arm64" | "x64", url: string) {
+  return {
+    version,
+    name: `Zero Computer Use ${version}`,
+    notes: `Release ${version}`,
+    pubDate: "2026-06-08T00:00:00.000Z",
+    platforms: {
+      darwin: {
+        [arch]: { url },
+      },
+    },
+  };
+}
+
+function darwinArm64Release(version: string, url: string) {
+  return darwinRelease(version, "arm64", url);
+}
+
+describe("desktop update routes", () => {
+  let testIndex = 0;
+
+  beforeEach(() => {
+    mockNow(Date.parse("2026-06-08T00:00:00.000Z") + testIndex * 120_000);
+    testIndex += 1;
+  });
+
+  afterEach(() => {
+    clearMockNow();
+  });
+
+  it("redirects the release page route to the current stable desktop release", async () => {
+    mockDesktopUpdateManifest(
+      stableManifest("0.2.1", {
+        "0.2.1": darwinArm64Release(
+          "0.2.1",
+          "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.1/Zero-darwin-arm64-0.2.1.zip",
+        ),
+      }),
+    );
+
+    const response = await appRequest(
+      "http://api.test/api/zero/desktop/updates/stable/darwin/arm64/release",
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe(
+      "https://github.com/vm0-ai/vm0/releases/tag/desktop-v0.2.1",
+    );
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it("redirects the dmg route to the current stable desktop dmg asset", async () => {
+    mockDesktopUpdateManifest(
+      stableManifest("0.12.0", {
+        "0.12.0": darwinArm64Release(
+          "0.12.0",
+          "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.12.0/Zero-darwin-arm64-0.12.0.zip",
+        ),
+      }),
+    );
+
+    const response = await appRequest(
+      "http://api.test/api/zero/desktop/updates/stable/darwin/arm64/dmg",
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe(
+      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.12.0/Zero-darwin-arm64-0.12.0.dmg",
+    );
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it("serves the current stable macOS arm64 update from the manifest", async () => {
+    const zipUrl =
+      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.1/Zero-darwin-arm64-0.2.1.zip";
+    mockDesktopUpdateManifest(
+      stableManifest("0.2.1", {
+        "0.2.1": darwinArm64Release("0.2.1", zipUrl),
+      }),
+    );
+
+    const response = await accept(
+      client().feed({
+        params: { channel: "stable", platform: "darwin", arch: "arm64" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      currentRelease: "0.2.1",
+      releases: [
+        {
+          version: "0.2.1",
+          updateTo: {
+            name: "Zero Computer Use 0.2.1",
+            version: "0.2.1",
+            pub_date: "2026-06-08T00:00:00.000Z",
+            url: zipUrl,
+            notes: "Release 0.2.1",
+          },
+        },
+      ],
+    });
+  });
+
+  it("serves the current stable macOS x64 update from the manifest", async () => {
+    const zipUrl =
+      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.1/Zero-darwin-x64-0.2.1.zip";
+    mockDesktopUpdateManifest(
+      stableManifest("0.2.1", {
+        "0.2.1": darwinRelease("0.2.1", "x64", zipUrl),
+      }),
+    );
+
+    const response = await accept(
+      client().feed({
+        params: { channel: "stable", platform: "darwin", arch: "x64" },
+      }),
+      [200],
+    );
+
+    expect(response.body.releases[0]?.updateTo.url).toBe(zipUrl);
+  });
+
+  it("redirects the x64 dmg route to the current stable desktop dmg asset", async () => {
+    mockDesktopUpdateManifest(
+      stableManifest("0.12.0", {
+        "0.12.0": darwinRelease(
+          "0.12.0",
+          "x64",
+          "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.12.0/Zero-darwin-x64-0.12.0.zip",
+        ),
+      }),
+    );
+
+    const response = await appRequest(
+      "http://api.test/api/zero/desktop/updates/stable/darwin/x64/dmg",
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe(
+      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.12.0/Zero-darwin-x64-0.12.0.dmg",
+    );
+  });
+
+  it("does not return a blocked latest release", async () => {
+    const previousUrl =
+      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.1/Zero-darwin-arm64-0.2.1.zip";
+    mockDesktopUpdateManifest(
+      stableManifest(
+        "0.2.2",
+        {
+          "0.2.1": darwinArm64Release("0.2.1", previousUrl),
+          "0.2.2": darwinArm64Release(
+            "0.2.2",
+            "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.2/Zero-darwin-arm64-0.2.2.zip",
+          ),
+          "0.3.0": darwinArm64Release(
+            "0.3.0",
+            "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.3.0/Zero-darwin-arm64-0.3.0.zip",
+          ),
+        },
+        ["0.2.2"],
+      ),
+    );
+
+    const response = await accept(
+      client().feed({
+        params: { channel: "stable", platform: "darwin", arch: "arm64" },
+      }),
+      [200],
+    );
+
+    expect(response.body.currentRelease).toBe("0.2.1");
+    expect(response.body.releases[0]?.updateTo.url).toBe(previousUrl);
+  });
+
+  it("returns not found when the manifest has no matching asset", async () => {
+    mockDesktopUpdateManifest(
+      stableManifest("0.2.1", {
+        "0.2.1": {
+          version: "0.2.1",
+          pubDate: "2026-06-08T00:00:00.000Z",
+          platforms: {
+            darwin: {},
+          },
+        },
+      }),
+    );
+
+    const response = await accept(
+      client().feed({
+        params: { channel: "stable", platform: "darwin", arch: "arm64" },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns not found when no dmg release is available", async () => {
+    const zipUrl =
+      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.11.2/Zero-darwin-arm64-0.11.2.zip";
+    mockDesktopUpdateManifest(
+      stableManifest("0.11.2", {
+        "0.11.2": darwinArm64Release("0.11.2", zipUrl),
+      }),
+    );
+
+    const response = await appRequest(
+      "http://api.test/api/zero/desktop/updates/stable/darwin/arm64/dmg",
+    );
+
+    expect(response.status).toBe(404);
+  });
+});

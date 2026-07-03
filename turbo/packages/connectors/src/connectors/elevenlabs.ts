@@ -1,0 +1,40 @@
+import type { ConnectorConfig } from "../connector-config";
+
+export const elevenlabs = {
+  elevenlabs: {
+    label: "ElevenLabs",
+    category: "ai-voice-audio",
+    generation: ["audio"],
+    helpText:
+      "Connect your ElevenLabs account to generate speech, clone voices, manage audio projects, and access sound effects",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [ElevenLabs](https://elevenlabs.io)\n2. Go to [Settings > API Keys](https://elevenlabs.io/app/settings/api-keys)\n3. Click to create a new API key\n4. Copy the key and store it securely",
+        storage: {
+          secrets: ["ELEVENLABS_TOKEN"],
+          variables: [],
+        },
+        grant: {
+          kind: "manual",
+          fields: {
+            ELEVENLABS_TOKEN: {
+              label: "API Key",
+              publicId: "apiKey",
+              required: true,
+              placeholder: "your-elevenlabs-api-key",
+            },
+          },
+        },
+        access: {
+          kind: "static",
+          envBindings: {
+            ELEVENLABS_TOKEN: "$secrets.ELEVENLABS_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
+      },
+    },
+  },
+} as const satisfies Record<string, ConnectorConfig>;

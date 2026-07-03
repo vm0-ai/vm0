@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/contracts/**/*"],
+  "exclude": ["node_modules", "dist", "src/firewalls/*.generated.ts"]
+}

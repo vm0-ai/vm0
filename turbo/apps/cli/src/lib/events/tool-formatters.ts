@@ -1,0 +1,425 @@
+/**
+ * Tool-specific formatters for CLI output
+ * Formats tool_use and tool_result events in grouped output
+ */
+
+import chalk from "chalk";
+
+const MAX_FORMATTED_TODOS = 20;
+
+export interface ToolUseData {
+  tool: string;
+  input: Record<string, unknown>;
+}
+
+export interface ToolResultData {
+  result: string;
+  isError: boolean;
+}
+
+/**
+ * Pluralize a word based on count
+ */
+function pluralize(count: number, singular: string, plural: string): string {
+  return count === 1 ? singular : plural;
+}
+
+/**
+ * Truncate text with ellipsis
+ */
+function truncate(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return text.slice(0, maxLength - 3) + "...";
+}
+
+function displayValue(value: unknown): string {
+  return value === null || value === undefined ? "" : String(value);
+}
+
+function nonEmptyDisplayValue(value: unknown): string | undefined {
+  const display = displayValue(value);
+  return display.length > 0 ? display : undefined;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+/**
+ * Format the header line for a tool (e.g., "Read src/lib/api.ts")
+ */
+export function formatToolHeader(data: ToolUseData): string[] {
+  const { tool, input } = data;
+
+  // Get the headline based on tool type
+  const headline = getToolHeadline(tool, input);
+  return [headline];
+}
+
+/**
+ * Tool headline formatters - maps tool name to headline generator
+ */
+const toolHeadlineFormatters: Record<
+  string,
+  (input: Record<string, unknown>) => string
+> = {
+  Read: (input) => {
+    return `Read${chalk.dim(`(${displayValue(input.file_path)})`)}`;
+  },
+  Edit: (input) => {
+    return `Edit${chalk.dim(`(${displayValue(input.file_path)})`)}`;
+  },
+  Write: (input) => {
+    return `Write${chalk.dim(`(${displayValue(input.file_path)})`)}`;
+  },
+  Bash: (input) => {
+    return `Bash${chalk.dim(`(${truncate(displayValue(input.command), 60)})`)}`;
+  },
+  Glob: (input) => {
+    return `Glob${chalk.dim(`(${displayValue(input.pattern)})`)}`;
+  },
+  Grep: (input) => {
+    return `Grep${chalk.dim(`(${displayValue(input.pattern)})`)}`;
+  },
+  Task: (input) => {
+    return `Task${chalk.dim(`(${truncate(displayValue(input.description), 60)})`)}`;
+  },
+  WebFetch: (input) => {
+    return `WebFetch${chalk.dim(`(${truncate(displayValue(input.url), 60)})`)}`;
+  },
+  WebSearch: (input) => {
+    return `WebSearch${chalk.dim(`(${truncate(displayValue(input.query), 60)})`)}`;
+  },
+  TodoWrite: () => {
+    return "TodoWrite";
+  },
+};
+
+/**
+ * Get the headline for a tool based on its type and input
+ */
+function getToolHeadline(tool: string, input: Record<string, unknown>): string {
+  const formatter = toolHeadlineFormatters[tool];
+  return formatter ? formatter(input) : tool;
+}
+
+/**
+ * Format the result line with content preview
+ */
+export function formatToolResult(
+  toolUse: ToolUseData,
+  result: ToolResultData,
+  verbose: boolean,
+): string[] {
+  const { tool, input } = toolUse;
+  const { result: resultText, isError } = result;
+  const lines: string[] = [];
+
+  const specialLines = formatSpecialToolResult(
+    tool,
+    input,
+    resultText,
+    isError,
+    verbose,
+  );
+  if (specialLines) {
+    return specialLines;
+  }
+
+  // Error case: show error message
+  if (isError) {
+    const errorMsg = resultText ? truncate(resultText, 80) : "Error";
+    lines.push(`└ ✗ ${chalk.dim(errorMsg)}`);
+    return lines;
+  }
+
+  // Success case: show content preview
+  if (resultText) {
+    const resultLines = resultText.split("\n");
+    if (verbose) {
+      // In verbose mode, show full result with └ on first line
+      for (let i = 0; i < resultLines.length; i++) {
+        const prefix = i === 0 ? "└ " : "  ";
+        lines.push(`${prefix}${chalk.dim(resultLines[i])}`);
+      }
+    } else if (resultLines.length > 0) {
+      // In normal mode, show first 3 lines with expand hint
+      const previewCount = Math.min(3, resultLines.length);
+      for (let i = 0; i < previewCount; i++) {
+        const prefix = i === 0 ? "└ " : "  ";
+        lines.push(`${prefix}${chalk.dim(resultLines[i])}`);
+      }
+      const remaining = resultLines.length - previewCount;
+      if (remaining > 0) {
+        lines.push(
+          `  ${chalk.dim(`… +${remaining} ${pluralize(remaining, "line", "lines")} (vm0 logs <runId> to see all)`)}`,
+        );
+      }
+    }
+  } else {
+    // No result content, show done
+    lines.push(`└ ✓ ${chalk.dim("Done")}`);
+  }
+
+  return lines;
+}
+
+function formatSpecialToolResult(
+  tool: string,
+  input: Record<string, unknown>,
+  resultText: string,
+  isError: boolean,
+  verbose: boolean,
+): string[] | null {
+  if (isError) {
+    return null;
+  }
+
+  if (tool === "Read" && resultText) {
+    return formatReadContent(resultText, verbose);
+  }
+  if (tool === "TodoWrite") {
+    return formatTodoList(input);
+  }
+  if (tool === "Edit" && hasClaudeEditInput(input)) {
+    return formatEditDiff(input, verbose);
+  }
+  if (tool === "Write" && hasClaudeWriteInput(input)) {
+    return formatWritePreview(input, verbose);
+  }
+  return null;
+}
+
+function hasClaudeEditInput(input: Record<string, unknown>): boolean {
+  return (
+    typeof input.old_string === "string" || typeof input.new_string === "string"
+  );
+}
+
+function hasClaudeWriteInput(input: Record<string, unknown>): boolean {
+  return typeof input.content === "string";
+}
+
+/**
+ * Format Read tool output - strip line numbers and filter system content
+ * Input format: "     1→content" (line numbers with → separator)
+ * Falls back to raw content if no line numbers are present
+ */
+function formatReadContent(resultText: string, verbose: boolean): string[] {
+  const lines: string[] = [];
+  const rawLines = resultText.split("\n");
+
+  // Parse lines: try to extract content from line number format, strip the number prefix
+  const contentLines: string[] = [];
+  const lineNumberPattern = /^\s*\d+→(.*)$/;
+
+  for (const line of rawLines) {
+    const match = line.match(lineNumberPattern);
+    if (match) {
+      contentLines.push(match[1] ?? "");
+    }
+  }
+
+  // If no line numbers found, use raw content so whitespace-only files are not
+  // misreported as empty.
+  const displayLines = contentLines.length > 0 ? contentLines : rawLines;
+  const totalLines = displayLines.length;
+
+  if (totalLines === 0) {
+    lines.push(`└ ✓ ${chalk.dim("(empty)")}`);
+    return lines;
+  }
+
+  // Show content preview
+  if (verbose) {
+    for (let i = 0; i < displayLines.length; i++) {
+      const prefix = i === 0 ? "└ " : "  ";
+      lines.push(`${prefix}${chalk.dim(displayLines[i] ?? "")}`);
+    }
+  } else {
+    const previewCount = Math.min(3, totalLines);
+    for (let i = 0; i < previewCount; i++) {
+      const prefix = i === 0 ? "└ " : "  ";
+      lines.push(`${prefix}${chalk.dim(displayLines[i] ?? "")}`);
+    }
+    const remaining = totalLines - previewCount;
+    if (remaining > 0) {
+      lines.push(
+        `  ${chalk.dim(`… +${remaining} ${pluralize(remaining, "line", "lines")} (vm0 logs <runId> to see all)`)}`,
+      );
+    }
+  }
+
+  return lines;
+}
+
+/**
+ * Format Write tool output with content preview
+ */
+function formatWritePreview(
+  input: Record<string, unknown>,
+  verbose: boolean,
+): string[] {
+  const lines: string[] = [];
+  const content = displayValue(input.content);
+  const contentLines = content.split("\n");
+  const totalLines = contentLines.length;
+
+  // Show content preview
+  if (verbose) {
+    for (let i = 0; i < contentLines.length; i++) {
+      const prefix = i === 0 ? "⎿ " : "  ";
+      lines.push(`${prefix}${chalk.dim(contentLines[i] ?? "")}`);
+    }
+  } else {
+    const previewCount = Math.min(3, totalLines);
+    for (let i = 0; i < previewCount; i++) {
+      const prefix = i === 0 ? "⎿ " : "  ";
+      lines.push(`${prefix}${chalk.dim(contentLines[i] ?? "")}`);
+    }
+    const remaining = totalLines - previewCount;
+    if (remaining > 0) {
+      lines.push(
+        `  ${chalk.dim(`… +${remaining} ${pluralize(remaining, "line", "lines")} (vm0 logs <runId> to see all)`)}`,
+      );
+    }
+  }
+
+  return lines;
+}
+
+/**
+ * Format Edit tool output as diff
+ * Shows added/removed line counts and preview of changes
+ */
+function formatEditDiff(
+  input: Record<string, unknown>,
+  verbose: boolean,
+): string[] {
+  const lines: string[] = [];
+  const oldString = displayValue(input.old_string);
+  const newString = displayValue(input.new_string);
+
+  const oldLines = oldString.split("\n");
+  const newLines = newString.split("\n");
+
+  const removed = oldLines.length;
+  const added = newLines.length;
+
+  // Summary line
+  const summary = `Added ${added} ${pluralize(added, "line", "lines")}, removed ${removed} ${pluralize(removed, "line", "lines")}`;
+  lines.push(`⎿ ${chalk.dim(summary)}`);
+
+  if (verbose) {
+    // Verbose mode: show all lines
+    for (const line of oldLines) {
+      lines.push(`  - ${chalk.dim(line)}`);
+    }
+    for (const line of newLines) {
+      lines.push(`  + ${chalk.dim(line)}`);
+    }
+  } else {
+    // Compact mode: show first few lines of each
+    const previewLimit = 3;
+    const showOld = Math.min(previewLimit, oldLines.length);
+    const showNew = Math.min(previewLimit, newLines.length);
+
+    // Show removed lines
+    for (let i = 0; i < showOld; i++) {
+      lines.push(`  - ${chalk.dim(truncate(oldLines[i] ?? "", 60))}`);
+    }
+    const remainingOld = oldLines.length - previewLimit;
+    if (remainingOld > 0) {
+      lines.push(
+        `    ${chalk.dim(`… +${remainingOld} ${pluralize(remainingOld, "line", "lines")} (vm0 logs <runId> to see all)`)}`,
+      );
+    }
+
+    // Show added lines
+    for (let i = 0; i < showNew; i++) {
+      lines.push(`  + ${chalk.dim(truncate(newLines[i] ?? "", 60))}`);
+    }
+    const remainingNew = newLines.length - previewLimit;
+    if (remainingNew > 0) {
+      lines.push(
+        `    ${chalk.dim(`… +${remainingNew} ${pluralize(remainingNew, "line", "lines")} (vm0 logs <runId> to see all)`)}`,
+      );
+    }
+  }
+
+  return lines;
+}
+
+/**
+ * Format TodoWrite task list with status icons
+ * ✓ completed, ▸ in_progress, ◻ pending
+ */
+function formatTodoList(input: Record<string, unknown>): string[] {
+  const lines: string[] = [];
+  const todos = input.todos;
+
+  if (!Array.isArray(todos)) {
+    lines.push("└ ✓ Done");
+    return lines;
+  }
+
+  if (todos.length === 0) {
+    lines.push("└ ✓ Done");
+    return lines;
+  }
+
+  const displayedTodos = todos.slice(0, MAX_FORMATTED_TODOS);
+  for (let i = 0; i < displayedTodos.length; i++) {
+    const todo = recordValue(displayedTodos[i]);
+    const content = nonEmptyDisplayValue(todo?.content) ?? "Unknown task";
+    const status = nonEmptyDisplayValue(todo?.status) ?? "pending";
+    const icon = getTodoStatusIcon(status);
+    const styledContent = formatTodoContent(content, status);
+    const prefix = i === 0 ? "└ " : "  ";
+    lines.push(`${prefix}${icon} ${styledContent}`);
+  }
+
+  const remaining = todos.length - MAX_FORMATTED_TODOS;
+  if (remaining > 0) {
+    lines.push(
+      `  ${chalk.dim(`… +${remaining} ${pluralize(remaining, "task", "tasks")} (vm0 logs <runId> to see all)`)}`,
+    );
+  }
+
+  return lines;
+}
+
+/**
+ * Get icon for todo status
+ */
+function getTodoStatusIcon(status: string): string {
+  switch (status) {
+    case "completed":
+      return "✓";
+    case "in_progress":
+      return "▸";
+    case "pending":
+    default:
+      return "◻";
+  }
+}
+
+/**
+ * Format todo content with styling based on status
+ * - completed: strikethrough + dim
+ * - pending: dim
+ */
+function formatTodoContent(content: string, status: string): string {
+  switch (status) {
+    case "completed":
+      return chalk.dim.strikethrough(content);
+    case "in_progress":
+      return content;
+    case "pending":
+    default:
+      return chalk.dim(content);
+  }
+}

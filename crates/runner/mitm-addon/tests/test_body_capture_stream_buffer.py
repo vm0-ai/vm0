@@ -1,0 +1,446 @@
+"""Tests for body capture request and response stream-buffer contracts."""
+
+import gzip
+
+import pytest
+
+import flow_metadata_keys as metadata_keys
+from body_capture import add_capture_fields
+from body_limits import STREAM_BUFFER_LIMIT
+from tests.stream_buffer_helpers import set_request_stream_buffer, set_response_stream_buffer
+
+
+class TestBodyCaptureStreamBuffer:
+    def test_captures_request_body_from_stream_buffer(self, real_flow):
+        """When request_stream_buffer is present, request body should be read from it."""
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            request_body=b"should-be-ignored",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        body = b'{"streamed": true}'
+        set_request_stream_buffer(flow, body)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_body"] == '{"streamed": true}'
+        assert entry["request_body_encoding"] == "utf-8"
+        assert "request_body_truncated" not in entry
+
+    def test_request_stream_buffer_truncated_marks_truncation(self, real_flow):
+        body = b"x" * STREAM_BUFFER_LIMIT
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="text/plain",
+            include_request_id=True,
+        )
+        set_request_stream_buffer(flow, body, truncated=True)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_body"] == "x" * STREAM_BUFFER_LIMIT
+        assert entry["request_body_encoding"] == "utf-8"
+        assert entry["request_body_truncated"] is True
+
+    def test_incomplete_request_stream_buffer_marks_truncation(self, real_flow):
+        body = b'{"partial": true}'
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            include_request_id=True,
+        )
+        set_request_stream_buffer(flow, body, complete=False)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_body"] == '{"partial": true}'
+        assert entry["request_body_encoding"] == "utf-8"
+        assert entry["request_body_truncated"] is True
+
+    def test_empty_incomplete_request_stream_buffer_marks_truncation(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            include_request_id=True,
+        )
+        set_request_stream_buffer(flow, b"", complete=False)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "request_body" not in entry
+        assert "request_body_encoding" not in entry
+        assert entry["request_body_truncated"] is True
+
+    def test_binary_request_stream_buffer_truncated_marks_truncation(self, real_flow):
+        body = b"\x00" * STREAM_BUFFER_LIMIT
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/octet-stream",
+            include_request_id=True,
+        )
+        set_request_stream_buffer(flow, body, truncated=True)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "request_body" not in entry
+        assert entry["request_body_encoding"] == "binary"
+        assert entry["request_body_truncated"] is True
+
+    def test_non_empty_request_stream_buffer_requires_state(self, real_flow):
+        body = b'{"ok": true}'
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] = bytearray(body)
+        entry = {}
+        with pytest.raises(
+            RuntimeError,
+            match=r"request_stream_buffer.*request_stream_buffer_state.*truncated",
+        ):
+            add_capture_fields(flow, entry)
+
+    def test_empty_request_stream_buffer_skips_body(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            request_body=b"should-be-ignored",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        set_request_stream_buffer(flow, b"")
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "request_body" not in entry
+        assert "request_body_encoding" not in entry
+        assert "request_body_truncated" not in entry
+
+    def test_suppressed_request_body_marks_truncated_without_buffer(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] = True
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "request_body" not in entry
+        assert "request_body_encoding" not in entry
+        assert entry["request_body_truncated"] is True
+
+    def test_suppressed_request_body_ignores_invalid_stream_state(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] = True
+        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] = bytearray(b"hidden")
+        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE] = ["truncated"]
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "request_body" not in entry
+        assert "request_body_encoding" not in entry
+        assert entry["request_body_truncated"] is True
+
+    def test_empty_request_stream_buffer_requires_dict_state_when_present(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] = bytearray()
+        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE] = ["truncated"]
+        entry = {}
+        with pytest.raises(
+            RuntimeError,
+            match=r"request_stream_buffer.*empty.*request_stream_buffer_state.*type=list",
+        ):
+            add_capture_fields(flow, entry)
+
+    def test_captures_response_body_from_stream_buffer(self, real_flow):
+        """When stream_buffer is present, response body should be read from it."""
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+            response_body=b"should-be-ignored",
+        )
+        body = b'{"streamed": true}'
+        set_response_stream_buffer(flow, body)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["response_body"] == '{"streamed": true}'
+        assert entry["response_body_encoding"] == "utf-8"
+        assert "response_body_truncated" not in entry
+
+    def test_empty_stream_buffer_skips_body(self, real_flow):
+        """Empty stream_buffer (e.g. synthetic 403) should not produce body fields."""
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        set_response_stream_buffer(flow, b"")
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "response_body" not in entry
+        assert "response_body_encoding" not in entry
+        assert "response_headers" in entry  # headers still captured
+
+    def test_empty_stream_buffer_does_not_require_truncated_state(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray()
+        flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = {"total_bytes": 0}
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "response_body" not in entry
+        assert "response_body_encoding" not in entry
+        assert "response_headers" in entry
+
+    def test_empty_stream_buffer_requires_dict_state_when_present(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray()
+        flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = ["truncated"]
+        entry = {}
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*empty.*stream_buffer_state.*type=list",
+        ):
+            add_capture_fields(flow, entry)
+
+    def test_non_empty_stream_buffer_requires_state(self, real_flow):
+        body = b'{"ok": true}'
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray(body)
+        entry = {}
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated",
+        ):
+            add_capture_fields(flow, entry)
+
+    def test_non_empty_stream_buffer_requires_non_empty_state(self, real_flow):
+        body = b'{"ok": true}'
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray(body)
+        flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = {}
+        entry = {}
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated",
+        ):
+            add_capture_fields(flow, entry)
+
+    def test_non_empty_stream_buffer_requires_dict_state(self, real_flow):
+        body = b'{"ok": true}'
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray(body)
+        flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = ["truncated"]
+        entry = {}
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated.*type=list",
+        ):
+            add_capture_fields(flow, entry)
+
+    def test_non_empty_compressed_stream_buffer_requires_state(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            response_encoding="gzip",
+            include_request_id=True,
+        )
+        flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray(gzip.compress(b""))
+        entry = {}
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated",
+        ):
+            add_capture_fields(flow, entry)
+
+    def test_non_empty_compressed_stream_buffer_requires_truncated_state(self, real_flow):
+        compressed = gzip.compress(b"")
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            response_encoding="gzip",
+            include_request_id=True,
+        )
+        flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray(compressed)
+        flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = {"total_bytes": len(compressed)}
+        entry = {}
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated",
+        ):
+            add_capture_fields(flow, entry)
+
+    def test_non_empty_stream_buffer_requires_truncated_state(self, real_flow):
+        body = b'{"ok": true}'
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray(body)
+        flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = {"total_bytes": len(body)}
+        entry = {}
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated",
+        ):
+            add_capture_fields(flow, entry)
+
+    def test_stream_buffer_truncated_marks_truncation(self, real_flow):
+        """When stream_buffer was truncated, response_body_truncated should be set."""
+        body = b"x" * STREAM_BUFFER_LIMIT
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        set_response_stream_buffer(flow, body, truncated=True)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["response_body_truncated"] is True
+
+    def test_binary_stream_buffer_exactly_at_limit_not_truncated(self, real_flow):
+        body = b"\x00" * STREAM_BUFFER_LIMIT
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/octet-stream",
+            include_request_id=True,
+        )
+        set_response_stream_buffer(flow, body)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "response_body" not in entry
+        assert entry["response_body_encoding"] == "binary"
+        assert "response_body_truncated" not in entry
+
+    def test_binary_stream_buffer_truncated_marks_truncation(self, real_flow):
+        body = b"\x00" * STREAM_BUFFER_LIMIT
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/octet-stream",
+            include_request_id=True,
+        )
+        set_response_stream_buffer(flow, body, truncated=True)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "response_body" not in entry
+        assert entry["response_body_encoding"] == "binary"
+        assert entry["response_body_truncated"] is True
+
+    def test_stream_buffer_gzip_decompressed(self, real_flow):
+        """Gzip-compressed stream_buffer should be decompressed for capture."""
+        original = b'{"result": "ok"}'
+        compressed = gzip.compress(original)
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            include_request_id=True,
+            response_content_type="application/json",
+            response_encoding="gzip",
+        )
+        set_response_stream_buffer(flow, compressed)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["response_body"] == '{"result": "ok"}'
+        assert entry["response_body_encoding"] == "utf-8"
+
+    def test_stream_buffer_gzip_empty_body_skips_body(self, real_flow):
+        """Bug #10287: a gzip frame that decompresses to b"" must not leak
+        the ~20 B compressed framing into ``response_body`` as base64."""
+        compressed = gzip.compress(b"")
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            include_request_id=True,
+            response_content_type="application/json",
+            response_encoding="gzip",
+        )
+        set_response_stream_buffer(flow, compressed)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "response_body" not in entry
+        assert "response_body_encoding" not in entry
+        assert "response_headers" in entry  # headers still captured
+
+    def test_truncated_stream_buffer_gzip_prefix_marks_truncation(self, real_flow):
+        compressed = gzip.compress(b"hello world")[:10]
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            include_request_id=True,
+            response_content_type="application/json",
+            response_encoding="gzip",
+        )
+        set_response_stream_buffer(flow, compressed, truncated=True)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "response_body" not in entry
+        assert "response_body_encoding" not in entry
+        assert entry["response_body_truncated"] is True
+        assert "response_headers" in entry

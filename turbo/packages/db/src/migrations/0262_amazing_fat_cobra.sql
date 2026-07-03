@@ -1,0 +1,1 @@
+ALTER TABLE "chat_messages" ADD COLUMN "run_event_id" text;

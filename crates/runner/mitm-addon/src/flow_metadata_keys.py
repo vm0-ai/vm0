@@ -1,0 +1,208 @@
+"""Shared ``flow.metadata`` keys used across mitm addon modules.
+
+This module is the public cross-module registry for metadata keys that flow
+between mitmproxy hooks and addon packages. Hook-local private markers may
+exist in their owning modules, but they are not part of this shared contract.
+When adding a shared metadata key, add its ownership and lifecycle notes here.
+
+Request context
+---------------
+- ``VM_RUN_ID``: ``str`` copied from registry VM info by HTTP request
+  classification and ``tcp_start()``. Header-phase HTTP probes restore this key
+  unless they intentionally keep the classification for a streaming or local
+  response path. Read by HTTP, TCP, proxy logging, and usage reporting.
+- ``VM_NETWORK_LOG_PATH``: ``str`` copied from registry VM info. Read by HTTP
+  and TCP log writers; empty strings skip network-log writes.
+- ``VM_PROXY_LOG_PATH``: ``str`` copied from registry VM info. Read by proxy
+  warnings, usage reporting, and auth/streaming diagnostics.
+- ``VM_SANDBOX_AUTH_KEY``: ``str`` sandbox token copied from registry VM info.
+  Read by usage webhook reporters.
+- ``ORIGINAL_URL``: absolute URL written by HTTP request classification from
+  trusted authority, or from the authority-validation fallback URL on local
+  denial. Read by response/error logging and connector billing.
+- ``NETWORK_LOG_TARGET``: ``dict`` with ``url``, ``host``, and ``port`` from
+  trusted authority or authority-validation fallback URL. Read by network-log
+  entry construction.
+- ``CAPTURE_BODY``: ``bool`` copied from registry VM info by HTTP request
+  classification. Read by ``response()`` to decide whether to add
+  request/response bodies.
+- ``SUPPRESS_REQUEST_BODY_CAPTURE``: ``bool`` written by auth.base request-size
+  handling. Read by body capture to mark oversized request bodies truncated.
+- ``CLI_AGENT_TYPE``: ``str`` copied from registry VM info, defaulting to
+  ``"claude-code"``. Read by model-provider usage protocol selection.
+- ``BROWSER_USER_AGENT``: ``bool`` written during request classification when
+  the request matches the short-term browser passthrough User-Agent heuristic.
+  Read by request dispatch to skip connector firewall handling and managed
+  credential mutation, and by network-log entry construction.
+
+Timing context
+--------------
+- ``HTTP_REQUEST_START_MONOTONIC``: ``float`` from ``time.monotonic()``,
+  written when a request first reaches a registered-VM HTTP path, including
+  header-phase streaming and local auth.base rejection paths. Popped by
+  ``response()`` or ``error()`` when computing HTTP latency, and removed on
+  request failures.
+- ``TCP_START_MONOTONIC``: ``float`` from ``time.monotonic()``, written by
+  ``tcp_start()``. Read by TCP end/error logging; it is not popped.
+
+Firewall and auth context
+-------------------------
+- ``FIREWALL_BASE``: ``str`` matched firewall base. Written by firewall match,
+  matched firewall block, and auth paths. Read by logging, auth cache
+  invalidation, usage dispatch, and local error responses.
+- ``FIREWALL_API_ID``: ``str`` API id or base fallback from the matched
+  firewall. Read by auth handling.
+- ``FIREWALL_AUTH_CACHE_KEY``: opaque typed auth cache key written by matched
+  auth handling after the full auth input identity is known. Read by 401 cache
+  invalidation; stores only a digest of auth inputs and sandbox token.
+- ``FIREWALL_NAME``: ``str`` firewall connector/model name. Read by logging,
+  model-provider gates, and connector usage dispatch.
+- ``FIREWALL_PERMISSION``: ``str`` matched permission name or empty string.
+  Read by logging and connector-specific billing.
+- ``FIREWALL_RULE_MATCH``: ``str`` matched rule or empty string. Read by
+  network-log firewall metadata.
+- ``FIREWALL_PARAMS``: ``dict`` firewall params from the match. Read by
+  network-log firewall metadata when it has the expected shape.
+- ``FIREWALL_BILLABLE``: ``bool`` computed from runner VM billable firewall
+  context for matched auth flows, or forced ``False`` for browser passthrough.
+  Gates connector billing, model-provider billing, and connector response parser
+  setup; model usage observation still checks model-provider-specific gates.
+- ``FIREWALL_ACTION``: ``str`` firewall decision such as ``ALLOW``, ``DENY``,
+  or ``BLOCK``. Read by response/error network logging.
+- ``FIREWALL_ERROR``: optional ``str`` error code for auth, forwarding, or
+  registry failures. It is orthogonal to ``FIREWALL_ACTION``: an ``ALLOW``
+  decision can still have an auth or forwarding error.
+- ``CONNECTOR_DIAGNOSTIC_TYPE``: optional ``str`` connector type for a generic
+  connector availability diagnostic. HTTP request classification records this
+  for an inactive built-in connector candidate from the request-header stream
+  path or the request hook; network logs expose it only after the response/error
+  hook turns the candidate into an agent-visible diagnostic.
+- ``CONNECTOR_DIAGNOSTIC_REASON``: optional ``str`` generic diagnostic reason.
+  First-version diagnostics use ``not_configured_for_run``.
+- ``CONNECTOR_DIAGNOSTIC_ENV_NAMES``: optional ``list[str]`` env aliases that
+  would normally expose connector credentials. Names only; never values.
+- ``CONNECTOR_DIAGNOSTIC_BASE``: optional ``str`` matched static built-in base
+  URL that produced the diagnostic.
+- ``AUTH_RESOLVED_SECRETS``: ``list[str]`` from successful auth resolution.
+  Read by network-log firewall metadata.
+- ``AUTH_REFRESHED_CONNECTORS``: ``list[str]`` from successful auth resolution.
+  Read by network-log firewall metadata.
+- ``AUTH_REFRESHED_SECRETS``: ``list[str]`` from successful auth resolution.
+  Read by network-log firewall metadata.
+- ``AUTH_CACHE_HIT``: ``bool`` from successful auth resolution. Read by
+  network-log firewall metadata.
+- ``AUTH_URL_REWRITE``: ``bool`` written only after inline auth.base forwarding
+  succeeds and sets the provider response on the flow. Read by network-log
+  firewall metadata.
+- ``AUTH_BASE_FORWARD_ADMISSION``: opaque auth.base forwarding admission
+  reservation written by header-phase auth.base admission and consumed by the
+  request auth.base forwarder path. Released by request/terminal cleanup if it
+  is not transferred to the forwarder.
+- ``TRUSTED_AUTHORITY_HOST``: ``str`` host from authority validation. Read by
+  auth-base URL rewrite logic when reconstructing trusted request authority.
+
+Response streaming
+------------------
+- ``STREAM_BUFFER``: capped ``bytearray`` written by ``responseheaders()`` via
+  response streaming setup. Read by response logging, body capture, model JSON
+  fallback extraction, and connector fallback parsing. Removed by stream
+  cleanup after terminal hooks.
+- ``STREAM_BUFFER_STATE``: ``dict`` with at least ``truncated`` and
+  ``total_bytes``. Written with ``STREAM_BUFFER`` and read for response size,
+  capture truncation, and connector parsing. Removed by stream cleanup.
+
+Request streaming
+-----------------
+- ``REQUEST_STREAM_BUFFER``: capped ``bytearray`` written by
+  ``requestheaders()`` via request streaming setup for stream-safe body
+  capture paths. Read by request body capture and connector billing refinement.
+  Removed by stream cleanup after terminal hooks.
+- ``REQUEST_STREAM_BUFFER_STATE``: ``dict`` with at least ``truncated`` and
+  ``total_bytes``. Written with ``REQUEST_STREAM_BUFFER`` and read for request
+  size, capture truncation, and connector billing refinement. Removed by stream
+  cleanup.
+- ``REQUEST_STREAM_COMPLETE``: ``bool`` written by ``request()`` after
+  mitmproxy has delivered the full streamed request body to the addon. Read by
+  connector billing before treating a non-truncated request stream buffer as a
+  complete request body. Removed by stream cleanup.
+
+Model-provider usage
+--------------------
+- ``MODEL_PROVIDER_USAGE``: ``dict`` of normalized token usage for one
+  flow-level model response source. Written by streaming/JSON extractors,
+  WebSocket missing-response-id fallback extraction, or fallback extraction,
+  then read by model usage-event and observation reporters.
+- ``MODEL_PROVIDER_USAGE_SOURCES``: ``dict`` keyed by WebSocket response id,
+  with normalized token usage dict values. Written by WebSocket model-provider
+  usage extraction and read by model usage-event and observation reporters.
+  Entries are released before ``websocket_end()`` after each source-preserving
+  report attempt. Zero-only entries are also released immediately because
+  observable model-provider flows already carry ``MODEL_USAGE_PROVIDER``.
+- ``MODEL_USAGE_PROVIDER``: optional ``str`` canonical model id from registry VM
+  info. Read by model-provider usage observability and reported-model selection.
+- ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization
+  ran. Read by ``response()`` to skip legacy fallback JSON extraction.
+
+Connector usage and parser state
+--------------------------------
+- ``X_NDJSON_STATE``: ``dict`` owned by the X connector NDJSON parser. Written
+  when a streaming X response parser is registered, read by X billing, and
+  also read by ``error()`` to report partial stream usage.
+- ``X_JSON_STATE``: ``dict`` owned by the X connector JSON parser. Written by
+  connector parser finalization before normal response billing, then read by X
+  billing instead of the capped stream-buffer fallback.
+"""
+
+from typing import Final
+
+# Run and request context
+VM_RUN_ID: Final = "vm_run_id"
+VM_NETWORK_LOG_PATH: Final = "vm_network_log_path"
+VM_PROXY_LOG_PATH: Final = "vm_proxy_log_path"
+VM_SANDBOX_AUTH_KEY: Final = "vm_sandbox_token"
+ORIGINAL_URL: Final = "original_url"
+NETWORK_LOG_TARGET: Final = "network_log_target"
+CAPTURE_BODY: Final = "capture_body"
+SUPPRESS_REQUEST_BODY_CAPTURE: Final = "suppress_request_body_capture"
+CLI_AGENT_TYPE: Final = "cli_agent_type"
+BROWSER_USER_AGENT: Final = "browser_user_agent"
+
+# Timing metadata
+HTTP_REQUEST_START_MONOTONIC: Final = "http_request_start_monotonic"
+TCP_START_MONOTONIC: Final = "tcp_start_monotonic"
+
+# Firewall and auth metadata
+FIREWALL_BASE: Final = "firewall_base"
+FIREWALL_API_ID: Final = "firewall_api_id"
+FIREWALL_AUTH_CACHE_KEY: Final = "firewall_auth_cache_key"
+FIREWALL_NAME: Final = "firewall_name"
+FIREWALL_PERMISSION: Final = "firewall_permission"
+FIREWALL_RULE_MATCH: Final = "firewall_rule_match"
+FIREWALL_PARAMS: Final = "firewall_params"
+FIREWALL_BILLABLE: Final = "firewall_billable"
+FIREWALL_ACTION: Final = "firewall_action"
+FIREWALL_ERROR: Final = "firewall_error"
+CONNECTOR_DIAGNOSTIC_TYPE: Final = "connector_diagnostic_type"
+CONNECTOR_DIAGNOSTIC_REASON: Final = "connector_diagnostic_reason"
+CONNECTOR_DIAGNOSTIC_ENV_NAMES: Final = "connector_diagnostic_env_names"
+CONNECTOR_DIAGNOSTIC_BASE: Final = "connector_diagnostic_base"
+AUTH_RESOLVED_SECRETS: Final = "auth_resolved_secrets"
+AUTH_REFRESHED_CONNECTORS: Final = "auth_refreshed_connectors"
+AUTH_REFRESHED_SECRETS: Final = "auth_refreshed_secrets"
+AUTH_CACHE_HIT: Final = "auth_cache_hit"
+AUTH_URL_REWRITE: Final = "auth_url_rewrite"
+AUTH_BASE_FORWARD_ADMISSION: Final = "auth_base_forward_admission"
+TRUSTED_AUTHORITY_HOST: Final = "trusted_authority_host"
+
+# Usage and streaming metadata
+MODEL_PROVIDER_USAGE: Final = "model_provider_usage"
+MODEL_PROVIDER_USAGE_SOURCES: Final = "model_provider_usage_sources"
+MODEL_USAGE_PROVIDER: Final = "model_usage_provider"
+MODEL_JSON_USAGE_FINALIZED: Final = "_model_json_usage_finalized"
+STREAM_BUFFER: Final = "stream_buffer"
+STREAM_BUFFER_STATE: Final = "stream_buffer_state"
+REQUEST_STREAM_BUFFER: Final = "request_stream_buffer"
+REQUEST_STREAM_BUFFER_STATE: Final = "request_stream_buffer_state"
+REQUEST_STREAM_COMPLETE: Final = "request_stream_complete"
+X_NDJSON_STATE: Final = "x_ndjson_state"
+X_JSON_STATE: Final = "x_json_state"

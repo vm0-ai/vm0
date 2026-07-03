@@ -1,0 +1,12 @@
+{
+  "extends": "@vm0/typescript-config/base",
+  "compilerOptions": {
+    "ignoreDeprecations": "6.0",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "moduleResolution": "bundler",
+    "module": "ESNext"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

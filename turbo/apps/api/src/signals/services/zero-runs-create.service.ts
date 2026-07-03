@@ -1,0 +1,1074 @@
+import { randomBytes } from "node:crypto";
+
+import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
+import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
+import { resolveFirewallServerMetadataPolicies } from "@vm0/connectors/firewall-metadata/server";
+import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import {
+  agentComposeVersions,
+  agentComposes,
+} from "@vm0/db/schema/agent-compose";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { userCache } from "@vm0/db/schema/user-cache";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { command } from "ccstate";
+import { and, eq } from "drizzle-orm";
+import type { z } from "zod";
+
+import { badRequestMessage, notFound } from "../../lib/error";
+import type { AuthContext } from "../../types/auth";
+import { writeDb$, type Db } from "../external/db";
+import {
+  createAgentRun$,
+  type BeforeRunDispatch,
+  type CreateAgentRunArgs,
+  type DispatchFailedRunCallbacks,
+} from "./agent-run-create.service";
+import {
+  ApiDispatchTimingCollector,
+  measureApiDispatchTiming,
+  type ApiDispatchTimingActionType,
+  type ApiDispatchTimingDimensions,
+} from "./api-dispatch-timing.service";
+import { loadAgentConnectorScope } from "./agent-connector-scope.service";
+import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.service";
+import { loadWorkflowsForRun } from "./zero-workflow-data.service";
+import type { InternalRunCallbackKind } from "./internal-run-callback";
+
+type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
+type ZeroRunOrigin =
+  | "zero_run"
+  | "workflow_trigger"
+  | "goal_continuation"
+  | "zero_integration";
+export type ZeroPreCreateSource =
+  | "chat_callback_auto_send"
+  | "chat_thread_v1_send"
+  | "workflow_slash_command";
+
+const DISALLOWED_TOOLS = [
+  "CronCreate",
+  "CronList",
+  "CronDelete",
+  "ScheduleWakeup",
+  "AskUserQuestion",
+  "Skill(loop)",
+  "Skill(loop *)",
+] as const;
+
+const TONE_INSTRUCTIONS: Readonly<Record<string, string>> = {
+  professional:
+    "Communicate in a clear, polished, and business-appropriate tone. Be thorough yet concise.",
+  friendly:
+    "Communicate in a warm, approachable, and conversational tone. Feel free to be casual while still being helpful.",
+  direct:
+    "Be brief and to the point. Skip pleasantries and filler — just deliver the information or action needed.",
+  supportive:
+    "Be encouraging and empathetic. Show that you're in the user's corner and proactively offer help.",
+};
+
+interface ZeroAgentRunRecord {
+  readonly id: string;
+  readonly orgId: string;
+  readonly owner: string;
+  readonly visibility: "public" | "private";
+  readonly displayName: string | null;
+  readonly description: string | null;
+  readonly sound: string | null;
+  readonly modelProviderId: string | null;
+  readonly selectedModel: string | null;
+  readonly content: ZeroAgentComposeContent;
+}
+
+interface UserInfo {
+  readonly name: string | null;
+  readonly email: string | null;
+  readonly timezone: string | null;
+  readonly slackDisplayName?: string;
+  readonly slackUserId?: string;
+  readonly teamsUserDisplayName?: string;
+  readonly teamsUserPrincipalName?: string;
+  readonly teamsUserId?: string;
+  readonly telegramDisplayName?: string;
+  readonly telegramUsername?: string;
+  readonly telegramUserId?: string;
+  readonly telegramLanguage?: string;
+  readonly agentphoneHandle?: string;
+}
+
+interface ZeroAgentConfig {
+  readonly framework?: string;
+}
+
+interface ZeroAgentComposeContent {
+  readonly agent?: ZeroAgentConfig;
+  readonly agents?: Record<string, ZeroAgentConfig | undefined>;
+}
+
+interface HttpRunCallback {
+  readonly url: string;
+  readonly secret: string;
+  readonly payload: unknown;
+}
+
+interface InternalRunCallback {
+  readonly internalKind: InternalRunCallbackKind;
+  readonly secret: string;
+  readonly payload: unknown;
+}
+
+type RunCallback = HttpRunCallback | InternalRunCallback;
+
+interface ZeroRunMetadata {
+  readonly triggerAgentId?: string;
+  readonly automationId?: string;
+  readonly triggerId?: string;
+  readonly workflowTriggerId?: string;
+  readonly triggerBrief?: string;
+  readonly runGroupId?: string;
+  readonly goalId?: string;
+}
+
+interface CreateZeroRunCommandArgs {
+  readonly auth: AuthContext & { readonly orgId: string };
+  readonly body: ZeroRunCreateBody;
+  readonly apiStartTime: number;
+  readonly triggerSource?: TriggerSource;
+  readonly appendSystemPrompt?: string;
+  readonly userInfoExtras?: Pick<
+    UserInfo,
+    | "slackDisplayName"
+    | "slackUserId"
+    | "teamsUserDisplayName"
+    | "teamsUserPrincipalName"
+    | "teamsUserId"
+    | "telegramDisplayName"
+    | "telegramUsername"
+    | "telegramUserId"
+    | "telegramLanguage"
+    | "agentphoneHandle"
+  >;
+  readonly callbacks?: readonly RunCallback[];
+  readonly chatThreadId?: string;
+  readonly computerUseHostId?: string;
+  readonly modelProviderId?: string;
+  readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
+  readonly selectedModelOverride?: string;
+  readonly codexServiceTier?: "fast";
+  readonly zeroRunMetadata?: ZeroRunMetadata;
+  readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
+  readonly beforeDispatch?: BeforeRunDispatch;
+  readonly timing?: ApiDispatchTimingCollector;
+  readonly zeroPreCreateSource?: ZeroPreCreateSource;
+}
+
+interface CreateZeroIntegrationRunCommandArgs {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId: string;
+  readonly sessionId?: string;
+  readonly prompt: string;
+  readonly appendSystemPrompt?: string;
+  readonly triggerSource: TriggerSource;
+  readonly callbacks?: readonly RunCallback[];
+  readonly apiStartTime: number;
+  readonly userInfoExtras?: Pick<
+    UserInfo,
+    | "slackDisplayName"
+    | "slackUserId"
+    | "teamsUserDisplayName"
+    | "teamsUserPrincipalName"
+    | "teamsUserId"
+    | "telegramDisplayName"
+    | "telegramUsername"
+    | "telegramUserId"
+    | "telegramLanguage"
+    | "agentphoneHandle"
+  >;
+  readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
+}
+
+function forbidden(message: string) {
+  return {
+    status: 403 as const,
+    body: {
+      error: {
+        message,
+        code: "FORBIDDEN",
+      },
+    },
+  };
+}
+
+function generateCallbackSecret(): string {
+  return randomBytes(32).toString("hex");
+}
+
+function buildAgentIdentityPrompt(agent: ZeroAgentRunRecord): string | null {
+  const parts: string[] = [];
+
+  if (agent.displayName) {
+    parts.push(`Your name is ${agent.displayName}.`);
+  }
+
+  if (agent.description) {
+    parts.push(`Your role: ${agent.description}`);
+  }
+
+  if (agent.sound) {
+    const instruction = TONE_INSTRUCTIONS[agent.sound];
+    if (instruction) {
+      parts.push(instruction);
+    }
+  }
+
+  return parts.length > 0 ? `# Agent Identity\n${parts.join("\n")}` : null;
+}
+
+function buildIntegrationToolsPrompt(
+  triggerSource: TriggerSource,
+): readonly string[] {
+  const localFileContext = [
+    "Local filesystem paths are only visible to the agent runtime. Users cannot open local paths directly.",
+    "Localhost URLs, local dev server ports, and processes started inside the agent runtime are generally only reachable inside that runtime; users cannot rely on them as a way to view the result directly.",
+    "Local dev servers are useful for agent-side verification, but they are not by themselves a user-facing deliverable.",
+    "For static web artifacts, Zero provides `zero host <dir> --site <slug> [--spa]` to publish a directory containing `index.html` to a public URL that users can open; for HTML presentations, include `--artifact-kind presentation-html`.",
+    "For apps or services that require a long-running backend, database, worker, external service, or framework-specific runtime, `zero host` may not be sufficient; use the project's own deployment workflow or hosting platform to make the change visible to users.",
+    "For static HTML or site artifacts, a hosted URL is the user-accessible artifact view; the local `index.html` is an implementation file inside the authored bundle.",
+    "`upload-file` commands provide file delivery, which is different from publishing a user-accessible artifact view. File delivery is useful when the user asks for the file itself, an artifact cannot be hosted, or no hosted, email, cloud document, or other destination already gives the user access.",
+    "Duplicate delivery channels give the user multiple copies of the same artifact; they are useful when they serve different user needs, such as sharing both a live view and a source file.",
+  ];
+  const localFileContextLines = localFileContext.map((line) => {
+    return `- ${line}`;
+  });
+
+  switch (triggerSource) {
+    case "web": {
+      return [
+        "- Web chat files: use `zero web download-file -h` when a web chat message includes a `[Web file]` block. `zero web upload-file -h` can share a local file back to the web chat user when file delivery is needed.",
+        ...localFileContextLines,
+      ];
+    }
+    case "slack": {
+      return [
+        "- Slack messaging and files: use `zero slack --help`. Normal replies are automatically sent to the originating thread, so Slack commands are for different channels/threads or explicit extra messages. Use `zero slack download-file -h` for `[Slack file]` blocks. `zero slack upload-file -h` can attach a local file to Slack when file delivery is needed. Never use SLACK_TOKEN directly — it's a user OAuth token.",
+        ...localFileContextLines,
+      ];
+    }
+    case "teams": {
+      return [
+        "- Microsoft Teams messaging and files: normal replies are automatically sent to the originating conversation, so extra messaging commands are only for explicit additional delivery targets. Do not use Slack or Telegram commands for Microsoft Teams delivery.",
+        ...localFileContextLines,
+      ];
+    }
+    case "github": {
+      return [
+        "- GitHub issue/PR files: use `zero github --help`. Normal replies are automatically sent to the originating issue or pull request, so GitHub commands are for explicit extra file delivery. Use `zero github download-file -h` for `[GitHub file]` blocks. `zero github upload-file -h` can share a local file back to the issue or pull request when file delivery is needed.",
+        ...localFileContextLines,
+      ];
+    }
+    case "telegram": {
+      return [
+        "- Telegram messaging and files: use `zero telegram --help`. Normal replies are automatically sent to the originating chat, so Telegram commands are for different chats, topics, reply targets, or explicit extra messages. Use `zero telegram bot list` to inspect available bots, `zero telegram download-file -h` for `[Telegram file]` blocks, and `zero telegram upload-file -h` when file delivery is needed. When sending or uploading, explicitly choose the bot with `--bot-id`; if you do not know which bot to use, ask the user before sending.",
+        ...localFileContextLines,
+      ];
+    }
+    case "agentphone": {
+      return [
+        "- AgentPhone messaging and files: use `zero phone --help`. Normal replies are automatically sent to the originating conversation, so phone commands are for explicit extra messages or file delivery. Use `zero phone download-file -h` for `[AgentPhone file]` blocks. `zero phone upload-file -h` can share a local file when the phone channel supports the requested file delivery.",
+        ...localFileContextLines,
+      ];
+    }
+    default: {
+      return [
+        "- Use integration-specific messaging or file commands only when the task names an explicit delivery target or the current surface provides one.",
+        ...localFileContextLines,
+      ];
+    }
+  }
+}
+
+function buildAgentToolsPrompt(triggerSource: TriggerSource): string {
+  return [
+    "# Agent Tools",
+    "You have access to the Zero CLI. Run commands with: `npx -p @vm0/cli zero <command>`",
+    "- Discover available commands: `zero --help`.",
+    "- Search agent run logs, web chat messages, or external services via connectors: `zero search --help`.",
+    "- Automate recurring tasks: `zero automation --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
+    "- Browser access: the runtime environment includes `agent-browser` for browser automation and inspection.",
+    ...buildIntegrationToolsPrompt(triggerSource),
+    "- Maps, geocoding, directions, and places: use `zero maps --help`.",
+    "- Static web artifacts can be published with `zero host <dir> --site <slug> [--spa]`; for HTML presentations, include `--artifact-kind presentation-html`; run `zero host --help` for details.",
+    "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose environment names like `GH_TOKEN`. Find: `zero connector search <keyword>`. List connected: `zero connector list`. Inspect: `zero connector status <type>`.",
+    "- Model availability and provider routing are workspace model settings, separate from connectors. Use `zero model ls` to list allowed models, `zero model switch` for model-switching guidance, and `zero model-provider ls` to inspect built-in/BYOK routing.",
+    "- Credit diagnostics: use `zero doctor credit` when a run or generation fails with insufficient credits, when the user asks how to recharge, or before buying credits. It reports the org balance, tier, purchase eligibility, current user admin status, and org admins.",
+    "- Buy credits: use `zero credit <credits>` to create a Stripe checkout link for org admins. It supports `--auto-recharge`, `--auto-recharge-threshold`, and `--auto-recharge-amount`; non-admins should run `zero doctor credit`.",
+    "- If a connector appears unconnected, unauthenticated, missing auth/token environment names, blocked by firewall, or denied by permission policy, diagnose it with `zero doctor check-connector --help` before trying ad hoc fixes.",
+    '- When the user asks to generate anything (supported generation content: image, video, presentation, voice/audio, and connector-backed text, code, document, or website), run `zero generate -h`. Use `zero generate <type>` (no --prompt) to list every provider available for that type; then run `zero generate <type> --provider built-in --prompt "..."` to execute via vm0, or `zero generate <type> --provider <connector>` to get connector skill-invocation guidance. Do not claim support for other generated content.',
+    "- If you choose a Zero generation command, wait for it to finish and use its returned artifact. Do not abandon it, switch to your own generation approach, or recreate the output yourself just because generation takes a long time.",
+    "- Troubleshoot permission denials: run `zero doctor permission-deny <connector-ref> --method <METHOD> --url <DENIED_URL>` to identify which permission covers a blocked request. Use the `url` field from the firewall denial response when present; omit query strings or fragments when they may contain secrets because permission matching does not need them.",
+    "- Request permission changes: `zero doctor permission-change --help` to enable or disable a permission. For enable requests, pass `--duration 1h|24h|7d|always`: default to `--duration 1h` for one-off work, use `24h` or `7d` for longer user-approved work, and use `always` only when the user explicitly asks for persistent access.",
+    "- Inspect yourself: `zero whoami` for identity and permissions, `zero agent view $ZERO_AGENT_ID --instructions` for your current settings.",
+    "- When the user asks to change your behavior, update your own configuration (instructions, tone, description): `zero agent edit --help`.",
+    "- Manage workflows with `zero workflow --help`. Workflow content is backed by a skill directory, so durable workflow uploads must include a root `SKILL.md`. Local changes or newly-created workflow folders under `/home/user/.codex/skills` or `/home/user/.claude/skills` are runtime-only and will not persist, sync back, or affect future runs. To create or update a durable workflow, use `zero workflow create|edit <name> --dir <path>`.",
+    "- Report issues to the dev team: `zero developer-support --help`. Requires a two-step consent flow: (1) call without --consent-code to get a code, (2) ask the user to type it, (3) call again with --consent-code. Never submit without the user typing the consent code.",
+  ].join("\n");
+}
+
+function buildCurrentUserPrompt(userInfo: UserInfo): string {
+  const lines = ["# Current User Info"];
+  if (userInfo.name) {
+    lines.push(`Name: ${userInfo.name}`);
+  }
+  if (userInfo.email) {
+    lines.push(`Email: ${userInfo.email}`);
+  }
+  lines.push(`Timezone: ${userInfo.timezone ?? "UTC"}`);
+  if (userInfo.slackDisplayName) {
+    lines.push(`Slack display name: ${userInfo.slackDisplayName}`);
+  }
+  if (userInfo.slackUserId) {
+    lines.push(`Slack user ID: ${userInfo.slackUserId}`);
+  }
+  if (userInfo.teamsUserDisplayName) {
+    lines.push(`Teams display name: ${userInfo.teamsUserDisplayName}`);
+  }
+  if (userInfo.teamsUserPrincipalName) {
+    lines.push(`Teams user principal name: ${userInfo.teamsUserPrincipalName}`);
+  }
+  if (userInfo.teamsUserId) {
+    lines.push(`Teams user ID: ${userInfo.teamsUserId}`);
+  }
+  if (userInfo.telegramDisplayName) {
+    lines.push(`Telegram display name: ${userInfo.telegramDisplayName}`);
+  }
+  if (userInfo.telegramUsername) {
+    lines.push(`Telegram username: ${userInfo.telegramUsername}`);
+  }
+  if (userInfo.telegramUserId) {
+    lines.push(`Telegram user ID: ${userInfo.telegramUserId}`);
+  }
+  if (userInfo.telegramLanguage) {
+    lines.push(`Telegram language: ${userInfo.telegramLanguage}`);
+  }
+  if (userInfo.agentphoneHandle) {
+    lines.push(`Text message handle: ${userInfo.agentphoneHandle}`);
+  }
+  return lines.join("\n");
+}
+
+function buildAppendSystemPrompt(args: {
+  readonly agent: ZeroAgentRunRecord;
+  readonly userInfo: UserInfo;
+  readonly triggerSource: TriggerSource;
+}): string {
+  const identity = buildAgentIdentityPrompt(args.agent);
+  return [
+    identity,
+    buildAgentToolsPrompt(args.triggerSource),
+    buildCurrentUserPrompt(args.userInfo),
+  ]
+    .filter((part): part is string => {
+      return Boolean(part);
+    })
+    .join("\n\n");
+}
+
+function mergeAppendSystemPrompt(
+  base: string,
+  appendSystemPrompt: string | undefined,
+): string {
+  return [base, appendSystemPrompt]
+    .filter((part): part is string => {
+      return Boolean(part);
+    })
+    .join("\n\n");
+}
+
+async function inferAgentIdFromSession(
+  db: Db,
+  args: {
+    readonly sessionId: string;
+    readonly userId: string;
+    readonly orgId: string;
+  },
+): Promise<string | null> {
+  const [session] = await db
+    .select({ agentComposeId: agentSessions.agentComposeId })
+    .from(agentSessions)
+    .where(
+      and(
+        eq(agentSessions.id, args.sessionId),
+        eq(agentSessions.userId, args.userId),
+        eq(agentSessions.orgId, args.orgId),
+      ),
+    )
+    .limit(1);
+
+  return session?.agentComposeId ?? null;
+}
+
+async function loadZeroAgent(
+  db: Db,
+  agentId: string,
+): Promise<ZeroAgentRunRecord | null> {
+  const [agent] = await db
+    .select({
+      id: zeroAgents.id,
+      orgId: zeroAgents.orgId,
+      owner: zeroAgents.owner,
+      visibility: zeroAgents.visibility,
+      displayName: zeroAgents.displayName,
+      description: zeroAgents.description,
+      sound: zeroAgents.sound,
+      modelProviderId: zeroAgents.modelProviderId,
+      selectedModel: zeroAgents.selectedModel,
+      content: agentComposeVersions.content,
+    })
+    .from(zeroAgents)
+    .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))
+    .innerJoin(
+      agentComposeVersions,
+      eq(agentComposeVersions.id, agentComposes.headVersionId),
+    )
+    .where(eq(zeroAgents.id, agentId))
+    .limit(1);
+
+  return agent
+    ? {
+        ...agent,
+        content: agent.content as ZeroAgentComposeContent,
+      }
+    : null;
+}
+
+function buildZeroRunExtraEnvironment(args: {
+  readonly agentId: string;
+  readonly chatThreadId: string | undefined;
+  readonly codexServiceTier: "fast" | undefined;
+}): Record<string, string> {
+  return {
+    ZERO_AGENT_ID: args.agentId,
+    // Chat-mode automation (and web) runs carry their thread id so the
+    // in-sandbox CLI can bind a newly created automation to it (the create
+    // flow reads $ZERO_CHAT_THREAD_ID when no thread is given).
+    ...(args.chatThreadId ? { ZERO_CHAT_THREAD_ID: args.chatThreadId } : {}),
+    ...(args.codexServiceTier
+      ? { VM0_CODEX_SERVICE_TIER: args.codexServiceTier }
+      : {}),
+  };
+}
+
+function zeroRunTimingDimensions(args: {
+  readonly origin: ZeroRunOrigin;
+  readonly source?: ZeroPreCreateSource;
+}): ApiDispatchTimingDimensions {
+  return {
+    zero_run_origin: args.origin,
+    ...(args.source ? { zero_pre_create_source: args.source } : {}),
+  };
+}
+
+function zeroRunOrigin(args: {
+  readonly command: CreateZeroRunCommandArgs;
+}): ZeroRunOrigin {
+  if (args.command.zeroRunMetadata?.workflowTriggerId) {
+    return "workflow_trigger";
+  }
+  if (args.command.zeroRunMetadata?.goalId) {
+    return "goal_continuation";
+  }
+  return "zero_run";
+}
+
+/**
+ * Resolves the firewall policies for a run.
+ *
+ * Runs resolve from the caller's agent permission grants. Workflow-triggered
+ * runs pass through the same agent-run permission path as chat runs.
+ */
+async function resolveZeroRunPermissionPolicies(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly agent: ZeroAgentRunRecord;
+    readonly allowedConnectorTypes: readonly ConnectorType[];
+    readonly checkedAt: Date;
+  },
+  signal: AbortSignal,
+): Promise<FirewallPolicies | null> {
+  const grants = await loadActiveUserPermissionGrants(
+    db,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      agentId: args.agent.id,
+    },
+    args.checkedAt,
+  );
+  signal.throwIfAborted();
+
+  const resolved = await resolveFirewallServerMetadataPolicies(
+    permissionGrantsToFirewallPolicies(grants),
+    [...args.allowedConnectorTypes],
+  );
+  signal.throwIfAborted();
+
+  return resolved;
+}
+
+async function loadUserInfo(
+  db: Db,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+  },
+): Promise<UserInfo> {
+  const [row] = await db
+    .select({
+      name: userCache.name,
+      email: userCache.email,
+      timezone: orgMembersMetadata.timezone,
+    })
+    .from(userCache)
+    .leftJoin(
+      orgMembersMetadata,
+      and(
+        eq(orgMembersMetadata.userId, args.userId),
+        eq(orgMembersMetadata.orgId, args.orgId),
+      ),
+    )
+    .where(eq(userCache.userId, args.userId))
+    .limit(1);
+
+  return {
+    name: row?.name ?? null,
+    email: row?.email ?? null,
+    timezone: row?.timezone ?? null,
+  };
+}
+
+async function triggerAgentIdForAuth(
+  db: Db,
+  auth: AuthContext & { readonly orgId: string },
+): Promise<string | undefined> {
+  if (auth.tokenType !== "sandbox" && auth.tokenType !== "zero") {
+    return undefined;
+  }
+
+  const [parentRun] = await db
+    .select({ agentComposeId: agentComposeVersions.composeId })
+    .from(agentRuns)
+    .innerJoin(
+      agentComposeVersions,
+      eq(agentComposeVersions.id, agentRuns.agentComposeVersionId),
+    )
+    .where(eq(agentRuns.id, auth.runId))
+    .limit(1);
+
+  return parentRun?.agentComposeId ?? undefined;
+}
+
+function createRunBody(args: {
+  readonly body: ZeroRunCreateBody;
+  readonly agent: ZeroAgentRunRecord;
+  readonly userInfo: UserInfo;
+  readonly permissionPolicies: FirewallPolicies | null | undefined;
+  readonly triggerAgentId: string | undefined;
+  readonly triggerSource: TriggerSource | undefined;
+  readonly appendSystemPrompt: string | undefined;
+}) {
+  const triggerSource =
+    args.triggerSource ??
+    (args.triggerAgentId ? ("agent" as const) : ("web" as const));
+  const baseAppendSystemPrompt = buildAppendSystemPrompt({
+    agent: args.agent,
+    userInfo: args.userInfo,
+    triggerSource,
+  });
+  return {
+    prompt: args.body.prompt,
+    agentComposeId: args.agent.id,
+    sessionId: args.body.sessionId,
+    agentComposeVersionId: args.body.agentComposeVersionId,
+    conversationId: args.body.conversationId,
+    checkpointId: args.body.checkpointId,
+    additionalVolumes: args.body.additionalVolumes,
+    debugNoMockClaude: args.body.debugNoMockClaude,
+    debugNoMockCodex: args.body.debugNoMockCodex,
+    captureNetworkBodies: args.body.captureNetworkBodies,
+    tools: args.body.tools,
+    settings: args.body.settings,
+    permissionPolicies: args.permissionPolicies ?? undefined,
+    triggerSource,
+    appendSystemPrompt: [baseAppendSystemPrompt, args.appendSystemPrompt]
+      .filter((part): part is string => {
+        return Boolean(part);
+      })
+      .join("\n\n"),
+    disallowedTools: [...DISALLOWED_TOOLS],
+    vars: { ZERO_AGENT_ID: args.agent.id },
+  };
+}
+
+function createIntegrationRunBody(args: {
+  readonly prompt: string;
+  readonly sessionId: string | undefined;
+  readonly agent: ZeroAgentRunRecord;
+  readonly userInfo: UserInfo;
+  readonly permissionPolicies: FirewallPolicies | null | undefined;
+  readonly triggerSource: TriggerSource;
+  readonly appendSystemPrompt: string | undefined;
+}) {
+  return {
+    prompt: args.prompt,
+    agentComposeId: args.agent.id,
+    sessionId: args.sessionId,
+    permissionPolicies: args.permissionPolicies ?? undefined,
+    triggerSource: args.triggerSource,
+    appendSystemPrompt: mergeAppendSystemPrompt(
+      buildAppendSystemPrompt({
+        agent: args.agent,
+        userInfo: args.userInfo,
+        triggerSource: args.triggerSource,
+      }),
+      args.appendSystemPrompt,
+    ),
+    disallowedTools: [...DISALLOWED_TOOLS],
+    vars: { ZERO_AGENT_ID: args.agent.id },
+  };
+}
+
+function callbacksForTriggerAgent(triggerAgentId: string | undefined) {
+  return triggerAgentId
+    ? [
+        {
+          internalKind: "agent" as const,
+          secret: generateCallbackSecret(),
+          payload: { triggerAgentId },
+        },
+      ]
+    : undefined;
+}
+
+function measureZeroPreCreate<T>(
+  timing: ApiDispatchTimingCollector | undefined,
+  actionType: ApiDispatchTimingActionType,
+  operation: () => T | Promise<T>,
+): Promise<T> {
+  return measureApiDispatchTiming(timing, actionType, "nested", operation);
+}
+
+function zeroServiceEntryTiming(args: {
+  readonly apiStartTime: number;
+  readonly timing?: ApiDispatchTimingCollector;
+}): ApiDispatchTimingCollector {
+  const timing = args.timing ?? new ApiDispatchTimingCollector();
+  if (!args.timing) {
+    timing.recordElapsed(
+      "api_dispatch_pre_create_zero_entrypoint_gap",
+      "nested",
+      args.apiStartTime,
+    );
+  }
+  return timing;
+}
+
+async function resolveZeroRunAgentId(
+  db: Db,
+  args: CreateZeroRunCommandArgs,
+): Promise<string | null> {
+  return (
+    args.body.agentId ??
+    (args.body.sessionId
+      ? await inferAgentIdFromSession(db, {
+          sessionId: args.body.sessionId,
+          userId: args.auth.userId,
+          orgId: args.auth.orgId,
+        })
+      : null)
+  );
+}
+
+async function loadZeroRunConnectorScopes(
+  db: Db,
+  args: {
+    readonly auth: AuthContext & { readonly orgId: string };
+    readonly agentId: string;
+  },
+  signal: AbortSignal,
+): Promise<{
+  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly allowedCustomConnectorIds: readonly string[];
+}> {
+  const scope = await loadAgentConnectorScope(db, {
+    userId: args.auth.userId,
+    orgId: args.auth.orgId,
+    agentId: args.agentId,
+  });
+  signal.throwIfAborted();
+  return scope;
+}
+
+async function resolveZeroRunTriggerPreCreateContext(
+  db: Db,
+  args: CreateZeroRunCommandArgs,
+  signal: AbortSignal,
+): Promise<{
+  readonly triggerAgentId: string | undefined;
+}> {
+  const triggerAgentId = await triggerAgentIdForAuth(db, args.auth);
+  signal.throwIfAborted();
+  return { triggerAgentId };
+}
+
+function buildZeroCreateAgentRunArgs(args: {
+  readonly command: CreateZeroRunCommandArgs;
+  readonly agent: ZeroAgentRunRecord;
+  readonly userInfo: UserInfo;
+  readonly runPermissionPolicies: FirewallPolicies | null | undefined;
+  readonly triggerAgentId: string | undefined;
+  readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
+  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly allowedCustomConnectorIds: readonly string[];
+  readonly timing: ApiDispatchTimingCollector;
+}): CreateAgentRunArgs {
+  const command = args.command;
+  return {
+    userId: command.auth.userId,
+    orgId: command.auth.orgId,
+    body: createRunBody({
+      body: command.body,
+      agent: args.agent,
+      userInfo: { ...args.userInfo, ...command.userInfoExtras },
+      permissionPolicies: args.runPermissionPolicies,
+      triggerAgentId: args.triggerAgentId,
+      triggerSource: command.triggerSource,
+      appendSystemPrompt: command.appendSystemPrompt,
+    }),
+    apiStartTime: command.apiStartTime,
+    modelProviderId:
+      command.modelProviderId ?? args.agent.modelProviderId ?? undefined,
+    modelProviderCredentialScope: command.modelProviderCredentialScope,
+    modelProviderType: command.body.modelProvider,
+    selectedModelOverride:
+      command.selectedModelOverride ?? args.agent.selectedModel ?? undefined,
+    chatThreadId: command.chatThreadId,
+    extraEnvironment: buildZeroRunExtraEnvironment({
+      agentId: args.agent.id,
+      chatThreadId: command.chatThreadId,
+      codexServiceTier: command.codexServiceTier,
+    }),
+    callbacks: [
+      ...(callbacksForTriggerAgent(args.triggerAgentId) ?? []),
+      ...(command.callbacks ?? []),
+    ],
+    includeZeroTokenSecret: true,
+    zeroTokenComputerUseHostId: command.computerUseHostId,
+    enforceVm0Credits: true,
+    queueOnConcurrencyLimit: true,
+    injectSkillVolumes: { workflows: args.workflows },
+    connectorScope: {
+      allowedConnectorTypes: args.allowedConnectorTypes,
+      allowedCustomConnectorIds: args.allowedCustomConnectorIds,
+      source: "zero_agent",
+    },
+    validateEnvironmentReferences: false,
+    zeroRunMetadata: {
+      ...command.zeroRunMetadata,
+      triggerAgentId: args.triggerAgentId,
+    },
+    dispatchFailedCallbacks: command.dispatchFailedCallbacks,
+    beforeDispatch: command.beforeDispatch,
+    timing: args.timing,
+    timingDimensions: zeroRunTimingDimensions({
+      origin: zeroRunOrigin({
+        command,
+      }),
+      source: command.zeroPreCreateSource,
+    }),
+  };
+}
+
+function buildZeroIntegrationCreateAgentRunArgs(args: {
+  readonly command: CreateZeroIntegrationRunCommandArgs;
+  readonly agent: ZeroAgentRunRecord;
+  readonly userInfo: UserInfo;
+  readonly runPermissionPolicies: FirewallPolicies | null | undefined;
+  readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
+  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly allowedCustomConnectorIds: readonly string[];
+  readonly timing: ApiDispatchTimingCollector;
+}): CreateAgentRunArgs {
+  const command = args.command;
+  return {
+    userId: command.userId,
+    orgId: command.orgId,
+    body: createIntegrationRunBody({
+      prompt: command.prompt,
+      sessionId: command.sessionId,
+      agent: args.agent,
+      userInfo: { ...args.userInfo, ...command.userInfoExtras },
+      permissionPolicies: args.runPermissionPolicies,
+      triggerSource: command.triggerSource,
+      appendSystemPrompt: command.appendSystemPrompt,
+    }),
+    apiStartTime: command.apiStartTime,
+    modelProviderId: args.agent.modelProviderId ?? undefined,
+    selectedModelOverride: args.agent.selectedModel ?? undefined,
+    extraEnvironment: { ZERO_AGENT_ID: args.agent.id },
+    callbacks: command.callbacks,
+    includeZeroTokenSecret: true,
+    enforceVm0Credits: true,
+    queueOnConcurrencyLimit: true,
+    injectSkillVolumes: { workflows: args.workflows },
+    connectorScope: {
+      allowedConnectorTypes: args.allowedConnectorTypes,
+      allowedCustomConnectorIds: args.allowedCustomConnectorIds,
+      source: "zero_agent",
+    },
+    validateEnvironmentReferences: false,
+    dispatchFailedCallbacks: command.dispatchFailedCallbacks,
+    timing: args.timing,
+    timingDimensions: zeroRunTimingDimensions({ origin: "zero_integration" }),
+  };
+}
+
+export const createZeroIntegrationRun$ = command(
+  async (
+    { set },
+    args: CreateZeroIntegrationRunCommandArgs,
+    signal: AbortSignal,
+  ) => {
+    const timing = zeroServiceEntryTiming({
+      apiStartTime: args.apiStartTime,
+    });
+    const db = set(writeDb$);
+    const agent = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_load_agent",
+      async () => {
+        return await loadZeroAgent(db, args.agentId);
+      },
+    );
+    signal.throwIfAborted();
+    if (!agent || agent.orgId !== args.orgId) {
+      return notFound("Agent not found");
+    }
+
+    if (agent.visibility === "private" && agent.owner !== args.userId) {
+      return forbidden("Only the private agent owner can run this agent");
+    }
+
+    const userInfo = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_load_user_info",
+      async () => {
+        return await loadUserInfo(db, {
+          userId: args.userId,
+          orgId: args.orgId,
+        });
+      },
+    );
+    signal.throwIfAborted();
+    const { allowedConnectorTypes, allowedCustomConnectorIds } =
+      await measureZeroPreCreate(
+        timing,
+        "api_dispatch_pre_create_zero_load_connector_scopes",
+        async () => {
+          return await loadAgentConnectorScope(db, {
+            userId: args.userId,
+            orgId: args.orgId,
+            agentId: agent.id,
+          });
+        },
+      );
+    signal.throwIfAborted();
+    const workflows = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_load_workflows",
+      async () => {
+        return await loadWorkflowsForRun(db, {
+          userId: args.userId,
+          orgId: args.orgId,
+          agentId: agent.id,
+        });
+      },
+    );
+    signal.throwIfAborted();
+
+    const runPermissionPolicies = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_resolve_permission_policies",
+      async () => {
+        return await resolveZeroRunPermissionPolicies(
+          db,
+          {
+            orgId: args.orgId,
+            userId: args.userId,
+            agent,
+            allowedConnectorTypes,
+            checkedAt: new Date(args.apiStartTime),
+          },
+          signal,
+        );
+      },
+    );
+    signal.throwIfAborted();
+
+    const createAgentRunArgs = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_build_create_run_args",
+      () => {
+        return buildZeroIntegrationCreateAgentRunArgs({
+          command: args,
+          agent,
+          userInfo,
+          runPermissionPolicies,
+          workflows,
+          allowedConnectorTypes,
+          allowedCustomConnectorIds,
+          timing,
+        });
+      },
+    );
+    signal.throwIfAborted();
+
+    return await set(createAgentRun$, createAgentRunArgs, signal);
+  },
+);
+
+export const createZeroRun$ = command(
+  async ({ set }, args: CreateZeroRunCommandArgs, signal: AbortSignal) => {
+    const timing = zeroServiceEntryTiming({
+      apiStartTime: args.apiStartTime,
+      timing: args.timing,
+    });
+    const db = set(writeDb$);
+
+    const agentId = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_resolve_agent_id",
+      async () => {
+        return await resolveZeroRunAgentId(db, args);
+      },
+    );
+    signal.throwIfAborted();
+
+    if (!agentId) {
+      return args.body.sessionId
+        ? notFound("Session not found")
+        : badRequestMessage("agentId is required");
+    }
+
+    const agent = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_load_agent",
+      async () => {
+        return await loadZeroAgent(db, agentId);
+      },
+    );
+    signal.throwIfAborted();
+    if (!agent || agent.orgId !== args.auth.orgId) {
+      return notFound("Agent not found");
+    }
+
+    if (agent.visibility === "private" && agent.owner !== args.auth.userId) {
+      return forbidden("Only the private agent owner can run this agent");
+    }
+
+    const userInfo = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_load_user_info",
+      async () => {
+        return await loadUserInfo(db, {
+          userId: args.auth.userId,
+          orgId: args.auth.orgId,
+        });
+      },
+    );
+    signal.throwIfAborted();
+    const triggerContext = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_resolve_trigger_context",
+      async () => {
+        return await resolveZeroRunTriggerPreCreateContext(db, args, signal);
+      },
+    );
+    signal.throwIfAborted();
+    const { triggerAgentId } = triggerContext;
+    const connectorScopes = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_load_connector_scopes",
+      async () => {
+        return await loadZeroRunConnectorScopes(
+          db,
+          {
+            auth: args.auth,
+            agentId: agent.id,
+          },
+          signal,
+        );
+      },
+    );
+    signal.throwIfAborted();
+    const { allowedConnectorTypes, allowedCustomConnectorIds } =
+      connectorScopes;
+    const workflows = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_load_workflows",
+      async () => {
+        return await loadWorkflowsForRun(db, {
+          userId: args.auth.userId,
+          orgId: args.auth.orgId,
+          agentId: agent.id,
+        });
+      },
+    );
+    signal.throwIfAborted();
+    const runPermissionPolicies = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_resolve_permission_policies",
+      async () => {
+        return await resolveZeroRunPermissionPolicies(
+          db,
+          {
+            orgId: args.auth.orgId,
+            userId: args.auth.userId,
+            agent,
+            allowedConnectorTypes,
+            checkedAt: new Date(args.apiStartTime),
+          },
+          signal,
+        );
+      },
+    );
+    signal.throwIfAborted();
+
+    const createAgentRunArgs = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_build_create_run_args",
+      () => {
+        return buildZeroCreateAgentRunArgs({
+          command: args,
+          agent,
+          userInfo,
+          runPermissionPolicies,
+          triggerAgentId,
+          workflows,
+          allowedConnectorTypes,
+          allowedCustomConnectorIds,
+          timing,
+        });
+      },
+    );
+    signal.throwIfAborted();
+    return await set(createAgentRun$, createAgentRunArgs, signal);
+  },
+);

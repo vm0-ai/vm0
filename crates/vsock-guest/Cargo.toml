@@ -1,0 +1,18 @@
+[package]
+name = "vsock-guest"
+version = "0.19.21"
+edition.workspace = true
+
+[dependencies]
+guest-contracts.workspace = true
+process-control-ipc.workspace = true
+libc.workspace = true
+shell-quote.workspace = true
+vsock-proto.workspace = true
+
+[features]
+# Enables local integration-test hooks. Do not enable for production guest binaries.
+test-support = []
+
+[lints]
+workspace = true

@@ -1,0 +1,30 @@
+import { Command } from "commander";
+import { createCommand } from "./create";
+import { editCommand } from "./edit";
+import { viewCommand } from "./view";
+import { listCommand } from "./list";
+import { deleteCommand } from "./delete";
+import { copyCommand } from "./copy";
+import { triggerCommand } from "./trigger";
+
+export const zeroWorkflowCommand = new Command("workflow")
+  .description("Manage workflows")
+  .addCommand(createCommand)
+  .addCommand(editCommand)
+  .addCommand(viewCommand)
+  .addCommand(listCommand)
+  .addCommand(deleteCommand)
+  .addCommand(copyCommand)
+  .addCommand(triggerCommand)
+  .addHelpText(
+    "after",
+    `
+Examples:
+  Create under an agent:   zero workflow create my-workflow --agent <agent-id> --instruction "Do things"
+  List workflows:          zero workflow list
+  View workflow content:   zero workflow view <workflow> --agent <agent-id>
+  Update workflow content: zero workflow edit <workflow> --agent <agent-id> --instruction "New steps"
+  Copy onto another agent: zero workflow copy <workflow> --agent <source-agent-id> --to-agent <target-agent-id>
+  Manage triggers:         zero workflow trigger --help
+  Delete a workflow:       zero workflow delete <workflow> --agent <agent-id> -y`,
+  );

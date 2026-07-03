@@ -1,0 +1,33 @@
+<svg
+  width="48"
+  height="48"
+  viewBox="0 0 48 48"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <rect width="48" height="48" rx="7.5" fill="url(#weread-bg)" />
+  <path
+    fill="#FFFFFF"
+    d="M0 41.05h20.25c2.35 0 3.45 1.75 3.75 5.2.3-3.45 1.4-5.2 3.75-5.2H48V48H0z"
+  />
+  <path
+    fill="#FFFFFF"
+    d="M38.6 27.45c4.05 0 7.25 2.45 7.25 5.55s-3.2 5.55-7.25 5.55c-1.2 0-2.35-.2-3.35-.6l-3.2 1.25.9-2.55c-1.2-.95-1.9-2.2-1.9-3.65 0-3.1 3.25-5.55 7.55-5.55Z"
+  />
+  <circle cx="36.55" cy="32.55" r="0.75" fill="#35A8FF" />
+  <circle cx="40.6" cy="32.55" r="0.75" fill="#35A8FF" />
+  <defs>
+    <linearGradient
+      id="weread-bg"
+      x1="0"
+      y1="0"
+      x2="48"
+      y2="48"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop stop-color="#4CBEFF" />
+      <stop offset="0.45" stop-color="#35A8FF" />
+      <stop offset="1" stop-color="#2DA3FF" />
+    </linearGradient>
+  </defs>
+</svg>

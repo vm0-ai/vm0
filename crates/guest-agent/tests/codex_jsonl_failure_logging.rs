@@ -1,0 +1,114 @@
+//! Codex stdout JSONL failure events should be visible in the system log.
+//!
+//! This test lives in its own binary to isolate process env, working directory,
+//! and guest runtime path overrides used during setup.
+
+mod common;
+
+use common::SystemLogOverrideGuard;
+use guest_agent::masker::SecretMasker;
+use guest_contracts::diagnostics::{FailureDetailSource, FailureReason};
+use std::path::Path;
+use std::time::Duration;
+
+#[tokio::test]
+async fn codex_jsonl_failure_events_are_reported() -> Result<(), Box<dyn std::error::Error>> {
+    let mock = common::build_and_locate_mock_codex()?;
+    let tmp = tempfile::tempdir()?;
+    let system_log_path = tmp.path().join("system.log");
+
+    unsafe {
+        setup_codex_env(&mock, tmp.path(), "error-event")?;
+    }
+
+    let runtime = common::guest_runtime_from_process_env()?;
+    let _system_log = SystemLogOverrideGuard::set(&system_log_path);
+    let masker = SecretMasker::from_raw("");
+    let cli_result = tokio::time::timeout(
+        Duration::from_secs(5),
+        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
+    )
+    .await
+    .expect("execute_cli should return promptly")?;
+
+    assert_eq!(cli_result.exit_code, common::CLEAN_EXIT);
+    assert_eq!(
+        cli_result
+            .failure_diagnostic
+            .as_ref()
+            .map(|diagnostic| diagnostic.message.as_str()),
+        Some("Mock error event for fixture testing")
+    );
+    assert_eq!(
+        cli_result
+            .failure_diagnostic
+            .as_ref()
+            .map(|diagnostic| diagnostic.source),
+        Some(FailureDetailSource::CodexJsonl)
+    );
+    let system_log = std::fs::read_to_string(&system_log_path)?;
+    assert!(
+        system_log.contains(
+            "Codex JSONL failure event seq=1 type=error: Mock error event for fixture testing"
+        ),
+        "system log should include Codex JSONL failure reason: {system_log}"
+    );
+
+    unsafe {
+        std::env::set_var("MOCK_CODEX_FIXTURE", "invalid-api-key");
+    }
+
+    let cli_result = tokio::time::timeout(
+        Duration::from_secs(5),
+        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
+    )
+    .await
+    .expect("execute_cli should return promptly")?;
+
+    assert_eq!(cli_result.exit_code, common::CLEAN_EXIT);
+    let diagnostic = cli_result
+        .failure_diagnostic
+        .as_ref()
+        .expect("invalid API key JSONL error should produce a diagnostic");
+    assert_eq!(diagnostic.message, "Incorrect API key provided");
+    assert_eq!(diagnostic.source, FailureDetailSource::CodexJsonl);
+    assert_eq!(
+        diagnostic.failure_reason,
+        Some(FailureReason::InvalidApiKey)
+    );
+
+    Ok(())
+}
+
+unsafe fn setup_codex_env(
+    mock_path: &Path,
+    workdir: &Path,
+    fixture_name: &str,
+) -> Result<(), String> {
+    unsafe {
+        common::clear_guest_agent_bootstrap_env_for_test();
+        std::env::set_var("CLI_AGENT_TYPE", "codex");
+        std::env::set_var("VM0_MOCK_CODEX_PATH", mock_path);
+        std::env::set_var("USE_MOCK_CODEX", "true");
+        std::env::set_var("MOCK_CODEX_FIXTURE", fixture_name);
+        std::env::set_var("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "3");
+        std::env::set_var("VM0_POST_RESULT_SIGKILL_GRACE_SECS", "1");
+        let run_id = std::env::current_exe()
+            .ok()
+            .as_deref()
+            .and_then(Path::file_name)
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "codex-jsonl-failure-logging-test".to_string());
+        std::env::set_var("VM0_RUN_ID", run_id);
+        std::env::set_var("VM0_PROMPT", "drive the codex error fixture");
+        std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
+        std::env::set_var("VM0_API_TOKEN", "");
+        std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
+        std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
+        std::env::set_var("HOME", workdir);
+    }
+    std::fs::create_dir_all(workdir).map_err(|e| format!("create workdir: {e}"))?;
+    common::ensure_canonical_workspace_for_test()?;
+    std::env::set_current_dir(workdir).map_err(|e| format!("set_current_dir: {e}"))?;
+    Ok(())
+}

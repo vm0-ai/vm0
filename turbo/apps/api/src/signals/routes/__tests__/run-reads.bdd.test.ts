@@ -1,0 +1,3899 @@
+import { createHash, randomUUID } from "node:crypto";
+import { gzipSync } from "node:zlib";
+
+import { CANONICAL_CLAUDE_MEMORY_MOUNT_PATH } from "@vm0/api-contracts/contracts/runners";
+import { delay } from "signal-timers";
+import { describe, expect, it } from "vitest";
+
+import { mockEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
+import { testContext } from "../../../__tests__/test-context";
+import {
+  createBddApi,
+  expectApiError,
+  type ApiTestUser,
+} from "./helpers/api-bdd";
+import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
+import { storageTextFile } from "./helpers/api-bdd-storage-files";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
+import {
+  createRunsAutomationsApi,
+  uniqueAutomationName,
+} from "./helpers/api-bdd-runs-automations";
+import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+
+/*
+ * RUN-03/RUN-04 read surfaces for agent runs (list/read/queue/cancel,
+ * sessions, checkpoints, telemetry families, zero run detail reads, queue
+ * position, and zero logs) plus the RUN-01/02 direct-run create arms that
+ * end in those reads (checkpoint resume, memory root policies, volume
+ * pinning, concurrency caps, and the production capture gate).
+ *
+ * All state is constructed through public APIs: direct runs via compose
+ * create + POST /api/agent/runs, runner claims, and sandbox webhooks
+ * (events/checkpoint/complete). Axiom reads are answered by an
+ * APL-dispatching mock so the run-event visibility poll is never left
+ * unanswered (an unanswered poll burns its 2s timeout per read).
+ */
+
+// The sanitizer accepts the literal IANA name; built by parts to satisfy
+// unicorn/text-encoding-identifier-case.
+const UTF8_ENCODING = ["utf", "8"].join("-");
+
+const context = testContext();
+const bdd = createBddApi(context);
+const api = createRunsAutomationsApi(context);
+const webhooks = createWebhookCallbackApi(context);
+const reads = createRunReadsApi(context);
+
+function mustOk<TResponse extends { readonly status: number }>(
+  response: TResponse,
+  what: string,
+): asserts response is Extract<TResponse, { status: 200 }> {
+  if (response.status !== 200) {
+    throw new Error(`Expected ${what} to succeed`);
+  }
+}
+
+async function entitledActor(): Promise<ApiTestUser> {
+  const actor = bdd.user();
+  bdd.acceptAgentStorageWrites();
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  api.configureRunnerGroup();
+  await api.grantProEntitlement(actor);
+  return actor;
+}
+
+async function createClaudeCompose(
+  actor: ApiTestUser,
+  prefix: string,
+): Promise<{ readonly composeId: string; readonly name: string }> {
+  const name = `${prefix}-${randomUUID().slice(0, 8)}`;
+  return await api.createCompose(actor, {
+    version: "1",
+    agents: {
+      [name]: {
+        framework: "claude-code",
+        environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+      },
+    },
+  });
+}
+
+function sandboxHeaders(token: string): { readonly authorization: string } {
+  return { authorization: `Bearer ${token}` };
+}
+
+async function waitForTimestampBoundary(): Promise<void> {
+  await delay(30, { signal: context.signal });
+}
+
+function s3CommandKey(command: unknown): string | undefined {
+  return (command as { readonly input?: { readonly Key?: string } }).input?.Key;
+}
+
+function s3CommandName(command: unknown): string | undefined {
+  return (command as { readonly constructor?: { readonly name?: string } })
+    .constructor?.name;
+}
+
+interface S3NotFoundError extends Error {
+  Code: string;
+  $metadata: { httpStatusCode: number };
+}
+
+function s3ObjectNotFoundError(): S3NotFoundError {
+  const error = new Error("NotFound") as S3NotFoundError;
+  error.name = "NotFound";
+  error.Code = "NoSuchKey";
+  error.$metadata = { httpStatusCode: 404 };
+  return error;
+}
+
+function countSessionHistoryBlobReads(hash: string): number {
+  const blobKey = `blobs/${hash}.blob`;
+  return context.mocks.s3.send.mock.calls.filter(([command]) => {
+    return (
+      s3CommandName(command) === "GetObjectCommand" &&
+      s3CommandKey(command) === blobKey
+    );
+  }).length;
+}
+
+function presignedUrlKeysSince(
+  startIndex: number,
+): readonly (string | undefined)[] {
+  return context.mocks.s3.getSignedUrl.mock.calls
+    .slice(startIndex)
+    .map(([, command]) => {
+      return s3CommandKey(command);
+    });
+}
+
+function hasManifestPresign(keys: readonly (string | undefined)[]): boolean {
+  return keys.some((key) => {
+    return key?.endsWith("/manifest.json") ?? false;
+  });
+}
+
+function s3BytesBody(bytes: Buffer): AsyncIterable<Buffer> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield bytes;
+    },
+  };
+}
+
+/**
+ * Marks a claimed run completed through the sandbox webhooks. Successful
+ * completion requires a checkpoint, so one is always posted first.
+ */
+async function completeRun(
+  runId: string,
+  sandboxToken: string,
+  options: { readonly lastEventSequence?: number } = {},
+): Promise<void> {
+  const headers = sandboxHeaders(sandboxToken);
+  await webhooks.requestAgentCheckpoint(
+    {
+      runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: `bdd-cli-${runId}`,
+      cliAgentSessionHistoryHash: createHash("sha256")
+        .update(`bdd run reads history ${runId}`)
+        .digest("hex"),
+    },
+    headers,
+    [200],
+  );
+  await webhooks.requestAgentComplete(
+    {
+      runId,
+      exitCode: 0,
+      ...(options.lastEventSequence === undefined
+        ? {}
+        : { lastEventSequence: options.lastEventSequence }),
+    },
+    headers,
+    [200],
+  );
+}
+
+describe("RUN-03/RUN-04: run read surface auth matrix", () => {
+  it("rejects unauthenticated and org-less requests across the run read surfaces", async () => {
+    const missingId = randomUUID();
+    const NOT_AUTHENTICATED = {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    };
+
+    const unauthenticated = [
+      (await reads.requestListAgentRuns(null, {}, [401])).body,
+      (await reads.requestReadAgentRun(null, missingId, [401])).body,
+      (await reads.requestReadAgentRunQueue(null, [401])).body,
+      (await reads.requestCancelAgentRun(null, missingId, [401])).body,
+      (await reads.requestReadSession(null, missingId, [401])).body,
+      (await reads.requestReadCheckpoint(null, missingId, [401])).body,
+      (await reads.requestQueuePosition(null, missingId, [401])).body,
+      (await reads.requestRunEvents(null, missingId, {}, [401])).body,
+      (await reads.requestRunAgentEvents(null, missingId, {}, [401])).body,
+      (await reads.requestRunSystemLog(null, missingId, {}, [401])).body,
+      (await reads.requestRunMetrics(null, missingId, {}, [401])).body,
+      (await reads.requestRunNetworkLogs(null, missingId, {}, [401])).body,
+      (await reads.requestZeroRunAgentEvents(null, missingId, {}, [401])).body,
+      (await reads.requestZeroRunNetworkLogs(null, missingId, {}, [401])).body,
+      (await reads.requestListLogs(null, {}, [401])).body,
+      (await reads.requestReadLogById(null, missingId, [401])).body,
+    ];
+    for (const body of unauthenticated) {
+      expect(body).toStrictEqual(NOT_AUTHENTICATED);
+    }
+
+    const orgless = bdd.user({ orgId: null });
+    const orglessUnauthorized = [
+      (await reads.requestListAgentRuns(orgless, {}, [401])).body,
+      (await reads.requestReadAgentRunQueue(orgless, [401])).body,
+      (await reads.requestCancelAgentRun(orgless, missingId, [401])).body,
+      (await reads.requestReadCheckpoint(orgless, missingId, [401])).body,
+      (await reads.requestListLogs(orgless, {}, [401])).body,
+      (await reads.requestZeroRunAgentEvents(orgless, missingId, {}, [401]))
+        .body,
+      (await reads.requestZeroRunNetworkLogs(orgless, missingId, {}, [401]))
+        .body,
+    ];
+    for (const body of orglessUnauthorized) {
+      expect(body).toStrictEqual(NOT_AUTHENTICATED);
+    }
+
+    const orglessSession = await reads.requestReadSession(
+      orgless,
+      missingId,
+      [404],
+    );
+    expect(orglessSession.body).toStrictEqual({
+      error: { message: "Session not found", code: "NOT_FOUND" },
+    });
+
+    // Telemetry routes require an organization without a custom missing-org
+    // status, so org-less sessions fail as 400s.
+    const orglessEvents = await reads.requestRunEvents(
+      orgless,
+      missingId,
+      {},
+      [400],
+    );
+    expectApiError(orglessEvents.body);
+    expect(orglessEvents.body.error.code).toBe("BAD_REQUEST");
+  });
+});
+
+describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
+  it("lists, reads, and queues direct runs with status, agent, and window filters", async () => {
+    const actor = await entitledActor();
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    const target = await createClaudeCompose(actor, "bdd-target");
+    const other = await createClaudeCompose(actor, "bdd-other");
+    const memberCompose = await createClaudeCompose(member, "bdd-member");
+
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD run reads agent",
+      description: "Queue privacy and session links.",
+      visibility: "private",
+    });
+    const memberAgent = await bdd.createAgent(member, {
+      displayName: "BDD member agent",
+      description: "Foreign queue entries.",
+      visibility: "private",
+    });
+
+    // Seed a terminal zero-run session so a later queued run can carry a
+    // continuation session link.
+    const seedRun = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "seed a session",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, seedRun.runId, [200]);
+
+    const malformed = await reads.rawCreateDirectRun(actor, {
+      agentComposeId: target.composeId,
+    });
+    expect(malformed.status).toBe(400);
+
+    const runA = await api.createDirectRun(actor, {
+      agentComposeId: target.composeId,
+      prompt: "target run a",
+    });
+    const runB = await api.createDirectRun(actor, {
+      agentComposeId: other.composeId,
+      prompt: "other run b",
+    });
+
+    const defaults = await reads.requestListAgentRuns(actor, {}, [200]);
+    const defaultPrompts = defaults.body.runs.map((run) => {
+      return run.prompt;
+    });
+    expect(defaultPrompts).toStrictEqual(
+      expect.arrayContaining(["target run a", "other run b"]),
+    );
+
+    const memberView = await reads.requestListAgentRuns(member, {}, [200]);
+    expect(
+      memberView.body.runs.map((run) => {
+        return run.id;
+      }),
+    ).not.toContain(runA.runId);
+
+    const invalidStatus = await reads.requestListAgentRuns(
+      actor,
+      { status: "running,bogus" },
+      [400],
+    );
+    expectApiError(invalidStatus.body);
+    expect(invalidStatus.body.error.message).toContain("Invalid status: bogus");
+
+    const invalidSince = await reads.requestListAgentRuns(
+      actor,
+      { since: "not-a-date" },
+      [400],
+    );
+    expectApiError(invalidSince.body);
+    expect(invalidSince.body.error.message).toBe(
+      "Invalid since timestamp format",
+    );
+
+    const invalidUntil = await reads.requestListAgentRuns(
+      actor,
+      { until: "not-a-date" },
+      [400],
+    );
+    expectApiError(invalidUntil.body);
+    expect(invalidUntil.body.error.message).toBe(
+      "Invalid until timestamp format",
+    );
+
+    const claimA = await api.claimRunnerJob(runA.runId);
+    const claimB = await api.claimRunnerJob(runB.runId);
+    await completeRun(runB.runId, claimB.sandboxToken);
+
+    const runningOnly = await reads.requestListAgentRuns(
+      actor,
+      { status: "running" },
+      [200],
+    );
+    const runningIds = runningOnly.body.runs.map((run) => {
+      return run.id;
+    });
+    expect(runningIds).toContain(runA.runId);
+    expect(runningIds).not.toContain(runB.runId);
+
+    const afterComplete = await reads.requestListAgentRuns(actor, {}, [200]);
+    expect(
+      afterComplete.body.runs.map((run) => {
+        return run.prompt;
+      }),
+    ).not.toContain("other run b");
+
+    const completedByAgent = await reads.requestListAgentRuns(
+      actor,
+      { status: "completed", agent: other.name, limit: 1 },
+      [200],
+    );
+    expect(completedByAgent.body.runs).toHaveLength(1);
+    expect(completedByAgent.body.runs[0]).toMatchObject({
+      id: runB.runId,
+      agentName: other.name,
+      status: "completed",
+      prompt: "other run b",
+    });
+    expect(completedByAgent.body.runs[0]?.startedAt).not.toBeNull();
+
+    const pastWindow = await reads.requestListAgentRuns(
+      actor,
+      {
+        status: "completed",
+        agent: other.name,
+        until: new Date(now() - 60 * 60_000).toISOString(),
+      },
+      [200],
+    );
+    expect(pastWindow.body.runs).toStrictEqual([]);
+
+    const insideWindow = await reads.requestListAgentRuns(
+      actor,
+      {
+        status: "completed",
+        agent: other.name,
+        since: new Date(now() - 60 * 60_000).toISOString(),
+        until: new Date(now() + 60_000).toISOString(),
+      },
+      [200],
+    );
+    expect(
+      insideWindow.body.runs.map((run) => {
+        return run.id;
+      }),
+    ).toContain(runB.runId);
+
+    const detail = await reads.requestReadAgentRun(actor, runB.runId, [200]);
+    expect(detail.body).toMatchObject({
+      runId: runB.runId,
+      status: "completed",
+      prompt: "other run b",
+    });
+    expect(detail.body.startedAt).toBeDefined();
+    expect(detail.body.completedAt).toBeDefined();
+
+    const sandboxDetail = await reads.requestReadAgentRunAs(
+      `Bearer ${claimA.sandboxToken}`,
+      runB.runId,
+      [200],
+    );
+    expect(sandboxDetail.body).toMatchObject({ runId: runB.runId });
+
+    const invalidId = await reads.requestReadAgentRun(
+      actor,
+      "not-a-run-id",
+      [400],
+    );
+    expectApiError(invalidId.body);
+    expect(invalidId.body.error.code).toBe("BAD_REQUEST");
+
+    const missing = await reads.requestReadAgentRun(actor, randomUUID(), [404]);
+    expectApiError(missing.body);
+    expect(missing.body.error.message).toBe("Agent run not found");
+
+    const runM = await api.createDirectRun(member, {
+      agentComposeId: memberCompose.composeId,
+      prompt: "member run m",
+    });
+    const hiddenFromActor = await reads.requestReadAgentRun(
+      actor,
+      runM.runId,
+      [404],
+    );
+    expectApiError(hiddenFromActor.body);
+    expect(hiddenFromActor.body.error.message).toBe("Agent run not found");
+    const memberDetail = await reads.requestReadAgentRun(
+      member,
+      runM.runId,
+      [200],
+    );
+    expect(memberDetail.body).toMatchObject({ runId: runM.runId });
+    await api.claimRunnerJob(runM.runId);
+
+    // auth-me refreshes the caller's user-cache email, which the queue
+    // surfaces for owner entries.
+    await bdd.readMe(actor);
+    const agentQueue = await reads.requestReadAgentRunQueue(actor, [200]);
+    expect(agentQueue.body.concurrency).toMatchObject({
+      tier: "pro",
+      limit: 2,
+      active: 2,
+      available: 0,
+    });
+    expect(agentQueue.body.runningTasks).toHaveLength(2);
+    const ownTask = agentQueue.body.runningTasks.find((task) => {
+      return task.isOwner;
+    });
+    expect(ownTask).toMatchObject({
+      runId: runA.runId,
+      userEmail: actor.email,
+      isOwner: true,
+    });
+    expect(ownTask?.startedAt).not.toBeNull();
+    const foreignTask = agentQueue.body.runningTasks.find((task) => {
+      return !task.isOwner;
+    });
+    expect(foreignTask).toMatchObject({
+      runId: null,
+      userEmail: "unknown",
+      isOwner: false,
+    });
+    expect(agentQueue.body.estimatedTimePerRun).not.toBeNull();
+
+    const longPrompt = "q".repeat(220);
+    const queuedOwn = await api.createRun(actor, {
+      agentId: agent.agentId,
+      sessionId: seedRun.sessionId,
+      prompt: longPrompt,
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queuedOwn.status).toBe("queued");
+    const queuedForeign = await api.createRun(member, {
+      agentId: memberAgent.agentId,
+      prompt: "member queued secret",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queuedForeign.status).toBe("queued");
+
+    const zeroQueue = await api.readRunQueue(actor);
+    expect(zeroQueue.body.queue).toHaveLength(2);
+    expect(zeroQueue.body.queue[0]).toMatchObject({
+      position: 1,
+      isOwner: true,
+      runId: queuedOwn.runId,
+      prompt: `${"q".repeat(200)}...`,
+      userEmail: actor.email,
+      sessionLink: `/chat/${seedRun.sessionId}`,
+    });
+    expect(zeroQueue.body.queue[1]).toMatchObject({
+      position: 2,
+      isOwner: false,
+      runId: null,
+      prompt: null,
+      agentName: null,
+      userEmail: null,
+      triggerSource: null,
+      sessionLink: null,
+    });
+    expect(JSON.stringify(zeroQueue.body)).not.toContain(
+      "member queued secret",
+    );
+
+    await api.requestCancelRun(actor, queuedOwn.runId, [200]);
+    await api.requestCancelRun(member, queuedForeign.runId, [200]);
+    await api.requestCancelRun(actor, runA.runId, [200]);
+    await api.requestCancelRun(member, runM.runId, [200]);
+
+    const drained = await reads.requestReadAgentRunQueue(actor, [200]);
+    expect(drained.body.concurrency.active).toBe(0);
+    expect(drained.body.queue).toStrictEqual([]);
+  });
+});
+
+describe("RUN-03: cancel through the agent route", () => {
+  it("cancels runs through the agent cancel route across states and tokens", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-cancel");
+
+    const c1 = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "cancel a running run",
+    });
+    await api.claimRunnerJob(c1.runId);
+    const cancelled = await reads.requestCancelAgentRun(actor, c1.runId, [200]);
+    expect(cancelled.body).toStrictEqual({
+      id: c1.runId,
+      status: "cancelled",
+      message: "Run cancelled successfully",
+    });
+    const c1Detail = await api.readRun(actor, c1.runId);
+    expect(c1Detail.status).toBe("cancelled");
+
+    const repeated = await reads.requestCancelAgentRun(actor, c1.runId, [200]);
+    expect(repeated.body).toMatchObject({ status: "cancelled" });
+
+    const c2 = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "complete then cancel",
+    });
+    const claim2 = await api.claimRunnerJob(c2.runId);
+    await completeRun(c2.runId, claim2.sandboxToken);
+    const notCancellable = await reads.requestCancelAgentRun(
+      actor,
+      c2.runId,
+      [400],
+    );
+    expectApiError(notCancellable.body);
+    expect(notCancellable.body.error.code).toBe("RUN_NOT_CANCELLABLE");
+
+    const unknown = await reads.requestCancelAgentRun(
+      actor,
+      randomUUID(),
+      [404],
+    );
+    expectApiError(unknown.body);
+    expect(unknown.body.error.code).toBe("NOT_FOUND");
+
+    const outsider = bdd.user();
+    const crossOrg = await reads.requestCancelAgentRun(
+      outsider,
+      c2.runId,
+      [404],
+    );
+    expectApiError(crossOrg.body);
+    expect(crossOrg.body.error.code).toBe("NOT_FOUND");
+
+    const c3 = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "cancel via the sandbox token",
+    });
+    const claim3 = await api.claimRunnerJob(c3.runId);
+    const sandboxCancelled = await reads.requestCancelAgentRunAs(
+      `Bearer ${claim3.sandboxToken}`,
+      c3.runId,
+      [200],
+    );
+    expect(sandboxCancelled.body).toMatchObject({ status: "cancelled" });
+
+    const orphanToken = api.sandboxTokenForRun(actor, randomUUID());
+    const orphanCancel = await reads.requestCancelAgentRunAs(
+      `Bearer ${orphanToken}`,
+      c2.runId,
+      [404],
+    );
+    expectApiError(orphanCancel.body);
+    expect(orphanCancel.body.error.message).toBe("Agent run not found");
+
+    // A queued zero run cancelled through the agent route disappears from
+    // the visible queue.
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD cancel agent",
+      description: "Queued cancellation through the agent route.",
+      visibility: "private",
+    });
+    const d1 = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "occupy slot one",
+    });
+    const d2 = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "occupy slot two",
+    });
+    const c4 = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "queued run to cancel",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(c4.status).toBe("queued");
+    const queuedCancelled = await reads.requestCancelAgentRun(
+      actor,
+      c4.runId,
+      [200],
+    );
+    expect(queuedCancelled.body).toMatchObject({ status: "cancelled" });
+    const queueAfter = await api.readRunQueue(actor);
+    expect(queueAfter.body.queue).toStrictEqual([]);
+
+    await api.requestCancelRun(actor, d1.runId, [200]);
+    await api.requestCancelRun(actor, d2.runId, [200]);
+  });
+});
+
+describe("RUN-03: queue position", () => {
+  it("reports queue position for queued, running, and foreign runs", async () => {
+    const actor = await entitledActor();
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    const compose = await createClaudeCompose(actor, "bdd-position");
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD position agent",
+      description: "Queue position reads.",
+      visibility: "private",
+    });
+    const memberAgent = await bdd.createAgent(member, {
+      displayName: "BDD member position agent",
+      description: "Foreign queue position reads.",
+      visibility: "private",
+    });
+
+    const running = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "running run",
+    });
+    await api.claimRunnerJob(running.runId);
+    const pending = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "pending run",
+    });
+    const queued = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "queued run",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+    const memberQueued = await api.createRun(member, {
+      agentId: memberAgent.agentId,
+      prompt: "member queued run",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(memberQueued.status).toBe("queued");
+
+    const first = await reads.requestQueuePosition(actor, queued.runId, [200]);
+    expect(first.body).toStrictEqual({ position: 1, total: 1 });
+
+    const second = await reads.requestQueuePosition(
+      member,
+      memberQueued.runId,
+      [200],
+    );
+    expect(second.body).toStrictEqual({ position: 2, total: 2 });
+
+    const unqueued = await reads.requestQueuePosition(
+      actor,
+      running.runId,
+      [200],
+    );
+    expect(unqueued.body).toStrictEqual({ position: 0, total: 0 });
+
+    const foreignUser = await reads.requestQueuePosition(
+      actor,
+      memberQueued.runId,
+      [404],
+    );
+    expectApiError(foreignUser.body);
+    expect(foreignUser.body.error.code).toBe("NOT_FOUND");
+
+    const outsider = bdd.user();
+    const foreignOrg = await reads.requestQueuePosition(
+      outsider,
+      queued.runId,
+      [404],
+    );
+    expectApiError(foreignOrg.body);
+    expect(foreignOrg.body.error.code).toBe("NOT_FOUND");
+
+    const unknown = await reads.requestQueuePosition(
+      actor,
+      randomUUID(),
+      [404],
+    );
+    expectApiError(unknown.body);
+    expect(unknown.body.error.code).toBe("NOT_FOUND");
+
+    const missingRunId = await reads.rawApiRequest(
+      null,
+      "/api/zero/queue-position",
+    );
+    expect(missingRunId.status).toBe(400);
+    expect(JSON.stringify(missingRunId.body)).toContain("runId");
+
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(member, memberQueued.runId, [200]);
+    await api.requestCancelRun(actor, pending.runId, [200]);
+    await api.requestCancelRun(actor, running.runId, [200]);
+  });
+});
+
+describe("RUN-04: session and checkpoint reads", () => {
+  it("exposes sessions and checkpoints created through run and webhook flows", async () => {
+    const authOrg = createAuthOrgAgentsBddApi(context);
+    const actor = await entitledActor();
+    await authOrg.setSecret(actor, {
+      name: "BDD_RUN_READS_TOKEN",
+      value: "bdd-run-reads-secret",
+    });
+
+    const secretComposeName = `bdd-session-${randomUUID().slice(0, 8)}`;
+    const secretCompose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [secretComposeName]: {
+          framework: "claude-code",
+          environment: {
+            ANTHROPIC_API_KEY: "bdd-inline-key",
+            API_TOKEN: `\${{ secrets.BDD_RUN_READS_TOKEN }}`,
+          },
+        },
+      },
+      artifacts: [{ name: "bdd-compose-art", mount_path: "/compose-art" }],
+    });
+    const plainCompose = await createClaudeCompose(actor, "bdd-plain");
+
+    const presignCallsBeforeRun =
+      context.mocks.s3.getSignedUrl.mock.calls.length;
+    const r1 = await api.createDirectRun(actor, {
+      agentComposeId: secretCompose.composeId,
+      prompt: "produce a session with artifacts",
+      artifacts: [{ name: "bdd-out", mountPath: "/out" }],
+    });
+    const claim1 = await api.claimRunnerJob(r1.runId);
+    const outArtifact = claim1.storageManifest?.artifacts.find((artifact) => {
+      return artifact.vasStorageName === "bdd-out";
+    });
+    if (!outArtifact) {
+      throw new Error("Expected the claim manifest to mount bdd-out");
+    }
+    expect(outArtifact.archiveUrl).toStrictEqual(expect.any(String));
+    expect(outArtifact.vasStorageId).toStrictEqual(expect.any(String));
+    expect(outArtifact.vasVersionId).toStrictEqual(expect.any(String));
+    expect("manifestUrl" in outArtifact).toBeFalsy();
+    expect(
+      hasManifestPresign(presignedUrlKeysSince(presignCallsBeforeRun)),
+    ).toBeFalsy();
+
+    const headers1 = sandboxHeaders(claim1.sandboxToken);
+    const withArtifacts = await webhooks.requestAgentCheckpoint(
+      {
+        runId: r1.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${r1.runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`bdd session checkpoint ${r1.runId}`)
+          .digest("hex"),
+        artifactSnapshots: [
+          {
+            name: "bdd-out",
+            version: outArtifact.vasVersionId,
+            mountPath: "/out",
+          },
+        ],
+        volumeVersionsSnapshot: { versions: { data: "vol-v1" } },
+      },
+      headers1,
+      [200],
+    );
+    if (withArtifacts.status !== 200) {
+      throw new Error("Expected the artifact checkpoint webhook to succeed");
+    }
+    await webhooks.requestAgentComplete(
+      { runId: r1.runId, exitCode: 0 },
+      headers1,
+      [200],
+    );
+
+    const completed = await api.readRun(actor, r1.runId);
+    expect(completed.status).toBe("completed");
+    expect(completed.result?.checkpointId).toBeDefined();
+
+    const session = await reads.requestReadSession(actor, r1.sessionId, [200]);
+    expect(session.body).toMatchObject({
+      id: r1.sessionId,
+      agentComposeId: secretCompose.composeId,
+      secretNames: ["BDD_RUN_READS_TOKEN"],
+    });
+    if (session.status !== 200) {
+      throw new Error("Expected the session read to succeed");
+    }
+    expect([...session.body.artifactNames].sort()).toStrictEqual([
+      "bdd-compose-art",
+      "bdd-out",
+      "memory",
+    ]);
+    expect(session.body.conversationId).not.toBeNull();
+
+    const r2 = await api.createDirectRun(actor, {
+      agentComposeId: plainCompose.composeId,
+      prompt: "plain session without secret references",
+    });
+    const plainSession = await reads.requestReadSession(
+      actor,
+      r2.sessionId,
+      [200],
+    );
+    if (plainSession.status !== 200) {
+      throw new Error("Expected the plain session read to succeed");
+    }
+    expect(plainSession.body.secretNames).toBeNull();
+    expect(plainSession.body.artifactNames).toContain("memory");
+
+    // Checkpoints upsert one row per run, so the no-artifact projection
+    // needs its own run.
+    const withoutArtifacts = await webhooks.requestAgentCheckpoint(
+      {
+        runId: r2.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${r2.runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`bdd empty checkpoint ${r2.runId}`)
+          .digest("hex"),
+      },
+      sandboxHeaders(api.sandboxTokenForRun(actor, r2.runId)),
+      [200],
+    );
+    if (withoutArtifacts.status !== 200) {
+      throw new Error("Expected the bare checkpoint webhook to succeed");
+    }
+    await api.requestCancelRun(actor, r2.runId, [200]);
+
+    const missingSession = await reads.requestReadSession(
+      actor,
+      randomUUID(),
+      [404],
+    );
+    expectApiError(missingSession.body);
+    expect(missingSession.body.error.message).toBe("Session not found");
+
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    const memberSession = await reads.requestReadSession(
+      member,
+      r1.sessionId,
+      [403],
+    );
+    expect(memberSession.body).toStrictEqual({
+      error: {
+        message: "You do not have permission to access this session",
+        code: "FORBIDDEN",
+      },
+    });
+
+    const sameUserOtherOrg = bdd.user({ userId: actor.userId });
+    const crossOrgSession = await reads.requestReadSession(
+      sameUserOtherOrg,
+      r1.sessionId,
+      [404],
+    );
+    expectApiError(crossOrgSession.body);
+    expect(crossOrgSession.body.error.message).toBe("Session not found");
+
+    const checkpoint = await reads.requestReadCheckpoint(
+      actor,
+      withArtifacts.body.checkpointId,
+      [200],
+    );
+    expect(checkpoint.body).toMatchObject({
+      id: withArtifacts.body.checkpointId,
+      runId: r1.runId,
+      artifactSnapshots: { "bdd-out": outArtifact.vasVersionId },
+      volumeVersionsSnapshot: { versions: { data: "vol-v1" } },
+    });
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected the checkpoint read to succeed");
+    }
+    expect(checkpoint.body.agentComposeSnapshot.agentComposeVersionId).toMatch(
+      /[0-9a-f-]{36}/,
+    );
+    expect(checkpoint.body.agentComposeSnapshot.secretNames).toContain(
+      "BDD_RUN_READS_TOKEN",
+    );
+    expect(checkpoint.body.conversationId).not.toBeNull();
+
+    const bareCheckpoint = await reads.requestReadCheckpoint(
+      actor,
+      withoutArtifacts.body.checkpointId,
+      [200],
+    );
+    if (bareCheckpoint.status !== 200) {
+      throw new Error("Expected the bare checkpoint read to succeed");
+    }
+    expect(bareCheckpoint.body.artifactSnapshots).toBeNull();
+
+    const missingCheckpoint = await reads.requestReadCheckpoint(
+      actor,
+      randomUUID(),
+      [404],
+    );
+    expectApiError(missingCheckpoint.body);
+    expect(missingCheckpoint.body.error.message).toBe("Checkpoint not found");
+
+    const memberCheckpoint = await reads.requestReadCheckpoint(
+      member,
+      withArtifacts.body.checkpointId,
+      [404],
+    );
+    expectApiError(memberCheckpoint.body);
+    expect(memberCheckpoint.body.error.code).toBe("NOT_FOUND");
+
+    const crossOrgCheckpoint = await reads.requestReadCheckpoint(
+      sameUserOtherOrg,
+      withArtifacts.body.checkpointId,
+      [404],
+    );
+    expectApiError(crossOrgCheckpoint.body);
+    expect(crossOrgCheckpoint.body.error.code).toBe("NOT_FOUND");
+  });
+});
+
+describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning", () => {
+  it("returns compressed resume history refs", async () => {
+    const actor = await entitledActor();
+    const composeName = `bdd-gzip-resume-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const history = `{"type":"init"}\n{"type":"human","text":"compressed-${randomUUID()}"}\n`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const compressedHistory = gzipSync(Buffer.from(history, "utf8"));
+    const compressedKey = `blobs/${historyHash}.blob.gz`;
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (s3CommandKey(command) === compressedKey) {
+        return Promise.resolve({
+          ContentLength: compressedHistory.length,
+          Body: s3BytesBody(compressedHistory),
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "create compressed checkpoint",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const headers = sandboxHeaders(claim.sandboxToken);
+    const prepared = await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: historyHash,
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: compressedHistory.length,
+        encoding: "gzip",
+      },
+      headers,
+      [200],
+    );
+    expect(prepared.body).toMatchObject({
+      existing: false,
+      encoding: "gzip",
+    });
+    const duplicatePrepared =
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash: historyHash,
+          rawSize: Buffer.byteLength(history, "utf8"),
+          encodedSize: compressedHistory.length + 1,
+          encoding: "gzip",
+        },
+        headers,
+        [200],
+      );
+    expect(duplicatePrepared.body).toStrictEqual({
+      existing: true,
+      encoding: "gzip",
+    });
+    const checkpointed = await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${run.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      headers,
+      [200],
+    );
+    mustOk(checkpointed, "compressed resume checkpoint");
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0 },
+      headers,
+      [200],
+    );
+
+    const compressedResume = await api.createDirectRun(actor, {
+      checkpointId: checkpointed.body.checkpointId,
+      prompt: "resume with compressed ref",
+    });
+    const compressedClaim = await api.claimRunnerJob(compressedResume.runId);
+    expect(compressedClaim.resumeSession).toMatchObject({
+      sessionId: `bdd-cli-${run.runId}`,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: expect.any(String),
+        encoding: "gzip",
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: compressedHistory.length,
+      },
+    });
+    await api.requestCancelRun(actor, compressedResume.runId, [200]);
+  });
+
+  it("rejects identity repair for a missing compressed session history blob", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-gzip-repair");
+    const history = `{"type":"init"}\n{"type":"human","text":"repair-${randomUUID()}"}\n`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const compressedKey = `blobs/${historyHash}.blob.gz`;
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (s3CommandKey(command) === compressedKey) {
+        return Promise.reject(s3ObjectNotFoundError());
+      }
+      return Promise.resolve({});
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "create missing compressed blob metadata",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const headers = sandboxHeaders(claim.sandboxToken);
+    const compressedPrepare =
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash: historyHash,
+          rawSize: Buffer.byteLength(history, "utf8"),
+          encodedSize: gzipSync(Buffer.from(history, "utf8")).length,
+          encoding: "gzip",
+        },
+        headers,
+        [200],
+      );
+    expect(compressedPrepare.body).toMatchObject({
+      existing: false,
+      encoding: "gzip",
+    });
+
+    const mismatchedEncodedSize =
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash: historyHash,
+          rawSize: Buffer.byteLength(history, "utf8"),
+          encodedSize: gzipSync(Buffer.from(history, "utf8")).length + 1,
+          encoding: "gzip",
+        },
+        headers,
+        [400],
+      );
+    expectApiError(mismatchedEncodedSize.body);
+    expect(mismatchedEncodedSize.body.error.message).toBe(
+      "Session history encoded size does not match the existing blob",
+    );
+
+    const identityRepair = await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: historyHash,
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: Buffer.byteLength(history, "utf8"),
+        encoding: "identity",
+      },
+      headers,
+      [400],
+    );
+    expectApiError(identityRepair.body);
+    expect(identityRepair.body.error.message).toBe(
+      "Identity session history upload cannot repair a compressed blob",
+    );
+  });
+
+  it("restores volumes, memory, and conversation state when resuming checkpoints", async () => {
+    const storages = createStoragesBddApi(context);
+    const actor = await entitledActor();
+    storages.mockStoragePresignedUrls();
+    storages.mockStorageObjectsExist();
+
+    const volumeName = `bdd-vol-${randomUUID().slice(0, 8)}`;
+    const volumeFile = storageTextFile("data/cache.txt", "bdd volume payload");
+    const prepared = await storages.prepareStorage(actor, {
+      storageName: volumeName,
+      storageType: "volume",
+      files: [volumeFile],
+    });
+    const volumeVersion = prepared.versionId;
+    await storages.commitStorage(actor, {
+      storageName: volumeName,
+      storageType: "volume",
+      versionId: volumeVersion,
+      files: [volumeFile],
+    });
+
+    const composeName = `bdd-resume-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+          volumes: ["data:/data"],
+        },
+      },
+      volumes: {
+        data: { name: volumeName, version: `\${{ vars.VOL_VERSION }}` },
+      },
+    });
+
+    // The session-history blob for checkpointed conversations is hash-only
+    // in R2 — answer the GetObject for it while keeping other s3 sends inert.
+    const history = '{"type":"init"}\n{"type":"human","text":"hi"}\n';
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      const input = (command as { readonly input?: { readonly Key?: string } })
+        .input;
+      if (input?.Key === `blobs/${historyHash}.blob`) {
+        if (s3CommandName(command) === "HeadObjectCommand") {
+          return Promise.resolve({
+            ContentLength: Buffer.byteLength(history, "utf8"),
+          });
+        }
+        return Promise.resolve({
+          Body: {
+            async *[Symbol.asyncIterator]() {
+              yield Buffer.from(history, "utf8");
+            },
+          },
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    const versionPrefix = volumeVersion.slice(0, 16);
+    const presignCallsBeforeRun =
+      context.mocks.s3.getSignedUrl.mock.calls.length;
+    const r1 = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "pin the volume by version prefix",
+      vars: { VOL_VERSION: versionPrefix },
+      artifacts: [
+        { name: "memory", mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH },
+      ],
+    });
+    const claim1 = await api.claimRunnerJob(r1.runId);
+    expect(claim1.storageManifest?.storages).toMatchObject([
+      { name: "data", mountPath: "/data", vasVersionId: volumeVersion },
+    ]);
+    const memory1 = claim1.storageManifest?.artifacts.find((artifact) => {
+      return artifact.vasStorageName === "memory";
+    });
+    expect(memory1).toMatchObject({
+      mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+      archiveUrl: expect.any(String),
+      vasStorageId: expect.any(String),
+      vasVersionId: expect.any(String),
+      missingRootPolicy: "preserveParentVersion",
+    });
+    if (!memory1) {
+      throw new Error("Expected the claim manifest to mount memory");
+    }
+    expect("manifestUrl" in memory1).toBeFalsy();
+    expect(
+      hasManifestPresign(presignedUrlKeysSince(presignCallsBeforeRun)),
+    ).toBeFalsy();
+
+    const cliAgentSessionId = `bdd-cli-${r1.runId}`;
+    const headers1 = sandboxHeaders(claim1.sandboxToken);
+    const checkpointed = await webhooks.requestAgentCheckpoint(
+      {
+        runId: r1.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: historyHash,
+        artifactSnapshots: [
+          {
+            name: "memory",
+            version: memory1.vasVersionId,
+            mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+          },
+        ],
+        volumeVersionsSnapshot: { versions: { data: volumeVersion } },
+      },
+      headers1,
+      [200],
+    );
+    if (checkpointed.status !== 200) {
+      throw new Error("Expected the resume checkpoint webhook to succeed");
+    }
+    const checkpointId = checkpointed.body.checkpointId;
+    await webhooks.requestAgentComplete(
+      { runId: r1.runId, exitCode: 0 },
+      headers1,
+      [200],
+    );
+
+    const readsBeforeRefResumeCreate =
+      countSessionHistoryBlobReads(historyHash);
+    const refResumed = await api.createDirectRun(actor, {
+      checkpointId,
+      prompt: "resume from the checkpoint with history ref",
+    });
+    expect(countSessionHistoryBlobReads(historyHash)).toBe(
+      readsBeforeRefResumeCreate,
+    );
+    const refClaim = await api.claimRunnerJob(refResumed.runId);
+    expect(countSessionHistoryBlobReads(historyHash)).toBe(
+      readsBeforeRefResumeCreate,
+    );
+    expect(refClaim.resumeSession).toStrictEqual({
+      sessionId: cliAgentSessionId,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: "https://r2.example.com/storages/presigned?sig=bdd",
+        encoding: "identity",
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: Buffer.byteLength(history, "utf8"),
+      },
+    });
+    await api.requestCancelRun(actor, refResumed.runId, [200]);
+
+    const readsBeforeStorageResumeCreate =
+      countSessionHistoryBlobReads(historyHash);
+    const resumed = await api.createDirectRun(actor, {
+      checkpointId,
+      prompt: "resume from the checkpoint",
+    });
+    expect(countSessionHistoryBlobReads(historyHash)).toBe(
+      readsBeforeStorageResumeCreate,
+    );
+    const claim2 = await api.claimRunnerJob(resumed.runId);
+    expect(countSessionHistoryBlobReads(historyHash)).toBe(
+      readsBeforeStorageResumeCreate,
+    );
+    expect(claim2.checkpointId).toBe(checkpointId);
+    expect(claim2.vars).toStrictEqual({ VOL_VERSION: versionPrefix });
+    expect(claim2.resumeSession).toStrictEqual({
+      sessionId: `bdd-cli-${r1.runId}`,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: "https://r2.example.com/storages/presigned?sig=bdd",
+        encoding: "identity",
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: Buffer.byteLength(history, "utf8"),
+      },
+    });
+    expect(claim2.storageManifest?.storages).toMatchObject([
+      { name: "data", vasVersionId: volumeVersion },
+    ]);
+    const memory2 = claim2.storageManifest?.artifacts.find((artifact) => {
+      return artifact.vasStorageName === "memory";
+    });
+    expect(memory2).toMatchObject({
+      mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+      missingRootPolicy: "preserveParentVersion",
+    });
+    // A checkpoint without volume or artifact snapshots still resumes.
+    const bareCheckpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: resumed.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${resumed.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders(claim2.sandboxToken),
+      [200],
+    );
+    if (bareCheckpoint.status !== 200) {
+      throw new Error("Expected the bare resume checkpoint to succeed");
+    }
+    await api.requestCancelRun(actor, resumed.runId, [200]);
+
+    const bareResume = await api.createDirectRun(actor, {
+      checkpointId: bareCheckpoint.body.checkpointId,
+      prompt: "resume without snapshots",
+    });
+    await api.requestCancelRun(actor, bareResume.runId, [200]);
+
+    const bothIds = await reads.requestCreateDirectRun(
+      actor,
+      {
+        checkpointId,
+        sessionId: r1.sessionId,
+        prompt: "ambiguous resume",
+      },
+      [400],
+    );
+    expectApiError(bothIds.body);
+    expect(bothIds.body.error.message).toContain(
+      "both checkpointId and sessionId",
+    );
+
+    if (!claim1.agentComposeVersionId) {
+      throw new Error("Expected the claim to carry a compose version id");
+    }
+    const byVersion = await reads.requestCreateDirectRun(
+      actor,
+      {
+        agentComposeVersionId: claim1.agentComposeVersionId,
+        prompt: "run a pinned compose version",
+        vars: { VOL_VERSION: volumeVersion },
+      },
+      [201],
+    );
+    if (byVersion.status !== 201) {
+      throw new Error("Expected the version-pinned run create to succeed");
+    }
+    await api.requestCancelRun(actor, byVersion.body.runId, [200]);
+
+    const strictMemory = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "user-authored memory stays strict",
+      vars: { VOL_VERSION: volumeVersion },
+      artifacts: [{ name: "memory", mountPath: "/mnt/user-memory" }],
+    });
+    const strictClaim = await api.claimRunnerJob(strictMemory.runId);
+    expect(
+      strictClaim.storageManifest?.artifacts.map((artifact) => {
+        return {
+          name: artifact.vasStorageName,
+          mountPath: artifact.mountPath,
+          missingRootPolicy: artifact.missingRootPolicy,
+        };
+      }),
+    ).toStrictEqual([
+      {
+        name: "memory",
+        mountPath: "/mnt/user-memory",
+        missingRootPolicy: undefined,
+      },
+    ]);
+    await api.requestCancelRun(actor, strictMemory.runId, [200]);
+
+    const customCanonical = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "custom artifact claims the canonical memory mount",
+      vars: { VOL_VERSION: volumeVersion },
+      artifacts: [
+        {
+          name: "custom-memory",
+          mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+        },
+      ],
+    });
+    const customClaim = await api.claimRunnerJob(customCanonical.runId);
+    expect(
+      customClaim.storageManifest?.artifacts.map((artifact) => {
+        return {
+          name: artifact.vasStorageName,
+          mountPath: artifact.mountPath,
+          missingRootPolicy: artifact.missingRootPolicy,
+        };
+      }),
+    ).toStrictEqual([
+      {
+        name: "custom-memory",
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+        missingRootPolicy: undefined,
+      },
+    ]);
+    await api.requestCancelRun(actor, customCanonical.runId, [200]);
+
+    const continued = await api.createDirectRun(actor, {
+      sessionId: r1.sessionId,
+      prompt: "continue the checkpointed session",
+    });
+    expect(continued.sessionId).toBe(r1.sessionId);
+    const continuedClaim = await api.claimRunnerJob(continued.runId);
+    expect(continuedClaim.resumeSession).toStrictEqual({
+      sessionId: `bdd-cli-${r1.runId}`,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: "https://r2.example.com/storages/presigned?sig=bdd",
+        encoding: "identity",
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: Buffer.byteLength(history, "utf8"),
+      },
+    });
+    const continuedMemory = continuedClaim.storageManifest?.artifacts.find(
+      (artifact) => {
+        return artifact.vasStorageName === "memory";
+      },
+    );
+    expect(continuedMemory).toMatchObject({
+      mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+      missingRootPolicy: "preserveParentVersion",
+    });
+    await api.requestCancelRun(actor, continued.runId, [200]);
+  });
+});
+
+describe("RUN-01: direct run admission boundaries", () => {
+  it("enforces direct-run concurrency, caps, and the production capture gate", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-admission");
+
+    const first = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "first concurrent run",
+    });
+    const second = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "second concurrent run",
+    });
+    const limited = await reads.requestCreateDirectRun(
+      actor,
+      { agentComposeId: compose.composeId, prompt: "third concurrent run" },
+      [429],
+    );
+    expectApiError(limited.body);
+    expect(limited.body.error.code).toBe("CONCURRENT_RUN_LIMIT");
+
+    const outsider = bdd.user();
+    const foreignCompose = await createClaudeCompose(outsider, "bdd-foreign");
+    const crossOrgCompose = await reads.requestCreateDirectRun(
+      actor,
+      {
+        agentComposeId: foreignCompose.composeId,
+        prompt: "run a foreign compose",
+      },
+      [404],
+    );
+    expectApiError(crossOrgCompose.body);
+    expect(crossOrgCompose.body.error.message).toBe("Resource not found");
+
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
+    const uncapped = await reads.requestCreateDirectRun(
+      actor,
+      { agentComposeId: compose.composeId, prompt: "uncapped third run" },
+      [201],
+    );
+    if (uncapped.status !== 201) {
+      throw new Error("Expected the uncapped run create to succeed");
+    }
+    await api.requestCancelRun(actor, uncapped.body.runId, [200]);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+
+    mockEnv("ENV", "production");
+    const uncachedGate = await reads.requestCreateDirectRun(
+      actor,
+      {
+        agentComposeId: compose.composeId,
+        prompt: "capture without a cached email",
+        captureNetworkBodies: true,
+      },
+      [403],
+    );
+    expectApiError(uncachedGate.body);
+    expect(uncachedGate.body.error.message).toContain("internal accounts");
+
+    // auth-me caches the caller email; a non-vm0 address still fails the gate.
+    await bdd.readMe(actor);
+    const externalGate = await reads.requestCreateDirectRun(
+      actor,
+      {
+        agentComposeId: compose.composeId,
+        prompt: "capture with an external email",
+        captureNetworkBodies: true,
+      },
+      [403],
+    );
+    expectApiError(externalGate.body);
+    expect(externalGate.body.error.message).toContain("internal accounts");
+
+    const internal = bdd.user({
+      orgId: actor.orgId,
+      email: `bdd-${randomUUID().slice(0, 8)}@vm0.ai`,
+    });
+    await bdd.readMe(internal);
+    const allowed = await reads.requestCreateDirectRun(
+      internal,
+      {
+        agentComposeId: compose.composeId,
+        prompt: "capture from an internal account",
+        captureNetworkBodies: true,
+      },
+      [201],
+    );
+    if (allowed.status !== 201) {
+      throw new Error("Expected the internal capture run create to succeed");
+    }
+    const captureClaim = await api.claimRunnerJob(allowed.body.runId);
+    expect(captureClaim.captureNetworkBodies).toBeTruthy();
+    await api.requestCancelRun(internal, allowed.body.runId, [200]);
+  });
+});
+
+interface AxiomQueryRows {
+  readonly visibility?: readonly Record<string, unknown>[];
+  readonly events?: readonly Record<string, unknown>[];
+  readonly systemLogs?: readonly Record<string, unknown>[];
+  readonly metrics?: readonly Record<string, unknown>[];
+  readonly network?: readonly unknown[];
+  readonly runContext?: readonly Record<string, unknown>[];
+}
+
+/**
+ * Answers every Axiom query by APL shape and runId. The visibility poll
+ * (`| project sequenceNumber`) MUST be matched before the events dataset:
+ * leaving it unanswered burns the 2s watermark timeout on every read of a
+ * run with a non-null lastEventSequence.
+ */
+function dispatchAxiomQueries(
+  rowsByRun: Readonly<Record<string, AxiomQueryRows>>,
+): void {
+  context.mocks.axiom.query.mockImplementation((apl: unknown) => {
+    if (typeof apl !== "string") {
+      return Promise.resolve([]);
+    }
+    const runId = Object.keys(rowsByRun).find((id) => {
+      return apl.includes(id);
+    });
+    const rows = runId === undefined ? undefined : rowsByRun[runId];
+    if (!rows) {
+      return Promise.resolve([]);
+    }
+    if (apl.includes("| project sequenceNumber")) {
+      return Promise.resolve([...(rows.visibility ?? [])]);
+    }
+    if (apl.includes("['agent-run-events']")) {
+      return Promise.resolve([...(rows.events ?? [])]);
+    }
+    if (apl.includes("['sandbox-telemetry-system']")) {
+      return Promise.resolve(timeCursorRows(apl, rows.systemLogs ?? []));
+    }
+    if (apl.includes("['sandbox-telemetry-metrics']")) {
+      return Promise.resolve(timeCursorRows(apl, rows.metrics ?? []));
+    }
+    if (apl.includes("['sandbox-telemetry-network']")) {
+      return Promise.resolve(timeCursorRows(apl, rows.network ?? []));
+    }
+    if (apl.includes("['run-context']")) {
+      return Promise.resolve([...(rows.runContext ?? [])]);
+    }
+    return Promise.resolve([]);
+  });
+}
+
+function isAxiomRow(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function axiomCursorOption(value: unknown): string | undefined {
+  if (!isAxiomRow(value)) {
+    return undefined;
+  }
+
+  return typeof value.cursor === "string" ? value.cursor : undefined;
+}
+
+function timeCursorRows(
+  apl: string,
+  rows: readonly unknown[],
+): readonly unknown[] {
+  if (!apl.includes("cursor_current()")) {
+    return [...rows];
+  }
+
+  return rows.map((row, index) => {
+    if (!isAxiomRow(row) || typeof row._vm0Cursor === "string") {
+      return row;
+    }
+
+    return {
+      ...row,
+      _vm0Cursor: `cursor-${index.toString().padStart(4, "0")}`,
+    };
+  });
+}
+
+function axiomCallCount(): number {
+  return context.mocks.axiom.query.mock.calls.length;
+}
+
+function axiomCallAt(index: number): readonly unknown[] {
+  const call = context.mocks.axiom.query.mock.calls[index];
+  if (!call) {
+    throw new Error(`Expected an Axiom query call at index ${index}`);
+  }
+  return call;
+}
+
+function axiomCallSince(start: number, pattern: string): readonly unknown[] {
+  const call = context.mocks.axiom.query.mock.calls
+    .slice(start)
+    .find(([apl]) => {
+      return typeof apl === "string" && apl.includes(pattern);
+    });
+  if (!call) {
+    throw new Error(`Expected an Axiom query containing ${pattern}`);
+  }
+  return call;
+}
+
+function expectRunContextFrameworkQuery(start: number, runId: string): void {
+  const call = axiomCallSince(start, "['run-context']");
+  expect(call[0]).toContain(`runId == "${runId}"`);
+  expect(call[0]).toContain("| limit 1");
+}
+
+function expectTimeCursorAxiomResume(
+  call: readonly unknown[],
+  expected: { readonly cursor: string; readonly order: "asc" | "desc" },
+): void {
+  const apl = call[0];
+  expect(call[1]).toStrictEqual({ cursor: expected.cursor });
+  expect(apl).toContain(`| order by _time ${expected.order}`);
+  expect(apl).not.toContain("_time >");
+  expect(apl).not.toContain("_time <");
+  expect(apl).not.toContain("_vm0Cursor >");
+  expect(apl).not.toContain("_vm0Cursor <");
+}
+
+function agentEvent(
+  runId: string,
+  sequenceNumber: number,
+  text: string,
+  timestamp = "2026-06-10T10:30:00Z",
+): Record<string, unknown> {
+  return {
+    _time: timestamp,
+    runId,
+    userId: "bdd-run-reads",
+    sequenceNumber,
+    eventType: "assistant",
+    eventData: { type: "assistant", text },
+  };
+}
+
+function networkHardeningRows(
+  runId: string,
+  userId: string,
+): readonly unknown[] {
+  return [
+    "not-a-network-log-row",
+    {
+      _time: 123,
+      runId,
+      userId,
+      type: "http",
+      action: "ALLOW",
+      host: "missing-time.example.com",
+    },
+    {
+      _time: "2026-06-10T12:00:00Z",
+      runId,
+      userId,
+      type: "http",
+      action: "MAYBE",
+      host: 42,
+      port: "443",
+      status: "200",
+      browser_user_agent: "true",
+      firewall_params: { owner: "vm0-ai", broken: 5 },
+      connector_diagnostic_env_names: ["FAL_TOKEN", 5],
+      auth_resolved_secrets: ["TOKEN", null],
+      request_headers: { host: "api.example.com", broken: false },
+      request_body_encoding: "utf-16",
+      request_body_truncated: "false",
+      response_body_encoding: "binary",
+    },
+    {
+      _time: "2026-06-10T12:01:00Z",
+      runId,
+      userId,
+      type: "http",
+      action: "BLOCK",
+      host: "blocked.example.com",
+      port: 443,
+      firewall_error: "connector_not_configured",
+    },
+    {
+      _time: "2026-06-10T12:02:00Z",
+      runId,
+      userId,
+      type: "dns",
+      dns_event: "reply",
+    },
+  ];
+}
+
+function timeLogCursor(
+  order: "asc" | "desc",
+  timestamp: string,
+  tieBreaker: string,
+): string {
+  return `time:${order}:${encodeURIComponent(timestamp)}:${encodeURIComponent(
+    tieBreaker,
+  )}`;
+}
+
+function timeLogQueryPath(
+  path: string,
+  query: {
+    readonly cursor: string;
+    readonly limit: number;
+    readonly order: "asc" | "desc";
+  },
+): string {
+  const params = new URLSearchParams({
+    cursor: query.cursor,
+    limit: String(query.limit),
+    order: query.order,
+  });
+  return `${path}?${params.toString()}`;
+}
+
+describe("RUN-04: agent run telemetry families", () => {
+  it("serves run events and telemetry families from axiom with watermark waits", async () => {
+    const actor = await entitledActor();
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    const compose = await createClaudeCompose(actor, "bdd-telemetry");
+
+    const completedRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "emit telemetry",
+    });
+    const claim = await api.claimRunnerJob(completedRun.runId);
+    await completeRun(completedRun.runId, claim.sandboxToken, {
+      lastEventSequence: 2,
+    });
+    const pendingRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "never claimed",
+    });
+
+    const runId = completedRun.runId;
+    dispatchAxiomQueries({
+      [runId]: {
+        visibility: [
+          { sequenceNumber: 0 },
+          { sequenceNumber: 1 },
+          { sequenceNumber: 2 },
+        ],
+        events: [
+          agentEvent(runId, 0, "first"),
+          agentEvent(runId, 1, "second"),
+          agentEvent(runId, 3, "gapped"),
+        ],
+        systemLogs: [
+          { _time: "2026-06-10T10:30:00.123456Z", runId, log: "boot\n" },
+          { _time: "2026-06-10T10:31:00Z", runId, log: "ready\n" },
+        ],
+        metrics: [
+          {
+            _time: "2026-06-10T10:30:00Z",
+            runId,
+            userId: actor.userId,
+            cpu: 0.4,
+            mem_used: 40,
+            mem_total: 100,
+            disk_used: 50,
+            disk_total: 200,
+          },
+          {
+            _time: "2026-06-10T10:31:00Z",
+            runId,
+            userId: actor.userId,
+            cpu: 0.5,
+            mem_used: 41,
+            mem_total: 100,
+            disk_used: 51,
+            disk_total: 200,
+          },
+        ],
+        network: [
+          {
+            _time: "2026-06-10T10:30:00Z",
+            runId,
+            userId: actor.userId,
+            type: "http",
+            action: "ALLOW",
+            host: "example.com",
+            port: 443,
+            method: "GET",
+            url: "https://example.com/",
+            status: 200,
+            latency_ms: 12,
+            request_size: 10,
+            response_size: 20,
+            browser_user_agent: true,
+            dns_event: "resolve",
+            dns_query_type: "A",
+            dns_result: "1.2.3.4",
+            dns_serial: "dns-1",
+            firewall_base: "base",
+            firewall_name: "net",
+            firewall_permission: "github:read",
+            firewall_rule_match: "allow",
+            firewall_params: { owner: "vm0-ai", empty: null },
+            firewall_billable: true,
+            firewall_error: "none",
+            connector_diagnostic_type: "fal",
+            connector_diagnostic_reason: "not_configured_for_run",
+            connector_diagnostic_env_names: ["FAL_TOKEN"],
+            connector_diagnostic_base: "https://fal.run",
+            auth_resolved_secrets: ["TOKEN"],
+            auth_refreshed_connectors: ["github"],
+            auth_refreshed_secrets: ["TOKEN"],
+            auth_cache_hit: false,
+            auth_url_rewrite: true,
+            request_headers: { host: "example.com", authorization: null },
+            request_body: "abc",
+            request_body_encoding: "base64",
+            request_body_truncated: false,
+            response_headers: { server: "test", date: null },
+            response_body: "def",
+            response_body_encoding: "base64",
+            response_body_truncated: false,
+          },
+          {
+            _time: "2026-06-10T10:31:00Z",
+            runId,
+            userId: actor.userId,
+            type: "tcp",
+            action: "MAYBE",
+            host: null,
+            port: 0,
+            method: null,
+            url: null,
+            status: 0,
+            latency_ms: 0,
+            request_size: null,
+            response_size: null,
+            firewall_params: null,
+            auth_resolved_secrets: null,
+            request_headers: ["not", "a", "record"],
+            request_body_encoding: "not-valid",
+            response_headers: { ok: true },
+            error: null,
+          },
+          {
+            _time: "2026-06-10T10:32:00Z",
+            runId,
+            userId: actor.userId,
+            type: "http",
+            action: "BLOCK",
+            host: "blocked.example.com",
+            port: 443,
+            method: "POST",
+            url: "https://blocked.example.com/v1/connect",
+            status: 424,
+            firewall_error: "connector_not_configured",
+          },
+        ],
+        runContext: [{ runId, cliAgentType: "claude-code" }],
+      },
+    });
+
+    // Watermark wait: gap-filtered consecutive events with noCache reads.
+    const eventsStart = axiomCallCount();
+    const events = await reads.requestRunEvents(
+      actor,
+      runId,
+      { since: -1, limit: 10 },
+      [200],
+    );
+    if (events.status !== 200) {
+      throw new Error("Expected the run events read to succeed");
+    }
+    expect(events.body.events).toStrictEqual([
+      {
+        sequenceNumber: 0,
+        eventType: "assistant",
+        eventData: { type: "assistant", text: "first" },
+        createdAt: "2026-06-10T10:30:00Z",
+      },
+      {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: { type: "assistant", text: "second" },
+        createdAt: "2026-06-10T10:30:00Z",
+      },
+    ]);
+    expect(events.body.hasMore).toBeTruthy();
+    expect(events.body.nextSequence).toBe(1);
+    expect(events.body.framework).toBe("claude-code");
+    expect(events.body.run).toMatchObject({
+      status: "completed",
+      lastEventSequence: 2,
+    });
+    expect(axiomCallCount()).toBe(eventsStart + 3);
+    const visibilityCall = axiomCallSince(
+      eventsStart,
+      "| project sequenceNumber",
+    );
+    expect(visibilityCall[0]).toContain("| project sequenceNumber");
+    expect(visibilityCall[1]).toStrictEqual({ noCache: true });
+    const eventsCall = axiomCallSince(
+      eventsStart,
+      "| where sequenceNumber > -1",
+    );
+    expect(eventsCall[0]).toContain(`runId == "${runId}"`);
+    expect(eventsCall[1]).toStrictEqual({ noCache: true });
+    expectRunContextFrameworkQuery(eventsStart, runId);
+
+    // A cursor at or past the watermark skips the visibility wait.
+    const pastWatermarkStart = axiomCallCount();
+    const pastWatermark = await reads.requestRunEvents(
+      actor,
+      runId,
+      { since: 2, limit: 10 },
+      [200],
+    );
+    if (pastWatermark.status !== 200) {
+      throw new Error("Expected the past-watermark events read to succeed");
+    }
+    expect(
+      pastWatermark.body.events.map((event) => {
+        return event.sequenceNumber;
+      }),
+    ).toStrictEqual([3]);
+    expect(axiomCallCount()).toBe(pastWatermarkStart + 2);
+    expect(
+      axiomCallSince(pastWatermarkStart, "| where sequenceNumber > 2")[1],
+    ).toBeUndefined();
+    expectRunContextFrameworkQuery(pastWatermarkStart, runId);
+
+    // The page limit caps the watermark target below lastEventSequence.
+    const cappedStart = axiomCallCount();
+    await reads.requestRunEvents(actor, runId, { since: -1, limit: 2 }, [200]);
+    expect(axiomCallCount()).toBe(cappedStart + 3);
+    expectRunContextFrameworkQuery(cappedStart, runId);
+
+    // Pending runs without a watermark never poll visibility.
+    const pendingStart = axiomCallCount();
+    const pendingEvents = await reads.requestRunEvents(
+      actor,
+      pendingRun.runId,
+      {},
+      [200],
+    );
+    if (pendingEvents.status !== 200) {
+      throw new Error("Expected the pending run events read to succeed");
+    }
+    expect(pendingEvents.body.events).toStrictEqual([]);
+    expect(pendingEvents.body.nextSequence).toBe(-1);
+    expect(pendingEvents.body.run.status).toBe("pending");
+    expect(axiomCallCount()).toBe(pendingStart + 2);
+    expect(
+      axiomCallSince(pendingStart, "['agent-run-events']")[1],
+    ).toBeUndefined();
+    expectRunContextFrameworkQuery(pendingStart, pendingRun.runId);
+
+    // Sandbox tokens read the telemetry families without a Zero capability.
+    const sandboxEvents = await reads.requestRunEventsAs(
+      `Bearer ${claim.sandboxToken}`,
+      runId,
+      { since: -1, limit: 10 },
+      [200],
+    );
+    expect(sandboxEvents.body).toMatchObject({ hasMore: true });
+
+    // Paged agent events: asc with since, then desc past the watermark.
+    const ascStart = axiomCallCount();
+    const ascEvents = await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { since: 0, limit: 2, order: "asc" },
+      [200],
+    );
+    if (ascEvents.status !== 200) {
+      throw new Error("Expected the asc agent events read to succeed");
+    }
+    expect(ascEvents.body.events).toHaveLength(2);
+    expect(ascEvents.body.hasMore).toBeTruthy();
+    expect(ascEvents.body.nextCursor).toBe("sequence:asc:1");
+    expect(ascEvents.body.framework).toBe("claude-code");
+    expect(axiomCallCount()).toBe(ascStart + 3);
+    const ascApl = axiomCallSince(ascStart, "| where sequenceNumber > 0")[0];
+    expect(ascApl).toContain("| where sequenceNumber > 0");
+    expect(ascApl).toContain("| order by sequenceNumber asc");
+    expectRunContextFrameworkQuery(ascStart, runId);
+
+    const cursorAgentStart = axiomCallCount();
+    await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "sequence:desc:2", limit: 1, order: "desc" },
+      [200],
+    );
+    const cursorAgentApl = axiomCallSince(
+      cursorAgentStart,
+      "| where sequenceNumber < 2",
+    )[0];
+    expect(cursorAgentApl).toContain("| where sequenceNumber < 2");
+    expect(cursorAgentApl).toContain("| order by sequenceNumber desc");
+    expectRunContextFrameworkQuery(cursorAgentStart, runId);
+
+    const agentSinceTime = Date.parse("2026-06-10T10:29:30Z");
+    const agentSinceTimeStart = axiomCallCount();
+    await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { sinceTime: agentSinceTime, limit: 1, order: "asc" },
+      [200],
+    );
+    const agentSinceTimeApl = axiomCallSince(
+      agentSinceTimeStart,
+      "| where _time >",
+    )[0];
+    expect(agentSinceTimeApl).toContain(
+      `| where _time > datetime("${new Date(agentSinceTime).toISOString()}")`,
+    );
+    expect(agentSinceTimeApl).toContain("| order by sequenceNumber asc");
+    expectRunContextFrameworkQuery(agentSinceTimeStart, runId);
+
+    const malformedAgentCursor = await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "not-a-cursor", limit: 1, order: "desc" },
+      [400],
+    );
+    expectApiError(malformedAgentCursor.body);
+
+    const wrongAgentCursorKind = await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "time:desc:1", limit: 1, order: "desc" },
+      [400],
+    );
+    expectApiError(wrongAgentCursorKind.body);
+
+    const outOfRangeAgentSince = await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { since: 2_147_483_648, limit: 1, order: "desc" },
+      [400],
+    );
+    expectApiError(outOfRangeAgentSince.body);
+
+    const outOfRangeAgentCursor = await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "sequence:asc:2147483648", limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(outOfRangeAgentCursor.body);
+
+    const decimalAgentLimit = await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { since: 0, limit: 1.5, order: "asc" },
+      [400],
+    );
+    expectApiError(decimalAgentLimit.body);
+
+    const descStart = axiomCallCount();
+    const descEvents = await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { since: 5, limit: 5, order: "desc" },
+      [200],
+    );
+    if (descEvents.status !== 200) {
+      throw new Error("Expected the desc agent events read to succeed");
+    }
+    expect(descEvents.body.hasMore).toBeFalsy();
+    expect(axiomCallCount()).toBe(descStart + 2);
+    expect(
+      axiomCallSince(descStart, "| order by sequenceNumber desc")[1],
+    ).toBeUndefined();
+    expectRunContextFrameworkQuery(descStart, runId);
+
+    // System log pages.
+    const sinceMs = Date.parse("2026-06-10T10:29:00Z");
+    const systemAsc = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { limit: 1, order: "asc", since: sinceMs },
+      [200],
+    );
+    expect(systemAsc.body).toStrictEqual({
+      systemLog: "boot\n",
+      hasMore: true,
+      nextCursor: timeLogCursor(
+        "asc",
+        "2026-06-10T10:30:00.123456Z",
+        "cursor-0000",
+      ),
+    });
+    const systemApl = axiomCallAt(axiomCallCount() - 1)[0];
+    expect(systemApl).toContain("sandbox-telemetry-system");
+    expect(systemApl).toContain(new Date(sinceMs).toISOString());
+    expect(systemApl).toContain("| order by _time asc");
+
+    const highPrecisionSystemCursor = "2026-06-10T10:31:00.987654Z";
+    await reads.requestRunSystemLog(
+      actor,
+      runId,
+      {
+        cursor: timeLogCursor("desc", highPrecisionSystemCursor, "cursor-0001"),
+        limit: 1,
+        order: "desc",
+        sinceTime: sinceMs,
+      },
+      [200],
+    );
+    const systemCursorCall = axiomCallAt(axiomCallCount() - 1);
+    const systemCursorApl = systemCursorCall[0];
+    expect(systemCursorApl).toContain(new Date(sinceMs).toISOString());
+    expect(systemCursorApl).toContain("| order by _time desc");
+    expect(systemCursorApl).not.toContain(highPrecisionSystemCursor);
+    expect(systemCursorCall[1]).toStrictEqual({ cursor: "cursor-0001" });
+
+    const wrongSystemCursorOrder = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { cursor: "time:asc:1", limit: 1, order: "desc" },
+      [400],
+    );
+    expectApiError(wrongSystemCursorOrder.body);
+
+    const invalidSystemSince = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { since: 8_640_000_000_000_001, limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(invalidSystemSince.body);
+
+    const invalidSystemSinceTime = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { sinceTime: 8_640_000_000_000_001, limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(invalidSystemSinceTime.body);
+
+    const emptySystemSinceTime = await reads.rawApiRequest(
+      actor,
+      `/api/agent/runs/${runId}/telemetry/system-log?sinceTime=`,
+    );
+    expect(emptySystemSinceTime.status).toBe(400);
+    expectApiError(emptySystemSinceTime.body);
+
+    const invalidSystemCursor = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { cursor: "time:asc:8640000000000001", limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(invalidSystemCursor.body);
+
+    const invalidCalendarSystemCursor = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      {
+        cursor: timeLogCursor("asc", "2026-02-30T00:00:00Z", "cursor-0000"),
+        limit: 1,
+        order: "asc",
+      },
+      [400],
+    );
+    expectApiError(invalidCalendarSystemCursor.body);
+
+    const systemEmpty = await reads.requestRunSystemLog(
+      actor,
+      pendingRun.runId,
+      { limit: 10, order: "desc" },
+      [200],
+    );
+    expect(systemEmpty.body).toStrictEqual({ systemLog: "", hasMore: false });
+
+    const invalidSystemQuery = await reads.rawApiRequest(
+      actor,
+      `/api/agent/runs/${runId}/telemetry/system-log?limit=101`,
+    );
+    expect(invalidSystemQuery.status).toBe(400);
+
+    // Metric pages.
+    const metricsPage = await reads.requestRunMetrics(
+      actor,
+      runId,
+      { limit: 1, order: "desc", since: sinceMs },
+      [200],
+    );
+    expect(metricsPage.body).toStrictEqual({
+      metrics: [
+        {
+          ts: "2026-06-10T10:30:00Z",
+          cpu: 0.4,
+          mem_used: 40,
+          mem_total: 100,
+          disk_used: 50,
+          disk_total: 200,
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("desc", "2026-06-10T10:30:00Z", "cursor-0000"),
+    });
+    const metricsApl = axiomCallAt(axiomCallCount() - 1)[0];
+    expect(metricsApl).toContain("sandbox-telemetry-metrics");
+    expect(metricsApl).toContain("| order by _time desc");
+
+    // Network pages with capture fields and sparse-null omission.
+    const networkPage = await reads.requestRunNetworkLogs(
+      actor,
+      runId,
+      { limit: 10, order: "desc" },
+      [200],
+    );
+    if (networkPage.status !== 200) {
+      throw new Error("Expected the network log read to succeed");
+    }
+    expect(networkPage.body.hasMore).toBeFalsy();
+    expect(networkPage.body.networkLogs).toHaveLength(3);
+    expect(networkPage.body.networkLogs[0]).toMatchObject({
+      timestamp: "2026-06-10T10:30:00Z",
+      action: "ALLOW",
+      host: "example.com",
+      browser_user_agent: true,
+      dns_result: "1.2.3.4",
+      firewall_params: { owner: "vm0-ai" },
+      connector_diagnostic_type: "fal",
+      connector_diagnostic_reason: "not_configured_for_run",
+      connector_diagnostic_env_names: ["FAL_TOKEN"],
+      connector_diagnostic_base: "https://fal.run",
+      request_headers: { host: "example.com" },
+      request_body: "abc",
+      response_headers: { server: "test" },
+      response_body: "def",
+    });
+    expect(networkPage.body.networkLogs[1]).toStrictEqual({
+      timestamp: "2026-06-10T10:31:00Z",
+      type: "tcp",
+      port: 0,
+      status: 0,
+      latency_ms: 0,
+    });
+    expect(networkPage.body.networkLogs[2]).toMatchObject({
+      timestamp: "2026-06-10T10:32:00Z",
+      action: "BLOCK",
+      host: "blocked.example.com",
+      firewall_error: "connector_not_configured",
+    });
+
+    // Telemetry families hide other users' runs without leaking existence.
+    const memberEvents = await reads.requestRunEvents(member, runId, {}, [404]);
+    expectApiError(memberEvents.body);
+    expect(memberEvents.body.error.message).toBe("Agent run not found");
+    const memberSystem = await reads.requestRunSystemLog(
+      member,
+      runId,
+      {},
+      [404],
+    );
+    expectApiError(memberSystem.body);
+
+    await api.requestCancelRun(actor, pendingRun.runId, [200]);
+  });
+
+  it("hardens network log rows consistently across agent and zero read APIs", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-network-hardening");
+    const agentRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "agent network hardening",
+    });
+    const zeroRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "zero network hardening",
+    });
+
+    dispatchAxiomQueries({
+      [agentRun.runId]: {
+        network: networkHardeningRows(agentRun.runId, actor.userId),
+      },
+      [zeroRun.runId]: {
+        network: networkHardeningRows(zeroRun.runId, actor.userId),
+      },
+    });
+
+    const agentNetwork = await reads.requestRunNetworkLogs(
+      actor,
+      agentRun.runId,
+      { limit: 4, order: "asc" },
+      [200],
+    );
+    const zeroNetwork = await reads.requestZeroRunNetworkLogs(
+      actor,
+      zeroRun.runId,
+      { limit: 4, order: "asc" },
+      [200],
+    );
+    if (agentNetwork.status !== 200 || zeroNetwork.status !== 200) {
+      throw new Error("Expected both network log reads to succeed");
+    }
+
+    const expectedNetworkLogs = [
+      {
+        timestamp: "2026-06-10T12:00:00Z",
+        type: "http",
+        firewall_params: { owner: "vm0-ai" },
+        request_headers: { host: "api.example.com" },
+        response_body_encoding: "binary",
+      },
+      {
+        timestamp: "2026-06-10T12:01:00Z",
+        type: "http",
+        action: "BLOCK",
+        host: "blocked.example.com",
+        port: 443,
+        firewall_error: "connector_not_configured",
+      },
+    ];
+    const expectedNextCursor = timeLogCursor(
+      "asc",
+      "2026-06-10T12:01:00Z",
+      "cursor-0003",
+    );
+
+    expect(agentNetwork.body).toStrictEqual({
+      networkLogs: expectedNetworkLogs,
+      hasMore: true,
+      nextCursor: expectedNextCursor,
+    });
+    expect(zeroNetwork.body).toStrictEqual({
+      networkLogs: expectedNetworkLogs,
+      hasMore: true,
+      nextCursor: expectedNextCursor,
+    });
+  });
+
+  it("keeps same-timestamp telemetry rows reachable across time cursor pages", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-time-cursor-ties");
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "emit tied telemetry",
+    });
+    const runId = run.runId;
+    const timestamp = "2026-06-10T12:30:00Z";
+    const laterTimestamp = "2026-06-10T12:30:01Z";
+    const olderTimestamp = "2026-06-10T12:29:59Z";
+    const systemRows = [
+      { _time: timestamp, _vm0Cursor: "system-a", runId, log: "first\n" },
+      { _time: timestamp, _vm0Cursor: "system-b", runId, log: "second\n" },
+      {
+        _time: laterTimestamp,
+        _vm0Cursor: "system-c",
+        runId,
+        log: "third\n",
+      },
+    ];
+    const metricsRows = [
+      {
+        _time: timestamp,
+        _vm0Cursor: "metrics-a",
+        runId,
+        userId: actor.userId,
+        cpu: 0.1,
+        mem_used: 10,
+        mem_total: 100,
+        disk_used: 20,
+        disk_total: 200,
+      },
+      {
+        _time: timestamp,
+        _vm0Cursor: "metrics-b",
+        runId,
+        userId: actor.userId,
+        cpu: 0.2,
+        mem_used: 11,
+        mem_total: 100,
+        disk_used: 21,
+        disk_total: 200,
+      },
+      {
+        _time: laterTimestamp,
+        _vm0Cursor: "metrics-c",
+        runId,
+        userId: actor.userId,
+        cpu: 0.3,
+        mem_used: 12,
+        mem_total: 100,
+        disk_used: 22,
+        disk_total: 200,
+      },
+    ];
+    const networkRows = [
+      {
+        _time: timestamp,
+        _vm0Cursor: "network-a",
+        runId,
+        userId: actor.userId,
+        type: "http",
+        action: "ALLOW",
+        host: "first.example.com",
+      },
+      {
+        _time: timestamp,
+        _vm0Cursor: "network-b",
+        runId,
+        userId: actor.userId,
+        type: "http",
+        action: "ALLOW",
+        host: "second.example.com",
+      },
+      {
+        _time: laterTimestamp,
+        _vm0Cursor: "network-c",
+        runId,
+        userId: actor.userId,
+        type: "http",
+        action: "ALLOW",
+        host: "third.example.com",
+      },
+    ];
+
+    context.mocks.axiom.query.mockImplementation(
+      (apl: unknown, options: unknown) => {
+        if (typeof apl !== "string") {
+          return Promise.resolve([]);
+        }
+
+        const rows = apl.includes("['sandbox-telemetry-system']")
+          ? systemRows
+          : apl.includes("['sandbox-telemetry-metrics']")
+            ? metricsRows
+            : apl.includes("['sandbox-telemetry-network']")
+              ? networkRows
+              : [];
+
+        const limitMatch = /\| limit (\d+)/.exec(apl);
+        const limit = limitMatch?.[1] ? Number(limitMatch[1]) : rows.length;
+        const cursor = axiomCursorOption(options);
+        const cursorIndex =
+          cursor === undefined
+            ? -1
+            : rows.findIndex((row) => {
+                return row._vm0Cursor === cursor;
+              });
+        const startIndex =
+          cursor === undefined
+            ? 0
+            : cursorIndex === -1
+              ? rows.length
+              : cursorIndex + 1;
+
+        return Promise.resolve(rows.slice(startIndex, startIndex + limit));
+      },
+    );
+
+    const firstPage = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { limit: 1, order: "asc" },
+      [200],
+    );
+    expect(firstPage.body).toStrictEqual({
+      systemLog: "first\n",
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "system-a"),
+    });
+
+    const cursor = firstPage.body.nextCursor;
+    if (!cursor) {
+      throw new Error("Expected the first tied page to return a cursor");
+    }
+
+    const secondPage = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { cursor, limit: 1, order: "asc" },
+      [200],
+    );
+    expect(secondPage.body).toStrictEqual({
+      systemLog: "second\n",
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "system-b"),
+    });
+
+    const secondPageCall = axiomCallAt(axiomCallCount() - 1);
+    expectTimeCursorAxiomResume(secondPageCall, {
+      cursor: "system-a",
+      order: "asc",
+    });
+
+    const metricsFirst = await reads.requestRunMetrics(
+      actor,
+      runId,
+      { limit: 1, order: "asc" },
+      [200],
+    );
+    expect(metricsFirst.body).toStrictEqual({
+      metrics: [
+        {
+          ts: timestamp,
+          cpu: 0.1,
+          mem_used: 10,
+          mem_total: 100,
+          disk_used: 20,
+          disk_total: 200,
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "metrics-a"),
+    });
+
+    const metricsCursor = metricsFirst.body.nextCursor;
+    if (!metricsCursor) {
+      throw new Error(
+        "Expected the first tied metrics page to return a cursor",
+      );
+    }
+
+    const metricsSecond = await reads.requestRunMetrics(
+      actor,
+      runId,
+      { cursor: metricsCursor, limit: 1, order: "asc" },
+      [200],
+    );
+    expect(metricsSecond.body).toStrictEqual({
+      metrics: [
+        {
+          ts: timestamp,
+          cpu: 0.2,
+          mem_used: 11,
+          mem_total: 100,
+          disk_used: 21,
+          disk_total: 200,
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "metrics-b"),
+    });
+    const metricsSecondCall = axiomCallAt(axiomCallCount() - 1);
+    expectTimeCursorAxiomResume(metricsSecondCall, {
+      cursor: "metrics-a",
+      order: "asc",
+    });
+
+    const directNetworkFirst = await reads.requestRunNetworkLogs(
+      actor,
+      runId,
+      { limit: 1, order: "asc" },
+      [200],
+    );
+    expect(directNetworkFirst.body).toStrictEqual({
+      networkLogs: [
+        {
+          timestamp,
+          type: "http",
+          action: "ALLOW",
+          host: "first.example.com",
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "network-a"),
+    });
+
+    const directNetworkCursor = directNetworkFirst.body.nextCursor;
+    if (!directNetworkCursor) {
+      throw new Error(
+        "Expected the first tied direct network page to return a cursor",
+      );
+    }
+
+    const directNetworkSecond = await reads.requestRunNetworkLogs(
+      actor,
+      runId,
+      { cursor: directNetworkCursor, limit: 1, order: "asc" },
+      [200],
+    );
+    expect(directNetworkSecond.body).toStrictEqual({
+      networkLogs: [
+        {
+          timestamp,
+          type: "http",
+          action: "ALLOW",
+          host: "second.example.com",
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "network-b"),
+    });
+    const directNetworkSecondCall = axiomCallAt(axiomCallCount() - 1);
+    expectTimeCursorAxiomResume(directNetworkSecondCall, {
+      cursor: "network-a",
+      order: "asc",
+    });
+
+    const zeroNetworkFirst = await reads.requestZeroRunNetworkLogs(
+      actor,
+      runId,
+      { limit: 1, order: "asc" },
+      [200],
+    );
+    expect(zeroNetworkFirst.body).toStrictEqual({
+      networkLogs: [
+        {
+          timestamp,
+          type: "http",
+          action: "ALLOW",
+          host: "first.example.com",
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "network-a"),
+    });
+
+    const zeroNetworkCursor = zeroNetworkFirst.body.nextCursor;
+    if (!zeroNetworkCursor) {
+      throw new Error(
+        "Expected the first tied zero network page to return a cursor",
+      );
+    }
+
+    const zeroNetworkSecond = await reads.requestZeroRunNetworkLogs(
+      actor,
+      runId,
+      { cursor: zeroNetworkCursor, limit: 1, order: "asc" },
+      [200],
+    );
+    expect(zeroNetworkSecond.body).toStrictEqual({
+      networkLogs: [
+        {
+          timestamp,
+          type: "http",
+          action: "ALLOW",
+          host: "second.example.com",
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "network-b"),
+    });
+    const zeroNetworkSecondCall = axiomCallAt(axiomCallCount() - 1);
+    expectTimeCursorAxiomResume(zeroNetworkSecondCall, {
+      cursor: "network-a",
+      order: "asc",
+    });
+
+    const descRows = [
+      { _time: timestamp, _vm0Cursor: "desc-a", runId, log: "desc first\n" },
+      { _time: timestamp, _vm0Cursor: "desc-b", runId, log: "desc second\n" },
+      {
+        _time: olderTimestamp,
+        _vm0Cursor: "desc-c",
+        runId,
+        log: "desc third\n",
+      },
+    ];
+    context.mocks.axiom.query.mockImplementation(
+      (apl: unknown, options: unknown) => {
+        if (
+          typeof apl !== "string" ||
+          !apl.includes("['sandbox-telemetry-system']")
+        ) {
+          return Promise.resolve([]);
+        }
+
+        const limitMatch = /\| limit (\d+)/.exec(apl);
+        const limit = limitMatch?.[1] ? Number(limitMatch[1]) : descRows.length;
+        const cursor = axiomCursorOption(options);
+        const cursorIndex =
+          cursor === undefined
+            ? -1
+            : descRows.findIndex((row) => {
+                return row._vm0Cursor === cursor;
+              });
+        const startIndex =
+          cursor === undefined
+            ? 0
+            : cursorIndex === -1
+              ? descRows.length
+              : cursorIndex + 1;
+
+        return Promise.resolve(descRows.slice(startIndex, startIndex + limit));
+      },
+    );
+
+    const descFirst = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { limit: 1, order: "desc" },
+      [200],
+    );
+    expect(descFirst.body).toStrictEqual({
+      systemLog: "desc first\n",
+      hasMore: true,
+      nextCursor: timeLogCursor("desc", timestamp, "desc-a"),
+    });
+    const descCursor = descFirst.body.nextCursor;
+    if (!descCursor) {
+      throw new Error("Expected the first desc tied page to return a cursor");
+    }
+    const descSecond = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { cursor: descCursor, limit: 1, order: "desc" },
+      [200],
+    );
+    expect(descSecond.body).toStrictEqual({
+      systemLog: "desc second\n",
+      hasMore: true,
+      nextCursor: timeLogCursor("desc", timestamp, "desc-b"),
+    });
+    const descSecondCall = axiomCallAt(axiomCallCount() - 1);
+    expectTimeCursorAxiomResume(descSecondCall, {
+      cursor: "desc-a",
+      order: "desc",
+    });
+  });
+
+  it("fails visibly when a telemetry page cannot advance its cursor", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-unpageable");
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "emit an unpageable boundary",
+    });
+    const runId = run.runId;
+    const boundaryTime = "2026-06-10T12:00:00Z";
+
+    dispatchAxiomQueries({
+      [runId]: {
+        events: [
+          agentEvent(runId, 0, "already returned", boundaryTime),
+          agentEvent(runId, 1, "later", "2026-06-10T12:00:01Z"),
+        ],
+        systemLogs: [
+          { _time: boundaryTime, runId, log: "already returned\n" },
+          { _time: "2026-06-10T12:00:01Z", runId, log: "later\n" },
+        ],
+        metrics: [
+          {
+            _time: boundaryTime,
+            runId,
+            userId: actor.userId,
+            cpu: 0.4,
+            mem_used: 40,
+            mem_total: 100,
+            disk_used: 50,
+            disk_total: 200,
+          },
+          {
+            _time: "2026-06-10T12:00:01Z",
+            runId,
+            userId: actor.userId,
+            cpu: 0.5,
+            mem_used: 41,
+            mem_total: 100,
+            disk_used: 51,
+            disk_total: 200,
+          },
+        ],
+        network: [
+          {
+            _time: boundaryTime,
+            runId,
+            userId: actor.userId,
+            type: "http",
+            action: "ALLOW",
+            host: "api.example.com",
+          },
+          {
+            _time: "2026-06-10T12:00:01Z",
+            runId,
+            userId: actor.userId,
+            type: "http",
+            action: "ALLOW",
+            host: "later.example.com",
+          },
+        ],
+      },
+    });
+
+    const agentEvents = await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "sequence:asc:0", limit: 1, order: "asc" },
+      [200],
+    );
+    if (agentEvents.status !== 200) {
+      throw new Error("Expected the agent events read to succeed");
+    }
+    expect(agentEvents.body.events).toHaveLength(1);
+    expect(agentEvents.body.hasMore).toBeFalsy();
+    expect(agentEvents.body.nextCursor).toBeUndefined();
+
+    const telemetryCursor = timeLogCursor("asc", boundaryTime, "cursor-0000");
+    const systemLog = await reads.rawApiRequest(
+      actor,
+      timeLogQueryPath(`/api/agent/runs/${runId}/telemetry/system-log`, {
+        cursor: telemetryCursor,
+        limit: 1,
+        order: "asc",
+      }),
+    );
+    expect(systemLog).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
+    });
+
+    const metrics = await reads.rawApiRequest(
+      actor,
+      timeLogQueryPath(`/api/agent/runs/${runId}/telemetry/metrics`, {
+        cursor: telemetryCursor,
+        limit: 1,
+        order: "asc",
+      }),
+    );
+    expect(metrics).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
+    });
+
+    const networkLogs = await reads.rawApiRequest(
+      actor,
+      timeLogQueryPath(`/api/agent/runs/${runId}/telemetry/network`, {
+        cursor: telemetryCursor,
+        limit: 1,
+        order: "asc",
+      }),
+    );
+    expect(networkLogs).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
+    });
+
+    const zeroEvents = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "sequence:asc:0", limit: 1, order: "asc" },
+      [200],
+    );
+    if (zeroEvents.status !== 200) {
+      throw new Error("Expected the zero agent events read to succeed");
+    }
+    expect(zeroEvents.body.events).toHaveLength(1);
+    expect(zeroEvents.body.hasMore).toBeFalsy();
+    expect(zeroEvents.body.nextCursor).toBeUndefined();
+
+    const zeroNetworkLogs = await reads.rawApiRequest(
+      actor,
+      timeLogQueryPath(`/api/zero/runs/${runId}/network`, {
+        cursor: telemetryCursor,
+        limit: 1,
+        order: "asc",
+      }),
+    );
+    expect(zeroNetworkLogs).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
+    });
+  });
+
+  it("maps zero run context, network, events, and runner metadata from axiom snapshots", async () => {
+    const actor = await entitledActor();
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD zero detail agent",
+      description: "Zero run detail reads.",
+      visibility: "private",
+    });
+
+    const zeroRun = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "zero run detail",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(zeroRun.runId);
+    const headers = sandboxHeaders(claim.sandboxToken);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: zeroRun.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${zeroRun.runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`bdd zero detail ${zeroRun.runId}`)
+          .digest("hex"),
+      },
+      headers,
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      {
+        runId: zeroRun.runId,
+        exitCode: 0,
+        lastEventSequence: 1,
+        sandboxReuseResult: "reused",
+      },
+      headers,
+      [200],
+    );
+
+    const bareRun = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "zero run without snapshots",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const runId = zeroRun.runId;
+    dispatchAxiomQueries({
+      [runId]: {
+        visibility: [{ sequenceNumber: 0 }, { sequenceNumber: 1 }],
+        events: [
+          agentEvent(runId, 0, "zero one"),
+          agentEvent(runId, 1, "zero two"),
+        ],
+        network: [
+          {
+            _time: "2026-06-10T11:00:00Z",
+            runId,
+            userId: actor.userId,
+            type: "http",
+            action: "ALLOW",
+            host: "api.example.com",
+            port: 443,
+            method: "GET",
+            url: "https://api.example.com/data",
+            status: 200,
+            latency_ms: 150,
+            request_size: 100,
+            response_size: 2048,
+            firewall_params: { owner: "vm0-ai", broken: 5 },
+            connector_diagnostic_type: "fal",
+            connector_diagnostic_reason: "not_configured_for_run",
+            connector_diagnostic_env_names: ["FAL_TOKEN"],
+            connector_diagnostic_base: "https://fal.run",
+            request_headers: { accept: "application/json", junk: 9 },
+            request_body: "req",
+            request_body_encoding: UTF8_ENCODING,
+            request_body_truncated: false,
+            response_body: "cmVz",
+            response_body_encoding: "base64",
+            response_body_truncated: true,
+          },
+          {
+            _time: "2026-06-10T11:00:01Z",
+            runId,
+            userId: actor.userId,
+            type: "tcp",
+            action: "MAYBE",
+            host: "redis.example.com",
+            port: 6379,
+            request_body_encoding: "weird",
+            auth_cache_hit: null,
+          },
+          {
+            _time: "2026-06-10T11:00:02Z",
+            runId,
+            userId: actor.userId,
+            type: "dns",
+            host: "api.github.com",
+            port: 53,
+            dns_event: "reply",
+            dns_result: "140.82.121.4",
+            dns_serial: "42",
+          },
+        ],
+        runContext: [
+          {
+            runId,
+            cliAgentType: "claude-code",
+            sessionId: "bdd-session-1",
+            environment: { LEGACY_IGNORED: "legacy-map" },
+            environmentEntries: [
+              { name: "NODE_ENV", value: "production" },
+              { name: "EMPTY", value: null },
+              { name: "NUM", value: 5 },
+              { value: "missing-name" },
+            ],
+            firewalls: [
+              {
+                name: "test-fw",
+                apis: [
+                  {
+                    base: "https://api.example.com",
+                    permissions: [{ name: "read", rules: ["GET /users/*"] }],
+                  },
+                ],
+              },
+            ],
+            volumes: [
+              {
+                name: "data",
+                mountPath: "/data",
+                vasStorageName: "vol-1",
+                vasVersionId: "ver-1",
+              },
+            ],
+            artifact: {
+              mountPath: "/artifacts",
+              vasStorageName: "art-1",
+              vasVersionId: "art-ver-1",
+            },
+            featureFlags: { legacyIgnored: true },
+            featureFlagEntries: [
+              { name: "memoryViewer", enabled: true },
+              { name: "dummy", enabled: null },
+              { enabled: true },
+            ],
+            networkPolicies: {
+              legacyIgnored: {
+                allow: ["legacy"],
+                deny: [],
+                ask: [],
+                unknownPolicy: "deny",
+              },
+            },
+            networkPolicyEntries: [
+              {
+                name: "github",
+                policy: {
+                  allow: ["repo-read"],
+                  deny: [],
+                  ask: [],
+                  unknownPolicy: "allow",
+                },
+              },
+              { name: "broken", policy: "nope" },
+              { name: "invalid", policy: { unknownPolicy: "bogus" } },
+              {
+                policy: {
+                  allow: ["missing-name"],
+                  deny: [],
+                  ask: [],
+                  unknownPolicy: "allow",
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const contextRead = await api.requestRunContext(actor, runId, [200]);
+    if (contextRead.status !== 200) {
+      throw new Error("Expected the run context read to succeed");
+    }
+    expect(contextRead.body).toMatchObject({
+      runId,
+      prompt: "zero run detail",
+      cliAgentType: "claude-code",
+      sessionId: "bdd-session-1",
+      environment: { NODE_ENV: "production" },
+      networkPolicies: {
+        github: {
+          allow: ["repo-read"],
+          deny: [],
+          ask: [],
+          unknownPolicy: "allow",
+        },
+      },
+      featureFlags: { memoryViewer: true },
+      artifact: { vasStorageName: "art-1" },
+    });
+    expect(contextRead.body.environment).toStrictEqual({
+      NODE_ENV: "production",
+    });
+    expect(Object.keys(contextRead.body.networkPolicies ?? {})).toStrictEqual([
+      "github",
+    ]);
+    expect(contextRead.body.firewalls).toHaveLength(1);
+    expect(contextRead.body.volumes).toHaveLength(1);
+
+    // Legacy dynamic map fields are ignored now that run context snapshots
+    // are entries-only.
+    dispatchAxiomQueries({
+      [runId]: {
+        runContext: [
+          {
+            runId,
+            environment: { LEGACY_IGNORED: "legacy-map" },
+            networkPolicies: {
+              legacyIgnored: {
+                allow: ["legacy"],
+                deny: [],
+                ask: [],
+                unknownPolicy: "allow",
+              },
+            },
+            featureFlags: { legacyIgnored: true },
+          },
+        ],
+      },
+    });
+    const legacyOnlyContext = await api.requestRunContext(actor, runId, [200]);
+    if (legacyOnlyContext.status !== 200) {
+      throw new Error("Expected the legacy-only run context read to succeed");
+    }
+    expect(legacyOnlyContext.body).toMatchObject({
+      runId,
+      sessionId: null,
+      environment: {},
+      networkPolicies: null,
+      featureFlags: null,
+      firewalls: [],
+      volumes: [],
+      artifact: null,
+    });
+
+    const noSnapshot = await api.requestRunContext(actor, bareRun.runId, [404]);
+    expectApiError(noSnapshot.body);
+    expect(noSnapshot.body.error.message).toBe("Run context not available");
+
+    // Re-dispatch the full row set for the network and event reads.
+    dispatchAxiomQueries({
+      [runId]: {
+        visibility: [{ sequenceNumber: 0 }, { sequenceNumber: 1 }],
+        events: [
+          agentEvent(runId, 0, "zero one"),
+          agentEvent(runId, 1, "zero two"),
+        ],
+        runContext: [{ runId, cliAgentType: "claude-code" }],
+        network: [
+          {
+            _time: "2026-06-10T11:00:00Z",
+            runId,
+            userId: actor.userId,
+            type: "http",
+            action: "ALLOW",
+            host: "api.example.com",
+            port: 443,
+            method: "GET",
+            url: "https://api.example.com/data",
+            status: 200,
+            latency_ms: 150,
+            request_size: 100,
+            response_size: 2048,
+            firewall_params: { owner: "vm0-ai", broken: 5 },
+            connector_diagnostic_type: "fal",
+            connector_diagnostic_reason: "not_configured_for_run",
+            connector_diagnostic_env_names: ["FAL_TOKEN"],
+            connector_diagnostic_base: "https://fal.run",
+            request_headers: { accept: "application/json", junk: 9 },
+            request_body: "req",
+            request_body_encoding: UTF8_ENCODING,
+            request_body_truncated: false,
+            response_body: "cmVz",
+            response_body_encoding: "base64",
+            response_body_truncated: true,
+          },
+          {
+            _time: "2026-06-10T11:00:01Z",
+            runId,
+            userId: actor.userId,
+            type: "tcp",
+            action: "MAYBE",
+            host: "redis.example.com",
+            port: 6379,
+            request_body_encoding: "weird",
+            auth_cache_hit: null,
+          },
+          {
+            _time: "2026-06-10T11:00:02Z",
+            runId,
+            userId: actor.userId,
+            type: "dns",
+            host: "api.github.com",
+            port: 53,
+            dns_event: "reply",
+            dns_result: "140.82.121.4",
+            dns_serial: "42",
+          },
+          {
+            _time: "2026-06-10T11:00:03Z",
+            runId,
+            userId: actor.userId,
+            type: "http",
+            action: "BLOCK",
+            host: "blocked.example.com",
+            port: 443,
+            method: "POST",
+            url: "https://blocked.example.com/v1/connect",
+            status: 424,
+            firewall_error: "connector_not_configured",
+          },
+        ],
+      },
+    });
+
+    const network = await reads.requestZeroRunNetworkLogs(
+      actor,
+      runId,
+      {},
+      [200],
+    );
+    if (network.status !== 200) {
+      throw new Error("Expected the zero network log read to succeed");
+    }
+    expect(network.body.networkLogs).toHaveLength(4);
+    expect(network.body.hasMore).toBeFalsy();
+    expect(network.body.networkLogs[0]).toStrictEqual({
+      timestamp: "2026-06-10T11:00:00Z",
+      type: "http",
+      action: "ALLOW",
+      host: "api.example.com",
+      port: 443,
+      method: "GET",
+      url: "https://api.example.com/data",
+      status: 200,
+      latency_ms: 150,
+      request_size: 100,
+      response_size: 2048,
+      firewall_params: { owner: "vm0-ai" },
+      connector_diagnostic_type: "fal",
+      connector_diagnostic_reason: "not_configured_for_run",
+      connector_diagnostic_env_names: ["FAL_TOKEN"],
+      connector_diagnostic_base: "https://fal.run",
+      request_headers: { accept: "application/json" },
+      request_body: "req",
+      request_body_encoding: UTF8_ENCODING,
+      request_body_truncated: false,
+      response_body: "cmVz",
+      response_body_encoding: "base64",
+      response_body_truncated: true,
+    });
+    expect(network.body.networkLogs[1]).toStrictEqual({
+      timestamp: "2026-06-10T11:00:01Z",
+      type: "tcp",
+      host: "redis.example.com",
+      port: 6379,
+    });
+    expect(network.body.networkLogs[2]).toMatchObject({
+      type: "dns",
+      dns_event: "reply",
+      dns_result: "140.82.121.4",
+      dns_serial: "42",
+    });
+    expect(network.body.networkLogs[3]).toMatchObject({
+      type: "http",
+      action: "BLOCK",
+      host: "blocked.example.com",
+      firewall_error: "connector_not_configured",
+    });
+
+    const sinceMs = Date.parse("2026-06-10T10:59:00Z");
+    const pagedNetwork = await reads.requestZeroRunNetworkLogs(
+      actor,
+      runId,
+      { limit: 2, since: sinceMs },
+      [200],
+    );
+    if (pagedNetwork.status !== 200) {
+      throw new Error("Expected the paged zero network log read to succeed");
+    }
+    expect(pagedNetwork.body.networkLogs).toHaveLength(2);
+    expect(pagedNetwork.body.hasMore).toBeTruthy();
+    expect(pagedNetwork.body.nextCursor).toBe(
+      timeLogCursor("asc", "2026-06-10T11:00:01Z", "cursor-0001"),
+    );
+    const networkApl = axiomCallAt(axiomCallCount() - 1)[0];
+    expect(networkApl).toContain(new Date(sinceMs).toISOString());
+
+    const wrongNetworkCursorKind = await reads.requestZeroRunNetworkLogs(
+      actor,
+      runId,
+      { cursor: "sequence:asc:1", limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(wrongNetworkCursorKind.body);
+
+    const emptyNetwork = await reads.requestZeroRunNetworkLogs(
+      actor,
+      bareRun.runId,
+      {},
+      [200],
+    );
+    if (emptyNetwork.status !== 200) {
+      throw new Error("Expected the empty zero network log read to succeed");
+    }
+    expect(emptyNetwork.body).toStrictEqual({
+      networkLogs: [],
+      hasMore: false,
+    });
+
+    // Zero agent events: desc waits for the watermark, a cursor at the
+    // watermark skips the wait, and asc pages cap the target.
+    const descStart = axiomCallCount();
+    const descEvents = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { limit: 10, order: "desc" },
+      [200],
+    );
+    if (descEvents.status !== 200) {
+      throw new Error("Expected the zero desc events read to succeed");
+    }
+    expect(descEvents.body.events).toHaveLength(2);
+    expect(descEvents.body.hasMore).toBeFalsy();
+    expect(descEvents.body.framework).toBe("claude-code");
+    expect(axiomCallCount()).toBe(descStart + 3);
+    expectRunContextFrameworkQuery(descStart, runId);
+    const descVisibilityCall = axiomCallSince(
+      descStart,
+      "| project sequenceNumber",
+    );
+    expect(descVisibilityCall[1]).toStrictEqual({ noCache: true });
+    expect(
+      axiomCallSince(descStart, "| order by sequenceNumber desc")[1],
+    ).toStrictEqual({ noCache: true });
+
+    const skipStart = axiomCallCount();
+    await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { limit: 10, order: "desc", since: 5 },
+      [200],
+    );
+    expect(axiomCallCount()).toBe(skipStart + 2);
+    expect(
+      axiomCallSince(skipStart, "| order by sequenceNumber desc")[1],
+    ).toBeUndefined();
+    expectRunContextFrameworkQuery(skipStart, runId);
+
+    const ascPage = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { limit: 1, order: "asc", since: 0 },
+      [200],
+    );
+    if (ascPage.status !== 200) {
+      throw new Error("Expected the zero asc events read to succeed");
+    }
+    expect(ascPage.body.events).toHaveLength(1);
+    expect(ascPage.body.hasMore).toBeTruthy();
+    expect(ascPage.body.nextCursor).toBe("sequence:asc:0");
+
+    await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "sequence:desc:2", limit: 1, order: "desc" },
+      [200],
+    );
+    const zeroCursorApl = axiomCallAt(axiomCallCount() - 1)[0];
+    expect(zeroCursorApl).toContain("| where sequenceNumber < 2");
+    expect(zeroCursorApl).toContain("| order by sequenceNumber desc");
+
+    const zeroAgentSinceTime = Date.parse("2026-06-10T10:29:30Z");
+    await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { sinceTime: zeroAgentSinceTime, limit: 1, order: "asc" },
+      [200],
+    );
+    const zeroAgentSinceTimeApl = axiomCallAt(axiomCallCount() - 1)[0];
+    expect(zeroAgentSinceTimeApl).toContain(
+      `| where _time > datetime("${new Date(zeroAgentSinceTime).toISOString()}")`,
+    );
+    expect(zeroAgentSinceTimeApl).toContain("| order by sequenceNumber asc");
+
+    const wrongZeroAgentCursorKind = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "time:desc:1", limit: 1, order: "desc" },
+      [400],
+    );
+    expectApiError(wrongZeroAgentCursorKind.body);
+
+    const outOfRangeZeroAgentCursor = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "sequence:asc:2147483648", limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(outOfRangeZeroAgentCursor.body);
+
+    const invalidZeroAgentSinceTime = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { sinceTime: 8_640_000_000_000_001, limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(invalidZeroAgentSinceTime.body);
+
+    const memberEvents = await reads.requestZeroRunAgentEvents(
+      member,
+      runId,
+      { limit: 10, order: "desc" },
+      [404],
+    );
+    expectApiError(memberEvents.body);
+    expect(memberEvents.body.error.message).toBe("Agent run not found");
+
+    const memberNetwork = await reads.requestZeroRunNetworkLogs(
+      member,
+      runId,
+      {},
+      [404],
+    );
+    expectApiError(memberNetwork.body);
+    expect(memberNetwork.body.error.message).toBe("Agent run not found");
+
+    // A run without a recorded watermark reads events without any wait.
+    const noWatermarkStart = axiomCallCount();
+    const noWatermark = await reads.requestZeroRunAgentEvents(
+      actor,
+      bareRun.runId,
+      { limit: 10, order: "desc" },
+      [200],
+    );
+    if (noWatermark.status !== 200) {
+      throw new Error("Expected the watermark-less events read to succeed");
+    }
+    expect(noWatermark.body.events).toStrictEqual([]);
+    expect(axiomCallCount()).toBe(noWatermarkStart + 2);
+    expect(
+      axiomCallSince(noWatermarkStart, "['agent-run-events']")[1],
+    ).toBeUndefined();
+    expectRunContextFrameworkQuery(noWatermarkStart, bareRun.runId);
+
+    // Runner metadata mirrors the sandbox reuse outcome from completion.
+    const runner = await api.requestRunRunner(actor, runId, [200]);
+    expect(runner.body).toStrictEqual({ sandboxReuseResult: "reused" });
+    const bareRunner = await api.requestRunRunner(actor, bareRun.runId, [200]);
+    expect(bareRunner.body).toStrictEqual({ sandboxReuseResult: null });
+
+    await api.requestCancelRun(actor, bareRun.runId, [200]);
+  });
+});
+
+/**
+ * Quiet capture handlers for the callback URLs a schedule-fired run can
+ * still deliver over HTTP, so cancelling the run-now run never hits an unhandled MSW route
+ * (same pattern as runs-schedules.bdd.test.ts).
+ */
+function captureScheduleRunCallbacks(): void {
+  webhooks.captureInternalCallbackDeliveries(
+    "/api/internal/callbacks/schedule/loop",
+  );
+  webhooks.captureInternalCallbackDeliveries(
+    "/api/internal/callbacks/schedule/cron",
+  );
+}
+
+describe("RUN-04/OPS-01: zero run logs", () => {
+  it("lists run logs with filters, paging, zero tokens, and detail residue", async () => {
+    const actor = await entitledActor();
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    await api.ensureOrgModelProvider(actor);
+    const agentOne = await bdd.createAgent(actor, {
+      displayName: "BDD logs agent one",
+      description: "Primary logs agent.",
+      visibility: "private",
+    });
+    const agentTwo = await bdd.createAgent(actor, {
+      displayName: "BDD logs agent two",
+      description: "Secondary logs agent.",
+      visibility: "private",
+    });
+    const memberAgent = await bdd.createAgent(member, {
+      displayName: "BDD member logs agent",
+      description: "Member isolation.",
+      visibility: "private",
+    });
+    const cliCompose = await createClaudeCompose(actor, "bdd-cli-logs");
+    const authOrg = createAuthOrgAgentsBddApi(context);
+    const agentOneName = (
+      await authOrg.readComposeById(actor, agentOne.agentId)
+    ).name;
+    captureScheduleRunCallbacks();
+
+    const webRun = await api.createRun(actor, {
+      agentId: agentOne.agentId,
+      prompt: "web run on agent one",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, webRun.runId, [200]);
+    const secondAgentRun = await api.createRun(actor, {
+      agentId: agentTwo.agentId,
+      prompt: "web run on agent two",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, secondAgentRun.runId, [200]);
+    const cliRun = await api.createDirectRun(actor, {
+      agentComposeId: cliCompose.composeId,
+      prompt: "direct cli run",
+    });
+    await api.requestCancelRun(actor, cliRun.runId, [200]);
+
+    // A far-future yearly cron keeps the global execute-schedules sweep from
+    // ever considering this schedule due; only run-now fires it.
+    const schedule = await api.deployAutomation(actor, {
+      name: uniqueAutomationName("bdd-log-sched"),
+      agentId: agentOne.agentId,
+      cronExpression: "0 0 1 1 *",
+      prompt: "scheduled run for logs",
+      description: "Schedule-source log entries",
+      timezone: "UTC",
+      enabled: true,
+    });
+    const scheduleRun = await api.requestRunAutomation(
+      actor,
+      schedule.automation.id,
+      [201],
+    );
+    if (scheduleRun.status !== 201) {
+      throw new Error("Expected the run-now schedule run to be created");
+    }
+    await api.requestCancelRun(actor, scheduleRun.body.runId, [200]);
+
+    const memberRun = await api.createRun(member, {
+      agentId: memberAgent.agentId,
+      prompt: "member run stays invisible",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(member, memberRun.runId, [200]);
+
+    const listed = await reads.requestListLogs(actor, {}, [200]);
+    mustOk(listed, "the logs list");
+    const listedIds = listed.body.data.map((entry) => {
+      return entry.id;
+    });
+    expect([...listedIds].sort()).toStrictEqual(
+      [
+        webRun.runId,
+        secondAgentRun.runId,
+        cliRun.runId,
+        scheduleRun.body.runId,
+      ].sort(),
+    );
+
+    const invalidListSince = await reads.requestListLogs(
+      actor,
+      { since: 8_640_000_000_000_001 },
+      [400],
+    );
+    expectApiError(invalidListSince.body);
+
+    const webEntry = listed.body.data.find((entry) => {
+      return entry.id === webRun.runId;
+    });
+    expect(webEntry).toMatchObject({
+      agentId: agentOne.agentId,
+      displayName: "BDD logs agent one",
+      framework: "claude-code",
+      triggerSource: "web",
+      automationId: null,
+      status: "cancelled",
+      prompt: "web run on agent one",
+    });
+    const cliEntry = listed.body.data.find((entry) => {
+      return entry.id === cliRun.runId;
+    });
+    expect(cliEntry).toMatchObject({
+      agentId: null,
+      displayName: null,
+      triggerSource: "cli",
+      automationId: null,
+    });
+    const scheduleEntry = listed.body.data.find((entry) => {
+      return entry.id === scheduleRun.body.runId;
+    });
+    expect(scheduleEntry).toMatchObject({
+      triggerSource: "automation",
+      automationId: schedule.automation.id,
+    });
+
+    const pageOne = await reads.requestListLogs(actor, { limit: 1 }, [200]);
+    mustOk(pageOne, "the first log page");
+    expect(pageOne.body.data).toHaveLength(1);
+    expect(pageOne.body.pagination.hasMore).toBeTruthy();
+    const cursor = pageOne.body.pagination.nextCursor;
+    if (cursor === null) {
+      throw new Error("Expected a next cursor on the first log page");
+    }
+    const pageTwo = await reads.requestListLogs(
+      actor,
+      { limit: 1, cursor },
+      [200],
+    );
+    mustOk(pageTwo, "the second log page");
+    expect(pageTwo.body.data).toHaveLength(1);
+    expect(pageTwo.body.data[0]?.id).not.toBe(pageOne.body.data[0]?.id);
+
+    const malformedCursor = await reads.requestListLogs(
+      actor,
+      { limit: 1, cursor: "garbage" },
+      [200],
+    );
+    mustOk(malformedCursor, "malformed cursor list");
+    expect(malformedCursor.body.data[0]?.id).toBe(pageOne.body.data[0]?.id);
+
+    const malformedStructuredCursor = await reads.requestListLogs(
+      actor,
+      { limit: 1, cursor: "not-a-date|not-a-run-id" },
+      [200],
+    );
+    mustOk(malformedStructuredCursor, "malformed structured cursor list");
+    expect(malformedStructuredCursor.body.data[0]?.id).toBe(
+      pageOne.body.data[0]?.id,
+    );
+
+    const malformedCursorId = await reads.requestListLogs(
+      actor,
+      { limit: 1, cursor: "2026-01-15T10:30:00.000Z|not-a-run-id" },
+      [200],
+    );
+    mustOk(malformedCursorId, "malformed cursor id list");
+    expect(malformedCursorId.body.data[0]?.id).toBe(pageOne.body.data[0]?.id);
+
+    const agentOneRunIds = [webRun.runId, scheduleRun.body.runId].sort();
+    const fuzzy = await reads.requestListLogs(
+      actor,
+      { search: agentOneName.toUpperCase() },
+      [200],
+    );
+    mustOk(fuzzy, "the fuzzy search list");
+    expect(
+      fuzzy.body.data
+        .map((entry) => {
+          return entry.id;
+        })
+        .sort(),
+    ).toStrictEqual(agentOneRunIds);
+
+    const byName = await reads.requestListLogs(
+      actor,
+      { name: agentOneName },
+      [200],
+    );
+    mustOk(byName, "the name-filtered list");
+    expect(
+      byName.body.data
+        .map((entry) => {
+          return entry.id;
+        })
+        .sort(),
+    ).toStrictEqual(agentOneRunIds);
+
+    const byAgentId = await reads.requestListLogs(
+      actor,
+      { agentId: agentOne.agentId, search: "zzz-no-such-agent" },
+      [200],
+    );
+    mustOk(byAgentId, "the agent-id list");
+    expect(
+      byAgentId.body.data
+        .map((entry) => {
+          return entry.id;
+        })
+        .sort(),
+    ).toStrictEqual(agentOneRunIds);
+
+    const byStatusAndSource = await reads.requestListLogs(
+      actor,
+      { status: "cancelled", triggerSource: "web" },
+      [200],
+    );
+    mustOk(byStatusAndSource, "the status+source list");
+    expect(
+      byStatusAndSource.body.data
+        .map((entry) => {
+          return entry.id;
+        })
+        .sort(),
+    ).toStrictEqual([webRun.runId, secondAgentRun.runId].sort());
+
+    const automationSourceList = await reads.requestListLogs(
+      actor,
+      { triggerSource: "automation" },
+      [200],
+    );
+    mustOk(automationSourceList, "automation-source log list");
+    expect(
+      automationSourceList.body.data.map((entry) => {
+        return entry.id;
+      }),
+    ).toStrictEqual([scheduleRun.body.runId]);
+
+    const noSourceMatch = await reads.requestListLogs(
+      actor,
+      { triggerSource: "telegram" },
+      [200],
+    );
+    mustOk(noSourceMatch, "the empty source list");
+    expect(noSourceMatch.body.data).toStrictEqual([]);
+
+    const byAutomationId = await reads.requestListLogs(
+      actor,
+      { automationId: schedule.automation.id, limit: 1 },
+      [200],
+    );
+    mustOk(byAutomationId, "the automation-filtered list");
+    expect(byAutomationId.body.data).toStrictEqual([
+      expect.objectContaining({ id: scheduleRun.body.runId }),
+    ]);
+    expect(byAutomationId.body.pagination.totalPages).toBe(1);
+
+    expect(listed.body.filters.statuses).toContain("cancelled");
+    expect([...listed.body.filters.sources].sort()).toStrictEqual([
+      "automation",
+      "cli",
+      "web",
+    ]);
+    expect(listed.body.filters.agents).toContain(agentOne.agentId);
+    expect(listed.body.filters.agents).toContain(agentTwo.agentId);
+
+    // Detail residue: schedule provenance, pending nulls, and failure error.
+    const scheduleDetail = await reads.requestReadLogById(
+      actor,
+      scheduleRun.body.runId,
+      [200],
+    );
+    expect(scheduleDetail.body).toMatchObject({
+      id: scheduleRun.body.runId,
+      triggerSource: "automation",
+      automationId: schedule.automation.id,
+    });
+
+    const pendingRun = await api.createRun(actor, {
+      agentId: agentOne.agentId,
+      prompt: "pending detail run",
+      modelProvider: "anthropic-api-key",
+    });
+    const pendingDetail = await reads.requestReadLogById(
+      actor,
+      pendingRun.runId,
+      [200],
+    );
+    expect(pendingDetail.body).toMatchObject({
+      id: pendingRun.runId,
+      status: "pending",
+      sessionId: null,
+      completedAt: null,
+    });
+    await api.requestCancelRun(actor, pendingRun.runId, [200]);
+
+    const failedRun = await api.createRun(actor, {
+      agentId: agentOne.agentId,
+      prompt: "failed detail run",
+      modelProvider: "anthropic-api-key",
+    });
+    await webhooks.requestAgentComplete(
+      { runId: failedRun.runId, exitCode: 1, error: "bdd failure" },
+      sandboxHeaders(api.sandboxTokenForRun(actor, failedRun.runId)),
+      [200],
+    );
+    const failedDetail = await reads.requestReadLogById(
+      actor,
+      failedRun.runId,
+      [200],
+    );
+    expect(failedDetail.body).toMatchObject({
+      id: failedRun.runId,
+      status: "failed",
+      error: "bdd failure",
+    });
+
+    // A claimed run's real zero token reads the log surfaces by capability.
+    const tokenRun = await api.createRun(actor, {
+      agentId: agentOne.agentId,
+      prompt: "zero token run",
+      modelProvider: "anthropic-api-key",
+    });
+    const tokenClaim = await api.claimRunnerJob(tokenRun.runId);
+    const zeroToken = tokenClaim.environment?.ZERO_TOKEN;
+    if (!zeroToken) {
+      throw new Error("Expected the claimed run to expose a ZERO_TOKEN");
+    }
+    const tokenList = await reads.requestListLogsAs(
+      `Bearer ${zeroToken}`,
+      {},
+      [200],
+    );
+    mustOk(tokenList, "the zero-token log list");
+    expect(
+      tokenList.body.data.map((entry) => {
+        return entry.id;
+      }),
+    ).toContain(webRun.runId);
+    const tokenDetail = await reads.requestReadLogByIdAs(
+      `Bearer ${zeroToken}`,
+      webRun.runId,
+      [200],
+    );
+    expect(tokenDetail.body).toMatchObject({ id: webRun.runId });
+
+    await api.requestCancelRun(actor, tokenRun.runId, [200]);
+
+    const beforeBoundaryRun = await api.createRun(actor, {
+      agentId: agentOne.agentId,
+      prompt: "since boundary hidden run",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, beforeBoundaryRun.runId, [200]);
+    const sinceBoundary = now();
+    await waitForTimestampBoundary();
+    const sinceBoundaryRun = await api.createRun(actor, {
+      agentId: agentOne.agentId,
+      prompt: "since boundary visible run",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, sinceBoundaryRun.runId, [200]);
+
+    const sinceFiltered = await reads.requestListLogs(
+      actor,
+      { since: sinceBoundary, limit: 100 },
+      [200],
+    );
+    mustOk(sinceFiltered, "the since-boundary log list");
+    const sinceFilteredIds = sinceFiltered.body.data.map((entry) => {
+      return entry.id;
+    });
+    expect(sinceFilteredIds).toContain(sinceBoundaryRun.runId);
+    expect(sinceFilteredIds).not.toContain(beforeBoundaryRun.runId);
+  });
+
+  it("splits multi-run log searches into a bounded run-id filter", async () => {
+    const misc = createMiscRoutesApi(context);
+    const actor = await entitledActor();
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD search agent",
+      description: "Multi-run search chunking.",
+      visibility: "private",
+    });
+
+    const firstRun = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "first searchable run",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, firstRun.runId, [200]);
+    const secondRun = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "second searchable run",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, secondRun.runId, [200]);
+
+    context.mocks.axiom.query.mockImplementation((apl: unknown) => {
+      if (typeof apl === "string" && apl.includes("runId in (")) {
+        return Promise.resolve([
+          agentEvent(secondRun.runId, 7, "chunked match"),
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const searched = await misc.searchLogs(actor, "chunked");
+    expect(searched.body.results).toHaveLength(1);
+    expect(searched.body.results[0]?.runId).toBe(secondRun.runId);
+
+    const searchApl = context.mocks.axiom.query.mock.calls.at(-1)?.[0];
+    if (typeof searchApl !== "string") {
+      throw new Error("Expected the search to query Axiom with an APL string");
+    }
+    expect(searchApl).toContain("runId in (");
+    expect(searchApl).toContain(firstRun.runId);
+    expect(searchApl).toContain(secondRun.runId);
+  });
+});

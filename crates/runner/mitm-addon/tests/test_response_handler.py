@@ -1,0 +1,1928 @@
+"""Tests for the mitm addon response hook."""
+
+import json
+import time
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+from mitmproxy import http
+from mitmproxy.test import tutils
+
+import firewall_auth_cache as auth_cache
+import flow_metadata_keys as metadata_keys
+import mitm_addon
+import request_streaming
+from body_limits import STREAM_BUFFER_LIMIT
+from tests.auth_state_helpers import (
+    auth_cache_key,
+    cached_headers,
+    force_refresh_pending,
+    has_auth_state,
+    set_cached_headers,
+    set_last_force_refresh_monotonic_at,
+)
+from tests.connector_diagnostic_helpers import (
+    record_connector_diagnostic_requestheaders_context,
+    write_connector_diagnostic_capture_registry,
+)
+from tests.flow_helpers import header_map, response_stream
+from tests.jsonl_log_helpers import (
+    jsonl_exists_after_flush,
+    read_jsonl_entries_after_flush,
+)
+from tests.request_handler_helpers import (
+    _vm_without_firewalls,
+    _write_github_firewall_registry,
+    _write_registry,
+)
+from tests.requestheaders_helpers import await_requestheaders_result
+from tests.timestamp_helpers import assert_utc_millisecond_timestamp
+
+
+def _drain_connector_diagnostic_response_stream(flow, *, upstream_chunk: bytes = b"upstream"):
+    stream = response_stream(flow)
+    assert stream(upstream_chunk) == ()
+    diagnostic_body = stream(b"")
+    assert isinstance(diagnostic_body, bytes)
+    assert json.loads(diagnostic_body)["error"] == "connector_not_configured_for_run"
+    assert stream(b"") == ()
+    return diagnostic_body
+
+
+class TestResponseHandler:
+    async def test_replaces_unauthenticated_connector_401_body(self, tmp_path, real_flow, mitm_ctx):
+        reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            record_connector_diagnostic_requestheaders_context(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain", "content-length": "8"}),
+                content=b"upstream",
+            )
+            mitm_addon.response(flow)
+
+        assert flow.response.status_code == 401
+        assert flow.response.headers["content-type"] == "application/json"
+        content = flow.response.content
+        assert content is not None
+        body = json.loads(content)
+        assert body == {
+            "error": "connector_not_configured_for_run",
+            "connector": "fal",
+            "reason": "not_configured_for_run",
+            "message": (
+                "fal is not configured for this run. FAL_TOKEN is unavailable, "
+                "so credentials cannot be injected."
+            ),
+            "envNames": ["FAL_TOKEN"],
+            "base": "https://fal.run",
+            "upstreamStatus": 401,
+        }
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["action"] == "ALLOW"
+        assert entry["status"] == 401
+        assert entry["firewall_error"] == "connector_not_configured_for_run"
+        assert entry["connector_diagnostic_type"] == "fal"
+        assert entry["connector_diagnostic_reason"] == "not_configured_for_run"
+        assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
+        assert entry["connector_diagnostic_base"] == "https://fal.run"
+        proxy_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
+        assert proxy_entry["type"] == "connector_diagnostic"
+        assert proxy_entry["connector"] == "fal"
+        assert proxy_entry["upstream_status"] == 401
+
+    async def test_streams_unauthenticated_connector_401_diagnostic_without_upstream_body(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+        )
+        upstream_chunk = b"discarded-upstream-body-" * 1024
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            record_connector_diagnostic_requestheaders_context(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map(
+                    {
+                        "content-encoding": "gzip",
+                        "content-length": "10485760",
+                        "content-type": "text/plain",
+                        "transfer-encoding": "chunked",
+                    }
+                ),
+                content=b"upstream",
+            )
+            mitm_addon.responseheaders(flow)
+            diagnostic_body = _drain_connector_diagnostic_response_stream(
+                flow,
+                upstream_chunk=upstream_chunk,
+            )
+            assert not jsonl_exists_after_flush(tmp_path / "proxy.jsonl")
+            flow.response.trailers = header_map({"x-upstream-trailer": "discarded"})
+            mitm_addon.response(flow)
+
+        content = flow.response.content
+        assert content is not None
+        assert content == diagnostic_body
+        assert json.loads(content)["error"] == "connector_not_configured_for_run"
+        assert flow.response.headers["content-type"] == "application/json"
+        assert flow.response.headers["content-length"] == str(len(diagnostic_body))
+        assert "content-encoding" not in flow.response.headers
+        assert "transfer-encoding" not in flow.response.headers
+        assert flow.response.trailers is None
+        assert flow.response.stream is False
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["response_size"] == len(diagnostic_body)
+        response_headers = {
+            name.lower(): value for name, value in entry["response_headers"].items()
+        }
+        assert response_headers["content-type"] == "application/json"
+        assert response_headers["content-length"] == str(len(diagnostic_body))
+        assert json.loads(entry["response_body"])["error"] == "connector_not_configured_for_run"
+        assert "discarded-upstream-body" not in entry["response_body"]
+        assert entry["response_body_encoding"] == "utf-8"
+        proxy_entries = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+        assert sum(entry["type"] == "connector_diagnostic" for entry in proxy_entries) == 1
+
+    async def test_restores_connector_diagnostic_body_when_headers_end_stream(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            record_connector_diagnostic_requestheaders_context(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"",
+            )
+            mitm_addon.responseheaders(flow)
+            flow.response.data.content = b""
+            mitm_addon.response(flow)
+
+        content = flow.response.content
+        assert content is not None
+        body = json.loads(content)
+        assert body["error"] == "connector_not_configured_for_run"
+        assert flow.response.headers["content-type"] == "application/json"
+        assert flow.response.headers["content-length"] == str(len(content))
+        assert flow.response.stream is False
+
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["response_size"] == len(content)
+        assert json.loads(entry["response_body"])["error"] == "connector_not_configured_for_run"
+
+    async def test_streams_connector_401_when_user_auth_is_present(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                ("Authorization", "Key user-provided"),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            assert response_stream(flow)(b"upstream auth error") == b"upstream auth error"
+            mitm_addon.response(flow)
+
+        assert flow.response.content == b"upstream auth error"
+
+    async def test_streamed_connector_401_with_user_auth_keeps_upstream_response(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                ("Authorization", "Key user-provided"),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            mitm_addon.requestheaders(flow)
+            request_stream = flow.request.stream
+            assert callable(request_stream)
+            assert request_stream(b"partial request") == b"partial request"
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            assert response_stream(flow)(b"upstream auth error") == b"upstream auth error"
+            mitm_addon.response(flow)
+
+        assert flow.response.content == b"upstream auth error"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["status"] == 401
+        assert entry["request_size"] == len(b"partial request")
+        assert "connector_diagnostic_type" not in entry
+        assert "firewall_error" not in entry
+
+    async def test_streamed_connector_401_with_query_auth_keeps_upstream_response(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro?auth=token",
+            method="POST",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            mitm_addon.requestheaders(flow)
+            request_stream = flow.request.stream
+            assert callable(request_stream)
+            assert request_stream(b"partial request") == b"partial request"
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream query auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            assert (
+                response_stream(flow)(b"upstream query auth error") == b"upstream query auth error"
+            )
+            mitm_addon.response(flow)
+
+        assert flow.response.content == b"upstream query auth error"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["status"] == 401
+        assert entry["request_size"] == len(b"partial request")
+        assert "connector_diagnostic_type" not in entry
+        assert "firewall_error" not in entry
+
+    def test_streamed_connector_401_before_request_gets_diagnostic(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            mitm_addon.requestheaders(flow)
+            request_stream = flow.request.stream
+            assert callable(request_stream)
+            assert request_stream(b"partial request") == b"partial request"
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            diagnostic_body = _drain_connector_diagnostic_response_stream(flow)
+            mitm_addon.response(flow)
+
+        content = flow.response.content
+        assert content is not None
+        assert content == diagnostic_body
+        body = json.loads(content)
+        assert body["error"] == "connector_not_configured_for_run"
+        assert body["connector"] == "fal"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["status"] == 401
+        assert entry["request_size"] == len(b"partial request")
+        assert entry["firewall_error"] == "connector_not_configured_for_run"
+        assert entry["connector_diagnostic_type"] == "fal"
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+
+    def test_streamed_authenticated_connector_401_before_request_keeps_upstream_response(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                ("Authorization", "Key user-provided"),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            mitm_addon.requestheaders(flow)
+            request_stream = flow.request.stream
+            assert callable(request_stream)
+            assert request_stream(b"partial request") == b"partial request"
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            assert response_stream(flow)(b"upstream auth error") == b"upstream auth error"
+            mitm_addon.response(flow)
+
+        assert flow.response.content == b"upstream auth error"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["status"] == 401
+        assert entry["request_size"] == len(b"partial request")
+        assert "connector_diagnostic_type" not in entry
+        assert "firewall_error" not in entry
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+
+    def test_streamed_query_authenticated_connector_401_before_request_keeps_upstream_response(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro?api_key=user-token",
+            method="POST",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            mitm_addon.requestheaders(flow)
+            request_stream = flow.request.stream
+            assert callable(request_stream)
+            assert request_stream(b"partial request") == b"partial request"
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream query auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            assert (
+                response_stream(flow)(b"upstream query auth error") == b"upstream query auth error"
+            )
+            mitm_addon.response(flow)
+
+        assert flow.response.content == b"upstream query auth error"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["status"] == 401
+        assert entry["request_size"] == len(b"partial request")
+        assert "connector_diagnostic_type" not in entry
+        assert "firewall_error" not in entry
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+
+    def test_streamed_browser_connector_403_before_request_keeps_upstream_response(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                (
+                    "User-Agent",
+                    "Mozilla/5.0 AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
+                ),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            mitm_addon.requestheaders(flow)
+            request_stream = flow.request.stream
+            assert callable(request_stream)
+            assert request_stream(b"partial request") == b"partial request"
+            flow.response = tutils.tresp(
+                status_code=403,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"browser upstream body",
+            )
+            mitm_addon.responseheaders(flow)
+            assert response_stream(flow)(b"browser upstream body") == b"browser upstream body"
+            mitm_addon.response(flow)
+
+        assert flow.response.content == b"browser upstream body"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["status"] == 403
+        assert entry["request_size"] == len(b"partial request")
+        assert entry["browser_user_agent"] is True
+        assert "connector_diagnostic_type" not in entry
+        assert "firewall_error" not in entry
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+
+    def test_streamed_api_allow_response_before_request_logs_without_firewall_context(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.vm0.ai",
+            path="/api/runs",
+            method="POST",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            mitm_addon.requestheaders(flow)
+            request_stream = flow.request.stream
+            assert callable(request_stream)
+            assert request_stream(b"partial request") == b"partial request"
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"api auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            assert response_stream(flow)(b"api auth error") == b"api auth error"
+            mitm_addon.response(flow)
+
+        assert flow.response.content == b"api auth error"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["action"] == "ALLOW"
+        assert entry["status"] == 401
+        assert entry["request_size"] == len(b"partial request")
+        assert entry["response_size"] == len(b"api auth error")
+        assert "firewall_base" not in entry
+        assert "connector_diagnostic_type" not in entry
+        assert "firewall_error" not in entry
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+
+    async def test_replaces_connector_401_body_when_auth_header_has_empty_bearer_token(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                ("Authorization", "Bearer "),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            record_connector_diagnostic_requestheaders_context(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream empty auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            diagnostic_body = _drain_connector_diagnostic_response_stream(flow)
+            mitm_addon.response(flow)
+
+        content = flow.response.content
+        assert content is not None
+        assert content == diagnostic_body
+        body = json.loads(content)
+        assert body["error"] == "connector_not_configured_for_run"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["firewall_error"] == "connector_not_configured_for_run"
+
+    async def test_replaces_connector_401_body_when_only_proxy_authorization_is_present(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                ("Proxy-Authorization", "Basic proxy-secret"),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            record_connector_diagnostic_requestheaders_context(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream proxy auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            diagnostic_body = _drain_connector_diagnostic_response_stream(flow)
+            mitm_addon.response(flow)
+
+        content = flow.response.content
+        assert content is not None
+        assert content == diagnostic_body
+        body = json.loads(content)
+        assert body["error"] == "connector_not_configured_for_run"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["firewall_error"] == "connector_not_configured_for_run"
+
+    async def test_replaces_connector_401_body_when_auth_header_has_empty_key_token(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                ("Authorization", "Key "),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            record_connector_diagnostic_requestheaders_context(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream empty key auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            diagnostic_body = _drain_connector_diagnostic_response_stream(flow)
+            mitm_addon.response(flow)
+
+        content = flow.response.content
+        assert content is not None
+        assert content == diagnostic_body
+        body = json.loads(content)
+        assert body["error"] == "connector_not_configured_for_run"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["firewall_error"] == "connector_not_configured_for_run"
+
+    async def test_replaces_connector_401_body_when_auth_query_param_is_empty(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro?api_key=",
+            method="POST",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            record_connector_diagnostic_requestheaders_context(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream empty query auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            diagnostic_body = _drain_connector_diagnostic_response_stream(flow)
+            mitm_addon.response(flow)
+
+        content = flow.response.content
+        assert content is not None
+        assert content == diagnostic_body
+        body = json.loads(content)
+        assert body["error"] == "connector_not_configured_for_run"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["firewall_error"] == "connector_not_configured_for_run"
+
+    async def test_preserves_connector_401_body_when_user_auth_is_present(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                ("Authorization", "Key user-provided"),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+            assert metadata_keys.CONNECTOR_DIAGNOSTIC_REASON not in flow.metadata
+            assert metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES not in flow.metadata
+            assert metadata_keys.CONNECTOR_DIAGNOSTIC_BASE not in flow.metadata
+            mitm_addon.response(flow)
+
+        assert flow.response.status_code == 401
+        assert flow.response.content == b"upstream auth error"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert "connector_diagnostic_type" not in entry
+        assert "firewall_error" not in entry
+
+    async def test_preserves_model_provider_401_body_without_connector_diagnostic(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.openai.com",
+            path="/v1/responses",
+            method="POST",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "application/json"}),
+                content=b'{"error":"provider auth error"}',
+            )
+            mitm_addon.response(flow)
+
+        assert flow.response.status_code == 401
+        assert flow.response.content == b'{"error":"provider auth error"}'
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["status"] == 401
+        assert "connector_diagnostic_type" not in entry
+        assert "firewall_error" not in entry
+
+    async def test_preserves_connector_401_body_when_query_auth_is_present(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro?auth=token",
+            method="POST",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream query auth error",
+            )
+            mitm_addon.response(flow)
+
+        assert flow.response.status_code == 401
+        assert flow.response.content == b"upstream query auth error"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert "connector_diagnostic_type" not in entry
+        assert "firewall_error" not in entry
+
+    async def test_cached_connector_candidate_keeps_specific_query_auth_hint(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.openweathermap.org",
+            path="/data/2.5/weather?appid=user-token",
+            method="GET",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream query auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] = "openweather"
+            flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] = "not_configured_for_run"
+            flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] = ["OPENWEATHER_TOKEN"]
+            flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] = (
+                "https://api.openweathermap.org"
+            )
+            mitm_addon.response(flow)
+
+        assert flow.response.status_code == 401
+        assert flow.response.content == b"upstream query auth error"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert "firewall_error" not in entry
+
+    async def test_preserves_successful_connector_response_body(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                ("Authorization", "Key user-provided"),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=200,
+                headers=header_map({"content-type": "application/json"}),
+                content=b'{"ok":true}',
+            )
+            mitm_addon.response(flow)
+
+        assert flow.response.content == b'{"ok":true}'
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["status"] == 200
+        assert "connector_diagnostic_type" not in entry
+
+    async def test_preserves_browser_403_body_for_connector_candidate(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                (
+                    "User-Agent",
+                    "Mozilla/5.0 AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
+                ),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=403,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"browser upstream body",
+            )
+            mitm_addon.response(flow)
+
+        assert flow.response.content == b"browser upstream body"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["browser_user_agent"] is True
+        assert "connector_diagnostic_type" not in entry
+
+    def test_calculates_latency_and_logs(
+        self, registry_file, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        # Simulate request handler setting metadata
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/"
+
+        # Add response
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map(
+                {
+                    "content-length": "256",
+                    "content-type": "application/json",
+                    "content-encoding": "gzip",
+                    "transfer-encoding": "chunked",
+                }
+            ),
+        )
+
+        # Simulate tracked start time
+        flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic() - 0.1
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        # Start time should be cleaned up
+        assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
+
+        # Network log should be written
+        entries = read_jsonl_entries_after_flush(Path(log_path))
+        assert len(entries) == 1
+        entry = entries[0]
+        assert entry["action"] == "ALLOW"
+        assert entry["host"] == "api.anthropic.com"
+        assert entry["latency_ms"] > 0
+        assert entry["response_size"] == 256
+        assert_utc_millisecond_timestamp(entry["timestamp"])
+
+    def test_logs_request_time_network_log_target(self, tmp_path, real_flow, mitm_ctx):
+        flow = real_flow(with_response=False, host="request.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://original.example.com/"
+        flow.metadata[metadata_keys.NETWORK_LOG_TARGET] = {
+            "url": "https://target.example.com:9443/path",
+            "host": "target.example.com",
+            "port": 9443,
+        }
+        flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        [entry] = read_jsonl_entries_after_flush(Path(log_path))
+        assert entry["host"] == "target.example.com"
+        assert entry["port"] == 9443
+        assert entry["url"] == "https://target.example.com:9443/path"
+
+    def test_response_log_includes_firewall_auth_metadata(self, tmp_path, real_flow, mitm_ctx):
+        flow = real_flow(with_response=False, host="api.example.com", path="/items")
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata.update(
+            {
+                metadata_keys.VM_RUN_ID: "run-abc-123",
+                metadata_keys.VM_NETWORK_LOG_PATH: log_path,
+                metadata_keys.ORIGINAL_URL: "https://api.example.com/items",
+                metadata_keys.FIREWALL_ACTION: "ALLOW",
+                metadata_keys.FIREWALL_BASE: "https://api.example.com",
+                metadata_keys.FIREWALL_NAME: "model-provider:example",
+                metadata_keys.FIREWALL_PERMISSION: "read",
+                metadata_keys.FIREWALL_RULE_MATCH: "GET /items",
+                metadata_keys.FIREWALL_BILLABLE: True,
+                metadata_keys.FIREWALL_PARAMS: {"owner": "vm0-ai", "repo": "vm0"},
+                metadata_keys.AUTH_RESOLVED_SECRETS: ["GITHUB_TOKEN"],
+                metadata_keys.AUTH_REFRESHED_CONNECTORS: ["github"],
+                metadata_keys.AUTH_REFRESHED_SECRETS: ["GITHUB_TOKEN"],
+                metadata_keys.AUTH_CACHE_HIT: False,
+                metadata_keys.AUTH_URL_REWRITE: True,
+            }
+        )
+        flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        [entry] = read_jsonl_entries_after_flush(Path(log_path))
+        assert entry["firewall_base"] == "https://api.example.com"
+        assert entry["firewall_name"] == "model-provider:example"
+        assert entry["firewall_permission"] == "read"
+        assert entry["firewall_rule_match"] == "GET /items"
+        assert entry["firewall_billable"] is True
+        assert entry["firewall_params"] == {"owner": "vm0-ai", "repo": "vm0"}
+        assert entry["auth_resolved_secrets"] == ["GITHUB_TOKEN"]
+        assert entry["auth_refreshed_connectors"] == ["github"]
+        assert entry["auth_refreshed_secrets"] == ["GITHUB_TOKEN"]
+        assert entry["auth_cache_hit"] is False
+        assert entry["auth_url_rewrite"] is True
+
+    @pytest.mark.parametrize(
+        ("raw_url", "expected_url"),
+        [
+            (
+                "https://target.example.com:9443/path?access_token=secret#fragment",
+                "https://target.example.com:9443/path",
+            ),
+            (
+                "https://[invalid.example.com/path?access_token=secret#fragment",
+                "https://[invalid.example.com/path",
+            ),
+            (
+                "https://user:pass@[invalid.example.com/path?access_token=secret#fragment",
+                "https://[invalid.example.com/path",
+            ),
+            (
+                "https://user:pass@target.example.com:9443/path?access_token=secret#fragment",
+                "https://target.example.com:9443/path",
+            ),
+        ],
+    )
+    def test_network_log_target_url_strips_query_and_fragment(
+        self, tmp_path, real_flow, mitm_ctx, raw_url, expected_url
+    ):
+        flow = real_flow(with_response=False, host="request.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
+        flow.metadata[metadata_keys.NETWORK_LOG_TARGET] = {
+            "url": raw_url,
+            "host": "target.example.com",
+            "port": 9443,
+        }
+        flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        [entry] = read_jsonl_entries_after_flush(Path(log_path))
+        assert entry["host"] == "target.example.com"
+        assert entry["port"] == 9443
+        assert entry["url"] == expected_url
+        assert flow.metadata[metadata_keys.ORIGINAL_URL] == raw_url
+        assert flow.metadata[metadata_keys.NETWORK_LOG_TARGET]["url"] == raw_url
+
+    def test_logs_legacy_target_when_original_url_port_is_invalid(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = real_flow(with_response=False, host="fallback.example.com", port=9443)
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = (
+            "https://invalid.example.com:bad/path?secret=value#frag"
+        )
+        flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        [entry] = read_jsonl_entries_after_flush(Path(log_path))
+        assert entry["host"] == "fallback.example.com"
+        assert entry["port"] == 9443
+        assert entry["url"] == "https://invalid.example.com:bad/path"
+
+    def test_response_size_tracks_streamed_bytes(self, tmp_path, real_flow, mitm_ctx):
+        """response_size should use cumulative streamed bytes."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-length": "999", "content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(b"x" * 40)
+        response_stream(flow)(b"y" * 60)
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(Path(log_path))[0]
+        assert entry["response_size"] == 100
+
+    def test_response_size_tracks_streamed_bytes_when_buffer_truncated(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """response_size should ignore Content-Length when stream metadata exists."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+        body = b"x" * (STREAM_BUFFER_LIMIT + 4096)
+
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-length": "12", "content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(body[:123])
+        response_stream(flow)(body[123:])
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(Path(log_path))[0]
+        assert entry["response_size"] == len(body)
+
+    def test_request_size_tracks_streamed_bytes_and_captures_stream_body(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = real_flow(
+            with_response=False,
+            host="api.example.com",
+            method="POST",
+            request_body=b"should-be-ignored",
+            request_content_type="text/plain",
+        )
+        log_path = str(tmp_path / "network.jsonl")
+        body = b"x" * (STREAM_BUFFER_LIMIT + 17)
+
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+        flow.metadata[metadata_keys.CAPTURE_BODY] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-length": "0", "content-type": "application/json"}),
+        )
+
+        request_streaming.configure_request_stream(flow)
+        stream = flow.request.stream
+        assert callable(stream)
+        assert stream(body[:123]) == body[:123]
+        assert stream(body[123:]) == body[123:]
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(Path(log_path))[0]
+        assert entry["request_size"] == len(body)
+        assert entry["request_body"] == "x" * STREAM_BUFFER_LIMIT
+        assert entry["request_body_encoding"] == "utf-8"
+        assert entry["request_body_truncated"] is True
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+        assert flow.request.stream is False
+
+    async def test_firewalled_streamed_request_logs_size_and_capture_body(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_github_firewall_registry(
+            tmp_path,
+            vm_fields={"captureNetworkBodies": True},
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            method="POST",
+            path="/repos/octocat/hello",
+            request_headers=headers(
+                ("Host", "api.github.com"),
+                ("Content-Type", "text/plain"),
+                ("Content-Length", str(STREAM_BUFFER_LIMIT + 17)),
+            ),
+        )
+        body = b"x" * (STREAM_BUFFER_LIMIT + 17)
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+        ):
+            requestheaders_result = mitm_addon.requestheaders(flow)
+            await await_requestheaders_result(requestheaders_result)
+            stream = flow.request.stream
+            assert callable(stream)
+            assert stream(body[:123]) == body[:123]
+            assert stream(body[123:]) == body[123:]
+            flow.response = tutils.tresp(
+                status_code=200,
+                headers=header_map({"content-length": "0", "content-type": "application/json"}),
+            )
+            mitm_addon.response(flow)
+
+        auth_fetch.assert_awaited_once()
+        entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+        assert entry["request_size"] == len(body)
+        assert entry["request_body"] == "x" * STREAM_BUFFER_LIMIT
+        assert entry["request_body_encoding"] == "utf-8"
+        assert entry["request_body_truncated"] is True
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+        assert flow.request.stream is False
+
+    async def test_firewalled_partial_streamed_request_marks_capture_truncated(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_github_firewall_registry(
+            tmp_path,
+            vm_fields={"captureNetworkBodies": True},
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            method="POST",
+            path="/repos/octocat/hello",
+            request_headers=headers(
+                ("Host", "api.github.com"),
+                ("Content-Type", "application/json"),
+                ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+            ),
+        )
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(headers={"Authorization": "Bearer resolved"}),
+        ):
+            requestheaders_result = mitm_addon.requestheaders(flow)
+            await await_requestheaders_result(requestheaders_result)
+            stream = flow.request.stream
+            assert callable(stream)
+            assert stream(b'{"partial":true') == b'{"partial":true'
+            flow.response = tutils.tresp(
+                status_code=200,
+                headers=header_map({"content-length": "0", "content-type": "application/json"}),
+            )
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+        assert entry["request_size"] == len(b'{"partial":true')
+        assert entry["request_body"] == '{"partial":true'
+        assert entry["request_body_encoding"] == "utf-8"
+        assert entry["request_body_truncated"] is True
+
+    async def test_firewalled_empty_incomplete_streamed_request_marks_capture_truncated(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_github_firewall_registry(
+            tmp_path,
+            vm_fields={"captureNetworkBodies": True},
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            method="POST",
+            path="/repos/octocat/hello",
+            request_headers=headers(
+                ("Host", "api.github.com"),
+                ("Content-Type", "application/json"),
+                ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+            ),
+        )
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(headers={"Authorization": "Bearer resolved"}),
+        ):
+            requestheaders_result = mitm_addon.requestheaders(flow)
+            await await_requestheaders_result(requestheaders_result)
+            assert callable(flow.request.stream)
+            flow.response = tutils.tresp(
+                status_code=200,
+                headers=header_map({"content-length": "0", "content-type": "application/json"}),
+            )
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+        assert entry["request_size"] == 0
+        assert "request_body" not in entry
+        assert "request_body_encoding" not in entry
+        assert entry["request_body_truncated"] is True
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+        assert flow.request.stream is False
+
+    async def test_unknown_length_get_without_body_logs_zero_request_size(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="example.com",
+            method="GET",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            mitm_addon.requestheaders(flow)
+            assert callable(flow.request.stream)
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=200,
+                headers=header_map({"content-length": "2", "content-type": "text/plain"}),
+                content=b"ok",
+            )
+            mitm_addon.response(flow)
+
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["request_size"] == 0
+        assert "request_body" not in entry
+        assert "request_body_encoding" not in entry
+        assert "request_body_truncated" not in entry
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+        assert flow.request.stream is False
+
+    async def test_early_response_makes_late_request_hook_noop(self, tmp_path, real_flow, mitm_ctx):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.vm0.ai",
+            method="POST",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            mitm_addon.requestheaders(flow)
+            assert mitm_addon._REQUEST_CLASSIFICATION in flow.metadata
+            stream = flow.request.stream
+            assert callable(stream)
+            assert stream(b"partial request") == b"partial request"
+            flow.response = tutils.tresp(
+                status_code=200,
+                headers=header_map({"content-length": "2", "content-type": "text/plain"}),
+                content=b"ok",
+            )
+            mitm_addon.response(flow)
+            assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+            reg_path.write_text("{ broken registry")
+            await mitm_addon.request(flow)
+
+        assert flow.response.status_code == 200
+        assert flow.response.content == b"ok"
+        assert metadata_keys.FIREWALL_ERROR not in flow.metadata
+        assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+
+    @pytest.mark.parametrize(
+        ("content_length", "expected_size"),
+        [
+            pytest.param("50000", 50000, id="plain"),
+            pytest.param(" 50000\t", 50000, id="optional-whitespace"),
+            pytest.param("10, 10", 10, id="joined-consistent"),
+            pytest.param("00042, 42", 42, id="joined-leading-zero-consistent"),
+            pytest.param("0" * 32 + "42", 42, id="leading-zero-safe-integer"),
+        ],
+    )
+    def test_response_size_uses_content_length_without_stream_state(
+        self, tmp_path, real_flow, mitm_ctx, content_length, expected_size
+    ):
+        """response_size should fall back to Content-Length without stream metadata."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-length": content_length})
+        )
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(Path(log_path))[0]
+        assert entry["response_size"] == expected_size
+
+    def test_response_size_accepts_max_safe_content_length(self, tmp_path, real_flow, mitm_ctx):
+        """response_size should accept the largest exactly representable JavaScript integer."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-length": "9007199254740991"})
+        )
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(Path(log_path))[0]
+        assert entry["response_size"] == 9007199254740991
+
+    def test_response_size_is_zero_without_stream_state_or_content_length(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """response_size should be 0 when no streamed size or Content-Length exists."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-type": "application/json"})
+        )
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(Path(log_path))[0]
+        assert entry["response_size"] == 0
+
+    @pytest.mark.parametrize(
+        "content_length",
+        [
+            pytest.param("", id="empty"),
+            pytest.param(" ", id="space"),
+            pytest.param("\t", id="tab"),
+            pytest.param("not-an-int", id="malformed"),
+            pytest.param("-1", id="negative"),
+            pytest.param("+1", id="signed"),
+            pytest.param("1.5", id="fractional"),
+            pytest.param("1e3", id="exponential"),
+            pytest.param("1, 2", id="joined-conflicting"),
+            pytest.param("1,", id="joined-trailing-empty"),
+            pytest.param(",1", id="joined-leading-empty"),
+            pytest.param("10,,10", id="joined-empty-part"),
+            pytest.param("10, abc", id="joined-invalid"),
+            pytest.param("\u0661\u0662", id="unicode-digits"),
+            pytest.param("9007199254740992", id="above-max-safe-integer"),
+            pytest.param("0" * 32 + str(1 << 53), id="leading-zero-above-max-safe-integer"),
+            pytest.param("1" * 257, id="too-many-safe-digits"),
+            pytest.param("9" * 4301, id="too-many-digits"),
+        ],
+    )
+    def test_response_size_is_zero_for_invalid_content_length(
+        self, tmp_path, real_flow, mitm_ctx, content_length
+    ):
+        """response_size should tolerate invalid Content-Length without stream metadata."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-length": content_length})
+        )
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(Path(log_path))[0]
+        assert entry["response_size"] == 0
+
+    def test_response_size_accepts_matching_repeated_content_length(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """Repeated matching Content-Length values should keep the advertised size."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers([(b"content-length", b"50000"), (b"content-length", b"50000")]),
+        )
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(Path(log_path))[0]
+        assert entry["response_size"] == 50000
+
+    def test_response_size_rejects_conflicting_repeated_content_length(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """Repeated conflicting Content-Length values should not be logged as a size."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers([(b"content-length", b"50000"), (b"content-length", b"50001")]),
+        )
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(Path(log_path))[0]
+        assert entry["response_size"] == 0
+
+    def test_response_size_keeps_zero_streamed_bytes(self, tmp_path, real_flow, mitm_ctx):
+        """response_size should not treat a streamed byte count of 0 as missing."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-length": "50000", "content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(Path(log_path))[0]
+        assert entry["response_size"] == 0
+
+    def test_response_size_tracks_streamed_bytes_when_buffer_truncated_without_length(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """response_size should not become 0 for chunked large streamed responses."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+        body = b"x" * (STREAM_BUFFER_LIMIT + 4096)
+
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(body[:123])
+        response_stream(flow)(body[123:])
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(Path(log_path))[0]
+        assert entry["response_size"] == len(body)
+
+    def test_401_firewall_cache_invalidation(self, real_flow, mitm_ctx, headers):
+        """401 response with firewall_base pops the cache entry and marks force-refresh (#9860)."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-1"
+
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
+        flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-1:0"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
+
+        flow.response = tutils.tresp(status_code=401, headers=http.Headers())
+
+        # Pre-populate firewall header cache with the request auth identity key.
+        cache_key = auth_cache_key(run_id="run-conn-1", api_id="run-conn-1:0")
+        flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
+        set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        # Cache entry should have been removed
+        assert cached_headers(cache_key) is None
+        # Force-refresh marker must be set so the next /firewall/auth fetch
+        # refreshes the token regardless of DB tokenExpiresAt (#9860).
+        assert force_refresh_pending(cache_key)
+
+    def test_invalid_content_length_without_network_log_does_not_block_401_cache_invalidation(
+        self, real_flow, mitm_ctx
+    ):
+        """Malformed log-only response size metadata must not block 401 auth recovery."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-invalid-length"
+
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
+        flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-invalid-length:0"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
+
+        flow.response = tutils.tresp(
+            status_code=401,
+            headers=header_map({"content-length": "not-an-int"}),
+        )
+
+        cache_key = auth_cache_key(
+            run_id="run-conn-invalid-length",
+            api_id="run-conn-invalid-length:0",
+        )
+        flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
+        set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert cached_headers(cache_key) is None
+        assert force_refresh_pending(cache_key)
+
+    def test_invalid_content_length_with_network_log_does_not_block_401_cache_invalidation(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """Malformed network-log response size metadata must not block 401 auth recovery."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-invalid-length-log"
+
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
+        flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-invalid-length-log:0"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
+
+        flow.response = tutils.tresp(
+            status_code=401,
+            headers=header_map({"content-length": "not-an-int"}),
+        )
+
+        cache_key = auth_cache_key(
+            run_id="run-conn-invalid-length-log",
+            api_id="run-conn-invalid-length-log:0",
+        )
+        flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
+        set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(Path(log_path))[0]
+        assert entry["response_size"] == 0
+        assert cached_headers(cache_key) is None
+        assert force_refresh_pending(cache_key)
+
+    def test_401_without_existing_state_marks_force_refresh(self, real_flow, mitm_ctx, headers):
+        """401 should request a forced refresh even if no cache entry exists yet."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-new"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
+        flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-new:0"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
+        flow.response = tutils.tresp(status_code=401, headers=http.Headers())
+
+        cache_key = auth_cache_key(run_id="run-conn-new", api_id="run-conn-new:0")
+        flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
+        assert not has_auth_state(cache_key)
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert cached_headers(cache_key) is None
+        assert force_refresh_pending(cache_key)
+
+    def test_401_within_cooldown_does_not_re_mark(self, real_flow, mitm_ctx, headers):
+        """A second 401 within the force-refresh cooldown window must NOT
+        re-mark — otherwise a persistent non-token 401 (scope, resource-
+        level reject) would amplify into a loop of OAuth refresh calls and
+        hit the provider's rate limits (#9860)."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-cd"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
+        flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-cd:0"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
+        flow.response = tutils.tresp(status_code=401, headers=http.Headers())
+
+        cache_key = auth_cache_key(run_id="run-conn-cd", api_id="run-conn-cd:0")
+        flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
+        set_cached_headers(cache_key, headers={"Authorization": "Bearer cached-token"})
+        # Simulate: a forced refresh JUST completed a moment ago
+        set_last_force_refresh_monotonic_at(cache_key, time.monotonic())
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        # The stale cached headers must still be cleared even when the
+        # cooldown suppresses another forced refresh marker.
+        assert cached_headers(cache_key) is None
+        # Marker was suppressed by the cooldown
+        assert not force_refresh_pending(cache_key)
+
+    def test_401_after_cooldown_re_marks(self, real_flow, mitm_ctx, headers):
+        """Once the cooldown has elapsed, a subsequent 401 re-marks — the
+        rate limit only throttles, it doesn't permanently lock out real
+        token-invalidation recovery (#9860)."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-re"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
+        flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-re:0"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
+        flow.response = tutils.tresp(status_code=401, headers=http.Headers())
+
+        cache_key = auth_cache_key(run_id="run-conn-re", api_id="run-conn-re:0")
+        flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
+        # Simulate: last forced refresh happened well before the cooldown window
+        set_last_force_refresh_monotonic_at(
+            cache_key,
+            time.monotonic() - auth_cache._FORCE_REFRESH_COOLDOWN_SECS - 1,
+        )
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        # Cooldown elapsed → marker re-added
+        assert force_refresh_pending(cache_key)
+
+    def test_401_after_cooldown_re_marks_when_wall_clock_steps_back(
+        self, real_flow, mitm_ctx, headers
+    ):
+        """Cooldown uses monotonic elapsed time, not wall-clock time."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-skew"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
+        flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-skew:0"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
+        flow.response = tutils.tresp(status_code=401, headers=http.Headers())
+
+        cache_key = auth_cache_key(run_id="run-conn-skew", api_id="run-conn-skew:0")
+        flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
+        set_cached_headers(cache_key, headers={"Authorization": "Bearer cached-token"})
+        set_last_force_refresh_monotonic_at(cache_key, 1000.0)
+
+        with (
+            patch.object(auth_cache.time, "monotonic", return_value=1121.0),
+            patch.object(auth_cache.time, "time", return_value=10.0),
+            mitm_ctx(),
+        ):
+            mitm_addon.response(flow)
+
+        assert cached_headers(cache_key) is None
+        assert force_refresh_pending(cache_key)
+
+    def test_401_without_auth_cache_key_does_not_synthesize_state(
+        self, real_flow, mitm_ctx, headers
+    ):
+        """401 invalidation requires the full request auth identity cache key."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-no-key"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
+        flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-no-key:0"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
+        flow.response = tutils.tresp(status_code=401, headers=http.Headers())
+
+        assert auth_cache._auth_state == {}
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert auth_cache._auth_state == {}
+
+    def test_error_status_logs_warning(self, tmp_path, real_flow, headers):
+        """Response with status >= 400 writes to per-job proxy log."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+
+        proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log)
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = (
+            "https://api.example.com/fail?api_key=secret#frag"
+        )
+
+        flow.response = tutils.tresp(status_code=500, headers=http.Headers())
+
+        mitm_addon.response(flow)
+
+        assert jsonl_exists_after_flush(proxy_log)
+        [entry] = read_jsonl_entries_after_flush(proxy_log)
+        assert entry["message"] == "Response 500: https://api.example.com/fail"
+        assert "api_key=secret" not in entry["message"]
+        assert "#frag" not in entry["message"]
+
+    def test_pops_start_time_even_when_run_id_absent(self, real_flow, mitm_ctx):
+        # If a partially initialized flow reaches response() without
+        # vm_run_id, response() must still pop the timing state.
+        flow = real_flow(with_response=False)
+        flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
+
+    def test_response_releases_streaming_state(self, tmp_path, real_flow, mitm_ctx):
+        """The completed response hook must not retain parser/buffer closures."""
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(b'{"model":"claude-sonnet-4-6"}')
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert flow.response.stream is False
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
+        assert "model_json_usage_finish" not in flow.metadata
+
+    def test_response_without_run_id_releases_x_json_streaming_state(self, real_flow):
+        """Even early-returning flows should not retain response parser closures."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "x"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.x.com/2/tweets"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(b'{"data":[{"id":"1"}]}')
+        assert "connector_response_finish" in flow.metadata
+
+        mitm_addon.response(flow)
+
+        assert flow.response.stream is False
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
+
+    def test_response_without_run_id_releases_request_stream_state(self, real_flow):
+        """Even early-returning flows should not retain request stream closures."""
+        flow = real_flow(with_response=False, host="api.example.com", method="POST")
+        request_streaming.configure_request_stream(flow)
+        stream = flow.request.stream
+        assert callable(stream)
+        stream(b"request-prefix")
+
+        mitm_addon.response(flow)
+
+        assert flow.request.stream is False
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+
+    def test_response_does_not_clear_replaced_request_stream_callback(self, real_flow):
+        """Cleanup should not clear a request callback that replaced ours."""
+        flow = real_flow(with_response=False, host="api.example.com", method="POST")
+
+        def external_stream(chunk):
+            return chunk
+
+        request_streaming.configure_request_stream(flow)
+        stream = flow.request.stream
+        assert callable(stream)
+        stream(b"request-prefix")
+        flow.request.stream = external_stream
+
+        mitm_addon.response(flow)
+
+        assert flow.request.stream is external_stream
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+
+    def test_response_without_run_id_releases_sse_streaming_state(self, real_flow):
+        """Early-returning SSE flows should not retain parser closures."""
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
+        flow.metadata[metadata_keys.CLI_AGENT_TYPE] = "codex"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "text/event-stream"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.5","usage":{"output_tokens":7}}}\n'
+        )
+        assert "model_sse_usage_finish" in flow.metadata
+
+        mitm_addon.response(flow)
+
+        assert flow.response.stream is False
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
+        assert "model_sse_usage_finish" not in flow.metadata
+
+    def test_response_does_not_clear_external_stream_callback(self, tmp_path, real_flow, mitm_ctx):
+        """Cleanup should only reset the stream callback installed by this addon."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        def external_stream(chunk):
+            return chunk
+
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+        flow.response = tutils.tresp(status_code=200)
+        flow.response.stream = external_stream
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert flow.response.stream is external_stream
+
+    def test_response_does_not_clear_replaced_stream_callback(self, tmp_path, real_flow, mitm_ctx):
+        """Cleanup should not clear a callback that replaced ours after responseheaders."""
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+
+        def external_stream(chunk):
+            return chunk
+
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        vm0_stream = response_stream(flow)
+        vm0_stream(b'{"model":"claude-sonnet-4-6"}')
+        flow.response.stream = external_stream
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert flow.response.stream is external_stream
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert "model_json_usage_finish" not in flow.metadata

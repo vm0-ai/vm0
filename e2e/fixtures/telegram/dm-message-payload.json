@@ -1,0 +1,20 @@
+{
+  "update_id": 880001,
+  "message": {
+    "message_id": "{{MESSAGE_ID}}",
+    "from": {
+      "id": "{{USER_ID}}",
+      "is_bot": false,
+      "first_name": "{{FIRST_NAME}}",
+      "username": "e2e_user"
+    },
+    "chat": {
+      "id": "{{CHAT_ID}}",
+      "first_name": "{{FIRST_NAME}}",
+      "username": "e2e_user",
+      "type": "private"
+    },
+    "date": 1710000000,
+    "text": "hello from telegram e2e"
+  }
+}

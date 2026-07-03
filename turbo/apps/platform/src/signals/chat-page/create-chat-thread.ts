@@ -1,0 +1,3567 @@
+import {
+  command,
+  computed,
+  state,
+  type Command,
+  type Computed,
+  type State,
+} from "ccstate";
+import { animationFrame, delay } from "signal-timers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { IN_VITEST } from "../../env.ts";
+import {
+  onRef,
+  onRejection,
+  resetSignalScope,
+  resetSignal,
+  setLoop,
+  withCleanup,
+} from "../utils.ts";
+import { setAblyLoop$ } from "../realtime.ts";
+import { reloadHeaderAutomationMenu$ } from "./header-automation-menu.ts";
+import {
+  createScrollSignals,
+  type PrependScrollCompensationToken,
+} from "../auto-scroll.ts";
+import {
+  createDraftSignals,
+  createRestoredAttachment,
+  type DraftSignals,
+} from "../zero-page/chat-draft.ts";
+import {
+  collectSuccessfulAttachmentInfos,
+  isVisualAttachment,
+  prepareUserMessageFromDraft$,
+  shouldExcludeVisualAttachmentsForModel,
+} from "./resolve-draft-attachments.ts";
+import {
+  appendOptimisticChatMessage$,
+  createOptimisticChatMessagesForThread,
+  reconcileOptimisticChatMessages$,
+  type OptimisticChatMessageEntry,
+} from "./optimistic-chat-messages.ts";
+import { reloadChatThreads$, type ChatThread } from "../agent-chat.ts";
+import {
+  chatMessagesContract,
+  chatThreadArtifactsContract,
+  type AttachFile,
+  type GenerationTemplateRequest,
+  type ChatThreadArtifactRun,
+  type PagedChatMessage,
+} from "@vm0/api-contracts/contracts/chat-threads";
+
+import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
+import {
+  modelSelectionRequestFromSelection,
+  runOptionsFromModelProviderSelection,
+} from "./model-selection-request.ts";
+import { accept } from "../../lib/accept.ts";
+import { nowDate } from "../../lib/time.ts";
+import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
+import { zeroClient$ } from "../api-client.ts";
+import { agentById } from "../agent.ts";
+import { chatMessageOrderSequence } from "../chat-message-order.ts";
+import { orgModelPolicies$ } from "../external/org-model-policies.ts";
+import { userModelPreference$ } from "../external/user-model-preference.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
+import {
+  MODEL_FIRST_SELECTION_PROVIDER_ID,
+  resolveModelFirstUserDefaultSelection,
+} from "../zero-page/model-default-selection.ts";
+import {
+  writeChatMessageToClipboard,
+  type ChatClipboardPayload,
+} from "../zero-page/clipboard.ts";
+import type {
+  EnrichedChatMessage,
+  GroupedChatMessageGroup,
+} from "./chat-message.ts";
+import { logger } from "../log.ts";
+import type {
+  ChatThreadDataSource,
+  InitialPage,
+} from "./chat-thread-data-source.ts";
+import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
+import {
+  enrichBlocksWithTextPreviews,
+  parseBodyRenderBlocks,
+} from "./parse-body-blocks.ts";
+import { getChatThreadTitleParts } from "./chat-thread-title.ts";
+import {
+  previousRunGroupVisualWindowStartIndex,
+  runGroupVisualWindowStartIndex,
+} from "./run-group-folding.ts";
+import { clerk$ } from "../auth.ts";
+import {
+  patchThreadMeta$,
+  readThreadMeta$,
+} from "../external/idb-thread-meta-store.ts";
+import { reloadBillingStatus$ } from "../zero-page/billing.ts";
+import { subscribeComputerUseHostsChanged$ } from "../zero-page/computer-use-hosts.ts";
+import type {
+  ActiveGoalState,
+  ChatThreadSignals,
+  LoadHistoryResult,
+  SendMessageOptions,
+} from "./chat-thread-signals.ts";
+
+export type { DraftSignals } from "../zero-page/chat-draft.ts";
+export type {
+  ActiveGoalState,
+  ChatThreadSignals,
+  LoadHistoryResult,
+  SendMessageOptions,
+} from "./chat-thread-signals.ts";
+
+const L = logger("ChatThread");
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const QUEUED_RUN_MARKER_EVENT_ID = "queue:queued";
+const SILENT_HISTORY_BACKFILL_INTERVAL_MS = 100;
+const GROUPED_CHAT_MESSAGES_CACHE_LIMIT = 20;
+
+function isRecallControlMessage(msg: PagedChatMessage): boolean {
+  return (
+    ((msg.role === "user" && msg.runId === undefined && msg.content === null) ||
+      (msg.role === "assistant" && msg.content === null)) &&
+    msg.revokesMessageId !== undefined
+  );
+}
+
+function isQueueMarkerMessage(msg: PagedChatMessage): boolean {
+  return (
+    msg.role === "assistant" &&
+    msg.runEventId === QUEUED_RUN_MARKER_EVENT_ID &&
+    msg.runId !== undefined
+  );
+}
+
+function isGoalMarkerMessage(msg: PagedChatMessage): boolean {
+  return msg.role === "assistant" && msg.goalEvent !== undefined;
+}
+
+/**
+ * Fold the thread's message stream into its current goal, surfaced above the
+ * composer. Goal markers are chronological and last-write-wins: active shows
+ * the cached objective brief; paused, blocked, complete, and cleared hide it.
+ */
+function foldActiveGoal(
+  messages: readonly PagedChatMessage[],
+): ActiveGoalState | null {
+  let objective: string | null = null;
+  for (const message of messages) {
+    const goalEvent =
+      message.role === "assistant" ? message.goalEvent : undefined;
+    if (!goalEvent) {
+      continue;
+    }
+    if (goalEvent.type === "cleared") {
+      objective = null;
+      continue;
+    }
+    if (goalEvent.status === "active") {
+      objective = goalEvent.objectiveBrief;
+      continue;
+    }
+    objective = null;
+  }
+  const trimmed = objective?.trim();
+  if (trimmed) {
+    return { objective: trimmed };
+  }
+  return null;
+}
+
+function isUsageMessage(msg: PagedChatMessage): msg is Extract<
+  PagedChatMessage,
+  { role: "assistant" }
+> & {
+  usage: NonNullable<PagedChatMessage["usage"]>;
+} {
+  return msg.role === "assistant" && msg.usage !== undefined;
+}
+
+function isInterruptControlMessage(msg: PagedChatMessage): boolean {
+  return (
+    msg.role === "user" &&
+    msg.runId === undefined &&
+    msg.interruptsRunId !== undefined
+  );
+}
+
+function isCancelledAssistantMessage(msg: PagedChatMessage): boolean {
+  return (
+    msg.role === "assistant" &&
+    msg.runId !== undefined &&
+    (msg.runLifecycleEvent === "cancelled" ||
+      msg.error?.trim().toLowerCase() === "run cancelled")
+  );
+}
+
+function completedRunIdsFromMessages(
+  messages: readonly PagedChatMessage[],
+): string[] {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    if (
+      message.role === "assistant" &&
+      message.runId !== undefined &&
+      message.runLifecycleEvent === "completed"
+    ) {
+      ids.add(message.runId);
+    }
+  }
+  return Array.from(ids);
+}
+
+function createInterruptedAssistantMessage(
+  message: PagedChatMessage,
+  runId: string,
+): EnrichedChatMessage {
+  const { blocks } = parseBodyRenderBlocks("Run cancelled");
+  return {
+    ...message,
+    role: "assistant" as const,
+    content: "Run cancelled",
+    runId,
+    interruptsRunId: runId,
+    error: "Run cancelled",
+    runLifecycleEvent: "cancelled",
+    blocks: enrichBlocksWithTextPreviews(blocks),
+    isQueued: false,
+    isOptimisticRun: false,
+  };
+}
+
+function isInterruptedAssistantCancellation(
+  message: PagedChatMessage,
+  interruptedRunIds: Set<string>,
+): boolean {
+  const runId = message.runId;
+  return (
+    runId !== undefined &&
+    isCancelledAssistantMessage(message) &&
+    interruptedRunIds.has(runId)
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Thinking-indicator constants and helpers
+// ---------------------------------------------------------------------------
+
+const BLOCK_COLORS = [
+  "#e8a0b4",
+  "#c4705a",
+  "#f5b88a",
+  "#a8b560",
+  "#6bb5a0",
+  "#7baed4",
+  "#b09eda",
+  "#d4a87b",
+  "#e07878",
+  "#82c4c2",
+] as const;
+
+function shuffleBlockColors(): [string, string, string] {
+  const shuffled = [...BLOCK_COLORS].sort(() => {
+    return Math.random() - 0.5;
+  });
+  return [shuffled[0]!, shuffled[1]!, shuffled[2]!];
+}
+
+const THINKING_PHRASES = [
+  "Brewing...",
+  "Piecing together...",
+  "Spinning up...",
+  "On it...",
+  "Assembling...",
+  "Sketching out...",
+  "Mapping it...",
+  "Wiring up...",
+  "Shaping...",
+  "Tuning in...",
+] as const;
+
+const PHRASE_INTERVAL_MS = 3500;
+
+const DONE_PHRASES = [
+  (t: string) => {
+    return `Wrapped up at ${t}`;
+  },
+  (t: string) => {
+    return `All done — ${t}`;
+  },
+  (t: string) => {
+    return `Delivered at ${t}`;
+  },
+  (t: string) => {
+    return `Finished at ${t}, at your service`;
+  },
+  (t: string) => {
+    return `That was a wrap — ${t}`;
+  },
+  (t: string) => {
+    return `Mission complete, ${t}`;
+  },
+  (t: string) => {
+    return `Signed off at ${t}`;
+  },
+  (t: string) => {
+    return `Done and dusted — ${t}`;
+  },
+] as const;
+
+function formatDonePhrase(lastMsg: PagedChatMessage | undefined): string {
+  const time = lastMsg
+    ? new Date(lastMsg.createdAt).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "just now";
+  const pick = DONE_PHRASES[Math.floor(Math.random() * DONE_PHRASES.length)]!;
+  return pick(time);
+}
+
+function revokedMessageIdsFromRawMessages(
+  raw: readonly ChatMessageProjectionEntry[],
+): Set<string> {
+  return new Set(
+    raw.flatMap((entry) => {
+      return entry.message.revokesMessageId
+        ? [entry.message.revokesMessageId]
+        : [];
+    }),
+  );
+}
+
+function isRawOptimisticRunMessage(entry: ChatMessageProjectionEntry): boolean {
+  const { message } = entry;
+  return (
+    message.role === "user" &&
+    message.runId === undefined &&
+    entry.optimisticUserMessageAssociation === "run"
+  );
+}
+
+function terminatedRunIdsFromRawMessages(
+  raw: readonly ChatMessageProjectionEntry[],
+): Set<string> {
+  const terminatedRunIds = new Set<string>();
+  for (const { message } of raw) {
+    if (message.interruptsRunId !== undefined) {
+      terminatedRunIds.add(message.interruptsRunId);
+    }
+    if (
+      message.role === "assistant" &&
+      message.runId !== undefined &&
+      message.runLifecycleEvent !== undefined
+    ) {
+      terminatedRunIds.add(message.runId);
+    }
+  }
+  return terminatedRunIds;
+}
+
+type RunIndicatorState = "running" | "queued" | null;
+
+type AssistantPagedChatMessage = Extract<
+  PagedChatMessage,
+  { role: "assistant" }
+>;
+
+function runActivityIndicatorState(
+  terminatedRunIds: ReadonlySet<string>,
+  runId: string,
+): RunIndicatorState | undefined {
+  if (terminatedRunIds.has(runId)) {
+    return undefined;
+  }
+  return "running";
+}
+
+function assistantRunIndicatorState(
+  terminatedRunIds: ReadonlySet<string>,
+  message: AssistantPagedChatMessage,
+): RunIndicatorState | undefined {
+  const runId = message.runId;
+  if (isQueueMarkerMessage(message)) {
+    if (runId !== undefined && terminatedRunIds.has(runId)) {
+      return undefined;
+    }
+    return "queued";
+  }
+  if (runId !== undefined && message.runLifecycleEvent !== undefined) {
+    return null;
+  }
+  if (runId === undefined) {
+    return undefined;
+  }
+  return runActivityIndicatorState(terminatedRunIds, runId);
+}
+
+function nonAssistantRunIndicatorState(
+  terminatedRunIds: ReadonlySet<string>,
+  entry: ChatMessageProjectionEntry,
+): RunIndicatorState | undefined {
+  if (isRawOptimisticRunMessage(entry)) {
+    return "running";
+  }
+  const { runId } = entry.message;
+  return runId === undefined
+    ? undefined
+    : runActivityIndicatorState(terminatedRunIds, runId);
+}
+
+function deriveRunIndicatorStateFromRawMessages(
+  raw: readonly ChatMessageProjectionEntry[],
+): RunIndicatorState {
+  const revokedMessageIds = revokedMessageIdsFromRawMessages(raw);
+  const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
+
+  for (let index = raw.length - 1; index >= 0; index--) {
+    const entry = raw[index]!;
+    const { message } = entry;
+    if (revokedMessageIds.has(message.id)) {
+      continue;
+    }
+    if (isUsageMessage(message) || isGoalMarkerMessage(message)) {
+      continue;
+    }
+    if (message.role === "assistant") {
+      const state = assistantRunIndicatorState(terminatedRunIds, message);
+      if (state !== undefined) {
+        return state;
+      }
+      continue;
+    }
+    const state = nonAssistantRunIndicatorState(terminatedRunIds, entry);
+    if (state !== undefined) {
+      return state;
+    }
+  }
+  return null;
+}
+
+function liveRunIdsFromRawMessages(
+  raw: readonly ChatMessageProjectionEntry[],
+): string[] {
+  const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
+  const revokedMessageIds = revokedMessageIdsFromRawMessages(raw);
+  const liveRunIds: string[] = [];
+  const seenRunIds = new Set<string>();
+  for (const { message } of raw) {
+    const runId = message.runId;
+    if (
+      runId !== undefined &&
+      !revokedMessageIds.has(message.id) &&
+      !terminatedRunIds.has(runId) &&
+      !isQueueMarkerMessage(message) &&
+      !isUsageMessage(message) &&
+      !isGoalMarkerMessage(message) &&
+      !seenRunIds.has(runId)
+    ) {
+      liveRunIds.push(runId);
+      seenRunIds.add(runId);
+    }
+  }
+  return liveRunIds;
+}
+
+function cancellableRunIdsFromRawMessages(
+  raw: readonly ChatMessageProjectionEntry[],
+): string[] {
+  return liveRunIdsFromRawMessages(raw);
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: thread data fetching
+// ---------------------------------------------------------------------------
+
+// The data source owns both `getThread$` (the resolved thread) and
+// `reloadThread$` (the invalidation lever). Local mode never reloads;
+// remote mode bumps an internal counter on its `getThread$` computed.
+function createThreadData(dataSource: ChatThreadDataSource) {
+  return {
+    threadData$: dataSource.getThread$,
+    reloadThread$: dataSource.reloadThread$,
+  };
+}
+
+function createThreadTitleParts(
+  threadData$: Computed<Promise<ChatThread | null>>,
+) {
+  const threadTitleParts$ = computed(async (get) => {
+    const threadData = await get(threadData$);
+    return getChatThreadTitleParts(threadData?.title);
+  });
+  const threadTitleEmoji$ = computed(async (get) => {
+    return (await get(threadTitleParts$)).emoji;
+  });
+  const threadTitleText$ = computed(async (get) => {
+    return (await get(threadTitleParts$)).text;
+  });
+  return { threadTitleEmoji$, threadTitleText$ };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: composer model override
+// ---------------------------------------------------------------------------
+
+function createModelSelection(
+  threadId: string,
+  threadData$: Computed<Promise<ChatThread | null>>,
+  dataSource: ChatThreadDataSource,
+) {
+  // Discriminated union so we can tell "user hasn't picked anything yet" from
+  // "user explicitly picked inherit (null)". Without the flag, clearing the
+  // selection would be indistinguishable from the initial unset state and we'd
+  // fall back to server data forever.
+  const internalUserOverride$ = state<
+    { kind: "unset" } | { kind: "set"; value: ModelProviderSelection | null }
+  >({ kind: "unset" });
+
+  const modelSelection$ = computed(
+    async (get): Promise<ModelProviderSelection | null> => {
+      const user = get(internalUserOverride$);
+      if (user.kind === "set") {
+        return user.value;
+      }
+      const thread = await get(threadData$);
+      if (thread?.selectedModel) {
+        return {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel: thread.selectedModel,
+        };
+      }
+      // Unstarted model-first threads inherit the current user preference;
+      // started threads carry selectedModel on the thread row.
+      return null;
+    },
+  );
+
+  const setModelSelection$ = command(
+    async (
+      { set },
+      value: ModelProviderSelection | null,
+      signal: AbortSignal,
+    ) => {
+      set(internalUserOverride$, { kind: "set", value });
+
+      await set(
+        dataSource.patchModelSelection$,
+        { threadId, modelSelection: value },
+        signal,
+      );
+      signal.throwIfAborted();
+      set(dataSource.reloadThread$);
+      set(reloadChatThreads$);
+    },
+  );
+
+  return {
+    modelSelection$,
+    setModelSelection$,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: composer Computer Use host selection
+// ---------------------------------------------------------------------------
+
+function createComputerUseHostSelection(
+  threadId: string,
+  threadData$: Computed<Promise<ChatThread | null>>,
+  dataSource: ChatThreadDataSource,
+) {
+  const internalUserOverride$ = state<
+    { kind: "unset" } | { kind: "set"; value: string | null; dirty: boolean }
+  >({ kind: "unset" });
+
+  const computerUseHostId$ = computed(async (get): Promise<string | null> => {
+    const user = get(internalUserOverride$);
+    if (user.kind === "set") {
+      return user.value;
+    }
+    const thread = await get(threadData$);
+    return thread?.computerUseHostId ?? null;
+  });
+
+  const computerUseHostIdExplicit$ = computed((get): boolean => {
+    const user = get(internalUserOverride$);
+    return user.kind === "set" && user.dirty;
+  });
+
+  const setComputerUseHostId$ = command(
+    async ({ set }, computerUseHostId: string | null, signal: AbortSignal) => {
+      set(internalUserOverride$, {
+        kind: "set",
+        value: computerUseHostId,
+        dirty: true,
+      });
+
+      await onRejection(
+        set(
+          dataSource.patchComputerUseHost$,
+          { threadId, computerUseHostId },
+          signal,
+        ),
+        () => {
+          if (!signal.aborted) {
+            set(internalUserOverride$, {
+              kind: "set",
+              value: computerUseHostId,
+              dirty: false,
+            });
+          }
+        },
+      );
+      signal.throwIfAborted();
+      set(internalUserOverride$, {
+        kind: "set",
+        value: computerUseHostId,
+        dirty: false,
+      });
+      set(dataSource.reloadThread$);
+      set(reloadChatThreads$);
+    },
+  );
+
+  const clearComputerUseHostIdOverride$ = command(({ get, set }) => {
+    const user = get(internalUserOverride$);
+    if (user.kind === "set" && user.dirty) {
+      set(internalUserOverride$, { kind: "unset" });
+    }
+  });
+
+  return {
+    computerUseHostId$,
+    computerUseHostIdExplicit$,
+    setComputerUseHostId$,
+    clearComputerUseHostIdOverride$,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: composer file input
+// ---------------------------------------------------------------------------
+
+function createComposerFileInput() {
+  const internal$ = state<HTMLElement | null>(null);
+  const composerFileInput$ = computed((get) => {
+    return get(internal$);
+  });
+  const setComposerFileInput$ = onRef(
+    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener("abort", () => {
+        set(internal$, null);
+      });
+      set(internal$, el);
+    }),
+  );
+  return { composerFileInput$, setComposerFileInput$ };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: agent info
+// ---------------------------------------------------------------------------
+
+function createAgentInfoSignals(
+  threadId: string,
+  threadData$: Computed<Promise<ChatThread | null>>,
+) {
+  // agentId$ is read by avatar and pinned UI on first paint.
+  // Resolving it via threadData$ blocks the avatar render on the
+  // chat-threads/:id round-trip, even though the agentId rarely changes
+  // for a given thread. Consult the IDB cache first; on miss, fall back
+  // to threadData$ and backfill so the next visit hits the cache.
+  const agentId$ = computed(async (get): Promise<string | null> => {
+    const clerk = await get(clerk$);
+    const userId = clerk?.user?.id ?? null;
+    const orgId = clerk?.organization?.id ?? null;
+
+    if (userId !== null && orgId !== null) {
+      const meta = await readThreadMeta$(userId, orgId, threadId);
+      if (meta?.agentId) {
+        return meta.agentId;
+      }
+    }
+    const thread = await get(threadData$);
+    const agentId = thread?.agentId ?? null;
+    if (agentId && userId !== null && orgId !== null) {
+      await patchThreadMeta$(userId, orgId, threadId, { agentId });
+    }
+    return agentId;
+  });
+
+  const agentDisplayName$ = computed(async (get): Promise<string | null> => {
+    const agentId = await get(agentId$);
+    if (!agentId) {
+      return null;
+    }
+    const agent = await get(agentById(agentId));
+    return agent?.displayName ?? null;
+  });
+
+  const defaultModelSelection$ = computed(
+    async (get): Promise<ModelProviderSelection | null> => {
+      const policies = await get(orgModelPolicies$);
+      const userPreference = await get(userModelPreference$);
+      return resolveModelFirstUserDefaultSelection({
+        userPreference,
+        policies,
+      });
+    },
+  );
+
+  const agentPinned$ = computed(async (get): Promise<boolean | null> => {
+    const agentId = await get(agentId$);
+    if (!agentId) {
+      return null;
+    }
+    const ids = await get(pinnedAgentIds$);
+    return ids.includes(agentId);
+  });
+
+  return { agentId$, agentDisplayName$, defaultModelSelection$, agentPinned$ };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: per-thread UI state (timeline expansion, copy)
+// ---------------------------------------------------------------------------
+
+function createThreadUIState() {
+  // Timeline expansion
+  const internalExpandedIds$ = state(new Set<string>());
+
+  const timelineExpandedIds$ = computed((get) => {
+    return get(internalExpandedIds$);
+  });
+
+  const toggleTimelineExpanded$ = command(({ get, set }, messageId: string) => {
+    const current = get(internalExpandedIds$);
+    const next = new Set(current);
+    if (next.has(messageId)) {
+      next.delete(messageId);
+    } else {
+      next.add(messageId);
+    }
+    set(internalExpandedIds$, next);
+  });
+
+  // Copy state with 2s auto-clear
+  const internalCopiedId$ = state<string | null>(null);
+  const internalCopiedTimerId$ = state<number | null>(null);
+
+  const copiedMessageId$ = computed((get) => {
+    return get(internalCopiedId$);
+  });
+
+  const copyMessage$ = command(
+    async (
+      { get, set },
+      messageId: string,
+      payload: ChatClipboardPayload,
+      signal: AbortSignal,
+    ) => {
+      const ok = await writeChatMessageToClipboard(payload);
+      signal.throwIfAborted();
+      if (!ok) {
+        return;
+      }
+      const existingTimerId = get(internalCopiedTimerId$);
+      if (existingTimerId !== null) {
+        window.clearTimeout(existingTimerId);
+      }
+      set(internalCopiedId$, messageId);
+      const timerId = window.setTimeout(() => {
+        set(internalCopiedId$, null);
+        set(internalCopiedTimerId$, null);
+      }, 2000);
+      set(internalCopiedTimerId$, timerId);
+    },
+  );
+
+  return {
+    timelineExpandedIds$,
+    toggleTimelineExpanded$,
+    copiedMessageId$,
+    copyMessage$,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: draft server sync (debounced PATCH)
+// ---------------------------------------------------------------------------
+
+/** Milliseconds to wait before persisting a draft change to the server. */
+const DRAFT_SYNC_DEBOUNCE_MS = 500;
+
+function createDraftSync(
+  threadId: string,
+  draft: DraftSignals,
+  dataSource: ChatThreadDataSource,
+) {
+  // A reset signal is used to abort any in-flight debounced sync when a new
+  // change comes in or when the draft is cleared on send.
+  const draftSyncReset$ = resetSignal();
+
+  const debouncedSyncDraft$ = command(
+    async ({ get, set }, signal: AbortSignal) => {
+      await delay(DRAFT_SYNC_DEBOUNCE_MS, { signal });
+      signal.throwIfAborted();
+
+      const input = get(draft.input$);
+      const content = input.trim() || null;
+      const attachments = get(draft.attachments$);
+
+      const infos = await Promise.allSettled(
+        attachments.map((a) => {
+          return get(a.fileInfo$);
+        }),
+      );
+      signal.throwIfAborted();
+      const persisted = collectSuccessfulAttachmentInfos(
+        attachments,
+        infos,
+      ).map((r) => {
+        return {
+          id: r.info.id,
+          url: r.info.url,
+          filename: r.attachment.filename,
+          contentType: r.attachment.contentType,
+          size: r.attachment.size,
+        };
+      });
+
+      await set(
+        dataSource.patchDraft$,
+        {
+          threadId,
+          content,
+          attachments: persisted.length > 0 ? persisted : null,
+        },
+        signal,
+      );
+    },
+  );
+
+  const queueDraftSync$ = command(async ({ set }, signal: AbortSignal) => {
+    const debouncedSignal = set(draftSyncReset$, signal);
+    await set(debouncedSyncDraft$, debouncedSignal);
+  });
+
+  const cancelDraftSync$ = command(({ set }) => {
+    set(draftSyncReset$);
+  });
+
+  const flushDraftClear$ = command(async ({ set }, signal: AbortSignal) => {
+    set(draftSyncReset$);
+    await set(
+      dataSource.patchDraft$,
+      { threadId, content: null, attachments: null },
+      signal,
+    );
+  });
+
+  return { queueDraftSync$, cancelDraftSync$, flushDraftClear$ };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: paginated chat messages
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge new messages into existing groups.
+ *
+ * Upsert semantics by `id`: if an incoming message's id already exists in
+ * the groups, its fields are replaced in place — this lets an optimistic
+ * user row reconcile with the server-pushed row without React unmounting
+ * and remounting the message (the React key stays the same).
+ */
+function mergeIntoGroups(
+  groups: GroupedChatMessageGroup[],
+  messages: EnrichedChatMessage[],
+): GroupedChatMessageGroup[] {
+  const result = groups.map((g) => {
+    return { ...g, messages: [...g.messages] };
+  });
+
+  const positionById = new Map<string, { groupIdx: number; msgIdx: number }>();
+  for (let gi = 0; gi < result.length; gi++) {
+    const group = result[gi]!;
+    for (let mi = 0; mi < group.messages.length; mi++) {
+      positionById.set(group.messages[mi]!.id, { groupIdx: gi, msgIdx: mi });
+    }
+  }
+
+  for (const msg of messages) {
+    const existing = positionById.get(msg.id);
+    if (existing) {
+      result[existing.groupIdx]!.messages[existing.msgIdx] = msg;
+      continue;
+    }
+
+    const last = result[result.length - 1];
+    if (last && shouldMergeIntoGroup(last, msg)) {
+      last.messages.push(msg);
+      positionById.set(msg.id, {
+        groupIdx: result.length - 1,
+        msgIdx: last.messages.length - 1,
+      });
+    } else {
+      result.push({
+        beginMessageId: msg.id,
+        role: msg.role,
+        messages: [msg],
+      });
+      positionById.set(msg.id, { groupIdx: result.length - 1, msgIdx: 0 });
+    }
+  }
+  return result;
+}
+
+function firstRunIdForGroup(
+  group: GroupedChatMessageGroup,
+): string | undefined {
+  return group.messages.find((message) => {
+    return message.runId !== undefined;
+  })?.runId;
+}
+
+function shouldMergeIntoGroup(
+  group: GroupedChatMessageGroup,
+  msg: EnrichedChatMessage,
+): boolean {
+  if (group.role !== msg.role) {
+    return false;
+  }
+  if (group.role !== "assistant") {
+    return true;
+  }
+
+  const groupRunId = firstRunIdForGroup(group);
+  if (groupRunId === undefined || msg.runId === undefined) {
+    return true;
+  }
+  return groupRunId === msg.runId;
+}
+
+function orderMessagesByRunTurn(
+  messages: readonly EnrichedChatMessage[],
+): EnrichedChatMessage[] {
+  const items: {
+    order: number;
+    messages: EnrichedChatMessage[];
+  }[] = [];
+  const itemByRunId = new Map<string, (typeof items)[number]>();
+
+  for (const message of messages) {
+    const runId = message.runId;
+    if (runId === undefined) {
+      items.push({ order: items.length, messages: [message] });
+      continue;
+    }
+
+    const existing = itemByRunId.get(runId);
+    if (existing) {
+      existing.messages.push(message);
+      continue;
+    }
+
+    const item = { order: items.length, messages: [message] };
+    itemByRunId.set(runId, item);
+    items.push(item);
+  }
+
+  return items
+    .sort((a, b) => {
+      return a.order - b.order;
+    })
+    .flatMap((item) => {
+      return item.messages;
+    });
+}
+
+function groupMessagesForDisplay(
+  messages: EnrichedChatMessage[],
+): GroupedChatMessageGroup[] {
+  const activeMessages: EnrichedChatMessage[] = [];
+  const queuedMessages: EnrichedChatMessage[] = [];
+  const usageByRunId = new Map<
+    string,
+    NonNullable<EnrichedChatMessage["usage"]>
+  >();
+  for (const msg of messages) {
+    if (isUsageMessage(msg)) {
+      if (msg.runId !== undefined) {
+        usageByRunId.set(msg.runId, msg.usage);
+      }
+      continue;
+    }
+    if (msg.role === "user" && msg.isQueued) {
+      queuedMessages.push(msg);
+      continue;
+    }
+    activeMessages.push(msg);
+  }
+
+  const groups = [
+    ...mergeIntoGroups([], orderMessagesByRunTurn(activeMessages)),
+    ...mergeIntoGroups([], queuedMessages),
+  ];
+  return groups.map((group) => {
+    if (group.role !== "assistant") {
+      return group;
+    }
+    const runId = firstRunIdForGroup(group);
+    const usage = runId === undefined ? undefined : usageByRunId.get(runId);
+    return usage === undefined ? group : { ...group, usage };
+  });
+}
+
+interface GroupedChatMessagesCacheEntry {
+  messages: readonly EnrichedChatMessage[];
+  groups: GroupedChatMessageGroup[];
+}
+
+type GroupedChatMessagesCache = ReadonlyMap<
+  string,
+  GroupedChatMessagesCacheEntry
+>;
+
+function groupedChatMessagesCacheKey(
+  messages: readonly EnrichedChatMessage[],
+): string {
+  const firstMessageId = messages[0]?.id ?? "empty";
+  const lastMessageId = messages[messages.length - 1]?.id ?? "empty";
+  return `${firstMessageId}:${lastMessageId}`;
+}
+
+function cachedGroupedChatMessages(
+  cache: GroupedChatMessagesCache,
+  messages: readonly EnrichedChatMessage[],
+): GroupedChatMessageGroup[] | undefined {
+  const entry = cache.get(groupedChatMessagesCacheKey(messages));
+  if (entry?.messages !== messages) {
+    return undefined;
+  }
+  return entry.groups;
+}
+
+function setGroupedChatMessagesCacheEntry(
+  cache: GroupedChatMessagesCache,
+  messages: readonly EnrichedChatMessage[],
+  groups: GroupedChatMessageGroup[],
+): GroupedChatMessagesCache {
+  const key = groupedChatMessagesCacheKey(messages);
+  const current = cache.get(key);
+  if (current?.messages === messages && current.groups === groups) {
+    return cache;
+  }
+
+  const next = new Map(cache);
+  next.delete(key);
+  next.set(key, { messages, groups });
+
+  while (next.size > GROUPED_CHAT_MESSAGES_CACHE_LIMIT) {
+    const oldestKey = next.keys().next().value;
+    if (oldestKey === undefined) {
+      break;
+    }
+    next.delete(oldestKey);
+  }
+
+  return next;
+}
+
+function createGroupedChatMessagesCache(
+  rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
+) {
+  const transcriptMessages$ = createTranscriptMessagesComputed(rawMessages$);
+  const groupedChatMessagesCache$ = state<GroupedChatMessagesCache>(new Map());
+
+  const refreshGroupedChatMessagesCache$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const messages = await get(transcriptMessages$);
+      signal.throwIfAborted();
+
+      const cachedGroups = cachedGroupedChatMessages(
+        get(groupedChatMessagesCache$),
+        messages,
+      );
+      if (cachedGroups !== undefined) {
+        return;
+      }
+
+      const groups = groupMessagesForDisplay(messages);
+      set(groupedChatMessagesCache$, (cache) => {
+        return setGroupedChatMessagesCacheEntry(cache, messages, groups);
+      });
+    },
+  );
+
+  const groupedChatMessages$ = computed(
+    async (get): Promise<GroupedChatMessageGroup[]> => {
+      const messages = await get(transcriptMessages$);
+      const cachedGroups = cachedGroupedChatMessages(
+        get(groupedChatMessagesCache$),
+        messages,
+      );
+      return cachedGroups ?? groupMessagesForDisplay(messages);
+    },
+  );
+
+  return { groupedChatMessages$, refreshGroupedChatMessagesCache$ };
+}
+
+type ServerMessages$ = State<PagedChatMessage[]>;
+type KnownServerMessageIds$ = State<ReadonlySet<string>>;
+
+function compareCursorString(left: string, right: string): number {
+  if (left < right) {
+    return -1;
+  }
+  if (left > right) {
+    return 1;
+  }
+  return 0;
+}
+
+function compareCreatedAt(left: string, right: string): number {
+  if (left === right) {
+    return 0;
+  }
+  const leftTime = Date.parse(left);
+  const rightTime = Date.parse(right);
+  if (Number.isNaN(leftTime) || Number.isNaN(rightTime)) {
+    return compareCursorString(left, right);
+  }
+  return leftTime - rightTime;
+}
+
+function compareServerMessageOrder(
+  left: PagedChatMessage,
+  right: PagedChatMessage,
+): number {
+  const createdAtOrder = compareCreatedAt(left.createdAt, right.createdAt);
+  if (createdAtOrder !== 0) {
+    return createdAtOrder;
+  }
+
+  const leftSequence = chatMessageOrderSequence(left);
+  const rightSequence = chatMessageOrderSequence(right);
+  if (leftSequence !== rightSequence) {
+    return leftSequence - rightSequence;
+  }
+
+  return compareCursorString(left.id, right.id);
+}
+
+function mergeServerMessages(
+  messageSets: readonly (readonly PagedChatMessage[])[],
+): PagedChatMessage[] {
+  const byId = new Map<string, PagedChatMessage>();
+  for (const messages of messageSets) {
+    for (const message of messages) {
+      byId.set(message.id, message);
+    }
+  }
+  return Array.from(byId.values()).sort(compareServerMessageOrder);
+}
+
+function addKnownServerMessageIds(
+  prev: ReadonlySet<string>,
+  messages: readonly PagedChatMessage[],
+): ReadonlySet<string> {
+  if (messages.length === 0) {
+    return prev;
+  }
+  let changed = false;
+  const next = new Set(prev);
+  for (const message of messages) {
+    if (!next.has(message.id)) {
+      next.add(message.id);
+      changed = true;
+    }
+  }
+  return changed ? next : prev;
+}
+
+function createAppendServerMessages(
+  threadId: string,
+  serverMessages$: ServerMessages$,
+  reportedCompletedRunIds$: State<Set<string>>,
+  knownServerMessageIds$: KnownServerMessageIds$,
+) {
+  return command(({ get, set }, msgs: PagedChatMessage[]) => {
+    if (msgs.length === 0) {
+      return;
+    }
+    set(knownServerMessageIds$, (prev) => {
+      return addKnownServerMessageIds(prev, msgs);
+    });
+    const reportedCompletedRunIds = get(reportedCompletedRunIds$);
+    const newlyCompletedRunIds = completedRunIdsFromMessages(msgs).filter(
+      (runId) => {
+        return !reportedCompletedRunIds.has(runId);
+      },
+    );
+    for (const _ of newlyCompletedRunIds) {
+      captureTaskCompletedSuccessfully();
+    }
+    if (newlyCompletedRunIds.length > 0) {
+      set(reportedCompletedRunIds$, (prev) => {
+        const next = new Set(prev);
+        for (const runId of newlyCompletedRunIds) {
+          next.add(runId);
+        }
+        return next;
+      });
+    }
+    set(serverMessages$, (prev) => {
+      const byId = new Map<string, PagedChatMessage>();
+      for (const m of prev) {
+        byId.set(m.id, m);
+      }
+      let changed = false;
+      for (const m of msgs) {
+        const existing = byId.get(m.id);
+        if (existing !== m) {
+          byId.set(m.id, m);
+          changed = true;
+        }
+      }
+      return changed ? Array.from(byId.values()) : prev;
+    });
+    set(reconcileOptimisticChatMessages$, { threadId, messages: msgs });
+  });
+}
+
+function createInitialPage(dataSource: ChatThreadDataSource) {
+  return dataSource.initialPage$;
+}
+
+interface ChatMessageProjectionEntry {
+  message: PagedChatMessage;
+  source: "server" | "optimistic";
+  optimisticUserMessageAssociation?: OptimisticChatMessageEntry["optimisticUserMessageAssociation"];
+}
+
+function createRawMessagesComputed({
+  initialPage$,
+  historyMessages$,
+  serverMessages$,
+  optimisticMessages$,
+}: {
+  initialPage$: Computed<
+    Promise<{ messages: PagedChatMessage[]; hasHistoryBefore: boolean }>
+  >;
+  historyMessages$: State<PagedChatMessage[]>;
+  serverMessages$: State<PagedChatMessage[]>;
+  optimisticMessages$: Computed<OptimisticChatMessageEntry[]>;
+}): Computed<Promise<ChatMessageProjectionEntry[]>> {
+  return computed(async (get): Promise<ChatMessageProjectionEntry[]> => {
+    const initial = await get(initialPage$);
+    const history = get(historyMessages$);
+    const server = mergeServerMessages([
+      history,
+      initial.messages,
+      get(serverMessages$),
+    ]);
+    const serverIds = new Set(
+      server.map((message) => {
+        return message.id;
+      }),
+    );
+    const optimistic = get(optimisticMessages$).filter((entry) => {
+      return !serverIds.has(entry.message.id);
+    });
+    const raw: ChatMessageProjectionEntry[] = [
+      ...server.map((message) => {
+        return { message, source: "server" as const };
+      }),
+      ...optimistic.map((entry) => {
+        return { ...entry, source: "optimistic" as const };
+      }),
+    ];
+    return raw;
+  });
+}
+
+function createTranscriptMessagesComputed(
+  rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
+): Computed<Promise<EnrichedChatMessage[]>> {
+  return computed(async (get): Promise<EnrichedChatMessage[]> => {
+    const raw = await get(rawMessages$);
+    const interruptedRunIds = new Set(
+      raw.flatMap((entry) => {
+        const { message } = entry;
+        return isInterruptControlMessage(message) && message.interruptsRunId
+          ? [message.interruptsRunId]
+          : [];
+      }),
+    );
+    const recalledIds = new Set(
+      raw.flatMap((entry) => {
+        const { message } = entry;
+        return isRecallControlMessage(message) && message.revokesMessageId
+          ? [message.revokesMessageId]
+          : [];
+      }),
+    );
+    const replacedIds = new Set(
+      raw.flatMap((entry) => {
+        const { message } = entry;
+        return !isRecallControlMessage(message) && message.revokesMessageId
+          ? [message.revokesMessageId]
+          : [];
+      }),
+    );
+    return raw
+      .filter((entry) => {
+        return (
+          !isRecallControlMessage(entry.message) &&
+          !isQueueMarkerMessage(entry.message) &&
+          !isGoalMarkerMessage(entry.message) &&
+          !isInterruptedAssistantCancellation(
+            entry.message,
+            interruptedRunIds,
+          ) &&
+          !recalledIds.has(entry.message.id) &&
+          !replacedIds.has(entry.message.id)
+        );
+      })
+      .map((entry) => {
+        const { message } = entry;
+        if (isInterruptControlMessage(message) && message.interruptsRunId) {
+          return createInterruptedAssistantMessage(
+            message,
+            message.interruptsRunId,
+          );
+        }
+        const { blocks } = parseBodyRenderBlocks(message.content ?? "", {
+          previews: message.role === "assistant",
+        });
+        const isUnassociatedUser =
+          message.role === "user" && message.runId === undefined;
+        const optimisticAssociation = entry.optimisticUserMessageAssociation;
+        const isOptimisticRun =
+          isUnassociatedUser && optimisticAssociation === "run";
+        const isQueued =
+          isUnassociatedUser &&
+          optimisticAssociation !== "run" &&
+          message.error === undefined;
+        if (message.role !== "assistant") {
+          return {
+            ...message,
+            role: "user" as const,
+            blocks: enrichBlocksWithTextPreviews(blocks),
+            isQueued,
+            isOptimisticRun,
+          };
+        }
+        return {
+          ...message,
+          role: "assistant" as const,
+          blocks: enrichBlocksWithTextPreviews(blocks),
+          isQueued,
+          isOptimisticRun: false,
+        };
+      });
+  });
+}
+
+function isServerProjectionEntry(entry: ChatMessageProjectionEntry): boolean {
+  return entry.source === "server";
+}
+
+function earliestServerMessageId(
+  raw: readonly ChatMessageProjectionEntry[],
+): string | undefined {
+  return raw.find(isServerProjectionEntry)?.message.id;
+}
+
+function latestServerMessageId(
+  raw: readonly ChatMessageProjectionEntry[],
+): string | undefined {
+  for (let index = raw.length - 1; index >= 0; index--) {
+    const entry = raw[index]!;
+    if (isServerProjectionEntry(entry)) {
+      return entry.message.id;
+    }
+  }
+  return undefined;
+}
+
+function latestAssistantTextCreatedAtFromRaw(
+  raw: readonly ChatMessageProjectionEntry[],
+): string | undefined {
+  const revokedMessageIds = revokedMessageIdsFromRawMessages(raw);
+  const interruptedRunIds = new Set(
+    raw.flatMap((entry) => {
+      const { message } = entry;
+      return isInterruptControlMessage(message) && message.interruptsRunId
+        ? [message.interruptsRunId]
+        : [];
+    }),
+  );
+  for (let index = raw.length - 1; index >= 0; index--) {
+    const message = raw[index]!.message;
+    if (revokedMessageIds.has(message.id)) {
+      continue;
+    }
+    if (isInterruptControlMessage(message)) {
+      return message.createdAt;
+    }
+    if (
+      message.role === "assistant" &&
+      !isUsageMessage(message) &&
+      !isQueueMarkerMessage(message) &&
+      !isGoalMarkerMessage(message) &&
+      !isInterruptedAssistantCancellation(message, interruptedRunIds) &&
+      (message.content?.trim().length ?? 0) > 0
+    ) {
+      return message.createdAt;
+    }
+  }
+  return undefined;
+}
+
+function createFetchNextPageCommand({
+  threadId,
+  initialPage$,
+  nextCursorId$,
+  appendServerMessages$,
+  refreshGroupedChatMessagesCache$,
+  reportedCompletedRunIds$,
+  knownServerMessageIds$,
+  dataSource,
+}: {
+  threadId: string;
+  initialPage$: Computed<Promise<InitialPage>>;
+  nextCursorId$: State<string | undefined>;
+  appendServerMessages$: Command<void, [PagedChatMessage[]]>;
+  refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
+  reportedCompletedRunIds$: State<Set<string>>;
+  knownServerMessageIds$: KnownServerMessageIds$;
+  dataSource: ChatThreadDataSource;
+}): Command<Promise<boolean>, [AbortSignal]> {
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    let sinceId: string | undefined = get(nextCursorId$);
+    let messagesMayHaveChanged = false;
+    if (!sinceId) {
+      const initial = await get(initialPage$);
+      signal.throwIfAborted();
+      set(knownServerMessageIds$, (prev) => {
+        return addKnownServerMessageIds(prev, initial.messages);
+      });
+      set(reconcileOptimisticChatMessages$, {
+        threadId,
+        messages: initial.messages,
+      });
+      messagesMayHaveChanged = true;
+      set(reportedCompletedRunIds$, (prev) => {
+        const ids = completedRunIdsFromMessages(initial.messages);
+        if (ids.length === 0) {
+          return prev;
+        }
+        const next = new Set(prev);
+        for (const runId of ids) {
+          next.add(runId);
+        }
+        return next;
+      });
+      sinceId = initial.messages[initial.messages.length - 1]?.id;
+      L.debug("fetchNextPage$ initialPage seeded sinceId", {
+        threadId,
+        sinceId: sinceId ?? null,
+        initialCount: initial.messages.length,
+      });
+      if (sinceId) {
+        set(nextCursorId$, sinceId);
+      }
+    }
+    signal.throwIfAborted();
+    // No sinceId is *not* the same as "nothing to fetch": the server side
+    // accepts an absent cursor and returns the latest page in that case.
+    // Brand-new threads hit this path when the swap-time `initialPage$`
+    // fetch raced ahead of the server-side persist and got cached as
+    // empty — without a full fetch here, every Ably-triggered call would
+    // exit early and the rendered list would stay stuck on the thinking
+    // indicator. Drain all pending pages so a single trigger fully catches
+    // the client up; without this loop a burst larger than one page leaves
+    // the client permanently behind if the thread goes quiet afterwards.
+    const MAX_PAGES = 10;
+    for (let i = 0; i < MAX_PAGES; i++) {
+      const result: { messages: PagedChatMessage[]; reachedEnd: boolean } =
+        await set(dataSource.listMessagesAfter$, { threadId, sinceId }, signal);
+      signal.throwIfAborted();
+      L.debug("fetchNextPage$ listMessagesAfter result", {
+        threadId,
+        sinceId: sinceId ?? null,
+        gotCount: result.messages.length,
+        reachedEnd: result.reachedEnd,
+        page: i,
+      });
+      if (result.messages.length > 0) {
+        set(appendServerMessages$, result.messages);
+        messagesMayHaveChanged = true;
+        sinceId = result.messages[result.messages.length - 1].id;
+        set(nextCursorId$, sinceId);
+      }
+      if (result.reachedEnd) {
+        if (messagesMayHaveChanged) {
+          await set(refreshGroupedChatMessagesCache$, signal);
+          signal.throwIfAborted();
+        }
+        return true;
+      }
+    }
+    if (messagesMayHaveChanged) {
+      await set(refreshGroupedChatMessagesCache$, signal);
+      signal.throwIfAborted();
+    }
+    return false;
+  });
+}
+
+function messageUpdatedPayloadMessageId(payload: unknown): string | null {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    !("messageId" in payload) ||
+    typeof payload.messageId !== "string" ||
+    !uuidPattern.test(payload.messageId)
+  ) {
+    return null;
+  }
+  return payload.messageId;
+}
+
+function createFetchUpdatedMessageCommand({
+  threadId,
+  dataSource,
+  appendServerMessages$,
+  refreshGroupedChatMessagesCache$,
+}: {
+  threadId: string;
+  dataSource: ChatThreadDataSource;
+  appendServerMessages$: Command<void, [PagedChatMessage[]]>;
+  refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
+}): Command<Promise<boolean>, [unknown, AbortSignal]> {
+  return command(
+    async (
+      { set },
+      payload: unknown,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      const messageId = messageUpdatedPayloadMessageId(payload);
+      if (messageId === null) {
+        L.warn("Ignoring chat message update with invalid payload", {
+          threadId,
+        });
+        return false;
+      }
+
+      const message = await set(
+        dataSource.getMessage$,
+        { threadId, messageId },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (message === null) {
+        return false;
+      }
+
+      set(appendServerMessages$, [message]);
+      await set(refreshGroupedChatMessagesCache$, signal);
+      signal.throwIfAborted();
+      return false;
+    },
+  );
+}
+
+function createPagedMessages(
+  threadId: string,
+  threadData$: Computed<Promise<ChatThread | null>>,
+  dataSource: ChatThreadDataSource,
+) {
+  const loadedHistoryHasMore$ = state<boolean | null>(null);
+  const historyMessages$ = state<PagedChatMessage[]>([]);
+  const initialPage$ = createInitialPage(dataSource);
+
+  const serverMessages$ = state<PagedChatMessage[]>([]);
+  const reportedCompletedRunIds$ = state(new Set<string>());
+  const knownServerMessageIds$ = state<ReadonlySet<string>>(new Set());
+  const optimisticMessages$ = createOptimisticChatMessagesForThread(threadId);
+
+  // Tracks the last known server-validated message ID so optimistic
+  // (client-generated) IDs never leak into sinceId calls.
+  // Lazy-init from initialPage$ on first fetchNextPage$ call, then
+  // advanced after each successful fetch to the last returned message.
+  const nextCursorId$ = state<string | undefined>(undefined);
+
+  const rawMessages$ = createRawMessagesComputed({
+    initialPage$,
+    historyMessages$,
+    serverMessages$,
+    optimisticMessages$,
+  });
+  const messageRunIndicatorState$ =
+    createMessageRunIndicatorState(rawMessages$);
+  const latestRunStatus$ = messageRunIndicatorState$;
+
+  // The thread's active goal, folded from the (goal-marker) message stream so
+  // the composer reads it without polling /api/automations. Reads rawMessages$
+  // because goal markers are control rows, not transcript rows.
+  const activeGoal$ = computed(async (get): Promise<ActiveGoalState | null> => {
+    const raw = await get(rawMessages$);
+    return foldActiveGoal(
+      raw.map((entry) => {
+        return entry.message;
+      }),
+    );
+  });
+
+  const { groupedChatMessages$, refreshGroupedChatMessagesCache$ } =
+    createGroupedChatMessagesCache(rawMessages$);
+
+  const appendServerMessages$ = createAppendServerMessages(
+    threadId,
+    serverMessages$,
+    reportedCompletedRunIds$,
+    knownServerMessageIds$,
+  );
+
+  const earliestChatMessageId$ = computed(
+    async (get): Promise<string | undefined> => {
+      const raw = await get(rawMessages$);
+      return earliestServerMessageId(raw);
+    },
+  );
+
+  const latestChatMessageId$ = computed(
+    async (get): Promise<string | undefined> => {
+      const raw = await get(rawMessages$);
+      return latestServerMessageId(raw);
+    },
+  );
+
+  const latestAssistantTextCreatedAt$ = computed(
+    async (get): Promise<string | undefined> => {
+      const raw = await get(rawMessages$);
+      return latestAssistantTextCreatedAtFromRaw(raw);
+    },
+  );
+
+  const hasOlderHistory$ = computed(async (get): Promise<boolean> => {
+    const loadedHistoryHasMore = get(loadedHistoryHasMore$);
+    if (loadedHistoryHasMore !== null) {
+      return loadedHistoryHasMore;
+    }
+    const initial = await get(initialPage$);
+    return initial.hasHistoryBefore || initial.needsHistoryBackfill === true;
+  });
+
+  const fetchNextPage$ = createFetchNextPageCommand({
+    threadId,
+    initialPage$,
+    nextCursorId$,
+    appendServerMessages$,
+    refreshGroupedChatMessagesCache$,
+    reportedCompletedRunIds$,
+    knownServerMessageIds$,
+    dataSource,
+  });
+  const fetchUpdatedMessage$ = createFetchUpdatedMessageCommand({
+    threadId,
+    dataSource,
+    appendServerMessages$,
+    refreshGroupedChatMessagesCache$,
+  });
+
+  const refreshLatestMessages$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      const result = await set(
+        dataSource.listMessagesAfter$,
+        { threadId, sinceId: undefined },
+        signal,
+      );
+      signal.throwIfAborted();
+      set(appendServerMessages$, result.messages);
+      await set(refreshGroupedChatMessagesCache$, signal);
+      signal.throwIfAborted();
+    },
+  );
+
+  const loadHistory$ = createLoadHistoryCommand({
+    threadId,
+    threadData$,
+    earliestChatMessageId$,
+    historyMessages$,
+    loadedHistoryHasMore$,
+    knownServerMessageIds$,
+    refreshGroupedChatMessagesCache$,
+    dataSource,
+  });
+
+  return {
+    initialPage$,
+    earliestChatMessageId$,
+    latestChatMessageId$,
+    latestAssistantTextCreatedAt$,
+    groupedChatMessages$,
+    refreshGroupedChatMessagesCache$,
+    rawMessages$,
+    hasOlderHistory$,
+    messageRunIndicatorState$,
+    latestRunStatus$,
+    activeGoal$,
+    fetchNextPage$,
+    fetchUpdatedMessage$,
+    refreshLatestMessages$,
+    loadHistory$,
+  };
+}
+
+function createChatThreadMessagePipeline({
+  threadId,
+  threadData$,
+  dataSource,
+  recordScrollHeightForPrepend$,
+  clearScrollHeightForPrepend$,
+  awayFromBottom$,
+}: {
+  threadId: string;
+  threadData$: Computed<Promise<ChatThread | null>>;
+  dataSource: ChatThreadDataSource;
+  recordScrollHeightForPrepend$: Command<
+    PrependScrollCompensationToken | null,
+    []
+  >;
+  clearScrollHeightForPrepend$: Command<
+    void,
+    [PrependScrollCompensationToken | null | undefined]
+  >;
+  awayFromBottom$: Computed<boolean>;
+}) {
+  const pagedMessages = createPagedMessages(threadId, threadData$, dataSource);
+  const renderedMessages = createChatRenderWindow({
+    threadId,
+    groupedChatMessages$: pagedMessages.groupedChatMessages$,
+    awayFromBottom$,
+  });
+
+  const loadHistory$ = createLoadHistoryWithPrependScroll(
+    recordScrollHeightForPrepend$,
+    clearScrollHeightForPrepend$,
+    renderedMessages.renderedGroupedChatMessages$,
+    pagedMessages.loadHistory$,
+  );
+  const loadMoreRenderedChatGroups$ =
+    createLoadMoreRenderedChatGroupsWithPrependScroll(
+      recordScrollHeightForPrepend$,
+      clearScrollHeightForPrepend$,
+      renderedMessages.loadMoreRenderedChatGroups$,
+    );
+  const silentBackfillHistory$ = createSilentBackfillHistoryCommand({
+    groupedChatMessages$: pagedMessages.groupedChatMessages$,
+    hasOlderHistory$: pagedMessages.hasOlderHistory$,
+    loadHistory$,
+  });
+
+  return {
+    ...pagedMessages,
+    ...renderedMessages,
+    loadHistory$,
+    loadMoreRenderedChatGroups$,
+    silentBackfillHistory$,
+  };
+}
+
+function createLoadHistoryCommand({
+  threadId,
+  threadData$,
+  earliestChatMessageId$,
+  historyMessages$,
+  loadedHistoryHasMore$,
+  knownServerMessageIds$,
+  refreshGroupedChatMessagesCache$,
+  dataSource,
+}: {
+  threadId: string;
+  threadData$: Computed<Promise<ChatThread | null>>;
+  earliestChatMessageId$: Computed<Promise<string | undefined>>;
+  historyMessages$: State<PagedChatMessage[]>;
+  loadedHistoryHasMore$: State<boolean | null>;
+  knownServerMessageIds$: KnownServerMessageIds$;
+  refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
+  dataSource: ChatThreadDataSource;
+}): Command<Promise<LoadHistoryResult>, [AbortSignal]> {
+  return command(
+    async ({ get, set }, signal: AbortSignal): Promise<LoadHistoryResult> => {
+      const thread = await get(threadData$);
+      signal.throwIfAborted();
+      if (!thread) {
+        set(loadedHistoryHasMore$, false);
+        return { hasMore: false };
+      }
+
+      const beforeId = await get(earliestChatMessageId$);
+      signal.throwIfAborted();
+      if (!beforeId) {
+        set(loadedHistoryHasMore$, false);
+        return { hasMore: false };
+      }
+
+      const result = await set(
+        dataSource.listMessagesBefore$,
+        { threadId, beforeId },
+        signal,
+      );
+      signal.throwIfAborted();
+      set(reconcileOptimisticChatMessages$, {
+        threadId,
+        messages: result.messages,
+      });
+      set(knownServerMessageIds$, (prev) => {
+        return addKnownServerMessageIds(prev, result.messages);
+      });
+
+      set(historyMessages$, (prev) => {
+        if (result.messages.length === 0) {
+          return prev;
+        }
+        return [...result.messages, ...prev];
+      });
+      set(loadedHistoryHasMore$, result.hasMore);
+      if (result.messages.length > 0) {
+        await set(refreshGroupedChatMessagesCache$, signal);
+        signal.throwIfAborted();
+      }
+      return {
+        hasMore: result.hasMore,
+      };
+    },
+  );
+}
+
+function createArtifacts(
+  threadId: string,
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
+) {
+  const internalArtifactsReload$ = state(0);
+  const artifacts$ = computed(async (get): Promise<ChatThreadArtifactRun[]> => {
+    await get(groupedChatMessages$);
+    get(internalArtifactsReload$);
+    const client = get(zeroClient$)(chatThreadArtifactsContract);
+    const result = await accept(client.list({ params: { threadId } }), [200]);
+    return result.body.runs;
+  });
+
+  const reloadArtifacts$ = command(({ set }) => {
+    set(internalArtifactsReload$, (version) => {
+      return version + 1;
+    });
+  });
+
+  const reloadArtifactsFromRealtime$ = command(({ set }) => {
+    set(reloadArtifacts$);
+    return false;
+  });
+  const setArtifactsRealtimeRef$ = onRef(
+    command(async ({ set }, _el: HTMLElement, signal: AbortSignal) => {
+      await set(
+        setAblyLoop$,
+        {
+          topic: `chatThreadArtifactsChanged:${threadId}`,
+          loopCommand$: reloadArtifactsFromRealtime$,
+        },
+        signal,
+      );
+    }),
+  );
+
+  return {
+    artifacts$,
+    reloadArtifacts$,
+    setArtifactsRealtimeRef$,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Draft cache
+// ---------------------------------------------------------------------------
+
+const draftCache$ = state(new Map<string, DraftSignals>());
+
+export const ensureDraft$ = command(
+  ({ get, set }, threadId: string): { draft: DraftSignals; isNew: boolean } => {
+    const cache = get(draftCache$);
+    const existing = cache.get(threadId);
+    if (existing) {
+      return { draft: existing, isNew: false };
+    }
+    const draft = createDraftSignals();
+    const next = new Map(cache);
+    next.set(threadId, draft);
+    set(draftCache$, next);
+    return { draft, isNew: true };
+  },
+);
+
+function createSkeletonSignals() {
+  const internalSkeletonVisible$ = state(false);
+  const skeletonVisible$ = computed((get) => {
+    return get(internalSkeletonVisible$);
+  });
+  const showSkeleton$ = command(({ set }) => {
+    set(internalSkeletonVisible$, true);
+  });
+  const hideSkeleton$ = command(({ set }) => {
+    set(internalSkeletonVisible$, false);
+  });
+  return { skeletonVisible$, showSkeleton$, hideSkeleton$ };
+}
+
+function createContainerRef() {
+  const internalContainerEl$ = state<HTMLElement | null>(null);
+  const containerEl$ = computed((get) => {
+    return get(internalContainerEl$);
+  });
+  const setContainerRef$ = onRef(
+    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener("abort", () => {
+        set(internalContainerEl$, null);
+      });
+      set(internalContainerEl$, el);
+    }),
+  );
+  return { containerEl$, setContainerRef$ };
+}
+
+function createInputRef() {
+  const internalInputRef$ = state<HTMLElement | null>(null);
+  const setInputRef$ = onRef(
+    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener("abort", () => {
+        set(internalInputRef$, null);
+      });
+      set(internalInputRef$, el);
+    }),
+  );
+  const focusInput$ = command(({ get }) => {
+    get(internalInputRef$)?.focus();
+  });
+  return { setInputRef$, focusInput$ };
+}
+
+function createMessageRunIndicatorState(
+  rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
+) {
+  return computed(async (get): Promise<RunIndicatorState> => {
+    const raw = await get(rawMessages$);
+    return deriveRunIndicatorStateFromRawMessages(raw);
+  });
+}
+
+function createLoadHistoryWithPrependScroll(
+  recordScrollHeightForPrepend$: Command<
+    PrependScrollCompensationToken | null,
+    []
+  >,
+  clearScrollHeightForPrepend$: Command<
+    void,
+    [PrependScrollCompensationToken | null | undefined]
+  >,
+  renderedGroupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
+  loadHistory$: Command<Promise<LoadHistoryResult>, [AbortSignal]>,
+) {
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    const renderedMessageCountBefore = renderedMessageCount(
+      await get(renderedGroupedChatMessages$),
+    );
+    signal.throwIfAborted();
+
+    const compensationToken = set(recordScrollHeightForPrepend$);
+    const result = await set(loadHistory$, signal);
+    signal.throwIfAborted();
+    const renderedMessageCountAfter = renderedMessageCount(
+      await get(renderedGroupedChatMessages$),
+    );
+    signal.throwIfAborted();
+    if (renderedMessageCountAfter === renderedMessageCountBefore) {
+      set(clearScrollHeightForPrepend$, compensationToken);
+    }
+    return result;
+  });
+}
+
+function renderedMessageCount(
+  groups: readonly GroupedChatMessageGroup[],
+): number {
+  return groups.reduce((count, group) => {
+    return count + group.messages.length;
+  }, 0);
+}
+
+function createLoadMoreRenderedChatGroupsWithPrependScroll(
+  recordScrollHeightForPrepend$: Command<
+    PrependScrollCompensationToken | null,
+    []
+  >,
+  clearScrollHeightForPrepend$: Command<
+    void,
+    [PrependScrollCompensationToken | null | undefined]
+  >,
+  loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>,
+) {
+  return command(async ({ set }, signal: AbortSignal) => {
+    const compensationToken = set(recordScrollHeightForPrepend$);
+    const didPrepend = await set(loadMoreRenderedChatGroups$, signal);
+    if (!didPrepend) {
+      set(clearScrollHeightForPrepend$, compensationToken);
+    }
+    return didPrepend;
+  });
+}
+
+function createSilentBackfillHistoryCommand({
+  groupedChatMessages$,
+  hasOlderHistory$,
+  loadHistory$,
+}: {
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  hasOlderHistory$: Computed<Promise<boolean>>;
+  loadHistory$: Command<Promise<LoadHistoryResult>, [AbortSignal]>;
+}) {
+  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    let initialMessagesResolved = false;
+
+    await setLoop(
+      async (sig) => {
+        if (!initialMessagesResolved) {
+          await get(groupedChatMessages$);
+          sig.throwIfAborted();
+          initialMessagesResolved = true;
+          return false;
+        }
+
+        const hasOlderHistory = await get(hasOlderHistory$);
+        sig.throwIfAborted();
+        if (!hasOlderHistory) {
+          return true;
+        }
+
+        const result = await set(loadHistory$, sig);
+        sig.throwIfAborted();
+        return !result.hasMore;
+      },
+      SILENT_HISTORY_BACKFILL_INTERVAL_MS,
+      signal,
+    );
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Factory: createRunTracking
+// ---------------------------------------------------------------------------
+
+interface RunTrackingDeps {
+  threadId: string;
+  reloadThread$: Command<void, []>;
+  threadData$: Computed<Promise<ChatThread | null>>;
+  latestChatMessageId$: Computed<Promise<string | undefined>>;
+  latestRunStatus$: Computed<Promise<string | null>>;
+  initialPage$: Computed<Promise<InitialPage>>;
+  fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
+  fetchUpdatedMessage$: Command<Promise<boolean>, [unknown, AbortSignal]>;
+  silentBackfillHistory$: Command<Promise<void>, [AbortSignal]>;
+  refreshLatestMessages$: Command<Promise<void>, [AbortSignal]>;
+  autoScroll$: Command<void, []>;
+  dataSource: ChatThreadDataSource;
+}
+
+interface MarkThreadReadDeps {
+  threadId: string;
+  threadData$: Computed<Promise<ChatThread | null>>;
+  latestChatMessageId$: Computed<Promise<string | undefined>>;
+  locallyMarkedReadMessageId$: State<string | undefined>;
+  dataSource: ChatThreadDataSource;
+}
+
+interface ChatRenderWindowState {
+  cursorGroupId: string | null;
+}
+
+const INITIAL_RENDER_GROUP_COUNT = 10;
+const RENDER_GROUP_LOAD_INCREMENT = 10;
+
+const renderWindowStateByThreadId$ = state(
+  new Map<string, ChatRenderWindowState>(),
+);
+
+function renderWindowStartIndex(
+  groups: readonly GroupedChatMessageGroup[],
+  cursorGroupId: string | null,
+): number {
+  return runGroupVisualWindowStartIndex(
+    groups,
+    cursorGroupId,
+    INITIAL_RENDER_GROUP_COUNT,
+  );
+}
+
+function previousRenderWindowStartIndex(
+  groups: readonly GroupedChatMessageGroup[],
+  currentStartGroupIndex: number,
+): number {
+  return previousRunGroupVisualWindowStartIndex(
+    groups,
+    currentStartGroupIndex,
+    RENDER_GROUP_LOAD_INCREMENT,
+  );
+}
+
+function renderWindowStateForThread(
+  stateByThreadId: ReadonlyMap<string, ChatRenderWindowState>,
+  threadId: string,
+): ChatRenderWindowState {
+  return stateByThreadId.get(threadId) ?? { cursorGroupId: null };
+}
+
+function setThreadRenderWindowState(
+  stateByThreadId: ReadonlyMap<string, ChatRenderWindowState>,
+  threadId: string,
+  nextState: ChatRenderWindowState,
+): Map<string, ChatRenderWindowState> {
+  const next = new Map(stateByThreadId);
+  next.set(threadId, nextState);
+  return next;
+}
+
+function createChatRenderWindow({
+  threadId,
+  groupedChatMessages$,
+  awayFromBottom$,
+}: {
+  threadId: string;
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  awayFromBottom$: Computed<boolean>;
+}) {
+  const renderedGroupedChatMessages$ = computed(
+    async (get): Promise<GroupedChatMessageGroup[]> => {
+      const groups = await get(groupedChatMessages$);
+      const { cursorGroupId } = renderWindowStateForThread(
+        get(renderWindowStateByThreadId$),
+        threadId,
+      );
+      return groups.slice(renderWindowStartIndex(groups, cursorGroupId));
+    },
+  );
+
+  const loadMoreRenderedChatGroups$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+      const current = renderWindowStateForThread(
+        get(renderWindowStateByThreadId$),
+        threadId,
+      );
+      const groups = await get(groupedChatMessages$);
+      signal.throwIfAborted();
+      const startIndex = renderWindowStartIndex(groups, current.cursorGroupId);
+      const nextStartIndex = previousRenderWindowStartIndex(groups, startIndex);
+      if (nextStartIndex === startIndex) {
+        return false;
+      }
+      set(renderWindowStateByThreadId$, (prev) => {
+        return setThreadRenderWindowState(prev, threadId, {
+          cursorGroupId: groups[nextStartIndex]?.beginMessageId ?? null,
+        });
+      });
+      return true;
+    },
+  );
+
+  const resetRenderedChatGroupsIfAtBottom$ = command(({ get, set }) => {
+    if (get(awayFromBottom$)) {
+      return;
+    }
+    const current = renderWindowStateForThread(
+      get(renderWindowStateByThreadId$),
+      threadId,
+    );
+    if (current.cursorGroupId === null) {
+      return;
+    }
+    set(renderWindowStateByThreadId$, (prev) => {
+      return setThreadRenderWindowState(prev, threadId, {
+        ...current,
+        cursorGroupId: null,
+      });
+    });
+  });
+
+  return {
+    renderedGroupedChatMessages$,
+    loadMoreRenderedChatGroups$,
+    resetRenderedChatGroupsIfAtBottom$,
+  };
+}
+
+function createMarkThreadReadIfNeeded({
+  threadId,
+  threadData$,
+  latestChatMessageId$,
+  locallyMarkedReadMessageId$,
+  dataSource,
+}: MarkThreadReadDeps) {
+  return command(async ({ get, set }, sig: AbortSignal) => {
+    const latestMessageId = await get(latestChatMessageId$);
+    sig.throwIfAborted();
+    if (!latestMessageId) {
+      return;
+    }
+
+    const thread = await get(threadData$);
+    sig.throwIfAborted();
+    const lastReadMessageId =
+      get(locallyMarkedReadMessageId$) ?? thread?.lastReadMessageId ?? null;
+    if (lastReadMessageId === latestMessageId) {
+      return;
+    }
+
+    const newLastReadId = await set(
+      dataSource.markRead$,
+      { threadId, latestMessageId },
+      sig,
+    );
+    sig.throwIfAborted();
+    if (newLastReadId !== null) {
+      set(locallyMarkedReadMessageId$, newLastReadId);
+    }
+    // No sidebar reload needed: markRead$ records an optimistic read mark
+    // and applies the response's unread snapshot, so the unread dot clears
+    // without refetching the thread list.
+  });
+}
+
+function createRunTracking({
+  threadId,
+  reloadThread$,
+  threadData$,
+  latestChatMessageId$,
+  latestRunStatus$,
+  initialPage$,
+  fetchNextPage$,
+  fetchUpdatedMessage$,
+  silentBackfillHistory$,
+  refreshLatestMessages$,
+  autoScroll$,
+  dataSource,
+}: RunTrackingDeps) {
+  const locallyMarkedReadMessageId$ = state<string | undefined>(undefined);
+  const resetChatSubscriptionSignal$ = resetSignalScope();
+
+  const allFinished$ = computed(async (get) => {
+    return (await get(latestRunStatus$)) === null;
+  });
+
+  const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
+    threadId,
+    threadData$,
+    latestChatMessageId$,
+    locallyMarkedReadMessageId$,
+    dataSource,
+  });
+
+  const shouldRunSubscribeReadyCatchup$ = command(
+    async ({ get }, signal: AbortSignal): Promise<boolean> => {
+      const initial = await get(initialPage$);
+      signal.throwIfAborted();
+      if (initial.messages.length > 0 || initial.fetchedFromRemote !== true) {
+        return true;
+      }
+
+      const latestRunStatus = await get(latestRunStatus$);
+      signal.throwIfAborted();
+      return latestRunStatus !== null;
+    },
+  );
+
+  const onSubscribed$ = command(async ({ get, set }, sig: AbortSignal) => {
+    L.debug("subscribeChatThread$ catchup start", { threadId });
+    set(reloadThread$);
+    await get(threadData$);
+    sig.throwIfAborted();
+    if (await set(shouldRunSubscribeReadyCatchup$, sig)) {
+      await set(fetchNextPage$, sig);
+    }
+    const latestMessageId = await get(latestChatMessageId$);
+    sig.throwIfAborted();
+    if (latestMessageId) {
+      // In-place message updates, such as completed marker followups, are not
+      // returned by a sinceId fetch. Refresh the latest loaded row after the
+      // realtime callbacks are registered so update events racing with this
+      // fetch are queued instead of missed.
+      await set(fetchUpdatedMessage$, { messageId: latestMessageId }, sig);
+    }
+    await set(markThreadReadIfNeeded$, sig);
+    sig.throwIfAborted();
+    L.debug("subscribeChatThread$ catchup done", { threadId });
+  });
+
+  const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
+    L.debug("subscribeChatThread$ start", { threadId });
+
+    const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
+      L.debug("onMessageCreated$ fired", { threadId });
+      await set(fetchNextPage$, sig);
+      L.debug("onMessageCreated$ fetchNextPage$ done", { threadId });
+      await set(markThreadReadIfNeeded$, sig);
+      animationFrame(
+        () => {
+          set(autoScroll$);
+        },
+        { signal: sig },
+      );
+      return false;
+    });
+
+    const onMessageUpdated$ = command(
+      async ({ set }, payload: unknown, sig: AbortSignal) => {
+        L.debug("onMessageUpdated$ fired", { threadId });
+        return await set(fetchUpdatedMessage$, payload, sig);
+      },
+    );
+
+    const onRunChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
+      L.debug("onRunChanged$ fired", { threadId });
+      set(reloadThread$);
+      await set(refreshLatestMessages$, sig);
+      sig.throwIfAborted();
+      await get(threadData$);
+      animationFrame(
+        () => {
+          set(autoScroll$);
+        },
+        { signal: sig },
+      );
+      return false;
+    });
+
+    const onAutomationsChanged$ = command(({ set }) => {
+      L.debug("onAutomationsChanged$ fired", { threadId });
+      set(reloadHeaderAutomationMenu$);
+      return false;
+    });
+
+    L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
+    const subscriptionScope = set(resetChatSubscriptionSignal$, signal);
+    const subscriptionSignal = subscriptionScope.signal;
+
+    await withCleanup(
+      Promise.all([
+        set(silentBackfillHistory$, subscriptionSignal),
+        set(markThreadReadIfNeeded$, subscriptionSignal),
+        set(subscribeComputerUseHostsChanged$, subscriptionSignal),
+        set(
+          dataSource.subscribeRealtime$,
+          {
+            threadId,
+            handlers: {
+              onMessageCreated$,
+              onMessageUpdated$,
+              onRunChanged$,
+              onAutomationsChanged$,
+              onSubscribed$,
+            },
+          },
+          subscriptionSignal,
+        ),
+      ]),
+      () => {
+        subscriptionScope.abort(signal.reason);
+      },
+    );
+    signal.throwIfAborted();
+  });
+
+  return { allFinished$, subscribeChatThread$ };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: sendMessage command
+// ---------------------------------------------------------------------------
+
+interface PreparedSendMessageResult {
+  prompt: string;
+  attachFiles: AttachFile[] | undefined;
+  attachments: PagedChatMessage["attachFiles"];
+  hasTextContent: boolean;
+}
+
+function prepareTextOnlyUserMessage(
+  prompt: string,
+): PreparedSendMessageResult | null {
+  const trimmedPrompt = prompt.trim();
+  if (!trimmedPrompt) {
+    return null;
+  }
+  return {
+    prompt: trimmedPrompt,
+    attachFiles: undefined,
+    attachments: undefined,
+    hasTextContent: true,
+  };
+}
+
+function createSendOptimisticMessageEntry({
+  threadId,
+  clientMessageId,
+  result,
+  generationTemplate,
+  options,
+}: {
+  threadId: string;
+  clientMessageId: string;
+  result: PreparedSendMessageResult;
+  generationTemplate: GenerationTemplateRequest | undefined;
+  options: SendMessageOptions | undefined;
+}): OptimisticChatMessageEntry {
+  return {
+    threadId,
+    optimisticUserMessageAssociation: "run",
+    message: {
+      id: clientMessageId,
+      role: "user",
+      content: result.prompt,
+      attachFiles: result.attachments,
+      generationTemplate,
+      ...sendMessageRevocationPatch(options),
+      createdAt: nowDate().toISOString(),
+    },
+  };
+}
+
+function sendMessageRevocationPatch(options: SendMessageOptions | undefined): {
+  readonly revokesMessageId?: string;
+} {
+  return options?.revokesMessageId
+    ? { revokesMessageId: options.revokesMessageId }
+    : {};
+}
+
+function sendMessageRequestBody(params: {
+  readonly agentId: string;
+  readonly threadId: string;
+  readonly clientMessageId: string;
+  readonly result: PreparedSendMessageResult;
+  readonly modelSelection: ModelProviderSelection | null;
+  readonly codexFastModeEnabled: boolean;
+  readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly options: SendMessageOptions | undefined;
+}) {
+  const runOptions = runOptionsFromModelProviderSelection(
+    params.modelSelection,
+    params.codexFastModeEnabled,
+  );
+  return {
+    agentId: params.agentId,
+    prompt: params.result.prompt,
+    threadId: params.threadId,
+    hasTextContent: params.result.hasTextContent,
+    clientMessageId: params.clientMessageId,
+    modelSelection: modelSelectionRequestFromSelection(params.modelSelection),
+    ...(runOptions ? { runOptions } : {}),
+    generationTemplate: params.generationTemplate,
+    ...(params.options && "computerUseHostId" in params.options
+      ? { computerUseHostId: params.options.computerUseHostId ?? null }
+      : {}),
+    attachFiles: params.result.attachFiles,
+    ...sendMessageRevocationPatch(params.options),
+  };
+}
+
+function hasVisualDraftAttachments(
+  attachments: readonly { contentType: string; filename: string }[],
+): boolean {
+  return attachments.some((attachment) => {
+    return isVisualAttachment(attachment);
+  });
+}
+
+interface SendMessageDeps {
+  threadId: string;
+  threadData$: Computed<Promise<ChatThread | null>>;
+  draft: DraftSignals;
+  cancelDraftSync$: Command<void, []>;
+  flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
+  scrollToBottom$: Command<void, []>;
+  fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
+  refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
+}
+
+function createSendMessage(deps: SendMessageDeps) {
+  const {
+    threadId,
+    threadData$,
+    draft,
+    cancelDraftSync$,
+    flushDraftClear$,
+    scrollToBottom$,
+    fetchNextPage$,
+    refreshGroupedChatMessagesCache$,
+  } = deps;
+  return command(
+    async (
+      { get, set },
+      prompt: string,
+      modelSelection: ModelProviderSelection | null,
+      options: SendMessageOptions | undefined,
+      signal: AbortSignal,
+    ) => {
+      L.debug("sendMessage$ start", { threadId, promptLen: prompt.length });
+      const thread = await get(threadData$);
+      signal.throwIfAborted();
+      const agentId = thread?.agentId;
+      if (!agentId) {
+        L.debug("sendMessage$ no agentId, abort", { threadId });
+        return;
+      }
+      const generationTemplate = get(draft.generationTemplate$);
+      const hasVisualAttachments = hasVisualDraftAttachments(
+        get(draft.attachments$),
+      );
+      let effectiveSelectedModel = modelSelection?.selectedModel;
+      if (!effectiveSelectedModel && hasVisualAttachments) {
+        const policies = await get(orgModelPolicies$);
+        signal.throwIfAborted();
+        const userPreference = await get(userModelPreference$);
+        signal.throwIfAborted();
+        effectiveSelectedModel =
+          resolveModelFirstUserDefaultSelection({
+            userPreference,
+            policies,
+          })?.selectedModel ?? undefined;
+      }
+      const result =
+        options?.includeDraftAttachments === false
+          ? prepareTextOnlyUserMessage(prompt)
+          : await set(
+              prepareUserMessageFromDraft$,
+              draft,
+              prompt,
+              {
+                excludeVisualAttachments:
+                  shouldExcludeVisualAttachmentsForModel(
+                    effectiveSelectedModel,
+                  ),
+              },
+              signal,
+            );
+      if (!result) {
+        L.debug("sendMessage$ prepare returned null, abort", { threadId });
+        return;
+      }
+      signal.throwIfAborted();
+      set(cancelDraftSync$);
+      set(draft.clear$);
+      const clientMessageId = crypto.randomUUID();
+      set(
+        appendOptimisticChatMessage$,
+        createSendOptimisticMessageEntry({
+          threadId,
+          clientMessageId,
+          result,
+          generationTemplate,
+          options,
+        }),
+      );
+      await set(refreshGroupedChatMessagesCache$, signal);
+      signal.throwIfAborted();
+      animationFrame(
+        () => {
+          set(scrollToBottom$);
+        },
+        { signal },
+      );
+
+      const codexFastModeEnabled =
+        get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
+      const client = get(zeroClient$)(chatMessagesContract);
+      const [, sendResult] = await Promise.all([
+        set(flushDraftClear$, signal),
+        accept(
+          client.send({
+            body: sendMessageRequestBody({
+              agentId,
+              clientMessageId,
+              threadId,
+              result,
+              modelSelection,
+              codexFastModeEnabled,
+              generationTemplate,
+              options,
+            }),
+            fetchOptions: { signal },
+          }),
+          [201],
+        ),
+      ]);
+      signal.throwIfAborted();
+
+      L.debug("sendMessage$ POST accepted", {
+        threadId,
+        runId: sendResult.body.runId,
+      });
+
+      if (sendResult.body.runId === null) {
+        set(reloadBillingStatus$);
+        await set(fetchNextPage$, signal);
+        signal.throwIfAborted();
+        set(scrollToBottom$);
+      }
+
+      set(reloadChatThreads$);
+      L.debug("sendMessage$ done", {
+        threadId,
+        runId: sendResult.body.runId,
+      });
+    },
+  );
+}
+
+interface QueueMessageDeps {
+  threadId: string;
+  threadData$: Computed<Promise<ChatThread | null>>;
+  modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
+  draft: DraftSignals;
+  cancelDraftSync$: Command<void, []>;
+  flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
+  scrollToBottom$: Command<void, []>;
+  refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
+  dataSource: ChatThreadDataSource;
+}
+
+function createQueueMessage(deps: QueueMessageDeps) {
+  const {
+    threadId,
+    threadData$,
+    modelSelection$,
+    draft,
+    cancelDraftSync$,
+    flushDraftClear$,
+    scrollToBottom$,
+    refreshGroupedChatMessagesCache$,
+    dataSource,
+  } = deps;
+
+  return command(
+    async (
+      { get, set },
+      prompt: string,
+      computerUseHostId: string | null | undefined,
+      signal: AbortSignal,
+    ) => {
+      L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
+      const thread = await get(threadData$);
+      signal.throwIfAborted();
+      if (!thread) {
+        L.debug("queueMessage$ no thread data, abort", { threadId });
+        return;
+      }
+      const generationTemplate = get(draft.generationTemplate$);
+
+      const modelSelection = await get(modelSelection$);
+      signal.throwIfAborted();
+      const result = await set(
+        prepareUserMessageFromDraft$,
+        draft,
+        prompt,
+        {
+          excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
+            modelSelection?.selectedModel,
+          ),
+        },
+        signal,
+      );
+      if (!result) {
+        L.debug("queueMessage$ prepare returned null, abort", { threadId });
+        return;
+      }
+      signal.throwIfAborted();
+
+      set(cancelDraftSync$);
+      set(draft.clear$);
+
+      const clientMessageId = crypto.randomUUID();
+      const nowIso = nowDate().toISOString();
+      set(appendOptimisticChatMessage$, {
+        threadId,
+        optimisticUserMessageAssociation: "queue",
+        message: {
+          id: clientMessageId,
+          role: "user",
+          content: result.prompt,
+          attachFiles: result.attachments,
+          generationTemplate,
+          createdAt: nowIso,
+        },
+      });
+      await set(refreshGroupedChatMessagesCache$, signal);
+      signal.throwIfAborted();
+      animationFrame(
+        () => {
+          set(scrollToBottom$);
+        },
+        { signal },
+      );
+
+      await Promise.all([
+        set(flushDraftClear$, signal),
+        set(
+          dataSource.appendQueuedMessage$,
+          {
+            threadId,
+            agentId: thread.agentId,
+            content: result.prompt,
+            attachments: result.attachments ?? null,
+            clientMessageId,
+            hasTextContent: result.hasTextContent,
+            modelSelection,
+            generationTemplate,
+            ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
+          },
+          signal,
+        ),
+      ]);
+      signal.throwIfAborted();
+
+      set(reloadChatThreads$);
+      L.debug("queueMessage$ done", { threadId });
+    },
+  );
+}
+
+interface RecallMessageDeps {
+  threadId: string;
+  threadData$: Computed<Promise<ChatThread | null>>;
+  draft: DraftSignals;
+  refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
+  dataSource: ChatThreadDataSource;
+}
+
+function createRecallMessage(deps: RecallMessageDeps) {
+  const {
+    threadId,
+    threadData$,
+    draft,
+    refreshGroupedChatMessagesCache$,
+    dataSource,
+  } = deps;
+
+  return command(
+    async ({ get, set }, message: EnrichedChatMessage, signal: AbortSignal) => {
+      if (
+        message.role !== "user" ||
+        message.runId !== undefined ||
+        message.revokesMessageId !== undefined
+      ) {
+        return;
+      }
+
+      const thread = await get(threadData$);
+      signal.throwIfAborted();
+      if (!thread) {
+        return;
+      }
+
+      const clientMessageId = crypto.randomUUID();
+      set(appendOptimisticChatMessage$, {
+        threadId,
+        message: {
+          id: clientMessageId,
+          role: "user",
+          content: null,
+          revokesMessageId: message.id,
+          createdAt: nowDate().toISOString(),
+        },
+      });
+      await set(refreshGroupedChatMessagesCache$, signal);
+      signal.throwIfAborted();
+      set(
+        draft.seed$,
+        message.content ?? "",
+        (message.attachFiles ?? []).map(createRestoredAttachment),
+      );
+
+      await set(
+        dataSource.recallMessage$,
+        {
+          threadId,
+          agentId: thread.agentId,
+          revokesMessageId: message.id,
+          clientMessageId,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+    },
+  );
+}
+
+interface MessageCommandsDeps
+  extends SendMessageDeps, QueueMessageDeps, RecallMessageDeps {}
+
+function createMessageCommands(deps: MessageCommandsDeps) {
+  return {
+    sendMessage$: createSendMessage(deps),
+    queueMessage$: createQueueMessage(deps),
+    recallMessage$: createRecallMessage(deps),
+  };
+}
+
+interface ThreadMessageActionsDeps extends MessageCommandsDeps {
+  rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>;
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
+}
+
+function createThreadMessageActions(deps: ThreadMessageActionsDeps) {
+  return {
+    ...createMessageCommands(deps),
+    cancelRun$: createCancelRunWithQueuedRecall(deps),
+  };
+}
+
+function createCancelRunWithQueuedRecall({
+  threadId,
+  threadData$,
+  rawMessages$,
+  groupedChatMessages$,
+  refreshGroupedChatMessagesCache$,
+  dataSource,
+}: {
+  threadId: string;
+  threadData$: Computed<Promise<ChatThread | null>>;
+  rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>;
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
+  dataSource: ChatThreadDataSource;
+}) {
+  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const thread = await get(threadData$);
+    signal.throwIfAborted();
+    if (!thread) {
+      return;
+    }
+
+    const [raw, groups] = await Promise.all([
+      get(rawMessages$),
+      get(groupedChatMessages$),
+    ]);
+    signal.throwIfAborted();
+    const queuedMessages = groups.flatMap((group) => {
+      return group.messages.filter((message) => {
+        return (
+          message.role === "user" &&
+          message.isQueued &&
+          message.runId === undefined &&
+          message.revokesMessageId === undefined
+        );
+      });
+    });
+
+    const interruptRequests = cancellableRunIdsFromRawMessages(raw).map(
+      (runId) => {
+        const clientMessageId = crypto.randomUUID();
+        set(appendOptimisticChatMessage$, {
+          threadId,
+          message: {
+            id: clientMessageId,
+            role: "user",
+            content: null,
+            interruptsRunId: runId,
+            createdAt: nowDate().toISOString(),
+          },
+        });
+        return { runId, clientMessageId };
+      },
+    );
+
+    const recallRequests = queuedMessages.map((message) => {
+      const clientMessageId = crypto.randomUUID();
+      set(appendOptimisticChatMessage$, {
+        threadId,
+        message: {
+          id: clientMessageId,
+          role: "user",
+          content: null,
+          revokesMessageId: message.id,
+          createdAt: nowDate().toISOString(),
+        },
+      });
+      return {
+        threadId,
+        agentId: thread.agentId,
+        revokesMessageId: message.id,
+        clientMessageId,
+      };
+    });
+
+    if (interruptRequests.length > 0 || recallRequests.length > 0) {
+      await set(refreshGroupedChatMessagesCache$, signal);
+      signal.throwIfAborted();
+    }
+
+    await Promise.all([
+      set(
+        dataSource.cancelRuns$,
+        {
+          threadId,
+          agentId: thread.agentId,
+          interrupts: interruptRequests,
+        },
+        signal,
+      ),
+      ...recallRequests.map((request) => {
+        return set(dataSource.recallMessage$, request, signal);
+      }),
+    ]);
+    signal.throwIfAborted();
+    set(reloadChatThreads$);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: thinking phrase animation
+// ---------------------------------------------------------------------------
+
+const THINKING_TYPEWRITER_INTERVAL_MS = 28;
+const THINKING_TYPEWRITER_LINE_PAUSE_MS = 3000;
+const THINKING_TYPEWRITER_LINE_PAUSE_TICKS = IN_VITEST
+  ? 1
+  : Math.ceil(
+      THINKING_TYPEWRITER_LINE_PAUSE_MS / THINKING_TYPEWRITER_INTERVAL_MS,
+    );
+const THINKING_TYPEWRITER_WIDTH_GUARD_PX = 8;
+const THINKING_TYPEWRITER_OVERFLOW_PREFIX = "...";
+
+interface ThinkingTypewriterLine {
+  readonly startIndex: number;
+  readonly endIndex: number;
+  readonly text: string;
+}
+
+interface ThinkingTypewriterFrame {
+  readonly messageId: string | undefined;
+  readonly text: string;
+  readonly width: number;
+  readonly lineIndex: number;
+  readonly charIndex: number;
+  readonly pauseTicksRemaining: number;
+  readonly displayedText: string;
+  readonly complete: boolean;
+}
+
+function emptyThinkingTypewriterFrame(): ThinkingTypewriterFrame {
+  return {
+    messageId: undefined,
+    text: "",
+    width: 0,
+    lineIndex: 0,
+    charIndex: 0,
+    pauseTicksRemaining: 0,
+    displayedText: "",
+    complete: false,
+  };
+}
+
+function isAssistantTextMessage(message: EnrichedChatMessage): boolean {
+  return (
+    message.role === "assistant" &&
+    (Boolean(message.content) || Boolean(message.error))
+  );
+}
+
+type ThinkingMarkerMessage = EnrichedChatMessage & {
+  readonly role: "assistant";
+  readonly content: null;
+  readonly error?: undefined;
+  readonly runId: string;
+  readonly thinking: string;
+};
+
+function isThinkingMarkerMessage(
+  message: EnrichedChatMessage,
+): message is ThinkingMarkerMessage {
+  return (
+    message.role === "assistant" &&
+    message.content === null &&
+    message.error === undefined &&
+    typeof message.thinking === "string" &&
+    message.thinking.trim().length > 0 &&
+    message.runId !== undefined
+  );
+}
+
+function thinkingTextGraphemes(text: string): string[] {
+  return Array.from(text);
+}
+
+function lastRunThinkingMessageForIndicator(
+  groups: readonly GroupedChatMessageGroup[],
+): ThinkingMarkerMessage | undefined {
+  const messages = groups.flatMap((group) => {
+    return group.messages.filter((message) => {
+      return !message.isQueued;
+    });
+  });
+  const lastMessage = messages[messages.length - 1];
+  if (!lastMessage || !isThinkingMarkerMessage(lastMessage)) {
+    return undefined;
+  }
+
+  const runId = lastMessage.runId;
+  const runHasAssistantText = messages.some((message) => {
+    return message.runId === runId && isAssistantTextMessage(message);
+  });
+  return runHasAssistantText ? undefined : lastMessage;
+}
+
+function thinkingTypewriterStep(width: number): number {
+  if (width >= 520) {
+    return 3;
+  }
+  if (width >= 320) {
+    return 2;
+  }
+  return 1;
+}
+
+function createThinkingTextMeasurer(
+  el: HTMLElement,
+): (value: string) => number | undefined {
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  const style = window.getComputedStyle(el);
+  const font =
+    style.font ||
+    [
+      style.fontStyle,
+      style.fontVariant,
+      style.fontWeight,
+      style.fontSize,
+      style.fontFamily,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  const letterSpacing =
+    style.letterSpacing === "normal"
+      ? 0
+      : Number.parseFloat(style.letterSpacing);
+
+  if (!context || !font) {
+    return () => {
+      return undefined;
+    };
+  }
+
+  context.font = font;
+  return (value: string) => {
+    const measured = context.measureText(value).width;
+    if (!Number.isFinite(measured) || measured <= 0) {
+      return undefined;
+    }
+    const spacing =
+      Number.isFinite(letterSpacing) && letterSpacing > 0
+        ? (thinkingTextGraphemes(value).length - 1) * letterSpacing
+        : 0;
+    return measured + spacing;
+  };
+}
+
+function thinkingLabelWidth(el: HTMLElement): number {
+  const elementWidth = Math.max(
+    el.getBoundingClientRect().width,
+    el.clientWidth,
+  );
+  if (elementWidth > 0) {
+    return elementWidth;
+  }
+
+  const parent = el.parentElement;
+  return Math.max(
+    parent?.getBoundingClientRect().width ?? 0,
+    parent?.clientWidth ?? 0,
+  );
+}
+
+function wrapThinkingTextForWidth(args: {
+  readonly graphemes: readonly string[];
+  readonly width: number;
+  readonly measureText: (value: string) => number | undefined;
+}): ThinkingTypewriterLine[] {
+  if (args.graphemes.length === 0) {
+    return [];
+  }
+  if (!Number.isFinite(args.width) || args.width <= 0) {
+    return [
+      {
+        startIndex: 0,
+        endIndex: args.graphemes.length,
+        text: args.graphemes.join(""),
+      },
+    ];
+  }
+
+  const maxWidth = Math.max(1, args.width - THINKING_TYPEWRITER_WIDTH_GUARD_PX);
+  const lines: ThinkingTypewriterLine[] = [];
+  let startIndex = 0;
+  let current: string[] = [];
+
+  for (let index = 0; index < args.graphemes.length; index++) {
+    const grapheme = args.graphemes[index]!;
+    const candidate = [...current, grapheme];
+    const candidateText = candidate.join("");
+    const measured = args.measureText(candidateText);
+    if (measured === undefined) {
+      return [
+        {
+          startIndex: 0,
+          endIndex: args.graphemes.length,
+          text: args.graphemes.join(""),
+        },
+      ];
+    }
+
+    if (measured <= maxWidth || current.length === 0) {
+      current = candidate;
+      continue;
+    }
+
+    lines.push({
+      startIndex,
+      endIndex: index,
+      text: current.join(""),
+    });
+    startIndex = index;
+    current = [grapheme];
+  }
+
+  if (current.length > 0) {
+    lines.push({
+      startIndex,
+      endIndex: args.graphemes.length,
+      text: current.join(""),
+    });
+  }
+
+  return lines;
+}
+
+function displayedSlidingThinkingText(args: {
+  readonly graphemes: readonly string[];
+  readonly startIndex: number;
+  readonly charIndex: number;
+  readonly width: number;
+  readonly measureText: (value: string) => number | undefined;
+}): string {
+  const visibleGraphemes = args.graphemes.slice(
+    args.startIndex,
+    args.charIndex,
+  );
+  const visibleText = visibleGraphemes.join("");
+  if (visibleText.length === 0) {
+    return "";
+  }
+  if (!Number.isFinite(args.width) || args.width <= 0) {
+    return visibleText;
+  }
+
+  const maxWidth = Math.max(1, args.width - THINKING_TYPEWRITER_WIDTH_GUARD_PX);
+  const visibleWidth = args.measureText(visibleText);
+  if (visibleWidth === undefined || visibleWidth <= maxWidth) {
+    return visibleText;
+  }
+
+  let displayedText: string | undefined;
+  for (let start = visibleGraphemes.length - 1; start >= 0; start--) {
+    const candidate = `${THINKING_TYPEWRITER_OVERFLOW_PREFIX}${visibleGraphemes
+      .slice(start)
+      .join("")}`;
+    const measured = args.measureText(candidate);
+    if (measured === undefined) {
+      return visibleText;
+    }
+    if (measured <= maxWidth) {
+      displayedText = candidate;
+      continue;
+    }
+    if (displayedText) {
+      break;
+    }
+  }
+
+  return displayedText ?? visibleGraphemes[visibleGraphemes.length - 1] ?? "";
+}
+
+function nextThinkingTypewriterFrame(args: {
+  readonly messageId: string;
+  readonly text: string;
+  readonly currentFrame: ThinkingTypewriterFrame;
+  readonly width: number;
+  readonly measureText: (value: string) => number | undefined;
+}): ThinkingTypewriterFrame {
+  const width = Math.max(0, Math.floor(args.width));
+  const graphemes = thinkingTextGraphemes(args.text);
+  if (graphemes.length === 0) {
+    return emptyThinkingTypewriterFrame();
+  }
+  const lines = wrapThinkingTextForWidth({
+    graphemes,
+    width,
+    measureText: args.measureText,
+  });
+  if (lines.length === 0) {
+    return emptyThinkingTypewriterFrame();
+  }
+
+  const currentFrame =
+    args.currentFrame.messageId === args.messageId &&
+    args.currentFrame.text === args.text &&
+    args.currentFrame.width === width
+      ? args.currentFrame
+      : {
+          ...emptyThinkingTypewriterFrame(),
+          messageId: args.messageId,
+          text: args.text,
+          width,
+        };
+  const lineIndex = Math.min(currentFrame.lineIndex, lines.length - 1);
+  const currentLine = lines[lineIndex]!;
+  const nextLine = lines[lineIndex + 1];
+
+  if (currentFrame.pauseTicksRemaining > 0) {
+    return {
+      ...currentFrame,
+      lineIndex,
+      pauseTicksRemaining: currentFrame.pauseTicksRemaining - 1,
+      displayedText: currentLine.text,
+      complete: false,
+    };
+  }
+
+  if (currentFrame.charIndex >= currentLine.endIndex) {
+    if (!nextLine) {
+      return {
+        ...currentFrame,
+        lineIndex,
+        displayedText: currentLine.text,
+        complete: true,
+      };
+    }
+
+    const nextCharIndex = Math.min(
+      nextLine.endIndex,
+      nextLine.startIndex + thinkingTypewriterStep(width),
+    );
+    return {
+      ...currentFrame,
+      lineIndex: lineIndex + 1,
+      charIndex: nextCharIndex,
+      pauseTicksRemaining: 0,
+      displayedText: displayedSlidingThinkingText({
+        graphemes,
+        startIndex: nextLine.startIndex,
+        charIndex: nextCharIndex,
+        width,
+        measureText: args.measureText,
+      }),
+      complete:
+        lineIndex + 1 >= lines.length - 1 && nextCharIndex >= graphemes.length,
+    };
+  }
+
+  const nextCharIndex = Math.min(
+    currentLine.endIndex,
+    currentFrame.charIndex + thinkingTypewriterStep(width),
+  );
+
+  return {
+    ...currentFrame,
+    lineIndex,
+    charIndex: nextCharIndex,
+    pauseTicksRemaining:
+      nextCharIndex >= currentLine.endIndex && nextLine !== undefined
+        ? THINKING_TYPEWRITER_LINE_PAUSE_TICKS
+        : 0,
+    displayedText: displayedSlidingThinkingText({
+      graphemes,
+      startIndex: currentLine.startIndex,
+      charIndex: nextCharIndex,
+      width,
+      measureText: args.measureText,
+    }),
+    complete: nextCharIndex >= graphemes.length,
+  };
+}
+
+function thinkingTypewriterFrameComplete(
+  frame: ThinkingTypewriterFrame,
+): boolean {
+  return frame.complete;
+}
+
+function createPhraseLoop(
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
+  allFinished$: Computed<Promise<boolean>>,
+) {
+  const internalBlockColors$ =
+    state<[string, string, string]>(shuffleBlockColors());
+  const blockColors$ = computed((get) => {
+    return get(internalBlockColors$);
+  });
+  const phraseIndex$ = state(
+    Math.floor(Math.random() * THINKING_PHRASES.length),
+  );
+  const rotatingPhrase$ = computed((get) => {
+    return THINKING_PHRASES[get(phraseIndex$)]!;
+  });
+  const internalDonePhrase$ = state<string>(formatDonePhrase(undefined));
+  const donePhrase$ = computed((get) => {
+    return get(internalDonePhrase$);
+  });
+  const lastDoneMessageId$ = state<string | undefined>(undefined);
+  const thinkingTypewriterFrame$ = state<ThinkingTypewriterFrame>(
+    emptyThinkingTypewriterFrame(),
+  );
+  const displayedThinkingText$ = computed((get): Promise<string> => {
+    return Promise.resolve(get(thinkingTypewriterFrame$).displayedText);
+  });
+  const resetThinkingTypewriterLoopSignal$ = resetSignal();
+
+  const setThinkingIndicatorTextRef$ = onRef(
+    command(async ({ get, set }, el: HTMLElement, signal: AbortSignal) => {
+      const loopSignal = set(resetThinkingTypewriterLoopSignal$, signal);
+      const measureText = createThinkingTextMeasurer(el);
+      set(thinkingTypewriterFrame$, emptyThinkingTypewriterFrame());
+
+      await setLoop(
+        async (sig) => {
+          const groups = await get(groupedChatMessages$);
+          sig.throwIfAborted();
+
+          const thinkingMessage = lastRunThinkingMessageForIndicator(groups);
+          const text = thinkingMessage?.thinking?.trim() ?? "";
+          if (!thinkingMessage || text.length === 0) {
+            set(thinkingTypewriterFrame$, emptyThinkingTypewriterFrame());
+            return true;
+          }
+
+          const width = thinkingLabelWidth(el);
+          if (width <= 0 && !IN_VITEST) {
+            return false;
+          }
+          const nextFrame = nextThinkingTypewriterFrame({
+            messageId: thinkingMessage.id,
+            text,
+            currentFrame: get(thinkingTypewriterFrame$),
+            width,
+            measureText,
+          });
+          set(thinkingTypewriterFrame$, nextFrame);
+          return thinkingTypewriterFrameComplete(nextFrame);
+        },
+        THINKING_TYPEWRITER_INTERVAL_MS,
+        loopSignal,
+      );
+    }),
+  );
+
+  const runPhraseLoop$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      await setLoop(
+        async (sig) => {
+          const groups = await get(groupedChatMessages$);
+          sig.throwIfAborted();
+          const lastGroup = groups[groups.length - 1];
+          const lastIsAssistant = lastGroup?.role === "assistant";
+          const lastMsg =
+            lastIsAssistant && lastGroup
+              ? lastGroup.messages[lastGroup.messages.length - 1]
+              : undefined;
+          if (lastMsg?.id !== get(lastDoneMessageId$)) {
+            set(lastDoneMessageId$, lastMsg?.id);
+            set(internalDonePhrase$, formatDonePhrase(lastMsg));
+          }
+          const allFinished = await get(allFinished$);
+          sig.throwIfAborted();
+          const thinkingMessage = lastRunThinkingMessageForIndicator(groups);
+          if (!thinkingMessage) {
+            set(thinkingTypewriterFrame$, emptyThinkingTypewriterFrame());
+          }
+          if (
+            !thinkingMessage &&
+            (!allFinished || (!!lastGroup && !lastIsAssistant))
+          ) {
+            set(
+              phraseIndex$,
+              (get(phraseIndex$) + 1) % THINKING_PHRASES.length,
+            );
+          }
+          return false;
+        },
+        PHRASE_INTERVAL_MS,
+        signal,
+      );
+    },
+  );
+
+  return {
+    blockColors$,
+    rotatingPhrase$,
+    donePhrase$,
+    displayedThinkingText$,
+    setThinkingIndicatorTextRef$,
+    runPhraseLoop$,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Factory: createChatThreadSignals
+// ---------------------------------------------------------------------------
+
+export function createChatThreadSignals(
+  threadId: string,
+  draft: DraftSignals,
+  dataSource: ChatThreadDataSource = createRemoteChatThreadDataSource(threadId),
+): ChatThreadSignals {
+  const { threadData$, reloadThread$ } = createThreadData(dataSource);
+  const { threadTitleEmoji$, threadTitleText$ } =
+    createThreadTitleParts(threadData$);
+  const { modelSelection$, setModelSelection$ } = createModelSelection(
+    threadId,
+    threadData$,
+    dataSource,
+  );
+  const computerUseHostSelection = createComputerUseHostSelection(
+    threadId,
+    threadData$,
+    dataSource,
+  );
+  const {
+    recordScrollHeightForPrepend$,
+    clearScrollHeightForPrepend$,
+    awayFromBottom$,
+    ...scrollSignals
+  } = createScrollSignals(threadId);
+  const { skeletonVisible$, showSkeleton$, hideSkeleton$ } =
+    createSkeletonSignals();
+  const { containerEl$, setContainerRef$ } = createContainerRef();
+  const { composerFileInput$, setComposerFileInput$ } =
+    createComposerFileInput();
+  const { agentId$, agentDisplayName$, defaultModelSelection$, agentPinned$ } =
+    createAgentInfoSignals(threadId, threadData$);
+  const threadUi = createThreadUIState();
+  const messages = createChatThreadMessagePipeline({
+    threadId,
+    threadData$,
+    dataSource,
+    recordScrollHeightForPrepend$,
+    clearScrollHeightForPrepend$,
+    awayFromBottom$,
+  });
+
+  const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
+    createDraftSync(threadId, draft, dataSource);
+  const runTracking = createRunTracking({
+    threadId,
+    reloadThread$,
+    threadData$,
+    latestChatMessageId$: messages.latestChatMessageId$,
+    latestRunStatus$: messages.latestRunStatus$,
+    initialPage$: messages.initialPage$,
+    fetchNextPage$: messages.fetchNextPage$,
+    fetchUpdatedMessage$: messages.fetchUpdatedMessage$,
+    silentBackfillHistory$: messages.silentBackfillHistory$,
+    refreshLatestMessages$: messages.refreshLatestMessages$,
+    autoScroll$: scrollSignals.autoScroll$,
+    dataSource,
+  });
+
+  const messageActions = createThreadMessageActions({
+    threadId,
+    threadData$,
+    modelSelection$,
+    rawMessages$: messages.rawMessages$,
+    groupedChatMessages$: messages.groupedChatMessages$,
+    draft,
+    cancelDraftSync$,
+    flushDraftClear$,
+    scrollToBottom$: scrollSignals.scrollToBottom$,
+    fetchNextPage$: messages.fetchNextPage$,
+    refreshGroupedChatMessagesCache$: messages.refreshGroupedChatMessagesCache$,
+    dataSource,
+  });
+
+  const inputRef = createInputRef();
+  const phraseLoop = createPhraseLoop(
+    messages.groupedChatMessages$,
+    runTracking.allFinished$,
+  );
+  const { artifacts$, reloadArtifacts$, setArtifactsRealtimeRef$ } =
+    createArtifacts(threadId, messages.groupedChatMessages$);
+
+  return {
+    threadId,
+    threadData$,
+    reloadThread$,
+    threadTitleEmoji$,
+    threadTitleText$,
+    modelSelection$,
+    setModelSelection$,
+    ...computerUseHostSelection,
+    ...messageActions,
+    ...scrollSignals,
+    containerEl$,
+    setContainerRef$,
+    awayFromBottom$,
+    skeletonVisible$,
+    showSkeleton$,
+    hideSkeleton$,
+    draft,
+    composerFileInput$,
+    setComposerFileInput$,
+    agentId$,
+    agentDisplayName$,
+    defaultModelSelection$,
+    agentPinned$,
+    ...threadUi,
+    ...inputRef,
+    queueDraftSync$,
+    earliestChatMessageId$: messages.earliestChatMessageId$,
+    latestChatMessageId$: messages.latestChatMessageId$,
+    latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
+    groupedChatMessages$: messages.groupedChatMessages$,
+    renderedGroupedChatMessages$: messages.renderedGroupedChatMessages$,
+    hasOlderHistory$: messages.hasOlderHistory$,
+    messageRunIndicatorState$: messages.messageRunIndicatorState$,
+    latestRunStatus$: messages.latestRunStatus$,
+    activeGoal$: messages.activeGoal$,
+    allFinished$: runTracking.allFinished$,
+    loadMoreRenderedChatGroups$: messages.loadMoreRenderedChatGroups$,
+    resetRenderedChatGroupsIfAtBottom$:
+      messages.resetRenderedChatGroupsIfAtBottom$,
+    fetchNextPage$: messages.fetchNextPage$,
+    loadHistory$: messages.loadHistory$,
+    subscribeChatThread$: runTracking.subscribeChatThread$,
+    ...phraseLoop,
+    artifacts$,
+    reloadArtifacts$,
+    setArtifactsRealtimeRef$,
+  };
+}

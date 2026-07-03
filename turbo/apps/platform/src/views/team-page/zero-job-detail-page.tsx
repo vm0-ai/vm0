@@ -1,0 +1,1230 @@
+// TODO(#8609): split large components to comply with max-lines-per-function (128)
+// oxlint-disable max-lines-per-function
+import {
+  useGet,
+  useSet,
+  useLoadable,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import {
+  IconFileText,
+  IconUserCircle,
+  IconShield,
+  IconCalendar,
+  IconUsers,
+  IconAdjustmentsHorizontal,
+  IconSearch,
+  IconX,
+  IconMessageCircle,
+  IconWand,
+  IconListCheck,
+} from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import type { ConnectorType } from "@vm0/connectors/connectors";
+import {
+  Button,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  Card,
+  CardContent,
+  cn,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@vm0/ui";
+import { ZeroAutomationTab } from "../zero-page/zero-automation-tab.tsx";
+import { ZeroInstructionsTab } from "../zero-page/zero-instructions-tab.tsx";
+import { LoadingSwitch } from "../components/loading-switch.tsx";
+import { ZeroSettingsTab } from "../zero-page/zero-settings-tab.tsx";
+
+import { TONE_OPTIONS, type Tone } from "../zero-page/zero-tone-constants.ts";
+import type { AutomationEntry } from "../zero-page/zero-automation-card.tsx";
+import {
+  agentDetail$,
+  agentInstructions$,
+  agentAutomationEntries$,
+  saveAgentAutomation$,
+  deleteAgentAutomation$,
+  toggleAgentAutomationEnabled$,
+  agentEditedContent$,
+  agentInstructionsDirty$,
+  setAgentEditedContent$,
+  discardAgentEdit$,
+  buildAgentInstructions$,
+  updateAgentSettings$,
+  deleteAgent$,
+  agentAuthorizedConnectors$,
+  authorizeAgentConnector$,
+  deauthorizeAgentConnector$,
+  saveAgentConnectors$,
+  agentActiveTab$,
+  setAgentActiveTab$,
+} from "../../signals/zero-page/zero-job-detail.ts";
+import { runAutomationNow$ } from "../../signals/zero-page/zero-automations.ts";
+import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
+import { Link } from "../router/link.tsx";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
+import {
+  bestEffort,
+  detach,
+  onDomEventFn,
+  Reason,
+} from "../../signals/utils.ts";
+import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
+import { openAvatarMaker$ } from "../../signals/zero-page/settings/avatar-maker.ts";
+import { currentAgent$, currentAgentId$ } from "../../signals/agent.ts";
+import { isOrgAdmin$ } from "../../signals/org.ts";
+import { user$ } from "../../signals/auth.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { ZeroNoPermissionIllustration } from "../zero-page/components/zero-no-permission-illustration.tsx";
+import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
+import { PermissionsDrawer } from "../zero-page/components/settings/permissions-dialog.tsx";
+import type { PermissionDraftIntent } from "../../signals/zero-page/settings/permission-draft-intent.ts";
+import { savePermissionDraftPolicies } from "../../signals/zero-page/settings/permission-grant-save.ts";
+import { noConnectorImg } from "../zero-page/platform-assets.ts";
+import { JobCustomConnectorsSection } from "./job-custom-connectors-section.tsx";
+import { hasConnectorPermissions } from "../../signals/zero-page/settings/permissions.ts";
+import {
+  applyUserPermissionGrants$,
+  userPermissionGrantsByAgent,
+} from "../../signals/permission-allow/permission-allow-signals.ts";
+import {
+  allConnectorTypes$,
+  matchesConnectorSearch,
+  type ConnectorTypeWithStatus,
+} from "../../signals/zero-page/settings/connectors.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import {
+  permConnectorType$,
+  setPermConnectorType$,
+  permSearch$,
+  setPermSearch$,
+  permSearchActive$,
+  setPermSearchActive$,
+  permSavingType$,
+  setPermSavingType$,
+} from "../../signals/zero-page/zero-job-detail-page.ts";
+import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
+import {
+  permissionGrantsToFirewallPolicies,
+  type FirewallPermissionDetailMetadata,
+} from "@vm0/connectors/firewall-metadata";
+import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { agentVisibleWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
+import { WorkflowListPanel } from "../workflows-page/workflows-page.tsx";
+import {
+  DetailPageBreadcrumbBar,
+  DetailPageHeader,
+  DetailPageMain,
+  DetailPageShell,
+} from "../components/detail-page-layout.tsx";
+
+// ---------------------------------------------------------------------------
+// Page shell: skeleton, error, header
+// ---------------------------------------------------------------------------
+
+function loadableErrorMessage(loadable: {
+  state: string;
+  error?: unknown;
+}): string | null {
+  if (loadable.state !== "hasError") {
+    return null;
+  }
+  return loadable.error instanceof Error
+    ? loadable.error.message
+    : "Unknown error";
+}
+
+function Breadcrumb({
+  currentName,
+  className,
+}: {
+  currentName?: string;
+  className?: string;
+}) {
+  return (
+    <DetailPageBreadcrumbBar className={className}>
+      <Link
+        pathname="/agents"
+        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
+      >
+        <IconUsers size={14} stroke={1.5} className="shrink-0" />
+        Agents
+      </Link>
+      <span className="text-muted-foreground/40 select-none">/</span>
+      <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
+        {currentName ?? "Agent"}
+      </span>
+    </DetailPageBreadcrumbBar>
+  );
+}
+
+function DetailSkeleton() {
+  return (
+    <DetailPageShell scroll={false}>
+      <Breadcrumb />
+      <DetailPageHeader className="pb-3">
+        <div className="animate-pulse space-y-3">
+          <div className="h-5 w-48 rounded bg-muted" />
+          <div className="h-4 w-72 rounded bg-muted" />
+          <div className="h-9 w-80 rounded bg-muted mt-4" />
+        </div>
+      </DetailPageHeader>
+    </DetailPageShell>
+  );
+}
+
+function isNotFoundError(error: string): boolean {
+  return /not found|404|no(t| )exist/i.test(error);
+}
+
+function DetailError({ error, agentId }: { error: string; agentId: string }) {
+  if (isNotFoundError(error)) {
+    return (
+      <DetailPageShell scroll={false}>
+        <Breadcrumb />
+        <main className="flex-1 flex items-center justify-center px-4 sm:px-6 pb-16">
+          <div className="flex flex-col items-center text-center gap-4 max-w-sm">
+            <ZeroNoPermissionIllustration className="h-32 w-auto max-w-[220px] object-contain opacity-90" />
+            <div className="space-y-1.5">
+              <h2 className="text-lg font-semibold text-foreground">
+                Agent not found
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                The agent &quot;{agentId}&quot; doesn&apos;t exist or you
+                don&apos;t have access to it.
+              </p>
+            </div>
+            <Link
+              pathname="/agents"
+              className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
+            >
+              Back to team
+            </Link>
+          </div>
+        </main>
+      </DetailPageShell>
+    );
+  }
+
+  return (
+    <DetailPageShell scroll={false}>
+      <Breadcrumb />
+      <main className="flex-1 px-4 sm:px-6 pt-4 pb-8">
+        <div className="mx-auto max-w-[900px]">
+          <Card className="zero-card">
+            <CardContent className="px-6 py-6 text-center space-y-3">
+              <p className="text-sm text-destructive">{error}</p>
+              <Link
+                pathname="/agents/:agentId"
+                options={{ pathParams: { agentId: agentId } }}
+                className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
+              >
+                Retry
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+    </DetailPageShell>
+  );
+}
+
+const TAB_TRIGGER_CLASS =
+  "gap-1.5 text-sm data-[state=active]:bg-background px-3";
+
+/** Coerce hidden tabs back to "authorization". */
+function resolveVisibleTab(
+  rawTab: string,
+  hideProfileAndInstructions: boolean,
+  showAutomations: boolean,
+  showWorkflows: boolean,
+): string {
+  if (!showAutomations && rawTab === "automations") {
+    return "authorization";
+  }
+  if (!showWorkflows && rawTab === "workflows") {
+    return "authorization";
+  }
+  if (
+    hideProfileAndInstructions &&
+    rawTab !== "authorization" &&
+    rawTab !== "automations" &&
+    rawTab !== "workflows"
+  ) {
+    return "authorization";
+  }
+  return rawTab;
+}
+
+function AgentTabNav({
+  activeTab,
+  onTabChange,
+  showProfileAndInstructions,
+  showAutomations,
+  showWorkflows,
+}: {
+  activeTab: string;
+  onTabChange: (tab: string) => void;
+  showProfileAndInstructions: boolean;
+  showAutomations: boolean;
+  showWorkflows: boolean;
+}) {
+  return (
+    <Tabs
+      value={activeTab}
+      onValueChange={onTabChange}
+      className="flex-1 min-w-0"
+    >
+      {/* Mobile: Select dropdown */}
+      <div className="sm:hidden">
+        <Select value={activeTab} onValueChange={onTabChange}>
+          <SelectTrigger className="h-9 w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="authorization">Authorization</SelectItem>
+            {showAutomations && (
+              <SelectItem value="automations">Automations</SelectItem>
+            )}
+            {showWorkflows && (
+              <SelectItem value="workflows">Workflows</SelectItem>
+            )}
+            {showProfileAndInstructions && (
+              <SelectItem value="profile">Profile</SelectItem>
+            )}
+            {showProfileAndInstructions && (
+              <SelectItem value="instructions">Instructions</SelectItem>
+            )}
+          </SelectContent>
+        </Select>
+      </div>
+      {/* Desktop: tab list */}
+      <TabsList className="zero-tabs hidden sm:inline-flex h-9 gap-1 px-1 py-1">
+        <TabsTrigger value="authorization" className={TAB_TRIGGER_CLASS}>
+          <IconShield size={14} stroke={1.5} />
+          Authorization
+        </TabsTrigger>
+        {showAutomations && (
+          <TabsTrigger value="automations" className={TAB_TRIGGER_CLASS}>
+            <IconCalendar size={14} stroke={1.5} />
+            Automations
+          </TabsTrigger>
+        )}
+        {showWorkflows && (
+          <TabsTrigger value="workflows" className={TAB_TRIGGER_CLASS}>
+            <IconListCheck size={14} stroke={1.5} />
+            Workflows
+          </TabsTrigger>
+        )}
+        {showProfileAndInstructions && (
+          <TabsTrigger value="profile" className={TAB_TRIGGER_CLASS}>
+            <IconUserCircle size={14} stroke={1.5} />
+            Profile
+          </TabsTrigger>
+        )}
+        {showProfileAndInstructions && (
+          <TabsTrigger value="instructions" className={TAB_TRIGGER_CLASS}>
+            <IconFileText size={14} stroke={1.5} />
+            Instructions
+          </TabsTrigger>
+        )}
+      </TabsList>
+    </Tabs>
+  );
+}
+
+function resolveSound(sound: string): Tone {
+  return (TONE_OPTIONS as readonly string[]).includes(sound)
+    ? (sound as Tone)
+    : "professional";
+}
+
+// ---------------------------------------------------------------------------
+// PermissionRow — single connector toggle row inside the authorization tab
+// ---------------------------------------------------------------------------
+
+function PermissionRow({
+  connector,
+  enabled,
+  onToggle,
+  loading,
+  showManage,
+  onManage,
+  isLast,
+}: {
+  connector: ConnectorTypeWithStatus;
+  enabled: boolean;
+  onToggle: (checked: boolean) => void;
+  loading?: boolean;
+  showManage?: boolean;
+  onManage?: () => void;
+  isLast?: boolean;
+}) {
+  return (
+    <>
+      <div className="flex items-center gap-3 px-5 py-4 w-full text-left transition-colors">
+        <ConnectorIcon type={connector.type} size={20} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-foreground">
+              {connector.label}
+            </span>
+            {connector.connector?.externalUsername && (
+              <span className="text-xs text-muted-foreground">
+                @{connector.connector.externalUsername}
+              </span>
+            )}
+          </div>
+          {connector.helpText && (
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+              {connector.helpText
+                .replace(/^Connect your \w+ account to /i, "")
+                .replace(/^access /i, "")
+                .replace(/^create /i, "Create ")
+                .replace(/^./, (c) => {
+                  return c.toUpperCase();
+                })}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {showManage && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      onManage?.();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onManage?.();
+                      }
+                    }}
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    aria-label={`Manage ${connector.label} permissions`}
+                  >
+                    <IconAdjustmentsHorizontal size={15} stroke={1.5} />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p className="text-xs">Manage permissions</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          <LoadingSwitch
+            checked={enabled}
+            onCheckedChange={(checked) => {
+              return onToggle(checked);
+            }}
+            loading={loading}
+            ariaLabel={`${enabled ? "Revoke" : "Grant"} ${connector.label} access`}
+          />
+        </div>
+      </div>
+      {!isLast && <div className="mx-5 border-b border-border/50" />}
+    </>
+  );
+}
+
+export function PermissionListSkeleton() {
+  return (
+    <div className="mx-auto max-w-[900px]">
+      <div className="zero-card animate-pulse">
+        {Array.from({ length: 4 }, (_, i) => {
+          return (
+            <div
+              key={i}
+              className={cn(
+                "flex items-center gap-3 px-5 py-4",
+                i < 3 && "border-b border-border/50",
+              )}
+            >
+              <span className="h-5 w-5 shrink-0 rounded bg-muted/50" />
+              <div className="flex-1 space-y-1.5">
+                <span className="block h-4 w-24 rounded bg-muted/50" />
+                <span className="block h-3 w-48 rounded bg-muted/30" />
+              </div>
+              <span className="h-4 w-7 rounded-full bg-muted/50" />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export function PermissionGrantsError() {
+  return (
+    <div className="mx-auto max-w-[900px]">
+      <div className="zero-card px-5 py-4 text-sm text-destructive">
+        Failed to load permission grants
+      </div>
+    </div>
+  );
+}
+
+export function NoConnectedConnectors() {
+  return (
+    <>
+      <div className="zero-card py-8 flex flex-col items-center gap-3">
+        <img
+          src={noConnectorImg}
+          alt="No connectors"
+          className="h-20 w-20 object-contain opacity-80"
+        />
+        <p className="text-sm text-muted-foreground text-center">
+          No connected services yet. Head to the{" "}
+          <Link
+            pathname="/connectors"
+            className="font-medium text-foreground hover:underline"
+          >
+            Connectors
+          </Link>{" "}
+          page to connect your first service.
+        </p>
+      </div>
+      <JobCustomConnectorsSection />
+    </>
+  );
+}
+
+export function ConnectedConnectorPermissions({
+  filteredConnectors,
+  authorizedSet,
+  search,
+  setSearch,
+  searchActive,
+  setSearchActive,
+  savingType,
+  canManagePermissions,
+  onToggle,
+  onManage,
+}: {
+  filteredConnectors: readonly ConnectorTypeWithStatus[];
+  authorizedSet: ReadonlySet<string>;
+  search: string;
+  setSearch: (value: string) => void;
+  searchActive: boolean;
+  setSearchActive: (active: boolean) => void;
+  savingType: string | null;
+  canManagePermissions: boolean;
+  onToggle: (type: ConnectorType, checked: boolean) => Promise<void>;
+  onManage: (type: ConnectorType) => void;
+}) {
+  return (
+    <>
+      <div className="zero-card">
+        <div className="relative border-b border-border/50">
+          <div
+            className={cn(
+              "px-5 pt-4 pb-3 pr-12 text-sm text-muted-foreground transition-opacity duration-150",
+              searchActive && "opacity-0 select-none",
+            )}
+            aria-hidden={searchActive}
+          >
+            When running, the agent can securely use your connected services.
+            You can manage or turn off access anytime.
+          </div>
+          {searchActive && (
+            <div className="absolute inset-0 flex items-center gap-2 px-5">
+              <IconSearch
+                size={14}
+                stroke={1.5}
+                className="shrink-0 text-muted-foreground"
+              />
+              <input
+                ref={(el) => {
+                  return el?.focus();
+                }}
+                type="text"
+                placeholder="Find connectors..."
+                value={search}
+                onChange={(e) => {
+                  return setSearch(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setSearch("");
+                    setSearchActive(false);
+                  }
+                }}
+                className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setSearchActive(false);
+                }}
+                className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                aria-label="Close search"
+              >
+                <IconX size={14} stroke={1.5} />
+              </button>
+            </div>
+          )}
+          {!searchActive && (
+            <button
+              type="button"
+              onClick={() => {
+                return setSearchActive(true);
+              }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              aria-label="Find connectors"
+            >
+              <IconSearch size={14} stroke={1.5} />
+            </button>
+          )}
+        </div>
+        {filteredConnectors.length > 0 ? (
+          filteredConnectors.map((c, i) => {
+            return (
+              <PermissionRow
+                key={c.type}
+                connector={c}
+                enabled={authorizedSet.has(c.type)}
+                onToggle={onDomEventFn(async (checked) => {
+                  await onToggle(c.type, checked);
+                })}
+                loading={savingType === c.type}
+                showManage={
+                  canManagePermissions && hasConnectorPermissions(c.type)
+                }
+                onManage={() => {
+                  return onManage(c.type);
+                }}
+                isLast={i === filteredConnectors.length - 1}
+              />
+            );
+          })
+        ) : (
+          <p className="px-5 py-4 text-sm text-muted-foreground">
+            No results for &ldquo;{search}&rdquo;
+          </p>
+        )}
+      </div>
+
+      <JobCustomConnectorsSection />
+    </>
+  );
+}
+
+export function AgentPermissionsDrawer({
+  targetId,
+  targetKind = "agent",
+  connectorType,
+  connectorLabel,
+  displayName,
+  initialPolicies,
+  initialGrants,
+  initialIntent,
+  initialSearch,
+  initialContextKey,
+  resetEnabled,
+  readOnly,
+  onApply,
+  onClose,
+}: {
+  targetId: string;
+  targetKind?: "agent" | "workflow";
+  connectorType: ConnectorType | null;
+  connectorLabel: string;
+  displayName: string;
+  initialPolicies: FirewallPolicies;
+  initialGrants: readonly UserPermissionGrantResponse[];
+  initialIntent?: PermissionDraftIntent;
+  initialSearch?: string;
+  initialContextKey?: string;
+  resetEnabled: boolean;
+  readOnly: boolean;
+  onApply: (
+    intent: PermissionDraftIntent,
+    options: {
+      readonly metadata: FirewallPermissionDetailMetadata;
+    },
+  ) => Promise<void>;
+  onClose: () => void;
+}) {
+  if (!connectorType) {
+    return null;
+  }
+  return (
+    <PermissionsDrawer
+      agentId={targetId}
+      targetKind={targetKind}
+      connectorType={connectorType}
+      connectorLabel={connectorLabel}
+      displayName={displayName}
+      initialPolicies={initialPolicies}
+      initialGrants={initialGrants}
+      initialIntent={initialIntent}
+      initialSearch={initialSearch}
+      initialContextKey={initialContextKey}
+      resetEnabled={resetEnabled}
+      readOnly={readOnly}
+      onApply={onApply}
+      onClose={onClose}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tab wrappers — resolve signals into shared component props
+// ---------------------------------------------------------------------------
+
+function JobPermissionsTab({
+  agentId,
+  displayName,
+}: {
+  agentId: string;
+  displayName: string;
+}) {
+  // Use useLastLoadable so the list keeps showing the previous data while the
+  // signal refetches after a toggle/save or a permission-policy reload. This
+  // prevents the entire list from flickering to the skeleton on each change
+  // (issue #9141).
+  const connectorsLoadable = useLastLoadable(agentAuthorizedConnectors$);
+  const authorizedConnectors =
+    connectorsLoadable.state === "hasData" ? connectorsLoadable.data : [];
+  const authorizeFn = useSet(authorizeAgentConnector$);
+  const deauthorizeFn = useSet(deauthorizeAgentConnector$);
+  const saveConnectors = useSet(saveAgentConnectors$);
+  const pageSignal = useGet(pageSignal$);
+  const userGrantsLoadable = useLoadable(
+    userPermissionGrantsByAgent({
+      agentId,
+    }),
+  );
+  const userGrants =
+    userGrantsLoadable.state === "hasData" ? userGrantsLoadable.data : [];
+  const userGrantPolicies =
+    userGrantsLoadable.state === "hasData"
+      ? permissionGrantsToFirewallPolicies(userGrants)
+      : null;
+  const drawerInitialPolicies = userGrantPolicies ?? {};
+  const [, applyGrantPolicies] = useLoadableSet(applyUserPermissionGrants$);
+  const connectorType = useGet(permConnectorType$);
+  const setConnectorType = useSet(setPermConnectorType$);
+  const search = useGet(permSearch$);
+  const setSearch = useSet(setPermSearch$);
+  const searchActive = useGet(permSearchActive$);
+  const setSearchActive = useSet(setPermSearchActive$);
+  const savingType = useGet(permSavingType$);
+  const setSavingType = useSet(setPermSavingType$);
+
+  const connectorsLoading = connectorsLoadable.state === "loading";
+
+  const allTypesLoadable = useLastLoadable(allConnectorTypes$);
+  const allConnectors =
+    allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+  const canManagePermissions = true;
+
+  const connectedConnectors = allConnectors.filter((c) => {
+    return c.connected;
+  });
+  const connectorLabel = connectorType
+    ? (allConnectors.find((connector) => {
+        return connector.type === connectorType;
+      })?.label ?? connectorType)
+    : "";
+  const filteredConnectors = connectedConnectors.filter((c) => {
+    return matchesConnectorSearch(search, c);
+  });
+  const authorizedSet = new Set(authorizedConnectors);
+
+  const handleToggle = async (type: ConnectorType, checked: boolean) => {
+    if (savingType !== null) {
+      return;
+    }
+    const modify = checked
+      ? authorizeFn(type, pageSignal)
+      : deauthorizeFn(type, pageSignal);
+    setSavingType(type);
+    await bestEffort(
+      (async () => {
+        await modify;
+        await saveConnectors(type, checked ? "add" : "remove", pageSignal);
+        toast.success("Connectors saved");
+      })(),
+    );
+    setSavingType(null);
+  };
+
+  if (
+    allTypesLoadable.state !== "hasData" ||
+    connectorsLoading ||
+    userGrantsLoadable.state === "loading"
+  ) {
+    return <PermissionListSkeleton />;
+  }
+
+  if (userGrantsLoadable.state === "hasError") {
+    return <PermissionGrantsError />;
+  }
+
+  return (
+    <div className="mx-auto max-w-[900px] flex flex-col gap-4">
+      {connectedConnectors.length === 0 ? (
+        <NoConnectedConnectors />
+      ) : (
+        <>
+          <ConnectedConnectorPermissions
+            filteredConnectors={filteredConnectors}
+            authorizedSet={authorizedSet}
+            search={search}
+            setSearch={setSearch}
+            searchActive={searchActive}
+            setSearchActive={setSearchActive}
+            savingType={savingType}
+            canManagePermissions={canManagePermissions}
+            onToggle={handleToggle}
+            onManage={setConnectorType}
+          />
+          <AgentPermissionsDrawer
+            targetId={agentId}
+            connectorType={connectorType}
+            connectorLabel={connectorLabel}
+            displayName={displayName}
+            initialPolicies={drawerInitialPolicies}
+            initialGrants={userGrants}
+            resetEnabled
+            readOnly={!canManagePermissions}
+            onApply={async (intent, { metadata }) => {
+              if (connectorType === null) {
+                throw new Error("Cannot save permissions without a connector");
+              }
+              await savePermissionDraftPolicies({
+                scope: { agentId },
+                connectorType,
+                metadata,
+                initialPolicies: drawerInitialPolicies,
+                initialGrants: userGrants,
+                intent,
+                pageSignal,
+                applyGrantPolicies,
+              });
+              toast.success("Permissions updated");
+            }}
+            onClose={() => {
+              return setConnectorType(null);
+            }}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+function JobAutomationsTab({ displayName }: { displayName: string }) {
+  const features = useLastResolved(featureSwitch$);
+  if (features?.[FeatureSwitchKey.WorkflowAutomation]) {
+    return null;
+  }
+
+  return <JobLegacyAutomationsTab displayName={displayName} />;
+}
+
+function JobLegacyAutomationsTab({ displayName }: { displayName: string }) {
+  const automationLoadable = useLoadable(agentAutomationEntries$);
+  const entries = useLastResolved(agentAutomationEntries$) ?? [];
+  const loading = automationLoadable.state === "loading";
+  const automationError = loadableErrorMessage(automationLoadable);
+  const saveAutomationTracked = useSet(saveAgentAutomation$);
+  const deleteAutomation = useSet(deleteAgentAutomation$);
+  const toggleEnabled = useSet(toggleAgentAutomationEnabled$);
+  const runAutomationNow = useSet(runAutomationNow$);
+  const nav = useSet(detachedNavigateTo$);
+  const pageSignal = useGet(pageSignal$);
+
+  const handleRunNow = async (entry: AutomationEntry) => {
+    await runAutomationNow(entry.id, pageSignal);
+  };
+
+  const handleOpenDetails = (entry: AutomationEntry) => {
+    nav("/automations/:automationId", {
+      pathParams: { automationId: entry.id },
+    });
+  };
+
+  return (
+    <ZeroAutomationTab
+      displayName={displayName}
+      entries={entries}
+      loading={loading}
+      automationError={automationError}
+      onSave={(params) => {
+        return saveAutomationTracked(params, pageSignal);
+      }}
+      onDelete={(name) => {
+        return deleteAutomation(name, pageSignal);
+      }}
+      onToggleEnabled={(params) => {
+        return toggleEnabled(params, pageSignal);
+      }}
+      onRunNow={handleRunNow}
+      onOpenDetails={handleOpenDetails}
+    />
+  );
+}
+
+function JobWorkflowsTab({ agentId }: { agentId: string }) {
+  const workflowsLoadable = useLoadable(agentVisibleWorkflows$(agentId));
+  const workflows =
+    workflowsLoadable.state === "hasData" ? workflowsLoadable.data : null;
+  const loading = workflowsLoadable.state === "loading" && !workflows;
+
+  return (
+    <div className="mx-auto flex max-w-[900px] flex-col gap-3">
+      <WorkflowListPanel
+        workflows={workflows}
+        loading={loading}
+        showAgentColumn={false}
+        emptyDescription="Workflows attached to this agent appear here."
+      />
+    </div>
+  );
+}
+
+function JobInstructionsTab() {
+  const pageSignal = useGet(pageSignal$);
+  const instructionsLoadable = useLoadable(agentInstructions$);
+  const editedLoadable = useLoadable(agentEditedContent$);
+  const dirtyLoadable = useLoadable(agentInstructionsDirty$);
+  const [buildLoadable, build] = useLoadableSet(buildAgentInstructions$);
+
+  const instructions =
+    instructionsLoadable.state === "hasData" ? instructionsLoadable.data : null;
+  const loading = instructionsLoadable.state === "loading";
+  const fetchError = loadableErrorMessage(instructionsLoadable);
+  const edited =
+    editedLoadable.state === "hasData" ? editedLoadable.data : null;
+  const isDirty =
+    dirtyLoadable.state === "hasData" && dirtyLoadable.data === true;
+  const isBuilding = buildLoadable.state === "loading";
+  const buildError =
+    buildLoadable.state === "hasError" ? String(buildLoadable.error) : null;
+
+  const setEdited = useSet(setAgentEditedContent$);
+  const discard = useSet(discardAgentEdit$);
+
+  return (
+    <ZeroInstructionsTab
+      instructions={instructions}
+      loading={loading}
+      fetchError={fetchError}
+      editedContent={edited}
+      isDirty={isDirty}
+      isBuilding={isBuilding}
+      buildError={buildError}
+      onEdit={setEdited}
+      onDiscard={discard}
+      onBuild={() => {
+        detach(
+          (async () => {
+            await build(pageSignal);
+            toast.success("Instructions saved");
+          })(),
+          Reason.DomCallback,
+        );
+      }}
+    />
+  );
+}
+
+function AgentHeader({
+  displayName,
+  description,
+  agentId,
+  activeTab,
+  onTabChange,
+  showProfileAndInstructions,
+  showAutomations,
+  showWorkflows,
+}: {
+  displayName: string;
+  description: string;
+  agentId: string;
+  activeTab: string;
+  onTabChange: (tab: string) => void;
+  showProfileAndInstructions: boolean;
+  showAutomations: boolean;
+  showWorkflows: boolean;
+}) {
+  const nav = useSet(detachedNavigateTo$);
+  const openMaker = useSet(openAvatarMaker$);
+
+  return (
+    <DetailPageHeader>
+      <div className="flex items-center gap-4">
+        <div className="group relative shrink-0">
+          <AgentAvatarImg
+            name={agentId}
+            alt={displayName}
+            className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
+          />
+          {showProfileAndInstructions && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onTabChange("profile");
+                      openMaker();
+                    }}
+                    className="absolute -right-0.5 -bottom-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
+                    aria-label="Customize avatar"
+                  >
+                    <IconWand size={12} stroke={1.5} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">Customize avatar</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl truncate">
+            {displayName}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1.5 leading-tight line-clamp-2">
+            {description || "Your AI teammate, tuned to you"}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 sm:mt-6 flex items-center gap-2">
+        <AgentTabNav
+          activeTab={activeTab}
+          onTabChange={onTabChange}
+          showProfileAndInstructions={showProfileAndInstructions}
+          showAutomations={showAutomations}
+          showWorkflows={showWorkflows}
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0 zero-btn-morandi gap-1.5"
+          onClick={() => {
+            nav("/agents/:agentId/chat", {
+              pathParams: { agentId: agentId },
+            });
+          }}
+          aria-label={`Chat with ${displayName}`}
+        >
+          <IconMessageCircle size={14} stroke={2} />
+          Chat with {displayName}
+        </Button>
+      </div>
+    </DetailPageHeader>
+  );
+}
+
+function AgentTabContent({
+  activeTab,
+  agentId,
+  displayName,
+  description,
+  avatarUrl,
+  resolvedSound,
+  isDefaultAgent,
+  visibility,
+  canEditVisibility,
+}: {
+  activeTab: string;
+  agentId: string;
+  displayName: string;
+  description: string;
+  avatarUrl: string | null;
+  resolvedSound: Tone;
+  isDefaultAgent: boolean;
+  visibility: "public" | "private";
+  canEditVisibility: boolean;
+}) {
+  const deleteAgent = useSet(deleteAgent$);
+  const nav = useSet(detachedNavigateTo$);
+  const pageSignal = useGet(pageSignal$);
+
+  const handleDelete = async () => {
+    await deleteAgent(pageSignal);
+    nav("/agents");
+  };
+
+  switch (activeTab) {
+    case "authorization": {
+      return <JobPermissionsTab agentId={agentId} displayName={displayName} />;
+    }
+    case "automations": {
+      return <JobAutomationsTab displayName={displayName} />;
+    }
+    case "workflows": {
+      return <JobWorkflowsTab agentId={agentId} />;
+    }
+    case "profile": {
+      return (
+        <ZeroSettingsTab
+          key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}\0${visibility}`}
+          displayName={displayName}
+          description={description}
+          sound={resolvedSound}
+          avatarUrl={avatarUrl}
+          visibility={visibility}
+          canEditVisibility={canEditVisibility}
+          updateSettings$={updateAgentSettings$}
+          inputId="job-agent-name"
+          isDefaultAgent={isDefaultAgent}
+          onDelete={handleDelete}
+        />
+      );
+    }
+    case "instructions": {
+      return <JobInstructionsTab />;
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
+function useAgentFields() {
+  const agent = useLastResolved(currentAgent$);
+  const detail = useLastResolved(agentDetail$);
+  // Both signals fetch from zeroAgentsByIdContract; pick whichever resolved first
+  const source = agent ?? detail;
+  if (!source) {
+    return {
+      detail: detail ?? null,
+      agentId: "",
+      displayName: "Agent",
+      description: "",
+      avatarUrl: null,
+      resolvedSound: resolveSound("professional"),
+      ownerId: "",
+      visibility: "public" as const,
+    };
+  }
+  return {
+    detail: detail ?? null,
+    agentId: source.agentId,
+    displayName: source.displayName ?? (source.agentId || "Agent"),
+    description: source.description ?? "",
+    avatarUrl: source.avatarUrl,
+    resolvedSound: resolveSound(source.sound ?? "professional"),
+    ownerId: source.ownerId,
+    visibility: source.visibility ?? "public",
+  };
+}
+
+function useTabVisibility(agentId: string, ownerId: string) {
+  const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
+  const isDefaultAgent =
+    statusLoadable.state === "hasData" &&
+    statusLoadable.data.defaultAgentId === agentId;
+
+  const adminLoadable = useLoadable(isOrgAdmin$);
+  const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
+
+  const userLoadable = useLoadable(user$);
+  const currentUserId =
+    userLoadable.state === "hasData" ? userLoadable.data?.id : undefined;
+  const isOwner = currentUserId === ownerId;
+
+  const rawTab = useGet(agentActiveTab$);
+  const setActiveTab = useSet(setAgentActiveTab$);
+  const features = useLastResolved(featureSwitch$);
+  const showAutomations = !(
+    features?.[FeatureSwitchKey.WorkflowAutomation] ?? false
+  );
+  const showWorkflows =
+    showAutomations &&
+    (features?.[FeatureSwitchKey.WorkflowAutomation] ?? false);
+  const hideProfileAndInstructions = !isAdmin && !isOwner;
+  const activeTab = resolveVisibleTab(
+    rawTab,
+    hideProfileAndInstructions,
+    showAutomations,
+    showWorkflows,
+  );
+
+  return {
+    isDefaultAgent,
+    hideProfileAndInstructions,
+    isOwner,
+    showAutomations,
+    showWorkflows,
+    activeTab,
+    setActiveTab,
+  };
+}
+
+export function ZeroJobDetailPage() {
+  const detailLoadable = useLoadable(agentDetail$);
+  const error = loadableErrorMessage(detailLoadable);
+  const currentAgentId = useGet(currentAgentId$);
+  const fields = useAgentFields();
+  const errorAgentId = fields.agentId || currentAgentId || "";
+  const {
+    isDefaultAgent,
+    hideProfileAndInstructions,
+    isOwner,
+    showAutomations,
+    showWorkflows,
+    activeTab,
+    setActiveTab,
+  } = useTabVisibility(fields.agentId, fields.ownerId);
+
+  if (!fields.detail && !error) {
+    return <DetailSkeleton />;
+  }
+
+  if (error) {
+    return <DetailError error={error} agentId={errorAgentId} />;
+  }
+
+  return (
+    <DetailPageShell>
+      <Breadcrumb currentName={fields.displayName} />
+      <AgentHeader
+        displayName={fields.displayName}
+        description={fields.description}
+        agentId={fields.agentId}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        showProfileAndInstructions={!hideProfileAndInstructions}
+        showAutomations={showAutomations}
+        showWorkflows={showWorkflows}
+      />
+      <DetailPageMain>
+        <AgentTabContent
+          activeTab={activeTab}
+          agentId={fields.agentId}
+          displayName={fields.displayName}
+          description={fields.description}
+          avatarUrl={fields.avatarUrl}
+          resolvedSound={fields.resolvedSound}
+          isDefaultAgent={isDefaultAgent}
+          visibility={fields.visibility}
+          canEditVisibility={isOwner}
+        />
+      </DetailPageMain>
+    </DetailPageShell>
+  );
+}

@@ -1,0 +1,605 @@
+import {
+  logsByIdContract,
+  logsListContract,
+} from "@vm0/api-contracts/contracts/logs";
+import type { z } from "zod";
+import { emailUnsubscribeContract } from "@vm0/api-contracts/contracts/email-unsubscribe";
+import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
+import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
+import type {
+  OrgModelPoliciesResponse,
+  UpsertModelProviderRequest,
+} from "@vm0/api-contracts/contracts/model-providers";
+import {
+  zeroWorkflowsCollectionContract,
+  zeroWorkflowsDetailContract,
+  type WorkflowFileEntry,
+} from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
+import {
+  zeroModelProvidersByTypeContract,
+  zeroModelProvidersMainContract,
+} from "@vm0/api-contracts/contracts/zero-model-providers";
+import {
+  zeroPersonalModelProvidersByTypeContract,
+  zeroPersonalModelProvidersMainContract,
+} from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
+import {
+  zeroUserPreferencesContract,
+  type UpdateUserPreferencesRequest,
+} from "@vm0/api-contracts/contracts/zero-user-preferences";
+import { zeroLogsSearchContract } from "@vm0/api-contracts/contracts/zero-runs";
+
+import {
+  accept,
+  setupApp,
+  type TestContext,
+} from "../../../../__tests__/test-helpers";
+import { createApp } from "../../../../app-factory";
+import type { ApiTestUser } from "./api-bdd";
+import { createZeroRouteMocks } from "./zero-route-test";
+
+interface AuthHeaders {
+  readonly authorization?: string;
+}
+
+type ZeroLogsSearchQuery = z.input<
+  (typeof zeroLogsSearchContract.searchLogs)["query"]
+>;
+type ZeroLogsListQuery = z.input<(typeof logsListContract.list)["query"]>;
+
+interface ClerkOrg {
+  readonly imageUrl: string | null;
+  readonly hasImage: boolean;
+}
+
+function authHeaders(actor: ApiTestUser | null): AuthHeaders {
+  return actor ? { authorization: "Bearer clerk-session" } : {};
+}
+
+function authenticate(
+  context: TestContext,
+  actor: ApiTestUser | null,
+): AuthHeaders {
+  if (!actor) {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+    return {};
+  }
+
+  createZeroRouteMocks(context).clerk.session(
+    actor.userId,
+    actor.orgId,
+    actor.orgRole,
+  );
+  return authHeaders(actor);
+}
+
+function workflowFiles(content: string): WorkflowFileEntry[] {
+  return [{ path: "SKILL.md", content }];
+}
+
+function commandInput(command: unknown): Record<string, unknown> {
+  if (
+    typeof command === "object" &&
+    command !== null &&
+    "input" in command &&
+    typeof command.input === "object" &&
+    command.input !== null
+  ) {
+    return command.input as Record<string, unknown>;
+  }
+  return {};
+}
+
+function commandName(command: unknown): string {
+  return typeof command === "object" && command !== null
+    ? command.constructor.name
+    : "";
+}
+
+function bodyBuffer(body: unknown): Buffer {
+  if (Buffer.isBuffer(body)) {
+    return body;
+  }
+  if (typeof body === "string") {
+    return Buffer.from(body, "utf8");
+  }
+  if (body instanceof Uint8Array) {
+    return Buffer.from(body);
+  }
+  return Buffer.alloc(0);
+}
+
+function asyncIterableOf(buffer: Buffer): AsyncIterable<Uint8Array> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield buffer;
+    },
+  };
+}
+
+async function requestZeroLogsSearch<TStatus extends 200 | 400 | 401 | 403>(
+  context: TestContext,
+  actor: ApiTestUser | null,
+  query: ZeroLogsSearchQuery,
+  statuses: readonly TStatus[],
+) {
+  return await accept(
+    setupApp({ context })(zeroLogsSearchContract).searchLogs({
+      headers: authenticate(context, actor),
+      query,
+    }),
+    statuses,
+  );
+}
+
+async function requestZeroLogsList<TStatus extends 200 | 400 | 401 | 403>(
+  context: TestContext,
+  actor: ApiTestUser | null,
+  query: ZeroLogsListQuery,
+  statuses: readonly TStatus[],
+) {
+  return await accept(
+    setupApp({ context })(logsListContract).list({
+      headers: authenticate(context, actor),
+      query,
+    }),
+    statuses,
+  );
+}
+
+export function createMiscRoutesApi(context: TestContext) {
+  const s3Objects = new Map<string, Buffer>();
+  context.mocks.s3.send.mockImplementation((command: unknown) => {
+    const input = commandInput(command);
+    const key = typeof input.Key === "string" ? input.Key : "";
+    const name = commandName(command);
+    if (name === "PutObjectCommand") {
+      s3Objects.set(key, bodyBuffer(input.Body));
+      return Promise.resolve({});
+    }
+    if (name === "GetObjectCommand") {
+      const body = s3Objects.get(key);
+      return Promise.resolve(
+        body ? { Body: asyncIterableOf(body) } : { Body: undefined },
+      );
+    }
+    if (name === "HeadObjectCommand") {
+      return Promise.resolve({});
+    }
+    return Promise.resolve({});
+  });
+
+  return {
+    putS3Object(key: string, body: Buffer | string | Uint8Array): void {
+      s3Objects.set(key, bodyBuffer(body));
+    },
+
+    setOrgLogoRead(org: ClerkOrg): void {
+      context.mocks.clerk.organizations.getOrganization.mockResolvedValue(org);
+    },
+
+    setOrgLogoUpload(org: ClerkOrg): void {
+      context.mocks.clerk.organizations.updateOrganizationLogo.mockResolvedValue(
+        org,
+      );
+    },
+
+    setOrgLogoDelete(org: ClerkOrg): void {
+      context.mocks.clerk.organizations.deleteOrganizationLogo.mockResolvedValue(
+        org,
+      );
+    },
+
+    async requestOrgLogo(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroOrgLogoContract).get({
+          headers: authenticate(context, actor),
+        }),
+        statuses,
+      );
+    },
+
+    async uploadOrgLogo(
+      actor: ApiTestUser,
+      file: File | null,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      const body = new FormData();
+      if (file) {
+        body.append("file", file);
+      }
+      return await accept(
+        setupApp({ context })(zeroOrgLogoContract).post({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async deleteOrgLogo(
+      actor: ApiTestUser,
+      statuses: readonly (200 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroOrgLogoContract).delete({
+          headers: authenticate(context, actor),
+        }),
+        statuses,
+      );
+    },
+
+    async readPreferences(actor: ApiTestUser) {
+      return await accept(
+        setupApp({ context })(zeroUserPreferencesContract).get({
+          headers: authenticate(context, actor),
+        }),
+        [200],
+      );
+    },
+
+    async updatePreferences(
+      actor: ApiTestUser,
+      body: UpdateUserPreferencesRequest,
+      statuses: readonly (200 | 400 | 401 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroUserPreferencesContract).update({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async registerPush(
+      actor: ApiTestUser | null,
+      statuses: readonly (201 | 400 | 401 | 403)[],
+    ) {
+      return await accept(
+        setupApp({ context })(pushSubscriptionsContract).register({
+          headers: authenticate(context, actor),
+          body: {
+            endpoint: `https://push.example.test/${actor?.userId ?? "anon"}`,
+            keys: { p256dh: "bdd-p256dh", auth: "bdd-auth" },
+          },
+        }),
+        statuses,
+      );
+    },
+
+    async readUserExport(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401 | 403 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(userExportContract).get({
+          headers: authenticate(context, actor),
+        }),
+        statuses,
+      );
+    },
+
+    async startUserExport(
+      actor: ApiTestUser | null,
+      statuses: readonly (202 | 401 | 403 | 429 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(userExportContract).post({
+          headers: authenticate(context, actor),
+        }),
+        statuses,
+      );
+    },
+
+    async requestEmailUnsubscribePage(
+      token: string | undefined,
+      statuses: readonly (200 | 400)[],
+    ) {
+      return await accept(
+        setupApp({ context })(emailUnsubscribeContract).get({
+          query: { token },
+        }),
+        statuses,
+      );
+    },
+
+    async requestEmailUnsubscribe(
+      token: string | undefined,
+      statuses: readonly (200 | 400)[],
+    ) {
+      return await accept(
+        setupApp({ context })(emailUnsubscribeContract).unsubscribe({
+          query: { token },
+        }),
+        statuses,
+      );
+    },
+
+    async listWorkflows(actor: ApiTestUser) {
+      return await accept(
+        setupApp({ context })(zeroWorkflowsCollectionContract).list({
+          headers: authenticate(context, actor),
+        }),
+        [200],
+      );
+    },
+
+    async createWorkflow(
+      actor: ApiTestUser,
+      agentId: string,
+      name: string,
+      input: {
+        readonly content: string;
+        readonly files?: readonly WorkflowFileEntry[];
+      },
+      statuses: readonly (201 | 400 | 401 | 403 | 409)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroWorkflowsCollectionContract).create({
+          headers: authenticate(context, actor),
+          body: {
+            agentId,
+            name,
+            displayName: "BDD Workflow",
+            description: "Created through public workflow API",
+            instruction: input.content,
+            ...(input.files === undefined ? {} : { files: [...input.files] }),
+          },
+        }),
+        statuses,
+      );
+    },
+
+    async requestCreateInvalidWorkflow(
+      actor: ApiTestUser,
+      agentId: string,
+      statuses: readonly (400 | 401 | 403 | 409)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroWorkflowsCollectionContract).create({
+          headers: authenticate(context, actor),
+          body: {
+            agentId,
+            name: "bdd-invalid-workflow",
+            // SKILL.md is reserved and synthesized server-side; supplying it as
+            // a supplementary file is rejected with 400.
+            files: workflowFiles("reserved skill file"),
+          },
+        }),
+        statuses,
+      );
+    },
+
+    async readWorkflow(
+      actor: ApiTestUser,
+      workflowId: string,
+      statuses: readonly (200 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroWorkflowsDetailContract).get({
+          headers: authenticate(context, actor),
+          params: { workflowId },
+        }),
+        statuses,
+      );
+    },
+
+    async updateWorkflow(
+      actor: ApiTestUser,
+      workflowId: string,
+      content: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroWorkflowsDetailContract).update({
+          headers: authenticate(context, actor),
+          params: { workflowId },
+          body: { instruction: content },
+        }),
+        statuses,
+      );
+    },
+
+    async deleteWorkflow(
+      actor: ApiTestUser,
+      workflowId: string,
+      statuses: readonly (204 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroWorkflowsDetailContract).delete({
+          headers: authenticate(context, actor),
+          params: { workflowId },
+        }),
+        statuses,
+      );
+    },
+
+    async listModelProviders(actor: ApiTestUser) {
+      return await accept(
+        setupApp({ context })(zeroModelProvidersMainContract).list({
+          headers: authenticate(context, actor),
+        }),
+        [200],
+      );
+    },
+
+    async upsertVm0Provider(
+      actor: ApiTestUser,
+      statuses: readonly (200 | 201 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroModelProvidersMainContract).upsert({
+          headers: authenticate(context, actor),
+          body: { type: "vm0" },
+        }),
+        statuses,
+      );
+    },
+
+    async upsertOrgModelProvider(
+      actor: ApiTestUser,
+      body: UpsertModelProviderRequest,
+      statuses: readonly (200 | 201 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroModelProvidersMainContract).upsert({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async deleteVm0Provider(
+      actor: ApiTestUser,
+      statuses: readonly (204 | 401 | 403 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroModelProvidersByTypeContract).delete({
+          headers: authenticate(context, actor),
+          params: { type: "vm0" },
+        }),
+        statuses,
+      );
+    },
+
+    async listPersonalModelProviders(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroPersonalModelProvidersMainContract).list({
+          headers: authenticate(context, actor),
+        }),
+        statuses,
+      );
+    },
+
+    async upsertPersonalModelProvider(
+      actor: ApiTestUser | null,
+      body: UpsertModelProviderRequest,
+      statuses: readonly (200 | 201 | 400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroPersonalModelProvidersMainContract).upsert({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async deletePersonalModelProvider(
+      actor: ApiTestUser | null,
+      type: "claude-code-oauth-token" | "codex-oauth-token",
+      statuses: readonly (204 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroPersonalModelProvidersByTypeContract).delete({
+          headers: authenticate(context, actor),
+          params: { type },
+        }),
+        statuses,
+      );
+    },
+
+    async listModelPolicies(
+      actor: ApiTestUser,
+    ): Promise<OrgModelPoliciesResponse> {
+      const response = await accept(
+        setupApp({ context })(zeroModelPoliciesMainContract).list({
+          headers: authenticate(context, actor),
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async updateModelPolicies(
+      actor: ApiTestUser,
+      policies: OrgModelPoliciesResponse["policies"],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroModelPoliciesMainContract).update({
+          headers: authenticate(context, actor),
+          body: {
+            policies: policies.map((policy) => {
+              return {
+                model: policy.model,
+                isDefault: policy.isDefault,
+                defaultProviderType: policy.defaultProviderType,
+                credentialScope: policy.credentialScope,
+                modelProviderId: policy.modelProviderId,
+              };
+            }),
+          },
+        }),
+        statuses,
+      );
+    },
+
+    async listLogs(actor: ApiTestUser) {
+      return await requestZeroLogsList(context, actor, {}, [200]);
+    },
+
+    async requestListLogs<TStatus extends 200 | 400 | 401 | 403>(
+      actor: ApiTestUser | null,
+      query: ZeroLogsListQuery,
+      statuses: readonly TStatus[],
+    ) {
+      return await requestZeroLogsList(context, actor, query, statuses);
+    },
+
+    async requestSearchLogs<TStatus extends 200 | 400 | 401 | 403>(
+      actor: ApiTestUser | null,
+      query: ZeroLogsSearchQuery,
+      statuses: readonly TStatus[],
+    ) {
+      return await requestZeroLogsSearch(context, actor, query, statuses);
+    },
+
+    async rawSearchLogs(
+      actor: ApiTestUser,
+      queryString: string,
+    ): Promise<{ readonly status: number; readonly body: unknown }> {
+      const { authorization } = authenticate(context, actor);
+      const app = createApp({ signal: context.signal });
+      const response = await app.request(
+        `/api/zero/logs/search${queryString}`,
+        {
+          method: "GET",
+          headers: authorization === undefined ? {} : { authorization },
+        },
+      );
+      const body: unknown = await response.json();
+      return { status: response.status, body };
+    },
+
+    async searchLogs(actor: ApiTestUser, keyword: string) {
+      return await requestZeroLogsSearch(context, actor, { keyword }, [200]);
+    },
+
+    async readLog(
+      actor: ApiTestUser,
+      id: string,
+      statuses: readonly (200 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(logsByIdContract).getById({
+          headers: authenticate(context, actor),
+          params: { id },
+        }),
+        statuses,
+      );
+    },
+  };
+}

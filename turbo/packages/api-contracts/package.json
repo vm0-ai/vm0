@@ -1,0 +1,54 @@
+{
+  "name": "@vm0/api-contracts",
+  "version": "1.145.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/contracts/index.ts",
+      "types": "./src/contracts/index.ts"
+    },
+    "./contracts": {
+      "import": "./src/contracts/index.ts",
+      "types": "./src/contracts/index.ts"
+    },
+    "./contracts/*": {
+      "import": "./src/contracts/*.ts",
+      "types": "./src/contracts/*.ts"
+    },
+    "./contracts/connectors": null,
+    "./contracts/connectors/*": null,
+    "./contracts/connector-utils": null,
+    "./contracts/firewall-expander": null,
+    "./contracts/firewall-rule-matcher": null,
+    "./contracts/firewalls": null,
+    "./feature-switch-key": null,
+    "./firewalls": null,
+    "./firewalls/*": null
+  },
+  "scripts": {
+    "build:runtime-api-schema": "tsx src/runtime-api-schema/cli.ts build",
+    "generate:rust": "tsx src/rust-bindings/generate.ts",
+    "lint-runtime-api-compat": "tsx src/runtime-api-schema/cli.ts lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
+    "check-types": "tsc -p tsconfig.contracts.json --noEmit && tsc -p tsconfig.rust-bindings.json --noEmit && tsc -p tsconfig.runtime-api-schema.json --noEmit"
+  },
+  "dependencies": {
+    "@trpc/server": "11.18.0",
+    "@vm0/connectors": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@vm0/eslint-config": "workspace:*",
+    "@vm0/typescript-config": "workspace:*",
+    "eslint": "^9.34.0",
+    "oxlint": "^1.57.0",
+    "oxlint-tsgolint": "0.23.0",
+    "tsx": "^4.21.0",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.9"
+  }
+}

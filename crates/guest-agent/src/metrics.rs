@@ -1,0 +1,419 @@
+//! System metrics collection: CPU, memory, disk.
+//!
+//! Reads `/proc/stat` for CPU, `/proc/meminfo` for memory, and uses
+//! `libc::statvfs` for disk. Writes JSONL to the metrics log file.
+
+use crate::constants;
+use serde::Serialize;
+use std::io::Write;
+use std::time::Duration;
+use tokio_util::sync::CancellationToken;
+
+#[derive(Serialize)]
+struct MetricsEntry {
+    ts: String,
+    cpu: f64,
+    mem_used: u64,
+    mem_total: u64,
+    disk_used: u64,
+    disk_total: u64,
+}
+
+/// Tracks previous `/proc/stat` counters for delta-based CPU measurement.
+struct CpuTracker {
+    prev_idle: u64,
+    prev_total: u64,
+}
+
+impl CpuTracker {
+    fn new() -> Self {
+        Self {
+            prev_idle: 0,
+            prev_total: 0,
+        }
+    }
+
+    /// Read `/proc/stat` and compute CPU usage over the interval since the
+    /// last call. The first call returns the cumulative average since boot
+    /// (acceptable); subsequent calls return the delta-based percentage.
+    fn get_cpu_percent(&mut self) -> f64 {
+        let content = match std::fs::read_to_string("/proc/stat") {
+            Ok(c) => c,
+            Err(_) => return 0.0,
+        };
+        let first_line = match content.lines().next() {
+            Some(l) => l,
+            None => return 0.0,
+        };
+        self.get_cpu_percent_from_stat_line(first_line)
+    }
+
+    fn get_cpu_percent_from_stat_line(&mut self, line: &str) -> f64 {
+        let (idle, total) = match parse_cpu_stat_line(line) {
+            Some(cpu_stat) => cpu_stat,
+            None => return 0.0,
+        };
+
+        if idle < self.prev_idle || total < self.prev_total {
+            self.prev_idle = idle;
+            self.prev_total = total;
+            return 0.0;
+        }
+
+        let delta_idle = idle - self.prev_idle;
+        let delta_total = total - self.prev_total;
+
+        if delta_total == 0 || delta_idle > delta_total {
+            return 0.0;
+        }
+
+        self.prev_idle = idle;
+        self.prev_total = total;
+
+        let pct = 100.0 * (1.0 - delta_idle as f64 / delta_total as f64);
+        (pct * 100.0).round() / 100.0
+    }
+}
+
+fn parse_cpu_stat_line(line: &str) -> Option<(u64, u64)> {
+    let mut fields = line.split_whitespace();
+    if fields.next()? != "cpu" {
+        return None;
+    }
+
+    let values: Vec<u64> = fields.map(|v| v.parse()).collect::<Result<_, _>>().ok()?;
+
+    // idle and iowait are zero-based fields 3 and 4 after the cpu label.
+    let [_, _, _, idle_ticks, iowait_ticks, ..] = values.as_slice() else {
+        return None;
+    };
+    let idle = idle_ticks.checked_add(*iowait_ticks)?;
+    let total = values
+        .iter()
+        .try_fold(0u64, |total, value| total.checked_add(*value))?;
+
+    Some((idle, total))
+}
+
+/// Parse `/proc/meminfo` to get (used, total) in bytes.
+fn get_memory_info() -> (u64, u64) {
+    let content = match std::fs::read_to_string("/proc/meminfo") {
+        Ok(c) => c,
+        Err(_) => return (0, 0),
+    };
+    memory_info_from_content(&content)
+}
+
+fn memory_info_from_content(content: &str) -> (u64, u64) {
+    let mut total_kb = 0u64;
+    let mut available_kb = 0u64;
+    for line in content.lines() {
+        if let Some(rest) = line.strip_prefix("MemTotal:") {
+            total_kb = parse_meminfo_value(rest);
+        } else if let Some(rest) = line.strip_prefix("MemAvailable:") {
+            available_kb = parse_meminfo_value(rest);
+        }
+    }
+    memory_usage_from_kb(total_kb, available_kb).unwrap_or((0, 0))
+}
+
+fn memory_usage_from_kb(total_kb: u64, available_kb: u64) -> Option<(u64, u64)> {
+    let total = total_kb.checked_mul(1024)?;
+    let available = available_kb.checked_mul(1024)?;
+    let used = total.saturating_sub(available);
+    Some((used, total))
+}
+
+fn parse_meminfo_value(s: &str) -> u64 {
+    // Format: "     12345 kB"
+    s.split_whitespace()
+        .next()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
+}
+
+/// Get disk usage for `/` via `libc::statvfs`. Returns (used, total) in bytes.
+fn get_disk_info() -> (u64, u64) {
+    let path = c"/";
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    let ret = unsafe { libc::statvfs(path.as_ptr(), &mut stat) };
+    if ret != 0 {
+        return (0, 0);
+    }
+    let block_size = stat.f_frsize;
+    disk_usage_from_blocks(stat.f_blocks, stat.f_bfree, block_size).unwrap_or((0, 0))
+}
+
+fn disk_usage_from_blocks(blocks: u64, free_blocks: u64, block_size: u64) -> Option<(u64, u64)> {
+    let total = blocks.checked_mul(block_size)?;
+    let free = free_blocks.checked_mul(block_size)?;
+    let used = total.saturating_sub(free);
+    Some((used, total))
+}
+
+/// Collect one snapshot of system metrics.
+fn collect_metrics(cpu_tracker: &mut CpuTracker) -> MetricsEntry {
+    let cpu = cpu_tracker.get_cpu_percent();
+    let (mem_used, mem_total) = get_memory_info();
+    let (disk_used, disk_total) = get_disk_info();
+    MetricsEntry {
+        ts: guest_common::log::timestamp(),
+        cpu,
+        mem_used,
+        mem_total,
+        disk_used,
+        disk_total,
+    }
+}
+
+fn write_metrics_entry(metrics_log_file: &str, entry: &MetricsEntry) {
+    if let Ok(json) = serde_json::to_string(entry)
+        && let Ok(mut f) = guest_contracts::runtime_paths::open_private_append(metrics_log_file)
+    {
+        let _ = writeln!(f, "{json}");
+    }
+}
+
+/// Background loop writing metrics JSONL to an explicit runtime metrics file.
+pub async fn metrics_loop_for_path(shutdown: CancellationToken, metrics_log_file: String) {
+    let mut interval = tokio::time::interval(Duration::from_secs(constants::METRICS_INTERVAL_SECS));
+    let mut cpu_tracker = CpuTracker::new();
+    loop {
+        tokio::select! {
+            _ = shutdown.cancelled() => break,
+            _ = interval.tick() => {
+                let entry = collect_metrics(&mut cpu_tracker);
+                write_metrics_entry(&metrics_log_file, &entry);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cpu_tracker_returns_valid_range() {
+        // First call returns cumulative average, subsequent calls return delta
+        let mut tracker = CpuTracker::new();
+        let pct1 = tracker.get_cpu_percent();
+        assert!((0.0..=100.0).contains(&pct1));
+        let pct2 = tracker.get_cpu_percent();
+        assert!((0.0..=100.0).contains(&pct2));
+    }
+
+    #[test]
+    fn parse_cpu_stat_line_accepts_valid_aggregate_line() {
+        assert_eq!(parse_cpu_stat_line("cpu 1 2 3 4 5 6 7 8"), Some((9, 36)));
+    }
+
+    #[test]
+    fn parse_cpu_stat_line_accepts_whitespace_separated_fields() {
+        assert_eq!(parse_cpu_stat_line("cpu\t1 2 3 4 5 6"), Some((9, 21)));
+    }
+
+    #[test]
+    fn parse_cpu_stat_line_rejects_short_line() {
+        assert_eq!(parse_cpu_stat_line("cpu 1 2 3 4"), None);
+    }
+
+    #[test]
+    fn parse_cpu_stat_line_rejects_wrong_prefix() {
+        assert_eq!(parse_cpu_stat_line("cpu0 1 2 3 4 5"), None);
+    }
+
+    #[test]
+    fn parse_cpu_stat_line_rejects_malformed_field() {
+        assert_eq!(parse_cpu_stat_line("cpu 1 2 bad 4 5 6"), None);
+    }
+
+    #[test]
+    fn parse_cpu_stat_line_rejects_idle_overflow() {
+        let line = format!("cpu 0 0 0 {} 1", u64::MAX);
+        assert_eq!(parse_cpu_stat_line(&line), None);
+    }
+
+    #[test]
+    fn parse_cpu_stat_line_rejects_total_overflow() {
+        let line = format!("cpu {} 1 0 0 0", u64::MAX);
+        assert_eq!(parse_cpu_stat_line(&line), None);
+    }
+
+    #[test]
+    fn cpu_tracker_does_not_update_state_for_invalid_stat_line() {
+        let mut tracker = CpuTracker::new();
+        assert_eq!(
+            tracker.get_cpu_percent_from_stat_line("cpu 0 0 0 10 0"),
+            0.0
+        );
+
+        let line = format!("cpu 0 0 0 {} 1", u64::MAX);
+        assert_eq!(tracker.get_cpu_percent_from_stat_line(&line), 0.0);
+
+        assert_eq!(tracker.prev_idle, 10);
+        assert_eq!(tracker.prev_total, 10);
+    }
+
+    #[test]
+    fn cpu_tracker_rejects_inconsistent_delta_without_updating_state() {
+        let mut tracker = CpuTracker::new();
+        assert_eq!(
+            tracker.get_cpu_percent_from_stat_line("cpu 0 90 0 10 0"),
+            90.0
+        );
+
+        assert_eq!(
+            tracker.get_cpu_percent_from_stat_line("cpu 0 75 0 30 0"),
+            0.0
+        );
+        assert_eq!(tracker.prev_idle, 10);
+        assert_eq!(tracker.prev_total, 100);
+    }
+
+    #[test]
+    fn cpu_tracker_resets_state_when_counters_regress() {
+        let mut tracker = CpuTracker::new();
+        assert_eq!(
+            tracker.get_cpu_percent_from_stat_line("cpu 0 90 0 10 0"),
+            90.0
+        );
+
+        assert_eq!(tracker.get_cpu_percent_from_stat_line("cpu 0 5 0 5 0"), 0.0);
+        assert_eq!(tracker.prev_idle, 5);
+        assert_eq!(tracker.prev_total, 10);
+    }
+
+    #[test]
+    fn parse_meminfo_value_basic() {
+        assert_eq!(parse_meminfo_value("  12345 kB"), 12345);
+        assert_eq!(parse_meminfo_value("  0 kB"), 0);
+        assert_eq!(parse_meminfo_value(""), 0);
+    }
+
+    #[test]
+    fn parse_meminfo_value_large_values() {
+        assert_eq!(parse_meminfo_value("  16384000 kB"), 16384000);
+        assert_eq!(parse_meminfo_value("1 kB"), 1);
+    }
+
+    #[test]
+    fn parse_meminfo_value_non_numeric() {
+        assert_eq!(parse_meminfo_value("  abc kB"), 0);
+    }
+
+    #[test]
+    fn memory_usage_from_kb_rejects_total_overflow() {
+        assert_eq!(memory_usage_from_kb(u64::MAX / 1024 + 1, 0), None);
+    }
+
+    #[test]
+    fn memory_info_from_content_returns_zero_when_total_overflows() {
+        let content = format!("MemTotal: {} kB\nMemAvailable: 0 kB\n", u64::MAX);
+        assert_eq!(memory_info_from_content(&content), (0, 0));
+    }
+
+    #[test]
+    fn memory_info_from_content_returns_zero_when_available_overflows() {
+        let content = format!("MemTotal: 1 kB\nMemAvailable: {} kB\n", u64::MAX);
+        assert_eq!(memory_info_from_content(&content), (0, 0));
+    }
+
+    #[test]
+    fn memory_usage_from_kb_rejects_available_overflow() {
+        assert_eq!(memory_usage_from_kb(1, u64::MAX / 1024 + 1), None);
+    }
+
+    #[test]
+    fn memory_usage_from_kb_saturates_used_when_available_exceeds_total() {
+        assert_eq!(memory_usage_from_kb(1, 2), Some((0, 1024)));
+    }
+
+    #[test]
+    fn disk_usage_from_blocks_rejects_total_overflow() {
+        assert_eq!(disk_usage_from_blocks(u64::MAX / 2 + 1, 0, 2), None);
+    }
+
+    #[test]
+    fn disk_usage_from_blocks_rejects_free_overflow() {
+        assert_eq!(disk_usage_from_blocks(1, u64::MAX / 2 + 1, 2), None);
+    }
+
+    #[test]
+    fn disk_usage_from_blocks_saturates_used_when_free_exceeds_total() {
+        assert_eq!(disk_usage_from_blocks(1, 2, 1024), Some((0, 1024)));
+    }
+
+    #[test]
+    fn cpu_tracker_multiple_reads_are_consistent() {
+        let mut tracker = CpuTracker::new();
+        for i in 0..5 {
+            let pct = tracker.get_cpu_percent();
+            assert!(
+                (0.0..=100.0).contains(&pct),
+                "read {i}: pct={pct} out of range"
+            );
+        }
+    }
+
+    #[test]
+    fn get_memory_info_returns_valid_values() {
+        let (used, total) = get_memory_info();
+        // On Linux with /proc, total > 0
+        if std::path::Path::new("/proc/meminfo").exists() {
+            assert!(total > 0, "total memory should be > 0");
+            assert!(used <= total, "used should be <= total");
+        }
+    }
+
+    #[test]
+    fn get_disk_info_returns_valid_values() {
+        let (used, total) = get_disk_info();
+        assert!(total > 0, "total disk should be > 0");
+        assert!(used <= total, "used should be <= total");
+    }
+
+    #[test]
+    fn collect_metrics_returns_complete_entry() {
+        let mut tracker = CpuTracker::new();
+        let entry = collect_metrics(&mut tracker);
+        assert!(!entry.ts.is_empty());
+        assert!((0.0..=100.0).contains(&entry.cpu));
+        assert!(entry.mem_total > 0);
+        assert!(entry.disk_total > 0);
+    }
+
+    #[test]
+    fn collect_metrics_serializes_to_valid_jsonl() {
+        let mut tracker = CpuTracker::new();
+        let entry = collect_metrics(&mut tracker);
+        let json = serde_json::to_string(&entry).unwrap();
+        // Verify it round-trips through the same path metrics_loop uses.
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(parsed["ts"].is_string());
+        assert!(parsed["cpu"].is_f64());
+        assert!(parsed["mem_total"].is_u64());
+        assert!(parsed["disk_total"].is_u64());
+    }
+
+    #[test]
+    fn write_metrics_entry_writes_to_explicit_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let metrics_log_file = temp
+            .path()
+            .join("runtime")
+            .join("metrics.jsonl")
+            .to_string_lossy()
+            .into_owned();
+
+        let mut tracker = CpuTracker::new();
+        let entry = collect_metrics(&mut tracker);
+        write_metrics_entry(&metrics_log_file, &entry);
+
+        let content = std::fs::read_to_string(metrics_log_file).unwrap();
+        let first_line = content.lines().next().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(first_line).unwrap();
+        assert!(parsed["ts"].is_string());
+        assert!(parsed["cpu"].is_f64());
+    }
+}

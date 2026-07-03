@@ -1,0 +1,944 @@
+"""Raw firewall request network policy decision tests."""
+
+import pytest
+
+import generated.builtin_firewalls as builtin_firewalls
+import matching
+from tests.firewall_helpers import match_request_with_raw_firewalls, wrap_firewalls
+
+
+class TestFirewallNetworkPolicyDecisions:
+    """Tests for request-layer allow, deny, ask, and unknown-policy decisions."""
+
+    def _firewalls(self):
+        return wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                        {"name": "repo-write", "rules": ["PUT /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+
+    def _google_drive_firewall(self):
+        return [builtin_firewalls.BUILTIN_FIREWALLS["google-drive"]]
+
+    def _google_drive_policy_allowing(self, *allowed_permissions: str):
+        firewall = builtin_firewalls.BUILTIN_FIREWALLS["google-drive"]
+        names = {
+            permission["name"]
+            for api in firewall["apis"]
+            for permission in api.get("permissions", [])
+        }
+        allowed = set(allowed_permissions)
+        return {
+            "google-drive": {
+                "allow": sorted(allowed),
+                "deny": sorted(names - allowed),
+                "unknownPolicy": "deny",
+            }
+        }
+
+    def _deel_firewall(self):
+        return [builtin_firewalls.BUILTIN_FIREWALLS["deel"]]
+
+    def _deel_policy_allowing(self, *allowed_permissions: str):
+        firewall = builtin_firewalls.BUILTIN_FIREWALLS["deel"]
+        names = {
+            permission["name"]
+            for api in firewall["apis"]
+            for permission in api.get("permissions", [])
+        }
+        allowed = set(allowed_permissions)
+        return {
+            "deel": {
+                "allow": sorted(allowed),
+                "deny": sorted(names - allowed),
+                "unknownPolicy": "deny",
+            }
+        }
+
+    def _dropbox_firewall(self):
+        return [builtin_firewalls.BUILTIN_FIREWALLS["dropbox"]]
+
+    def _dropbox_policy_allowing(self, *allowed_permissions: str):
+        firewall = builtin_firewalls.BUILTIN_FIREWALLS["dropbox"]
+        names = {
+            permission["name"]
+            for api in firewall["apis"]
+            for permission in api.get("permissions", [])
+        }
+        allowed = set(allowed_permissions)
+        return {
+            "dropbox": {
+                "allow": sorted(allowed),
+                "deny": sorted(names - allowed),
+                "unknownPolicy": "deny",
+            }
+        }
+
+    def test_codex_oauth_auth_host_is_blocked_by_unknown_policy(self):
+        firewalls = [builtin_firewalls.BUILTIN_FIREWALLS["model-provider:codex-oauth-token"]]
+        policies = {
+            "model-provider:codex-oauth-token": {
+                "allow": ["codex:api"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            }
+        }
+
+        auth_result = match_request_with_raw_firewalls(
+            "https://auth.openai.com/oauth/token",
+            "POST",
+            firewalls,
+            network_policies=policies,
+        )
+        codex_result = match_request_with_raw_firewalls(
+            "https://chatgpt.com/backend-api/codex/responses",
+            "POST",
+            firewalls,
+            network_policies=policies,
+        )
+
+        assert isinstance(auth_result, matching.FirewallBlock)
+        assert auth_result.reason == "unknown_endpoint"
+        assert auth_result.permissions == ()
+        assert isinstance(codex_result, matching.FirewallAllow)
+        assert codex_result.permission == "codex:api"
+
+    def test_allowed_permission_passes(self):
+        policies = {
+            "github": {"allow": ["repo-read"], "deny": ["repo-write"], "unknownPolicy": "deny"}
+        }
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "repo-read"
+
+    def test_google_drive_apps_read_does_not_allow_file_mutations(self):
+        policies = self._google_drive_policy_allowing("apps.read")
+
+        apps_result = match_request_with_raw_firewalls(
+            "https://www.googleapis.com/drive/v3/apps",
+            "GET",
+            self._google_drive_firewall(),
+            network_policies=policies,
+        )
+        create_result = match_request_with_raw_firewalls(
+            "https://www.googleapis.com/drive/v2/files",
+            "POST",
+            self._google_drive_firewall(),
+            network_policies=policies,
+        )
+        upload_result = match_request_with_raw_firewalls(
+            "https://www.googleapis.com/upload/drive/v2/files",
+            "POST",
+            self._google_drive_firewall(),
+            network_policies=policies,
+        )
+
+        assert isinstance(apps_result, matching.FirewallAllow)
+        assert apps_result.permission == "apps.read"
+        assert isinstance(create_result, matching.FirewallBlock)
+        assert create_result.permissions == ("files.write",)
+        assert create_result.reason == "permission_denied"
+        assert isinstance(upload_result, matching.FirewallBlock)
+        assert upload_result.permissions == ("files.write",)
+        assert upload_result.reason == "permission_denied"
+
+    def test_google_drive_files_write_allows_base_and_upload_mutations(self):
+        policies = self._google_drive_policy_allowing("files.write")
+
+        create_result = match_request_with_raw_firewalls(
+            "https://www.googleapis.com/drive/v3/files",
+            "POST",
+            self._google_drive_firewall(),
+            network_policies=policies,
+        )
+        upload_result = match_request_with_raw_firewalls(
+            "https://www.googleapis.com/upload/drive/v3/files",
+            "POST",
+            self._google_drive_firewall(),
+            network_policies=policies,
+        )
+        resumable_result = match_request_with_raw_firewalls(
+            "https://www.googleapis.com/resumable/upload/drive/v3/files/file-1",
+            "PATCH",
+            self._google_drive_firewall(),
+            network_policies=policies,
+        )
+
+        assert isinstance(create_result, matching.FirewallAllow)
+        assert create_result.permission == "files.write"
+        assert isinstance(upload_result, matching.FirewallAllow)
+        assert upload_result.permission == "files.write"
+        assert isinstance(resumable_result, matching.FirewallAllow)
+        assert resumable_result.permission == "files.write"
+
+    def test_deel_worker_read_does_not_allow_magic_link_creation(self):
+        policies = self._deel_policy_allowing("worker:read")
+
+        result = match_request_with_raw_firewalls(
+            "https://api.letsdeel.com/rest/v2/magic-link",
+            "POST",
+            self._deel_firewall(),
+            network_policies=policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ("auth:write",)
+        assert result.reason == "permission_denied"
+
+    def test_deel_auth_write_allows_magic_link_creation(self):
+        policies = self._deel_policy_allowing("auth:write")
+
+        result = match_request_with_raw_firewalls(
+            "https://api.letsdeel.com/rest/v2/magic-link",
+            "POST",
+            self._deel_firewall(),
+            network_policies=policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "auth:write"
+        assert result.rule == "POST /rest/v2/magic-link"
+
+    def test_deel_organizations_read_does_not_allow_team_custom_field_mutations(self):
+        policies = self._deel_policy_allowing("organizations:read")
+        url = (
+            "https://api.letsdeel.com/rest/v2/hris/organization-structures/"
+            "teams/team_123/custom-fields"
+        )
+
+        read_result = match_request_with_raw_firewalls(
+            url,
+            "GET",
+            self._deel_firewall(),
+            network_policies=policies,
+        )
+        mutation_result = match_request_with_raw_firewalls(
+            url,
+            "PATCH",
+            self._deel_firewall(),
+            network_policies=policies,
+        )
+
+        assert isinstance(read_result, matching.FirewallAllow)
+        assert read_result.permission == "organizations:read"
+        assert isinstance(mutation_result, matching.FirewallBlock)
+        assert mutation_result.reason == "permission_denied"
+        assert mutation_result.permissions == ("organizations:write",)
+
+    def test_deel_organizations_write_allows_team_custom_field_mutations(self):
+        policies = self._deel_policy_allowing("organizations:write")
+
+        result = match_request_with_raw_firewalls(
+            "https://api.letsdeel.com/rest/v2/hris/organization-structures/"
+            "teams/team_123/custom-fields",
+            "PATCH",
+            self._deel_firewall(),
+            network_policies=policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "organizations:write"
+
+    def test_denied_permission_blocked(self):
+        policies = {
+            "github": {"allow": ["repo-read"], "deny": ["repo-write"], "unknownPolicy": "deny"}
+        }
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "PUT",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "permission_denied"
+
+    def test_denied_permission_blocked_with_case_mixed_static_host(self):
+        policies = {
+            "github": {"allow": [], "deny": ["repo-read"], "ask": [], "unknownPolicy": "deny"}
+        }
+        result = match_request_with_raw_firewalls(
+            "https://API.GitHub.COM/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ("repo-read",)
+        assert result.reason == "permission_denied"
+
+    def test_uncategorized_permission_allowed(self):
+        """Permission not in allow/deny/ask defaults to allowed."""
+        policies = {"github": {"allow": [], "deny": [], "ask": [], "unknownPolicy": "deny"}}
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "repo-read"
+
+    def test_ask_permission_blocked(self):
+        """Permission in ask list is treated as denied at proxy level."""
+        policies = {
+            "github": {"allow": [], "deny": [], "ask": ["repo-read"], "unknownPolicy": "allow"}
+        }
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "permission_denied"
+
+    def test_deny_and_ask_union(self):
+        """Permissions in deny and ask are both blocked."""
+        policies = {
+            "github": {
+                "allow": [],
+                "deny": ["repo-read"],
+                "ask": ["repo-write"],
+                "unknownPolicy": "allow",
+            }
+        }
+        # repo-read in deny → blocked
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "permission_denied"
+        # repo-write in ask → blocked
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "PUT",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "permission_denied"
+
+    def test_unknown_policy_key_missing_defaults_to_allow(self):
+        """Ref present but unknownPolicy key absent → defaults to allow."""
+        policies = {"github": {"allow": ["repo-read"], "deny": ["repo-write"]}}
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/users/octocat",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission is None
+
+    def test_permission_in_both_allow_and_deny_is_blocked(self):
+        """deny takes precedence when permission appears in both allow and deny."""
+        policies = {
+            "github": {"allow": ["repo-read"], "deny": ["repo-read"], "unknownPolicy": "allow"}
+        }
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "permission_denied"
+
+    def test_unknown_endpoint_allowed_when_unknown_policy_allow(self):
+        policies = {
+            "github": {"allow": ["repo-read"], "deny": ["repo-write"], "unknownPolicy": "allow"}
+        }
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/users/octocat",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission is None
+        assert result.rule is None
+
+    def test_unknown_endpoint_blocked_when_unknown_policy_deny(self):
+        policies = {
+            "github": {"allow": ["repo-read"], "deny": ["repo-write"], "unknownPolicy": "deny"}
+        }
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/users/octocat",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "unknown_endpoint"
+
+    def test_unknown_endpoint_blocked_when_unknown_policy_ask(self):
+        """unknownPolicy 'ask' is treated as deny at the proxy level."""
+        policies = {
+            "github": {"allow": ["repo-read"], "deny": ["repo-write"], "unknownPolicy": "ask"}
+        }
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/users/octocat",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "unknown_endpoint"
+
+    def test_name_absent_allows(self):
+        """Name not in networkPolicies → fully permissive."""
+        policies = {}  # github not in map
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "PUT",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+
+    def test_no_base_match_returns_none(self):
+        policies = {}
+        result = match_request_with_raw_firewalls(
+            "https://api.example.com/foo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        assert result is None
+
+    def test_none_network_policies_allows_all(self):
+        """None networkPolicies → empty map → absent names are fully permissive."""
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=None,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/users/octocat",
+            "GET",
+            self._firewalls(),
+            network_policies=None,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+
+    @pytest.mark.parametrize(
+        "policies",
+        [
+            {"github": {"deny": None, "ask": [], "unknownPolicy": "deny"}},
+            {"github": {"deny": [], "ask": None, "unknownPolicy": "deny"}},
+        ],
+    )
+    def test_null_permission_lists_behave_as_empty(self, policies):
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "repo-read"
+
+    @pytest.mark.parametrize(
+        "policies",
+        [
+            {"github": None},
+            {"github": "denied"},
+            {"github": {"deny": "repo-read", "ask": [], "unknownPolicy": "allow"}},
+            {"github": {"deny": [], "ask": [None], "unknownPolicy": "allow"}},
+        ],
+    )
+    def test_malformed_permission_policy_fails_closed_after_base_match(self, policies):
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ()
+        assert result.reason == "malformed_network_policy"
+
+    def test_top_level_malformed_network_policy_fails_closed_after_base_match(self):
+        unrelated = match_request_with_raw_firewalls(
+            "https://api.example.com/foo",
+            "GET",
+            self._firewalls(),
+            network_policies="denied",
+        )
+        matched = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies="denied",
+        )
+
+        assert unrelated is None
+        assert isinstance(matched, matching.FirewallBlock)
+        assert matched.permissions == ()
+        assert matched.reason == "malformed_network_policy"
+
+    def test_invalid_unknown_policy_only_blocks_unknown_endpoint_branch(self):
+        policies = {"github": {"deny": [], "ask": [], "unknownPolicy": "broken"}}
+
+        allowed = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        blocked = match_request_with_raw_firewalls(
+            "https://api.github.com/users/octocat",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+
+        assert isinstance(allowed, matching.FirewallAllow)
+        assert allowed.permission == "repo-read"
+        assert isinstance(blocked, matching.FirewallBlock)
+        assert blocked.reason == "malformed_network_policy"
+
+    def test_empty_permissions_with_unknown_policy_allow(self):
+        """Firewall with no permission rules + unknownPolicy=allow allows all."""
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.hubspot.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [],
+                }
+            ],
+            name="hubspot",
+        )
+        policies = {"hubspot": {"allow": [], "unknownPolicy": "allow"}}
+        result = match_request_with_raw_firewalls(
+            "https://api.hubspot.com/crm/v3/objects",
+            "GET",
+            fws,
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission is None
+
+    def test_overlapping_permissions_allows_if_any_not_blocked(self):
+        """Same endpoint in two permissions — one denied, one allowed → ALLOW."""
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                        {"name": "repo-admin", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {
+            "github": {"allow": ["repo-admin"], "deny": ["repo-read"], "unknownPolicy": "deny"}
+        }
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            fws,
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "repo-admin"
+
+    def test_overlapping_permissions_denies_if_all_blocked(self):
+        """Same endpoint in two permissions — both denied → DENY."""
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                        {"name": "repo-admin", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {
+            "github": {
+                "allow": ["issues-read"],
+                "deny": ["repo-read", "repo-admin"],
+                "unknownPolicy": "deny",
+            }
+        }
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            fws,
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ("repo-read", "repo-admin")
+        assert result.reason == "permission_denied"
+
+    def test_multi_firewall_different_names(self):
+        """Two firewalls with different names, each with own policies."""
+        fws = [
+            {
+                "name": "github",
+                "apis": [
+                    {
+                        "base": "https://api.github.com",
+                        "auth": {"headers": {"Authorization": "Bearer gh"}},
+                        "permissions": [
+                            {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                        ],
+                    }
+                ],
+            },
+            {
+                "name": "slack",
+                "apis": [
+                    {
+                        "base": "https://slack.com/api",
+                        "auth": {"headers": {"Authorization": "Bearer sl"}},
+                        "permissions": [
+                            {"name": "channels:read", "rules": ["GET /conversations.list"]},
+                        ],
+                    }
+                ],
+            },
+        ]
+        policies = {
+            "github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "deny"},
+            "slack": {"allow": [], "deny": ["channels:read"], "unknownPolicy": "allow"},
+        }
+        # GitHub: not in deny → ALLOW
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            fws,
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.name == "github"
+
+        # Slack: channels:read explicitly denied → DENY
+        result = match_request_with_raw_firewalls(
+            "https://slack.com/api/conversations.list",
+            "GET",
+            fws,
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "permission_denied"
+
+        # Slack: unknown endpoint → ALLOW (unknownPolicy: allow)
+        result = match_request_with_raw_firewalls(
+            "https://slack.com/api/users.info",
+            "GET",
+            fws,
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.name == "slack"
+        assert result.permission is None
+
+    def test_different_unknown_policy_per_name(self):
+        """unknownPolicy differs per firewall name — github strict, slack permissive."""
+        fws = [
+            {
+                "name": "github",
+                "apis": [{"base": "https://api.github.com", "auth": {"headers": {}}}],
+            },
+            {
+                "name": "slack",
+                "apis": [{"base": "https://slack.com/api", "auth": {"headers": {}}}],
+            },
+        ]
+        policies = {
+            "github": {"allow": [], "deny": [], "unknownPolicy": "deny"},
+            "slack": {"allow": [], "deny": [], "unknownPolicy": "allow"},
+        }
+        # GitHub unknown → DENY (unknownPolicy: deny)
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/anything",
+            "GET",
+            fws,
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "unknown_endpoint"
+
+        # Slack unknown → ALLOW (unknownPolicy: allow)
+        result = match_request_with_raw_firewalls(
+            "https://slack.com/api/anything",
+            "GET",
+            fws,
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+
+    def test_denied_known_not_overridden_by_unknown_policy(self):
+        """A known permission that is denied must stay denied even with unknownPolicy=allow."""
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-write", "rules": ["PUT /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {"github": {"allow": [], "deny": ["repo-write"], "unknownPolicy": "allow"}}
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "PUT",
+            fws,
+            network_policies=policies,
+        )
+        # repo-write explicitly denied → DENY, not overridden by unknownPolicy
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ("repo-write",)
+        assert result.reason == "permission_denied"
+
+    def test_denied_permission_deduped_across_rules(self):
+        """Same permission with multiple matching rules appears once in permissions."""
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {
+                            "name": "repo-read",
+                            "rules": [
+                                "GET /repos/{owner}/{repo}",
+                                "ANY /repos/{owner}/{repo}",
+                            ],
+                        },
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {"github": {"allow": [], "deny": ["repo-read"], "unknownPolicy": "deny"}}
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            fws,
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ("repo-read",)
+        assert result.reason == "permission_denied"
+
+    def test_empty_permissions_list_denies_all_known(self):
+        """All permissions in deny list — all known endpoints denied."""
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                        {"name": "repo-write", "rules": ["PUT /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {
+            "github": {"allow": [], "deny": ["repo-read", "repo-write"], "unknownPolicy": "deny"}
+        }
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            fws,
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+
+    def test_name_absent_from_policies_allows(self):
+        """Firewall name not in networkPolicies → fully permissive."""
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        # networkPolicies exists but has no entry for "github" → fully permissive
+        policies = {"slack": {"allow": [], "unknownPolicy": "allow"}}
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            fws,
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+
+        # Unknown endpoint also allowed (name absent → fully permissive)
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/users/octocat",
+            "GET",
+            fws,
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+
+    def test_multi_api_mixed_permissions(self):
+        """One API has permissions, another doesn't — mixed within same firewall."""
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                },
+                {
+                    "base": "https://uploads.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    # No permissions on this API
+                },
+            ],
+            name="github",
+        )
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
+
+        # First API: known permission not in deny → ALLOW
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            fws,
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "repo-read"
+
+        # Second API: no permissions defined, base matches → unknown
+        # → ALLOW (unknownPolicy: allow)
+        result = match_request_with_raw_firewalls(
+            "https://uploads.github.com/anything",
+            "POST",
+            fws,
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission is None
+
+    def test_gmail_draft_write_does_not_allow_send(self):
+        policies = {
+            "gmail": {
+                "allow": ["drafts.write"],
+                "deny": ["drafts.send", "messages.send"],
+                "unknownPolicy": "deny",
+            }
+        }
+        firewalls = [builtin_firewalls.BUILTIN_FIREWALLS["gmail"]]
+
+        draft_create = match_request_with_raw_firewalls(
+            "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
+            "POST",
+            firewalls,
+            network_policies=policies,
+        )
+        assert isinstance(draft_create, matching.FirewallAllow)
+        assert draft_create.permission == "drafts.write"
+
+        message_send = match_request_with_raw_firewalls(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+            "POST",
+            firewalls,
+            network_policies=policies,
+        )
+        assert isinstance(message_send, matching.FirewallBlock)
+        assert message_send.permissions == ("messages.send",)
+        assert message_send.reason == "permission_denied"
+
+        draft_send = match_request_with_raw_firewalls(
+            "https://gmail.googleapis.com/gmail/v1/users/me/drafts/send",
+            "POST",
+            firewalls,
+            network_policies=policies,
+        )
+        assert isinstance(draft_send, matching.FirewallBlock)
+        assert draft_send.permissions == ("drafts.send",)
+        assert draft_send.reason == "permission_denied"
+
+    def test_gmail_direct_send_covers_upload_base(self):
+        policies = {
+            "gmail": {
+                "allow": ["messages.send"],
+                "deny": [],
+                "unknownPolicy": "deny",
+            }
+        }
+        result = match_request_with_raw_firewalls(
+            "https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send",
+            "POST",
+            [builtin_firewalls.BUILTIN_FIREWALLS["gmail"]],
+            network_policies=policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "messages.send"
+
+    def test_dropbox_members_read_does_not_allow_custom_quota_mutation(self):
+        get_custom_quota = match_request_with_raw_firewalls(
+            "https://api.dropboxapi.com/2/team/member_space_limits/get_custom_quota",
+            "POST",
+            self._dropbox_firewall(),
+            network_policies=self._dropbox_policy_allowing("members.read"),
+        )
+        assert isinstance(get_custom_quota, matching.FirewallAllow)
+        assert get_custom_quota.permission == "members.read"
+
+        set_custom_quota_read_only = match_request_with_raw_firewalls(
+            "https://api.dropboxapi.com/2/team/member_space_limits/set_custom_quota",
+            "POST",
+            self._dropbox_firewall(),
+            network_policies=self._dropbox_policy_allowing("members.read"),
+        )
+        assert isinstance(set_custom_quota_read_only, matching.FirewallBlock)
+        assert set_custom_quota_read_only.permissions == ("members.write",)
+        assert set_custom_quota_read_only.reason == "permission_denied"
+
+        set_custom_quota_write = match_request_with_raw_firewalls(
+            "https://api.dropboxapi.com/2/team/member_space_limits/set_custom_quota",
+            "POST",
+            self._dropbox_firewall(),
+            network_policies=self._dropbox_policy_allowing("members.write"),
+        )
+        assert isinstance(set_custom_quota_write, matching.FirewallAllow)
+        assert set_custom_quota_write.permission == "members.write"

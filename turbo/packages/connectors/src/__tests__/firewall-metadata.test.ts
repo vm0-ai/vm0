@@ -1,0 +1,1038 @@
+import * as crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { describe, expect, it } from "vitest";
+
+import { CONNECTOR_TYPES, type ConnectorType } from "../connectors";
+import {
+  createFirewallMetadataPolicyResolver,
+  expandFirewallMetadataDefaultPolicy,
+  FIREWALL_PERMISSION_METADATA_SUMMARIES,
+  getFirewallPermissionSummary,
+  groupFirewallMetadataPermissionsByCategory,
+  isFirewallMetadataConnectorType,
+  loadFirewallPermissionMetadata,
+  permissionGrantsToFirewallPolicies,
+  resolveFirewallMetadataPolicies,
+} from "../firewall-metadata";
+import type {
+  FirewallPermissionDetailMetadata,
+  FirewallPermissionMetadataPermission,
+} from "../firewall-metadata";
+import {
+  UNKNOWN_PERMISSION_GRANT,
+  extractBaseUrlVarNames,
+  extractSecretNamesFromApis,
+  firewallAuthInjectsCredentials,
+  hasBaseUrlVars,
+  type FirewallConfig,
+} from "../firewall-types";
+import {
+  getBuiltinConnectorHostOwner,
+  getFirewallExecutionMetadata,
+  getFirewallServerMetadataSummary,
+  isFirewallExecutionMetadataConnectorType,
+  isFirewallServerMetadataConnectorType,
+  loadFirewallPermissionIndex,
+  resolveFirewallServerMetadataPolicies,
+} from "../firewall-metadata/server";
+import { loadRuntimeFirewallEntries } from "./firewall-test-helpers";
+
+const FORBIDDEN_METADATA_KEYS = new Set([
+  "auth",
+  "base",
+  "placeholders",
+  "rules",
+]);
+const FORBIDDEN_EXECUTION_METADATA_KEYS = new Set([
+  "apis",
+  "auth",
+  "permissions",
+  "rules",
+]);
+const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
+  "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
+const FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS = 60_000;
+type FirewallConnectorType =
+  keyof typeof FIREWALL_PERMISSION_METADATA_SUMMARIES;
+interface KnownMissingPermissionDescriptionGap {
+  readonly issue: number;
+  readonly missingCount: number;
+  readonly missingNamesSha256: string;
+}
+const KNOWN_MISSING_PERMISSION_DESCRIPTION_GAPS: Partial<
+  Record<FirewallConnectorType, KnownMissingPermissionDescriptionGap>
+> = {
+  // Keep this list shrinking. Each entry tracks a follow-up issue for
+  // removing the connector from this legacy allowlist.
+  "google-cloud": {
+    issue: 19566,
+    missingCount: 1189,
+    missingNamesSha256:
+      "29130e444cd58beaaa654c0207dbec064be945113ca97cf2d391f3614cb37cc1",
+  },
+  sentry: {
+    issue: 19612,
+    missingCount: 22,
+    missingNamesSha256:
+      "ddae869f18724903f394137a9a30186c0199c174c7a569bcb6f40349c0eaf904",
+  },
+  vercel: {
+    issue: 19613,
+    missingCount: 68,
+    missingNamesSha256:
+      "8ccddb8850744d7bdc07fc73a57b0cd5831cdc6a482c724a920abadd3317782e",
+  },
+  xero: {
+    issue: 19614,
+    missingCount: 35,
+    missingNamesSha256:
+      "0234b2bf557b118688656df62d5018f872195b32d3d8d04ff191cf8f0b9efca0",
+  },
+};
+let runtimeEntriesPromise: Promise<
+  readonly (readonly [FirewallConnectorType, FirewallConfig])[]
+> | null = null;
+
+function compareStrings(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function permissionDescriptionGapHash(
+  permissionNames: readonly string[],
+): string {
+  return crypto
+    .createHash("sha256")
+    .update([...permissionNames].sort(compareStrings).join("\n"))
+    .digest("hex");
+}
+
+function formatPermissionDescriptionGapSample(
+  permissionNames: readonly string[],
+): string {
+  const sortedNames = [...permissionNames].sort(compareStrings);
+  const sample = sortedNames.slice(0, 10).join(", ");
+  const remaining = sortedNames.length - 10;
+  return remaining > 0 ? `${sample}, ... ${remaining} more` : sample;
+}
+
+function isConnectorType(type: string): type is ConnectorType {
+  return Object.prototype.hasOwnProperty.call(CONNECTOR_TYPES, type);
+}
+
+function connectorLabel(type: ConnectorType): string {
+  if (!isConnectorType(type)) {
+    throw new Error(
+      `Firewall connector is missing connector metadata: ${type}`,
+    );
+  }
+  return CONNECTOR_TYPES[type].label;
+}
+
+function collectRuntimePermissions(
+  firewall: FirewallConfig,
+): FirewallPermissionMetadataPermission[] {
+  const permissions = new Map<string, FirewallPermissionMetadataPermission>();
+  for (const api of firewall.apis) {
+    for (const permission of api.permissions ?? []) {
+      if (!permissions.has(permission.name)) {
+        permissions.set(permission.name, {
+          name: permission.name,
+          ...(permission.description !== undefined
+            ? { description: permission.description }
+            : {}),
+        });
+      }
+    }
+  }
+  return [...permissions.values()].sort((a, b) => {
+    return compareStrings(a.name, b.name);
+  });
+}
+
+function collectRuntimeBaseUrlTemplates(firewall: FirewallConfig): readonly {
+  readonly base: string;
+  readonly credentialed: boolean;
+  readonly hostPolicy?: FirewallConfig["apis"][number]["hostPolicy"];
+}[] {
+  const templates = new Map<
+    string,
+    {
+      readonly credentialed: boolean;
+      readonly hostPolicy?: FirewallConfig["apis"][number]["hostPolicy"];
+    }
+  >();
+  for (const api of firewall.apis) {
+    if (!hasBaseUrlVars(api.base)) {
+      continue;
+    }
+    const existing = templates.get(api.base);
+    templates.set(api.base, {
+      credentialed:
+        (existing?.credentialed ?? false) ||
+        firewallAuthInjectsCredentials(api.auth),
+      ...(api.hostPolicy !== undefined ? { hostPolicy: api.hostPolicy } : {}),
+    });
+  }
+  return [...templates.entries()]
+    .sort(([a], [b]) => {
+      return compareStrings(a, b);
+    })
+    .map(([base, template]) => {
+      return {
+        base,
+        credentialed: template.credentialed,
+        ...(template.hostPolicy !== undefined
+          ? { hostPolicy: template.hostPolicy }
+          : {}),
+      };
+    });
+}
+
+function collectRuntimePlaceholderValues(
+  firewall: FirewallConfig,
+): Record<string, string> {
+  const placeholders: Record<string, string> = {};
+  for (const name of extractSecretNamesFromApis(firewall.apis)) {
+    placeholders[name] =
+      firewall.placeholders?.[name] ?? DEFAULT_FIREWALL_SECRET_PLACEHOLDER;
+  }
+  for (const [name, value] of Object.entries(firewall.placeholders ?? {})) {
+    placeholders[name] = value;
+  }
+  return Object.fromEntries(
+    Object.entries(placeholders).sort(([a], [b]) => {
+      return compareStrings(a, b);
+    }),
+  );
+}
+
+function listTsFiles(dir: string): string[] {
+  const result: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      result.push(...listTsFiles(entryPath));
+    } else if (entry.name.endsWith(".ts")) {
+      result.push(entryPath);
+    }
+  }
+  return result;
+}
+
+function importSpecifiers(source: string): string[] {
+  return [
+    ...staticImportSpecifiers(source),
+    ...exportFromSpecifiers(source),
+    ...dynamicImportSpecifiers(source),
+  ];
+}
+
+function staticImportSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
+  for (const match of source.matchAll(
+    /^\s*import(?:\s+type)?[\s\S]*?\sfrom\s+["']([^"']+)["'];?/gm,
+  )) {
+    specifiers.push(match[1]!);
+  }
+  for (const match of source.matchAll(/^\s*import\s+["']([^"']+)["'];?/gm)) {
+    specifiers.push(match[1]!);
+  }
+  return specifiers;
+}
+
+function runtimeStaticImportSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
+  for (const match of source.matchAll(
+    /^\s*import(?!\s+type\b)[\s\S]*?\sfrom\s+["']([^"']+)["'];?/gm,
+  )) {
+    specifiers.push(match[1]!);
+  }
+  for (const match of source.matchAll(/^\s*import\s+["']([^"']+)["'];?/gm)) {
+    specifiers.push(match[1]!);
+  }
+  return specifiers;
+}
+
+function exportFromSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
+  for (const match of source.matchAll(
+    /^\s*export(?:\s+type)?(?:\s+\*|\s+\{[\s\S]*?\})\s+from\s+["']([^"']+)["'];?/gm,
+  )) {
+    specifiers.push(match[1]!);
+  }
+  return specifiers;
+}
+
+function dynamicImportSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
+  for (const match of source.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)) {
+    specifiers.push(match[1]!);
+  }
+  return specifiers;
+}
+
+function assertNoForbiddenMetadataKeys(value: unknown, location: string): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      assertNoForbiddenMetadataKeys(item, `${location}[${index}]`);
+    });
+    return;
+  }
+  if (typeof value !== "object" || value === null) {
+    return;
+  }
+  if (location.endsWith(".categories.categories")) {
+    return;
+  }
+
+  for (const [key, nested] of Object.entries(value)) {
+    if (FORBIDDEN_METADATA_KEYS.has(key)) {
+      throw new Error(`metadata contains runtime key "${key}" at ${location}`);
+    }
+    assertNoForbiddenMetadataKeys(nested, `${location}.${key}`);
+  }
+}
+
+function assertNoForbiddenExecutionMetadataKeys(
+  value: unknown,
+  location: string,
+): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      assertNoForbiddenExecutionMetadataKeys(item, `${location}[${index}]`);
+    });
+    return;
+  }
+  if (typeof value !== "object" || value === null) {
+    return;
+  }
+
+  for (const [key, nested] of Object.entries(value)) {
+    if (FORBIDDEN_EXECUTION_METADATA_KEYS.has(key)) {
+      throw new Error(
+        `execution metadata contains runtime key "${key}" at ${location}`,
+      );
+    }
+    assertNoForbiddenExecutionMetadataKeys(nested, `${location}.${key}`);
+  }
+}
+
+function fixedFirewallApiBaseHost(base: string): string | null {
+  if (base.includes("${{")) {
+    return null;
+  }
+  try {
+    return new URL(base).host;
+  } catch {
+    return null;
+  }
+}
+
+async function runtimeEntries(): Promise<
+  readonly (readonly [FirewallConnectorType, FirewallConfig])[]
+> {
+  runtimeEntriesPromise ??= loadRuntimeFirewallEntries() as Promise<
+    readonly (readonly [FirewallConnectorType, FirewallConfig])[]
+  >;
+  return await runtimeEntriesPromise;
+}
+
+async function runtimeBuiltinConnectorHosts(): Promise<
+  ReadonlyMap<string, FirewallConnectorType>
+> {
+  const hosts = new Map<string, FirewallConnectorType>();
+  for (const [type, firewall] of await runtimeEntries()) {
+    for (const api of firewall.apis) {
+      const host = fixedFirewallApiBaseHost(api.base);
+      if (!host || hosts.has(host)) {
+        continue;
+      }
+      hosts.set(host, type);
+    }
+  }
+  return hosts;
+}
+
+const RESOLVER_METADATA = {
+  type: "slack",
+  label: "Slack",
+  permissionCount: 4,
+  permissions: [
+    { name: "metadata-default-one" },
+    { name: "metadata-default-two" },
+    { name: "metadata-deny" },
+    { name: "metadata-ask" },
+  ],
+  defaultPolicy: {
+    permissionDefault: "allow",
+    permissionOverrides: {
+      deny: ["metadata-deny"],
+      ask: ["metadata-ask"],
+    },
+    unknownPolicy: "deny",
+  },
+} satisfies FirewallPermissionDetailMetadata;
+
+describe("firewall metadata", () => {
+  it("keeps the public entrypoint off detail modules", () => {
+    const entrypoint = path.resolve(
+      import.meta.dirname,
+      "../firewall-metadata/index.ts",
+    );
+    const source = fs.readFileSync(entrypoint, "utf-8");
+
+    expect(staticImportSpecifiers(source).sort(compareStrings)).toStrictEqual([
+      "../firewall-types",
+      "./permission-detail-loader.generated",
+      "./permission-summaries.generated",
+      "./policy-resolver",
+      "./types",
+    ]);
+    expect(exportFromSpecifiers(source).sort(compareStrings)).toStrictEqual([
+      "./policy-resolver",
+      "./types",
+    ]);
+    expect(dynamicImportSpecifiers(source)).toStrictEqual([]);
+  });
+
+  it("keeps permission detail metadata behind connector-specific dynamic imports", () => {
+    const loader = path.resolve(
+      import.meta.dirname,
+      "../firewall-metadata/permission-detail-loader.generated.ts",
+    );
+    const source = fs.readFileSync(loader, "utf-8");
+    const dynamicSpecifiers = dynamicImportSpecifiers(source);
+
+    expect(staticImportSpecifiers(source)).toStrictEqual(["./types"]);
+    expect(dynamicSpecifiers).toContain("./permission-details/slack.generated");
+    expect(dynamicSpecifiers).toContain(
+      "./permission-details/github.generated",
+    );
+    expect(new Set(dynamicSpecifiers).size).toBe(dynamicSpecifiers.length);
+    for (const specifier of dynamicSpecifiers) {
+      expect(specifier).toMatch(
+        /^\.\/permission-details\/[a-z0-9][a-z0-9-]*\.generated$/,
+      );
+    }
+  });
+
+  it("keeps generated permission detail modules runtime-free", () => {
+    const detailsDir = path.resolve(
+      import.meta.dirname,
+      "../firewall-metadata/permission-details",
+    );
+    const files = listTsFiles(detailsDir);
+
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const source = fs.readFileSync(file, "utf-8");
+      const filename = path.basename(file);
+      expect(runtimeStaticImportSpecifiers(source), filename).toStrictEqual([]);
+      expect(dynamicImportSpecifiers(source), filename).toStrictEqual([]);
+      expect(exportFromSpecifiers(source), filename).toStrictEqual([]);
+      expect(staticImportSpecifiers(source), filename).toStrictEqual([
+        "../types",
+      ]);
+    }
+  });
+
+  it("keeps server metadata behind an explicit package subpath", () => {
+    const rootEntrypoint = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../index.ts"),
+      "utf-8",
+    );
+    const packageJson = JSON.parse(
+      fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../package.json"),
+        "utf-8",
+      ),
+    ) as { exports: Record<string, unknown> };
+
+    expect(rootEntrypoint).not.toContain("firewall-metadata/server");
+    expect(packageJson.exports).toHaveProperty("./firewall-metadata/server");
+  });
+
+  it("keeps execution metadata behind the server metadata package subpath", () => {
+    const rootEntrypoint = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../index.ts"),
+      "utf-8",
+    );
+    const publicMetadataEntrypoint = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../firewall-metadata/index.ts"),
+      "utf-8",
+    );
+    const serverMetadataEntrypoint = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../firewall-metadata/server.ts"),
+      "utf-8",
+    );
+    const packageJson = JSON.parse(
+      fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../package.json"),
+        "utf-8",
+      ),
+    ) as { exports: Record<string, unknown> };
+
+    expect(rootEntrypoint).not.toContain("firewall-execution-metadata/server");
+    expect(rootEntrypoint).not.toContain("server-execution.generated");
+    expect(publicMetadataEntrypoint).not.toContain(
+      "server-execution.generated",
+    );
+    expect(serverMetadataEntrypoint).toContain("./server-execution.generated");
+    expect(packageJson.exports).not.toHaveProperty(
+      "./firewall-execution-metadata/server",
+    );
+    expect(packageJson.exports).toHaveProperty("./firewall-metadata/server");
+  });
+
+  it("resolves metadata permission defaults and overrides", () => {
+    const resolver = createFirewallMetadataPolicyResolver(RESOLVER_METADATA);
+
+    expect(resolver.permission("metadata-default-one")).toBe("allow");
+    expect(resolver.permission("metadata-deny")).toBe("deny");
+    expect(resolver.permission("metadata-ask")).toBe("ask");
+    expect(resolver.permission("not-in-metadata")).toBe("allow");
+    expect(resolver.unknown()).toBe("deny");
+  });
+
+  it("applies sparse overlay precedence", () => {
+    const resolver = createFirewallMetadataPolicyResolver(RESOLVER_METADATA, {
+      permissionDefault: "deny",
+      permissionOverrides: {
+        "metadata-deny": "allow",
+        "metadata-ask": "ask",
+      },
+      unknownPolicy: "ask",
+    });
+
+    expect(resolver.permission("metadata-default-one")).toBe("deny");
+    expect(resolver.permission("metadata-deny")).toBe("allow");
+    expect(resolver.permission("metadata-ask")).toBe("ask");
+    expect(resolver.permission("not-in-metadata")).toBe("deny");
+    expect(resolver.unknown()).toBe("ask");
+  });
+
+  it("summarizes visible permission lists", () => {
+    const resolver = createFirewallMetadataPolicyResolver(RESOLVER_METADATA);
+
+    expect(
+      resolver.list(["metadata-default-one", "metadata-default-two"]),
+    ).toBe("allow");
+    expect(resolver.list(["metadata-default-one", "metadata-deny"])).toBe(
+      "mixed",
+    );
+    expect(resolver.list([])).toBe("mixed");
+  });
+
+  it("reports only effective sparse overlay changes as overrides", () => {
+    const redundant = createFirewallMetadataPolicyResolver(RESOLVER_METADATA, {
+      permissionDefault: "allow",
+      permissionOverrides: {
+        "metadata-deny": "deny",
+      },
+      unknownPolicy: "deny",
+    });
+
+    expect(redundant.isPermissionOverridden("metadata-default-one")).toBe(
+      false,
+    );
+    expect(redundant.isPermissionOverridden("metadata-deny")).toBe(false);
+    expect(redundant.isUnknownOverridden()).toBe(false);
+
+    const changed = createFirewallMetadataPolicyResolver(RESOLVER_METADATA, {
+      permissionDefault: "deny",
+      permissionOverrides: {
+        "metadata-deny": "allow",
+      },
+      unknownPolicy: "allow",
+    });
+
+    expect(changed.isPermissionOverridden("metadata-default-one")).toBe(true);
+    expect(changed.isPermissionOverridden("metadata-deny")).toBe(true);
+    expect(changed.isUnknownOverridden()).toBe(true);
+  });
+
+  it("keeps unknown endpoint policy separate from permission lookup", () => {
+    const resolver = createFirewallMetadataPolicyResolver(RESOLVER_METADATA, {
+      permissionOverrides: {
+        [UNKNOWN_PERMISSION_GRANT]: "allow",
+      },
+      unknownPolicy: "ask",
+    });
+
+    expect(resolver.permission(UNKNOWN_PERMISSION_GRANT)).toBe("allow");
+    expect(resolver.unknown()).toBe("ask");
+  });
+
+  it("ignores inherited fields when resolving sparse overlay overrides", () => {
+    const resolver = createFirewallMetadataPolicyResolver(RESOLVER_METADATA, {
+      permissionOverrides: {},
+    });
+
+    expect(resolver.permission("toString")).toBe("allow");
+    expect(resolver.isPermissionOverridden("toString")).toBe(false);
+  });
+
+  it("keeps metadata modules independent from runtime firewall modules", () => {
+    const metadataRoot = path.resolve(
+      import.meta.dirname,
+      "../firewall-metadata",
+    );
+    for (const file of listTsFiles(metadataRoot)) {
+      const source = fs.readFileSync(file, "utf-8");
+      const specs = importSpecifiers(source);
+      for (const spec of specs) {
+        expect(spec).not.toBe("@vm0/connectors/firewalls");
+        expect(spec).not.toMatch(/^(\.\.\/)+firewalls(?:\/|$)/);
+        expect(spec).not.toMatch(/\/firewalls(?:\/|$)/);
+      }
+    }
+  });
+
+  it(
+    "keeps fixed builtin host owners synchronized with runtime hosts",
+    async () => {
+      for (const [host, type] of await runtimeBuiltinConnectorHosts()) {
+        expect(getBuiltinConnectorHostOwner(host)).toStrictEqual({
+          type,
+          label: connectorLabel(type),
+        });
+      }
+
+      expect(getBuiltinConnectorHostOwner("api.github.com")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner("API.GITHUB.COM")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner(" api.github.com ")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner("api.github.com:443")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner("api.github.com.")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner("api.github.com....")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(
+        getBuiltinConnectorHostOwner("https://api.github.com/repos"),
+      ).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner("slack.com")).toStrictEqual({
+        type: "slack",
+        label: "Slack",
+      });
+      expect(getBuiltinConnectorHostOwner("example.invalid")).toBeNull();
+      expect(getBuiltinConnectorHostOwner("")).toBeNull();
+      expect(getBuiltinConnectorHostOwner("api.github.com:80")).toBeNull();
+      expect(getBuiltinConnectorHostOwner("toString")).toBeNull();
+      expect(getBuiltinConnectorHostOwner("__proto__")).toBeNull();
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it("loads memoized server permission indexes from lazy detail metadata", async () => {
+    expect(isFirewallServerMetadataConnectorType("slack")).toBe(true);
+    expect(getFirewallServerMetadataSummary("slack")?.label).toBe("Slack");
+    expect(isFirewallServerMetadataConnectorType("cloudinary")).toBe(false);
+    expect(getFirewallServerMetadataSummary("cloudinary")).toBeNull();
+
+    const first = await loadFirewallPermissionIndex("slack");
+    const second = await loadFirewallPermissionIndex("slack");
+    const [concurrentFirst, concurrentSecond] = await Promise.all([
+      loadFirewallPermissionIndex("github"),
+      loadFirewallPermissionIndex("github"),
+    ]);
+
+    expect(first).not.toBeNull();
+    expect(first).toBe(second);
+    expect(concurrentFirst).not.toBeNull();
+    expect(concurrentFirst).toBe(concurrentSecond);
+    expect(first!.type).toBe("slack");
+    expect(first!.label).toBe("Slack");
+    expect(first!.hasPermission("conversations:read")).toBe(true);
+    expect(first!.permissionNames.has("conversations:read")).toBe(true);
+    expect(first!.permissionDescription("conversations:read")).toBe(
+      "View basic information across Slack conversation types",
+    );
+    expect(first!.hasPermission(UNKNOWN_PERMISSION_GRANT)).toBe(false);
+    expect(first!.permissionNames.has(UNKNOWN_PERMISSION_GRANT)).toBe(false);
+    expect(first!.unknownPolicy).toBe("allow");
+    expect(first!.policyResolver.permission("conversations:read")).toBe(
+      "allow",
+    );
+    expect(first!.policyResolver.permission("chat:write")).toBe("deny");
+    expect(await loadFirewallPermissionIndex("cloudinary")).toBeNull();
+  });
+
+  it("loads source-backed Clerk permission descriptions", async () => {
+    const detail = await loadFirewallPermissionMetadata("clerk");
+    const index = await loadFirewallPermissionIndex("clerk");
+
+    expect(detail).not.toBeNull();
+    expect(index).not.toBeNull();
+    for (const permission of detail!.permissions) {
+      expect(permission.description, permission.name).toEqual(
+        expect.any(String),
+      );
+      expect(permission.description?.trim(), permission.name).not.toBe("");
+    }
+    expect(index!.permissionDescription("users:read")).toBe(
+      "Read Clerk Users. The user object represents a user that has successfully signed up to your application.",
+    );
+    expect(index!.permissionDescription("admin-portal-link-tokens:write")).toBe(
+      "Manage Clerk Admin Portal Link Tokens. Create and revoke single-use admin portal link tokens for Clerk admin portal access.",
+    );
+  });
+
+  it("loads source-backed Xero permission descriptions", async () => {
+    const detail = await loadFirewallPermissionMetadata("xero");
+    const index = await loadFirewallPermissionIndex("xero");
+
+    expect(detail).not.toBeNull();
+    expect(index).not.toBeNull();
+    for (const permission of detail!.permissions) {
+      expect(permission.description, permission.name).toEqual(
+        expect.any(String),
+      );
+      expect(permission.description?.trim(), permission.name).not.toBe("");
+    }
+    expect(index!.permissionDescription("connections")).toBe(
+      "List and disconnect Xero tenant connections for the authorized user.",
+    );
+    expect(index!.permissionDescription("marketplace.billing")).toBe(
+      "Read Xero App Store subscriptions and manage metered usage records.",
+    );
+    expect(index!.permissionDescription("accounting.transactions.read")).toBe(
+      "Grant read-only access to accounting transactions, including bank transactions, credit notes, invoices, payments, purchase orders, quotes, receipts, and related history.",
+    );
+    expect(index!.permissionDescription("projects.read")).toBe(
+      "Grant read-only access to projects",
+    );
+  });
+
+  it("keeps server permission indexes aligned with generated summaries", async () => {
+    const loadedIndexes = await Promise.all(
+      Object.keys(FIREWALL_PERMISSION_METADATA_SUMMARIES).map(async (type) => {
+        return [type, await loadFirewallPermissionIndex(type)] as const;
+      }),
+    );
+    const indexesByType = Object.fromEntries(loadedIndexes);
+
+    for (const [type, summary] of Object.entries(
+      FIREWALL_PERMISSION_METADATA_SUMMARIES,
+    )) {
+      const index = indexesByType[type];
+      expect(index).not.toBeNull();
+      expect(index!.type).toBe(type);
+      expect(index!.label).toBe(summary.label);
+    }
+  });
+
+  it("resolves server metadata policies like runtime helpers", async () => {
+    for (const [type] of await runtimeEntries()) {
+      const detail = await loadFirewallPermissionMetadata(type);
+      expect(detail).not.toBeNull();
+      const stored = {
+        [type]: {
+          policies: { __metadata_test__: "deny" as const },
+          unknownPolicy: "deny" as const,
+        },
+      };
+      await expect(
+        resolveFirewallServerMetadataPolicies(null, [type]),
+      ).resolves.toStrictEqual(
+        resolveFirewallMetadataPolicies(null, [detail!]),
+      );
+      await expect(
+        resolveFirewallServerMetadataPolicies(stored, [type]),
+      ).resolves.toStrictEqual(
+        resolveFirewallMetadataPolicies(stored, [detail!]),
+      );
+    }
+
+    await expect(
+      resolveFirewallServerMetadataPolicies(null, ["cloudinary"]),
+    ).resolves.toBeNull();
+
+    const storedUnknownConnector = {
+      cloudinary: {
+        policies: { read: "deny" as const },
+        unknownPolicy: "allow" as const,
+      },
+    };
+    await expect(
+      resolveFirewallServerMetadataPolicies(storedUnknownConnector, [
+        "cloudinary",
+      ]),
+    ).resolves.toStrictEqual(storedUnknownConnector);
+  });
+
+  it("keeps summary metadata synchronized with the runtime registry", async () => {
+    const entries = await runtimeEntries();
+    const runtimeTypes = entries.map(([type]) => {
+      return type;
+    });
+    const metadataTypes = Object.keys(
+      FIREWALL_PERMISSION_METADATA_SUMMARIES,
+    ).sort(compareStrings);
+    expect(metadataTypes).toStrictEqual(runtimeTypes);
+
+    for (const [type, firewall] of entries) {
+      const permissions = collectRuntimePermissions(firewall);
+      const summary = getFirewallPermissionSummary(type);
+      expect(summary).toStrictEqual(
+        FIREWALL_PERMISSION_METADATA_SUMMARIES[type],
+      );
+      expect(summary).toMatchObject({
+        type,
+        label: connectorLabel(type),
+        hasPermissions: permissions.length > 0,
+        permissionCount: permissions.length,
+      });
+    }
+  });
+
+  it("loads per-connector details and keeps permission metadata synchronized", async () => {
+    for (const [type, firewall] of await runtimeEntries()) {
+      expect(isFirewallMetadataConnectorType(type)).toBe(true);
+      const detail = await loadFirewallPermissionMetadata(type);
+      expect(detail).not.toBeNull();
+      expect(detail!.label).toBe(connectorLabel(type));
+      expect(detail!.permissions).toStrictEqual(
+        collectRuntimePermissions(firewall),
+      );
+      expect(detail!.permissionCount).toBe(detail!.permissions.length);
+      assertNoForbiddenMetadataKeys(detail, type);
+    }
+
+    for (const unknownType of [
+      "cloudinary",
+      "__proto__",
+      "constructor",
+      "toString",
+    ]) {
+      expect(isFirewallMetadataConnectorType(unknownType)).toBe(false);
+      await expect(
+        loadFirewallPermissionMetadata(unknownType),
+      ).resolves.toBeNull();
+    }
+  });
+
+  it("prevents new permission description gaps", async () => {
+    const failures: string[] = [];
+
+    for (const [type] of await runtimeEntries()) {
+      const detail = await loadFirewallPermissionMetadata(type);
+      if (detail === null) {
+        failures.push(`${type}: missing permission detail metadata`);
+        continue;
+      }
+
+      const missingDescriptions = detail.permissions
+        .filter((permission) => {
+          return (
+            permission.description === undefined ||
+            permission.description.trim().length === 0
+          );
+        })
+        .map((permission) => {
+          return permission.name;
+        });
+      const knownGap = KNOWN_MISSING_PERMISSION_DESCRIPTION_GAPS[type];
+      const missingNamesSha256 =
+        permissionDescriptionGapHash(missingDescriptions);
+
+      if (knownGap) {
+        if (
+          missingDescriptions.length !== knownGap.missingCount ||
+          missingNamesSha256 !== knownGap.missingNamesSha256
+        ) {
+          failures.push(
+            `${type}: expected ${knownGap.missingCount} missing descriptions tracked by #${knownGap.issue} with hash ${knownGap.missingNamesSha256}, got ${missingDescriptions.length} with hash ${missingNamesSha256}: ${formatPermissionDescriptionGapSample(missingDescriptions)}`,
+          );
+        }
+        continue;
+      }
+
+      if (missingDescriptions.length > 0) {
+        failures.push(
+          `${type}: missing descriptions without a tracked follow-up issue: ${formatPermissionDescriptionGapSample(missingDescriptions)}`,
+        );
+      }
+    }
+
+    expect(failures).toStrictEqual([]);
+  });
+
+  it("describes Dropbox permissions", async () => {
+    const detail = await loadFirewallPermissionMetadata("dropbox");
+    expect(detail).not.toBeNull();
+    expect(detail!.permissionCount).toBe(29);
+    expect(
+      detail!.permissions.filter((permission) => {
+        return (
+          permission.description === undefined ||
+          permission.description.trim().length === 0
+        );
+      }),
+    ).toStrictEqual([]);
+
+    const permissions = new Map(
+      detail!.permissions.map((permission) => {
+        return [permission.name, permission] as const;
+      }),
+    );
+    expect(permissions.get("files.content.read")?.description).toBe(
+      "Download, export, preview, and read Dropbox file content.",
+    );
+    expect(permissions.get("files.metadata.write")?.description).toBe(
+      "Create, update, and remove Dropbox file tags, templates, and custom properties.",
+    );
+    expect(permissions.get("members.write")?.description).toBe(
+      "Add, update, suspend, unsuspend, and manage Dropbox team members and member quotas.",
+    );
+    expect(permissions.get("team_data.governance.write")?.description).toBe(
+      "Create, update, release, and inspect Dropbox team legal hold policies and held revisions.",
+    );
+  });
+
+  it("keeps execution metadata synchronized with runtime construction data", async () => {
+    expect(getFirewallExecutionMetadata("x")?.billable).toBe(true);
+
+    for (const [type, firewall] of await runtimeEntries()) {
+      expect(isFirewallExecutionMetadataConnectorType(type)).toBe(true);
+      const metadata = getFirewallExecutionMetadata(type);
+      expect(metadata).not.toBeNull();
+      const baseUrlTemplates = collectRuntimeBaseUrlTemplates(firewall);
+      const baseUrlVarNames = [
+        ...new Set(
+          baseUrlTemplates.flatMap((template) => {
+            return extractBaseUrlVarNames(template.base);
+          }),
+        ),
+      ].sort(compareStrings);
+      const placeholderValues = collectRuntimePlaceholderValues(firewall);
+
+      expect(metadata!.type).toBe(type);
+      expect(metadata!.billable).toBe(type === "x");
+      expect(metadata!.baseUrlVarNames).toStrictEqual(baseUrlVarNames);
+      expect(metadata!.baseUrlTemplates).toStrictEqual(baseUrlTemplates);
+      expect(metadata!.placeholderValues).toStrictEqual(placeholderValues);
+      expect(metadata!.secretPlaceholderNames).toStrictEqual(
+        Object.keys(placeholderValues),
+      );
+      assertNoForbiddenExecutionMetadataKeys(metadata!, type);
+    }
+
+    expect(isFirewallExecutionMetadataConnectorType("cloudinary")).toBe(false);
+    expect(getFirewallExecutionMetadata("cloudinary")).toBeNull();
+  });
+
+  it("keeps category summary flags synchronized with detail metadata", async () => {
+    for (const [type] of await runtimeEntries()) {
+      const detail = await loadFirewallPermissionMetadata(type);
+      expect(detail).not.toBeNull();
+      const summary = getFirewallPermissionSummary(type);
+      expect(summary).not.toBeNull();
+      expect(summary!.hasCategories).toBe(detail!.categories !== undefined);
+    }
+  });
+
+  it("groups metadata permissions by generated category metadata", async () => {
+    for (const [type] of await runtimeEntries()) {
+      const detail = await loadFirewallPermissionMetadata(type);
+      expect(detail).not.toBeNull();
+      const grouped = groupFirewallMetadataPermissionsByCategory(
+        detail!.permissions,
+        detail!,
+      );
+      const categories = detail!.categories;
+      if (categories === undefined) {
+        expect(grouped).toBeNull();
+        continue;
+      }
+
+      const expected = categories.displayOrder
+        .map((category) => {
+          return {
+            category,
+            permissions: detail!.permissions.filter((permission) => {
+              return categories.categories[permission.name] === category;
+            }),
+          };
+        })
+        .filter((group) => {
+          return group.permissions.length > 0;
+        });
+
+      expect(grouped).toStrictEqual(expected);
+    }
+  });
+
+  it("expands compact default policy metadata across generated details", async () => {
+    for (const [type] of await runtimeEntries()) {
+      const detail = await loadFirewallPermissionMetadata(type);
+      expect(detail).not.toBeNull();
+      const expanded = expandFirewallMetadataDefaultPolicy(detail!);
+      expect(Object.keys(expanded.policies).sort(compareStrings)).toStrictEqual(
+        detail!.permissions
+          .map((permission) => {
+            return permission.name;
+          })
+          .sort(compareStrings),
+      );
+      expect(expanded.unknownPolicy).toBe(detail!.defaultPolicy.unknownPolicy);
+    }
+  });
+
+  it("resolves stored policies with metadata defaults across generated details", async () => {
+    for (const [type] of await runtimeEntries()) {
+      const detail = await loadFirewallPermissionMetadata(type);
+      expect(detail).not.toBeNull();
+      const stored = {
+        [type]: {
+          policies: { __metadata_test__: "deny" as const },
+          unknownPolicy: "deny" as const,
+        },
+      };
+      const resolved = resolveFirewallMetadataPolicies(stored, [detail!]);
+      expect(resolved?.[type]?.policies.__metadata_test__).toBe("deny");
+      expect(resolved?.[type]?.unknownPolicy).toBe("deny");
+    }
+  });
+
+  it("converts permission grants without runtime firewall data", () => {
+    expect(
+      permissionGrantsToFirewallPolicies([
+        {
+          connectorRef: "slack",
+          permission: "conversations:read",
+          action: "allow",
+        },
+        {
+          connectorRef: "slack",
+          permission: "__unknown__",
+          action: "deny",
+        },
+      ]),
+    ).toStrictEqual({
+      slack: {
+        policies: { "conversations:read": "allow" },
+        unknownPolicy: "deny",
+      },
+    });
+    expect(permissionGrantsToFirewallPolicies([])).toBeNull();
+  });
+});

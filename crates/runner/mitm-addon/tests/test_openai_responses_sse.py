@@ -1,0 +1,597 @@
+"""Tests for OpenAI Responses SSE usage extraction."""
+
+import pytest
+
+import usage.openai_responses as openai_responses
+from usage import (
+    create_openai_responses_sse_usage_extractor,
+)
+
+
+class TestOpenAIResponsesSseUsageExtractor:
+    """Tests for the OpenAI Responses streaming usage parser."""
+
+    def test_extracts_usage_from_response_completed(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.completed\n"
+            b'data: {"type":"response.completed","response":{"id":"resp_1",'
+            b'"model":"gpt-5.5","usage":{"input_tokens":100,'
+            b'"output_tokens":40,"input_tokens_details":{"cached_tokens":25},'
+            b'"output_tokens_details":{"reasoning_tokens":10}}}}\n\n'
+        )
+        assert usage == {
+            "message_id": "resp_1",
+            "model": "gpt-5.5",
+            "tokens.input": 75,
+            "tokens.output": 40,
+            "tokens.cache_read": 25,
+        }
+        assert "reasoning_tokens" not in usage
+
+    def test_extracts_usage_from_response_done(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.done\n"
+            b'data: {"type":"response.done","response":{"id":"resp_2",'
+            b'"model":"gpt-5.4","usage":{"input_tokens":12,"output_tokens":7}}}\n\n'
+        )
+        assert usage["message_id"] == "resp_2"
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.input"] == 12
+        assert usage["tokens.output"] == 7
+        assert "tokens.cache_read" not in usage
+
+    def test_extracts_usage_from_response_incomplete(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.incomplete\n"
+            b'data: {"type":"response.incomplete","response":{"id":"resp_incomplete",'
+            b'"model":"gpt-5.5","usage":{"input_tokens":8000,'
+            b'"output_tokens":1024,"input_tokens_details":{"cached_tokens":2000}}}}\n\n'
+        )
+        assert usage == {
+            "message_id": "resp_incomplete",
+            "model": "gpt-5.5",
+            "tokens.input": 6000,
+            "tokens.output": 1024,
+            "tokens.cache_read": 2000,
+        }
+
+    def test_extracts_usage_from_response_failed(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.failed\n"
+            b'data: {"type":"response.failed","response":{"id":"resp_failed",'
+            b'"model":"gpt-5.4","usage":{"input_tokens":12000,"output_tokens":0}}}\n\n'
+        )
+        assert usage == {
+            "message_id": "resp_failed",
+            "model": "gpt-5.4",
+            "tokens.input": 12000,
+            "tokens.output": 0,
+        }
+
+    def test_ignores_response_in_progress(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.in_progress\n"
+            b'data: {"type":"response.in_progress","response":{"id":"resp_ignored",'
+            b'"model":"gpt-5.5","usage":{"input_tokens":10,"output_tokens":4}}}\n\n'
+        )
+        assert usage == {}
+
+    def test_accepts_data_level_type_without_event_line(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"type":"response.completed","response":{"model":"gpt-5.4-mini",'
+            b'"usage":{"input_tokens":3}}}\n\n'
+        )
+        assert usage["model"] == "gpt-5.4-mini"
+        assert usage["tokens.input"] == 3
+
+    def test_eventless_unknown_event_type_with_usage_extracts_usage(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"type":"response.future_terminal","response":{"id":"resp_future",'
+            b'"model":"gpt-5.6","usage":{"input_tokens":11,"output_tokens":7}}}\n\n'
+        )
+
+        assert usage == {
+            "message_id": "resp_future",
+            "model": "gpt-5.6",
+            "tokens.input": 11,
+            "tokens.output": 7,
+        }
+
+    def test_named_unknown_event_type_with_usage_extracts_usage(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.future_terminal\n"
+            b'data: {"type":"response.future_terminal","response":{"model":"gpt-5.6",'
+            b'"usage":{"output_tokens":12}}}\n\n'
+        )
+
+        assert usage == {
+            "model": "gpt-5.6",
+            "tokens.output": 12,
+        }
+
+    def test_named_unknown_event_with_known_non_usage_type_is_ignored(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.future_terminal\n"
+            b'data: {"type":"response.output_text.delta","response":{"model":"gpt-5.6",'
+            b'"usage":{"output_tokens":12}}}\n\n'
+        )
+
+        assert usage == {}
+
+    def test_named_unknown_event_with_large_known_non_usage_type_recovers_for_next_event(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        large_delta = b'{"type":"response.output_text.delta","delta":"' + b"x" * 100_000 + b'"}'
+
+        assert (
+            openai_responses._classify_responses_event_type(
+                large_delta[: openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES]
+            )
+            == openai_responses._RESPONSES_EVENT_KNOWN_NON_USAGE
+        )
+        parse(b"event: response.future_delta\n")
+        parse(b"data: " + large_delta + b"\n\n")
+
+        assert usage == {}
+
+        parse(
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.4","usage":{"output_tokens":6}}}\n\n'
+        )
+
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 6
+
+    def test_named_terminal_event_with_known_non_usage_type_is_ignored(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.completed\n"
+            b'data: {"type":"response.output_text.delta","response":{"model":"gpt-5.6",'
+            b'"usage":{"input_tokens":9,"output_tokens":4}}}\n\n'
+        )
+
+        assert usage == {}
+
+    def test_named_terminal_event_with_oversized_type_extracts_usage(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.completed\n"
+            b'data: {"type":"'
+            + b"x" * 2048
+            + b'","response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}\n\n'
+        )
+
+        assert usage == {
+            "model": "gpt-5.6",
+            "tokens.input": 9,
+            "tokens.output": 4,
+        }
+
+    def test_eventless_duplicate_unknown_type_keeps_first_type_boundary(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"type":"response.future_terminal",'
+            b'"type":"response.output_text.delta",'
+            b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}\n\n'
+        )
+
+        assert usage == {
+            "model": "gpt-5.6",
+            "tokens.input": 9,
+            "tokens.output": 4,
+        }
+
+    def test_eventless_late_known_non_usage_type_is_ignored(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"padding":"'
+            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+            + b'","type":"response.output_text.delta",'
+            + b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}'
+            + b"\n\n"
+        )
+
+        assert usage == {}
+
+    def test_named_late_known_non_usage_type_is_ignored(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.completed\n"
+            b'data: {"padding":"'
+            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+            + b'","type":"response.output_text.delta",'
+            + b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}'
+            + b"\n\n"
+        )
+
+        assert usage == {}
+
+    def test_named_duplicate_unknown_type_keeps_first_type_boundary(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.future_terminal\n"
+            b'data: {"type":"response.future_terminal",'
+            b'"type":"response.output_text.delta",'
+            b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}\n\n'
+        )
+
+        assert usage == {
+            "model": "gpt-5.6",
+            "tokens.input": 9,
+            "tokens.output": 4,
+        }
+
+    def test_named_unknown_malformed_event_does_not_report_parse_error(self):
+        parse_errors: list[tuple[str, str]] = []
+
+        def record_parse_error(event: str, error: str) -> None:
+            parse_errors.append((event, error))
+
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_parse_error=record_parse_error
+        )
+        parse(
+            b"event: response.future_terminal\n"
+            b'data: {"type":"response.future_terminal","response":{"model":"gpt'
+        )
+        parse.finish()
+
+        assert usage == {}
+        assert parse_errors == []
+
+    def test_known_non_usage_eventless_usage_fields_are_ignored(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"type":"response.output_text.delta","response":{"model":"gpt-5.6",'
+            b'"usage":{"input_tokens":11,"output_tokens":7}}}\n\n'
+        )
+
+        assert usage == {}
+
+    def test_eventless_large_non_terminal_delta_recovers_for_next_event(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        delta_payload = b'{"type":"response.output_text.delta","delta":"' + b"x" * 100_000 + b'"}'
+
+        assert (
+            openai_responses._classify_responses_event_type(
+                delta_payload[: openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES]
+            )
+            == openai_responses._RESPONSES_EVENT_KNOWN_NON_USAGE
+        )
+        parse(
+            b"data: "
+            + delta_payload
+            + b"\n\n"
+            + b'data: {"type":"response.completed","response":{"model":"gpt-5.4",'
+            + b'"usage":{"output_tokens":9}}}\n\n'
+        )
+
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 9
+
+    def test_eventless_terminal_type_split_across_chunks_extracts_usage(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(b'data: {"type":"response.comp')
+        parse(
+            b'leted","response":{"id":"resp_split","model":"gpt-5.4",'
+            b'"usage":{"input_tokens":6,"output_tokens":4}}}\n\n'
+        )
+
+        assert usage == {
+            "message_id": "resp_split",
+            "model": "gpt-5.4",
+            "tokens.input": 6,
+            "tokens.output": 4,
+        }
+
+    def test_eventless_non_terminal_type_split_across_chunks_recovers(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(b'data: {"type":"response.output_text.')
+        parse(
+            b'delta","delta":"ignored"}\n\n'
+            b'data: {"type":"response.completed","response":{"model":"gpt-5.4",'
+            b'"usage":{"output_tokens":5}}}\n\n'
+        )
+
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 5
+
+    def test_eventless_incomplete_terminal_reports_parse_error(self):
+        parse_errors: list[tuple[str, str]] = []
+
+        def record_parse_error(event: str, error: str) -> None:
+            parse_errors.append((event, error))
+
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_parse_error=record_parse_error
+        )
+        parse(b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt')
+        parse.finish()
+
+        assert usage == {}
+        assert len(parse_errors) == 1
+        event, error = parse_errors[0]
+        assert event == "response.completed"
+        assert isinstance(error, str)
+        assert error
+
+    def test_eventless_incomplete_non_terminal_stays_quiet(self):
+        parse_errors: list[tuple[str, str]] = []
+
+        def record_parse_error(event: str, error: str) -> None:
+            parse_errors.append((event, error))
+
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_parse_error=record_parse_error
+        )
+        parse(b'data: {"type":"response.output_text.delta","delta":"hello')
+        parse.finish()
+
+        assert usage == {}
+        assert parse_errors == []
+
+    def test_eventless_incomplete_terminal_after_prefix_bound_reports_parse_error(self):
+        parse_errors: list[tuple[str, str]] = []
+
+        def record_parse_error(event: str, error: str) -> None:
+            parse_errors.append((event, error))
+
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_parse_error=record_parse_error
+        )
+        parse(
+            b'data: {"padding":"'
+            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+            + b'","type":"response.completed","response":{"model":"gpt'
+        )
+        parse.finish()
+
+        assert usage == {}
+        assert len(parse_errors) == 1
+        event, error = parse_errors[0]
+        assert event == "response.completed"
+        assert isinstance(error, str)
+        assert error
+
+    def test_eventless_incomplete_non_terminal_after_prefix_bound_stays_quiet(self):
+        parse_errors: list[tuple[str, str]] = []
+
+        def record_parse_error(event: str, error: str) -> None:
+            parse_errors.append((event, error))
+
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_parse_error=record_parse_error
+        )
+        parse(
+            b'data: {"padding":"'
+            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+            + b'","type":"response.output_text.delta","delta":"hello'
+        )
+        parse.finish()
+
+        assert usage == {}
+        assert parse_errors == []
+
+    def test_eventless_incomplete_duplicate_type_does_not_use_stale_terminal_type(self):
+        parse_errors: list[tuple[str, str]] = []
+
+        def record_parse_error(event: str, error: str) -> None:
+            parse_errors.append((event, error))
+
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_parse_error=record_parse_error
+        )
+        parse(
+            b'data: {"type":"response.completed","type":"response.output_text.delta","delta":"hello'
+        )
+        parse.finish()
+
+        assert usage == {}
+        assert parse_errors == []
+
+    def test_eventless_type_after_prefix_bound_falls_back_to_full_extraction(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"padding":"'
+            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+            + b'","type":"response.completed","response":{"model":"gpt-5.4",'
+            + b'"usage":{"output_tokens":8}}}\n\n'
+        )
+
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 8
+
+    def test_finish_flushes_response_completed_without_blank_line(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.4",'
+            b'"usage":{"output_tokens":4}}}'
+        )
+        parse.finish()
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 4
+
+    def test_finish_flushes_eventless_response_completed_without_blank_line(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"type":"response.completed","response":{"model":"gpt-5.4",'
+            b'"usage":{"output_tokens":14}}}'
+        )
+        parse.finish()
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 14
+
+    def test_accepts_sse_fields_without_optional_space(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event:response.completed\n"
+            b'data:{"response":{"model":"gpt-5.4",'
+            b'"usage":{"output_tokens":5}}}\n\n'
+        )
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 5
+
+    def test_accepts_event_name_after_data_line(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"response":{"model":"gpt-5.4",'
+            b'"usage":{"output_tokens":4}}}\n'
+            b"event: response.completed\n\n"
+        )
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 4
+
+    def test_handles_chunked_event_and_data_prefix(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(b"event: response.completed")
+        parse(b"\nda")
+        parse(b"ta")
+        parse(b": ")
+        parse(
+            b'{"response":{"id":"resp_chunked","model":"gpt-5.5",'
+            b'"usage":{"input_tokens":8,"output_tokens":3}}}\n\n'
+        )
+        assert usage["message_id"] == "resp_chunked"
+        assert usage["model"] == "gpt-5.5"
+        assert usage["tokens.input"] == 8
+        assert usage["tokens.output"] == 3
+
+    def test_crlf_line_endings(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.completed\r\n"
+            b'data: {"response":{"model":"gpt-5.4",'
+            b'"usage":{"input_tokens":10,"output_tokens":4}}}\r\n'
+            b"\r\n"
+        )
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.input"] == 10
+        assert usage["tokens.output"] == 4
+
+    def test_multidata_response_completed_event(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.completed\n"
+            b'data: {"response":\n'
+            b'data: {"model":"gpt-5.4","usage":{"output_tokens":4}}}\n\n'
+        )
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 4
+
+    def test_multidata_eventless_response_completed_event(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"type":"response.completed",\n'
+            b'data: "response":{"model":"gpt-5.4","usage":{"output_tokens":15}}}\n\n'
+        )
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 15
+
+    def test_skips_large_irrelevant_events_without_buffering(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(b"event: response.output_text.delta\n")
+        parse(b"data: " + b"x" * 100_000)
+        parse(b"y" * 100_000 + b"\n\n")
+        parse(
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.2",'
+            b'"usage":{"output_tokens":9}}}\n\n'
+        )
+        assert usage["model"] == "gpt-5.2"
+        assert usage["tokens.output"] == 9
+
+    def test_skip_recovery_same_chunk(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(b"event: response.output_text.delta\n")
+        parse(
+            b'data: {"delta":"ignored"}\n\n'
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.5",'
+            b'"usage":{"output_tokens":6}}}\n\n'
+        )
+        assert usage["model"] == "gpt-5.5"
+        assert usage["tokens.output"] == 6
+
+    def test_extracts_usage_from_large_response_completed_data_line(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(b"event: response.completed\n")
+        parse(
+            b'data: {"type":"response.completed","response":{"id":"resp_big",'
+            b'"model":"gpt-5.5","output":[{"content":[{"type":"output_text","text":"'
+            + b"x"
+            * 100_000
+        )
+        parse(
+            b'"}]}],"usage":{"input_tokens":100,"output_tokens":40,'
+            b'"input_tokens_details":{"cached_tokens":25}}}}\n\n'
+        )
+        assert usage == {
+            "message_id": "resp_big",
+            "model": "gpt-5.5",
+            "tokens.input": 75,
+            "tokens.output": 40,
+            "tokens.cache_read": 25,
+        }
+
+    def test_long_malformed_control_line_does_not_block_recovery(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"x" * 5000
+            + b"\n"
+            + b"event: response.completed\n"
+            + b'data: {"response":{"model":"gpt-5.2",'
+            + b'"usage":{"output_tokens":11}}}\n\n'
+        )
+        assert usage["model"] == "gpt-5.2"
+        assert usage["tokens.output"] == 11
+
+    @pytest.mark.parametrize("with_parse_error_callback", [False, True])
+    def test_malformed_usage_event_recovers_for_next_event(self, with_parse_error_callback):
+        parse_errors: list[tuple[str, str]] = []
+
+        def record_parse_error(event: str, error: str) -> None:
+            parse_errors.append((event, error))
+
+        if with_parse_error_callback:
+            parse, usage = create_openai_responses_sse_usage_extractor(
+                on_parse_error=record_parse_error
+            )
+        else:
+            parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.completed\n"
+            b"data: {invalid json}\n\n"
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.4",'
+            b'"usage":{"input_tokens":13,"output_tokens":8}}}\n\n'
+        )
+        if with_parse_error_callback:
+            assert len(parse_errors) == 1
+            event, error = parse_errors[0]
+            assert event == "response.completed"
+            assert isinstance(error, str)
+            assert error
+        else:
+            assert parse_errors == []
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.input"] == 13
+        assert usage["tokens.output"] == 8
+
+    def test_invalid_usage_quantities_ignored(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.5","usage":{'
+            b'"input_tokens":-1,"output_tokens":true,'
+            b'"input_tokens_details":{"cached_tokens":"25"}}}}\n\n'
+        )
+        assert usage == {"model": "gpt-5.5"}

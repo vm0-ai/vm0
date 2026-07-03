@@ -1,0 +1,2 @@
+# Generated firewall configs (produced by @vm0/firewalls-generator at install time)
+src/firewalls/*.generated.ts

@@ -1,0 +1,1 @@
+DROP VIEW "public"."connector_cli_auth_sessions";

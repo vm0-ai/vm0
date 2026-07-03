@@ -1,0 +1,39 @@
+import type { ConnectorConfig } from "../connector-config";
+import { FeatureSwitchKey } from "../feature-switch-key";
+
+export const zapier = {
+  zapier: {
+    label: "Zapier",
+    category: "data-automation-infrastructure",
+    helpText:
+      "Connect your Zapier account to trigger zaps and use AI Actions (NLA) to automate workflows",
+    authMethods: {
+      "api-token": {
+        featureFlag: FeatureSwitchKey.ZapierConnector,
+        label: "API Key",
+        storage: {
+          secrets: ["ZAPIER_TOKEN"],
+          variables: [],
+        },
+        grant: {
+          kind: "manual",
+          fields: {
+            ZAPIER_TOKEN: {
+              label: "API Key",
+              publicId: "apiKey",
+              required: true,
+              placeholder: "your-zapier-api-key",
+            },
+          },
+        },
+        access: {
+          kind: "static",
+          envBindings: {
+            ZAPIER_TOKEN: "$secrets.ZAPIER_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
+      },
+    },
+  },
+} as const satisfies Record<string, ConnectorConfig>;

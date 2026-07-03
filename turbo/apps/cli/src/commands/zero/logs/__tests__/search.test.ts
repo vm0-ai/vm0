@@ -1,0 +1,528 @@
+/**
+ * Tests for zero logs search command
+ *
+ * Tests command-level behavior via parseAsync() following CLI testing principles:
+ * - Entry point: searchCommand.parseAsync()
+ * - Mock (external): Web API via MSW
+ * - Real (internal): All CLI code, event parsers, renderers
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../mocks/server";
+import { searchCommand } from "../search";
+
+const AGENT_ID = "11111111-1111-4111-8111-111111111111";
+
+function makeEvent(
+  sequenceNumber: number,
+  text: string,
+  createdAt = "2024-01-15T10:30:00Z",
+) {
+  return {
+    sequenceNumber,
+    eventType: "assistant",
+    createdAt,
+    eventData: {
+      type: "assistant",
+      message: {
+        content: [{ type: "text", text }],
+      },
+    },
+  };
+}
+
+function makeCodexMessageEvent(
+  sequenceNumber: number,
+  text: string,
+  createdAt = "2024-01-15T10:30:00Z",
+) {
+  return {
+    sequenceNumber,
+    eventType: "item.completed",
+    createdAt,
+    eventData: {
+      type: "item.completed",
+      item: {
+        id: `item-${sequenceNumber}`,
+        type: "agent_message",
+        text,
+      },
+    },
+  };
+}
+
+function makeCodexCommandStartedEvent(
+  sequenceNumber: number,
+  createdAt = "2024-01-15T10:30:00Z",
+) {
+  return {
+    sequenceNumber,
+    eventType: "item.started",
+    createdAt,
+    eventData: {
+      type: "item.started",
+      item: {
+        id: "cmd-1",
+        type: "command_execution",
+        command: "npm test",
+      },
+    },
+  };
+}
+
+function makeCodexCommandCompletedEvent(
+  sequenceNumber: number,
+  createdAt = "2024-01-15T10:30:01Z",
+) {
+  return {
+    sequenceNumber,
+    eventType: "item.completed",
+    createdAt,
+    eventData: {
+      type: "item.completed",
+      item: {
+        id: "cmd-1",
+        type: "command_execution",
+        command: "npm test",
+        aggregated_output: "tests passed",
+        exit_code: 0,
+      },
+    },
+  };
+}
+
+describe("zero logs search command", () => {
+  const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
+    throw new Error("process.exit called");
+  }) as never);
+  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+  const mockConsoleError = vi
+    .spyOn(console, "error")
+    .mockImplementation(() => {});
+
+  beforeEach(() => {
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+  });
+
+  afterEach(() => {
+    mockExit.mockClear();
+    mockConsoleLog.mockClear();
+    mockConsoleError.mockClear();
+  });
+
+  it("should reject whitespace-only keywords", async () => {
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "   "]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Keyword cannot be empty");
+  });
+
+  it("should render search results grouped by run", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "my-agent",
+              matchedEvent: makeEvent(3, "Build failed: OOM killed"),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "OOM"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("550e8400-e29b-41d4-a716-446655440001");
+    expect(logCalls).toContain("my-agent");
+    expect(logCalls).toContain("OOM killed");
+  });
+
+  it("should tolerate invalid search result timestamps", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "my-agent",
+              matchedEvent: makeEvent(3, "Build failed", "not-a-timestamp"),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "Build"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("invalid-date");
+    expect(logCalls).toContain("Build failed");
+  });
+
+  it("should render codex search result events with the result framework", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "codex-agent",
+              framework: "codex",
+              matchedEvent: makeCodexMessageEvent(3, "Codex found the issue"),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "Codex"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("codex-agent");
+    expect(logCalls).toContain("Codex found the issue");
+  });
+
+  it("should tolerate unsupported search result framework values", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "future-agent",
+              framework: "future-framework",
+              matchedEvent: makeEvent(3, "Legacy parser fallback output"),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "fallback"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("future-agent");
+    expect(logCalls).toContain("Legacy parser fallback output");
+  });
+
+  it("should group paired codex tool events in search context", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "codex-agent",
+              framework: "codex",
+              matchedEvent: makeCodexCommandCompletedEvent(4),
+              contextBefore: [makeCodexCommandStartedEvent(3)],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "tests"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("tests passed");
+    expect(logCalls.match(/Bash/g) ?? []).toHaveLength(1);
+  });
+
+  it("should handle no matches", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
+        return HttpResponse.json({ results: [], hasMore: false });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "nonexistent"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("No matches found");
+    expect(logCalls).toContain("--since 30d");
+  });
+
+  it("should pass context options to API", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json({ results: [], hasMore: false });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "error", "-C", "3"]);
+
+    expect(capturedUrl?.searchParams.get("keyword")).toBe("error");
+    expect(capturedUrl?.searchParams.get("before")).toBe("3");
+    expect(capturedUrl?.searchParams.get("after")).toBe("3");
+  });
+
+  it("should send epoch --since instead of the default search window", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json({ results: [], hasMore: false });
+      }),
+    );
+
+    await searchCommand.parseAsync([
+      "node",
+      "cli",
+      "error",
+      "--since",
+      "1970-01-01T00:00:00Z",
+    ]);
+
+    expect(capturedUrl?.searchParams.get("since")).toBe("0");
+  });
+
+  it("should pass -A and -B independently", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json({ results: [], hasMore: false });
+      }),
+    );
+
+    await searchCommand.parseAsync([
+      "node",
+      "cli",
+      "error",
+      "-A",
+      "5",
+      "-B",
+      "2",
+    ]);
+
+    expect(capturedUrl?.searchParams.get("before")).toBe("2");
+    expect(capturedUrl?.searchParams.get("after")).toBe("5");
+  });
+
+  it("should reject partial numeric context and limit values", async () => {
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "-C", "2x"]),
+    ).rejects.toThrow("process.exit called");
+
+    let errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--context must be between 0 and 10");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "--limit", "1abc"]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--limit must be between 1 and 50");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "-C", ""]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--context must be between 0 and 10");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "--limit", ""]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--limit must be between 1 and 50");
+  });
+
+  it("should pass agentId and run filters", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json({ results: [], hasMore: false });
+      }),
+    );
+
+    await searchCommand.parseAsync([
+      "node",
+      "cli",
+      "deploy",
+      "--agent",
+      AGENT_ID,
+      "--run",
+      "550e8400-e29b-41d4-a716-446655440001",
+    ]);
+
+    expect(capturedUrl?.searchParams.get("agentId")).toBe(AGENT_ID);
+    expect(capturedUrl?.searchParams.get("runId")).toBe(
+      "550e8400-e29b-41d4-a716-446655440001",
+    );
+  });
+
+  it("should show hasMore hint when truncated", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "agent",
+              matchedEvent: makeEvent(1, "match"),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: true,
+        });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "match"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("--limit");
+  });
+
+  it("should render context events around matched event", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "test-agent",
+              matchedEvent: makeEvent(
+                5,
+                "Error: connection refused",
+                "2024-01-15T10:30:05Z",
+              ),
+              contextBefore: [
+                makeEvent(
+                  4,
+                  "Connecting to database...",
+                  "2024-01-15T10:30:04Z",
+                ),
+              ],
+              contextAfter: [
+                makeEvent(6, "Retrying connection...", "2024-01-15T10:30:06Z"),
+              ],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "connection", "-C", "1"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("Connecting to database");
+    expect(logCalls).toContain("connection refused");
+    expect(logCalls).toContain("Retrying connection");
+  });
+
+  it("should reject non-UUID --run value", async () => {
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "--run", "6af7eece"]),
+    ).rejects.toThrow("process.exit called");
+
+    let errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid run ID");
+    expect(errorCalls).toContain("zero logs list");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "--run", ""]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid run ID");
+    expect(errorCalls).toContain("zero logs list");
+  });
+
+  it("should reject non-UUID --agent value", async () => {
+    await expect(
+      searchCommand.parseAsync([
+        "node",
+        "cli",
+        "error",
+        "--agent",
+        "agent-123",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    let errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid agent ID");
+    expect(errorCalls).toContain("zero logs list");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "--agent", ""]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid agent ID");
+    expect(errorCalls).toContain("zero logs list");
+  });
+
+  it("should reject malformed UUID-like --run value", async () => {
+    await expect(
+      searchCommand.parseAsync([
+        "node",
+        "cli",
+        "error",
+        "--run",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid run ID");
+    expect(errorCalls).toContain("zero logs list");
+  });
+
+  it("should handle authentication error", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
+        return HttpResponse.json(
+          { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+          { status: 401 },
+        );
+      }),
+    );
+
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error"]),
+    ).rejects.toThrow();
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Not authenticated");
+  });
+});

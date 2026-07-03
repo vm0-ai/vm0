@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <style>
+    polygon { stroke-linejoin: round; stroke-width: 2; }
+    .outline { fill: none; stroke: #18181b; }
+    .filled { fill: #18181b; stroke: #18181b; }
+  </style>
+
+  <!-- Top face outline -->
+  <polygon class="outline" points="24,8 40,17 24,26 8,17"/>
+
+  <!-- Left face outline -->
+  <polygon class="outline" points="8,17 24,26 24,42 8,33"/>
+
+  <!-- Right face - solid fill -->
+  <polygon class="filled" points="40,17 24,26 24,42 40,33"/>
+</svg>

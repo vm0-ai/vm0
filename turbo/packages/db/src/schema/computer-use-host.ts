@@ -1,0 +1,198 @@
+import { sql } from "drizzle-orm";
+import {
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+
+type JsonObject = Record<string, unknown>;
+
+export interface ComputerUsePermissions {
+  readonly accessibility: boolean;
+  readonly screenRecording: boolean;
+  readonly automation?: {
+    readonly chrome: {
+      readonly status:
+        | "unknown"
+        | "granted"
+        | "denied"
+        | "not_installed"
+        | "not_running";
+      readonly updatedAt: string | null;
+      readonly reason: string | null;
+    };
+    readonly safari: {
+      readonly status:
+        | "unknown"
+        | "granted"
+        | "denied"
+        | "not_installed"
+        | "not_running";
+      readonly updatedAt: string | null;
+      readonly reason: string | null;
+    };
+  };
+}
+
+export const computerUseHosts = pgTable(
+  "computer_use_hosts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    installationId: uuid("installation_id"),
+    displayName: text("display_name").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    appVersion: text("app_version").notNull(),
+    osVersion: text("os_version").notNull(),
+    supportedCapabilities: jsonb("supported_capabilities")
+      .$type<string[]>()
+      .default([])
+      .notNull(),
+    permissions: jsonb("permissions")
+      .$type<ComputerUsePermissions>()
+      .default({ accessibility: false, screenRecording: false })
+      .notNull(),
+    status: text("status").default("online").notNull(),
+    lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("idx_computer_use_hosts_token_hash").on(table.tokenHash),
+      uniqueIndex("idx_computer_use_hosts_active_installation")
+        .on(table.orgId, table.userId, table.installationId)
+        .where(sql`installation_id IS NOT NULL AND revoked_at IS NULL`),
+      index("idx_computer_use_hosts_org_user").on(table.orgId, table.userId),
+      index("idx_computer_use_hosts_last_seen").on(table.lastSeenAt),
+    ];
+  },
+);
+
+export const computerUseCommands = pgTable(
+  "computer_use_commands",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    runId: text("run_id"),
+    hostId: uuid("host_id").references(() => {
+      return computerUseHosts.id;
+    }),
+    kind: text("kind").notNull(),
+    status: text("status").default("queued").notNull(),
+    payload: jsonb("payload").$type<JsonObject>().default({}).notNull(),
+    result: jsonb("result").$type<JsonObject>(),
+    error: text("error"),
+    timeoutMs: integer("timeout_ms"),
+    claimedAt: timestamp("claimed_at"),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      index("idx_computer_use_commands_host_status").on(
+        table.hostId,
+        table.status,
+      ),
+      index("idx_computer_use_commands_org_user").on(table.orgId, table.userId),
+      index("idx_computer_use_commands_created").on(table.createdAt),
+    ];
+  },
+);
+
+export const computerUseCommandAuditEvents = pgTable(
+  "computer_use_command_audit_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    commandId: uuid("command_id")
+      .references(() => {
+        return computerUseCommands.id;
+      })
+      .notNull(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    runId: text("run_id"),
+    hostId: uuid("host_id").references(() => {
+      return computerUseHosts.id;
+    }),
+    kind: text("kind").notNull(),
+    app: text("app"),
+    event: text("event").notNull(),
+    approvalOutcome: text("approval_outcome"),
+    redactedResult: jsonb("redacted_result").$type<JsonObject>(),
+    error: jsonb("error").$type<JsonObject>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      index("idx_computer_use_command_audit_command").on(table.commandId),
+      index("idx_computer_use_command_audit_org_user").on(
+        table.orgId,
+        table.userId,
+      ),
+      index("idx_computer_use_command_audit_created").on(table.createdAt),
+    ];
+  },
+);
+
+export const computerUseAuthorizationRequests = pgTable(
+  "computer_use_authorization_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    requestTokenHash: text("request_token_hash").notNull(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    runId: uuid("run_id").notNull(),
+    source: text("source").notNull(),
+    chatThreadId: uuid("chat_thread_id"),
+    slackConnectionId: uuid("slack_connection_id"),
+    slackChannelId: text("slack_channel_id"),
+    slackThreadTs: text("slack_thread_ts"),
+    expiresAt: timestamp("expires_at").notNull(),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("idx_computer_use_auth_requests_token_hash").on(
+        table.requestTokenHash,
+      ),
+      index("idx_computer_use_auth_requests_org_user").on(
+        table.orgId,
+        table.userId,
+      ),
+      index("idx_computer_use_auth_requests_expires").on(table.expiresAt),
+      check(
+        "computer_use_auth_requests_source_check",
+        sql`source IN ('chat', 'slack')`,
+      ),
+      check(
+        "computer_use_auth_requests_scope_check",
+        sql`(
+          source = 'chat'
+          AND chat_thread_id IS NOT NULL
+          AND slack_connection_id IS NULL
+          AND slack_channel_id IS NULL
+          AND slack_thread_ts IS NULL
+        ) OR (
+          source = 'slack'
+          AND chat_thread_id IS NULL
+          AND slack_connection_id IS NOT NULL
+          AND slack_channel_id IS NOT NULL
+          AND slack_thread_ts IS NOT NULL
+        )`,
+      ),
+    ];
+  },
+);

@@ -1,0 +1,36 @@
+# Changelog
+
+## [0.3.1](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.0...process-control-ipc-v0.3.1) (2026-06-23)
+
+
+### Performance Improvements
+
+* reduce process-control ipc payload copies ([#18670](https://github.com/vm0-ai/vm0/issues/18670)) ([95e9670](https://github.com/vm0-ai/vm0/commit/95e9670ada6b3138e20c585cb78e57188b497440))
+
+## [0.3.0](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.2.2...process-control-ipc-v0.3.0) (2026-06-19)
+
+
+### Features
+
+* add runner local active input forwarding ([#18286](https://github.com/vm0-ai/vm0/issues/18286)) ([a798b1a](https://github.com/vm0-ai/vm0/commit/a798b1abc04cfaa960d63bee7ce8d52b8300737a))
+
+## [0.2.2](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.2.1...process-control-ipc-v0.2.2) (2026-06-15)
+
+
+### Refactoring
+
+* split process-control ipc modules ([#17742](https://github.com/vm0-ai/vm0/issues/17742)) ([83cdf5b](https://github.com/vm0-ai/vm0/commit/83cdf5b87c79408f24957e7315a2a4aa37f86fa3))
+
+## [0.2.1](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.2.0...process-control-ipc-v0.2.1) (2026-05-20)
+
+
+### Documentation
+
+* document process-control-ipc protocol ([#14263](https://github.com/vm0-ai/vm0/issues/14263)) ([18321c1](https://github.com/vm0-ai/vm0/commit/18321c1307b99737a7e787f214f7141e71710330))
+
+## [0.2.0](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.1.0...process-control-ipc-v0.2.0) (2026-05-17)
+
+
+### Features
+
+* wire operation-bound process control to guest-agent ([#13538](https://github.com/vm0-ai/vm0/issues/13538)) ([3bc2ee1](https://github.com/vm0-ai/vm0/commit/3bc2ee1dda51d68c6825a1a71bf44edbc9692a0d))

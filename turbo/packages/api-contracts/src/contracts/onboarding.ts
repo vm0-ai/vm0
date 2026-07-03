@@ -1,0 +1,100 @@
+import { z } from "zod";
+import { initContract, authHeadersSchema } from "./base";
+import { apiErrorSchema } from "./errors";
+import { connectorTypeSchema } from "@vm0/connectors/connectors";
+
+const c = initContract();
+
+/**
+ * Onboarding status response schema
+ */
+export const onboardingStatusResponseSchema = z.object({
+  needsOnboarding: z.boolean(),
+  isAdmin: z.boolean(),
+  hasOrg: z.boolean(),
+  hasDefaultAgent: z.boolean(),
+  defaultAgentId: z.string().nullable(),
+  defaultAgentMetadata: z
+    .object({
+      displayName: z.string().optional(),
+      description: z.string().optional(),
+      sound: z.string().optional(),
+    })
+    .nullable(),
+});
+
+export type OnboardingStatusResponse = z.infer<
+  typeof onboardingStatusResponseSchema
+>;
+
+/**
+ * Onboarding status contract for GET /api/zero/onboarding/status
+ */
+export const onboardingStatusContract = c.router({
+  getStatus: {
+    method: "GET",
+    path: "/api/zero/onboarding/status",
+    headers: authHeadersSchema,
+    responses: {
+      200: onboardingStatusResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Get onboarding status for current user",
+  },
+});
+
+export const onboardingSetupContract = c.router({
+  setup: {
+    method: "POST",
+    path: "/api/zero/onboarding/setup",
+    headers: authHeadersSchema,
+    body: z.object({
+      displayName: z.string(),
+      workspaceName: z.string().optional(),
+      sound: z.string().optional(),
+      avatarUrl: z.string().optional(),
+      selectedConnectors: z.array(connectorTypeSchema).optional(),
+      timezone: z.string().optional(),
+      role: z.string().optional(),
+    }),
+    responses: {
+      200: z.object({ agentId: z.string() }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: z.object({ agentId: z.string() }),
+      422: apiErrorSchema,
+    },
+    summary: "Complete admin onboarding in a single request",
+  },
+});
+
+export const onboardingCompleteLimitedFreeContract = c.router({
+  complete: {
+    method: "POST",
+    path: "/api/zero/onboarding/complete-limited-free",
+    headers: authHeadersSchema,
+    body: z
+      .object({
+        credits: z.number().int().positive().max(1000).default(1000),
+        expiresAt: z.string().datetime().nullable().default(null),
+      })
+      .strict(),
+    responses: {
+      200: z.object({
+        agentId: z.string(),
+        tier: z.literal("limited-free-1"),
+        needsOnboarding: z.literal(false),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Complete onboarding and enter the limited free tier",
+  },
+});
+
+export type OnboardingStatusContract = typeof onboardingStatusContract;
+export type OnboardingSetupContract = typeof onboardingSetupContract;
+export type OnboardingCompleteLimitedFreeContract =
+  typeof onboardingCompleteLimitedFreeContract;

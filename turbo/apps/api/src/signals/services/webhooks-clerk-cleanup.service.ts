@@ -1,0 +1,896 @@
+import { connectorTypeSchema } from "@vm0/connectors/connectors";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "@vm0/db/schema/agent-compose";
+import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { cliTokens } from "@vm0/db/schema/cli-tokens";
+import { composeJobs } from "@vm0/db/schema/compose-job";
+import { connectorExternalCodeSessions } from "@vm0/db/schema/connector-external-code-session";
+import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
+import { connectors } from "@vm0/db/schema/connector";
+import { deviceCodes } from "@vm0/db/schema/device-codes";
+import { exportJobs } from "@vm0/db/schema/export-job";
+import { githubUserLinks } from "@vm0/db/schema/github-user-link";
+import { modelProviderAuthSessions } from "@vm0/db/schema/model-provider-auth-session";
+import { modelProviders } from "@vm0/db/schema/model-provider";
+import { orgCache } from "@vm0/db/schema/org-cache";
+import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
+import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { secrets } from "@vm0/db/schema/secret";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { storages } from "@vm0/db/schema/storage";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
+import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
+import { usageDaily } from "@vm0/db/schema/usage-daily";
+import { userCache } from "@vm0/db/schema/user-cache";
+import { users } from "@vm0/db/schema/user";
+import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
+import { variables } from "@vm0/db/schema/variable";
+import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { command, computed, type Computed } from "ccstate";
+import { and, count, eq, inArray, isNotNull } from "drizzle-orm";
+
+import { env } from "../../lib/env";
+import { logger } from "../../lib/log";
+import { clerk$ } from "../external/clerk";
+import { writeDb$, type Db } from "../external/db";
+import { deleteS3Objects, listS3Objects } from "../external/s3";
+import { nowDate } from "../external/time";
+import { publishCancelToRunnerGroup } from "../external/realtime";
+import { deleteWebhook } from "../external/telegram-client";
+import { getStripeClient } from "../external/stripe-client";
+import { settle, tapError } from "../utils";
+import { decryptPersistentSecretValue } from "./crypto.utils";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
+import { deleteZeroConnectorLocalState$ } from "./zero-connector-data.service";
+
+const L = logger("WebhookClerkCleanup");
+const CLERK_ORG_MEMBERSHIP_PAGE_SIZE = 100;
+
+async function publishCancelBestEffort(
+  runnerGroup: string | null,
+  runId: string,
+): Promise<void> {
+  if (!runnerGroup) {
+    return;
+  }
+  await tapError(publishCancelToRunnerGroup(runnerGroup, runId), (error) => {
+    L.warn("failed to publish run cancellation", {
+      runId,
+      runnerGroup,
+      error,
+    });
+  });
+}
+
+async function cancelOrgRuns(db: Db, orgId: string): Promise<void> {
+  const cancelled = await db
+    .update(agentRuns)
+    .set({ status: "cancelled", completedAt: nowDate() })
+    .where(
+      and(
+        eq(agentRuns.orgId, orgId),
+        inArray(agentRuns.status, ["queued", "pending", "running"]),
+      ),
+    )
+    .returning({ id: agentRuns.id, runnerGroup: agentRuns.runnerGroup });
+
+  await db.delete(agentRunQueue).where(eq(agentRunQueue.orgId, orgId));
+  await Promise.all(
+    cancelled.map((run) => {
+      return publishCancelBestEffort(run.runnerGroup, run.id);
+    }),
+  );
+}
+
+async function cancelLastAdminOrgsStripeSubscriptions(
+  db: Db,
+  userId: string,
+): Promise<void> {
+  const adminOrgs = await db
+    .select({ orgId: orgMembersCache.orgId })
+    .from(orgMembersCache)
+    .where(
+      and(
+        eq(orgMembersCache.userId, userId),
+        eq(orgMembersCache.role, "admin"),
+      ),
+    );
+
+  for (const { orgId } of adminOrgs) {
+    const [result] = await db
+      .select({ adminCount: count() })
+      .from(orgMembersCache)
+      .where(
+        and(
+          eq(orgMembersCache.orgId, orgId),
+          eq(orgMembersCache.role, "admin"),
+        ),
+      );
+
+    if ((result?.adminCount ?? 0) <= 1) {
+      await tapError(
+        cancelStripeSubscriptionsForDeletedOrg(db, orgId),
+        (error) => {
+          L.warn(
+            "failed to cancel stripe subscriptions for banned last admin",
+            {
+              userId,
+              orgId,
+              error,
+            },
+          );
+        },
+      );
+    }
+  }
+}
+
+async function disableUserAutomations(db: Db, userId: string): Promise<void> {
+  await db
+    .update(automations)
+    .set({ enabled: false })
+    .where(eq(automations.userId, userId));
+
+  const userAutomationIds = db
+    .select({ id: automations.id })
+    .from(automations)
+    .where(eq(automations.userId, userId));
+
+  await db
+    .update(automationTriggers)
+    .set({ nextRunAt: null })
+    .where(inArray(automationTriggers.automationId, userAutomationIds));
+}
+
+async function cancelUserRuns(db: Db, userId: string): Promise<void> {
+  const cancelled = await db
+    .update(agentRuns)
+    .set({ status: "cancelled", completedAt: nowDate() })
+    .where(
+      and(
+        eq(agentRuns.userId, userId),
+        inArray(agentRuns.status, ["queued", "pending", "running"]),
+      ),
+    )
+    .returning({ id: agentRuns.id, runnerGroup: agentRuns.runnerGroup });
+
+  await db.delete(agentRunQueue).where(eq(agentRunQueue.userId, userId));
+  await Promise.all(
+    cancelled.map((run) => {
+      return publishCancelBestEffort(run.runnerGroup, run.id);
+    }),
+  );
+}
+
+async function cleanupWorkspaceInstallation(
+  db: Db,
+  workspaceId: string,
+): Promise<void> {
+  await db
+    .delete(slackOrgConnections)
+    .where(eq(slackOrgConnections.slackWorkspaceId, workspaceId));
+  await db
+    .delete(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId));
+}
+
+interface StripeSubscriptionCleanupTargets {
+  readonly cancelNowSubscriptionIds: Set<string>;
+  readonly cancelAtPeriodEndSubscriptionIds: Set<string>;
+  readonly nonRenewingSubscriptionIds: Set<string>;
+}
+
+function queueStripeSubscriptionCleanup(
+  targets: StripeSubscriptionCleanupTargets,
+  subscription: {
+    readonly id: string;
+    readonly status: string | null;
+    readonly cancel_at_period_end: boolean | null;
+  },
+): void {
+  if (subscription.status === "canceled") {
+    targets.nonRenewingSubscriptionIds.add(subscription.id);
+    return;
+  }
+
+  if (subscription.status === "trialing") {
+    targets.cancelNowSubscriptionIds.add(subscription.id);
+    return;
+  }
+
+  if (subscription.cancel_at_period_end) {
+    targets.nonRenewingSubscriptionIds.add(subscription.id);
+    return;
+  }
+
+  targets.cancelAtPeriodEndSubscriptionIds.add(subscription.id);
+}
+
+function queueFallbackStripeSubscriptionCleanup(
+  targets: StripeSubscriptionCleanupTargets,
+  subscriptionId: string | null,
+  subscriptionStatus: string | null,
+): void {
+  if (
+    !subscriptionId ||
+    subscriptionStatus === "canceled" ||
+    targets.nonRenewingSubscriptionIds.has(subscriptionId) ||
+    targets.cancelNowSubscriptionIds.has(subscriptionId) ||
+    targets.cancelAtPeriodEndSubscriptionIds.has(subscriptionId)
+  ) {
+    return;
+  }
+
+  if (subscriptionStatus === "trialing") {
+    targets.cancelNowSubscriptionIds.add(subscriptionId);
+    return;
+  }
+
+  targets.cancelAtPeriodEndSubscriptionIds.add(subscriptionId);
+}
+
+async function cancelStripeSubscriptionsForDeletedOrg(
+  db: Db,
+  orgId: string,
+): Promise<void> {
+  const [meta] = await db
+    .select({
+      stripeCustomerId: orgMetadata.stripeCustomerId,
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      subscriptionStatus: orgMetadata.subscriptionStatus,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+
+  if (!meta?.stripeCustomerId && !meta?.stripeSubscriptionId) {
+    return;
+  }
+
+  const stripe = getStripeClient();
+  const targets: StripeSubscriptionCleanupTargets = {
+    cancelNowSubscriptionIds: new Set<string>(),
+    cancelAtPeriodEndSubscriptionIds: new Set<string>(),
+    nonRenewingSubscriptionIds: new Set<string>(),
+  };
+
+  if (meta.stripeCustomerId) {
+    let startingAfter: string | undefined;
+
+    while (true) {
+      const subscriptions = await stripe.subscriptions.list({
+        customer: meta.stripeCustomerId,
+        status: "all",
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      });
+
+      for (const subscription of subscriptions.data) {
+        queueStripeSubscriptionCleanup(targets, subscription);
+      }
+
+      const lastSubscription =
+        subscriptions.data[subscriptions.data.length - 1];
+      if (!subscriptions.has_more || !lastSubscription) {
+        break;
+      }
+      startingAfter = lastSubscription.id;
+    }
+  }
+
+  queueFallbackStripeSubscriptionCleanup(
+    targets,
+    meta.stripeSubscriptionId,
+    meta.subscriptionStatus,
+  );
+
+  for (const subscriptionId of targets.cancelNowSubscriptionIds) {
+    await stripe.subscriptions.cancel(subscriptionId);
+  }
+
+  for (const subscriptionId of targets.cancelAtPeriodEndSubscriptionIds) {
+    await stripe.subscriptions.update(subscriptionId, {
+      cancel_at_period_end: true,
+    });
+  }
+}
+
+async function deregisterOrgTelegramWebhooks(
+  db: Db,
+  orgId: string,
+): Promise<void> {
+  const installations = await db
+    .select({
+      telegramBotId: telegramInstallations.telegramBotId,
+      encryptedBotToken: telegramInstallations.encryptedBotToken,
+      ownerUserId: telegramInstallations.ownerUserId,
+    })
+    .from(telegramInstallations)
+    .where(eq(telegramInstallations.orgId, orgId));
+
+  for (const installation of installations) {
+    await tapError(
+      deleteWebhook(
+        await decryptPersistentSecretValue(
+          installation.encryptedBotToken,
+          await loadUserFeatureSwitchContext(
+            db,
+            orgId,
+            installation.ownerUserId,
+          ),
+        ),
+      ),
+      (error) => {
+        L.warn("failed to deregister telegram webhook", {
+          telegramBotId: installation.telegramBotId,
+          error,
+        });
+      },
+    );
+  }
+}
+
+async function deregisterOwnedTelegramWebhooks(
+  db: Db,
+  userId: string,
+): Promise<void> {
+  const installations = await db
+    .select({
+      telegramBotId: telegramInstallations.telegramBotId,
+      encryptedBotToken: telegramInstallations.encryptedBotToken,
+      orgId: telegramInstallations.orgId,
+    })
+    .from(telegramInstallations)
+    .where(eq(telegramInstallations.ownerUserId, userId));
+
+  for (const installation of installations) {
+    await tapError(
+      deleteWebhook(
+        await decryptPersistentSecretValue(
+          installation.encryptedBotToken,
+          await loadUserFeatureSwitchContext(db, installation.orgId, userId),
+        ),
+      ),
+      (error) => {
+        L.warn("failed to deregister telegram webhook", {
+          telegramBotId: installation.telegramBotId,
+          error,
+        });
+      },
+    );
+  }
+}
+
+const revokeOrgConnectorTokens$ = command(
+  async (
+    { set },
+    db: Db,
+    orgId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const rows = await db
+      .select({ userId: connectors.userId, type: connectors.type })
+      .from(connectors)
+      .where(eq(connectors.orgId, orgId));
+    signal.throwIfAborted();
+
+    for (const row of rows) {
+      const parsed = connectorTypeSchema.safeParse(row.type);
+      if (!parsed.success) {
+        L.warn("unknown connector type, skipping revocation", {
+          orgId,
+          type: row.type,
+        });
+        continue;
+      }
+
+      await set(
+        deleteZeroConnectorLocalState$,
+        { orgId, userId: row.userId, type: parsed.data },
+        signal,
+      );
+    }
+  },
+);
+
+const revokeUserConnectorTokens$ = command(
+  async (
+    { set },
+    db: Db,
+    userId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const rows = await db
+      .select({ orgId: connectors.orgId, type: connectors.type })
+      .from(connectors)
+      .where(eq(connectors.userId, userId));
+    signal.throwIfAborted();
+
+    for (const row of rows) {
+      const parsed = connectorTypeSchema.safeParse(row.type);
+      if (!parsed.success) {
+        L.warn("unknown connector type, skipping revocation", {
+          userId,
+          type: row.type,
+        });
+        continue;
+      }
+
+      await set(
+        deleteZeroConnectorLocalState$,
+        { orgId: row.orgId, userId, type: parsed.data },
+        signal,
+      );
+    }
+  },
+);
+
+const cleanupOrgExternalServices$ = command(
+  async (
+    { set },
+    db: Db,
+    orgId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const steps: readonly {
+      readonly name: string;
+      readonly run: () => Promise<void>;
+    }[] = [
+      {
+        name: "stripe subscriptions",
+        run: () => {
+          return cancelStripeSubscriptionsForDeletedOrg(db, orgId);
+        },
+      },
+      {
+        name: "telegram webhooks",
+        run: () => {
+          return deregisterOrgTelegramWebhooks(db, orgId);
+        },
+      },
+      {
+        name: "connector tokens",
+        run: () => {
+          return set(revokeOrgConnectorTokens$, db, orgId, signal);
+        },
+      },
+    ];
+
+    for (const step of steps) {
+      await tapError(step.run(), (error) => {
+        L.warn(`failed to cleanup ${step.name}`, { orgId, error });
+      });
+      signal.throwIfAborted();
+    }
+  },
+);
+
+const cleanupUserExternalServices$ = command(
+  async (
+    { set },
+    db: Db,
+    userId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const steps: readonly {
+      readonly name: string;
+      readonly run: () => Promise<void>;
+    }[] = [
+      {
+        name: "connector tokens",
+        run: () => {
+          return set(revokeUserConnectorTokens$, db, userId, signal);
+        },
+      },
+      {
+        name: "telegram owned bots",
+        run: () => {
+          return deregisterOwnedTelegramWebhooks(db, userId);
+        },
+      },
+    ];
+
+    for (const step of steps) {
+      await tapError(step.run(), (error) => {
+        L.warn(`failed to cleanup ${step.name}`, { userId, error });
+      });
+      signal.throwIfAborted();
+    }
+  },
+);
+
+async function emptyOrgIdsAfterDeletingUser(
+  db: Db,
+  clerk: ReturnType<typeof clerk$.read>,
+  userId: string,
+  signal: AbortSignal,
+): Promise<readonly string[]> {
+  const membershipRows = await db
+    .select({ orgId: orgMembersCache.orgId })
+    .from(orgMembersCache)
+    .where(eq(orgMembersCache.userId, userId));
+  const createdRows = await db
+    .select({ orgId: orgCache.orgId })
+    .from(orgCache)
+    .where(eq(orgCache.createdBy, userId));
+
+  const candidateOrgIds = new Set<string>();
+  for (const row of membershipRows) {
+    candidateOrgIds.add(row.orgId);
+  }
+  for (const row of createdRows) {
+    candidateOrgIds.add(row.orgId);
+  }
+
+  const emptyOrgIds: string[] = [];
+  for (const orgId of candidateOrgIds) {
+    if (await isClerkOrgEmptyAfterDeletingUser(clerk, orgId, userId, signal)) {
+      emptyOrgIds.push(orgId);
+    }
+  }
+
+  return emptyOrgIds;
+}
+
+function isClerkNotFound(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  return (
+    Reflect.get(error, "statusCode") === 404 ||
+    Reflect.get(error, "code") === "NOT_FOUND" ||
+    Reflect.get(error, "name") === "NotFoundError"
+  );
+}
+
+async function isClerkOrgEmptyAfterDeletingUser(
+  clerk: ReturnType<typeof clerk$.read>,
+  orgId: string,
+  userId: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  for (let offset = 0; ; offset += CLERK_ORG_MEMBERSHIP_PAGE_SIZE) {
+    const memberships = await settle(
+      clerk.organizations.getOrganizationMembershipList({
+        organizationId: orgId,
+        limit: CLERK_ORG_MEMBERSHIP_PAGE_SIZE,
+        offset,
+      }),
+    );
+    signal.throwIfAborted();
+
+    if (!memberships.ok) {
+      if (isClerkNotFound(memberships.error)) {
+        return true;
+      }
+      L.warn("failed to query Clerk organization memberships for deletion", {
+        orgId,
+        userId,
+        error: memberships.error,
+      });
+      return false;
+    }
+
+    for (const membership of memberships.value.data) {
+      const memberUserId = membership.publicUserData?.userId;
+      if (!memberUserId || memberUserId !== userId) {
+        return false;
+      }
+    }
+
+    if (memberships.value.data.length < CLERK_ORG_MEMBERSHIP_PAGE_SIZE) {
+      return true;
+    }
+  }
+}
+
+function deleteObjectsForPrefixes(
+  bucket: string,
+  prefixes: readonly string[],
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    for (const prefix of prefixes) {
+      const objects = await get(listS3Objects(bucket, prefix));
+      if (objects.length === 0) {
+        continue;
+      }
+      await get(
+        deleteS3Objects(
+          bucket,
+          objects.map((object) => {
+            return object.key;
+          }),
+        ),
+      );
+    }
+  });
+}
+
+function deleteUserObjectsForPrefixesBestEffort(
+  bucket: string,
+  prefixes: readonly string[],
+  userId: string,
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    for (const prefix of prefixes) {
+      const objectsResult = await settle(get(listS3Objects(bucket, prefix)));
+      if (!objectsResult.ok) {
+        L.warn("failed to list user storage objects", {
+          userId,
+          prefix,
+          error: objectsResult.error,
+        });
+        continue;
+      }
+
+      if (objectsResult.value.length === 0) {
+        continue;
+      }
+
+      const deleteResult = await settle(
+        get(
+          deleteS3Objects(
+            bucket,
+            objectsResult.value.map((object) => {
+              return object.key;
+            }),
+          ),
+        ),
+      );
+      if (!deleteResult.ok) {
+        L.warn("failed to delete user storage objects", {
+          userId,
+          prefix,
+          error: deleteResult.error,
+        });
+      }
+    }
+  });
+}
+
+function deleteOrgS3Data(db: Db, orgId: string): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const storageRows = await db
+      .select({ s3Prefix: storages.s3Prefix })
+      .from(storages)
+      .where(eq(storages.orgId, orgId));
+    await get(
+      deleteObjectsForPrefixes(
+        bucket,
+        storageRows.map((row) => {
+          return row.s3Prefix;
+        }),
+      ),
+    );
+
+    const exportRows = await db
+      .select({ s3Key: exportJobs.s3Key })
+      .from(exportJobs)
+      .where(and(eq(exportJobs.orgId, orgId), isNotNull(exportJobs.s3Key)));
+    const exportKeys = exportRows.flatMap((row) => {
+      return row.s3Key ? [row.s3Key] : [];
+    });
+    await get(deleteS3Objects(bucket, exportKeys));
+  });
+}
+
+function deleteUserS3Data(db: Db, userId: string): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const storageRows = await db
+      .select({ s3Prefix: storages.s3Prefix })
+      .from(storages)
+      .where(eq(storages.userId, userId));
+    await get(
+      deleteUserObjectsForPrefixesBestEffort(
+        bucket,
+        storageRows.map((row) => {
+          return row.s3Prefix;
+        }),
+        userId,
+      ),
+    );
+
+    const exportRows = await db
+      .select({ s3Key: exportJobs.s3Key })
+      .from(exportJobs)
+      .where(and(eq(exportJobs.userId, userId), isNotNull(exportJobs.s3Key)));
+    const exportKeys = exportRows.flatMap((row) => {
+      return row.s3Key ? [row.s3Key] : [];
+    });
+    const deleteExportsResult = await settle(
+      get(deleteS3Objects(bucket, exportKeys)),
+    );
+    if (!deleteExportsResult.ok) {
+      L.warn("failed to delete user export objects", {
+        userId,
+        count: exportKeys.length,
+        error: deleteExportsResult.error,
+      });
+    }
+  });
+}
+
+async function deleteOrgData(db: Db, orgId: string): Promise<void> {
+  await cancelOrgRuns(db, orgId);
+
+  const installations = await db
+    .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.orgId, orgId));
+  for (const installation of installations) {
+    await cleanupWorkspaceInstallation(db, installation.slackWorkspaceId);
+  }
+
+  await db.delete(automations).where(eq(automations.orgId, orgId));
+  await db.delete(agentRuns).where(eq(agentRuns.orgId, orgId));
+  await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));
+  await db.delete(storages).where(eq(storages.orgId, orgId));
+  await db.delete(modelProviders).where(eq(modelProviders.orgId, orgId));
+  await db
+    .delete(modelProviderAuthSessions)
+    .where(eq(modelProviderAuthSessions.orgId, orgId));
+  await db.delete(secrets).where(eq(secrets.orgId, orgId));
+  await db.delete(connectors).where(eq(connectors.orgId, orgId));
+  await db
+    .delete(connectorOauthDeviceAuthorizationSessions)
+    .where(eq(connectorOauthDeviceAuthorizationSessions.orgId, orgId));
+  await db
+    .delete(connectorExternalCodeSessions)
+    .where(eq(connectorExternalCodeSessions.orgId, orgId));
+  await db.delete(variables).where(eq(variables.orgId, orgId));
+  await db.delete(usageDaily).where(eq(usageDaily.orgId, orgId));
+  await db.delete(exportJobs).where(eq(exportJobs.orgId, orgId));
+  await db.delete(zeroAgents).where(eq(zeroAgents.orgId, orgId));
+  await db
+    .delete(orgConcurrencyEntitlements)
+    .where(eq(orgConcurrencyEntitlements.orgId, orgId));
+  await db
+    .delete(orgConcurrencySubscriptions)
+    .where(eq(orgConcurrencySubscriptions.orgId, orgId));
+  await db.delete(orgMembersCache).where(eq(orgMembersCache.orgId, orgId));
+  await db
+    .delete(orgMembersMetadata)
+    .where(eq(orgMembersMetadata.orgId, orgId));
+  await db.delete(orgCache).where(eq(orgCache.orgId, orgId));
+  await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
+}
+
+async function deleteUserData(db: Db, userId: string): Promise<void> {
+  await cancelUserRuns(db, userId);
+
+  await db
+    .delete(slackOrgConnections)
+    .where(eq(slackOrgConnections.vm0UserId, userId));
+  await db.delete(githubUserLinks).where(eq(githubUserLinks.vm0UserId, userId));
+  await db
+    .delete(telegramUserLinks)
+    .where(eq(telegramUserLinks.vm0UserId, userId));
+  await db
+    .delete(telegramInstallations)
+    .where(eq(telegramInstallations.ownerUserId, userId));
+  await db.delete(agentRuns).where(eq(agentRuns.userId, userId));
+
+  const composeRows = await db
+    .select({ id: agentComposes.id })
+    .from(agentComposes)
+    .where(eq(agentComposes.userId, userId));
+  const composeIds = composeRows.map((row) => {
+    return row.id;
+  });
+  if (composeIds.length > 0) {
+    await db
+      .delete(agentComposeVersions)
+      .where(inArray(agentComposeVersions.composeId, composeIds));
+  }
+
+  await db.delete(agentComposes).where(eq(agentComposes.userId, userId));
+  await db.delete(storages).where(eq(storages.userId, userId));
+  await db.delete(modelProviders).where(eq(modelProviders.userId, userId));
+  await db
+    .delete(modelProviderAuthSessions)
+    .where(eq(modelProviderAuthSessions.userId, userId));
+  await db.delete(secrets).where(eq(secrets.userId, userId));
+  await db.delete(connectors).where(eq(connectors.userId, userId));
+  await db.delete(variables).where(eq(variables.userId, userId));
+  await db.delete(usageDaily).where(eq(usageDaily.userId, userId));
+  await db.delete(exportJobs).where(eq(exportJobs.userId, userId));
+  await db.delete(automations).where(eq(automations.userId, userId));
+  await db.delete(cliTokens).where(eq(cliTokens.userId, userId));
+  await db.delete(composeJobs).where(eq(composeJobs.userId, userId));
+  await db
+    .delete(connectorOauthDeviceAuthorizationSessions)
+    .where(eq(connectorOauthDeviceAuthorizationSessions.userId, userId));
+  await db
+    .delete(connectorExternalCodeSessions)
+    .where(eq(connectorExternalCodeSessions.userId, userId));
+  await db.delete(deviceCodes).where(eq(deviceCodes.userId, userId));
+  await db
+    .delete(userPermissionGrants)
+    .where(eq(userPermissionGrants.userId, userId));
+  await db.delete(orgMembersCache).where(eq(orgMembersCache.userId, userId));
+  await db
+    .delete(orgMembersMetadata)
+    .where(eq(orgMembersMetadata.userId, userId));
+  await db.delete(userCache).where(eq(userCache.userId, userId));
+  await db.delete(users).where(eq(users.id, userId));
+}
+
+export const cleanupClerkDeletedOrg$ = command(
+  async ({ get, set }, orgId: string, signal: AbortSignal): Promise<void> => {
+    const db = set(writeDb$);
+    await set(cleanupOrgExternalServices$, db, orgId, signal);
+    signal.throwIfAborted();
+    await get(deleteOrgS3Data(db, orgId));
+    signal.throwIfAborted();
+    await deleteOrgData(db, orgId);
+  },
+);
+
+export const cleanupClerkDeletedUser$ = command(
+  async ({ get, set }, userId: string, signal: AbortSignal): Promise<void> => {
+    const db = set(writeDb$);
+    const emptyOrgIds = await emptyOrgIdsAfterDeletingUser(
+      db,
+      get(clerk$),
+      userId,
+      signal,
+    );
+    signal.throwIfAborted();
+
+    await set(cleanupUserExternalServices$, db, userId, signal);
+    signal.throwIfAborted();
+    for (const orgId of emptyOrgIds) {
+      await set(cleanupOrgExternalServices$, db, orgId, signal);
+      signal.throwIfAborted();
+    }
+
+    await get(deleteUserS3Data(db, userId));
+    signal.throwIfAborted();
+    for (const orgId of emptyOrgIds) {
+      await get(deleteOrgS3Data(db, orgId));
+      signal.throwIfAborted();
+    }
+
+    await deleteUserData(db, userId);
+    signal.throwIfAborted();
+    for (const orgId of emptyOrgIds) {
+      await deleteOrgData(db, orgId);
+      signal.throwIfAborted();
+    }
+  },
+);
+
+export const cleanupClerkDeletedOrgMembership$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await cleanupOrgMemberResources(set(writeDb$), args, signal);
+  },
+);
+
+export const cleanupClerkBannedUser$ = command(
+  async ({ set }, userId: string, signal: AbortSignal): Promise<void> => {
+    const db = set(writeDb$);
+    await cancelUserRuns(db, userId);
+    signal.throwIfAborted();
+    await disableUserAutomations(db, userId);
+    signal.throwIfAborted();
+    await cancelLastAdminOrgsStripeSubscriptions(db, userId);
+  },
+);

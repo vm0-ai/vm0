@@ -1,0 +1,105 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mitm-addon"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+dev = [
+    "basedpyright>=1.39",
+    "mitmproxy>=10.0",
+    "pytest>=7.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.8",
+]
+test = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.23",
+    "mitmproxy>=10.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = [
+    # setuptools copies src/ here during `pip install`. Ruff 0.15's default
+    # exclude list drops ``build`` (keeps only ``_build`` / ``dist``), so avoid
+    # linting generated package copies under build/lib/.
+    "build",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",        # pycodestyle errors
+    "F",        # pyflakes
+    "I",        # isort
+    "ICN003",   # flake8-import-conventions: banned member imports
+    "B",        # flake8-bugbear (real correctness bugs)
+    "S",        # flake8-bandit (security)
+    "ASYNC",    # flake8-async (this addon is async-heavy)
+    "UP",       # pyupgrade (modernize py3.10+ syntax)
+    "C4",       # flake8-comprehensions
+    "PT",       # flake8-pytest-style
+    "T20",      # flake8-print (force logging through ctx.log)
+    "RET",      # flake8-return
+    "N",        # pep8-naming
+    "G",        # flake8-logging-format
+    "A",        # flake8-builtins (no shadowing)
+    "SIM",      # flake8-simplify
+    "PIE",      # flake8-pie
+    "RUF",      # ruff-specific
+    "TRY",      # tryceratops (exception handling)
+    "PTH",      # flake8-use-pathlib
+    # Cherry-picked pylint (PL) rules.  The full PL family adds mostly
+    # stylistic complexity caps (PLR09xx too-many-*) and a global-statement
+    # ban (PLW0603) that fights the addon's deliberate module-level caches.
+    # These three are the subset that catch real hygiene issues without
+    # fighting the existing design — see #10298.
+    "PLC0415",  # pylint — import-outside-top-level
+    "PLR1714",  # pylint — repeated-equality-comparison (x==a or x==b)
+    "PLR2004",  # pylint — magic-value-comparison (source only; tests exempted)
+]
+
+extend-ignore = [
+    # TRY003 forces a custom exception class for every interpolated-message
+    # raise (`raise ValueError(f"bad scheme: {x}")`). For one-shot errors that
+    # are never caught by type — only logged or surfaced to the operator —
+    # the extra class adds indirection without catching any real bug.
+    "TRY003",
+    # TRY300 asks for success paths to live in a try/except `else` block. It
+    # misfires when the success path does I/O (logging, etc.) that can in
+    # theory raise but never does in practice, pushing readers to restructure
+    # for a heuristic rather than a genuine error contract.
+    "TRY300",
+    # RUF002/003 flag EN DASH (–) vs HYPHEN-MINUS (-) in docstrings/comments.
+    # Pure typography; no runtime impact.
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.flake8-import-conventions]
+banned-from = ["matching"]
+
+[tool.ruff.lint.per-file-ignores]
+# S101: pytest uses `assert` universally; S105: tests hardcode fixture tokens
+# like "vm_sandbox_token" that bandit flags as "possible password". Both are
+# standard pytest patterns with no security meaning in test-only code.
+# PLR2004: `assert status == 200` / `assert len(lines) == 2` are idiomatic in
+# tests; naming each threshold as a constant adds noise without catching bugs.
+"tests/**" = ["S101", "S105", "PLR2004"]
+
+[tool.basedpyright]
+include = ["src", "scripts", "tests"]
+exclude = ["build", "**/__pycache__"]
+extraPaths = ["src"]
+pythonVersion = "3.10"
+pythonPlatform = "Linux"
+typeCheckingMode = "basic"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"

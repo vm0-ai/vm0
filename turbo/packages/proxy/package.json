@@ -1,0 +1,9 @@
+{
+  "name": "@vm0/proxy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Caddy reverse proxy for local HTTPS development with automatic Let's Encrypt certificates",
+  "scripts": {
+    "dev": "node scripts/start-caddy.js"
+  }
+}

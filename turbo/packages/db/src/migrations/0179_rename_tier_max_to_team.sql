@@ -1,0 +1,1 @@
+UPDATE "org_metadata" SET "tier" = 'team' WHERE "tier" = 'max';
