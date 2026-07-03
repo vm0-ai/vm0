@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.222.6](https://github.com/vm0-ai/vm0/compare/cli-v9.222.5...cli-v9.222.6) (2026-07-03)
+
+
+### Refactoring
+
+* retire legacy html-ppt presentation registry entries (presentations runbook-only) ([#20064](https://github.com/vm0-ai/vm0/issues/20064)) ([b92a71c](https://github.com/vm0-ai/vm0/commit/b92a71c98a4c48b1fec6a610dd179a09f4d86c62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.394.1
+
 ## [9.222.5](https://github.com/vm0-ai/vm0/compare/cli-v9.222.4...cli-v9.222.5) (2026-07-03)
 
 

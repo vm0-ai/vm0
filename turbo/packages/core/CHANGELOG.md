@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.394.1](https://github.com/vm0-ai/vm0/compare/core-v8.394.0...core-v8.394.1) (2026-07-03)
+
+
+### Refactoring
+
+* retire legacy html-ppt presentation registry entries (presentations runbook-only) ([#20064](https://github.com/vm0-ai/vm0/issues/20064)) ([b92a71c](https://github.com/vm0-ai/vm0/commit/b92a71c98a4c48b1fec6a610dd179a09f4d86c62))
+
 ## [8.394.0](https://github.com/vm0-ai/vm0/compare/core-v8.393.0...core-v8.394.0) (2026-07-03)
 
 
