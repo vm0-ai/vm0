@@ -551,7 +551,7 @@ function WorkflowChatButton({
       size="sm"
       type="button"
       aria-label={chatLabel}
-      className="zero-btn-morandi shrink-0 gap-1.5"
+      className="zero-btn-morandi max-w-[220px] shrink-0 gap-1.5"
       disabled={opening}
       onClick={() => {
         detach(
@@ -562,11 +562,11 @@ function WorkflowChatButton({
       }}
     >
       {opening ? (
-        <IconLoader2 size={14} className="animate-spin" />
+        <IconLoader2 size={14} className="shrink-0 animate-spin" />
       ) : (
-        <IconMessageCircle size={14} stroke={2} />
+        <IconMessageCircle size={14} stroke={2} className="shrink-0" />
       )}
-      {chatLabel}
+      <span className="truncate">{chatLabel}</span>
     </Button>
   );
 }
