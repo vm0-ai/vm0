@@ -19,6 +19,7 @@ import {
   IconMessageCircle,
   IconRepeat,
   IconTag,
+  IconVideo,
 } from "@tabler/icons-react";
 import { Button, Switch, cn } from "@vm0/ui";
 import {
@@ -178,6 +179,9 @@ export function humanReadableTriggerRuleLabel(
   if (trigger.eventType === "google-calendar-event-cancelled") {
     return `When calendar ${quote(trigger.eventConfig.calendarId)} event is cancelled`;
   }
+  if (trigger.eventType === "google-meet-transcript-generated") {
+    return "When Google Meet finishes generating a transcript";
+  }
   if (trigger.eventType === "webhook-received") {
     return "When an inbound webhook is received";
   }
@@ -203,6 +207,9 @@ export function triggerTypeLabel(trigger: ZeroWorkflowTriggerSummary): string {
     trigger.eventType === "google-calendar-event-cancelled"
   ) {
     return "Google Calendar";
+  }
+  if (trigger.eventType === "google-meet-transcript-generated") {
+    return "Google Meet";
   }
   if (trigger.eventType === "webhook-received") {
     return "Webhook";
@@ -266,6 +273,9 @@ export function TriggerListIcon({
     }
     if (trigger.eventType === "github-label-applied") {
       return IconBrandGithub;
+    }
+    if (trigger.eventType === "google-meet-transcript-generated") {
+      return IconVideo;
     }
     if (trigger.eventType === "gmail-label-applied") {
       return IconTag;

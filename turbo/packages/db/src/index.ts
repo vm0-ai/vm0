@@ -95,6 +95,7 @@ import * as memoryChangeItemSchema from "./schema/memory-change-item";
 import * as automationSchema from "./schema/automation";
 import * as gmailEventSchema from "./schema/gmail-event";
 import * as googleCalendarEventSchema from "./schema/google-calendar-event";
+import * as googleWorkspaceEventSchema from "./schema/google-workspace-event";
 
 export const schema = {
   ...userSchema,
@@ -194,4 +195,5 @@ export const schema = {
   ...automationSchema,
   ...gmailEventSchema,
   ...googleCalendarEventSchema,
+  ...googleWorkspaceEventSchema,
 };

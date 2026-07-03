@@ -12,6 +12,7 @@ import {
   renderGoogleManifestFirewall,
   validateGoogleManifestPermissionManifest,
 } from "./google-manifest";
+import type { PermissionGroup } from "./codegen";
 import type { GoogleManifestPermission } from "./google-manifest";
 
 const GOOGLE_MEET_ROUTE_KEY_KINDS = ["base"] as const;
@@ -45,6 +46,8 @@ export const GOOGLE_MEET_DISCOVERY_URL =
   "https://meet.googleapis.com/$discovery/rest?version=v2";
 
 const GOOGLE_MEET_BASE_URL = "https://meet.googleapis.com";
+const GOOGLE_WORKSPACE_EVENTS_BASE_URL =
+  "https://workspaceevents.googleapis.com";
 const GOOGLE_MEET_TOKEN_PLACEHOLDER =
   "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
 
@@ -66,6 +69,7 @@ const GOOGLE_MEET_CATEGORY_ORDER = [
   "Recordings",
   "Transcripts",
   "Smart Notes",
+  "Workspace Events",
 ] as const;
 
 export const GOOGLE_MEET_PERMISSION_MANIFEST: readonly GoogleMeetManifestPermission[] =
@@ -160,6 +164,30 @@ export const GOOGLE_MEET_PERMISSION_MANIFEST: readonly GoogleMeetManifestPermiss
     },
   ];
 
+export const GOOGLE_MEET_WORKSPACE_EVENTS_PERMISSIONS: readonly PermissionGroup[] =
+  [
+    {
+      name: "workspace-events.subscriptions.read",
+      description:
+        "Read Google Workspace Events subscriptions used by Google Meet triggers.",
+      rules: [
+        "GET /v1/subscriptions",
+        "GET /v1/subscriptions/{subscriptionsId}",
+      ],
+    },
+    {
+      name: "workspace-events.subscriptions.write",
+      description:
+        "Create, update, delete, and reactivate Google Workspace Events subscriptions used by Google Meet triggers.",
+      rules: [
+        "POST /v1/subscriptions",
+        "PATCH /v1/subscriptions/{subscriptionsId}",
+        "DELETE /v1/subscriptions/{subscriptionsId}",
+        "POST /v1/subscriptions/{subscriptionsId}:reactivate",
+      ],
+    },
+  ];
+
 function extractMethods(
   resources: Record<string, DiscoveryResource>,
 ): DiscoveryMethod[] {
@@ -241,6 +269,11 @@ export async function generate(): Promise<void> {
   if (!compiled.categories) {
     throw new Error("Google Meet categories were not compiled");
   }
+  const workspaceEventCategories = Object.fromEntries(
+    GOOGLE_MEET_WORKSPACE_EVENTS_PERMISSIONS.map((permission) => {
+      return [permission.name, "Workspace Events"];
+    }),
+  );
 
   const ts = renderGoogleManifestFirewall({
     headerLines: [
@@ -255,7 +288,14 @@ export async function generate(): Promise<void> {
     firewallDescription: "Google Meet API",
     tokenPlaceholderName: "GOOGLE_MEET_TOKEN",
     tokenPlaceholderValue: GOOGLE_MEET_TOKEN_PLACEHOLDER,
-    apis: compiled.apis,
+    apis: [
+      ...compiled.apis,
+      {
+        base: GOOGLE_WORKSPACE_EVENTS_BASE_URL,
+        kind: "workspaceEvents",
+        permissions: GOOGLE_MEET_WORKSPACE_EVENTS_PERMISSIONS,
+      },
+    ],
     defaultAllowed: {
       varName: "googleMeetDefaultAllowed",
       permissions: DEFAULT_ALLOWED_GOOGLE_MEET_PERMISSIONS,
@@ -266,7 +306,13 @@ export async function generate(): Promise<void> {
     },
     categories: {
       varName: "googleMeetCategories",
-      config: compiled.categories,
+      config: {
+        categories: {
+          ...compiled.categories.categories,
+          ...workspaceEventCategories,
+        },
+        displayOrder: compiled.categories.displayOrder,
+      },
     },
   });
   logStats(

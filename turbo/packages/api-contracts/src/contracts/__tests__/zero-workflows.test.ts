@@ -4,6 +4,7 @@ import {
   googleCalendarEventCancelledEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
   googleCalendarEventUpdatedEventConfigSchema,
+  googleMeetTranscriptGeneratedEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
   gmailNewMessageEventConfigSchema,
   zeroWorkflowUpdateRequestSchema,
@@ -164,6 +165,38 @@ describe("Google Calendar event-cancelled workflow trigger contract", () => {
         provider: "google-calendar",
         event: "event_cancelled",
         calendarId: "primary",
+      },
+    });
+  });
+});
+
+describe("Google Meet transcript-generated workflow trigger contract", () => {
+  it("defaults to organizer-user scope", () => {
+    const parsed = googleMeetTranscriptGeneratedEventConfigSchema.parse({
+      provider: "google-meet",
+      event: "transcript_generated",
+    });
+
+    expect(parsed).toStrictEqual({
+      provider: "google-meet",
+      event: "transcript_generated",
+      scope: { type: "organizer_user" },
+    });
+  });
+
+  it("accepts transcript-generated trigger create requests without explicit config", () => {
+    const parsed = zeroWorkflowTriggerCreateRequestSchema.parse({
+      kind: "event",
+      eventType: "google-meet-transcript-generated",
+    });
+
+    expect(parsed).toStrictEqual({
+      kind: "event",
+      eventType: "google-meet-transcript-generated",
+      eventConfig: {
+        provider: "google-meet",
+        event: "transcript_generated",
+        scope: { type: "organizer_user" },
       },
     });
   });

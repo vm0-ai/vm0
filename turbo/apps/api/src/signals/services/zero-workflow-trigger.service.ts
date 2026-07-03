@@ -5,11 +5,13 @@ import {
   googleCalendarEventCancelledEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
   googleCalendarEventUpdatedEventConfigSchema,
+  googleMeetTranscriptGeneratedEventConfigSchema,
   githubLabelAppliedEventConfigSchema,
   webhookReceivedEventConfigSchema,
   type ChatThreadWorkflowTrigger,
   type GmailWorkflowEventConfig,
   type GoogleCalendarWorkflowEventConfig,
+  type GoogleMeetWorkflowEventConfig,
   type GithubWorkflowEventConfig,
   type WebhookReceivedEventConfig,
   type ZeroWorkflowEventType,
@@ -44,6 +46,7 @@ import {
   resolveGmailLabelForUser,
 } from "./gmail-workflow-event.service";
 import { ensureGoogleCalendarWatchForUser } from "./google-calendar-workflow-event.service";
+import { ensureGoogleMeetTranscriptGeneratedSubscriptionForUser } from "./google-meet-workflow-event.service";
 import { prepareGithubLabelEventConfigForPersist } from "./github-workflow-event.service";
 import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
 import {
@@ -81,6 +84,10 @@ type GoogleCalendarWorkflowEventType = Extract<
   | "google-calendar-event-created"
   | "google-calendar-event-updated"
   | "google-calendar-event-cancelled"
+>;
+type GoogleMeetWorkflowEventType = Extract<
+  ZeroWorkflowEventType,
+  "google-meet-transcript-generated"
 >;
 
 /**
@@ -274,6 +281,7 @@ function supportedWorkflowEventType(
     eventType === "google-calendar-event-created" ||
     eventType === "google-calendar-event-updated" ||
     eventType === "google-calendar-event-cancelled" ||
+    eventType === "google-meet-transcript-generated" ||
     eventType === "webhook-received"
   );
 }
@@ -300,6 +308,12 @@ function supportedGoogleCalendarEventType(
     eventType === "google-calendar-event-updated" ||
     eventType === "google-calendar-event-cancelled"
   );
+}
+
+function supportedGoogleMeetEventType(
+  eventType: string | null,
+): eventType is GoogleMeetWorkflowEventType {
+  return eventType === "google-meet-transcript-generated";
 }
 
 function rowSummaryBase(row: TriggerRow, chatThreadId: string | null) {
@@ -398,6 +412,21 @@ async function rowToSummary(
       kind: "event",
       eventType: "google-calendar-event-cancelled",
       eventConfig: googleCalendarEventCancelledEventConfigSchema.parse(
+        row.eventConfig,
+      ),
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
+  if (
+    row.kind === "event" &&
+    row.eventType === "google-meet-transcript-generated"
+  ) {
+    return {
+      ...rowSummaryBase(row, chatThreadId),
+      kind: "event",
+      eventType: "google-meet-transcript-generated",
+      eventConfig: googleMeetTranscriptGeneratedEventConfigSchema.parse(
         row.eventConfig,
       ),
       schedule: null,
@@ -766,6 +795,18 @@ function chatThreadTriggerFromSummary(args: {
       },
     ];
   }
+  if (summary.eventType === "google-meet-transcript-generated") {
+    return [
+      {
+        ...base,
+        kind: "event",
+        eventType: "google-meet-transcript-generated",
+        eventConfig: summary.eventConfig,
+        schedule: null,
+        scheduleSummary: null,
+      },
+    ];
+  }
   return [];
 }
 
@@ -889,6 +930,15 @@ interface CreateGoogleCalendarEventTriggerInput {
   readonly enabled: boolean;
 }
 
+interface CreateGoogleMeetEventTriggerInput {
+  readonly orgId: string;
+  readonly member: WorkflowMember;
+  readonly workflowId: string;
+  readonly eventType: GoogleMeetWorkflowEventType;
+  readonly eventConfig: GoogleMeetWorkflowEventConfig;
+  readonly enabled: boolean;
+}
+
 interface CreateWebhookEventTriggerInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
@@ -903,6 +953,7 @@ type CreateTriggerInput =
   | CreateGmailEventTriggerInput
   | CreateGithubEventTriggerInput
   | CreateGoogleCalendarEventTriggerInput
+  | CreateGoogleMeetEventTriggerInput
   | CreateWebhookEventTriggerInput;
 type CreateEventTriggerInput = Exclude<
   CreateTriggerInput,
@@ -927,13 +978,20 @@ function triggerCreateInputIsGoogleCalendar(
   return supportedGoogleCalendarEventType(args.eventType);
 }
 
+function triggerCreateInputIsGoogleMeet(
+  args: CreateEventTriggerInput,
+): args is CreateGoogleMeetEventTriggerInput {
+  return supportedGoogleMeetEventType(args.eventType);
+}
+
 async function insertWorkflowEventTrigger(
   db: Db,
   args: {
     readonly input:
       | CreateGmailEventTriggerInput
       | CreateGithubEventTriggerInput
-      | CreateGoogleCalendarEventTriggerInput;
+      | CreateGoogleCalendarEventTriggerInput
+      | CreateGoogleMeetEventTriggerInput;
     readonly workflowId: string;
     readonly agentId: string;
     readonly workflowTitle: string;
@@ -1235,6 +1293,37 @@ async function createGoogleCalendarEventTriggerForWorkflow(args: {
   return { kind: "ok", summary };
 }
 
+async function createGoogleMeetEventTriggerForWorkflow(args: {
+  readonly context: CreateEventTriggerWorkflowContext;
+  readonly input: CreateGoogleMeetEventTriggerInput;
+  readonly signal: AbortSignal;
+}): Promise<TriggerResult> {
+  const preparedConfig = googleMeetTranscriptGeneratedEventConfigSchema.parse(
+    args.input.eventConfig,
+  );
+  const subscriptionResult =
+    await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser({
+      db: args.context.db,
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      signal: args.signal,
+    });
+  args.signal.throwIfAborted();
+  if (subscriptionResult.kind !== "ok") {
+    return { kind: "bad-request", message: subscriptionResult.message };
+  }
+
+  const summary = await insertWorkflowEventTrigger(args.context.db, {
+    input: { ...args.input, eventConfig: preparedConfig },
+    workflowId: args.context.workflowId,
+    agentId: args.context.agentId,
+    workflowTitle: args.context.workflowTitle,
+    currentTime: nowDate(),
+  });
+  args.signal.throwIfAborted();
+  return { kind: "ok", summary };
+}
+
 const createEventTriggerForWorkflow$ = command(
   async (
     { get },
@@ -1299,6 +1388,25 @@ const createEventTriggerForWorkflow$ = command(
       }
 
       return await createGoogleCalendarEventTriggerForWorkflow({
+        context: args,
+        input,
+        signal,
+      });
+    }
+
+    if (triggerCreateInputIsGoogleMeet(input)) {
+      const featureEnabled = await get(
+        workflowAutomationEnabledForOwner(input.orgId, input.member.userId),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return {
+          kind: "bad-request",
+          message: "Google Meet workflow event triggers are not enabled",
+        };
+      }
+
+      return await createGoogleMeetEventTriggerForWorkflow({
         context: args,
         input,
         signal,
@@ -1555,6 +1663,12 @@ const updateEventTriggerForWorkflow$ = command(
       return {
         kind: "bad-request",
         message: "Google Calendar event triggers cannot be updated",
+      };
+    }
+    if (supportedGoogleMeetEventType(args.trigger.eventType)) {
+      return {
+        kind: "bad-request",
+        message: "Google Meet event triggers cannot be updated",
       };
     }
     if (args.eventConfig === undefined) {
@@ -1938,6 +2052,31 @@ const ensureEventTriggerCanBeEnabled$ = command(
       signal.throwIfAborted();
       if (watchResult.kind !== "ok") {
         return { kind: "bad-request", message: watchResult.message };
+      }
+      return null;
+    }
+
+    if (supportedGoogleMeetEventType(args.trigger.eventType)) {
+      const featureEnabled = await get(
+        workflowAutomationEnabledForOwner(args.orgId, args.member.userId),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return {
+          kind: "bad-request",
+          message: "Google Meet workflow event triggers are not enabled",
+        };
+      }
+      const subscriptionResult =
+        await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser({
+          db: args.db,
+          orgId: args.orgId,
+          userId: args.member.userId,
+          signal,
+        });
+      signal.throwIfAborted();
+      if (subscriptionResult.kind !== "ok") {
+        return { kind: "bad-request", message: subscriptionResult.message };
       }
       return null;
     }

@@ -25,6 +25,7 @@ import { cronExecuteAutomationsRoutes } from "./routes/cron-execute-automations"
 import { cronExecuteWorkflowTriggersRoutes } from "./routes/cron-execute-workflow-triggers";
 import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
 import { cronRenewGoogleCalendarWatchesRoutes } from "./routes/cron-renew-google-calendar-watches";
+import { cronRenewGoogleWorkspaceEventSubscriptionsRoutes } from "./routes/cron-renew-google-workspace-event-subscriptions";
 import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events";
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
 import { cronRefreshSystemStoragePresignedUrlsRoutes } from "./routes/cron-refresh-system-storage-presigned-urls";
@@ -58,6 +59,7 @@ import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
 import { webhooksGithubRoutes } from "./routes/webhooks-github";
 import { webhooksGmailRoutes } from "./routes/webhooks-gmail";
 import { webhooksGoogleCalendarRoutes } from "./routes/webhooks-google-calendar";
+import { webhooksGoogleWorkspaceEventsRoutes } from "./routes/webhooks-google-workspace-events";
 import { webhooksWorkflowTriggersRoutes } from "./routes/webhooks-workflow-triggers";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
 import { zeroAgentDraftRoutes } from "./routes/zero-agent-drafts";
@@ -224,6 +226,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksGithubRoutes,
   ...webhooksGmailRoutes,
   ...webhooksGoogleCalendarRoutes,
+  ...webhooksGoogleWorkspaceEventsRoutes,
   ...webhooksWorkflowTriggersRoutes,
   ...webhooksStripeRoutes,
   ...webhooksAgentHealthUsageTelemetryRoutes,
@@ -250,6 +253,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronExecuteWorkflowTriggersRoutes,
   ...cronRenewGmailWatchesRoutes,
   ...cronRenewGoogleCalendarWatchesRoutes,
+  ...cronRenewGoogleWorkspaceEventSubscriptionsRoutes,
   ...cronProcessUsageEventsRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronRefreshSystemStoragePresignedUrlsRoutes,

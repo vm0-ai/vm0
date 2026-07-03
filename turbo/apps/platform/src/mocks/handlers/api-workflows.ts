@@ -45,111 +45,7 @@ function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
   };
 }
 
-function triggerSummary(
-  trigger: ChatThreadWorkflowTrigger,
-): ZeroWorkflowTriggerSummary {
-  if (trigger.kind === "event" && trigger.eventType === "gmail-new-message") {
-    return {
-      id: trigger.id,
-      ownerUserId: trigger.ownerUserId,
-      enabled: trigger.enabled,
-      chatThreadId: trigger.chatThreadId,
-      nextRunAt: trigger.nextRunAt,
-      lastRunAt: trigger.lastRunAt,
-      kind: "event",
-      eventType: "gmail-new-message",
-      eventConfig: trigger.eventConfig,
-      schedule: null,
-      scheduleSummary: null,
-    };
-  }
-  if (trigger.kind === "event" && trigger.eventType === "gmail-label-applied") {
-    return {
-      id: trigger.id,
-      ownerUserId: trigger.ownerUserId,
-      enabled: trigger.enabled,
-      chatThreadId: trigger.chatThreadId,
-      nextRunAt: trigger.nextRunAt,
-      lastRunAt: trigger.lastRunAt,
-      kind: "event",
-      eventType: "gmail-label-applied",
-      eventConfig: trigger.eventConfig,
-      schedule: null,
-      scheduleSummary: null,
-    };
-  }
-  if (
-    trigger.kind === "event" &&
-    trigger.eventType === "github-label-applied"
-  ) {
-    return {
-      id: trigger.id,
-      ownerUserId: trigger.ownerUserId,
-      enabled: trigger.enabled,
-      chatThreadId: trigger.chatThreadId,
-      nextRunAt: trigger.nextRunAt,
-      lastRunAt: trigger.lastRunAt,
-      kind: "event",
-      eventType: "github-label-applied",
-      eventConfig: trigger.eventConfig,
-      schedule: null,
-      scheduleSummary: null,
-    };
-  }
-  if (
-    trigger.kind === "event" &&
-    trigger.eventType === "google-calendar-event-created"
-  ) {
-    return {
-      id: trigger.id,
-      ownerUserId: trigger.ownerUserId,
-      enabled: trigger.enabled,
-      chatThreadId: trigger.chatThreadId,
-      nextRunAt: trigger.nextRunAt,
-      lastRunAt: trigger.lastRunAt,
-      kind: "event",
-      eventType: "google-calendar-event-created",
-      eventConfig: trigger.eventConfig,
-      schedule: null,
-      scheduleSummary: null,
-    };
-  }
-  if (
-    trigger.kind === "event" &&
-    trigger.eventType === "google-calendar-event-updated"
-  ) {
-    return {
-      id: trigger.id,
-      ownerUserId: trigger.ownerUserId,
-      enabled: trigger.enabled,
-      chatThreadId: trigger.chatThreadId,
-      nextRunAt: trigger.nextRunAt,
-      lastRunAt: trigger.lastRunAt,
-      kind: "event",
-      eventType: "google-calendar-event-updated",
-      eventConfig: trigger.eventConfig,
-      schedule: null,
-      scheduleSummary: null,
-    };
-  }
-  if (
-    trigger.kind === "event" &&
-    trigger.eventType === "google-calendar-event-cancelled"
-  ) {
-    return {
-      id: trigger.id,
-      ownerUserId: trigger.ownerUserId,
-      enabled: trigger.enabled,
-      chatThreadId: trigger.chatThreadId,
-      nextRunAt: trigger.nextRunAt,
-      lastRunAt: trigger.lastRunAt,
-      kind: "event",
-      eventType: "google-calendar-event-cancelled",
-      eventConfig: trigger.eventConfig,
-      schedule: null,
-      scheduleSummary: null,
-    };
-  }
+function triggerSummaryBase(trigger: ChatThreadWorkflowTrigger) {
   return {
     id: trigger.id,
     ownerUserId: trigger.ownerUserId,
@@ -157,6 +53,24 @@ function triggerSummary(
     chatThreadId: trigger.chatThreadId,
     nextRunAt: trigger.nextRunAt,
     lastRunAt: trigger.lastRunAt,
+  };
+}
+
+function triggerSummary(
+  trigger: ChatThreadWorkflowTrigger,
+): ZeroWorkflowTriggerSummary {
+  if (trigger.kind === "event") {
+    return {
+      ...triggerSummaryBase(trigger),
+      kind: "event",
+      eventType: trigger.eventType,
+      eventConfig: trigger.eventConfig,
+      schedule: null,
+      scheduleSummary: null,
+    } as ZeroWorkflowTriggerSummary;
+  }
+  return {
+    ...triggerSummaryBase(trigger),
     kind: "schedule",
     schedule: trigger.schedule,
     scheduleSummary: trigger.scheduleSummary,
@@ -580,11 +494,20 @@ function workflowTriggerCreateHandlers() {
             schedule: null,
             scheduleSummary: null,
           };
-        } else {
+        } else if (body.eventType === "google-calendar-event-cancelled") {
           trigger = {
             ...base,
             kind: "event",
             eventType: "google-calendar-event-cancelled",
+            eventConfig: body.eventConfig,
+            schedule: null,
+            scheduleSummary: null,
+          };
+        } else {
+          trigger = {
+            ...base,
+            kind: "event",
+            eventType: "google-meet-transcript-generated",
             eventConfig: body.eventConfig,
             schedule: null,
             scheduleSummary: null,
