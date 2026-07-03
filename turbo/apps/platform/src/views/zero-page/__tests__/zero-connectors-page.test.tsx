@@ -548,6 +548,79 @@ describe("connectors page", () => {
     ).toHaveLength(1);
   });
 
+  it("keeps category section ids unique when a metadata group id collides with a category", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus(
+      [
+        publicStatusItem({
+          connectorRef: "github",
+          label: "Partner GitHub",
+          category: "partner-apps",
+          authMethods: [
+            {
+              id: "oauth",
+              label: "OAuth",
+              description: null,
+              grantKind: "auth-code",
+              manualFields: [],
+              startOptions: [],
+            },
+          ],
+        }),
+        publicStatusItem({
+          connectorRef: "stripe",
+          label: "Billing Stripe",
+          category: "billing-apps",
+          authMethods: [
+            {
+              id: "api-token",
+              label: "API token",
+              description: null,
+              grantKind: "manual",
+              manualFields: [],
+              startOptions: [],
+            },
+          ],
+        }),
+      ],
+      {
+        categories: [
+          {
+            id: "partner-apps",
+            label: "Partner Apps",
+            menuLabel: "Partners",
+            groupId: null,
+          },
+          {
+            id: "billing-apps",
+            label: "Billing Apps",
+            menuLabel: "Billing",
+            groupId: "partner-apps",
+          },
+        ],
+        groups: [
+          {
+            id: "partner-apps",
+            label: "Partner Group",
+            menuLabel: "Partner Group",
+          },
+        ],
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await screen.findByTestId("connector-category-partner-apps");
+    expect(
+      screen.getAllByTestId("connector-category-partner-apps"),
+    ).toHaveLength(1);
+    expect(
+      screen.getAllByTestId("connector-category-billing-apps"),
+    ).toHaveLength(1);
+    expect(queryConnectorCardByLabel("Partner GitHub")).toBeInTheDocument();
+    expect(queryConnectorCardByLabel("Billing Stripe")).toBeInTheDocument();
+  });
+
   it("keeps connectors visible when category metadata is missing during rollout", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([

@@ -107,9 +107,14 @@ export function groupConnectorsByCategory<
       return [group.id, group];
     }) ?? [],
   );
+  const categorySectionIds = new Set(
+    categorySections.map((section) => {
+      return section.category;
+    }),
+  );
 
   for (const section of categorySections) {
-    if (!section.groupId) {
+    if (!section.groupId || categorySectionIds.has(section.groupId)) {
       groups.push({
         id: section.category,
         kind: "category",
