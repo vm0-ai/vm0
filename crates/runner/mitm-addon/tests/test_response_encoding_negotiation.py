@@ -89,6 +89,18 @@ _BROWSER_USER_AGENT = (
             id="wildcard-safe-compression-respects-explicit-safe-rejection",
         ),
         pytest.param(
+            [("Accept-Encoding", "gzip;q=0.2, zstd, *;q=0.8, identity;q=0")],
+            True,
+            ["gzip;q=0.2, deflate;q=0.8, identity;q=0"],
+            id="wildcard-adds-missing-safe-compression-after-explicit-safe-coding",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "deflate, br"), ("Accept-Encoding", "*;q=0.5, identity;q=0")],
+            True,
+            ["deflate, gzip;q=0.5, identity;q=0"],
+            id="wildcard-adds-missing-safe-compression-across-header-fields",
+        ),
+        pytest.param(
             [
                 (
                     "Accept-Encoding",

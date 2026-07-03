@@ -73,6 +73,14 @@ def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> bool
         wildcard_disallows_identity and not identity_accepted
     )
 
+    if identity_rejected:
+        _add_wildcard_safe_compression_encodings(
+            accepted_safe,
+            rejected_safe,
+            wildcard_accepted,
+            wildcard_q_text,
+        )
+
     if accepted_safe:
         if identity_rejected and _IDENTITY not in accepted_safe:
             # Removing "*" would otherwise make identity implicitly acceptable again.
@@ -83,18 +91,6 @@ def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> bool
         return _set_if_changed(headers, values, rewritten)
 
     if identity_rejected:
-        _add_wildcard_safe_compression_encodings(
-            accepted_safe,
-            rejected_safe,
-            wildcard_accepted,
-            wildcard_q_text,
-        )
-        if accepted_safe:
-            accepted_safe[_IDENTITY] = "0"
-            rewritten = ", ".join(
-                _format_coding(name, q_text) for name, q_text in accepted_safe.items()
-            )
-            return _set_if_changed(headers, values, rewritten)
         return False
 
     return _set_if_changed(headers, values, _IDENTITY)
@@ -156,7 +152,7 @@ def _add_wildcard_safe_compression_encodings(
     if not wildcard_accepted:
         return
     for name in ("gzip", "deflate"):
-        if name not in rejected_safe:
+        if name not in accepted_safe and name not in rejected_safe:
             accepted_safe[name] = wildcard_q_text
 
 
