@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::error::{ActiveJobsError, RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::paths::HomePaths;
+use crate::status_file::{self, StatusFileReadError, StatusForGate};
 use tracing::{info, warn};
 
 use super::diagnostic::status_field_preview;
@@ -102,51 +103,31 @@ fn decide_gate(status: &RunnerStatusSnapshot) -> GateDecision {
     }
 }
 
-/// Read status.json at `base_dir`.
-///
-/// Returns an error on any I/O or parse failure — the caller should log the
-/// reason and fall through to forceful stop (status unknown → cannot protect
-/// jobs).
-async fn read_private_status_json(path: &Path) -> std::io::Result<String> {
-    match crate::private_fs::read_private_file_to_string_with_max(
-        path,
-        crate::private_fs::PRIVATE_STATUS_FILE_READ_MAX_BYTES,
-    )
-    .await
-    {
-        Ok(Some(content)) => Ok(content),
-        Ok(None) => Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            format!("{} not found", path.display()),
-        )),
-        Err(error) => Err(std::io::Error::other(error.to_string())),
-    }
-}
-
 pub(super) async fn read_runner_status(
     base_dir: &Path,
 ) -> Result<RunnerStatusSnapshot, RunnerStatusReadError> {
-    #[derive(serde::Deserialize)]
-    struct StatusFile {
-        mode: String,
-        active_runs: Vec<ActiveRunEntry>,
-        started_at: String,
-    }
-    #[derive(serde::Deserialize)]
-    struct ActiveRunEntry {
-        run_id: RunId,
-        // `sandbox_id` is present in the file but unused by the gate.
-    }
-    let path = base_dir.join("status.json");
-    let content =
-        read_private_status_json(&path)
-            .await
-            .map_err(|error| RunnerStatusReadError::Read {
+    let path = status_file::path(base_dir);
+    let file = match status_file::read_as::<StatusForGate>(base_dir).await {
+        Ok(Some(file)) => file,
+        Ok(None) => {
+            return Err(RunnerStatusReadError::Read {
                 path: path.clone(),
-                error,
-            })?;
-    let file: StatusFile = serde_json::from_str(&content)
-        .map_err(|error| RunnerStatusReadError::ParseJson { path, error })?;
+                error: std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("{} not found", path.display()),
+                ),
+            });
+        }
+        Err(StatusFileReadError::Read { path, error }) => {
+            return Err(RunnerStatusReadError::Read {
+                path,
+                error: std::io::Error::other(error.to_string()),
+            });
+        }
+        Err(StatusFileReadError::ParseJson { path, error }) => {
+            return Err(RunnerStatusReadError::ParseJson { path, error });
+        }
+    };
     let started = chrono::DateTime::parse_from_rfc3339(&file.started_at).map_err(|error| {
         RunnerStatusReadError::ParseStartedAt {
             started_at: file.started_at.clone(),
@@ -159,7 +140,7 @@ pub(super) async fn read_runner_status(
         .unwrap_or_default();
     Ok(RunnerStatusSnapshot {
         mode: file.mode,
-        run_ids: file.active_runs.into_iter().map(|r| r.run_id).collect(),
+        run_ids: file.active_runs.into_iter().map(|run| run.run_id).collect(),
         uptime,
     })
 }
@@ -282,7 +263,18 @@ mod tests {
         tokio::fs::write(dir.path().join("status.json"), "{}")
             .await
             .unwrap();
-        // Missing required fields -> parse error.
+        // Missing required fields -> error.
+        assert!(read_runner_status(dir.path()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn read_runner_status_missing_active_runs_is_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = r#"{"mode":"running","started_at":"2026-04-13T00:00:00.000Z"}"#;
+        tokio::fs::write(dir.path().join("status.json"), s)
+            .await
+            .unwrap();
+
         assert!(read_runner_status(dir.path()).await.is_err());
     }
 
