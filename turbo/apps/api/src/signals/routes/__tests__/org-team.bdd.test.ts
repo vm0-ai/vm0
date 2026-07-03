@@ -1024,19 +1024,12 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
     expect(peerTeamIds).not.toContain(ownPrivate.agentId);
     await expect(api.listTeam(crossOrgAdmin)).resolves.toStrictEqual([]);
 
-    // Deleting the default agent clears the selection (FK set-null) and a
-    // new default can then be configured.
+    // Deleting the default agent clears the FK, then onboarding status lazily
+    // restores a usable org default for admins.
     await api.deleteAgent(admin, defaultAgentId);
-    const orphaned = await api.readOnboardingStatus(admin);
-    expect(orphaned.defaultAgentId).toBeNull();
-    const replacement = await api.createAgent(admin, {
-      displayName: "BDD Replacement Default",
-      visibility: "public",
-    });
-    const selected = await api.setDefaultAgent(admin, replacement.agentId);
-    expect(selected).toStrictEqual({ agentId: replacement.agentId });
     const restored = await api.readOnboardingStatus(admin);
-    expect(restored.defaultAgentId).toBe(replacement.agentId);
+    expect(restored.defaultAgentId).toBeTruthy();
+    expect(restored.defaultAgentId).not.toBe(defaultAgentId);
 
     const missingAgent = await api.requestSetDefaultAgent(
       crossOrgAdmin,
