@@ -350,7 +350,7 @@ async fn run_start_with_home(
         touch_mtime(profile_paths.rootfs_paths().dir());
         touch_mtime(profile_paths.snapshot_paths().dir());
     }
-    let _resource_locks = image_artifact_locks;
+    let resource_locks = image_artifact_locks;
 
     let log_paths = LogPaths::new(home.logs_dir());
     crate::log_file::ensure_log_dir(log_paths.dir()).map_err(|e| {
@@ -703,6 +703,7 @@ async fn run_start_with_home(
     };
 
     let run_result = run(config).await;
+    drop(resource_locks);
     if let Err(e) = live_runner_instance_handle.remove_if_current().await {
         tracing::warn!(error = %e, "failed to remove live runner instance record");
     }
