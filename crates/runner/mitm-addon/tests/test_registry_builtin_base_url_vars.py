@@ -174,20 +174,22 @@ class TestRegistryBuiltinBaseUrlVars:
         assert api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER] is True
 
     def test_builtin_provider_owned_accepts_idna_dot_equivalent_host(self, tmp_path):
-        path = tmp_path / "registry.json"
-        write_builtin_firewall_registry(
-            path,
-            run_id="run-jira",
-            name="jira",
-            base_url_vars={"JIRA_DOMAIN": "acme。atlassian。net"},
-        )
+        for index, dot in enumerate(("\u3002", "\uff0e", "\uff61")):
+            path = tmp_path / f"registry-{index}.json"
+            host = f"acme{dot}atlassian{dot}net"
+            write_builtin_firewall_registry(
+                path,
+                run_id=f"run-jira-{index}",
+                name="jira",
+                base_url_vars={"JIRA_DOMAIN": host},
+            )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+            context = registry.get_vm_context("10.200.0.1", str(path))
 
-        assert context is not None
-        vm_info, compiled_firewalls, _ = context
-        assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme。atlassian。net"
+            assert context is not None
+            vm_info, compiled_firewalls, _ = context
+            assert compiled_firewalls is not None
+            assert vm_info["firewalls"][0]["apis"][0]["base"] == f"https://{host}"
 
     def test_builtin_provider_owned_rejects_unsafe_idna_compatibility_host(
         self, tmp_path, monkeypatch

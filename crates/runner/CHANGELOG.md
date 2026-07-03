@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.132.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.6...runner-rs-v0.132.7) (2026-07-03)
+
+
+### Bug Fixes
+
+* allow maskdb aggregate queries through firewall ([#20083](https://github.com/vm0-ai/vm0/issues/20083)) ([18ab86f](https://github.com/vm0-ai/vm0/commit/18ab86f8e78ada958f1a2f94cbc940dc51227212))
+
 ## [0.132.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.5...runner-rs-v0.132.6) (2026-07-03)
 
 
