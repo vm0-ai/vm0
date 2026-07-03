@@ -28,6 +28,7 @@ use std::collections::{HashMap, hash_map::Entry};
 use std::fmt;
 use std::future::Future;
 use std::io;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -1036,7 +1037,7 @@ async fn process_one_hit_or_passthrough(
             }
 
             let started_at = Instant::now();
-            let reader_result = lock::try_acquire_shared_or_busy(lock_path).await;
+            let reader_result = lock::try_acquire_shared_or_busy(lock_path.clone()).await;
             let success = reader_result.is_ok();
             metrics.record(
                 STORAGE_CACHE_LOCK_WAIT,
@@ -1065,10 +1066,13 @@ async fn process_one_hit_or_passthrough(
                 stage_write: Some(GuestStageWrite { guest_path, bytes }),
             })
         }
-        CachedArchive::Missing => Ok(ProcessedTarget {
-            outcome: TargetOutcome::MissPassthrough { reason: "missing" },
-            stage_write: None,
-        }),
+        CachedArchive::Missing => {
+            remove_storage_lock_after_missing_cache(&lock_path, &reader).await;
+            Ok(ProcessedTarget {
+                outcome: TargetOutcome::MissPassthrough { reason: "missing" },
+                stage_write: None,
+            })
+        }
         CachedArchive::Empty => Ok(ProcessedTarget {
             outcome: TargetOutcome::MissPassthrough { reason: "empty" },
             stage_write: None,
@@ -1080,6 +1084,25 @@ async fn process_one_hit_or_passthrough(
             stage_write: None,
         }),
     }
+}
+
+async fn remove_storage_lock_after_missing_cache(
+    lock_path: &Path,
+    lock: &nix::fcntl::Flock<std::fs::File>,
+) {
+    let Ok(lock_meta) = lock.metadata() else {
+        return;
+    };
+
+    match fs::symlink_metadata(lock_path).await {
+        Ok(path_meta)
+            if path_meta.dev() == lock_meta.dev() && path_meta.ino() == lock_meta.ino() => {}
+        Ok(_) => return,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return,
+        Err(_) => return,
+    }
+
+    let _ = fs::remove_file(lock_path).await;
 }
 
 async fn cached_archive_exists(archive_path: &Path) -> RunnerResult<bool> {
@@ -2580,6 +2603,45 @@ mod tests {
         assert_no_op(&ops, "storage_cache_miss");
         assert_no_op(&ops, "storage_cache_download");
         assert_no_op(&ops, "storage_cache_skipped_head_failed");
+    }
+
+    #[tokio::test]
+    async fn guarded_missing_archive_with_existing_lock_removes_orphan_lock() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let name = "guarded-orphan-lock";
+        let version = "v1";
+        let original = "https://r2.example.com/orphan-lock.tar.gz".to_string();
+        write_storage_lock(&home, name, version);
+        let lock_path = home.storage_lock(name, version);
+        assert!(lock_path.exists());
+        assert!(!home.storage_cache_dir(name, version).exists());
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache_with_options(
+            &mut manifest,
+            &sandbox,
+            &home,
+            &mut telemetry,
+            StorageCacheOptions {
+                miss_passthrough: true,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(!lock_path.exists());
+        assert!(sandbox.write_file_calls().is_empty());
+        assert!(sandbox.write_files_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op_error(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, "missing");
+        assert_no_op(&ops, "storage_cache_hit");
     }
 
     #[tokio::test]
