@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.216.0](https://github.com/vm0-ai/vm0/compare/api-v1.215.0...api-v1.216.0) (2026-07-03)
+
+
+### Features
+
+* add onboarding completion marker ([#20055](https://github.com/vm0-ai/vm0/issues/20055)) ([6d5bf36](https://github.com/vm0-ai/vm0/commit/6d5bf3630093c7a9120ce91b2b746eedf299171d))
+* extend limited-free onboarding credits ([#20048](https://github.com/vm0-ai/vm0/issues/20048)) ([edddbc0](https://github.com/vm0-ai/vm0/commit/edddbc08cf69ee88c5b9dcada32c7b5ffc25e19a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.149.0
+    * @vm0/core bumped to 8.394.0
+    * @vm0/db bumped to 1.88.0
+
 ## [1.215.0](https://github.com/vm0-ai/vm0/compare/api-v1.214.0...api-v1.215.0) (2026-07-03)
 
 
