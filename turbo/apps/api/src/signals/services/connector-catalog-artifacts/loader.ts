@@ -95,6 +95,10 @@ function assertArtifactSchemaVersion(version: number): void {
 function assertRequiredCapabilities(
   requiredCapabilities: readonly string[],
 ): void {
+  assertUniqueValues({
+    values: requiredCapabilities,
+    label: "required capabilities",
+  });
   const unsupported = requiredCapabilities.filter((capability) => {
     return !isSupportedConnectorCatalogCapability(capability);
   });
@@ -312,6 +316,23 @@ function assertAuthMethodShape(args: {
     throw new Error(
       `Connector catalog auth method ${args.connectorRef}/${args.authMethod.id} has start options for ${args.authMethod.grantKind} grant`,
     );
+  }
+  for (const startOption of args.authMethod.startOptions) {
+    const optionValues = startOption.options.map((option) => {
+      return option.value;
+    });
+    assertUniqueValues({
+      values: optionValues,
+      label: `${args.connectorRef}/${args.authMethod.id}/${startOption.id} start option values`,
+    });
+    if (
+      startOption.defaultValue !== null &&
+      !optionValues.includes(startOption.defaultValue)
+    ) {
+      throw new Error(
+        `Connector catalog auth method ${args.connectorRef}/${args.authMethod.id} start option ${startOption.id} defaultValue is not an option`,
+      );
+    }
   }
 }
 

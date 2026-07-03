@@ -1,8 +1,9 @@
 import { z } from "zod";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
-const connectorRefSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/);
-const authMethodIdSchema = z.string().min(1);
+const connectorCatalogSlugSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/);
+const connectorRefSchema = connectorCatalogSlugSchema;
+const authMethodIdSchema = connectorCatalogSlugSchema;
 const publicFieldIdSchema = z.string().regex(/^[a-z][a-zA-Z0-9]*$/);
 const artifactKeySchema = z
   .string()
@@ -114,7 +115,7 @@ const publicConnectorCatalogStartOptionSchema = z
     label: z.string().min(1),
     required: z.boolean(),
     defaultValue: z.string().nullable(),
-    options: z.array(publicConnectorCatalogStartOptionChoiceSchema),
+    options: z.array(publicConnectorCatalogStartOptionChoiceSchema).min(1),
   })
   .strict();
 

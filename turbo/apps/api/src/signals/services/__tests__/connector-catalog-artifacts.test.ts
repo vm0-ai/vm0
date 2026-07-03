@@ -200,6 +200,21 @@ function fixtureManualAuthMethod(
   return authMethod;
 }
 
+function fixtureDeviceAuthMethod(
+  publicArtifact: ConnectorCatalogPublicArtifact,
+): ConnectorCatalogPublicArtifact["connectors"][number]["authMethods"][number] {
+  const connector = publicArtifact.connectors.find((item) => {
+    return item.connectorRef === "fixture-device";
+  });
+  const authMethod = connector?.authMethods.find((item) => {
+    return item.id === "device";
+  });
+  if (!authMethod) {
+    throw new Error("Missing fixture device auth method");
+  }
+  return authMethod;
+}
+
 describe("connector catalog artifacts", () => {
   it("loads the fixture artifact set and converts public view models", async () => {
     const artifacts = await loadFixtureConnectorCatalogArtifacts();
@@ -493,6 +508,27 @@ describe("connector catalog artifacts", () => {
     );
   });
 
+  it("rejects duplicate required capabilities", async () => {
+    const records = await fixtureRecords();
+    const manifest = manifestFromRecords(records);
+
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithManifest(records, {
+            ...manifest,
+            requiredCapabilities: [
+              ...manifest.requiredCapabilities,
+              manifest.requiredCapabilities[0] ?? "catalog.public-connectors@1",
+            ],
+          }),
+        ),
+      }),
+    ).rejects.toThrow(
+      "Duplicate connector catalog required capabilities: catalog.public-connectors@1",
+    );
+  });
+
   it("rejects public artifacts that leak private runtime names", async () => {
     const records = await fixtureRecords();
     const publicArtifact = publicArtifactFromRecords(records);
@@ -765,6 +801,85 @@ describe("connector catalog artifacts", () => {
       }),
     ).rejects.toThrow(
       "fixture-oauth/oauth has manual fields for auth-code grant",
+    );
+  });
+
+  it("rejects invalid auth method ids", async () => {
+    const records = await fixtureRecords();
+    const publicArtifact = publicArtifactFromRecords(records);
+    fixtureManualAuthMethod(publicArtifact).id = "api/token";
+
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithPublicArtifact(records, publicArtifact),
+        ),
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects invalid device start option choices", async () => {
+    const records = await fixtureRecords();
+    const emptyOptionsArtifact = publicArtifactFromRecords(records);
+    const emptyOptionsAuthMethod =
+      fixtureDeviceAuthMethod(emptyOptionsArtifact);
+    const emptyOptionsStartOption = emptyOptionsAuthMethod.startOptions[0];
+    if (!emptyOptionsStartOption) {
+      throw new Error("Missing fixture device start option");
+    }
+    emptyOptionsStartOption.options = [];
+
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithPublicArtifact(records, emptyOptionsArtifact),
+        ),
+      }),
+    ).rejects.toThrow();
+
+    const duplicateOptionsArtifact = publicArtifactFromRecords(records);
+    const duplicateOptionsAuthMethod = fixtureDeviceAuthMethod(
+      duplicateOptionsArtifact,
+    );
+    const duplicateOptionsStartOption =
+      duplicateOptionsAuthMethod.startOptions[0];
+    const duplicateOption = duplicateOptionsStartOption?.options[0];
+    if (!duplicateOptionsStartOption || !duplicateOption) {
+      throw new Error("Missing fixture device start option choice");
+    }
+    duplicateOptionsStartOption.options.push({
+      ...duplicateOption,
+      label: "Duplicate Test",
+    });
+
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithPublicArtifact(records, duplicateOptionsArtifact),
+        ),
+      }),
+    ).rejects.toThrow(
+      "Duplicate connector catalog fixture-device/device/mode start option values: test",
+    );
+
+    const invalidDefaultArtifact = publicArtifactFromRecords(records);
+    const invalidDefaultAuthMethod = fixtureDeviceAuthMethod(
+      invalidDefaultArtifact,
+    );
+    const invalidDefaultStartOption = invalidDefaultAuthMethod.startOptions[0];
+    if (!invalidDefaultStartOption) {
+      throw new Error("Missing fixture device start option");
+    }
+    invalidDefaultStartOption.defaultValue = "missing";
+
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithPublicArtifact(records, invalidDefaultArtifact),
+        ),
+      }),
+    ).rejects.toThrow(
+      "Connector catalog auth method fixture-device/device start option mode defaultValue is not an option",
     );
   });
 
