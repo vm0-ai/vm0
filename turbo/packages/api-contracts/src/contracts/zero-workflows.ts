@@ -105,6 +105,7 @@ export const zeroWorkflowEventTypeSchema = z.enum([
   "google-calendar-event-created",
   "google-calendar-event-updated",
   "google-calendar-event-cancelled",
+  "google-meet-transcript-generated",
   "webhook-received",
 ]);
 export type ZeroWorkflowEventType = z.infer<typeof zeroWorkflowEventTypeSchema>;
@@ -260,6 +261,24 @@ export type GoogleCalendarWorkflowEventConfig =
   | GoogleCalendarEventUpdatedEventConfig
   | GoogleCalendarEventCancelledEventConfig;
 
+export const googleMeetTranscriptGeneratedEventConfigSchema = z
+  .object({
+    provider: z.literal("google-meet"),
+    event: z.literal("transcript_generated"),
+    scope: z
+      .object({
+        type: z.literal("organizer_user"),
+      })
+      .strict()
+      .default({ type: "organizer_user" }),
+  })
+  .strict();
+export type GoogleMeetTranscriptGeneratedEventConfig = z.infer<
+  typeof googleMeetTranscriptGeneratedEventConfigSchema
+>;
+export type GoogleMeetWorkflowEventConfig =
+  GoogleMeetTranscriptGeneratedEventConfig;
+
 /**
  * Schedule configuration, discriminated by `type`. Aligned with Automation's
  * time-trigger model:
@@ -360,6 +379,15 @@ export const zeroWorkflowGoogleCalendarEventCancelledTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
+export const zeroWorkflowGoogleMeetTranscriptGeneratedTriggerSummarySchema =
+  zeroWorkflowTriggerSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("google-meet-transcript-generated"),
+    eventConfig: googleMeetTranscriptGeneratedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const zeroWorkflowWebhookReceivedTriggerSummarySchema =
   zeroWorkflowTriggerSummaryBaseSchema.extend({
     kind: z.literal("event"),
@@ -382,6 +410,7 @@ export const zeroWorkflowEventTriggerSummarySchema = z.discriminatedUnion(
     zeroWorkflowGoogleCalendarEventCreatedTriggerSummarySchema,
     zeroWorkflowGoogleCalendarEventUpdatedTriggerSummarySchema,
     zeroWorkflowGoogleCalendarEventCancelledTriggerSummarySchema,
+    zeroWorkflowGoogleMeetTranscriptGeneratedTriggerSummarySchema,
     zeroWorkflowWebhookReceivedTriggerSummarySchema,
   ],
 );
@@ -470,6 +499,15 @@ export const chatThreadWorkflowGoogleCalendarEventCancelledTriggerSchema =
     scheduleSummary: z.null(),
   });
 
+export const chatThreadWorkflowGoogleMeetTranscriptGeneratedTriggerSchema =
+  chatThreadWorkflowTriggerBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("google-meet-transcript-generated"),
+    eventConfig: googleMeetTranscriptGeneratedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const chatThreadWorkflowTriggerSchema = z.union([
   chatThreadWorkflowScheduleTriggerSchema,
   chatThreadWorkflowGmailNewMessageTriggerSchema,
@@ -478,6 +516,7 @@ export const chatThreadWorkflowTriggerSchema = z.union([
   chatThreadWorkflowGoogleCalendarEventCreatedTriggerSchema,
   chatThreadWorkflowGoogleCalendarEventUpdatedTriggerSchema,
   chatThreadWorkflowGoogleCalendarEventCancelledTriggerSchema,
+  chatThreadWorkflowGoogleMeetTranscriptGeneratedTriggerSchema,
 ]);
 export type ChatThreadWorkflowTrigger = z.infer<
   typeof chatThreadWorkflowTriggerSchema
@@ -555,6 +594,20 @@ export const zeroWorkflowGoogleCalendarEventCancelledTriggerCreateRequestSchema 
     enabled: z.boolean().optional(),
   });
 
+export const zeroWorkflowGoogleMeetTranscriptGeneratedTriggerCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("google-meet-transcript-generated"),
+    eventConfig: googleMeetTranscriptGeneratedEventConfigSchema
+      .optional()
+      .default({
+        provider: "google-meet",
+        event: "transcript_generated",
+        scope: { type: "organizer_user" },
+      }),
+    enabled: z.boolean().optional(),
+  });
+
 export const zeroWorkflowWebhookReceivedTriggerCreateRequestSchema = z.object({
   kind: z.literal("event"),
   eventType: z.literal("webhook-received"),
@@ -570,6 +623,7 @@ export const zeroWorkflowTriggerCreateRequestSchema = z.union([
   zeroWorkflowGoogleCalendarEventCreatedTriggerCreateRequestSchema,
   zeroWorkflowGoogleCalendarEventUpdatedTriggerCreateRequestSchema,
   zeroWorkflowGoogleCalendarEventCancelledTriggerCreateRequestSchema,
+  zeroWorkflowGoogleMeetTranscriptGeneratedTriggerCreateRequestSchema,
   zeroWorkflowWebhookReceivedTriggerCreateRequestSchema,
 ]);
 export type ZeroWorkflowTriggerCreateRequest = z.infer<

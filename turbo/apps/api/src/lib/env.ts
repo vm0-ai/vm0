@@ -55,6 +55,11 @@ const SCHEMA = {
   GMAIL_PUBSUB_TOPIC_NAME: z.string().min(1).optional(),
   GMAIL_PUBSUB_PUSH_AUDIENCE: z.url().optional(),
   GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL: z.email().optional(),
+  GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME: z.string().min(1).optional(),
+  GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE: z.url().optional(),
+  GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL: z
+    .email()
+    .optional(),
   CRON_SECRET: z.string().min(1),
   R2_ACCESS_KEY_ID: z.string().min(1),
   R2_ACCOUNT_ID: z.string().min(1),

@@ -9,6 +9,7 @@ import {
   type GoogleCalendarEventCancelledEventConfig,
   type GoogleCalendarEventCreatedEventConfig,
   type GoogleCalendarEventUpdatedEventConfig,
+  type GoogleMeetTranscriptGeneratedEventConfig,
   type GithubLabelAppliedEventConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
@@ -67,6 +68,7 @@ type WorkflowTriggerCreateDialog =
   | "google-calendar-created"
   | "google-calendar-updated"
   | "google-calendar-cancelled"
+  | "google-meet-transcript-generated"
   | "webhook"
   | null;
 type WorkflowWebhookTriggerSummary = Extract<
@@ -864,6 +866,37 @@ export const createWorkflowGoogleCalendarEventTrigger$ = command(
       client.create({
         params: { workflowId: input.workflowId },
         body,
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const createWorkflowGoogleMeetTranscriptGeneratedTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig?: GoogleMeetTranscriptGeneratedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-meet-transcript-generated",
+          eventConfig: input.eventConfig ?? {
+            provider: "google-meet",
+            event: "transcript_generated",
+            scope: { type: "organizer_user" },
+          },
+        },
         fetchOptions: { signal },
       }),
       [201],

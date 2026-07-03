@@ -87,6 +87,32 @@ JSON_PART = r"""{
           ]
         }
       ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_MEET_TOKEN }}"
+        }
+      },
+      "base": "https://workspaceevents.googleapis.com",
+      "permissions": [
+        {
+          "name": "workspace-events.subscriptions.read",
+          "rules": [
+            "GET /v1/subscriptions",
+            "GET /v1/subscriptions/{subscriptionsId}"
+          ]
+        },
+        {
+          "name": "workspace-events.subscriptions.write",
+          "rules": [
+            "POST /v1/subscriptions",
+            "PATCH /v1/subscriptions/{subscriptionsId}",
+            "DELETE /v1/subscriptions/{subscriptionsId}",
+            "POST /v1/subscriptions/{subscriptionsId}:reactivate"
+          ]
+        }
+      ]
     }
   ],
   "name": "google-meet"

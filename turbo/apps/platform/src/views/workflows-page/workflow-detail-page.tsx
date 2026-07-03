@@ -39,6 +39,7 @@ import {
   IconTrash,
   IconUpload,
   IconDotsVertical,
+  IconVideo,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -76,6 +77,7 @@ import {
   changeWorkflowVisibility$,
   createWorkflowGithubLabelAppliedTrigger$,
   createWorkflowGoogleCalendarEventTrigger$,
+  createWorkflowGoogleMeetTranscriptGeneratedTrigger$,
   createWorkflowGmailLabelAppliedTrigger$,
   createWorkflowGmailNewMessageTrigger$,
   createWorkflowWebhookTrigger$,
@@ -2159,6 +2161,9 @@ function workflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "google-calendar-event-cancelled") {
     return "Google Calendar event cancelled";
   }
+  if (trigger.eventType === "google-meet-transcript-generated") {
+    return "Google Meet transcript ready";
+  }
   return "Webhook";
 }
 
@@ -2190,6 +2195,9 @@ function workflowTriggerSummary(
   ) {
     return `Calendar ${quote(trigger.eventConfig.calendarId)}`;
   }
+  if (trigger.eventType === "google-meet-transcript-generated") {
+    return "Meetings you organize";
+  }
   return null;
 }
 
@@ -2211,6 +2219,7 @@ type TriggerCreateDialogKind =
   | "google-calendar-created"
   | "google-calendar-updated"
   | "google-calendar-cancelled"
+  | "google-meet-transcript-generated"
   | "webhook";
 
 function TriggerCreateMenuItem({
@@ -2315,15 +2324,119 @@ function GoogleCalendarTriggerCreateMenuItems({
   );
 }
 
+function GoogleMeetTriggerCreateMenuItem({
+  onSelect,
+}: {
+  readonly onSelect: () => void;
+}) {
+  return (
+    <TriggerCreateMenuItem
+      title="Google Meet transcript ready"
+      description="Run when Meet finishes generating a transcript."
+      icon={
+        <IconVideo
+          size={15}
+          stroke={1.5}
+          className="mt-0.5 shrink-0 text-muted-foreground"
+        />
+      }
+      onSelect={onSelect}
+    />
+  );
+}
+
+function BaseTriggerCreateMenuItems({
+  onSelect,
+}: {
+  readonly onSelect: (kind: TriggerCreateDialogKind) => void;
+}) {
+  return (
+    <>
+      <TriggerCreateMenuItem
+        title="Interval"
+        description="Run this workflow on a fixed interval."
+        icon={
+          <IconRepeat
+            size={15}
+            stroke={1.5}
+            className="mt-0.5 shrink-0 text-muted-foreground"
+          />
+        }
+        onSelect={() => {
+          onSelect("interval");
+        }}
+      />
+      <TriggerCreateMenuItem
+        title="Scheduled time"
+        description="Run this workflow from a time rule."
+        icon={
+          <IconClock
+            size={15}
+            stroke={1.5}
+            className="mt-0.5 shrink-0 text-muted-foreground"
+          />
+        }
+        onSelect={() => {
+          onSelect("scheduled");
+        }}
+      />
+      <TriggerCreateMenuItem
+        title="One-time run"
+        description="Run this workflow once at a date and time."
+        icon={
+          <IconClock
+            size={15}
+            stroke={1.5}
+            className="mt-0.5 shrink-0 text-muted-foreground"
+          />
+        }
+        onSelect={() => {
+          onSelect("once");
+        }}
+      />
+      <TriggerCreateMenuItem
+        title="Gmail new message"
+        description="Run this workflow from matching email."
+        icon={
+          <IconMail
+            size={15}
+            stroke={1.5}
+            className="mt-0.5 shrink-0 text-muted-foreground"
+          />
+        }
+        onSelect={() => {
+          onSelect("gmail");
+        }}
+      />
+      <TriggerCreateMenuItem
+        title="Gmail label applied"
+        description="Run when a named Gmail label is applied."
+        icon={
+          <IconMail
+            size={15}
+            stroke={1.5}
+            className="mt-0.5 shrink-0 text-muted-foreground"
+          />
+        }
+        onSelect={() => {
+          onSelect("gmail-label");
+        }}
+      />
+    </>
+  );
+}
+
 function TriggerCreateMenu({
   onSelect,
   githubLabelTriggersEnabled,
   googleCalendarTriggersEnabled,
+  googleMeetTriggersEnabled,
   webhookTriggersEnabled,
 }: {
   readonly onSelect: (kind: TriggerCreateDialogKind) => void;
   readonly githubLabelTriggersEnabled: boolean;
   readonly googleCalendarTriggersEnabled: boolean;
+  readonly googleMeetTriggersEnabled: boolean;
   readonly webhookTriggersEnabled: boolean;
 }) {
   return (
@@ -2338,76 +2451,7 @@ function TriggerCreateMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <TriggerCreateMenuItem
-          title="Interval"
-          description="Run this workflow on a fixed interval."
-          icon={
-            <IconRepeat
-              size={15}
-              stroke={1.5}
-              className="mt-0.5 shrink-0 text-muted-foreground"
-            />
-          }
-          onSelect={() => {
-            onSelect("interval");
-          }}
-        />
-        <TriggerCreateMenuItem
-          title="Scheduled time"
-          description="Run this workflow from a time rule."
-          icon={
-            <IconClock
-              size={15}
-              stroke={1.5}
-              className="mt-0.5 shrink-0 text-muted-foreground"
-            />
-          }
-          onSelect={() => {
-            onSelect("scheduled");
-          }}
-        />
-        <TriggerCreateMenuItem
-          title="One-time run"
-          description="Run this workflow once at a date and time."
-          icon={
-            <IconClock
-              size={15}
-              stroke={1.5}
-              className="mt-0.5 shrink-0 text-muted-foreground"
-            />
-          }
-          onSelect={() => {
-            onSelect("once");
-          }}
-        />
-        <TriggerCreateMenuItem
-          title="Gmail new message"
-          description="Run this workflow from matching email."
-          icon={
-            <IconMail
-              size={15}
-              stroke={1.5}
-              className="mt-0.5 shrink-0 text-muted-foreground"
-            />
-          }
-          onSelect={() => {
-            onSelect("gmail");
-          }}
-        />
-        <TriggerCreateMenuItem
-          title="Gmail label applied"
-          description="Run when a named Gmail label is applied."
-          icon={
-            <IconMail
-              size={15}
-              stroke={1.5}
-              className="mt-0.5 shrink-0 text-muted-foreground"
-            />
-          }
-          onSelect={() => {
-            onSelect("gmail-label");
-          }}
-        />
+        <BaseTriggerCreateMenuItems onSelect={onSelect} />
         {githubLabelTriggersEnabled ? (
           <GithubLabelTriggerCreateMenuItem
             onSelect={() => {
@@ -2417,6 +2461,13 @@ function TriggerCreateMenu({
         ) : null}
         {googleCalendarTriggersEnabled ? (
           <GoogleCalendarTriggerCreateMenuItems onSelect={onSelect} />
+        ) : null}
+        {googleMeetTriggersEnabled ? (
+          <GoogleMeetTriggerCreateMenuItem
+            onSelect={() => {
+              onSelect("google-meet-transcript-generated");
+            }}
+          />
         ) : null}
         {webhookTriggersEnabled ? (
           <TriggerCreateMenuItem
@@ -2478,6 +2529,85 @@ function GoogleCalendarTriggerDialogs({
   );
 }
 
+function CreateGoogleMeetTranscriptGeneratedTriggerDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [createLoadable, createGoogleMeetTrigger] = useLoadableSet(
+    createWorkflowGoogleMeetTranscriptGeneratedTrigger$,
+  );
+  const creating = createLoadable.state === "loading";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Google Meet automation</DialogTitle>
+          <DialogDescription>
+            Run this workflow when Google Meet finishes generating a transcript
+            for a meeting organized by the connected Google Meet account.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label="Add Google Meet transcript automation"
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            detach(
+              (async () => {
+                await createGoogleMeetTrigger(
+                  {
+                    workflowId,
+                    eventConfig: {
+                      provider: "google-meet",
+                      event: "transcript_generated",
+                      scope: { type: "organizer_user" },
+                    },
+                  },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+            Transcription must be enabled for the meeting. If Meet does not
+            create a transcript, this automation will not run.
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : (
+                <IconVideo size={14} stroke={1.5} />
+              )}
+              Add Meet automation
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function TriggersSection({
   detail,
 }: {
@@ -2505,6 +2635,7 @@ function TriggersSection({
           onSelect={setCreateDialog}
           githubLabelTriggersEnabled={workflowAutomationEnabled}
           googleCalendarTriggersEnabled={workflowAutomationEnabled}
+          googleMeetTriggersEnabled={workflowAutomationEnabled}
           webhookTriggersEnabled={workflowAutomationEnabled}
         />
       </div>
@@ -2577,6 +2708,13 @@ function TriggersSection({
         workflowId={detail.id}
         createDialog={createDialog}
         setCreateDialog={setCreateDialog}
+      />
+      <CreateGoogleMeetTranscriptGeneratedTriggerDialog
+        workflowId={detail.id}
+        open={createDialog === "google-meet-transcript-generated"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "google-meet-transcript-generated" : null);
+        }}
       />
       <CreateWebhookTriggerDialog
         workflowId={detail.id}

@@ -203,6 +203,9 @@ export function gmailTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "google-calendar-event-cancelled") {
     return "Google Calendar event cancelled";
   }
+  if (trigger.eventType === "google-meet-transcript-generated") {
+    return "Google Meet transcript ready";
+  }
   return "Webhook automation";
 }
 
@@ -227,6 +230,9 @@ export function gmailTriggerSummary(
     trigger.eventType === "google-calendar-event-cancelled"
   ) {
     return `Calendar ${quote(trigger.eventConfig.calendarId)}`;
+  }
+  if (trigger.eventType === "google-meet-transcript-generated") {
+    return "Meetings you organize";
   }
   return null;
 }

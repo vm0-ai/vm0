@@ -106,6 +106,13 @@ const cronRenewGoogleCalendarWatchesResponseSchema = z.object({
   failed: z.number(),
 });
 
+const cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema = z.object({
+  success: z.literal(true),
+  renewed: z.number(),
+  repaired: z.number(),
+  failed: z.number(),
+});
+
 const cronAggregateInsightsSkippedResponseSchema = z.object({
   users: z.number(),
   skipped: z.literal(true),
@@ -255,6 +262,19 @@ export const cronRenewGoogleCalendarWatchesContract = c.router({
   },
 });
 
+export const cronRenewGoogleWorkspaceEventSubscriptionsContract = c.router({
+  renew: {
+    method: "GET",
+    path: "/api/cron/renew-google-workspace-event-subscriptions",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Renew Google Workspace Events subscriptions",
+  },
+});
+
 export const cronSyncSkillsContract = c.router({
   sync: {
     method: "GET",
@@ -377,6 +397,8 @@ export type CronRenewGmailWatchesContract =
   typeof cronRenewGmailWatchesContract;
 export type CronRenewGoogleCalendarWatchesContract =
   typeof cronRenewGoogleCalendarWatchesContract;
+export type CronRenewGoogleWorkspaceEventSubscriptionsContract =
+  typeof cronRenewGoogleWorkspaceEventSubscriptionsContract;
 
 // Export schemas for reuse
 export {
@@ -392,6 +414,7 @@ export {
   cronExecuteAutomationsResponseSchema,
   cronRenewGmailWatchesResponseSchema,
   cronRenewGoogleCalendarWatchesResponseSchema,
+  cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema,
   cronAggregateInsightsResponseSchema,
   cronAggregateModelStatsResponseSchema,
   cronSummarizeMemoryResponseSchema,

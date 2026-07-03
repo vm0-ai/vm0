@@ -2026,6 +2026,16 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
         "envNames": [
           "GOOGLE_MEET_TOKEN"
         ]
+      },
+      {
+        "authHeaderNames": [
+          "Authorization"
+        ],
+        "authQueryParamNames": [],
+        "base": "https://workspaceevents.googleapis.com",
+        "envNames": [
+          "GOOGLE_MEET_TOKEN"
+        ]
       }
     ],
     "name": "google-meet"
