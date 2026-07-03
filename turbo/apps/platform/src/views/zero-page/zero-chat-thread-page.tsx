@@ -260,6 +260,7 @@ import {
   type WorkflowTriggerCardRow,
 } from "../workflows-page/workflow-trigger-card.tsx";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "./workflow-chat-prompts.ts";
+import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
 
 import {
   renameChatThread$,
@@ -7758,44 +7759,6 @@ function PagedGroupPrimaryActions({
       )}
       {usage && firstRunId && <RunUsageChip runId={firstRunId} usage={usage} />}
     </div>
-  );
-}
-
-function ReplaceComposerDraftDialog({
-  open,
-  onOpenChange,
-  onConfirm,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="zero-app sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Replace composer draft?</DialogTitle>
-          <DialogDescription>
-            Continuing will clear your current composer draft and start a
-            workflow prompt.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              onOpenChange(false);
-            }}
-          >
-            Cancel
-          </Button>
-          <Button type="button" onClick={onConfirm}>
-            Continue
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 

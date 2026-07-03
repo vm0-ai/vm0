@@ -37,7 +37,16 @@ import {
   setBillingSubPage$,
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
+import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
+import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
+import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "./workflow-chat-prompts.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  replaceWorkflowPromptDraftTarget$,
+  setReplaceWorkflowPromptDraftTarget$,
+} from "../../signals/chat-page/workflow-prompt-action.ts";
 import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
 import {
   chatPageDefaultModelSelection$,
@@ -462,34 +471,26 @@ function useAgentChatDraftSync(pageSignal: AbortSignal) {
   };
 }
 
-export function AgentChatPage() {
-  const currentChatAgentId = useLastResolved(currentChatAgentId$);
-  const currentChatAgentDisplayName = useLastResolved(
-    currentChatAgentDisplayName$,
-  );
-
+function useAgentChatSendMessage({
+  currentChatAgentId,
+  modelSelection,
+  selectedComputerUseHostId,
+  clearComputerUseHostId,
+  setGenerationTemplate,
+}: {
+  currentChatAgentId: string | null | undefined;
+  modelSelection: ModelProviderSelection | null;
+  selectedComputerUseHostId: string | null | undefined;
+  clearComputerUseHostId: () => void;
+  setGenerationTemplate: (value: GenerationTemplateRequest | undefined) => void;
+}): (
+  message: string,
+  selectedGenerationTemplate: GenerationTemplateRequest | undefined,
+) => void {
   const sendNewThread = useSet(sendNewThreadOptimistically$);
-  const generationTemplate = useGet(newThreadGenerationTemplate$);
-  const setGenerationTemplate = useSet(setNewThreadGenerationTemplate$);
-  const { selectedComputerUseHostId, clearComputerUseHostId, computerUse } =
-    useNewThreadComputerUse();
   const rootSignal = useGet(rootSignal$);
-  const pageSignal = useGet(pageSignal$);
-  const subscribeComputerUseHostsChangedRef = useSet(
-    subscribeComputerUseHostsChangedRef$,
-  );
-  const {
-    modelSelection,
-    modelPicker,
-    modelPickerLoading,
-    submitBlockerProps,
-  } = useAgentChatComposerModel(pageSignal);
-  const resetModelSelection = useSet(resetChatPageModelSelection$);
 
-  const handleSendMessage = (
-    message: string,
-    selectedGenerationTemplate: GenerationTemplateRequest | undefined,
-  ) => {
+  return (message, selectedGenerationTemplate) => {
     if (!currentChatAgentId) {
       return;
     }
@@ -514,12 +515,102 @@ export function AgentChatPage() {
       Reason.DomCallback,
     );
   };
+}
+
+function useAgentChatComposerWorkflowPrompt({
+  input,
+  setInput,
+  queueDraftSync,
+}: {
+  input: string;
+  setInput: (value: string) => void;
+  queueDraftSync: () => void;
+}): {
+  onCreateWorkflowPrompt: (() => void) | undefined;
+  replaceDraftDialogOpen: boolean;
+  onConfirmReplaceDraft: () => void;
+  onReplaceDialogOpenChange: (open: boolean) => void;
+} {
+  const features = useGet(featureSwitch$);
+  const replaceDraftTarget = useGet(replaceWorkflowPromptDraftTarget$);
+  const setReplaceDraftTarget = useSet(setReplaceWorkflowPromptDraftTarget$);
+  const workflowAutomationEnabled =
+    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
+  const workflowPromptDraftTarget = "composer:new-thread";
+  const replaceDraftDialogOpen =
+    replaceDraftTarget === workflowPromptDraftTarget;
+
+  const applyWorkflowPrompt = () => {
+    setInput(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
+    queueDraftSync();
+  };
+
+  const handleCreateWorkflowPrompt = () => {
+    if (input.trim().length > 0) {
+      setReplaceDraftTarget(workflowPromptDraftTarget);
+      return;
+    }
+    applyWorkflowPrompt();
+  };
+
+  const handleConfirmReplaceDraft = () => {
+    setReplaceDraftTarget(null);
+    applyWorkflowPrompt();
+  };
+
+  const handleReplaceDialogOpenChange = (open: boolean) => {
+    setReplaceDraftTarget(open ? workflowPromptDraftTarget : null);
+  };
+
+  return {
+    onCreateWorkflowPrompt: workflowAutomationEnabled
+      ? handleCreateWorkflowPrompt
+      : undefined,
+    replaceDraftDialogOpen,
+    onConfirmReplaceDraft: handleConfirmReplaceDraft,
+    onReplaceDialogOpenChange: handleReplaceDialogOpenChange,
+  };
+}
+
+export function AgentChatPage() {
+  const currentChatAgentId = useLastResolved(currentChatAgentId$);
+  const currentChatAgentDisplayName = useLastResolved(
+    currentChatAgentDisplayName$,
+  );
+
+  const generationTemplate = useGet(newThreadGenerationTemplate$);
+  const setGenerationTemplate = useSet(setNewThreadGenerationTemplate$);
+  const { selectedComputerUseHostId, clearComputerUseHostId, computerUse } =
+    useNewThreadComputerUse();
+  const pageSignal = useGet(pageSignal$);
+  const subscribeComputerUseHostsChangedRef = useSet(
+    subscribeComputerUseHostsChangedRef$,
+  );
+  const {
+    modelSelection,
+    modelPicker,
+    modelPickerLoading,
+    submitBlockerProps,
+  } = useAgentChatComposerModel(pageSignal);
+  const resetModelSelection = useSet(resetChatPageModelSelection$);
+  const handleSendMessage = useAgentChatSendMessage({
+    currentChatAgentId,
+    modelSelection,
+    selectedComputerUseHostId,
+    clearComputerUseHostId,
+    setGenerationTemplate,
+  });
 
   const userFirstName = useLastResolved(user$)?.firstName ?? null;
 
   const input = useGet(chatPageInput$);
   const setInput = useSet(setChatPageInput$);
   const queueAgentDraftSync = useAgentChatDraftSync(pageSignal);
+  const workflowPrompt = useAgentChatComposerWorkflowPrompt({
+    input,
+    setInput,
+    queueDraftSync: queueAgentDraftSync,
+  });
   const startTiming = useSet(startChatNavigationTiming$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline =
@@ -589,9 +680,15 @@ export function AgentChatPage() {
               value: generationTemplate,
               onChange: setGenerationTemplate,
             }}
+            onCreateWorkflowPrompt={workflowPrompt.onCreateWorkflowPrompt}
             computerUse={computerUse}
             modelPickerLoading={modelPickerLoading}
             submitBlocker={submitBlockerProps}
+          />
+          <ReplaceComposerDraftDialog
+            open={workflowPrompt.replaceDraftDialogOpen}
+            onOpenChange={workflowPrompt.onReplaceDialogOpenChange}
+            onConfirm={workflowPrompt.onConfirmReplaceDraft}
           />
 
           <SuggestedPromptsGrid onSelectPrompt={handleInputChange} />
