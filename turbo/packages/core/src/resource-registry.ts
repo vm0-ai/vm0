@@ -930,15 +930,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/mobile-app" },
     targets: ["mobile-app-design"],
   },
-  {
-    id: "template:html-ppt-graphify-dark-graph",
-    kind: "template",
-    name: "Graphify Dark Graph",
-    description:
-      "Dark knowledge-graph deck with midnight gradients, force-graph cover visuals, command-line highlights, and glass-morphism cards.",
-    source: { path: "design-templates/html-ppt-graphify-dark-graph" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:html-ppt-zhangzara-retro-zine",
     kind: "template",
@@ -946,7 +938,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Retro editorial zine presentation template with expressive composition, tactile paper energy, and bold magazine-like rhythm.",
     source: { path: "design-templates/html-ppt-zhangzara-retro-zine" },
-    targets: ["presentation", "poster"],
+    targets: ["poster"],
   },
   {
     id: "template:weekly-update",
@@ -955,7 +947,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Single-file horizontal-swipe weekly team update deck for shipped work, in-flight work, blockers, metrics, and asks.",
     source: { path: "design-templates/weekly-update" },
-    targets: ["report", "presentation"],
+    targets: ["report"],
   },
   {
     id: "template:web-prototype-taste-editorial",
@@ -1003,7 +995,6 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     targets: [
       "website",
       "dashboard-design",
-      "presentation",
       "report",
       "docs-design",
       "poster",
@@ -1082,15 +1073,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/github-dashboard" },
     targets: ["dashboard-design"],
   },
-  {
-    id: "template:guizang-ppt",
-    kind: "template",
-    name: "Guizang PPT",
-    description:
-      "电子杂志 × 电子墨水风格的横向翻页网页 PPT — WebGL 流体背景、衬线标题、章节幕封、数据大字报、图片网格。适合分享 / 演讲 / 发布会 / 杂志风 PPT。",
-    source: { path: "design-templates/guizang-ppt" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:hr-onboarding",
     kind: "template",
@@ -1100,123 +1083,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/hr-onboarding" },
     targets: ["docs-design"],
   },
-  {
-    id: "template:html-ppt",
-    kind: "template",
-    name: "HTML PPT",
-    description:
-      "HTML PPT Studio — static HTML presentations driven by templates. Many styles, layouts, animations, and keyboard navigation for talks, pitches, reports, and 小红书图文.",
-    source: { path: "design-templates/html-ppt" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-course-module",
-    kind: "template",
-    name: "HTML PPT Course Module",
-    description:
-      "Online-course / workshop module deck — warm paper background + Playfair serif, persistent left sidebar of learning objectives, MCQ self-check page. Use for teaching modules, training materials, workshop slides.",
-    source: { path: "design-templates/html-ppt-course-module" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-dir-key-nav-minimal",
-    kind: "template",
-    name: "HTML PPT Dir Key Nav Minimal",
-    description:
-      "极简方向键 keynote — 每页独立单色背景、160px display 标题、4px accent 线、箭头 → 前缀 Mono 列表、← → kbd 提示。适合 keynote、launch、公开演讲。",
-    source: { path: "design-templates/html-ppt-dir-key-nav-minimal" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-hermes-cyber-terminal",
-    kind: "template",
-    name: "HTML PPT Hermes Cyber Terminal",
-    description:
-      "暗终端 honest-review deck — 黑底 + 赛博网格 + CRT 暗角 + 扫描线、`$ prompt` 命令行标题、薄荷绿大字、JetBrains Mono、stroke-only 柱状图。适合 CLI/agent/dev tool 测评。",
-    source: { path: "design-templates/html-ppt-hermes-cyber-terminal" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-knowledge-arch-blueprint",
-    kind: "template",
-    name: "HTML PPT Knowledge Arch Blueprint",
-    description:
-      "奶油蓝图架构 deck — 奶油纸底色 + 单一锈红高亮、48px 蓝图网格、2px 黑边硬卡片、pipeline 步骤盒、右侧 insight callout、Playfair 衬线大字。零渐变零软阴影。",
-    source: { path: "design-templates/html-ppt-knowledge-arch-blueprint" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-obsidian-claude-gradient",
-    kind: "template",
-    name: "HTML PPT Obsidian Claude Gradient",
-    description:
-      "GitHub 暗紫渐变 deck — GitHub-dark + 紫蓝 radial 环境光 + 60px 网格、紫色 pill 标签、三色渐变标题、GitHub 风代码 palette。适合开发者工作流 / MCP / Agent 教程。",
-    source: { path: "design-templates/html-ppt-obsidian-claude-gradient" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-pitch-deck",
-    kind: "template",
-    name: "HTML PPT Pitch Deck",
-    description:
-      "Investor-ready 10-slide HTML pitch deck — white + blue→purple gradient hero, big numbers, traction bar chart, $4.5M-style ask page.",
-    source: { path: "design-templates/html-ppt-pitch-deck" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-presenter-mode-reveal",
-    kind: "template",
-    name: "HTML PPT Presenter Mode Reveal",
-    description:
-      "演讲者模式 deck — tokyo-night 默认主题，5 套主题 T 键切换，每页带 150-300 字逐字稿示例，按 S 打开 CURRENT/NEXT/SCRIPT/TIMER 四张磁吸卡片。适合提词器场景。",
-    source: { path: "design-templates/html-ppt-presenter-mode-reveal" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-product-launch",
-    kind: "template",
-    name: "HTML PPT Product Launch",
-    description:
-      "Launch keynote deck — dark hero + light content, warm orange→peach accent, feature cards, pricing tiers, CTA.",
-    source: { path: "design-templates/html-ppt-product-launch" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-taste-brutalist",
-    kind: "template",
-    name: "HTML PPT Taste Brutalist",
-    description:
-      "16:9 HTML deck in tactical-telemetry / CRT-terminal taste. Deactivated-CRT charcoal slides, white-phosphor monospace, hazard-red accent, scanline overlay, ASCII syntax, density over decoration. Distilled from Leonxlnx/taste-skill `brutal…",
-    source: { path: "design-templates/html-ppt-taste-brutalist" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-taste-editorial",
-    kind: "template",
-    name: "HTML PPT Taste Editorial",
-    description:
-      "16:9 HTML deck in editorial-minimalist taste. Warm cream slides, serif display + grotesque body, hairline rules, monospace meta, generous macro-whitespace, one accent. Distilled from Leonxlnx/taste-skill `minimalist-skill`.",
-    source: { path: "design-templates/html-ppt-taste-editorial" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-tech-sharing",
-    kind: "template",
-    name: "HTML PPT Tech Sharing",
-    description:
-      "Conference / internal tech-talk deck — GitHub-dark, JetBrains Mono, terminal code blocks, agenda + Q&A pages. Use for engineering presentations, internal sharing sessions, conference talks, and code-heavy walkthroughs.",
-    source: { path: "design-templates/html-ppt-tech-sharing" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-testing-safety-alert",
-    kind: "template",
-    name: "HTML PPT Testing Safety Alert",
-    description:
-      "红琥珀警示 deck — 顶/底 45° 红黑 hazard 条纹、红色否定标题、L1/L2/L3 三档卡片、policy-yaml 代码块、红绿 checklist、事故堆叠柱状图。适合安全 / 风险 / 复盘 / 红队。",
-    source: { path: "design-templates/html-ppt-testing-safety-alert" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:html-ppt-weekly-report",
     kind: "template",
@@ -1224,7 +1091,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Team weekly / status-update deck — corporate clarity, 8-cell KPI grid, shipped list, 8-week bar chart, next-week table. Use for 周报, business reviews, team status updates, and exec dashboards.",
     source: { path: "design-templates/html-ppt-weekly-report" },
-    targets: ["presentation", "report"],
+    targets: ["report"],
   },
   {
     id: "template:html-ppt-xhs-pastel-card",
@@ -1233,7 +1100,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "柔和马卡龙慢生活 deck — 奶油底 + 柔光 blob、Playfair 斜体 + sans 正文、28px 圆角马卡龙卡片、SVG donut 图、chip+page 顶栏。适合生活方式 / 个人成长 / 慢生活内容。",
     source: { path: "design-templates/html-ppt-xhs-pastel-card" },
-    targets: ["presentation", "poster"],
+    targets: ["poster"],
   },
   {
     id: "template:html-ppt-xhs-post",
@@ -1242,7 +1109,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "小红书 / Instagram 风 9 页 3:4 竖版图文（810×1080）— 暖色 pastel、虚线 sticker 卡片、底部页码点点。",
     source: { path: "design-templates/html-ppt-xhs-post" },
-    targets: ["presentation", "poster"],
+    targets: ["poster"],
   },
   {
     id: "template:html-ppt-xhs-white-editorial",
@@ -1251,17 +1118,9 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "白底杂志风 deck — 纯白 + 顶部 10 色彩虹 bar、80-110px display 标题、紫→蓝→绿→橙→粉渐变文字、马卡龙软卡片组、黑底白字 .focus pill。小红书图文 + 横版 PPT 双用。",
     source: { path: "design-templates/html-ppt-xhs-white-editorial" },
-    targets: ["presentation", "poster"],
+    targets: ["poster"],
   },
-  {
-    id: "template:html-ppt-zhangzara-8-bit-orbit",
-    kind: "template",
-    name: "HTML PPT Zhangzara 8 Bit Orbit",
-    description:
-      "8-Bit Orbit — pixel-art neon arcade aesthetic on a deep navy void. For cyberpunk, gaming, web3, indie dev tools, hackathon demos that should feel like a CRT screen at 2am.",
-    source: { path: "design-templates/html-ppt-zhangzara-8-bit-orbit" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:html-ppt-zhangzara-biennale-yellow",
     kind: "template",
@@ -1269,26 +1128,9 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Biennale Yellow — solar yellow on warm parchment with deep indigo serif and sun-glow gradients. For art-biennale posters, museum programmes, curatorial pitches, literary publications.",
     source: { path: "design-templates/html-ppt-zhangzara-biennale-yellow" },
-    targets: ["presentation", "poster"],
+    targets: ["poster"],
   },
-  {
-    id: "template:html-ppt-zhangzara-block-frame",
-    kind: "template",
-    name: "HTML PPT Zhangzara Block Frame",
-    description:
-      "BlockFrame — neobrutalist deck with pastel-neon color blocks and chunky black borders. Pop-graphic and design-led for indie SaaS launches, agency credentials, brand redesigns.",
-    source: { path: "design-templates/html-ppt-zhangzara-block-frame" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-blue-professional",
-    kind: "template",
-    name: "HTML PPT Zhangzara Blue Professional",
-    description:
-      "Blue Professional — cream paper background with electric cobalt blue accents; clean modern professional. For B2B SaaS pitches, consulting deliverables, advisory updates, investor reports.",
-    source: { path: "design-templates/html-ppt-zhangzara-blue-professional" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:html-ppt-zhangzara-bold-poster",
     kind: "template",
@@ -1296,242 +1138,9 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Bold Poster — editorial poster aesthetic with massive Shrikhand display and a single fire-engine red accent. For magazine-cover brand manifestos and editorial / cultural pitches.",
     source: { path: "design-templates/html-ppt-zhangzara-bold-poster" },
-    targets: ["presentation", "poster"],
+    targets: ["poster"],
   },
-  {
-    id: "template:html-ppt-zhangzara-broadside",
-    kind: "template",
-    name: "HTML PPT Zhangzara Broadside",
-    description:
-      "Broadside — dark editorial canvas with a single fire orange accent and bilingual Latin/Chinese type stack. For manifestos, magazine pitches, design talks, bilingual EN/CN decks.",
-    source: { path: "design-templates/html-ppt-zhangzara-broadside" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-capsule",
-    kind: "template",
-    name: "HTML PPT Zhangzara Capsule",
-    description:
-      "Capsule — modular pill-shaped cards on warm bone with a full pastel-pop palette. For lifestyle brands, creator portfolios, DTC launches, beauty / wellness, agency credentials.",
-    source: { path: "design-templates/html-ppt-zhangzara-capsule" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-cartesian",
-    kind: "template",
-    name: "HTML PPT Zhangzara Cartesian",
-    description:
-      "Cartesian — quiet warm-neutral palette with classical Playfair serifs; tasteful and unhurried. For investment theses, white papers, advisory work, longform research, gallery decks.",
-    source: { path: "design-templates/html-ppt-zhangzara-cartesian" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-cobalt-grid",
-    kind: "template",
-    name: "HTML PPT Zhangzara Cobalt Grid",
-    description:
-      "Cobalt Grid — electric cobalt italic serifs on a graph-paper canvas with stair-stepped pixel-glitch decorations. For design / research bulletins, art publications, curated trend reports.",
-    source: { path: "design-templates/html-ppt-zhangzara-cobalt-grid" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-coral",
-    kind: "template",
-    name: "HTML PPT Zhangzara Coral",
-    description:
-      "Coral — cream and coral on near-black, set in oversized Bebas Neue. Warm-graphic editorial for fashion, beauty, fitness, F&B, lifestyle brands, agency credentials.",
-    source: { path: "design-templates/html-ppt-zhangzara-coral" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-creative-mode",
-    kind: "template",
-    name: "HTML PPT Zhangzara Creative Mode",
-    description:
-      "Creative Mode — cream paper canvas with confident multi-color accents and Archivo Black display. For creative agency pitches, design studio decks, ad credentials, brand creative reviews.",
-    source: { path: "design-templates/html-ppt-zhangzara-creative-mode" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-daisy-days",
-    kind: "template",
-    name: "HTML PPT Zhangzara Daisy Days",
-    description:
-      "Daisy Days — cheerful pastel deck with hand-drawn daisies, stars, and rainbows. Friendly, soft, and warm for educational content, kids and family, wellness, community workshops.",
-    source: { path: "design-templates/html-ppt-zhangzara-daisy-days" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-editorial-tri-tone",
-    kind: "template",
-    name: "HTML PPT Zhangzara Editorial Tri Tone",
-    description:
-      "Editorial Tri-Tone — three-color editorial: dusty pink, mustard cream, deep burgundy; Bricolage + Instrument Serif. For fashion-magazine spreads, brand decks, lifestyle media.",
-    source: { path: "design-templates/html-ppt-zhangzara-editorial-tri-tone" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-grove",
-    kind: "template",
-    name: "HTML PPT Zhangzara Grove",
-    description:
-      "Grove — forest-green canvas with cream type, classical Playfair serifs, single rust accent. For sustainability and wellness brands, outdoor products, wineries, advisory deliverables.",
-    source: { path: "design-templates/html-ppt-zhangzara-grove" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-long-table",
-    kind: "template",
-    name: "HTML PPT Zhangzara Long Table",
-    description:
-      "Long Table — warm cream and rust-red supper-club aesthetic with bold uppercase grotesk headlines and italic Fraunces. For supper clubs, dinner series, lifestyle and wine brands.",
-    source: { path: "design-templates/html-ppt-zhangzara-long-table" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-mat",
-    kind: "template",
-    name: "HTML PPT Zhangzara Mat",
-    description:
-      "Mat — dark sage canvas with bone paper and burnt-orange accent; mid-century modern with wood undertones. For architecture/interior brands, ceramics, craft, furniture, advisory decks.",
-    source: { path: "design-templates/html-ppt-zhangzara-mat" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-monochrome",
-    kind: "template",
-    name: "HTML PPT Zhangzara Monochrome",
-    description:
-      "Monochrome — ivory ledger paper with all-black type; Lora serif headlines, Jost body, no color. For research synthesis, white papers, longform reports, bilingual EN/CN deliverables.",
-    source: { path: "design-templates/html-ppt-zhangzara-monochrome" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-neo-grid-bold",
-    kind: "template",
-    name: "HTML PPT Zhangzara Neo Grid Bold",
-    description:
-      "Neo-Grid Bold — editorial neo-brutalism with a single neon yellow accent on off-white paper. For design-led pitches, brand work, founder talks, conference keynotes.",
-    source: { path: "design-templates/html-ppt-zhangzara-neo-grid-bold" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-peoples-platform",
-    kind: "template",
-    name: "HTML PPT Zhangzara Peoples Platform",
-    description:
-      "People's Platform (Block & Bold) — activist poster energy: blue, orange, red on cream, with Alfa Slab + Caveat Brush. For cultural commentary, manifestos, civic decks, campaign pitches.",
-    source: { path: "design-templates/html-ppt-zhangzara-peoples-platform" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-pin-and-paper",
-    kind: "template",
-    name: "HTML PPT Zhangzara Pin And Paper",
-    description:
-      "Pin & Paper — yellow paper with safety-pin illustrations, ink-blue handwritten Caveat, paper-grain texture. For qualitative research, founder reflections, longform brand stories.",
-    source: { path: "design-templates/html-ppt-zhangzara-pin-and-paper" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-pink-script",
-    kind: "template",
-    name: "HTML PPT Zhangzara Pink Script",
-    description:
-      "Pink Script (After Hours) — black canvas, hot pink accent, pearl-cream paper, Instrument Serif. Late-night editorial luxury for fashion, creator brands, nightlife, and luxury reveals.",
-    source: { path: "design-templates/html-ppt-zhangzara-pink-script" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-playful",
-    kind: "template",
-    name: "HTML PPT Zhangzara Playful",
-    description:
-      "Playful — sun-warm peach background with Syne display: a friendly indie launch deck. For creator portfolios, indie product launches, lifestyle brands, small-business pitches.",
-    source: { path: "design-templates/html-ppt-zhangzara-playful" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-raw-grid",
-    kind: "template",
-    name: "HTML PPT Zhangzara Raw Grid",
-    description:
-      "Raw Grid — neo-brutalist deck with thick borders, offset shadows, and a pink/sage/ink palette. For founder pitches, accelerator demos, brand decks, indie launches, creator portfolios.",
-    source: { path: "design-templates/html-ppt-zhangzara-raw-grid" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-retro-windows",
-    kind: "template",
-    name: "HTML PPT Zhangzara Retro Windows",
-    description:
-      "Retro Windows — Windows 95 chrome: gray title bars, MS Sans Serif, pixel typography, full nostalgia. For retro gaming, Y2K-aesthetic brands, creator portfolios, tech-history talks.",
-    source: { path: "design-templates/html-ppt-zhangzara-retro-windows" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-sakura-chroma",
-    kind: "template",
-    name: "HTML PPT Zhangzara Sakura Chroma",
-    description:
-      "Sakura Chroma — vintage Japanese cassette-package aesthetic: cream paper, diagonal rainbow ribbons, condensed bold type, JIS-style spec checkboxes. For analog / kawaii-tech decks.",
-    source: { path: "design-templates/html-ppt-zhangzara-sakura-chroma" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-scatterbrain",
-    kind: "template",
-    name: "HTML PPT Zhangzara Scatterbrain",
-    description:
-      "Scatterbrain — Post-it inspired: pastel sticky notes, Caveat handwriting, Shrikhand + Zilla Slab. For brainstorms, workshops, creative-agency credentials, ideation pitches.",
-    source: { path: "design-templates/html-ppt-zhangzara-scatterbrain" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-signal",
-    kind: "template",
-    name: "HTML PPT Zhangzara Signal",
-    description:
-      "Signal — deep navy canvas with bone paper and a single muted-gold accent; institutional with quiet weight. For investor decks, board presentations, consulting deliverables, legal briefs.",
-    source: { path: "design-templates/html-ppt-zhangzara-signal" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-soft-editorial",
-    kind: "template",
-    name: "HTML PPT Zhangzara Soft Editorial",
-    description:
-      "Soft Editorial — Cormorant Garamond serif on warm paper with sage, blush, and lemon accents. For literary brand stories, gallery decks, advisory deliverables, lifestyle media.",
-    source: { path: "design-templates/html-ppt-zhangzara-soft-editorial" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-stencil-tablet",
-    kind: "template",
-    name: "HTML PPT Zhangzara Stencil Tablet",
-    description:
-      "Stencil & Tablet — bone paper with stencil-cut headlines and a six-color earth palette. Archaeology meets brand: museum decks, art/architecture brands, heritage and craft work.",
-    source: { path: "design-templates/html-ppt-zhangzara-stencil-tablet" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-studio",
-    kind: "template",
-    name: "HTML PPT Zhangzara Studio",
-    description:
-      "Studio — black canvas with electric-yellow type; high-voltage design studio aesthetic. For studio credentials, creative agency pitches, brand showcases, fashion / sneaker work.",
-    source: { path: "design-templates/html-ppt-zhangzara-studio" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-vellum",
-    kind: "template",
-    name: "HTML PPT Zhangzara Vellum",
-    description:
-      "Vellum — deep navy canvas with warm-yellow italic Cormorant serifs and a single dusty teal accent. Quiet, scholarly aesthetic for research synthesis, white papers, advisory work.",
-    source: { path: "design-templates/html-ppt-zhangzara-vellum" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:hyperframes",
     kind: "template",
@@ -1548,7 +1157,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Investment-banking pitch book — trading comps, precedent transactions, valuation football field, DCF sensitivity, strategic-options matrix. For Board / sell-side discussion materials.",
     source: { path: "design-templates/ib-pitch-book" },
-    targets: ["report", "presentation"],
+    targets: ["report"],
   },
   {
     id: "template:image-poster",
@@ -1568,15 +1177,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/invoice" },
     targets: ["report"],
   },
-  {
-    id: "template:kami-deck",
-    kind: "template",
-    name: "Kami Deck",
-    description:
-      "Produce a print-grade slide deck in the kami (紙 / 纸) design system — warm parchment background (or ink-blue for cover / chapter slides), serif at one weight, ink-blue accent ≤ 5% per slide, no italic. Horizontal magazine swipe pagination…",
-    source: { path: "design-templates/kami-deck" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:kami-landing",
     kind: "template",
@@ -1667,15 +1268,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/open-design-landing" },
     targets: ["website"],
   },
-  {
-    id: "template:open-design-landing-deck",
-    kind: "template",
-    name: "Editorial Landing Deck",
-    description:
-      "Single-file slide deck in the Atelier Zero visual language — warm-paper, italic-serif emphasis, coral terminating dots, surreal collage. Horizontal swipe + ESC overview grid.",
-    source: { path: "design-templates/open-design-landing-deck" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:orbit-general",
     kind: "template",
@@ -1739,15 +1332,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/pricing-page" },
     targets: ["website"],
   },
-  {
-    id: "template:replit-deck",
-    kind: "template",
-    name: "Replit Deck",
-    description:
-      "Single-file horizontal-swipe HTML deck in the style of Replit Slides's landing-page template gallery. Eight distinct themes (helix, holm, vance, bevel, world-dark, world-mint, atlas, bluehouse) — each a complete visual system (palette +…",
-    source: { path: "design-templates/replit-deck" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:saas-landing",
     kind: "template",
@@ -1757,15 +1342,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/saas-landing" },
     targets: ["website"],
   },
-  {
-    id: "template:simple-deck",
-    kind: "template",
-    name: "Simple Deck",
-    description:
-      "Single-file horizontal-swipe HTML deck. Built by copying the seed `assets/template.html` (which carries the proven 5-rule iframe nav script) and pasting slide layouts from `references/layouts.md`. Pitch decks, product overviews, study ma…",
-    source: { path: "design-templates/simple-deck" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:social-carousel",
     kind: "template",
@@ -1829,7 +1406,6 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     targets: [
       "website",
       "dashboard-design",
-      "presentation",
       "report",
       "docs-design",
       "poster",
@@ -3996,6 +3572,10 @@ const PRESENTATION_RUNBOOK_PACKAGES: readonly PresentationRunbookPackage[] =
       ),
     };
   });
+
+export function listPresentationRunbookPackages(): readonly PresentationRunbookPackage[] {
+  return PRESENTATION_RUNBOOK_PACKAGES;
+}
 
 /** Resolve the runbook package for a picker template id, if one exists. */
 export function findPresentationRunbookPackage(
