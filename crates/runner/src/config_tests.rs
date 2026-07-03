@@ -797,6 +797,34 @@ async fn lock_and_validate_profile_image_artifacts_holds_resource_locks() {
 }
 
 #[tokio::test]
+async fn lock_and_validate_runner_image_artifacts_releases_locks_on_validation_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let home =
+        test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
+    let snapshot = RootfsPaths::new(&home, TEST_ROOTFS_HASH).snapshot(TEST_SNAPSHOT_HASH);
+    tokio::fs::remove_file(snapshot.cow_bitmap()).await.unwrap();
+    let profiles = make_profiles();
+
+    let err = match lock_and_validate_runner_image_artifacts(&profiles, &home).await {
+        Ok(_) => panic!("expected missing cow bitmap error"),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string().contains("cow.img.bitmap"),
+        "expected missing cow bitmap error, got: {err}"
+    );
+
+    let rootfs_lock = crate::lock::try_acquire(home.rootfs_lock(TEST_ROOTFS_HASH))
+        .await
+        .unwrap();
+    drop(rootfs_lock);
+    let snapshot_lock = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
+        .await
+        .unwrap();
+    drop(snapshot_lock);
+}
+
+#[tokio::test]
 async fn lock_and_validate_runner_image_artifacts_holds_all_resource_locks() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home_with_artifacts(
