@@ -21,6 +21,7 @@ import { chatThreadOnlyUnread$ } from "./chat-page/chat-thread-only-unread.ts";
 import { featureSwitch$ } from "./external/feature-switch.ts";
 import {
   chatThreadMaxItem$,
+  eventDrivenActiveRunChatThreadIds$,
   eventDrivenChatThreads$,
 } from "./chat-page/chat-thread-event-sourcing.ts";
 import type { EventDrivenChatThread } from "./chat-page/chat-thread-event-replay.ts";
@@ -209,24 +210,11 @@ const eventDrivenFilteredChatThreads$ = computed(
   },
 );
 
-export const activeRunChatThreadIds$ = computed(
-  async (get): Promise<ReadonlySet<string>> => {
-    if (!get(chatThreadEventSourcingEnabled$)) {
-      return new Set();
-    }
-    get(reloadChatThreadsCounter$);
-
-    const client = get(zeroClient$)(chatThreadsContract);
-    const result = await accept(client.activeIds(), [200], { toast: false });
-    return new Set(result.body.threadIds);
-  },
-);
-
 const eventDrivenVisibleChatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
     const threads = await get(eventDrivenFilteredChatThreads$);
     const maxItems = get(chatThreadMaxItem$);
-    const activeRunThreadIds = await get(activeRunChatThreadIds$);
+    const activeRunThreadIds = get(eventDrivenActiveRunChatThreadIds$);
 
     return threads.slice(0, maxItems).map((thread) => {
       return {

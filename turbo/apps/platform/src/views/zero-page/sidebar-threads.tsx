@@ -72,11 +72,11 @@ import {
   sidebarChatThreads$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import {
-  activeRunChatThreadIds$,
   chatThreadsHasMore$,
   chatThreadsNextCursor$,
   currentChatAgentId$,
 } from "../../signals/agent-chat.ts";
+import { eventDrivenActiveRunChatThreadIds$ } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
 import {
   loadMoreSidebarChatThreads$,
   sidebarChatThreadsExtraHasMore$,
@@ -479,7 +479,9 @@ function useChatThreadItemState(session: ChatThreadListItem) {
   const pageSignal = useGet(pageSignal$);
   const draftThreadIds = useLastResolved(sidebarDraftThreadIds$);
   const unreadThreadIds = useLastResolved(sidebarUnreadThreadIds$);
-  const activeRunThreadIds = useLastResolved(activeRunChatThreadIds$);
+  const activeRunThreadIds = useLastResolved(
+    eventDrivenActiveRunChatThreadIds$,
+  );
 
   const isPinned = session.pinnedAt !== null && session.pinnedAt !== undefined;
   const onChatPage = urlMainThreadId !== null;
