@@ -423,11 +423,12 @@ function runnerHeartbeatBody(
     readonly mode?: RunnerHeartbeatBody["mode"];
   } = {},
 ): RunnerHeartbeatBody {
+  const profiles = args.profiles ?? ["vm0/default"];
   const body: RunnerHeartbeatBody = {
     runnerId: args.runnerId ?? randomUUID(),
     runnerName: "bdd-runner",
     group: args.group ?? "vm0/test",
-    profiles: args.profiles ?? ["vm0/default"],
+    profiles,
     totalVcpu: 8,
     totalMemoryMb: 16_384,
     maxConcurrent: args.maxConcurrent ?? 2,
@@ -438,7 +439,7 @@ function runnerHeartbeatBody(
     mode: args.mode ?? "running",
   };
   if (!args.omitAvailableProfiles) {
-    body.availableProfiles = args.availableProfiles ?? ["vm0/default"];
+    body.availableProfiles = args.availableProfiles ?? profiles;
   }
   return body;
 }
