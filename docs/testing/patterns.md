@@ -263,207 +263,65 @@ The `vi.stubEnv()` approach provides proper cleanup and better test isolation wi
 
 ---
 
-## Pattern 7: Platform Component Tests
+## Pattern 7: Platform Page Tests
 
-Our platform app uses ccstate for state management and requires tests to follow the production initialization flow. This pattern uses centralized test helpers that mirror `main.ts` startup.
+`turbo/apps/platform` tests should cover page-visible behavior through the
+same bootstrap path the app uses in production. The detailed rules live in
+[app-testing.md](./app-testing.md); this section is the short pattern to use
+while writing or reviewing platform tests.
 
-### Test Infrastructure
-
-**1. Centralized Clerk Mock** (`src/__tests__/mock-auth.ts`):
-
-```typescript
-import { vi } from "vitest";
-
-let internalMockedUser: { id: string; fullName: string } | null = null;
-let internalMockedSession: { token: string } | null = null;
-
-export function mockUser(
-  user: { id: string; fullName: string } | null,
-  session: { token: string } | null,
-) {
-  internalMockedUser = user;
-  internalMockedSession = session;
-}
-
-export function clearMockedAuth() {
-  internalMockedUser = null;
-  internalMockedSession = null;
-}
-
-export const mockedClerk = {
-  get user() {
-    return internalMockedUser;
-  },
-  get session() {
-    return {
-      getToken: () => Promise.resolve(internalMockedSession?.token ?? ""),
-    };
-  },
-  load: () => Promise.resolve(),
-  addListener: () => () => {},
-  redirectToSignIn: vi.fn(),
-};
-```
-
-**2. Global Test Setup** (`src/test/setup.ts`):
+Page tests live under `src/views/**/__tests__/` and enter through
+`detachedSetupPage`. Configure API, browser, upload, Ably, auth, and test data
+mocks through `context.mocks` before page setup so every override is tied to the
+same test lifecycle signal.
 
 ```typescript
-import "@testing-library/jest-dom/vitest";
-import { server } from "../mocks/server.ts";
-import { afterAll, afterEach, beforeAll, vi } from "vitest";
-import { mockedClerk } from "../__tests__/mock-auth.ts";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { HttpResponse } from "msw";
+import { describe, expect, it } from "vitest";
 
-vi.mock("@clerk/clerk-js", () => ({
-  Clerk: function MockClerk() {
-    return mockedClerk;
-  },
-}));
-
-beforeAll(() => {
-  server.listen({ onUnhandledRequest: "bypass" });
-  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");
-  vi.stubEnv("VITE_API_URL", "http://localhost:3000");
-});
-
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
-```
-
-**3. Page Setup Helper** (`src/__tests__/helper.ts`):
-
-```typescript
-import { act, render } from "@testing-library/react";
-import type { TestContext } from "../signals/__tests__/test-helpers";
-import { clearMockedAuth, mockUser } from "./mock-auth";
-import { bootstrap$ } from "../signals/bootstrap";
-import { setupRouter } from "../views/main";
-import { setPathname } from "../signals/location";
-
-export async function setupPage(options: {
-  context: TestContext;
-  path: string;
-  user?: { id: string; fullName: string } | null;
-  session?: { token: string } | null;
-}) {
-  setPathname(options.path);
-
-  mockUser(
-    options.user !== undefined
-      ? options.user
-      : { id: "test-user-123", fullName: "Test User" },
-    options.session ?? { token: "test-token" },
-  );
-  options.context.signal.addEventListener("abort", () => {
-    clearMockedAuth();
-  });
-
-  const rootEl = document.createElement("div");
-  document.body.appendChild(rootEl);
-  options.context.signal.addEventListener("abort", () => {
-    rootEl.remove();
-  });
-
-  await act(async () => {
-    await options.context.store.set(
-      bootstrap$,
-      () => {
-        setupRouter(options.context.store, (element) => {
-          render(element, { container: rootEl });
-        });
-      },
-      options.context.signal,
-    );
-  });
-}
-```
-
-### Test Template
-
-```typescript
-import { describe, it, expect } from "vitest";
-import { http, HttpResponse } from "msw";
-import { server } from "../../mocks/server.ts";
-import { testContext } from "./test-helpers.ts";
-import { setupPage } from "../../__tests__/helper.ts";
-import { pathname$ } from "../route.ts";
-import { screen } from "@testing-library/react";
+import { detachedSetupPage } from "../../../__tests__/page-helper";
+import { testContext } from "../../../signals/__tests__/test-helpers";
 
 const context = testContext();
 
-describe("MyPage", () => {
-  it("should render the page", async () => {
-    server.use(
-      http.get("/api/org", () => {
-        return HttpResponse.json({ id: "org_1", slug: "user-123" });
-      }),
-    );
+describe("items page", () => {
+  it("creates an item from the page", async () => {
+    const user = userEvent.setup();
 
-    await setupPage({
-      context,
-      path: "/my-page",
+    context.mocks.http.get("/api/items", () => {
+      return HttpResponse.json({ items: [] });
+    });
+    context.mocks.http.post("/api/items", async ({ request }) => {
+      const body = await request.json();
+      return HttpResponse.json({ id: "item_1", ...body }, { status: 201 });
     });
 
-    expect(screen.getByText("Expected Content")).toBeDefined();
-    expect(context.store.get(pathname$)).toBe("/my-page");
-  });
+    detachedSetupPage({ context, path: "/items" });
 
-  it("should handle unauthenticated user", async () => {
-    await setupPage({
-      context,
-      path: "/",
-      user: null,
+    await user.type(await screen.findByRole("textbox"), "New Item");
+    await user.click(await screen.findByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("New Item")).toBeInTheDocument();
     });
-
-    // Test unauthenticated behavior
   });
 });
 ```
 
-### Key Principles
+Key points:
 
-1. **Mock only `@clerk/clerk-js`**—the external auth package. Never mock internal `auth.ts`.
-
-2. **Use MSW for HTTP mocking**—all API calls are mocked via MSW handlers.
-
-3. **Use `setupPage()` helper**—this mirrors `main.ts` bootstrap flow.
-
-4. **Use `testContext()`**—provides `store` and `signal` with automatic cleanup.
-
-5. **Configure auth per test** via `user` and `session` options.
-
-6. **Override MSW handlers per test** with `server.use()`.
-
-### Signal-Only Tests
-
-For testing signals without rendering React components:
-
-```typescript
-import { describe, it, expect } from "vitest";
-import { http, HttpResponse } from "msw";
-import { server } from "../../mocks/server.ts";
-import { testContext } from "./test-helpers.ts";
-import { org$, hasOrg$ } from "../org.ts";
-
-const context = testContext();
-
-describe("org signals", () => {
-  it("hasOrg$ returns true when user has org", async () => {
-    const hasOrg = await context.store.get(hasOrg$);
-    expect(hasOrg).toBeTruthy();
-  });
-
-  it("hasOrg$ returns false when no org (404)", async () => {
-    server.use(
-      http.get("/api/org", () => {
-        return new HttpResponse(null, { status: 404 });
-      }),
-    );
-
-    const hasOrg = await context.store.get(hasOrg$);
-    expect(hasOrg).toBeFalsy();
-  });
-});
-```
+1. **Use `detachedSetupPage()` for view tests**. Do not render platform
+   components directly.
+2. **Mock through `context.mocks`**. Do not import MSW `server` or call
+   `server.use()` from page tests.
+3. **Use `setupPage({ withoutRender: true })` only for signal tests** that need
+   platform bootstrap without React rendering.
+4. **Prefer page tests over signal tests**. Signal-only tests are reserved for
+   behavior with no user-visible page surface.
+5. **Let `testContext()` own cleanup**. It aborts the test signal and resets
+   handlers, local storage state, and logger state after each test.
 
 ---
 
@@ -651,7 +509,10 @@ const result = await service.doSomething();
 expect(result.status).toBe("success");
 
 // For API route tests, verify persisted effects through a follow-up API call
-const listed = await accept(apiClient().list({ headers: authHeaders() }), [200]);
+const listed = await accept(
+  apiClient().list({ headers: authHeaders() }),
+  [200],
+);
 expect(listed.body).toContainEqual(expect.objectContaining({ id: result.id }));
 ```
 

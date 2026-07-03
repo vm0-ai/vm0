@@ -164,7 +164,7 @@ review "authentication changes"     # Review by description
 
    **Test Initialization Flow (Bad Smell #19)**
    - Flag tests that bypass production initialization flow
-   - Platform tests must use `setupPage()` or equivalent production initialization
+   - Platform page tests must use `detachedSetupPage()` or equivalent production initialization
    - Tests should not manually construct internal state that production code initializes differently
    - Test setup should mirror how the code actually runs in production
 

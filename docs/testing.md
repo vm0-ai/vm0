@@ -282,17 +282,19 @@ service-worker behavior, and security headers around proxied paths.
 Test through the same initialization flow as production:
 
 ```typescript
-await setupPage({
+detachedSetupPage({
   context,
   path: "/dashboard",
 });
 
-await user.click(screen.getByRole("button", { name: "Create" }));
+await user.click(await screen.findByRole("button", { name: "Create" }));
 
-expect(screen.getByText("Created successfully")).toBeInTheDocument();
+expect(await screen.findByText("Created successfully")).toBeInTheDocument();
 ```
 
-Don't render components directly—use `setupPage()` which mirrors `main.ts` startup.
+Don't render components directly. For view tests, use `detachedSetupPage()`,
+which mirrors `main.ts` startup and lets tests wait for the rendered state they
+care about.
 
 ## Reference
 

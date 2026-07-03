@@ -29,17 +29,18 @@ import { testContext } from "../../../signals/__tests__/test-helpers";
 import { detachedSetupPage } from "../../../__tests__/page-helper";
 
 const context = testContext();
-const user = userEvent.setup();
 
 describe("ComponentName", () => {
   it("should do something when user clicks button", async () => {
+    const user = userEvent.setup();
+
     detachedSetupPage({
       context,
       path: "/page-path",
     });
 
     // Find UI elements
-    const button = screen.getByRole("button", { name: "Submit" });
+    const button = await screen.findByRole("button", { name: "Submit" });
 
     // Perform user interactions
     await user.click(button);
@@ -73,7 +74,7 @@ turbo/apps/platform/src/
 │   ├── setup.ts           # Global test setup
 │   └── mocks/             # Module mocks (e.g., Clerk)
 └── __tests__/
-    ├── helper.ts          # setupPage and utilities
+    ├── page-helper.ts     # setupPage, detachedSetupPage, and utilities
     └── mock-auth.ts       # Authentication mocks
 ```
 
@@ -180,7 +181,7 @@ The global test setup (`test/setup.ts`) configures MSW to handle unmatched reque
 
 ```typescript
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: "bypass" });
+  server.listen({ onUnhandledRequest: "error" });
 });
 
 afterEach(() => server.resetHandlers());
@@ -195,21 +196,23 @@ Default handlers in `mocks/handlers/` provide working responses for most tests. 
 ### Overriding API Behavior in Tests
 
 Use `context.mocks.api()` or `context.mocks.http()` to override handlers for
-specific test scenarios. Do not import MSW or call `server.use()` from page
-tests directly.
+specific test scenarios. Do not import the MSW `server` or call `server.use()`
+from page tests directly.
 
 ```typescript
+import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
 import { HttpResponse } from "msw";
-import { apiContract } from "@vm0/api-contract";
 
 it("should show error when API returns 404", async () => {
-  context.mocks.api(apiContract.org.getOrg, () => {
-    return new HttpResponse(null, { status: 404 });
+  context.mocks.api(zeroOrgContract.get, ({ respond }) => {
+    return respond(404, {
+      error: { code: "NOT_FOUND", message: "Not found" },
+    });
   });
 
   detachedSetupPage({ context, path: "/" });
 
-  expect(screen.getByText("Not found")).toBeInTheDocument();
+  expect(await screen.findByText("Not found")).toBeInTheDocument();
 });
 
 it("should handle empty list", async () => {
@@ -219,7 +222,7 @@ it("should handle empty list", async () => {
 
   detachedSetupPage({ context, path: "/items" });
 
-  expect(screen.getByText("No items found")).toBeInTheDocument();
+  expect(await screen.findByText("No items found")).toBeInTheDocument();
 });
 ```
 
@@ -229,6 +232,7 @@ Capture request data to verify what was sent:
 
 ```typescript
 it("should send correct data when saving", async () => {
+  const user = userEvent.setup();
   let capturedBody: unknown = null;
 
   context.mocks.http.put("/api/items", async ({ request }) => {
@@ -238,8 +242,8 @@ it("should send correct data when saving", async () => {
 
   detachedSetupPage({ context, path: "/" });
 
-  await user.type(screen.getByRole("textbox"), "New Item");
-  await user.click(screen.getByRole("button", { name: "Save" }));
+  await user.type(await screen.findByRole("textbox"), "New Item");
+  await user.click(await screen.findByRole("button", { name: "Save" }));
 
   await waitFor(() => {
     expect(capturedBody).toEqual({ name: "New Item" });

@@ -145,13 +145,13 @@ These are external services that require API keys, network access, or external i
 
 Here's the mock hierarchy:
 
-| Category           | Example                               | Mock?     |
-| ------------------ | ------------------------------------- | --------- |
+| Category           | Example                                | Mock?     |
+| ------------------ | -------------------------------------- | --------- |
 | Third-party SaaS   | `@clerk/backend`, `@aws-sdk/client-s3` | Yes       |
-| Node.js built-ins  | `child_process`                       | Sometimes |
-| Database           | `globalThis.services.db`              | Never     |
-| Internal services  | `../../lib/*`                         | Never     |
-| Internal utilities | `../../utils/*`                       | Never     |
+| Node.js built-ins  | `child_process`                        | Sometimes |
+| Database           | `globalThis.services.db`               | Never     |
+| Internal services  | `../../lib/*`                          | Never     |
+| Internal utilities | `../../utils/*`                        | Never     |
 
 When you use real internal code, you catch real bugs. When you mock it, you're just verifying that your mock orchestration is correct.
 
@@ -349,24 +349,29 @@ This test doesn't exercise the same code paths as production. It misses setup co
 Instead, use the production flow:
 
 ```typescript
-import { setupPage } from "../../__tests__/helper.ts";
+import { screen } from "@testing-library/react";
+
+import { detachedSetupPage } from "../../__tests__/page-helper";
 import { testContext } from "../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
 it("should render the page", async () => {
   // Bootstrap app and navigate (like main.ts does)
-  await setupPage({
+  detachedSetupPage({
     context,
     path: "/my-page",
   });
 
   // Verify page was rendered
-  expect(screen.getByText("Expected Content")).toBeDefined();
+  expect(await screen.findByText("Expected Content")).toBeInTheDocument();
 });
 ```
 
-The `setupPage()` helper mirrors `main.ts` bootstrap: it sets the pathname, configures auth, bootstraps the app, and renders via `setupRouter()`. This catches initialization bugs that direct rendering would miss.
+The `detachedSetupPage()` helper mirrors `main.ts` bootstrap: it sets the
+pathname, configures auth, bootstraps the app, and renders via `setupRouter()`.
+This catches initialization bugs that direct rendering would miss. Wait for the
+rendered state that matters when page setup starts long-running polling flows.
 
 ---
 
