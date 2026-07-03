@@ -1306,24 +1306,26 @@ mod tests {
 
     fn write_test_run_payload(prompt: Option<&str>) -> std::path::PathBuf {
         let dir = test_runtime_dir().join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
-        if let Err(error) = std::fs::create_dir_all(&dir) {
-            eprintln!("create test run payload dir: {error}");
-        }
+        let create_result = std::fs::create_dir_all(&dir);
+        assert!(
+            create_result.is_ok(),
+            "create test run payload dir: {create_result:?}"
+        );
         let path = dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
         let payload = guest_contracts::env::RunPayload {
             prompt: prompt.unwrap_or_default().to_string(),
             ..guest_contracts::env::RunPayload::default()
         };
-        let bytes = match serde_json::to_vec(&payload) {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                eprintln!("serialize test run payload: {error}");
-                Vec::new()
-            }
-        };
-        if let Err(error) = std::fs::write(&path, bytes) {
-            eprintln!("write test run payload: {error}");
-        }
+        let bytes_result = serde_json::to_vec(&payload);
+        assert!(
+            bytes_result.is_ok(),
+            "serialize test run payload: {bytes_result:?}"
+        );
+        let write_result = std::fs::write(&path, bytes_result.unwrap_or_default());
+        assert!(
+            write_result.is_ok(),
+            "write test run payload: {write_result:?}"
+        );
         path
     }
 
