@@ -164,6 +164,8 @@ export function clearMockedAuth() {
     status: "complete",
     createdSessionId: "test-created-session-id",
   });
+  mockedClerk.buildUrlWithAuth.mockReset();
+  mockedClerk.buildUrlWithAuth.mockImplementation(defaultBuildUrlWithAuthImpl);
 }
 
 const clerkListeners: (() => void)[] = [];
@@ -185,6 +187,9 @@ const clientSignInCreate = vi.fn(
     });
   },
 );
+const defaultBuildUrlWithAuthImpl = (to: string) => {
+  return to;
+};
 
 export const mockedClerk = {
   get user() {
@@ -231,6 +236,9 @@ export const mockedClerk = {
     };
   },
   redirectToSignIn: vi.fn(),
+  // Production-instance behavior: the URL passes through unchanged. Dev
+  // instances append the __clerk_db_jwt session handoff parameter.
+  buildUrlWithAuth: vi.fn(defaultBuildUrlWithAuthImpl),
   setActive: vi.fn(
     (params: {
       organization?: string;
