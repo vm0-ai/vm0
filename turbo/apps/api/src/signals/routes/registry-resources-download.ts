@@ -215,9 +215,9 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
   "template:html-ppt-prospectus-runbook":
     "69e3c21d3ff27ebdd5ee6079e2809e9f7e7a0a1d6ba673349d957a961798f36b",
   "template:html-ppt-schoolhouse-runbook":
-    "ce36ff2a8290306c809e067622543e1c77334ca8958bc8a984d6b195ae1269d0",
+    "a34ed3483769cc2825656849385b86f23c50e5500d8ab20e7a705019949e49a5",
   "template:html-ppt-sticker-scrapbook-runbook":
-    "1d774755a5eb66e81e58e2f47a47793640c34ecb74a4254316c5f5e5538c1594",
+    "3b8eae68d6ff1dbb90396b0e929e9adc88dcb8c1850a6e7dbf13b650beb279bc",
   "template:html-ppt-strata-runbook":
     "480717095fda024858014262a77e95344cf2f2f319603eb3f295662bc3ec43cc",
   "template:html-ppt-taped-consulting-runbook":
