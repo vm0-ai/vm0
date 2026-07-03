@@ -31,7 +31,7 @@ describe("checkOrgCreditsForRunAdmission", () => {
       db: dbForAvailability("limited-free-1"),
       orgId: "org_limited_free_byok",
       modelProviderType: "anthropic-api-key",
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "MiniMax-M3",
     });
 
     expect(result?.status).toBe(402);
@@ -43,7 +43,7 @@ describe("checkOrgCreditsForRunAdmission", () => {
       db: dbForAvailability("limited-free-1"),
       orgId: "org_limited_free_vm0",
       modelProviderType: "vm0",
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "MiniMax-M3",
     });
 
     expect(result).toBeUndefined();
@@ -54,7 +54,7 @@ describe("checkOrgCreditsForRunAdmission", () => {
       db: dbForAvailability("limited-free-1"),
       orgId: "org_limited_free_restricted",
       modelProviderType: "vm0",
-      selectedModel: "gpt-5.5",
+      selectedModel: "claude-sonnet-4-6",
     });
 
     expect(result?.status).toBe(402);
@@ -68,7 +68,7 @@ describe("checkLimitedFreeRunModelAdmission", () => {
       db: dbForAvailability("limited-free-1"),
       orgId: "org_limited_free_prepared_byok",
       modelProviderType: null,
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "MiniMax-M3",
     });
 
     expect(result?.status).toBe(402);
