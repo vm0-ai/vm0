@@ -856,11 +856,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             // reads from its tmpfs instead of hitting R2 per turn.
             async {
                 let cache_t = Instant::now();
-                let cache_result = crate::storage_cache::populate_cache(
+                let cache_result = crate::storage_cache::populate_cache_with_options(
                     &mut effective,
                     sandbox,
                     &config.home,
                     telemetry,
+                    config.storage_cache,
                 )
                 .await;
                 telemetry.record(

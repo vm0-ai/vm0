@@ -299,6 +299,15 @@ async fn run_start_with_home(
             "using host environment override for concurrency_factor"
         );
     }
+    let (storage_cache_miss_passthrough, storage_cache_miss_passthrough_source) =
+        crate::runtime_overrides::resolve_storage_cache_miss_passthrough(&runner_host_env)?;
+    if storage_cache_miss_passthrough_source.is_override() && storage_cache_miss_passthrough {
+        info!(
+            env_var = crate::host_env::RUNNER_STORAGE_CACHE_MISS_PASSTHROUGH_ENV,
+            override_source = storage_cache_miss_passthrough_source.label(),
+            "using host environment override for storage cache miss passthrough"
+        );
+    }
 
     crate::private_fs::ensure_private_dir(&runner_config.base_dir).await?;
 
@@ -629,6 +638,9 @@ async fn run_start_with_home(
             &home,
             &group_name,
         )),
+        storage_cache: crate::storage_cache::StorageCacheOptions {
+            miss_passthrough: storage_cache_miss_passthrough,
+        },
     });
 
     let live_runner_instance_metadata = crate::live_runner_instances::LiveRunnerInstanceMetadata {

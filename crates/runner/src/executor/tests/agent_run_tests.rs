@@ -504,6 +504,59 @@ async fn run_in_sandbox_runs_guest_download_for_cached_instruction_normalization
 }
 
 #[tokio::test]
+async fn run_in_sandbox_guarded_storage_cache_miss_passthrough_reaches_guest_download() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = test_executor_config(dir.path()).await;
+    config.storage_cache = crate::storage_cache::StorageCacheOptions {
+        miss_passthrough: true,
+    };
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    let storage = api_storage(
+        "instructions",
+        "/home/user/.codex",
+        "v1",
+        "https://r2.example.com/instructions.tar.gz",
+    );
+    ctx.storage_manifest = Some(StorageManifest {
+        storages: vec![storage],
+        artifacts: vec![],
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await
+    .unwrap();
+
+    let exec_calls = sandbox.exec_calls();
+    assert!(
+        exec_calls
+            .iter()
+            .any(|call| call.cmd == guest_download_stdin_command()),
+        "guarded cache miss should leave work for guest-download; calls: {exec_calls:?}"
+    );
+    let ops = telemetry.pending_ops_snapshot();
+    assert_successful_action_once(&ops, "runner_storage_manifest_has_work");
+    assert_successful_action_once(&ops, "runner_storage_manifest_cache_populate");
+    assert_successful_action_once(&ops, "runner_storage_manifest_guest_download");
+    assert_successful_action_once(&ops, "runner_storage_manifest_apply");
+    assert_successful_action_once(&ops, "storage_cache_miss_passthrough");
+    assert_no_action(&ops, "storage_cache_miss");
+    assert_no_action(&ops, "storage_cache_download");
+}
+
+#[tokio::test]
 async fn run_in_sandbox_records_storage_manifest_no_work_timing_without_guest_download() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;

@@ -14,13 +14,16 @@ pub(crate) const RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV: &str =
 pub(crate) const RUNNER_DISK_IOPS_ENV: &str = "VM0_RUNNER_DISK_IOPS";
 pub(crate) const RUNNER_NET_RX_MIB_PER_SEC_ENV: &str = "VM0_RUNNER_NET_RX_MIB_PER_SEC";
 pub(crate) const RUNNER_NET_TX_MIB_PER_SEC_ENV: &str = "VM0_RUNNER_NET_TX_MIB_PER_SEC";
+pub(crate) const RUNNER_STORAGE_CACHE_MISS_PASSTHROUGH_ENV: &str =
+    "VM0_RUNNER_STORAGE_CACHE_MISS_PASSTHROUGH";
 
-const ALLOWED_HOST_ENV_KEYS: [&str; 5] = [
+const ALLOWED_HOST_ENV_KEYS: [&str; 6] = [
     RUNNER_CONCURRENCY_FACTOR_ENV,
     RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
     RUNNER_DISK_IOPS_ENV,
     RUNNER_NET_RX_MIB_PER_SEC_ENV,
     RUNNER_NET_TX_MIB_PER_SEC_ENV,
+    RUNNER_STORAGE_CACHE_MISS_PASSTHROUGH_ENV,
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +47,10 @@ pub(crate) struct RunnerHostEnv {
 impl RunnerHostEnv {
     pub(crate) fn concurrency_factor(&self) -> Option<&HostEnvValue> {
         self.values.get(RUNNER_CONCURRENCY_FACTOR_ENV)
+    }
+
+    pub(crate) fn storage_cache_miss_passthrough(&self) -> Option<&HostEnvValue> {
+        self.values.get(RUNNER_STORAGE_CACHE_MISS_PASSTHROUGH_ENV)
     }
 
     pub(crate) fn io_values(&self) -> RunnerIoEnvValues {
@@ -128,7 +135,7 @@ mod tests {
     #[test]
     fn parse_host_env_file_accepts_allowed_keys_with_comments() {
         let values = parse_host_env_file(
-            "\n# host-local runner overrides\nVM0_RUNNER_CONCURRENCY_FACTOR = 1.5\nVM0_RUNNER_DISK_IOPS = 200000\n",
+            "\n# host-local runner overrides\nVM0_RUNNER_CONCURRENCY_FACTOR = 1.5\nVM0_RUNNER_DISK_IOPS = 200000\nVM0_RUNNER_STORAGE_CACHE_MISS_PASSTHROUGH = true\n",
         )
         .unwrap();
 
@@ -142,6 +149,12 @@ mod tests {
             values.get(RUNNER_DISK_IOPS_ENV),
             Some(&HostEnvValue {
                 value: "200000".to_string(),
+            })
+        );
+        assert_eq!(
+            values.get(RUNNER_STORAGE_CACHE_MISS_PASSTHROUGH_ENV),
+            Some(&HostEnvValue {
+                value: "true".to_string(),
             })
         );
     }
@@ -162,6 +175,7 @@ VM0_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC=1000
 VM0_RUNNER_DISK_IOPS=50000
 VM0_RUNNER_NET_RX_MIB_PER_SEC=250
 VM0_RUNNER_NET_TX_MIB_PER_SEC=125
+VM0_RUNNER_STORAGE_CACHE_MISS_PASSTHROUGH=on
 ",
         )
         .unwrap();
@@ -196,6 +210,12 @@ VM0_RUNNER_NET_TX_MIB_PER_SEC=125
             io_values.net_tx_mib_per_sec,
             Some(HostEnvValue {
                 value: "125".to_string(),
+            })
+        );
+        assert_eq!(
+            host_env.storage_cache_miss_passthrough(),
+            Some(&HostEnvValue {
+                value: "on".to_string(),
             })
         );
     }
