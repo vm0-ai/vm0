@@ -1,7 +1,10 @@
 import { useLoadable } from "ccstate-react";
 import { IconGitCommit } from "@tabler/icons-react";
 
-import { getBuildCommitSha } from "../../../../lib/build-info.ts";
+import {
+  getBuildCommitSha,
+  getBuildVersion,
+} from "../../../../lib/build-info.ts";
 import { backendBuildInfo$ } from "../../../../signals/zero-page/settings/build-info.ts";
 
 const UNAVAILABLE_VALUE = "Unavailable";
@@ -35,9 +38,13 @@ export function BuildInfoBlock() {
       ? backendBuildInfoLoadable.data
       : null;
   const frontendCommitSha = formatCommitSha(getBuildCommitSha());
+  const frontendVersion = formatCommitSha(getBuildVersion());
   const backendCommitSha = loading
     ? "Loading"
     : formatCommitSha(backendBuildInfo?.backendCommitSha);
+  const backendVersion = loading
+    ? "Loading"
+    : formatCommitSha(backendBuildInfo?.backendVersion);
 
   return (
     <div className="flex items-start gap-4 bg-card p-4 rounded-xl zero-border">
@@ -52,11 +59,13 @@ export function BuildInfoBlock() {
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         <div className="text-sm font-medium text-foreground">
-          Build commit SHA
+          Build information
         </div>
         <div className="flex flex-col gap-2">
-          <BuildInfoRow label="Frontend" value={frontendCommitSha} />
-          <BuildInfoRow label="Backend" value={backendCommitSha} />
+          <BuildInfoRow label="Frontend version" value={frontendVersion} />
+          <BuildInfoRow label="Frontend commit SHA" value={frontendCommitSha} />
+          <BuildInfoRow label="Backend version" value={backendVersion} />
+          <BuildInfoRow label="Backend commit SHA" value={backendCommitSha} />
         </div>
       </div>
     </div>
