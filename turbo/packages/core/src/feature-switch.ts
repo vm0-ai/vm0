@@ -343,6 +343,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show fast generated status text in the web chat thinking indicator.",
     enabled: true,
   },
+  [FeatureSwitchKey.ChatThreadEventSourcing]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Render the chat sidebar from local chat thread snapshots plus lifecycle events instead of the paged thread list response.",
+    enabled: false,
+  },
   [FeatureSwitchKey.TeamsIntegration]: {
     maintainer: "linghan@vm0.ai",
     description:

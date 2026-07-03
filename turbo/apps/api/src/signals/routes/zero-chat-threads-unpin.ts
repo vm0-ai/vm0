@@ -5,7 +5,7 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { pathParamsOf } from "../context/request";
+import { pathParamsOf, queryOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
@@ -15,6 +15,7 @@ import type { RouteEntry } from "../route-entry";
 const unpinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadUnpinContract.unpin));
+  const query = get(queryOf(chatThreadUnpinContract.unpin));
   signal.throwIfAborted();
 
   const writeDb = set(writeDb$);
@@ -39,6 +40,7 @@ const unpinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       orgId: auth.orgId,
       chatThreadId: thread.id,
       agentComposeId: thread.agentComposeId,
+      eventId: query?.eventId,
     });
     return true;
   });

@@ -1,0 +1,196 @@
+import { command, computed, state } from "ccstate";
+import {
+  chatThreadsContract,
+  type ChatThreadsContract,
+  type ChatThreadEvent,
+  type ChatThreadSnapshotProjection,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  InitClientArgs,
+  InitClientReturn,
+} from "@vm0/api-contracts/contracts/trpc-contract";
+import { accept } from "../../lib/accept.ts";
+import { zeroClient$ } from "../api-client.ts";
+import { clerk$ } from "../auth.ts";
+import { createIdbChatThreadEventStores } from "../external/idb-chat-thread-event-store.ts";
+import { logger } from "../log.ts";
+import { reloadChatThreadsCounter$ } from "../chat-thread-list-reload.ts";
+import { replayChatThreadEvents } from "./chat-thread-event-replay.ts";
+
+const L = logger("ChatThreadEventSourcing");
+const CHAT_THREAD_VISIBLE_PAGE_SIZE = 25;
+
+type Stores = ReturnType<typeof createIdbChatThreadEventStores>;
+type ChatThreadsClient = InitClientReturn<ChatThreadsContract, InitClientArgs>;
+
+interface ChatThreadEventData {
+  readonly snapshot: readonly ChatThreadSnapshotProjection[];
+  readonly events: readonly ChatThreadEvent[];
+}
+
+const optimisticChatThreadEventsState$ = state<readonly ChatThreadEvent[]>([]);
+const chatThreadMaxItemState$ = state(CHAT_THREAD_VISIBLE_PAGE_SIZE);
+
+export const chatThreadMaxItem$ = computed((get) => {
+  return get(chatThreadMaxItemState$);
+});
+
+const chatThreadEventStores$ = computed(async (get): Promise<Stores | null> => {
+  const clerk = await get(clerk$);
+  const userId = clerk.user?.id;
+  const orgId = clerk.organization?.id;
+  if (!userId || !orgId) {
+    return null;
+  }
+
+  return createIdbChatThreadEventStores(userId, orgId);
+});
+
+async function replaceFromRemoteSnapshot(
+  store: Stores["writeStore"],
+  client: ChatThreadsClient,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const result = await accept(
+    client.snapshot({ fetchOptions: { signal } }),
+    [200],
+    { toast: false },
+  );
+  signal?.throwIfAborted();
+  await store.replaceFromSnapshot(result.body, signal);
+  return result.body.latestEventId;
+}
+
+async function syncChatThreadEvents(
+  store: Stores,
+  client: ChatThreadsClient,
+  signal?: AbortSignal,
+): Promise<void> {
+  const existingSnapshot = await store.readStore.readSnapshot(signal);
+  let cursor = await store.readStore.readLatestEventId(signal);
+  if (!existingSnapshot) {
+    cursor = await replaceFromRemoteSnapshot(store.writeStore, client, signal);
+  }
+
+  for (let page = 0; page < 20; page++) {
+    const result = await accept(
+      client.events({
+        query: cursor ? { sinceEventId: cursor } : {},
+        fetchOptions: { signal },
+      }),
+      [200, 410],
+      { toast: false },
+    );
+    signal?.throwIfAborted();
+
+    if (result.status === 410) {
+      L.debug("events cursor expired, reloading snapshot");
+      cursor = await replaceFromRemoteSnapshot(
+        store.writeStore,
+        client,
+        signal,
+      );
+      continue;
+    }
+
+    if (result.body.events.length > 0) {
+      await store.writeStore.upsertEvents(result.body.events, signal);
+      cursor = result.body.events[result.body.events.length - 1]!.id;
+    }
+
+    if (!result.body.hasMore || result.body.events.length === 0) {
+      return;
+    }
+  }
+}
+
+const chatThreadEventData$ = computed(
+  async (get): Promise<ChatThreadEventData> => {
+    get(reloadChatThreadsCounter$);
+    const store = await get(chatThreadEventStores$);
+    if (!store) {
+      return { snapshot: [], events: [] };
+    }
+
+    const client = get(zeroClient$)(chatThreadsContract);
+    await syncChatThreadEvents(store, client);
+
+    const [snapshot, events] = await Promise.all([
+      store.readStore.readSnapshot(),
+      store.readStore.readEvents(),
+    ]);
+    return {
+      snapshot: snapshot?.chatThreads ?? [],
+      events,
+    };
+  },
+);
+
+export const chatThreadsSnapshot$ = computed(async (get) => {
+  return (await get(chatThreadEventData$)).snapshot;
+});
+
+export const allChatThreadsEvents$ = computed(async (get) => {
+  const persisted = (await get(chatThreadEventData$)).events;
+  const optimistic = get(optimisticChatThreadEventsState$);
+  const byId = new Map<string, ChatThreadEvent>();
+  for (const event of optimistic) {
+    byId.set(event.id, event);
+  }
+  for (const event of persisted) {
+    byId.set(event.id, event);
+  }
+  return [...byId.values()].sort((a, b) => {
+    const timeCompare = a.createdAt.localeCompare(b.createdAt);
+    if (timeCompare !== 0) {
+      return timeCompare;
+    }
+    return a.id.localeCompare(b.id);
+  });
+});
+
+export const eventDrivenChatThreads$ = computed(async (get) => {
+  return replayChatThreadEvents(
+    await get(chatThreadsSnapshot$),
+    await get(allChatThreadsEvents$),
+  );
+});
+
+export const registerOptimisticChatThreadEvent$ = command(
+  ({ set }, event: ChatThreadEvent) => {
+    set(optimisticChatThreadEventsState$, (events) => {
+      if (
+        events.some((existing) => {
+          return existing.id === event.id;
+        })
+      ) {
+        return events;
+      }
+      return [...events, event];
+    });
+  },
+);
+
+export const clearOptimisticChatThreadEvents$ = command(
+  ({ set }, eventIds: readonly string[]) => {
+    if (eventIds.length === 0) {
+      return;
+    }
+    const confirmed = new Set(eventIds);
+    set(optimisticChatThreadEventsState$, (events) => {
+      return events.filter((event) => {
+        return !confirmed.has(event.id);
+      });
+    });
+  },
+);
+
+export const loadMoreEventDrivenChatThreads$ = command(({ set }) => {
+  set(chatThreadMaxItemState$, (count) => {
+    return count + CHAT_THREAD_VISIBLE_PAGE_SIZE;
+  });
+});
+
+export const resetEventDrivenChatThreadLimit$ = command(({ set }) => {
+  set(chatThreadMaxItemState$, CHAT_THREAD_VISIBLE_PAGE_SIZE);
+});
