@@ -1,4 +1,12 @@
-//! Logging utilities for VM scripts.
+//! Structured guest logging utilities for VM scripts.
+//!
+//! Logging macros always emit one structured line to stderr. When an embedding
+//! runtime has installed a guest system log with [`set_system_log_file`], the
+//! same line is synchronously appended to that file before the macro returns.
+//! Without a configured system log, logging falls back to stderr-only behavior.
+//!
+//! Embedding runtimes may persist or upload the configured system log; this
+//! module only owns the local logging sinks.
 
 use std::fs::File;
 use std::io::{self, IoSlice, Write};
@@ -136,7 +144,10 @@ pub fn emit(level: &str, tag: &str, args: std::fmt::Arguments<'_>) {
     write_stderr_line(&line);
 }
 
-/// Log an info message to stderr.
+/// Log an info message to stderr and, when configured, the guest system log.
+///
+/// If no guest system log has been installed with
+/// [`crate::log::set_system_log_file`], the message is emitted to stderr only.
 #[macro_export]
 macro_rules! log_info {
     ($tag:expr, $($arg:tt)*) => {
@@ -144,7 +155,10 @@ macro_rules! log_info {
     };
 }
 
-/// Log a warning message to stderr.
+/// Log a warning message to stderr and, when configured, the guest system log.
+///
+/// If no guest system log has been installed with
+/// [`crate::log::set_system_log_file`], the message is emitted to stderr only.
 #[macro_export]
 macro_rules! log_warn {
     ($tag:expr, $($arg:tt)*) => {
@@ -152,7 +166,10 @@ macro_rules! log_warn {
     };
 }
 
-/// Log an error message to stderr.
+/// Log an error message to stderr and, when configured, the guest system log.
+///
+/// If no guest system log has been installed with
+/// [`crate::log::set_system_log_file`], the message is emitted to stderr only.
 #[macro_export]
 macro_rules! log_error {
     ($tag:expr, $($arg:tt)*) => {
