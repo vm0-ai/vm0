@@ -174,6 +174,7 @@ import { checkLimitedFreeRunModelAdmission } from "./zero-run-admission.service"
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
+  type ApiDispatchTimingActionType,
   type ApiDispatchTimingDimensions,
 } from "./api-dispatch-timing.service";
 import {
@@ -218,7 +219,7 @@ const CONNECTOR_VAR_REF_PREFIX = "$vars.";
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
   "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
 const EAGER_STORED_CONNECTOR_SECRET_DECRYPT_CONCURRENCY = 4;
-const STORED_CONNECTOR_COUNT_BUCKET_DIMENSIONS = [
+const COUNT_BUCKET_DIMENSIONS = [
   "0",
   "1",
   "2_4",
@@ -3025,13 +3026,155 @@ type CustomConnectorRuntimeDataRows = Awaited<
   ReturnType<typeof loadCustomConnectorRuntimeData>
 >;
 
+type CustomConnectorRuntimeBuildPhase =
+  | "decryptValues"
+  | "renderAuthTemplates"
+  | "renderPrefixes"
+  | "assembleFirewalls";
+
+const CUSTOM_CONNECTOR_RUNTIME_BUILD_PHASE_TIMINGS = [
+  {
+    phase: "decryptValues",
+    actionType: "api_dispatch_prepare_context_decrypt_custom_connector_values",
+  },
+  {
+    phase: "renderAuthTemplates",
+    actionType:
+      "api_dispatch_prepare_context_render_custom_connector_auth_templates",
+  },
+  {
+    phase: "renderPrefixes",
+    actionType: "api_dispatch_prepare_context_render_custom_connector_prefixes",
+  },
+  {
+    phase: "assembleFirewalls",
+    actionType:
+      "api_dispatch_prepare_context_assemble_custom_connector_firewalls",
+  },
+] as const satisfies readonly {
+  readonly phase: CustomConnectorRuntimeBuildPhase;
+  readonly actionType: ApiDispatchTimingActionType;
+}[];
+
+class CustomConnectorRuntimeBuildStats {
+  private readonly phaseDurationsMs: Record<
+    CustomConnectorRuntimeBuildPhase,
+    number
+  > = {
+    decryptValues: 0,
+    renderAuthTemplates: 0,
+    renderPrefixes: 0,
+    assembleFirewalls: 0,
+  };
+
+  private readonly connectorCount: number;
+  private readonly configuredValueCount: number;
+  private readonly prefixTemplateCount: number;
+  private decryptedValueCount = 0;
+  private renderedApiCount = 0;
+  private missingRequiredCount = 0;
+  private noAuthInjectionCount = 0;
+  private invalidPrefixCount = 0;
+
+  constructor(rows: CustomConnectorRuntimeDataRows) {
+    this.connectorCount = rows.length;
+    this.configuredValueCount = rows.reduce((total, row) => {
+      return total + row.values.length;
+    }, 0);
+    this.prefixTemplateCount = rows.reduce((total, row) => {
+      return total + row.connector.prefixTemplates.length;
+    }, 0);
+  }
+
+  recordPhaseDuration(
+    phase: CustomConnectorRuntimeBuildPhase,
+    startedAt: number,
+    finishedAt: number = now(),
+  ): void {
+    this.phaseDurationsMs[phase] += Math.max(0, finishedAt - startedAt);
+  }
+
+  recordDecryptedValues(count: number): void {
+    this.decryptedValueCount += count;
+  }
+
+  recordRenderedApi(): void {
+    this.renderedApiCount += 1;
+  }
+
+  recordMissingRequiredConnector(): void {
+    this.missingRequiredCount += 1;
+  }
+
+  recordNoAuthInjectionConnector(): void {
+    this.noAuthInjectionCount += 1;
+  }
+
+  recordInvalidPrefix(): void {
+    this.invalidPrefixCount += 1;
+  }
+
+  flush(timing: ApiDispatchTimingCollector | undefined): void {
+    if (!timing) {
+      return;
+    }
+    const dimensions = this.dimensions();
+    const finishedAt = now();
+    for (const {
+      phase,
+      actionType,
+    } of CUSTOM_CONNECTOR_RUNTIME_BUILD_PHASE_TIMINGS) {
+      const durationMs = this.phaseDurationsMs[phase];
+      timing.recordElapsed(
+        actionType,
+        "nested",
+        finishedAt - durationMs,
+        finishedAt,
+        dimensions,
+      );
+    }
+  }
+
+  private dimensions(): ApiDispatchTimingDimensions {
+    return {
+      custom_connector_runtime_connector_count_bucket: countBucket(
+        this.connectorCount,
+      ),
+      custom_connector_runtime_configured_value_count_bucket: countBucket(
+        this.configuredValueCount,
+      ),
+      custom_connector_runtime_decrypted_value_count_bucket: countBucket(
+        this.decryptedValueCount,
+      ),
+      custom_connector_runtime_prefix_template_count_bucket: countBucket(
+        this.prefixTemplateCount,
+      ),
+      custom_connector_runtime_rendered_api_count_bucket: countBucket(
+        this.renderedApiCount,
+      ),
+      custom_connector_runtime_missing_required_count_bucket: countBucket(
+        this.missingRequiredCount,
+      ),
+      custom_connector_runtime_no_auth_injection_count_bucket: countBucket(
+        this.noAuthInjectionCount,
+      ),
+      custom_connector_runtime_invalid_prefix_count_bucket: countBucket(
+        this.invalidPrefixCount,
+      ),
+    };
+  }
+}
+
 async function buildCustomConnectorRuntimeContext(args: {
   readonly rows: CustomConnectorRuntimeDataRows;
   readonly featureSwitchContext: FeatureSwitchContext;
+  readonly timing?: ApiDispatchTimingCollector;
 }): Promise<CustomConnectorRuntimeContext> {
   const firewalls: ExpandedFirewallConfig[] = [];
   const secrets: Record<string, string> = {};
+  const stats = new CustomConnectorRuntimeBuildStats(args.rows);
   for (const row of args.rows) {
+    const missingRequiredStartedAt = now();
     const valueMarkers = new Set(
       row.values.map((value) => {
         return `${value.kind}:${value.key}`;
@@ -3040,14 +3183,20 @@ async function buildCustomConnectorRuntimeContext(args: {
     const missingRequired = row.connector.fields.some((field) => {
       return field.required && !valueMarkers.has(`${field.kind}:${field.key}`);
     });
+    stats.recordPhaseDuration("assembleFirewalls", missingRequiredStartedAt);
     if (missingRequired) {
+      stats.recordMissingRequiredConnector();
       continue;
     }
+    const decryptStartedAt = now();
     const decryptedValues = await decryptCustomConnectorValues({
       values: row.values,
       featureSwitchContext: args.featureSwitchContext,
     });
+    stats.recordPhaseDuration("decryptValues", decryptStartedAt);
+    stats.recordDecryptedValues(row.values.length);
     const apis: ExpandedFirewallConfig["apis"] = [];
+    const authTemplateStartedAt = now();
     const headers = Object.fromEntries(
       row.connector.headerInjections.flatMap((header) => {
         const rendered = renderTemplateForRuntime({
@@ -3070,17 +3219,22 @@ async function buildCustomConnectorRuntimeContext(args: {
         return rendered === null ? [] : [[queryInjection.name, rendered]];
       }),
     );
+    stats.recordPhaseDuration("renderAuthTemplates", authTemplateStartedAt);
     if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {
+      stats.recordNoAuthInjectionConnector();
       continue;
     }
+    const prefixStartedAt = now();
     for (const prefixTemplate of row.connector.prefixTemplates) {
       const renderedPrefix = renderCustomConnectorRuntimePrefix({
         template: prefixTemplate,
         values: decryptedValues,
       });
       if (!renderedPrefix) {
+        stats.recordInvalidPrefix();
         continue;
       }
+      stats.recordRenderedApi();
       apis.push({
         base: renderedPrefix,
         auth: {
@@ -3089,7 +3243,10 @@ async function buildCustomConnectorRuntimeContext(args: {
         },
       });
     }
+    stats.recordPhaseDuration("renderPrefixes", prefixStartedAt);
+    const assemblyStartedAt = now();
     if (apis.length === 0) {
+      stats.recordPhaseDuration("assembleFirewalls", assemblyStartedAt);
       continue;
     }
     firewalls.push({
@@ -3116,9 +3273,14 @@ async function buildCustomConnectorRuntimeContext(args: {
         })
       ] = decryptedValue;
     }
+    stats.recordPhaseDuration("assembleFirewalls", assemblyStartedAt);
   }
 
-  return { firewalls, secrets: compactRecord(secrets) };
+  const finalAssemblyStartedAt = now();
+  const result = { firewalls, secrets: compactRecord(secrets) };
+  stats.recordPhaseDuration("assembleFirewalls", finalAssemblyStartedAt);
+  stats.flush(args.timing);
+  return result;
 }
 
 async function loadCustomConnectorContext(
@@ -3164,6 +3326,7 @@ async function loadCustomConnectorContext(
       return await buildCustomConnectorRuntimeContext({
         rows,
         featureSwitchContext: args.featureSwitchContext,
+        timing,
       });
     },
   );
@@ -4800,9 +4963,7 @@ function billableFirewallsForPermissions(args: {
   return [...modelFirewalls, ...connectorFirewalls];
 }
 
-function countBucket(
-  count: number,
-): (typeof STORED_CONNECTOR_COUNT_BUCKET_DIMENSIONS)[number] {
+function countBucket(count: number): (typeof COUNT_BUCKET_DIMENSIONS)[number] {
   if (count <= 0) {
     return "0";
   }
