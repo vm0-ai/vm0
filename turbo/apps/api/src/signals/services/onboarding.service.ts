@@ -25,7 +25,8 @@ import {
 } from "./connector-availability.service";
 import {
   grantOnboardingCredits,
-  ONBOARDING_CREDITS_NEVER_EXPIRE_AT,
+  LIMITED_FREE_ONBOARDING_CREDITS,
+  onboardingCreditsExpiresAt,
 } from "./onboarding-credit-grants.service";
 import { updateUserConnectors } from "./user-connectors.service";
 import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
@@ -766,8 +767,8 @@ export const completeLimitedFreeOnboarding$ = command(
       await grantOnboardingCredits(
         tx,
         args.orgId,
-        args.credits,
-        new Date(args.expiresAt ?? ONBOARDING_CREDITS_NEVER_EXPIRE_AT),
+        LIMITED_FREE_ONBOARDING_CREDITS,
+        onboardingCreditsExpiresAt(nowDate()),
       );
     });
     signal.throwIfAborted();

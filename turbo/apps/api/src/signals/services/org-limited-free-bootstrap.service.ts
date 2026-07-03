@@ -13,7 +13,7 @@ import { serverSideZeroAgentCompose$ } from "./agent-compose.service";
 import {
   grantOnboardingCredits,
   LIMITED_FREE_ONBOARDING_CREDITS,
-  ONBOARDING_CREDITS_NEVER_EXPIRE_AT,
+  onboardingCreditsExpiresAt,
 } from "./onboarding-credit-grants.service";
 import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
 
@@ -226,7 +226,7 @@ async function finalizeBootstrap(
     tx,
     args.orgId,
     LIMITED_FREE_ONBOARDING_CREDITS,
-    new Date(ONBOARDING_CREDITS_NEVER_EXPIRE_AT),
+    onboardingCreditsExpiresAt(nowDate()),
   );
 
   return { bootstrapped: true, agentId: agentRow.id };

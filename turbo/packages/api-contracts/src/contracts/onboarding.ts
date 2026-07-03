@@ -75,7 +75,7 @@ export const onboardingCompleteLimitedFreeContract = c.router({
     headers: authHeadersSchema,
     body: z
       .object({
-        credits: z.number().int().positive().max(1000).default(1000),
+        credits: z.number().int().positive().max(3000).default(3000),
         expiresAt: z.string().datetime().nullable().default(null),
       })
       .strict(),
