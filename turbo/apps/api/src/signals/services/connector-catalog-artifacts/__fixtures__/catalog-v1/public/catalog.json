@@ -1,0 +1,135 @@
+{
+  "artifactSchemaVersion": 1,
+  "catalogVersion": "fixture-2026-07-03.1",
+  "connectors": [
+    {
+      "connectorRef": "fixture-manual",
+      "label": "Fixture Manual",
+      "description": "Manual fixture connector",
+      "category": "Development",
+      "generation": ["text"],
+      "tags": ["fixture", "manual"],
+      "authMethods": [
+        {
+          "id": "api-token",
+          "label": "API Token",
+          "description": "Connect with an API token.",
+          "grantKind": "manual",
+          "manualFields": [
+            {
+              "id": "apiKey",
+              "label": "API Key",
+              "required": true,
+              "placeholder": "key-...",
+              "inputType": "password"
+            }
+          ],
+          "startOptions": []
+        }
+      ],
+      "permissionSummary": {
+        "hasPermissions": true,
+        "permissionCount": 2,
+        "hasCategories": true,
+        "hasDefaultPolicyOverrides": true
+      }
+    },
+    {
+      "connectorRef": "fixture-oauth",
+      "label": "Fixture OAuth",
+      "description": "OAuth fixture connector",
+      "category": "Development",
+      "generation": ["text"],
+      "tags": ["fixture", "oauth"],
+      "authMethods": [
+        {
+          "id": "oauth",
+          "label": "OAuth",
+          "description": "Connect with OAuth.",
+          "grantKind": "auth-code",
+          "manualFields": [],
+          "startOptions": []
+        }
+      ],
+      "permissionSummary": {
+        "hasPermissions": false,
+        "permissionCount": 0,
+        "hasCategories": false,
+        "hasDefaultPolicyOverrides": false
+      }
+    },
+    {
+      "connectorRef": "fixture-device",
+      "label": "Fixture Device",
+      "description": "Device-auth fixture connector",
+      "category": "Development",
+      "generation": ["text"],
+      "tags": ["fixture", "device"],
+      "authMethods": [
+        {
+          "id": "api",
+          "label": "Device Code",
+          "description": "Connect with a device code.",
+          "grantKind": "device-auth",
+          "manualFields": [],
+          "startOptions": [
+            {
+              "id": "mode",
+              "kind": "select",
+              "label": "Mode",
+              "required": true,
+              "defaultValue": "test",
+              "options": [
+                {
+                  "value": "test",
+                  "label": "Test"
+                },
+                {
+                  "value": "live",
+                  "label": "Live"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "permissionSummary": {
+        "hasPermissions": false,
+        "permissionCount": 0,
+        "hasCategories": false,
+        "hasDefaultPolicyOverrides": false
+      }
+    }
+  ],
+  "permissions": [
+    {
+      "connectorRef": "fixture-manual",
+      "label": "Fixture Manual",
+      "permissionCount": 2,
+      "permissions": [
+        {
+          "name": "files.read",
+          "description": "Read fixture files"
+        },
+        {
+          "name": "files.write",
+          "description": "Write fixture files"
+        }
+      ],
+      "categories": {
+        "categories": {
+          "files.read": "Files",
+          "files.write": "Files"
+        },
+        "displayOrder": ["Files"]
+      },
+      "defaultPolicy": {
+        "permissionDefault": "ask",
+        "permissionOverrides": {
+          "allow": ["files.read"]
+        },
+        "unknownPolicy": "deny"
+      }
+    }
+  ]
+}

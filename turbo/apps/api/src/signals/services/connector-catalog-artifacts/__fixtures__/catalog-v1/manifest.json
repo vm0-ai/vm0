@@ -1,0 +1,22 @@
+{
+  "catalogVersion": "fixture-2026-07-03.1",
+  "artifactSchemaVersion": 1,
+  "requiredCapabilities": [
+    "catalog.public-connectors@1",
+    "catalog.private-field-mapping@1",
+    "grant.manual@1",
+    "grant.auth-code@1",
+    "grant.device-auth@1",
+    "firewall.permission-metadata@1"
+  ],
+  "artifacts": {
+    "public": {
+      "key": "public/catalog.json",
+      "digest": "sha256:1f14f81e4f62679dd5d2c6a86c702a4e86a9deeb8169e92a4e542d1719ccfd35"
+    },
+    "private": {
+      "key": "private/runtime.json",
+      "digest": "sha256:8d4667590c114faa835e516aa6e37ebf26033c4eff3638145e6dd65371295524"
+    }
+  }
+}
