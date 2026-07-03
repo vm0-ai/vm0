@@ -414,6 +414,18 @@ function userMessages(messages: readonly PagedChatMessage[]): UserMessage[] {
   });
 }
 
+function isGoalContinuationUserMessage(
+  message: UserMessage,
+  objectiveBrief: string,
+): boolean {
+  return (
+    message.isGoalRun === true &&
+    message.runId !== undefined &&
+    (message.goalSnapshot?.objectiveBrief === objectiveBrief ||
+      message.content?.includes("# Active thread goal") === true)
+  );
+}
+
 function eventBackedContents(
   messages: readonly PagedChatMessage[],
   runId: string,
@@ -1132,6 +1144,67 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
+  it("continues an active goal with the full objective in the run prompt and the brief in the user message snapshot", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before goal continuation",
+    });
+    const goalBrief = "Keep making autonomous progress";
+    const goalObjective = `${goalBrief}
+
+Detailed goal procedure:
+- Inspect the current external state before deciding completion.
+- Persist progress outside the sandbox.
+- Complete the goal only after auditing every requirement.`;
+    await createGoalForRun(actor, first.runId, goalObjective);
+
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before goal continuation"),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return isGoalContinuationUserMessage(message, goalBrief);
+        });
+      },
+    );
+    const goalContinuation = userMessages(messages.messages).find((message) => {
+      return isGoalContinuationUserMessage(message, goalBrief);
+    });
+    expect(goalContinuation?.goalSnapshot).toStrictEqual({
+      objectiveBrief: goalBrief,
+    });
+    expect(goalContinuation?.content).toContain("# Active thread goal");
+    expect(goalContinuation?.content).toContain(goalObjective);
+
+    if (!goalContinuation?.runId) {
+      throw new Error("Expected goal continuation run id");
+    }
+    const goalContext = await waitForRunContext(actor, goalContinuation.runId);
+    expect(goalContext.body.prompt).toContain("# Active thread goal");
+    expect(goalContext.body.prompt).toContain(goalObjective);
+    expect(goalContext.body.appendSystemPrompt ?? "").not.toContain(
+      "# Active thread goal",
+    );
+
+    await api.requestCancelRun(actor, goalContinuation.runId, [200]);
+    await waitForRunStatus(actor, goalContinuation.runId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
   it("auto-sends a queued user message before continuing an active goal", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
@@ -1142,6 +1215,7 @@ describe("CHAT-02: completed chat callback", () => {
       prompt: "finish before a queued user interruption",
     });
     const goalObjective = "keep making autonomous progress";
+    const goalBrief = goalObjective;
     await createGoalForRun(actor, first.runId, goalObjective);
     await queueChatMessage(actor, {
       agentId,
@@ -1193,7 +1267,7 @@ describe("CHAT-02: completed chat callback", () => {
     const prematureGoalContinuation = userMessages(
       beforeAutoSend.messages,
     ).find((message) => {
-      return message.content === goalObjective && message.runId !== undefined;
+      return isGoalContinuationUserMessage(message, goalBrief);
     });
 
     outputQueryGate.release();
@@ -1234,7 +1308,7 @@ describe("CHAT-02: completed chat callback", () => {
 
     const goalContinuation = userMessages(afterAutoSend.messages).find(
       (message) => {
-        return message.content === goalObjective && message.runId !== undefined;
+        return isGoalContinuationUserMessage(message, goalBrief);
       },
     );
     expect(goalContinuation?.runId).toBeUndefined();

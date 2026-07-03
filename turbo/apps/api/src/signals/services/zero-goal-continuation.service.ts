@@ -118,7 +118,7 @@ function failureMessage(error: RunGoalResult): string {
   return `Unexpected successful run result: ${error.runId}`;
 }
 
-function buildGoalContinuationSystemPrompt(goal: {
+function buildGoalContinuationPrompt(goal: {
   readonly objective: string;
   readonly objectiveBrief: string;
 }): string {
@@ -147,12 +147,6 @@ function buildGoalContinuationSystemPrompt(goal: {
     "- Do not stop to ask the user and wait; act on the best available information.",
   );
   return lines.join("\n");
-}
-
-function buildGoalContinuationPrompt(goal: {
-  readonly objectiveBrief: string;
-}): string {
-  return goal.objectiveBrief;
 }
 
 async function loadTerminatingRun(
@@ -346,7 +340,6 @@ const runGoalNow$ = command(
         modelProviderCredentialScope:
           modelPin.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: modelPin.selectedModel ?? undefined,
-        appendSystemPrompt: buildGoalContinuationSystemPrompt(goal),
         callbacks: buildGoalChatCallbacks({
           threadId: goal.threadId,
           agentId: goal.agentId,
@@ -370,6 +363,7 @@ const runGoalNow$ = command(
       prompt,
       appendQueueMarker: result.body.status === "queued",
       runGroupId: goal.goalId,
+      goalSnapshot: { objectiveBrief: goal.objectiveBrief },
     });
     signal.throwIfAborted();
 

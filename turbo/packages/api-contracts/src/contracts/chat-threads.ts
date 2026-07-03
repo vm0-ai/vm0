@@ -270,6 +270,11 @@ const pagedChatMessageBaseSchema = z.object({
   isGoalRun: z.boolean().optional(),
   runEventId: z.string().optional(),
   goalEvent: zeroGoalEventSchema.optional(),
+  goalSnapshot: z
+    .object({
+      objectiveBrief: z.string().min(1),
+    })
+    .optional(),
   usage: chatMessageUsagePayloadSchema.optional(),
   revokesMessageId: z.string().optional(),
   interruptsRunId: z.string().optional(),

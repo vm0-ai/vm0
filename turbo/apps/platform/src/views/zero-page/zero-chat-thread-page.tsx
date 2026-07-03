@@ -4060,8 +4060,16 @@ function runGroupFoldWorkflowLabel(fold: RunGroupFold): string | null {
 
 function runGroupFoldGoalLabel(fold: RunGroupFold): string {
   const goalMessage = runGroupFoldMessages(fold).find(isGoalUserMessage);
-  const content = goalMessage?.content?.trim();
+  const content = goalMessage ? goalUserMessageBrief(goalMessage) : null;
   return content ? normalizedInlineLabel(content) : "goal";
+}
+
+function goalUserMessageBrief(message: EnrichedChatMessage): string | null {
+  return (
+    message.goalSnapshot?.objectiveBrief?.trim() ||
+    message.content?.trim() ||
+    null
+  );
 }
 
 function isGoalUserMessage(
@@ -4072,7 +4080,7 @@ function isGoalUserMessage(
     message.isGoalRun === true &&
     !hasAutomationMessageMetadata(message) &&
     !hasWorkflowMessageMetadata(message) &&
-    (message.content?.trim().length ?? 0) > 0
+    goalUserMessageBrief(message) !== null
   );
 }
 
@@ -7223,12 +7231,15 @@ function WorkflowUserMessage({
 }
 
 function GoalUserMessage({
+  message,
   bodyBlocks,
   openLightbox,
 }: {
+  message: EnrichedChatMessage & { role: "user" };
   bodyBlocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
 }) {
+  const objectiveBrief = message.goalSnapshot?.objectiveBrief?.trim();
   return (
     <div data-role="user" className="group">
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
@@ -7241,7 +7252,13 @@ function GoalUserMessage({
             <IconTarget size={15} stroke={1.8} className="shrink-0" />
             <span>Goal</span>
           </div>
-          {bodyBlocks.length > 0 ? (
+          {objectiveBrief ? (
+            <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden ring-1 ring-emerald-900/10">
+              <div className="px-4 py-3 whitespace-pre-wrap">
+                {objectiveBrief}
+              </div>
+            </div>
+          ) : bodyBlocks.length > 0 ? (
             <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden ring-1 ring-emerald-900/10">
               <div className="px-4 py-3">
                 <BodyContentBlocks
@@ -7327,7 +7344,11 @@ function PagedUserMessage({
 
   if (isGoalUserMessage(message)) {
     return (
-      <GoalUserMessage bodyBlocks={bodyBlocks} openLightbox={openLightbox} />
+      <GoalUserMessage
+        message={message}
+        bodyBlocks={bodyBlocks}
+        openLightbox={openLightbox}
+      />
     );
   }
 

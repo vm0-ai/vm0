@@ -3732,6 +3732,13 @@
       "when": 1783051940722,
       "tag": "0532_automation_migrated_to_workflow",
       "breakpoints": true
+    },
+    {
+      "idx": 533,
+      "version": "7",
+      "when": 1783055397466,
+      "tag": "0533_goal_run_snapshot",
+      "breakpoints": true
     }
   ]
 }
