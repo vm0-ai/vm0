@@ -251,6 +251,31 @@ function runnerHeartbeatBody(
 }
 
 export function createRunsAutomationsApi(context: TestContext) {
+  const applyUserPermissionGrantRequestBody = (
+    body: {
+      readonly agentId: string;
+      readonly connectorRef: string;
+    } & ApplyUserPermissionGrant,
+  ) => {
+    return {
+      agentId: body.agentId,
+      connectorRef: body.connectorRef,
+      mode: "patch" as const,
+      grants: [
+        body.action === "allow"
+          ? {
+              permission: body.permission,
+              action: "allow" as const,
+              ...(body.expiresIn ? { expiresIn: body.expiresIn } : {}),
+            }
+          : {
+              permission: body.permission,
+              action: "deny" as const,
+            },
+      ],
+    };
+  };
+
   return {
     configureRunnerGroup(): string {
       const group = `vm0/bdd-${randomUUID().slice(0, 8)}`;
@@ -546,23 +571,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       const response = await accept(
         runsAutomationApp(context)(zeroUserPermissionGrantsContract).apply({
           headers: authenticate(context, actor),
-          body: {
-            agentId: body.agentId,
-            connectorRef: body.connectorRef,
-            mode: "patch",
-            grants: [
-              body.action === "allow"
-                ? {
-                    permission: body.permission,
-                    action: "allow",
-                    ...(body.expiresIn ? { expiresIn: body.expiresIn } : {}),
-                  }
-                : {
-                    permission: body.permission,
-                    action: "deny",
-                  },
-            ],
-          },
+          body: applyUserPermissionGrantRequestBody(body),
         }),
         [200],
       );
@@ -571,6 +580,21 @@ export function createRunsAutomationsApi(context: TestContext) {
         throw new Error("User permission grant apply did not return a grant");
       }
       return grant;
+    },
+
+    async requestUserPermissionGrant(
+      actor: ApiTestUser,
+      body: {
+        readonly agentId: string;
+        readonly connectorRef: string;
+      } & ApplyUserPermissionGrant,
+    ) {
+      return await runsAutomationApp(context)(
+        zeroUserPermissionGrantsContract,
+      ).apply({
+        headers: authenticate(context, actor),
+        body: applyUserPermissionGrantRequestBody(body),
+      });
     },
 
     async listUserPermissionGrants(

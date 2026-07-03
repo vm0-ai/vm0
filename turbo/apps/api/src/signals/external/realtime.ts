@@ -239,26 +239,12 @@ export async function publishConnectorPolicyRefreshToRunnerGroup(
   group: string,
   runId: string,
   connectorRef: string,
-): Promise<boolean> {
-  const result = await settle(
-    (async () => {
-      const channel = ablyClient().channels.get(`runner-group:${group}`);
-      await channel.publish("permission-refresh", { runId, connectorRef });
-      L.debug(
-        `Published connector policy refresh ${runId}/${connectorRef} to runner-group:${group}`,
-      );
-    })(),
+): Promise<void> {
+  const channel = ablyClient().channels.get(`runner-group:${group}`);
+  await channel.publish("permission-refresh", { runId, connectorRef });
+  L.debug(
+    `Published connector policy refresh ${runId}/${connectorRef} to runner-group:${group}`,
   );
-  if (result.ok) {
-    return true;
-  }
-  L.warn("Failed to publish connector policy refresh", {
-    group,
-    runId,
-    connectorRef,
-    error: result.error,
-  });
-  return false;
 }
 
 export async function publishRunnerJobNotification(

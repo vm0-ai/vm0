@@ -4534,6 +4534,20 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(refreshedPolicy.networkPolicy.allow).toContain("files:write");
     expect(refreshedPolicy.nextRefreshAt).toStrictEqual(expect.any(String));
 
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("permission refresh publish failed"),
+    );
+    const failedRefreshNotification = await api.requestUserPermissionGrant(
+      actor,
+      {
+        agentId,
+        connectorRef: "slack",
+        permission: "files:write",
+        action: "deny",
+      },
+    );
+    expect(failedRefreshNotification.status as number).toBe(500);
+
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
