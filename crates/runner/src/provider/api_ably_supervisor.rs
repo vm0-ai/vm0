@@ -525,6 +525,7 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                             &config.direct_candidates,
                             &config.cancel_tokens,
                             Some(&config.connector_policy_refresh),
+                            Some(&config.shutdown),
                         )
                         .await;
                     }
@@ -605,6 +606,7 @@ async fn handle_ably_message(
         direct_candidates,
         cancel_tokens,
         None,
+        None,
     )
     .await;
 }
@@ -616,6 +618,7 @@ async fn handle_ably_message_with_connector_policy_refresh(
     direct_candidates: &DirectCandidateInbox,
     cancel_tokens: &Mutex<HashMap<RunId, RunCancellationHandle>>,
     connector_policy_refresh: Option<&ConnectorPolicyRefreshHandle>,
+    connector_policy_refresh_cancel: Option<&CancellationToken>,
 ) {
     if let Some(run_id) = parse_cancel_notification(msg) {
         let handle = cancel_tokens.lock().await.get(&run_id).cloned();
@@ -630,9 +633,19 @@ async fn handle_ably_message_with_connector_policy_refresh(
         let Some(connector_policy_refresh) = connector_policy_refresh else {
             return;
         };
-        connector_policy_refresh
-            .notify_permission_refresh(notification.run_id, notification.connector_ref)
-            .await;
+        if let Some(cancel) = connector_policy_refresh_cancel {
+            connector_policy_refresh
+                .notify_permission_refresh_until_cancelled(
+                    notification.run_id,
+                    notification.connector_ref,
+                    cancel,
+                )
+                .await;
+        } else {
+            connector_policy_refresh
+                .notify_permission_refresh(notification.run_id, notification.connector_ref)
+                .await;
+        }
         return;
     }
 

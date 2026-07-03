@@ -120,6 +120,17 @@ impl ConnectorPolicyRefreshHandle {
             .notify_permission_refresh(run_id, connector_ref)
             .await;
     }
+
+    pub(crate) async fn notify_permission_refresh_until_cancelled(
+        &self,
+        run_id: RunId,
+        connector_ref: String,
+        cancel: &CancellationToken,
+    ) {
+        self.core
+            .notify_permission_refresh_until_cancelled(run_id, connector_ref, cancel)
+            .await;
+    }
 }
 
 impl ConnectorPolicyRefreshCore {
@@ -201,15 +212,39 @@ impl ConnectorPolicyRefreshCore {
     }
 
     async fn notify_permission_refresh(&self, run_id: RunId, connector_ref: String) {
+        self.notify_permission_refresh_inner(run_id, connector_ref, None)
+            .await;
+    }
+
+    async fn notify_permission_refresh_until_cancelled(
+        &self,
+        run_id: RunId,
+        connector_ref: String,
+        cancel: &CancellationToken,
+    ) {
+        self.notify_permission_refresh_inner(run_id, connector_ref, Some(cancel))
+            .await;
+    }
+
+    async fn notify_permission_refresh_inner(
+        &self,
+        run_id: RunId,
+        connector_ref: String,
+        cancel: Option<&CancellationToken>,
+    ) {
         if !self.has_active_connector(run_id, &connector_ref).await {
             return;
         }
-        self.enqueue_refresh(RefreshRequest {
+        let request = RefreshRequest {
             run_id,
             connector_ref,
             trigger: RefreshTrigger::Notification,
-        })
-        .await;
+        };
+        if let Some(cancel) = cancel {
+            self.enqueue_refresh_until_cancelled(request, cancel).await;
+        } else {
+            self.enqueue_refresh(request).await;
+        }
     }
 
     async fn has_active_connector(&self, run_id: RunId, connector_ref: &str) -> bool {
@@ -227,6 +262,22 @@ impl ConnectorPolicyRefreshCore {
                 }
             }
             () = self.inner.cancel.cancelled() => {}
+        }
+    }
+
+    async fn enqueue_refresh_until_cancelled(
+        &self,
+        request: RefreshRequest,
+        cancel: &CancellationToken,
+    ) {
+        tokio::select! {
+            result = self.request_tx.send(request) => {
+                if let Err(error) = result {
+                    warn!(error = %error, "connector policy refresh queue closed");
+                }
+            }
+            () = self.inner.cancel.cancelled() => {}
+            () = cancel.cancelled() => {}
         }
     }
 
@@ -719,6 +770,52 @@ mod tests {
         assert_eq!(request.run_id, run_id);
         assert_eq!(request.connector_ref, "slack");
         assert!(matches!(request.trigger, RefreshTrigger::Notification));
+    }
+
+    #[tokio::test]
+    async fn cancelled_permission_notification_does_not_wait_for_queue_capacity() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let registry = ProxyRegistryHandle::new(
+            dir.path().join("proxy-registry.json"),
+            dir.path().join("proxy-registry.lock"),
+        );
+        core.inner.active_runs.lock().await.insert(
+            run_id,
+            ActiveRunPolicyState {
+                source_ip: "10.200.0.2".to_string(),
+                registry,
+                connector_refs: HashSet::from(["slack".to_string()]),
+                cancel: CancellationToken::new(),
+                refresh_tasks: HashMap::new(),
+            },
+        );
+        for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
+            core.request_tx
+                .try_send(RefreshRequest {
+                    run_id,
+                    connector_ref: "slack".to_string(),
+                    trigger: RefreshTrigger::Scheduled,
+                })
+                .expect("refresh queue should accept request");
+        }
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            core.notify_permission_refresh_until_cancelled(run_id, "slack".to_string(), &cancel),
+        )
+        .await
+        .expect("cancelled notification should not wait for queue capacity");
+
+        let mut queued = 0;
+        while requests.try_recv().is_ok() {
+            queued += 1;
+        }
+        assert_eq!(queued, REFRESH_REQUEST_QUEUE_CAPACITY);
     }
 
     #[tokio::test]
