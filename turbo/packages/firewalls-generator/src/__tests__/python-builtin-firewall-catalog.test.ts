@@ -412,12 +412,62 @@ describe("Python builtin firewall catalog renderer", () => {
           },
         ],
       }),
+      connectorEntry({
+        name: "duplicate-only",
+        apis: [
+          {
+            base: "https://duplicate.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.DUPLICATE_ONE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "duplicate-one:read",
+                rules: ["GET /one/{id}"],
+              },
+            ],
+          },
+          {
+            base: "https://duplicate.example.com/api/",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.DUPLICATE_TWO_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "duplicate-two:read",
+                rules: ["GET /two/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
     ]);
     const diagnostics = findGeneratedFile(files, "diagnostics.py");
 
     expect(
       jsonAssignmentFromModule(diagnostics, "CONNECTOR_DIAGNOSTIC_FIREWALLS"),
     ).toStrictEqual([
+      {
+        name: "duplicate-only",
+        apis: [
+          {
+            base: "https://duplicate.example.com/api",
+            envNames: ["DUPLICATE_ONE_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+          {
+            base: "https://duplicate.example.com/api/",
+            envNames: ["DUPLICATE_TWO_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
       {
         name: "shared-one",
         apis: [

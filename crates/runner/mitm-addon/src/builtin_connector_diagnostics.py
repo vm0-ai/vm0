@@ -36,7 +36,6 @@ class SharedBaseOwnershipResolution:
 
 @dataclass(frozen=True)
 class _DiagnosticConnectorMatcher:
-    name: str
     base_hosts: frozenset[str]
     compiled_firewalls: matching.CompiledFirewallSet | None
     compiled_network_policies: matching.CompiledNetworkPolicies | None
@@ -262,12 +261,8 @@ def _diagnostic_catalog() -> _DiagnosticCatalog:
             connector_firewalls.append(diagnostic_firewall)
         route_aware_firewall = _route_aware_diagnostic_firewall_from_manifest(firewall)
         if route_aware_firewall is not None:
-            matcher_name = route_aware_firewall.get("name")
-            if not isinstance(matcher_name, str):
-                continue
             connector_matchers.append(
                 _DiagnosticConnectorMatcher(
-                    name=matcher_name,
                     base_hosts=_firewall_base_hosts(route_aware_firewall),
                     compiled_firewalls=matching.compile_firewalls([route_aware_firewall]),
                     compiled_network_policies=matching.compile_network_policies(

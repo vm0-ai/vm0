@@ -263,7 +263,7 @@ function diagnosticStaticBaseKey(base: string): string | null {
 function connectorDiagnosticSharedBaseKeys(
   entries: readonly PythonBuiltinFirewallCatalogEntry[],
 ): ReadonlySet<string> {
-  const counts = new Map<string, number>();
+  const connectorNamesByBase = new Map<string, Set<string>>();
   for (const entry of entries) {
     if (entry.diagnosticKind !== "connector") {
       continue;
@@ -276,14 +276,17 @@ function connectorDiagnosticSharedBaseKeys(
       ) {
         continue;
       }
-      counts.set(baseKey, (counts.get(baseKey) ?? 0) + 1);
+      const connectorNames =
+        connectorNamesByBase.get(baseKey) ?? new Set<string>();
+      connectorNames.add(entry.firewall.name);
+      connectorNamesByBase.set(baseKey, connectorNames);
     }
   }
 
   return new Set(
-    [...counts.entries()]
-      .filter(([, count]) => {
-        return count > 1;
+    [...connectorNamesByBase.entries()]
+      .filter(([, connectorNames]) => {
+        return connectorNames.size > 1;
       })
       .map(([base]) => {
         return base;
