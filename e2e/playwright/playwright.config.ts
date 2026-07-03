@@ -12,7 +12,6 @@ if (!apiUrl) {
 type PublicService = "api" | "app" | "www";
 
 const SERVICE_LABELS = ["api", "app", "www"] as const;
-const ONBOARDING_PATH = "/onboarding/491858";
 
 export function deriveServiceOrigin(
   sourceUrl: string,
@@ -43,12 +42,6 @@ export function deriveServiceOrigin(
 
 export function deriveAppUrl(sourceUrl: string): string {
   return process.env.VM0_APP_URL ?? deriveServiceOrigin(sourceUrl, "app");
-}
-
-export function deriveOnboardingUrl(sourceUrl: string): string {
-  const onboardingOrigin =
-    process.env.VM0_ONBOARDING_URL ?? deriveServiceOrigin(sourceUrl, "www");
-  return new URL(ONBOARDING_PATH, onboardingOrigin).toString();
 }
 
 export const STORAGE_STATE = path.join(__dirname, ".auth/storage-state.json");
