@@ -215,7 +215,7 @@ function ConnectorPopoverList({
               <ConnectorPillMarker dotClassName={triggerDotClass(entry)} />
               {triggerTypeLabel(entry.trigger)}
             </span>
-            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            <span className="min-w-0 flex-1 break-words text-xs text-muted-foreground">
               {humanReadableTriggerRuleLabel(entry.trigger, displayTimezone)}
             </span>
             <WorkflowTriggerEnabledSwitch entry={entry} size="sm" />
