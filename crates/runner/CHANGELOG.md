@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.132.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.0...runner-rs-v0.132.1) (2026-07-03)
+
+
+### Performance Improvements
+
+* add session history telemetry buckets ([#19953](https://github.com/vm0-ai/vm0/issues/19953)) ([27309a2](https://github.com/vm0-ai/vm0/commit/27309a250f9374e3e8a1d46fa4476d57b248522d))
+
 ## [0.132.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.20...runner-rs-v0.132.0) (2026-07-03)
 
 

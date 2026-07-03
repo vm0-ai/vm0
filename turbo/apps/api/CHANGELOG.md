@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.212.0](https://github.com/vm0-ai/vm0/compare/api-v1.211.0...api-v1.212.0) (2026-07-03)
+
+
+### Features
+
+* expose build commit sha ([#19954](https://github.com/vm0-ai/vm0/issues/19954)) ([50733bd](https://github.com/vm0-ai/vm0/commit/50733bd6e0ed5e57dd476f5139072b18d56018fb))
+* show workflow owner Clerk avatar and widen hover card row spacing ([#19960](https://github.com/vm0-ai/vm0/issues/19960)) ([9ee4853](https://github.com/vm0-ai/vm0/commit/9ee48530988d3e8fa4c2a4637b930ca191f48031))
+
+
+### Bug Fixes
+
+* prevent goal continuation from preempting queued chat ([#19950](https://github.com/vm0-ai/vm0/issues/19950)) ([2af12c7](https://github.com/vm0-ai/vm0/commit/2af12c7a28e815cd53f120384859b8a4e16cceb0))
+
+
+### Refactoring
+
+* remove computer use delegated authorization switch ([#19971](https://github.com/vm0-ai/vm0/issues/19971)) ([682219b](https://github.com/vm0-ai/vm0/commit/682219bb52c9519cf96d6cfe39e50385718dad71))
+* retire PresentationTemplateRunbook feature switch, make runbook flow the default ([#19965](https://github.com/vm0-ai/vm0/issues/19965)) ([47bc92d](https://github.com/vm0-ai/vm0/commit/47bc92da3ffbcabd103ef91dd87739be813c4989))
+
+
+### Performance Improvements
+
+* add session history telemetry buckets ([#19953](https://github.com/vm0-ai/vm0/issues/19953)) ([27309a2](https://github.com/vm0-ai/vm0/commit/27309a250f9374e3e8a1d46fa4476d57b248522d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.147.0
+    * @vm0/connectors bumped to 1.131.1
+    * @vm0/core bumped to 8.391.3
+    * @vm0/db bumped to 1.86.1
+
 ## [1.211.0](https://github.com/vm0-ai/vm0/compare/api-v1.210.1...api-v1.211.0) (2026-07-03)
 
 
