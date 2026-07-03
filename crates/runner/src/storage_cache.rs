@@ -1009,22 +1009,49 @@ async fn process_one_hit_or_passthrough(
     let lock_path = home.storage_lock(&target.name, &target.version);
     let cache_dir = home.storage_cache_dir(&target.name, &target.version);
     let archive_path = cache_dir.join("archive.tar.gz");
-    let started_at = Instant::now();
-    let reader_result = lock::try_acquire_shared_or_busy(lock_path).await;
-    let success = reader_result.is_ok();
-    metrics.record(
-        STORAGE_CACHE_LOCK_WAIT,
-        started_at.elapsed(),
-        success,
-        (!success).then_some(STORAGE_CACHE_LOCK_WAIT_FAILED),
-    );
-    let reader = match reader_result? {
-        lock::TryLock::Acquired(lock) => lock,
-        lock::TryLock::Busy => {
-            return Ok(ProcessedTarget {
-                outcome: TargetOutcome::LockBusyPassthrough,
-                stage_write: None,
-            });
+    let reader = if cached_archive_exists(&archive_path).await? {
+        let started_at = Instant::now();
+        let reader_result = lock::try_acquire_shared_or_busy(lock_path).await;
+        let success = reader_result.is_ok();
+        metrics.record(
+            STORAGE_CACHE_LOCK_WAIT,
+            started_at.elapsed(),
+            success,
+            (!success).then_some(STORAGE_CACHE_LOCK_WAIT_FAILED),
+        );
+        match reader_result? {
+            lock::TryLock::Acquired(lock) => lock,
+            lock::TryLock::Busy => {
+                return Ok(ProcessedTarget {
+                    outcome: TargetOutcome::LockBusyPassthrough,
+                    stage_write: None,
+                });
+            }
+        }
+    } else {
+        let started_at = Instant::now();
+        let reader_result = lock::try_acquire_existing_shared_or_missing(lock_path).await;
+        let success = reader_result.is_ok();
+        metrics.record(
+            STORAGE_CACHE_LOCK_WAIT,
+            started_at.elapsed(),
+            success,
+            (!success).then_some(STORAGE_CACHE_LOCK_WAIT_FAILED),
+        );
+        match reader_result? {
+            lock::ExistingTryLock::Acquired(lock) => lock,
+            lock::ExistingTryLock::Busy => {
+                return Ok(ProcessedTarget {
+                    outcome: TargetOutcome::LockBusyPassthrough,
+                    stage_write: None,
+                });
+            }
+            lock::ExistingTryLock::Missing => {
+                return Ok(ProcessedTarget {
+                    outcome: TargetOutcome::MissPassthrough { reason: "missing" },
+                    stage_write: None,
+                });
+            }
         }
     };
 
@@ -1051,6 +1078,17 @@ async fn process_one_hit_or_passthrough(
             },
             stage_write: None,
         }),
+    }
+}
+
+async fn cached_archive_exists(archive_path: &Path) -> RunnerResult<bool> {
+    match fs::metadata(archive_path).await {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(RunnerError::Internal(format!(
+            "stat cached {}: {e}",
+            archive_path.display()
+        ))),
     }
 }
 
@@ -2486,6 +2524,7 @@ mod tests {
         server_task.abort();
         let _ = server_task.await;
         assert!(!home.storage_cache_dir(name, version).exists());
+        assert!(!home.storage_lock(name, version).exists());
         assert!(sandbox.write_file_calls().is_empty());
         assert!(sandbox.write_files_calls().is_empty());
         let ops = telemetry.pending_ops_snapshot();
@@ -2634,6 +2673,7 @@ mod tests {
             Some(original.as_str())
         );
         assert!(!home.storage_cache_dir(name, version).exists());
+        assert!(!home.storage_lock(name, version).exists());
         let ops = telemetry.pending_ops_snapshot();
         assert_op(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, true);
         assert_no_op(&ops, "storage_cache_miss");

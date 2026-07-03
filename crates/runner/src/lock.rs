@@ -1,4 +1,5 @@
 use std::fs::File;
+use std::io;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
@@ -72,6 +73,12 @@ pub(crate) enum TryLock {
     Busy,
 }
 
+pub(crate) enum ExistingTryLock {
+    Acquired(Flock<File>),
+    Busy,
+    Missing,
+}
+
 enum LockAcquire {
     Acquired(Flock<File>),
     Busy,
@@ -109,6 +116,56 @@ fn acquire_result_blocking(
         "lock {} was repeatedly replaced while acquiring",
         path.display()
     )))
+}
+
+fn acquire_existing_result_blocking(
+    path: &Path,
+    mode: LockMode,
+) -> RunnerResult<Option<LockAcquire>> {
+    for _ in 0..LOCK_REPLACED_MAX_RETRIES {
+        let file = match open_existing_lock_file(path)? {
+            Some(file) => file,
+            None => return Ok(None),
+        };
+        let lock = match Flock::lock(file, mode.arg()) {
+            Ok(lock) => lock,
+            Err((_file, e))
+                if matches!(mode, LockMode::TryExclusive | LockMode::TryShared)
+                    && e == nix::errno::Errno::EWOULDBLOCK =>
+            {
+                return Ok(Some(LockAcquire::Busy));
+            }
+            Err((_file, e)) => return Err(mode.map_error(path, e)),
+        };
+        if is_current_inode(&lock, path) {
+            return Ok(Some(LockAcquire::Acquired(lock)));
+        }
+    }
+    Err(RunnerError::Internal(format!(
+        "lock {} was repeatedly replaced while acquiring",
+        path.display()
+    )))
+}
+
+fn open_existing_lock_file(path: &Path) -> RunnerResult<Option<File>> {
+    let file = match File::options()
+        .read(true)
+        .write(true)
+        .custom_flags(host_file::private_file_open_flags())
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "open lock {}: {e}",
+                path.display()
+            )));
+        }
+    };
+    host_file::secure_regular_private_file(&file, path, "lock file")
+        .map_err(|e| RunnerError::Internal(format!("validate lock {}: {e}", path.display())))?;
+    Ok(Some(file))
 }
 
 async fn acquire_with(path: PathBuf, mode: LockMode) -> RunnerResult<Flock<File>> {
@@ -151,6 +208,21 @@ pub async fn try_acquire_shared_or_busy(path: PathBuf) -> RunnerResult<TryLock> 
     match acquire_result_with(path, LockMode::TryShared).await? {
         LockAcquire::Acquired(lock) => Ok(TryLock::Acquired(lock)),
         LockAcquire::Busy => Ok(TryLock::Busy),
+    }
+}
+
+pub async fn try_acquire_existing_shared_or_missing(
+    path: PathBuf,
+) -> RunnerResult<ExistingTryLock> {
+    match tokio::task::spawn_blocking(move || {
+        acquire_existing_result_blocking(&path, LockMode::TryShared)
+    })
+    .await
+    .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))??
+    {
+        Some(LockAcquire::Acquired(lock)) => Ok(ExistingTryLock::Acquired(lock)),
+        Some(LockAcquire::Busy) => Ok(ExistingTryLock::Busy),
+        None => Ok(ExistingTryLock::Missing),
     }
 }
 
@@ -420,6 +492,41 @@ mod tests {
         let result = try_acquire_shared_or_busy(path).await.unwrap();
 
         assert!(matches!(result, TryLock::Busy));
+    }
+
+    #[tokio::test]
+    async fn try_acquire_existing_shared_or_missing_does_not_create_missing_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing.lock");
+
+        let result = try_acquire_existing_shared_or_missing(path.clone())
+            .await
+            .unwrap();
+
+        assert!(matches!(result, ExistingTryLock::Missing));
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn try_acquire_existing_shared_or_missing_succeeds_with_existing_shared_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        let _guard = acquire_shared(path.clone()).await.unwrap();
+
+        let result = try_acquire_existing_shared_or_missing(path).await.unwrap();
+
+        assert!(matches!(result, ExistingTryLock::Acquired(_)));
+    }
+
+    #[tokio::test]
+    async fn try_acquire_existing_shared_or_missing_reports_busy_when_exclusive_lock_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        let _guard = acquire(path.clone()).await.unwrap();
+
+        let result = try_acquire_existing_shared_or_missing(path).await.unwrap();
+
+        assert!(matches!(result, ExistingTryLock::Busy));
     }
 
     #[tokio::test]
