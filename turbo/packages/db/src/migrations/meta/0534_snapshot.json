@@ -1,6 +1,6 @@
 {
-  "id": "6bae22c8-4d91-4b0a-ae50-b3f97f2b89ba",
-  "prevId": "827428cf-edb4-4774-9eeb-f085fb29db9c",
+  "id": "308dc8e8-2b7f-4c90-8a76-8798f75b7811",
+  "prevId": "6bae22c8-4d91-4b0a-ae50-b3f97f2b89ba",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2983,6 +2983,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "goal_snapshot": {
+          "name": "goal_snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "attach_files": {
           "name": "attach_files",
           "type": "jsonb",
@@ -3013,12 +3019,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "goal_snapshot": {
-          "name": "goal_snapshot",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -3552,6 +3552,12 @@
         "selected_model": {
           "name": "selected_model",
           "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "codex_service_tier": {
+          "name": "codex_service_tier",
+          "type": "varchar(20)",
           "primaryKey": false,
           "notNull": false
         },

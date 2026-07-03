@@ -112,6 +112,10 @@ export type ChatMessageGoalEvent =
     }
   | { readonly type: "cleared" };
 
+export interface ChatMessageGoalSnapshot {
+  readonly objectiveBrief: string;
+}
+
 /**
  * Chat Messages table
  * Each row is a single message belonging to a chat_thread.
@@ -187,6 +191,7 @@ export const chatMessages = pgTable(
     sequenceNumber: integer("sequence_number"),
     runEventId: text("run_event_id"), // Anthropic message ID from event.message.id (e.g. "msg_01abc...")
     goalEvent: jsonb("goal_event").$type<ChatMessageGoalEvent>(),
+    goalSnapshot: jsonb("goal_snapshot").$type<ChatMessageGoalSnapshot>(),
     attachFiles: jsonb("attach_files").$type<ChatMessageAttachFiles>(),
     attachFileMetadata: jsonb(
       "attach_file_metadata",

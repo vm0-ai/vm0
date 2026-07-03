@@ -100,6 +100,8 @@ use orphan_reap::{
 };
 use signals::{EarlySignals, SignalController, handle_stopping_signal, recv_handler_task};
 
+const READY_DIRECT_CANDIDATE_DRAIN_LIMIT: usize = 8;
+
 struct TeardownTimer {
     start: Instant,
 }
@@ -1402,6 +1404,48 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         "session affinity state triggered immediate heartbeat"
                     );
                     send_heartbeat(&hb_ctx, live_mode).await;
+                }
+                let mut drained_ready_candidates = 0;
+                while drained_ready_candidates < READY_DIRECT_CANDIDATE_DRAIN_LIMIT {
+                    let live_mode = *mode_rx.borrow();
+                    if !matches!(live_mode, RunnerMode::Running) {
+                        break;
+                    }
+                    if !capacity
+                        .budget
+                        .can_afford(capacity.min_vcpu, capacity.min_memory_mb)
+                    {
+                        break;
+                    }
+                    let Some(candidate) = provider_state.provider.try_discover_ready().await else {
+                        break;
+                    };
+                    drained_ready_candidates += 1;
+                    let needs_session_affinity_refresh = handle_discovered_job(
+                        DiscoveredJob { candidate },
+                        DiscoveredJobContext {
+                            profiles: &runner.profiles,
+                            factories: &factories,
+                            budget: &capacity.budget,
+                            idle_pool: &shared.idle_pool,
+                            status: &shared.status,
+                            mode_rx: &mode_rx,
+                            cancel_tokens: &provider_state.cancel_tokens,
+                            spawn_ctx: &spawn_ctx,
+                            destroy_tasks: &mut destroy_tasks,
+                            jobs: &mut jobs,
+                        },
+                    ).await;
+                    let live_mode = *mode_rx.borrow();
+                    if needs_session_affinity_refresh
+                        && matches!(live_mode, RunnerMode::Running | RunnerMode::Draining)
+                    {
+                        info!(
+                            source = "ready_direct_candidate_drain",
+                            "session affinity state triggered immediate heartbeat"
+                        );
+                        send_heartbeat(&hb_ctx, live_mode).await;
+                    }
                 }
             }
             // Mode changes (signals)

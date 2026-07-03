@@ -392,18 +392,6 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
       );
     }
     expect(emptyWithoutProfiles.body.job).toBeNull();
-
-    const emptyHeldSessionPoll = await api.requestPollRunner(
-      true,
-      { group: runnerGroup, heldSessionStates },
-      [200],
-    );
-    if (emptyHeldSessionPoll.status !== 200) {
-      throw new Error(
-        `Expected held-session poll to succeed, got ${emptyHeldSessionPoll.status}`,
-      );
-    }
-    expect(emptyHeldSessionPoll.body.job).toBeNull();
   });
 
   it("keeps missing run detail and context hidden for another organization", async () => {

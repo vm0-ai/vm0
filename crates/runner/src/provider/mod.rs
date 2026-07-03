@@ -6,6 +6,7 @@
 
 mod api;
 mod api_ably_supervisor;
+mod api_direct_candidates;
 mod local;
 #[cfg(test)]
 pub mod mock;
@@ -371,6 +372,15 @@ pub trait JobProvider: Send + Sync {
     /// This method has **no server-side side effects** and can be safely
     /// dropped (cancelled) at any `.await` point.
     async fn discover(&self) -> Option<JobCandidate>;
+
+    /// Return one already-buffered job candidate without waiting or polling.
+    ///
+    /// Default no-op for providers that do not have a local push-delivery
+    /// inbox. Implementations must not perform network I/O here; the runner
+    /// main loop uses this only for bounded catch-up after a normal discovery.
+    async fn try_discover_ready(&self) -> Option<JobCandidate> {
+        None
+    }
 
     /// Claim a discovered job. Returns `None` if the job was already claimed
     /// by another runner or an error occurred. A returned claim must carry an
