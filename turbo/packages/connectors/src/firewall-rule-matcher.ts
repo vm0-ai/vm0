@@ -8,6 +8,14 @@ import {
 import { hasRawWhitespace, hasUnsafeUrlCodepoint } from "./firewall-url-utils";
 import { parseSegment, splitPathSegments } from "./segment-parser";
 
+type SegmentParseResult = ReturnType<typeof parseSegment>;
+type MatchableSegment = Exclude<SegmentParseResult, { kind: "error" }>;
+type SegmentMatchParser = (
+  segment: string,
+  patternIndex: number,
+  lastPatternIndex: number,
+) => MatchableSegment | null;
+
 type PathSpecificity = readonly [
   literalSegments: number,
   mixedParamSegments: number,
@@ -222,6 +230,28 @@ function isInvalidGreedyParam(
   suffix: string,
 ): boolean {
   return patternIndex !== lastPatternIndex || prefix !== "" || suffix !== "";
+}
+
+function parseStrictMatchSegment(
+  segment: string,
+  patternIndex: number,
+  lastPatternIndex: number,
+): MatchableSegment | null {
+  const parsed = parseSegment(segment);
+  if (parsed.kind === "error") return null;
+  if (
+    parsed.kind === "param" &&
+    parsed.greedy !== "" &&
+    isInvalidGreedyParam(
+      patternIndex,
+      lastPatternIndex,
+      parsed.prefix,
+      parsed.suffix,
+    )
+  ) {
+    return null;
+  }
+  return parsed;
 }
 
 function pathSpecificity(pattern: string): PathSpecificity | null {
@@ -1042,6 +1072,9 @@ function normalizedUrlAuthority(
 function matchStaticFirewallBaseUrl(
   url: string,
   rawBase: string,
+  options: {
+    readonly tolerateMalformedBaseParams?: boolean;
+  } = {},
 ): FirewallBaseUrlMatch | null {
   const parsedUrl = new URL(url);
   const parsedBase = new URL(rawBase);
@@ -1057,14 +1090,23 @@ function matchStaticFirewallBaseUrl(
   });
   if (urlAuthority === null || baseAuthority === null) return null;
   if (baseHasParams) {
-    if (matchFirewallHost(urlAuthority, baseAuthority) === null) return null;
+    const hostParams =
+      options.tolerateMalformedBaseParams === true
+        ? matchFirewallHostForMalformedBaseDecision(urlAuthority, baseAuthority)
+        : matchFirewallHost(urlAuthority, baseAuthority);
+    if (hostParams === null) return null;
   } else if (urlAuthority !== baseAuthority) {
     return null;
   }
 
   const basePath = rawBasePathFromUrl(baseForMatch);
   const relativePath = baseHasParams
-    ? matchFirewallPathPrefix(rawPathFromUrl(url), basePath)
+    ? options.tolerateMalformedBaseParams === true
+      ? matchFirewallPathPrefixForMalformedBaseDecision(
+          rawPathFromUrl(url),
+          basePath,
+        )
+      : matchFirewallPathPrefix(rawPathFromUrl(url), basePath)
     : matchStaticBasePathPrefix(rawPathFromUrl(url), basePath);
   if (relativePath === null) return null;
 
@@ -1097,10 +1139,6 @@ function runtimeUrlCanMatchFirewallBase(url: string): boolean {
   }
 }
 
-function runtimeUrlForBaseMatch(url: string): string {
-  return url.includes("\\") ? url.replaceAll("\\", "/") : url;
-}
-
 function matchFirewallBaseUrlForDecision(
   url: string,
   rawBase: string,
@@ -1110,10 +1148,9 @@ function matchFirewallBaseUrlForDecision(
   if (baseForMatch === null) return null;
 
   try {
-    return matchStaticFirewallBaseUrl(
-      runtimeUrlForBaseMatch(url),
-      baseForMatch,
-    );
+    return matchStaticFirewallBaseUrl(url, baseForMatch, {
+      tolerateMalformedBaseParams: true,
+    });
   } catch {
     return null;
   }
@@ -1507,16 +1544,10 @@ export function matchFirewallRequestDecision(
   return resolveFirewallDecision(state, compiledNetworkPolicies);
 }
 
-/**
- * Match a runtime host/authority against a firewall base host pattern.
- *
- * Host comparison is case-insensitive and mirrors the runner's right-to-left
- * host matcher. Non-default ports are part of the normalized authority and
- * therefore participate in the final host segment comparison.
- */
-export function matchFirewallHost(
+function matchFirewallHostWithParser(
   host: string,
   pattern: string,
+  parsePatternSegment: SegmentMatchParser,
 ): Record<string, string> | null {
   const hostSegsOrig = host.split(".");
   const hostSegsLower = hostSegsOrig.map((segment) => {
@@ -1537,8 +1568,8 @@ export function matchFirewallHost(
     patternIndex++
   ) {
     const seg = patternSegs[patternIndex]!;
-    const parsed = parseSegment(seg);
-    if (parsed.kind === "error") return null;
+    const parsed = parsePatternSegment(seg, patternIndex, lastPatternIndex);
+    if (parsed === null) return null;
     if (parsed.kind === "literal") {
       if (
         hi >= hostSegsLower.length ||
@@ -1552,15 +1583,11 @@ export function matchFirewallHost(
 
     const { name, prefix, suffix, greedy } = parsed;
     if (greedy === "+") {
-      if (isInvalidGreedyParam(patternIndex, lastPatternIndex, prefix, suffix))
-        return null;
       if (hi >= hostSegsOrig.length) return null;
       params[name] = hostSegsOrig.slice(hi).reverse().join(".");
       return params;
     }
     if (greedy === "*") {
-      if (isInvalidGreedyParam(patternIndex, lastPatternIndex, prefix, suffix))
-        return null;
       params[name] = hostSegsOrig.slice(hi).reverse().join(".");
       return params;
     }
@@ -1583,14 +1610,64 @@ export function matchFirewallHost(
 }
 
 /**
- * Match a runtime path against the beginning of a firewall base path pattern.
+ * Match a runtime host/authority against a firewall base host pattern.
  *
- * Unlike matchFirewallPath(), this intentionally allows extra runtime path
- * segments and returns the remaining relative path after the base prefix.
+ * Host comparison is case-insensitive and mirrors the runner's right-to-left
+ * host matcher. Non-default ports are part of the normalized authority and
+ * therefore participate in the final host segment comparison.
  */
-export function matchFirewallPathPrefix(
+export function matchFirewallHost(
+  host: string,
+  pattern: string,
+): Record<string, string> | null {
+  return matchFirewallHostWithParser(host, pattern, parseStrictMatchSegment);
+}
+
+function parseMalformedTolerantBaseSegment(
+  segment: string,
+  patternIndex: number,
+  lastPatternIndex: number,
+): MatchableSegment {
+  const parsed = parseSegment(segment);
+  if (parsed.kind === "error") {
+    return {
+      kind: "param",
+      prefix: "",
+      name: `__malformed_base_segment_${patternIndex}`,
+      suffix: "",
+      greedy: "",
+    };
+  }
+  if (
+    parsed.kind === "param" &&
+    parsed.greedy !== "" &&
+    isInvalidGreedyParam(
+      patternIndex,
+      lastPatternIndex,
+      parsed.prefix,
+      parsed.suffix,
+    )
+  ) {
+    return { ...parsed, greedy: "" };
+  }
+  return parsed;
+}
+
+function matchFirewallHostForMalformedBaseDecision(
+  host: string,
+  pattern: string,
+): Record<string, string> | null {
+  return matchFirewallHostWithParser(
+    host,
+    pattern,
+    parseMalformedTolerantBaseSegment,
+  );
+}
+
+function matchFirewallPathPrefixWithParser(
   path: string,
   pattern: string,
+  parsePatternSegment: SegmentMatchParser,
 ): string | null {
   const pathSegs = splitPathSegments(path);
   const patternSegs = splitPathSegments(pattern);
@@ -1603,8 +1680,8 @@ export function matchFirewallPathPrefix(
     patternIndex++
   ) {
     const seg = patternSegs[patternIndex]!;
-    const parsed = parseSegment(seg);
-    if (parsed.kind === "error") return null;
+    const parsed = parsePatternSegment(seg, patternIndex, lastPatternIndex);
+    if (parsed === null) return null;
     if (parsed.kind === "literal") {
       if (pi >= pathSegs.length || pathSegs[pi] !== parsed.value) return null;
       pi += 1;
@@ -1613,16 +1690,12 @@ export function matchFirewallPathPrefix(
 
     const { prefix, suffix, greedy } = parsed;
     if (greedy === "+") {
-      if (isInvalidGreedyParam(patternIndex, lastPatternIndex, prefix, suffix))
-        return null;
       if (pi >= pathSegs.length || !hasNonEmptySegment(pathSegs, pi)) {
         return null;
       }
       return "/";
     }
     if (greedy === "*") {
-      if (isInvalidGreedyParam(patternIndex, lastPatternIndex, prefix, suffix))
-        return null;
       return "/";
     }
     if (pi >= pathSegs.length) return null;
@@ -1637,6 +1710,34 @@ export function matchFirewallPathPrefix(
   }
 
   return relativePathFromSegments(pathSegs, pi);
+}
+
+/**
+ * Match a runtime path against the beginning of a firewall base path pattern.
+ *
+ * Unlike matchFirewallPath(), this intentionally allows extra runtime path
+ * segments and returns the remaining relative path after the base prefix.
+ */
+export function matchFirewallPathPrefix(
+  path: string,
+  pattern: string,
+): string | null {
+  return matchFirewallPathPrefixWithParser(
+    path,
+    pattern,
+    parseStrictMatchSegment,
+  );
+}
+
+function matchFirewallPathPrefixForMalformedBaseDecision(
+  path: string,
+  pattern: string,
+): string | null {
+  return matchFirewallPathPrefixWithParser(
+    path,
+    pattern,
+    parseMalformedTolerantBaseSegment,
+  );
 }
 
 /**

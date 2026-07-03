@@ -1275,6 +1275,46 @@
       }
     },
     {
+      "name": "matched malformed base host invalid greedy blocks",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.{env+}.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "items.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": ["items.read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "allow"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.prod.example.com/items/123"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.{env+}.example.com",
+        "relativePath": "/items/123",
+        "reason": "malformed_firewall_config",
+        "permissions": []
+      }
+    },
+    {
       "name": "matched malformed network policy blocks",
       "firewalls": [
         {
@@ -1312,6 +1352,81 @@
         "relativePath": "/items/123",
         "reason": "malformed_network_policy",
         "permissions": []
+      }
+    },
+    {
+      "name": "runtime backslash path preserves relative path in unsafe block",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "full",
+                  "rules": ["ANY /{path+}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": ["full"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "allow"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items\\123"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/items\\123",
+        "reason": "unsafe_path",
+        "permissions": []
+      }
+    },
+    {
+      "name": "runtime backslash does not cross static base path boundary",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com/v1",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "full",
+                  "rules": ["ANY /{path+}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": ["full"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "allow"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/v1\\items/123"
+      },
+      "expected": {
+        "kind": "no_match"
       }
     },
     {
