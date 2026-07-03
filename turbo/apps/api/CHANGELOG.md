@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.209.3](https://github.com/vm0-ai/vm0/compare/api-v1.209.2...api-v1.209.3) (2026-07-03)
+
+
+### Refactoring
+
+* reduce fallback slop in API model state ([#19920](https://github.com/vm0-ai/vm0/issues/19920)) ([9e80759](https://github.com/vm0-ai/vm0/commit/9e807591f3a5c03aa115a7224dc032d2a990d6e3))
+
 ## [1.209.2](https://github.com/vm0-ai/vm0/compare/api-v1.209.1...api-v1.209.2) (2026-07-03)
 
 

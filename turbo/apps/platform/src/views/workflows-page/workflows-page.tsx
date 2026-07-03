@@ -118,7 +118,7 @@ function connectorPillClassName({
     "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-white px-2 text-[11px] font-normal leading-none",
     muted ? "text-muted-foreground" : "text-foreground/70",
     interactive &&
-      "transition-colors hover:border-border hover:text-foreground",
+      "cursor-pointer transition-colors hover:border-border hover:bg-gray-50 hover:text-foreground",
   );
 }
 
@@ -253,20 +253,27 @@ function ConnectorCell({
   const remaining = entries.length - 2;
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className={connectorPillClassName({ interactive: true })}
-        >
-          {lead ? (
-            <ConnectorPillMarker dotClassName={triggerDotClass(lead)} />
-          ) : null}
-          <span>{connectorNames(entries)}</span>
-          {remaining > 0 ? (
-            <span className="text-muted-foreground">+{remaining}</span>
-          ) : null}
-        </button>
-      </PopoverTrigger>
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className={connectorPillClassName({ interactive: true })}
+              >
+                {lead ? (
+                  <ConnectorPillMarker dotClassName={triggerDotClass(lead)} />
+                ) : null}
+                <span>{connectorNames(entries)}</span>
+                {remaining > 0 ? (
+                  <span className="text-muted-foreground">+{remaining}</span>
+                ) : null}
+              </button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">View automations</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <PopoverContent
         align="end"
         className="w-max min-w-[16rem] max-w-[min(28rem,var(--radix-popover-content-available-width))] p-1"
@@ -320,7 +327,7 @@ function WorkflowRowIcon({
     return <TriggerListIcon trigger={lead.trigger} size="sm" />;
   }
   return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-gray-100 text-muted-foreground">
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-muted-foreground">
       <IconRoute size={16} stroke={1.7} />
     </span>
   );
@@ -348,7 +355,7 @@ function WorkflowRow({
               className="flex min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
             >
               <WorkflowRowIcon entries={entries} />
-              <span className="min-w-0 truncate text-sm font-medium underline decoration-muted-foreground/40 decoration-dashed underline-offset-4">
+              <span className="min-w-0 truncate text-sm font-medium underline decoration-dotted decoration-foreground/40 decoration-[1px] underline-offset-2">
                 {title}
               </span>
             </Link>

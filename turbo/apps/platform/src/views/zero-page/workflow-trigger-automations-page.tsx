@@ -283,7 +283,7 @@ export function TriggerListIcon({
   return (
     <span
       className={cn(
-        "flex shrink-0 items-center justify-center border border-border/60",
+        "flex shrink-0 items-center justify-center",
         compact ? "h-8 w-8 rounded-lg" : "h-11 w-11 rounded-xl",
         tone,
       )}
