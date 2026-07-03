@@ -696,6 +696,25 @@ function stripUrlQueryAndFragment(url: string): string {
   return url.slice(0, end);
 }
 
+function stripRawUrlUserinfo(url: string): string {
+  const schemeEnd = url.indexOf("://");
+  if (schemeEnd === -1) return url;
+
+  const authorityStart = schemeEnd + 3;
+  let authorityEnd = url.length;
+  for (const delimiter of ["/", "?", "#"]) {
+    const delimiterIndex = url.indexOf(delimiter, authorityStart);
+    if (delimiterIndex !== -1)
+      authorityEnd = Math.min(authorityEnd, delimiterIndex);
+  }
+
+  const authority = url.slice(authorityStart, authorityEnd);
+  const userinfoEnd = authority.lastIndexOf("@");
+  if (userinfoEnd === -1) return url;
+
+  return `${url.slice(0, authorityStart)}${authority.slice(userinfoEnd + 1)}${url.slice(authorityEnd)}`;
+}
+
 function rawPathFromUrl(url: string): string {
   const urlWithoutQuery = stripUrlQueryAndFragment(url);
   const schemeEnd = urlWithoutQuery.indexOf("://");
@@ -1027,7 +1046,10 @@ function matchFirewallBaseUrlForDecision(
   if (!runtimeUrlCanMatchFirewallBase(url)) return null;
 
   try {
-    return matchStaticFirewallBaseUrl(runtimeUrlForBaseMatch(url), rawBase);
+    return matchStaticFirewallBaseUrl(
+      runtimeUrlForBaseMatch(url),
+      stripRawUrlUserinfo(rawBase),
+    );
   } catch {
     return null;
   }
