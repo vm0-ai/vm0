@@ -101,6 +101,24 @@ _BROWSER_USER_AGENT = (
             id="duplicate-q-parameter-is-not-readvertised",
         ),
         pytest.param(
+            [("Accept-Encoding", "gzip;foo=bar, zstd")],
+            True,
+            ["identity"],
+            id="non-q-parameter-is-not-readvertised",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip;q=0.5;foo=bar, zstd")],
+            True,
+            ["identity"],
+            id="q-with-extra-parameter-is-not-readvertised",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip;, zstd")],
+            True,
+            ["identity"],
+            id="empty-parameter-is-not-readvertised",
+        ),
+        pytest.param(
             [("Accept-Encoding", "gzip, identity;q=1, identity;q=0, zstd")],
             True,
             ["gzip, identity;q=0"],

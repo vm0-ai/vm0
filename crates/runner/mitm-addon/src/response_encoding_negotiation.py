@@ -88,21 +88,25 @@ def _parse_q_value(parameters: list[str]) -> Decimal | None:
     saw_q_value = False
     parsed_q_value: Decimal | None = None
     for parameter in parameters:
-        key, separator, value = parameter.strip().partition("=")
-        if separator and key.strip().lower() == "q":
-            if saw_q_value:
-                return _INVALID_Q_VALUE
-            saw_q_value = True
-            q_text = value.strip()
-            if not _Q_VALUE_PATTERN.fullmatch(q_text):
-                return _INVALID_Q_VALUE
-            try:
-                q_value = Decimal(q_text)
-            except InvalidOperation:
-                return _INVALID_Q_VALUE
-            if not q_value.is_finite() or q_value < _MIN_Q_VALUE or q_value > _MAX_Q_VALUE:
-                return _INVALID_Q_VALUE
-            parsed_q_value = q_value
+        parameter = parameter.strip()
+        if not parameter:
+            return _INVALID_Q_VALUE
+        key, separator, value = parameter.partition("=")
+        if not separator or key.strip().lower() != "q":
+            return _INVALID_Q_VALUE
+        if saw_q_value:
+            return _INVALID_Q_VALUE
+        saw_q_value = True
+        q_text = value.strip()
+        if not _Q_VALUE_PATTERN.fullmatch(q_text):
+            return _INVALID_Q_VALUE
+        try:
+            q_value = Decimal(q_text)
+        except InvalidOperation:
+            return _INVALID_Q_VALUE
+        if not q_value.is_finite() or q_value < _MIN_Q_VALUE or q_value > _MAX_Q_VALUE:
+            return _INVALID_Q_VALUE
+        parsed_q_value = q_value
     return parsed_q_value
 
 
