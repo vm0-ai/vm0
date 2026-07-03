@@ -26,6 +26,7 @@ use super::api::ApiClient;
 use super::api_direct_candidates::{
     DirectCandidateInbox, DirectCandidateInsertOutcome, DirectJobCandidate,
 };
+use super::connector_policy_refresh::ConnectorPolicyRefreshHandle;
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
@@ -424,6 +425,7 @@ pub(super) struct AblySupervisorConfig {
     pub(super) poll_wakeups: Arc<PollWakeups>,
     pub(super) direct_candidates: Arc<DirectCandidateInbox>,
     pub(super) cancel_tokens: SharedRunCancellationMap,
+    pub(super) connector_policy_refresh: ConnectorPolicyRefreshHandle,
     pub(super) provider_cancel: CancellationToken,
 }
 
@@ -434,6 +436,7 @@ struct SupervisorTaskConfig {
     poll_wakeups: Arc<PollWakeups>,
     direct_candidates: Arc<DirectCandidateInbox>,
     cancel_tokens: SharedRunCancellationMap,
+    connector_policy_refresh: ConnectorPolicyRefreshHandle,
     provider_cancel: CancellationToken,
     shutdown: CancellationToken,
 }
@@ -449,6 +452,7 @@ impl AblySupervisor {
             poll_wakeups: config.poll_wakeups,
             direct_candidates: config.direct_candidates,
             cancel_tokens: config.cancel_tokens,
+            connector_policy_refresh: config.connector_policy_refresh,
             provider_cancel: config.provider_cancel,
             shutdown: task_shutdown,
         };
@@ -514,12 +518,13 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
             event = recv_ably(&mut ably) => {
                 match event {
                     Some(ably_subscriber::Event::Message(msg)) => {
-                        handle_ably_message(
+                        handle_ably_message_with_connector_policy_refresh(
                             &msg,
                             &config.profiles,
                             &config.poll_wakeups,
                             &config.direct_candidates,
                             &config.cancel_tokens,
+                            Some(&config.connector_policy_refresh),
                         )
                         .await;
                     }
@@ -592,12 +597,44 @@ async fn handle_ably_message(
     direct_candidates: &DirectCandidateInbox,
     cancel_tokens: &Mutex<HashMap<RunId, RunCancellationHandle>>,
 ) {
+    handle_ably_message_with_connector_policy_refresh(
+        msg,
+        profiles,
+        poll_wakeups,
+        direct_candidates,
+        cancel_tokens,
+        None,
+    )
+    .await;
+}
+
+async fn handle_ably_message_with_connector_policy_refresh(
+    msg: &ably_subscriber::Message,
+    profiles: &[String],
+    poll_wakeups: &PollWakeups,
+    direct_candidates: &DirectCandidateInbox,
+    cancel_tokens: &Mutex<HashMap<RunId, RunCancellationHandle>>,
+    connector_policy_refresh: Option<&ConnectorPolicyRefreshHandle>,
+) {
     if let Some(run_id) = parse_cancel_notification(msg) {
         let handle = cancel_tokens.lock().await.get(&run_id).cloned();
         if let Some(handle) = handle {
             info!(run_id = %run_id, "ably: cancel notification, killing job");
             handle.cancel().await;
         }
+        return;
+    }
+
+    if let Some(notification) = parse_permission_refresh_notification(msg) {
+        let Some(connector_policy_refresh) = connector_policy_refresh else {
+            return;
+        };
+        let refresh = connector_policy_refresh.clone();
+        tokio::spawn(async move {
+            refresh
+                .notify_permission_refresh(notification.run_id, notification.connector_ref)
+                .await;
+        });
         return;
     }
 
@@ -660,6 +697,11 @@ struct JobNotification<'a> {
     affinity_protected_until: Option<&'a str>,
 }
 
+struct PermissionRefreshNotification {
+    run_id: RunId,
+    connector_ref: String,
+}
+
 fn supports_profile(profiles: &[String], profile: &str) -> bool {
     profiles.iter().any(|candidate| candidate == profile)
 }
@@ -707,6 +749,42 @@ fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
             None
         }
     }
+}
+
+fn parse_permission_refresh_notification(
+    msg: &ably_subscriber::Message,
+) -> Option<PermissionRefreshNotification> {
+    if msg.name.as_deref() != Some("permission-refresh") {
+        return None;
+    }
+    let run_id_raw = msg.data.get("runId").and_then(|v| v.as_str());
+    let run_id = match run_id_raw {
+        Some(value) => match value.parse() {
+            Ok(run_id) => run_id,
+            Err(error) => {
+                warn!(value, error = %error, "ably: invalid permission-refresh runId");
+                return None;
+            }
+        },
+        None => {
+            warn!("ably: permission-refresh message missing runId");
+            return None;
+        }
+    };
+    let Some(connector_ref) = msg
+        .data
+        .get("connectorRef")
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.is_empty())
+    else {
+        warn!("ably: permission-refresh message missing connectorRef");
+        return None;
+    };
+
+    Some(PermissionRefreshNotification {
+        run_id,
+        connector_ref: connector_ref.to_string(),
+    })
 }
 
 fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotification<'_>> {
@@ -1919,6 +1997,25 @@ mod tests {
             notif.affinity_protected_until,
             Some("2999-01-01T00:00:00.000Z")
         );
+    }
+
+    #[test]
+    fn parse_permission_refresh_notification_valid() {
+        let msg = make_message(
+            Some("permission-refresh"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003",
+                "connectorRef": "github"
+            }),
+        );
+
+        let notification = parse_permission_refresh_notification(&msg).unwrap();
+
+        assert_eq!(
+            notification.run_id.to_string(),
+            "00000000-0000-0000-0000-000000000003"
+        );
+        assert_eq!(notification.connector_ref, "github");
     }
 
     #[test]

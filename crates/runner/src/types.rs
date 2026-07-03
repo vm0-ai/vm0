@@ -100,6 +100,9 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub network_policies: Option<std::collections::HashMap<String, NetworkPolicy>>,
     #[serde(default)]
+    pub connector_policy_refreshes:
+        Option<std::collections::HashMap<String, ConnectorPolicyRefresh>>,
+    #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
     #[serde(default)]
     pub tools: Option<Vec<String>>,
@@ -205,6 +208,21 @@ pub struct NetworkPolicy {
     /// Policy for requests not matching any known permission rule.
     /// Values: "allow", "deny", "ask"
     pub unknown_policy: String,
+}
+
+/// Per-connector runtime refresh boundary supplied by the API.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectorPolicyRefresh {
+    pub next_refresh_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectorPolicyRefreshResponse {
+    pub connector_ref: String,
+    pub network_policy: NetworkPolicy,
+    pub next_refresh_at: Option<String>,
 }
 
 /// Runner-derived manifest written to `guest-download`.

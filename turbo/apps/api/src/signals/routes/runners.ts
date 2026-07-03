@@ -4,6 +4,7 @@ import {
   RESUME_SESSION_HISTORY_MAX_BYTES,
   runnersHeartbeatContract,
   runnersJobClaimContract,
+  runnersConnectorPolicyRefreshContract,
   runnersPollContract,
   storedExecutionContextSchema,
   type ExecutionContext,
@@ -13,6 +14,7 @@ import {
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
@@ -40,6 +42,11 @@ import { logger } from "../../lib/log";
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
+import {
+  connectorPolicyRefreshesRecord,
+  mergeConnectorNetworkPolicyRefreshes,
+  resolveActiveConnectorPolicyRefreshes,
+} from "../services/zero-user-permission-grants.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   resumeSessionHistoryBlobKey,
@@ -536,6 +543,9 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const claimBody$ = bodyResultOf(runnersJobClaimContract.claim);
+const connectorPolicyRefreshBody$ = bodyResultOf(
+  runnersConnectorPolicyRefreshContract.refresh,
+);
 
 interface ClaimableJob {
   readonly job: typeof runnerJobQueue.$inferSelect;
@@ -553,6 +563,13 @@ interface ClaimedRun {
   readonly resumedFromCheckpointId: string | null;
 }
 
+interface ActiveRunPolicyScope {
+  readonly runId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId: string;
+}
+
 type ClaimLookupResult =
   | ClaimableJob
   | ReturnType<typeof conflict>
@@ -560,6 +577,41 @@ type ClaimLookupResult =
 
 function isClaimableJob(value: ClaimLookupResult): value is ClaimableJob {
   return "job" in value;
+}
+
+async function getActiveRunPolicyScope(
+  db: Db,
+  runId: string,
+  signal: AbortSignal,
+): Promise<ActiveRunPolicyScope | undefined> {
+  const [row] = await db
+    .select({
+      runId: agentRuns.id,
+      userId: agentRuns.userId,
+      orgId: agentRuns.orgId,
+      agentId: agentComposeVersions.composeId,
+    })
+    .from(agentRuns)
+    .innerJoin(
+      agentComposeVersions,
+      eq(agentComposeVersions.id, agentRuns.agentComposeVersionId),
+    )
+    .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "running")))
+    .limit(1);
+  signal.throwIfAborted();
+  return row;
+}
+
+function runnerRunAuthorizationError(
+  auth: RunnerAuthContext,
+  run: Pick<ActiveRunPolicyScope, "userId">,
+) {
+  if (auth.type === "official-runner") {
+    return null;
+  }
+  return run.userId === auth.userId
+    ? null
+    : forbidden("Run does not belong to user");
 }
 
 async function getClaimableJob(
@@ -865,6 +917,63 @@ async function secretValuesForRunner(
   return Object.values(secretsMap).filter((value) => {
     return envValues.has(value);
   });
+}
+
+async function agentIdForRun(
+  db: Pick<Db, "select">,
+  run: Pick<ClaimedRun, "agentComposeVersionId">,
+): Promise<string | undefined> {
+  if (!run.agentComposeVersionId) {
+    return undefined;
+  }
+
+  const [version] = await db
+    .select({ agentId: agentComposeVersions.composeId })
+    .from(agentComposeVersions)
+    .where(eq(agentComposeVersions.id, run.agentComposeVersionId))
+    .limit(1);
+  return version?.agentId ?? undefined;
+}
+
+async function refreshClaimConnectorPolicies(args: {
+  readonly db: Db;
+  readonly run: ClaimedRun;
+  readonly storedContext: StoredExecutionContext;
+}): Promise<
+  Pick<StoredExecutionContext, "networkPolicies" | "connectorPolicyRefreshes">
+> {
+  const connectorRefs = Object.keys(args.storedContext.networkPolicies ?? {});
+  if (connectorRefs.length === 0) {
+    return {
+      networkPolicies: args.storedContext.networkPolicies,
+      connectorPolicyRefreshes: undefined,
+    };
+  }
+
+  const agentId = await agentIdForRun(args.db, args.run);
+  if (!agentId) {
+    return {
+      networkPolicies: args.storedContext.networkPolicies,
+      connectorPolicyRefreshes: undefined,
+    };
+  }
+
+  const refreshes = await resolveActiveConnectorPolicyRefreshes(
+    args.db,
+    {
+      orgId: args.run.orgId,
+      userId: args.run.userId,
+      agentId,
+    },
+    connectorRefs,
+  );
+  return {
+    networkPolicies: mergeConnectorNetworkPolicyRefreshes(
+      args.storedContext.networkPolicies,
+      refreshes,
+    ),
+    connectorPolicyRefreshes: connectorPolicyRefreshesRecord(refreshes),
+  };
 }
 
 type StoredResumeSessionWithHistoryRef = Extract<
@@ -1218,6 +1327,12 @@ async function buildClaimResponseBody(args: {
         args.run.id,
         args.run.orgId,
       );
+      const refreshedPolicies = await refreshClaimConnectorPolicies({
+        db: args.db,
+        run: args.run,
+        storedContext: args.storedContext,
+      });
+      args.signal.throwIfAborted();
       return {
         ...args.storedContext,
         runId: args.run.id,
@@ -1229,6 +1344,8 @@ async function buildClaimResponseBody(args: {
         resumeSession,
         sandboxToken,
         secretValues,
+        networkPolicies: refreshedPolicies.networkPolicies,
+        connectorPolicyRefreshes: refreshedPolicies.connectorPolicyRefreshes,
       };
     },
   );
@@ -1722,6 +1839,59 @@ const runnerRealtimeTokenBody$ = bodyResultOf(
   runnerRealtimeTokenContract.create,
 );
 
+const connectorPolicyRefreshInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = await set(runnerAuth$, get(authorization$), signal);
+    signal.throwIfAborted();
+    if (!auth) {
+      return unauthorizedAuthenticationRequired;
+    }
+
+    const body = await get(connectorPolicyRefreshBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
+    const runId = get(
+      pathParamsOf(runnersConnectorPolicyRefreshContract.refresh),
+    ).runId;
+    const db = set(writeDb$);
+    const run = await getActiveRunPolicyScope(db, runId, signal);
+    if (!run) {
+      return notFound("Run not found");
+    }
+
+    const authError = runnerRunAuthorizationError(auth, run);
+    if (authError) {
+      return authError;
+    }
+
+    const [refresh] = await resolveActiveConnectorPolicyRefreshes(
+      db,
+      {
+        orgId: run.orgId,
+        userId: run.userId,
+        agentId: run.agentId,
+      },
+      [body.data.connectorRef],
+    );
+    signal.throwIfAborted();
+    if (!refresh) {
+      return notFound(`Connector not found: ${body.data.connectorRef}`);
+    }
+
+    return {
+      status: 200 as const,
+      body: {
+        connectorRef: refresh.connectorRef,
+        networkPolicy: refresh.networkPolicy,
+        nextRefreshAt: refresh.nextRefreshAt,
+      },
+    };
+  },
+);
+
 const runnerRealtimeTokenInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = await set(runnerAuth$, get(authorization$), signal);
@@ -1764,6 +1934,10 @@ export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersJobClaimContract.claim,
     handler: claimInner$,
+  },
+  {
+    route: runnersConnectorPolicyRefreshContract.refresh,
+    handler: connectorPolicyRefreshInner$,
   },
   {
     route: runnerRealtimeTokenContract.create,

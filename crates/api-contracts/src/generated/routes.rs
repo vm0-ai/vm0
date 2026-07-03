@@ -79,6 +79,45 @@ pub mod runners {
             };
         }
     }
+
+    /// Generated route bindings under `runners::runs`.
+    pub mod runs {
+        /// Generated route bindings under `runners::runs::by_run_id`.
+        pub mod by_run_id {
+            /// Generated route bindings under `runners::runs::by_run_id::connector_policy_refresh`.
+            pub mod connector_policy_refresh {
+                /// Refresh one active run connector policy.
+                /// Route contract: `POST /api/runners/runs/:runId/connector-policy-refresh`.
+                pub const REFRESH: crate::RouteTemplate = crate::RouteTemplate {
+                    method: crate::Method::Post,
+                    path: "/api/runners/runs/:runId/connector-policy-refresh",
+                };
+
+                /// Path parameters for `POST /api/runners/runs/:runId/connector-policy-refresh`.
+                #[derive(Debug, Clone, Copy)]
+                pub struct Params<'a> {
+                    /// Value for the `:runId` path parameter.
+                    pub run_id: &'a str,
+                }
+
+                /// Build the concrete path for `POST /api/runners/runs/:runId/connector-policy-refresh`.
+                /// Percent-encodes each path parameter as a URL path segment.
+                #[must_use]
+                pub fn path(params: Params<'_>) -> String {
+                    format!(
+                        "/api/runners/runs/{}/connector-policy-refresh",
+                        crate::route::encode_path_segment(params.run_id),
+                    )
+                }
+
+                /// Build a resolved route for `POST /api/runners/runs/:runId/connector-policy-refresh`.
+                #[must_use]
+                pub fn route(params: Params<'_>) -> crate::ResolvedRoute {
+                    crate::ResolvedRoute::new(REFRESH.method, path(params))
+                }
+            }
+        }
+    }
 }
 
 /// Generated route bindings under `webhooks`.

@@ -4371,10 +4371,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     await api.enableAgentConnectors(actor, agentId, ["slack"]);
 
-    async function claimSlackPolicy(prompt: string): Promise<{
-      readonly allow: readonly string[];
-      readonly deny: readonly string[];
-      readonly unknownPolicy?: string;
+    async function claimSlackContext(prompt: string): Promise<{
+      readonly claim: Awaited<ReturnType<typeof api.claimRunnerJob>>;
+      readonly policy: {
+        readonly allow: readonly string[];
+        readonly deny: readonly string[];
+        readonly unknownPolicy?: string;
+      };
     }> {
       const run = await api.createRun(actor, {
         agentId,
@@ -4387,7 +4390,15 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       if (!policy) {
         throw new Error("Expected a slack network policy on the claim");
       }
-      return policy;
+      return { claim, policy };
+    }
+
+    async function claimSlackPolicy(prompt: string): Promise<{
+      readonly allow: readonly string[];
+      readonly deny: readonly string[];
+      readonly unknownPolicy?: string;
+    }> {
+      return (await claimSlackContext(prompt)).policy;
     }
 
     await api.heartbeatRunner(runnerGroup);
@@ -4451,7 +4462,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       action: "allow",
     });
 
-    const granted = await claimSlackPolicy("granted permissions");
+    const grantedContext = await claimSlackContext("granted permissions");
+    const granted = grantedContext.policy;
+    expect(
+      grantedContext.claim.connectorPolicyRefreshes?.slack?.nextRefreshAt,
+    ).toStrictEqual(expect.any(String));
     expect(granted.allow).toContain("chat:write");
     expect(granted.allow).toContain("files:read");
     expect(granted.deny).not.toContain("chat:write");
@@ -4475,8 +4490,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(unknownDenied.allow).toContain("conversations:read");
     expect(unknownDenied.deny).toContain("chat:write");
 
-    // The grant snapshot is baked into the queued run: flipping the grant
-    // after creation does not change the already-created run's policy.
+    // Queued runs refresh connector policy at claim time, so permission changes
+    // made after creation are visible before the sandbox starts.
     await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorRef: "slack",
@@ -4495,10 +4510,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       action: "deny",
     });
     const snapshotClaim = await api.claimRunnerJob(snapshotRun.runId);
-    expect(snapshotClaim.networkPolicies?.slack?.allow).toContain("chat:write");
-    expect(snapshotClaim.networkPolicies?.slack?.deny).not.toContain(
+    expect(snapshotClaim.networkPolicies?.slack?.deny).toContain("chat:write");
+    expect(snapshotClaim.networkPolicies?.slack?.allow).not.toContain(
       "chat:write",
     );
+    const refreshedPolicy = await api.refreshRunnerConnectorPolicy(
+      snapshotRun.runId,
+      "slack",
+    );
+    expect(refreshedPolicy.networkPolicy.deny).toContain("chat:write");
+    expect(refreshedPolicy.networkPolicy.allow).not.toContain("chat:write");
+    expect(refreshedPolicy.nextRefreshAt).toStrictEqual(expect.any(String));
 
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
     const drained = await api.readRunQueue(actor);

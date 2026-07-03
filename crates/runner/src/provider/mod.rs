@@ -7,11 +7,15 @@
 mod api;
 mod api_ably_supervisor;
 mod api_direct_candidates;
+mod connector_policy_refresh;
 mod local;
 #[cfg(test)]
 pub mod mock;
 
 pub use api::ApiProvider;
+pub(crate) use connector_policy_refresh::{
+    ConnectorPolicyRefreshHandle, ConnectorPolicyRefreshRegistration,
+};
 pub use local::LocalProvider;
 
 use chrono::{DateTime, Utc};

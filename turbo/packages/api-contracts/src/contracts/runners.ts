@@ -2,6 +2,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import {
   executionFirewallsSchema,
+  networkPolicySchema,
   networkPoliciesSchema,
 } from "@vm0/connectors/firewall-types";
 import { apiErrorSchema } from "./errors";
@@ -69,6 +70,15 @@ const runnerPollTelemetrySchema = z.object({
 });
 
 const runnerProfileListSchema = z.array(z.string());
+
+const connectorPolicyRefreshSchema = z.object({
+  nextRefreshAt: z.string().datetime({ offset: true }),
+});
+
+const connectorPolicyRefreshesSchema = z.record(
+  z.string(),
+  connectorPolicyRefreshSchema,
+);
 
 /**
  * Default profile when none is specified.
@@ -317,6 +327,9 @@ export const storedExecutionContextSchema = z.object({
   firewalls: executionFirewallsSchema.optional(),
   // Per-firewall network policies: which permissions are granted + unknownPolicy
   networkPolicies: networkPoliciesSchema.optional(),
+  // Per-connector runtime policy refresh deadlines. Used by runners to refresh
+  // active sandbox policy when temporary allow grants expire.
+  connectorPolicyRefreshes: connectorPolicyRefreshesSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
@@ -383,6 +396,9 @@ export const executionContextSchema = z.object({
   firewalls: executionFirewallsSchema.optional(),
   // Per-firewall network policies: which permissions are granted + unknownPolicy
   networkPolicies: networkPoliciesSchema.optional(),
+  // Per-connector runtime policy refresh deadlines. Used by runners to refresh
+  // active sandbox policy when temporary allow grants expire.
+  connectorPolicyRefreshes: connectorPolicyRefreshesSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
@@ -427,6 +443,33 @@ export const runnersJobClaimContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Claim a pending job for execution",
+  },
+});
+
+export const runnersConnectorPolicyRefreshContract = c.router({
+  refresh: {
+    method: "POST",
+    path: "/api/runners/runs/:runId/connector-policy-refresh",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      runId: z.uuid(),
+    }),
+    body: z.object({
+      connectorRef: z.string().min(1).max(64),
+    }),
+    responses: {
+      200: z.object({
+        connectorRef: z.string(),
+        networkPolicy: networkPolicySchema,
+        nextRefreshAt: z.string().datetime({ offset: true }).nullable(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Refresh one active run connector policy",
   },
 });
 
@@ -488,12 +531,17 @@ export const runnersHeartbeatContract = c.router({
 
 export type RunnersPollContract = typeof runnersPollContract;
 export type RunnersJobClaimContract = typeof runnersJobClaimContract;
+export type RunnersConnectorPolicyRefreshContract =
+  typeof runnersConnectorPolicyRefreshContract;
 export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;
 export type Job = z.infer<typeof jobSchema>;
 export type HeldSessionState = z.infer<typeof heldSessionStateSchema>;
 export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema
+>;
+export type ConnectorPolicyRefresh = z.infer<
+  typeof connectorPolicyRefreshSchema
 >;
 export type SecretConnectorMetadata = z.infer<
   typeof secretConnectorMetadataSchema

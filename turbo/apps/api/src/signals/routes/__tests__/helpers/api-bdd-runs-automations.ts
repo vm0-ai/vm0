@@ -29,6 +29,7 @@ import {
   cronTelegramCleanupContract,
 } from "@vm0/api-contracts/contracts/cron";
 import {
+  runnersConnectorPolicyRefreshContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
@@ -382,6 +383,20 @@ export function createRunsAutomationsApi(context: TestContext) {
           headers: runnerHeaders(true),
           params: { id: runId },
           body,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async refreshRunnerConnectorPolicy(runId: string, connectorRef: string) {
+      const response = await accept(
+        runsAutomationApp(context)(
+          runnersConnectorPolicyRefreshContract,
+        ).refresh({
+          headers: runnerHeaders(true),
+          params: { runId },
+          body: { connectorRef },
         }),
         [200],
       );

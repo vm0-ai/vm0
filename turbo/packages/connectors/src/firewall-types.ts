@@ -242,12 +242,13 @@ export type FirewallPolicies = z.infer<typeof firewallPoliciesSchema>;
  * what policy applies to unknown endpoints (not matching any permission rule).
  * Refs absent from the map are fully permissive (all granted + allow unknown).
  */
-const networkPolicySchema = z.object({
+export const networkPolicySchema = z.object({
   allow: z.array(z.string()),
   deny: z.array(z.string()),
   ask: z.array(z.string()),
   unknownPolicy: firewallPolicyValueSchema,
 });
+export type NetworkPolicy = z.infer<typeof networkPolicySchema>;
 
 /**
  * Network policies map — firewall name → policy config.
