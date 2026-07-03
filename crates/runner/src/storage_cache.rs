@@ -1009,8 +1009,9 @@ async fn process_one_hit_or_passthrough(
     let lock_path = home.storage_lock(&target.name, &target.version);
     let cache_dir = home.storage_cache_dir(&target.name, &target.version);
     let archive_path = cache_dir.join("archive.tar.gz");
+    let archive_may_exist = cached_archive_exists(&archive_path).await?;
     let started_at = Instant::now();
-    let reader_result = lock::try_acquire_existing_shared_or_missing(lock_path).await;
+    let reader_result = lock::try_acquire_existing_shared_or_missing(lock_path.clone()).await;
     let success = reader_result.is_ok();
     metrics.record(
         STORAGE_CACHE_LOCK_WAIT,
@@ -1027,10 +1028,31 @@ async fn process_one_hit_or_passthrough(
             });
         }
         lock::ExistingTryLock::Missing => {
-            return Ok(ProcessedTarget {
-                outcome: TargetOutcome::MissPassthrough { reason: "missing" },
-                stage_write: None,
-            });
+            if !archive_may_exist || !cached_archive_exists(&archive_path).await? {
+                return Ok(ProcessedTarget {
+                    outcome: TargetOutcome::MissPassthrough { reason: "missing" },
+                    stage_write: None,
+                });
+            }
+
+            let started_at = Instant::now();
+            let reader_result = lock::try_acquire_shared_or_busy(lock_path).await;
+            let success = reader_result.is_ok();
+            metrics.record(
+                STORAGE_CACHE_LOCK_WAIT,
+                started_at.elapsed(),
+                success,
+                (!success).then_some(STORAGE_CACHE_LOCK_WAIT_FAILED),
+            );
+            match reader_result? {
+                lock::TryLock::Acquired(lock) => lock,
+                lock::TryLock::Busy => {
+                    return Ok(ProcessedTarget {
+                        outcome: TargetOutcome::LockBusyPassthrough,
+                        stage_write: None,
+                    });
+                }
+            }
         }
     };
 
@@ -1057,6 +1079,17 @@ async fn process_one_hit_or_passthrough(
             },
             stage_write: None,
         }),
+    }
+}
+
+async fn cached_archive_exists(archive_path: &Path) -> RunnerResult<bool> {
+    match fs::metadata(archive_path).await {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(RunnerError::Internal(format!(
+            "stat cached {}: {e}",
+            archive_path.display()
+        ))),
     }
 }
 
@@ -2453,14 +2486,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn guarded_orphan_archive_without_lock_passthrough_without_creating_lock() {
+    async fn guarded_archive_without_lock_recreates_lock_and_hits() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
         let mut telemetry = new_telemetry();
-        let name = "guarded-orphan-archive";
+        let name = "guarded-missing-lock";
         let version = "v1";
-        let original = "https://r2.example.com/orphan.tar.gz".to_string();
+        let original = "https://r2.example.com/recreate-lock.tar.gz".to_string();
         write_cached_archive(&home, name, version, &tarball_bytes());
         let lock_path = home.storage_lock(name, version);
         assert!(!lock_path.exists());
@@ -2480,14 +2513,16 @@ mod tests {
 
         assert_eq!(
             manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
+            Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
-        assert!(!lock_path.exists());
-        assert!(sandbox.write_file_calls().is_empty());
-        assert!(sandbox.write_files_calls().is_empty());
+        assert!(lock_path.exists());
+        let batches = sandbox.write_files_calls();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].files.len(), 1);
+        assert_eq!(batches[0].files[0].path, guest_archive_path(name, version));
         let ops = telemetry.pending_ops_snapshot();
-        assert_op_error(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, "missing");
-        assert_no_op(&ops, "storage_cache_hit");
+        assert_op(&ops, "storage_cache_hit", true);
+        assert_no_op(&ops, STORAGE_CACHE_MISS_PASSTHROUGH);
     }
 
     #[tokio::test]

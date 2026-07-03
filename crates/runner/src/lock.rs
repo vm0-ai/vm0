@@ -50,6 +50,7 @@ enum LockMode {
     Exclusive,
     Shared,
     TryExclusive,
+    TryShared,
 }
 
 impl LockMode {
@@ -58,6 +59,7 @@ impl LockMode {
             Self::Exclusive => FlockArg::LockExclusive,
             Self::Shared => FlockArg::LockShared,
             Self::TryExclusive => FlockArg::LockExclusiveNonblock,
+            Self::TryShared => FlockArg::LockSharedNonblock,
         }
     }
 
@@ -98,7 +100,7 @@ fn acquire_result_blocking(
         let lock = match Flock::lock(file, mode.arg()) {
             Ok(lock) => lock,
             Err((_file, e))
-                if matches!(mode, LockMode::TryExclusive)
+                if matches!(mode, LockMode::TryExclusive | LockMode::TryShared)
                     && e == nix::errno::Errno::EWOULDBLOCK =>
             {
                 return Ok(LockAcquire::Busy);
@@ -218,6 +220,13 @@ pub async fn try_acquire(path: PathBuf) -> RunnerResult<Flock<File>> {
 
 pub async fn try_acquire_or_busy(path: PathBuf) -> RunnerResult<TryLock> {
     match acquire_result_with(path, LockMode::TryExclusive).await? {
+        LockAcquire::Acquired(lock) => Ok(TryLock::Acquired(lock)),
+        LockAcquire::Busy => Ok(TryLock::Busy),
+    }
+}
+
+pub async fn try_acquire_shared_or_busy(path: PathBuf) -> RunnerResult<TryLock> {
+    match acquire_result_with(path, LockMode::TryShared).await? {
         LockAcquire::Acquired(lock) => Ok(TryLock::Acquired(lock)),
         LockAcquire::Busy => Ok(TryLock::Busy),
     }
@@ -480,6 +489,28 @@ mod tests {
         let result = try_acquire_or_busy(path).await;
 
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn try_acquire_shared_or_busy_succeeds_with_existing_shared_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        let _guard = acquire_shared(path.clone()).await.unwrap();
+
+        let result = try_acquire_shared_or_busy(path).await.unwrap();
+
+        assert!(matches!(result, TryLock::Acquired(_)));
+    }
+
+    #[tokio::test]
+    async fn try_acquire_shared_or_busy_reports_busy_when_exclusive_lock_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        let _guard = acquire(path.clone()).await.unwrap();
+
+        let result = try_acquire_shared_or_busy(path).await.unwrap();
+
+        assert!(matches!(result, TryLock::Busy));
     }
 
     #[tokio::test]
