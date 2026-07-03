@@ -757,18 +757,17 @@ function createExportFontScript(): string {
 
   const resolveEmbeddableFonts = async (nodes) => {
     const localIndex = indexLocalFontFaces();
-    const fonts = [];
-    for (const family of collectUsedFontFamilies(nodes)) {
-      const local = localIndex.get(family.name.toLowerCase());
-      const url =
-        local && local.length > 0
-          ? nearestByWeight(local, family.weight).url
-          : await fontsourceUrl(family.name, family.weight, family.style);
-      if (url) {
-        fonts.push({ name: family.name, url });
-      }
-    }
-    return fonts;
+    const resolved = await Promise.all(
+      collectUsedFontFamilies(nodes).map(async (family) => {
+        const local = localIndex.get(family.name.toLowerCase());
+        const url =
+          local && local.length > 0
+            ? nearestByWeight(local, family.weight).url
+            : await fontsourceUrl(family.name, family.weight, family.style);
+        return url ? { name: family.name, url } : null;
+      }),
+    );
+    return resolved.filter((font) => font !== null);
   };
 `;
 }
