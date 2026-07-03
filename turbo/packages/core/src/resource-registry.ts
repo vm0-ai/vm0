@@ -4365,7 +4365,8 @@ export interface PresentationRunbookPackage {
   readonly source: ResourceSourceRef;
 }
 
-// Archive digests for uploaded private R2 presentation runbook packages.
+// Archive digests for uploaded private R2 presentation runbook packages. Keep
+// these in sync with the private R2 version ids served by the API download route.
 const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
   "playful-launch":
     "c0d5ee9d37a45550865517aff796dae245cce4a63dfc5e1068423a1c918bb43c",
@@ -4399,9 +4400,9 @@ const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
   prospectus:
     "8e9595845cc76df222e822bcde82ed665024a533c641882efd6d0de3ed63dd54",
   schoolhouse:
-    "64eb8efe553f51e42c9e0ce944486f7c354e528b0ee3fec48dd7e6589a3d7578",
+    "9bd19af256dfb6f17073ec9af52ed0163a5f432a3d143eb82f1fa67aaf8b015e",
   "sticker-scrapbook":
-    "ddf9441bbdb2fef740a75668316d32e190be502bf13c050361d407c86d6196a2",
+    "d02ce61703c4b0000e0e03f568356a7d2e0ed43a7f2e37430a4afebb4280baa6",
   strata: "72c73b34abe7da4230048d6d532e5e1ee5dfb7f9d4895ed90ec412b7ff50ceeb",
   "taped-consulting":
     "21801079a05d1e47bbf3342e8dbfa2245f00abaf31de29484efbdecd3eba4e99",
