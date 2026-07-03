@@ -39,6 +39,13 @@ function packagedAppPaths(platformUrl) {
       "dist",
       "main.js",
     ),
+    mcpBundlePath: path.join(
+      appBundlePath,
+      "Contents",
+      "Resources",
+      "mcp",
+      "index.mjs",
+    ),
   };
 }
 
