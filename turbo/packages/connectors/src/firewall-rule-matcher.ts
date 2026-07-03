@@ -22,10 +22,6 @@ export interface FindMatchingPermissionsOptions {
   apiBase?: string;
 }
 
-export interface FindMatchingRoutingPermissionsOptions extends FindMatchingPermissionsOptions {
-  serviceName?: string;
-}
-
 export interface FirewallBaseUrlMatch {
   displayBase: string;
   relativePath: string;
@@ -661,41 +657,6 @@ function getApiPermissionRuleSetsForMatch(
     });
   }
   return permissionRuleSets;
-}
-
-function getRoutingApiPermissionRuleSetsForMatch(
-  api: FirewallRoutingPermissionApi,
-  serviceName: string,
-  apiBase: string | null,
-): PermissionRuleSet[] | null {
-  if (!isObjectRecord(api)) return null;
-  if (typeof api.base !== "string") return null;
-  try {
-    validateBaseUrl(api.base, serviceName);
-  } catch {
-    return null;
-  }
-  if (apiBase !== null && stripTrailingSlash(api.base) !== apiBase) return null;
-  if (!Array.isArray(api.routes)) return null;
-
-  const rulesByPermission = new Map<string, string[]>();
-  for (const route of api.routes) {
-    if (!isObjectRecord(route)) continue;
-    if (typeof route.permissionName !== "string") continue;
-    if (!isValidPermissionName(route.permissionName)) continue;
-    if (typeof route.rule !== "string") continue;
-
-    const rules = rulesByPermission.get(route.permissionName);
-    if (rules) {
-      rules.push(route.rule);
-    } else {
-      rulesByPermission.set(route.permissionName, [route.rule]);
-    }
-  }
-
-  return [...rulesByPermission.entries()].map(([name, rules]) => {
-    return { name, rules };
-  });
 }
 
 function recordPermissionMatch(
@@ -1694,33 +1655,6 @@ export function findMatchingPermissions(
     const permissionRuleSets = getApiPermissionRuleSetsForMatch(
       api,
       config.name,
-      apiBase,
-    );
-    if (permissionRuleSets !== null) {
-      matchApis.push({ permissionRuleSets });
-    }
-  }
-
-  return findMatchingPermissionRuleSets(method, path, matchApis);
-}
-
-export function findMatchingRoutingPermissions(
-  method: string,
-  path: string,
-  apis: readonly FirewallRoutingPermissionApi[],
-  options: FindMatchingRoutingPermissionsOptions = {},
-): string[] {
-  if (!Array.isArray(apis)) return [];
-
-  const serviceName = options.serviceName ?? "routing";
-  const apiBase =
-    options.apiBase === undefined ? null : stripTrailingSlash(options.apiBase);
-  const matchApis: PermissionMatchApi[] = [];
-
-  for (const api of apis) {
-    const permissionRuleSets = getRoutingApiPermissionRuleSetsForMatch(
-      api,
-      serviceName,
       apiBase,
     );
     if (permissionRuleSets !== null) {

@@ -612,7 +612,42 @@ describe("zero doctor check-connector command", () => {
       expect(output).toContain('"admin" is in the deny list');
     });
 
-    it("should report unmatched permission falling through to unknown policy", async () => {
+    it("should report permission in ask list", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(connectedResponse);
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json(runContextResponse);
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+        "--check-permission",
+        "actions:write",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("ask list:   [actions:write]");
+      expect(output).toContain('"actions:write" is in the ask list');
+      expect(output).toContain("blocked until approval");
+    });
+
+    it("should report unmatched permission as allowed by permission policy", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
@@ -643,9 +678,11 @@ describe("zero doctor check-connector command", () => {
 
       const output = getOutput();
       expect(output).toContain(
-        '"some-unknown-perm" is not in any permission list',
+        '"some-unknown-perm" is not in the deny or ask list',
       );
-      expect(output).toContain("unknown endpoint policy: allow");
+      expect(output).toContain(
+        "the unknown endpoint policy only applies when no named permission matches a request",
+      );
     });
   });
 

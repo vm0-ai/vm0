@@ -609,23 +609,29 @@ function checkPermissionPolicy(
   console.log(`Permission policies for the ${label} connector:`);
   console.log(`  allow list: [${connectorPolicies.allow.join(", ")}]`);
   console.log(`  deny list:  [${connectorPolicies.deny.join(", ")}]`);
+  console.log(`  ask list:   [${connectorPolicies.ask.join(", ")}]`);
   console.log(`  unknown endpoint policy: ${connectorPolicies.unknownPolicy}`);
   console.log("");
 
   const isInAllow = connectorPolicies.allow.includes(permissionName);
   const isInDeny = connectorPolicies.deny.includes(permissionName);
+  const isInAsk = connectorPolicies.ask.includes(permissionName);
 
-  if (isInAllow) {
-    console.log(
-      `Result: "${permissionName}" is in the allow list. Requests matching this permission are allowed.`,
-    );
-  } else if (isInDeny) {
+  if (isInDeny) {
     console.log(
       `Result: "${permissionName}" is in the deny list. Requests matching this permission are denied.`,
     );
+  } else if (isInAsk) {
+    console.log(
+      `Result: "${permissionName}" is in the ask list. Requests matching this permission are blocked until approval.`,
+    );
+  } else if (isInAllow) {
+    console.log(
+      `Result: "${permissionName}" is in the allow list. Requests matching this permission are allowed.`,
+    );
   } else {
     console.log(
-      `Result: "${permissionName}" is not in any permission list. It will be handled by the unknown endpoint policy: ${connectorPolicies.unknownPolicy}.`,
+      `Result: "${permissionName}" is not in the deny or ask list. Requests matching this permission are allowed; the unknown endpoint policy only applies when no named permission matches a request.`,
     );
   }
   console.log("");
