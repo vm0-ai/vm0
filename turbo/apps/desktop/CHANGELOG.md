@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.10](https://github.com/vm0-ai/vm0/compare/desktop-v0.22.9...desktop-v0.22.10) (2026-07-03)
+
+
+### Bug Fixes
+
+* **desktop:** bundle filesystem mcp sdk dependency ([#20023](https://github.com/vm0-ai/vm0/issues/20023)) ([abe9a2f](https://github.com/vm0-ai/vm0/commit/abe9a2f02b9df1c6597c13cc3e6b3787d272b52e))
+
 ## [0.22.9](https://github.com/vm0-ai/vm0/compare/desktop-v0.22.8...desktop-v0.22.9) (2026-07-03)
 
 
