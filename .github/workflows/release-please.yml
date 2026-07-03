@@ -785,8 +785,6 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Build Runtime API Schema
@@ -985,8 +983,6 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Notify Slack - Starting
