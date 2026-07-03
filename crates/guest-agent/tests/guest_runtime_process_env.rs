@@ -26,6 +26,27 @@ fn runtime_bootstrap_installs_system_log_and_sandbox_ops_paths() {
         std::env::set_var(guest_contracts::env::API_TOKEN_ENV, "");
         std::env::remove_var(guest_contracts::env::USER_ENV_FILE_ENV);
     }
+
+    let missing_payload_error = match guest_agent::run_context::GuestRuntime::from_process_env() {
+        Ok(_) => panic!("missing run payload file should fail fast"),
+        Err(error) => error,
+    };
+    assert!(
+        missing_payload_error.contains(guest_contracts::env::RUN_PAYLOAD_FILE_ENV),
+        "error should identify {}, got: {missing_payload_error}",
+        guest_contracts::env::RUN_PAYLOAD_FILE_ENV
+    );
+
+    unsafe {
+        common::set_run_payload_file_env_for_test(
+            &runtime_dir,
+            &guest_contracts::env::RunPayload {
+                prompt: "runtime process env prompt".to_string(),
+                ..guest_contracts::env::RunPayload::default()
+            },
+        )
+        .unwrap();
+    }
     guest_common::log::clear_system_log_file();
     guest_common::telemetry::clear_sandbox_ops_log_file();
 

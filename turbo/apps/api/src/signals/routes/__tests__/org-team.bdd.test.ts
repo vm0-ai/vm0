@@ -9,10 +9,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
-import {
-  createRunsAutomationsApi,
-  uniqueAutomationName,
-} from "./helpers/api-bdd-runs-automations";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { expectApiError } from "./helpers/api-bdd";
 
 /*
@@ -742,100 +739,10 @@ describe("ORG-02: membership admin matrix", () => {
 });
 
 describe("ORG-02: member cleanup detaches Slack connections", () => {
-  async function expectAutomationSuspended(
-    runs: ReturnType<typeof createRunsAutomationsApi>,
-    owner: ApiTestUser,
-    automationId: string,
-  ): Promise<void> {
-    const automation = await runs.showAutomation(owner, {
-      id: automationId,
-      name: automationId,
-    });
-    expect(automation).toMatchObject({
-      enabled: false,
-      nextRunAt: null,
-    });
-  }
-
-  it("suspends member-owned org automations on leave and removal", async () => {
-    const runs = createRunsAutomationsApi(context);
-    const admin = api.user();
-    const leavingMember = api.user({
-      orgId: admin.orgId,
-      orgRole: "org:member",
-      email: `leaving-${shortId()}@example.test`,
-    });
-    const removedMember = api.user({
-      orgId: admin.orgId,
-      orgRole: "org:member",
-      email: `removed-${shortId()}@example.test`,
-    });
-
-    api.acceptAgentStorageWrites();
-    runs.acceptStorageDownloads();
-    runs.acceptTelemetryIngest();
-    await onboardAdmin(admin, { slug: slug("bdd-r5-auto-cleanup") });
-
-    await runs.enableAutomations(leavingMember);
-    const leavingAgent = await api.createAgent(leavingMember, {
-      displayName: "BDD Leaving Member Automation Agent",
-      visibility: "private",
-    });
-    const leavingAutomation = await runs.createAutomation(leavingMember, {
-      name: uniqueAutomationName("bdd-leave-cleanup"),
-      agentId: leavingAgent.agentId,
-      cronExpression: "0 9 * * *",
-      prompt: "leaving member scheduled automation",
-      timezone: "UTC",
-      enabled: true,
-    });
-
-    api.mockClerkOrg(leavingMember, {
-      members: [
-        { actor: admin, role: "org:admin" },
-        { actor: leavingMember, role: "org:member" },
-      ],
-    });
-    await expect(api.leaveOrg(leavingMember)).resolves.toStrictEqual({
-      message: "Left org",
-    });
-    await expectAutomationSuspended(
-      runs,
-      leavingMember,
-      leavingAutomation.automation.id,
-    );
-
-    await runs.enableAutomations(removedMember);
-    const removedAgent = await api.createAgent(removedMember, {
-      displayName: "BDD Removed Member Automation Agent",
-      visibility: "private",
-    });
-    const removedAutomation = await runs.createAutomation(removedMember, {
-      name: uniqueAutomationName("bdd-remove-cleanup"),
-      agentId: removedAgent.agentId,
-      cronExpression: "0 10 * * *",
-      prompt: "removed member scheduled automation",
-      timezone: "UTC",
-      enabled: true,
-    });
-
-    api.mockClerkOrg(admin, {
-      members: [
-        { actor: admin, role: "org:admin" },
-        { actor: removedMember, role: "org:member" },
-      ],
-    });
-    await expect(
-      api.removeMember(admin, { email: removedMember.email }),
-    ).resolves.toStrictEqual({
-      message: `Removed ${removedMember.email} from org`,
-    });
-    await expectAutomationSuspended(
-      runs,
-      removedMember,
-      removedAutomation.automation.id,
-    );
-  });
+  // The member-leave/removal automation-suspension scenario was removed with
+  // the automation -> workflow cutover (#19959): the frozen legacy API can no
+  // longer create automations. Owner-suspension coverage lives in
+  // automations.test.ts on seeded rows.
 
   it("disconnects slack-linked members on leave, removal, and org deletion [ORG-SLACK-D]", async () => {
     const integrations = createBddIntegrationApi(context);
