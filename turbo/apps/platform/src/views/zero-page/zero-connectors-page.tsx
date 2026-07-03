@@ -25,6 +25,7 @@ import {
   setConnectorsPageTab$,
   openCustomConnectorCreateDialog$,
 } from "../../signals/zero-page/settings/custom-connectors.ts";
+import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agents$ } from "../../signals/agent.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
@@ -933,6 +934,7 @@ function connectorLabelForType(
 export function ZeroConnectorsPage() {
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const filteredTypesLoadable = useLastLoadable(filteredConnectorTypes$);
+  const catalogStatusLoadable = useLastLoadable(connectorCatalogStatus$);
   const pollingAuthCodeType = useGet(pollingOAuthAuthCodeConnectorType$);
   const pollingDeviceAuthType = useGet(pollingOAuthDeviceAuthConnectorType$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
@@ -972,6 +974,10 @@ export function ZeroConnectorsPage() {
 
   const filteredConnectors =
     filteredTypesLoadable.state === "hasData" ? filteredTypesLoadable.data : [];
+  const categoryMetadata =
+    catalogStatusLoadable.state === "hasData"
+      ? catalogStatusLoadable.data.categoryMetadata
+      : undefined;
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
   const managedConnectorLabel = connectorLabelForType(
@@ -1067,6 +1073,7 @@ export function ZeroConnectorsPage() {
 
   const grouped = groupConnectorsByCategory(
     filteredConnectors.map(getOptimisticConnector),
+    categoryMetadata,
   );
 
   const builtinList = renderBuiltinList({
