@@ -532,7 +532,8 @@ describe("POST /api/zero/agents", () => {
 
 Note what's absent compared to older patterns:
 
-- No `vi.clearAllMocks()` — Vitest config has `clearMocks: true`
+- No ad hoc `vi.clearAllMocks()` — API tests reset centralized mocks from
+  `turbo/apps/api/src/__tests__/setup.ts`
 - No route handler imports — tests call the real Hono app through `setupApp()`
 - No `initServices()` — API app entry points initialize services
 - No direct database setup or assertions — create and verify state through API
@@ -633,7 +634,7 @@ it("handles an authenticated request", async () => {
   expect(response.status).toBe(201);
 });
 
-// No vi.clearAllMocks() — Vitest config has clearMocks: true
+// No ad hoc vi.clearAllMocks() — API setup resets centralized mocks
 // No direct DB cleanup — route tests should stay inside the route context
 ```
 

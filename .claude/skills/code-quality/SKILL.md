@@ -68,7 +68,7 @@ review "authentication changes"     # Review by description
    - Check test initialization follows production flow
    - Evaluate test quality and completeness
    - Check for fake timers, partial mocks, implementation detail testing
-   - Verify proper mock cleanup (vi.clearAllMocks)
+   - Verify mocks are reset through the package's standard centralized cleanup
 
    **Error Handling (Bad Smell #3)**
    - Identify unnecessary try/catch blocks
@@ -107,7 +107,8 @@ review "authentication changes"     # Review by description
    - Verify real database connections are used
 
    **Test Mock Cleanup (Bad Smell #8)**
-   - Verify vi.clearAllMocks() in beforeEach hooks
+   - Verify mock cleanup follows the package convention (`resetApiTestMocks`,
+     Vitest `clearMocks`, or dedicated test helpers)
    - Check for potential mock state leakage
 
    **TypeScript any Usage (Bad Smell #9)**
