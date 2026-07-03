@@ -129,11 +129,11 @@ pub struct ArtifactEnv {
     pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
 }
 
-/// Raw startup values used to build an owned guest-agent run config.
+/// Raw runner bootstrap values used to build an owned guest-agent run config.
 ///
-/// Empty strings represent unset runner bootstrap values. Optional override
-/// fields preserve the difference between an unset variable and an explicitly
-/// empty variable.
+/// Empty strings represent unset bootstrap environment values. Variable-length
+/// run payload fields live in [`guest_contracts::env::RunPayload`] and are
+/// loaded through `run_payload_file`.
 #[derive(Clone, Default)]
 pub struct GuestConfigRaw {
     pub run_id: String,
@@ -141,15 +141,9 @@ pub struct GuestConfigRaw {
     pub api_token: String,
     pub sandbox_id: String,
     pub sandbox_reuse_result: String,
-    pub prompt: String,
-    pub append_system_prompt: String,
     pub vercel_bypass: String,
     pub resume_session_id: String,
     pub api_start_time: String,
-    pub secret_values: String,
-    pub disallowed_tools: String,
-    pub tools: String,
-    pub settings: String,
     pub use_mock_claude: String,
     pub mock_claude_path: Option<String>,
     pub cli_agent_type: String,
@@ -161,8 +155,6 @@ pub struct GuestConfigRaw {
     pub home: Option<String>,
     pub runtime_home: Option<PathBuf>,
     pub guest_runtime_dir: Option<PathBuf>,
-    pub artifacts: String,
-    pub feature_flags: String,
     pub stuck_tool_timeout_secs: String,
     pub post_result_sigterm_grace_secs: String,
     pub post_result_total_cap_secs: String,
@@ -183,15 +175,9 @@ impl GuestConfigRaw {
             api_token: env_or_empty(guest_contracts::env::API_TOKEN_ENV),
             sandbox_id: env_or_empty(guest_contracts::env::SANDBOX_ID_ENV),
             sandbox_reuse_result: env_or_empty(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV),
-            prompt: String::new(),
-            append_system_prompt: String::new(),
             vercel_bypass: env_or_empty(guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV),
             resume_session_id: env_or_empty(guest_contracts::env::RESUME_SESSION_ID_ENV),
             api_start_time: env_or_empty(guest_contracts::env::API_START_TIME_ENV),
-            secret_values: String::new(),
-            disallowed_tools: String::new(),
-            tools: String::new(),
-            settings: String::new(),
             use_mock_claude: env_or_empty(guest_contracts::env::USE_MOCK_CLAUDE_ENV),
             mock_claude_path: std::env::var(guest_contracts::env::MOCK_CLAUDE_PATH_ENV).ok(),
             cli_agent_type: env_or_empty(guest_contracts::env::CLI_AGENT_TYPE_ENV),
@@ -205,8 +191,6 @@ impl GuestConfigRaw {
             home: std::env::var("HOME").ok(),
             runtime_home: std::env::var_os("HOME").map(PathBuf::from),
             guest_runtime_dir,
-            artifacts: String::new(),
-            feature_flags: String::new(),
             stuck_tool_timeout_secs: env_or_empty(
                 guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
             ),
@@ -273,20 +257,19 @@ impl GuestConfig {
     }
 
     /// Build an owned config from explicit startup values.
-    pub fn from_raw(mut raw: GuestConfigRaw) -> Result<Self, String> {
-        if let Some(payload) = load_run_payload_from_raw(&raw)? {
-            apply_run_payload_to_raw(&mut raw, payload);
-        }
+    pub fn from_raw(raw: GuestConfigRaw) -> Result<Self, String> {
+        let payload = load_run_payload_from_raw(&raw)?;
         let user_env = load_user_env_from_raw(&raw)?;
-        Self::from_raw_with_user_env(raw, user_env)
+        Self::from_raw_with_user_env(raw, payload, user_env)
     }
 
     fn from_raw_with_user_env(
         raw: GuestConfigRaw,
+        payload: guest_contracts::env::RunPayload,
         user_env: HashMap<String, String>,
     ) -> Result<Self, String> {
         let home_dir = resolve_home_dir(&user_env, raw.home.as_deref())?;
-        let artifacts = parse_artifacts_value(&raw.artifacts)
+        let artifacts = parse_artifacts_value(&payload.artifacts)
             .map_err(|e| format!("parse {} JSON: {e}", guest_contracts::env::ARTIFACTS_ENV))?;
 
         Ok(Self {
@@ -295,15 +278,15 @@ impl GuestConfig {
             api_token: raw.api_token,
             sandbox_id: raw.sandbox_id,
             sandbox_reuse_result: raw.sandbox_reuse_result,
-            prompt: raw.prompt,
-            append_system_prompt: raw.append_system_prompt,
+            prompt: payload.prompt,
+            append_system_prompt: payload.append_system_prompt,
             vercel_bypass: raw.vercel_bypass,
             resume_session_id: raw.resume_session_id,
             api_start_time: raw.api_start_time,
-            secret_values: raw.secret_values,
-            disallowed_tools: raw.disallowed_tools,
-            tools: raw.tools,
-            settings: raw.settings,
+            secret_values: payload.secret_values,
+            disallowed_tools: payload.disallowed_tools,
+            tools: payload.tools,
+            settings: payload.settings,
             use_mock_claude: bool_true_value(Some(&raw.use_mock_claude)),
             mock_claude_path: default_mock_path(
                 raw.mock_claude_path.as_deref(),
@@ -322,7 +305,7 @@ impl GuestConfig {
             ),
             home_dir,
             artifacts,
-            feature_flags: raw.feature_flags,
+            feature_flags: payload.feature_flags,
             stuck_tool_timeout_secs: u64_value_or(
                 guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
                 non_empty(&raw.stuck_tool_timeout_secs),
@@ -389,10 +372,8 @@ fn parse_artifacts_value(raw: &str) -> Result<Vec<ArtifactEnv>, serde_json::Erro
 
 fn load_run_payload_from_raw(
     raw: &GuestConfigRaw,
-) -> Result<Option<guest_contracts::env::RunPayload>, String> {
-    if raw.run_payload_file.is_empty() {
-        return Ok(None);
-    }
+) -> Result<guest_contracts::env::RunPayload, String> {
+    raw.require_run_payload_file()?;
 
     let path = Path::new(&raw.run_payload_file);
     let runtime_dir = guest_runtime_dir_for_private_file_values(
@@ -404,7 +385,7 @@ fn load_run_payload_from_raw(
             .or_else(|| raw.home.as_deref().map(Path::new)),
     )?;
     validate_run_payload_file_path_for_runtime(path, &runtime_dir)?;
-    load_run_payload_from_path(path).map(Some)
+    load_run_payload_from_path(path)
 }
 
 fn load_run_payload_from_path(path: &Path) -> Result<guest_contracts::env::RunPayload, String> {
@@ -417,17 +398,6 @@ fn load_run_payload_from_path(path: &Path) -> Result<guest_contracts::env::RunPa
     validate_run_payload(&payload)?;
 
     Ok(payload)
-}
-
-fn apply_run_payload_to_raw(raw: &mut GuestConfigRaw, payload: guest_contracts::env::RunPayload) {
-    raw.prompt = payload.prompt;
-    raw.append_system_prompt = payload.append_system_prompt;
-    raw.secret_values = payload.secret_values;
-    raw.disallowed_tools = payload.disallowed_tools;
-    raw.tools = payload.tools;
-    raw.settings = payload.settings;
-    raw.artifacts = payload.artifacts;
-    raw.feature_flags = payload.feature_flags;
 }
 
 fn remove_run_payload_file(path: &Path) -> Result<(), String> {
@@ -681,6 +651,24 @@ mod tests {
         path
     }
 
+    fn raw_config_fixture_with_run_payload(
+        payload: &guest_contracts::env::RunPayload,
+    ) -> (tempfile::TempDir, GuestConfigRaw) {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_dir = tmp.path().join("runtime");
+        let run_payload_file = write_run_payload_fixture(&runtime_dir, payload);
+        let raw = GuestConfigRaw {
+            run_payload_file: run_payload_file.to_string_lossy().into_owned(),
+            guest_runtime_dir: Some(runtime_dir),
+            ..raw_config_fixture()
+        };
+        (tmp, raw)
+    }
+
+    fn raw_config_fixture_with_default_run_payload() -> (tempfile::TempDir, GuestConfigRaw) {
+        raw_config_fixture_with_run_payload(&guest_contracts::env::RunPayload::default())
+    }
+
     #[test]
     fn bounded_duration_secs_value_defaults_when_unset() {
         assert_eq!(
@@ -757,32 +745,36 @@ mod tests {
 
     #[test]
     fn guest_config_from_raw_builds_owned_config_without_process_env_mutation() {
+        let payload = guest_contracts::env::RunPayload {
+            prompt: "hello".to_string(),
+            append_system_prompt: "extra system".to_string(),
+            secret_values: "encoded-secret".to_string(),
+            disallowed_tools: "WebFetch".to_string(),
+            tools: "Bash".to_string(),
+            settings: "{}".to_string(),
+            artifacts:
+                r#"[{"name":"artifact","mountPath":"/mnt/a","storageId":"storage","versionId":"v1"}]"#
+                    .to_string(),
+            ..guest_contracts::env::RunPayload::default()
+        };
+        let (_tmp, raw) = raw_config_fixture_with_run_payload(&payload);
         let raw = GuestConfigRaw {
             api_url: "https://api.example.test".to_string(),
             api_token: String::new(),
             sandbox_id: "sandbox-1".to_string(),
             sandbox_reuse_result: "reused".to_string(),
-            prompt: "hello".to_string(),
-            append_system_prompt: "extra system".to_string(),
             vercel_bypass: "bypass".to_string(),
             resume_session_id: "session-1".to_string(),
             api_start_time: "123".to_string(),
-            secret_values: "encoded-secret".to_string(),
-            disallowed_tools: "WebFetch".to_string(),
-            tools: "Bash".to_string(),
-            settings: "{}".to_string(),
             use_mock_claude: "true".to_string(),
             cli_agent_type: "codex".to_string(),
             use_mock_codex: "1".to_string(),
             use_codex_app_server_backend: "true".to_string(),
-            artifacts:
-                r#"[{"name":"artifact","mountPath":"/mnt/a","storageId":"storage","versionId":"v1"}]"#
-                    .to_string(),
             stuck_tool_timeout_secs: "7".to_string(),
             post_result_sigterm_grace_secs: "8".to_string(),
             post_result_total_cap_secs: "9".to_string(),
             post_result_sigkill_grace_secs: "10".to_string(),
-            ..raw_config_fixture()
+            ..raw
         };
 
         let config = GuestConfig::from_raw(raw).unwrap();
@@ -832,9 +824,12 @@ mod tests {
             r#"{"HOME":"/home/from-user-env","OPENAI_MODEL":"gpt-test"}"#,
         )
         .unwrap();
+        let run_payload_file =
+            write_run_payload_fixture(&runtime_dir, &guest_contracts::env::RunPayload::default());
 
         let raw = GuestConfigRaw {
             user_env_file: user_env_path.to_string_lossy().into_owned(),
+            run_payload_file: run_payload_file.to_string_lossy().into_owned(),
             guest_runtime_dir: Some(runtime_dir),
             home: Some("/home/from-process".to_string()),
             ..raw_config_fixture()
@@ -872,13 +867,6 @@ mod tests {
 
         let raw = GuestConfigRaw {
             run_payload_file: path.to_string_lossy().into_owned(),
-            prompt: "legacy prompt".to_string(),
-            append_system_prompt: "legacy system".to_string(),
-            secret_values: "legacy-secret".to_string(),
-            disallowed_tools: "LegacyTool".to_string(),
-            tools: "LegacyAllowedTool".to_string(),
-            settings: r#"{"legacy":true}"#.to_string(),
-            artifacts: String::new(),
             guest_runtime_dir: Some(runtime_dir),
             ..raw_config_fixture()
         };
@@ -970,9 +958,12 @@ mod tests {
             r#"{"HOME":"/home/from-user-env","OPENAI_MODEL":"gpt-runtime-home"}"#,
         )
         .unwrap();
+        let run_payload_file =
+            write_run_payload_fixture(&runtime_dir, &guest_contracts::env::RunPayload::default());
 
         let raw = GuestConfigRaw {
             user_env_file: user_env_path.to_string_lossy().into_owned(),
+            run_payload_file: run_payload_file.to_string_lossy().into_owned(),
             home: None,
             runtime_home: Some(runtime_home),
             ..raw_config_fixture()
@@ -991,8 +982,14 @@ mod tests {
 
     #[test]
     fn guest_config_from_raw_preserves_empty_process_home() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_dir = tmp.path().join("runtime");
+        let run_payload_file =
+            write_run_payload_fixture(&runtime_dir, &guest_contracts::env::RunPayload::default());
         let raw = GuestConfigRaw {
             home: Some(String::new()),
+            run_payload_file: run_payload_file.to_string_lossy().into_owned(),
+            guest_runtime_dir: Some(runtime_dir),
             ..raw_config_fixture()
         };
 
@@ -1003,10 +1000,11 @@ mod tests {
 
     #[test]
     fn guest_config_from_raw_preserves_explicit_empty_mock_paths() {
+        let (_tmp, raw) = raw_config_fixture_with_default_run_payload();
         let raw = GuestConfigRaw {
             mock_claude_path: Some(String::new()),
             mock_codex_path: Some(String::new()),
-            ..raw_config_fixture()
+            ..raw
         };
 
         let config = GuestConfig::from_raw(raw).unwrap();
@@ -1017,10 +1015,11 @@ mod tests {
 
     #[test]
     fn guest_config_from_raw_reports_invalid_artifacts() {
-        let raw = GuestConfigRaw {
+        let payload = guest_contracts::env::RunPayload {
             artifacts: "{not-json".to_string(),
-            ..raw_config_fixture()
+            ..guest_contracts::env::RunPayload::default()
         };
+        let (_tmp, raw) = raw_config_fixture_with_run_payload(&payload);
 
         let err = GuestConfig::from_raw(raw).err().unwrap();
 
@@ -1032,9 +1031,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let runtime_dir = tmp.path().join("runtime");
         let unexpected = tmp.path().join("other").join("user-env").join("env.json");
+        let run_payload_file =
+            write_run_payload_fixture(&runtime_dir, &guest_contracts::env::RunPayload::default());
 
         let raw = GuestConfigRaw {
             user_env_file: unexpected.to_string_lossy().into_owned(),
+            run_payload_file: run_payload_file.to_string_lossy().into_owned(),
             guest_runtime_dir: Some(runtime_dir),
             ..raw_config_fixture()
         };

@@ -142,16 +142,23 @@ pub(crate) fn shared_guest_paths() -> guest_agent::paths::GuestPaths {
 
 pub(crate) fn shared_guest_config() -> Result<guest_agent::env::GuestConfig, String> {
     let server = &*MOCK_SERVER;
+    let run_payload_file = crate::common::write_run_payload_file_for_test(
+        &MOCK_RUNTIME_DIR,
+        &guest_contracts::env::RunPayload {
+            prompt: "test prompt".to_string(),
+            ..guest_contracts::env::RunPayload::default()
+        },
+    )?;
     guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
         run_id: TEST_RUN_ID.to_string(),
         api_url: server.base_url(),
         api_token: "test-token-abc123".to_string(),
         sandbox_id: "00000000-0000-4000-8000-000000000abc".to_string(),
         sandbox_reuse_result: "reused".to_string(),
-        prompt: "test prompt".to_string(),
         vercel_bypass: "test-bypass-value".to_string(),
         cli_agent_type: "claude-code".to_string(),
         home: Some(shared_guest_home_dir().to_string_lossy().into_owned()),
+        run_payload_file: run_payload_file.to_string_lossy().into_owned(),
         guest_runtime_dir: Some(MOCK_RUNTIME_DIR.clone()),
         ..Default::default()
     })

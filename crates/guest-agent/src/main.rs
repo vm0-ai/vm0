@@ -1284,8 +1284,10 @@ mod tests {
             run_id: "main-recovery-checkpoint".to_string(),
             api_url: server.base_url(),
             api_token: "test-token".to_string(),
-            prompt: prompt.unwrap_or_default().to_string(),
             home: Some("/home/vm0".to_string()),
+            run_payload_file: write_test_run_payload(prompt)
+                .to_string_lossy()
+                .into_owned(),
             guest_runtime_dir: Some(test_runtime_dir()),
             ..env::GuestConfigRaw::default()
         })
@@ -3101,15 +3103,29 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let explicit_paths = paths::GuestPaths::from_runtime_dir(tmp.path().join("captured-run"));
         let stale_paths = paths::GuestPaths::from_runtime_dir(tmp.path().join("stale-run"));
+        let run_payload_dir = explicit_paths
+            .runtime_dir()
+            .join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
+        std::fs::create_dir_all(&run_payload_dir).unwrap();
+        let run_payload_file = run_payload_dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
+        std::fs::write(
+            &run_payload_file,
+            serde_json::to_vec(&guest_contracts::env::RunPayload {
+                prompt: "captured prompt".to_string(),
+                ..guest_contracts::env::RunPayload::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
         let config = env::GuestConfig::from_raw(env::GuestConfigRaw {
             run_id: "captured-run".to_string(),
-            prompt: "captured prompt".to_string(),
             home: Some(
                 tmp.path()
                     .join("captured-home")
                     .to_string_lossy()
                     .into_owned(),
             ),
+            run_payload_file: run_payload_file.to_string_lossy().into_owned(),
             guest_runtime_dir: Some(explicit_paths.runtime_dir().to_path_buf()),
             ..env::GuestConfigRaw::default()
         })
