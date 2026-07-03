@@ -5104,7 +5104,10 @@ describe("chat lifecycle", () => {
   it("surfaces archived goal history in the latest assistant row", async () => {
     const threadId = "thread-goal-run-group-folding";
     const runGroupId = "f0000001-0000-4000-a000-00000000072b";
-    const goalPrompt = "Keep the release moving";
+    const goalBrief = "Keep the release moving";
+    const goalPrompt = `${goalBrief}
+
+Full autonomous goal prompt that should stay out of the compact chat UI`;
 
     mockChatLifecycle(context, {
       threadId,
@@ -5114,6 +5117,7 @@ describe("chat lifecycle", () => {
           id: "msg-goal-run-group-user-1",
           role: "user",
           content: goalPrompt,
+          goalSnapshot: { objectiveBrief: goalBrief },
           runId: "f0000001-0000-4000-a000-00000000072c",
           runGroupId,
           isGoalRun: true,
@@ -5132,6 +5136,7 @@ describe("chat lifecycle", () => {
           id: "msg-goal-run-group-user-2",
           role: "user",
           content: goalPrompt,
+          goalSnapshot: { objectiveBrief: goalBrief },
           runId: "f0000001-0000-4000-a000-00000000072d",
           runGroupId,
           isGoalRun: true,
@@ -5167,7 +5172,8 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText("Latest goal result")).toBeInTheDocument();
       expect(screen.getByLabelText("Goal")).toBeInTheDocument();
-      expect(screen.getByText(goalPrompt)).toBeInTheDocument();
+      expect(screen.getByText(goalBrief)).toBeInTheDocument();
+      expect(screen.queryByText(goalPrompt)).not.toBeInTheDocument();
       expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
         "3 mins for Keep the release moving",
       );
@@ -5186,7 +5192,7 @@ describe("chat lifecycle", () => {
     ).toBeInTheDocument();
     expectTextBefore(
       document.body,
-      goalPrompt,
+      goalBrief,
       "3 mins for Keep the release moving",
     );
     expectTextBefore(
@@ -5199,6 +5205,8 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("First goal result")).toBeInTheDocument();
+      expect(screen.getAllByText(goalBrief).length).toBeGreaterThan(1);
+      expect(screen.queryByText(goalPrompt)).not.toBeInTheDocument();
       expect(screen.getAllByText("Worked for 30s").length).toBeGreaterThan(0);
     });
   });

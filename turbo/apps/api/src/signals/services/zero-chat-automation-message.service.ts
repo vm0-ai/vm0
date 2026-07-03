@@ -1,6 +1,7 @@
 import {
   chatMessages,
   type ChatMessageAutomationSnapshot,
+  type ChatMessageGoalSnapshot,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -158,6 +159,7 @@ export async function postAutomationUserMessage(params: {
   readonly runGroupId?: string;
   readonly automationTitle?: string;
   readonly automationSnapshot?: ChatMessageAutomationSnapshot;
+  readonly goalSnapshot?: ChatMessageGoalSnapshot;
 }): Promise<void> {
   await params.db.transaction(async (tx) => {
     const [inserted] = await tx
@@ -170,6 +172,7 @@ export async function postAutomationUserMessage(params: {
         runGroupId: params.runGroupId,
         automationTitle: params.automationTitle,
         automationSnapshot: params.automationSnapshot,
+        goalSnapshot: params.goalSnapshot,
       })
       .returning({ createdAt: chatMessages.createdAt });
     if (params.appendQueueMarker) {
