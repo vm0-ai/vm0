@@ -1234,6 +1234,119 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
   }, 60_000);
 
+  it("lists active chat thread ids for the current user and org", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const owner = bdd.user({ orgId });
+    const peer = bdd.user({ orgId });
+    const sameUserOtherOrg = bdd.user({ userId: owner.userId });
+    bdd.acceptAgentStorageWrites();
+
+    const ownerAgent = await bdd.createAgent(owner, {
+      displayName: "Active ids owner agent",
+    });
+    const peerAgent = await bdd.createAgent(peer, {
+      displayName: "Active ids peer agent",
+    });
+    const otherOrgAgent = await bdd.createAgent(sameUserOtherOrg, {
+      displayName: "Active ids other org agent",
+    });
+
+    const runningThread = await sendNoCreditMessage(owner, {
+      agentId: ownerAgent.agentId,
+      prompt: "active running thread",
+    });
+    const queuedThread = await sendNoCreditMessage(owner, {
+      agentId: ownerAgent.agentId,
+      prompt: "active queued thread",
+    });
+    const completedThread = await sendNoCreditMessage(owner, {
+      agentId: ownerAgent.agentId,
+      prompt: "terminal completed thread",
+    });
+    const peerThread = await sendNoCreditMessage(peer, {
+      agentId: peerAgent.agentId,
+      prompt: "peer running thread",
+    });
+    const otherOrgThread = await sendNoCreditMessage(sameUserOtherOrg, {
+      agentId: otherOrgAgent.agentId,
+      prompt: "other org running thread",
+    });
+
+    if (!owner.orgId || !peer.orgId || !sameUserOtherOrg.orgId) {
+      throw new Error("Expected test users to belong to orgs");
+    }
+
+    const runningRunId = await store.set(
+      seedZeroChatThreadRun$,
+      {
+        userId: owner.userId,
+        orgId: owner.orgId,
+        agentId: ownerAgent.agentId,
+        threadId: runningThread,
+        status: "running",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedZeroChatThreadRun$,
+      {
+        userId: owner.userId,
+        orgId: owner.orgId,
+        agentId: ownerAgent.agentId,
+        threadId: queuedThread,
+        status: "queued",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedZeroChatThreadRun$,
+      {
+        userId: owner.userId,
+        orgId: owner.orgId,
+        agentId: ownerAgent.agentId,
+        threadId: completedThread,
+        status: "completed",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedZeroChatThreadRun$,
+      {
+        userId: peer.userId,
+        orgId: peer.orgId,
+        agentId: peerAgent.agentId,
+        threadId: peerThread,
+        status: "running",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedZeroChatThreadRun$,
+      {
+        userId: sameUserOtherOrg.userId,
+        orgId: sameUserOtherOrg.orgId,
+        agentId: otherOrgAgent.agentId,
+        threadId: otherOrgThread,
+        status: "running",
+      },
+      context.signal,
+    );
+
+    expect(new Set(await chat.listActiveChatThreadIds(owner))).toStrictEqual(
+      new Set([runningThread, queuedThread]),
+    );
+
+    await store.set(
+      updateZeroChatThreadRunStatus$,
+      { runId: runningRunId, status: "completed" },
+      context.signal,
+    );
+
+    expect(new Set(await chat.listActiveChatThreadIds(owner))).toStrictEqual(
+      new Set([queuedThread]),
+    );
+  }, 60_000);
+
   it("marks all unread chat threads for one agent behind the agent unread feature switch", async () => {
     const owner = bdd.user();
     bdd.acceptAgentStorageWrites();
