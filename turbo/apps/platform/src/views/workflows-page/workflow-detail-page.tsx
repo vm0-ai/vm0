@@ -469,6 +469,9 @@ function DetailHeader({
           </div>
           <div className="mt-4 flex items-center gap-2 sm:mt-6">
             <WorkflowTabNav activeTab={activeTab} onTabChange={onTabChange} />
+            {activeTab === "instructions" ? (
+              <WorkflowFilePicker detail={detail} />
+            ) : null}
           </div>
         </>
       ) : (
@@ -887,9 +890,6 @@ function WorkflowInstructionsTab({
 }) {
   return (
     <div className="mx-auto flex max-w-[900px] flex-col gap-3">
-      <div className="flex min-w-0 items-center">
-        <WorkflowFilePicker detail={detail} />
-      </div>
       <div className="zero-card overflow-hidden px-5 pb-5">
         <WorkflowFilePreview detail={detail} />
       </div>
@@ -1372,7 +1372,7 @@ function WorkflowFilePicker({
           />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-80">
+      <DropdownMenuContent align="end" className="w-80">
         <WorkflowFileNavigationItems
           files={files}
           selectedFilePath={selectedFilePath}
