@@ -9,11 +9,14 @@ import { nowDate } from "../external/time";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
+const ORG_SCOPED_FEATURE_SWITCH_KEYS: readonly string[] = [
+  FeatureSwitchKey.DataExport,
+  FeatureSwitchKey.AgentUnreadIndicators,
+  FeatureSwitchKey.ChatThreadEventSourcing,
+];
+
 function isOrgScopedFeatureSwitchKey(key: string): boolean {
-  return (
-    key === FeatureSwitchKey.DataExport ||
-    key === FeatureSwitchKey.AgentUnreadIndicators
-  );
+  return ORG_SCOPED_FEATURE_SWITCH_KEYS.includes(key);
 }
 
 function splitFeatureSwitchesByScope(switches: Record<string, boolean>): {
@@ -251,8 +254,9 @@ async function removeOrgScopedFeatureSwitches(
   }
 
   const next = { ...existingRow.switches };
-  delete next[FeatureSwitchKey.DataExport];
-  delete next[FeatureSwitchKey.AgentUnreadIndicators];
+  for (const key of ORG_SCOPED_FEATURE_SWITCH_KEYS) {
+    delete next[key];
+  }
 
   if (Object.keys(next).length === 0) {
     await writeDb
