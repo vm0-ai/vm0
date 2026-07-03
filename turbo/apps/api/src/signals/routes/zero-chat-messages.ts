@@ -4,6 +4,7 @@ import { command } from "ccstate";
 import {
   chatMessagesContract,
   type AttachFile,
+  type CodexServiceTier,
   type GenerationTemplateRequest,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -102,7 +103,7 @@ interface NormalSendBody {
     readonly selectedModel: string;
   } | null;
   readonly runOptions?: {
-    readonly codexServiceTier?: "fast";
+    readonly codexServiceTier?: CodexServiceTier;
   };
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly hasTextContent?: boolean;
@@ -142,6 +143,7 @@ interface ResolvedThread {
   readonly sessionId: string | undefined;
   readonly incompleteContext: string;
   readonly computerUseHostId: string | null;
+  readonly codexServiceTier: CodexServiceTier | null;
   readonly isNewThread: boolean;
   readonly isClientThreadRetry: boolean;
 }
@@ -1395,6 +1397,32 @@ async function maybePersistExplicitModelFirstSelection(params: {
   return true;
 }
 
+async function maybePersistExplicitCodexServiceTier(params: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly body: NormalSendBody;
+}): Promise<void> {
+  if (
+    params.body.modelSelection === undefined &&
+    params.body.runOptions === undefined
+  ) {
+    return;
+  }
+  await params.db
+    .update(chatThreads)
+    .set({
+      codexServiceTier: params.body.runOptions?.codexServiceTier ?? null,
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(chatThreads.id, params.threadId),
+        eq(chatThreads.userId, params.userId),
+      ),
+    );
+}
+
 function hasComputerUseHostSelection(body: NormalSendBody): boolean {
   return Object.prototype.hasOwnProperty.call(body, "computerUseHostId");
 }
@@ -1512,6 +1540,7 @@ async function createChatThread(
     readonly clientThreadId: string | undefined;
     readonly chatThreadEventId: string | undefined;
     readonly pin: ThreadModelPin;
+    readonly codexServiceTier: CodexServiceTier | null;
   },
 ): Promise<CreateChatThreadResult> {
   return await db.transaction(async (tx) => {
@@ -1527,6 +1556,7 @@ async function createChatThread(
           modelProviderType: null,
           modelProviderCredentialScope: null,
           selectedModel: args.pin.selectedModel,
+          codexServiceTier: args.codexServiceTier,
         })
         .onConflictDoNothing({ target: chatThreads.id })
         .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
@@ -1571,6 +1601,7 @@ async function createChatThread(
         modelProviderType: null,
         modelProviderCredentialScope: null,
         selectedModel: args.pin.selectedModel,
+        codexServiceTier: args.codexServiceTier,
       })
       .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
     if (!thread) {
@@ -1599,6 +1630,7 @@ async function resolveThread(params: {
   readonly clientThreadId: string | undefined;
   readonly chatThreadEventId: string | undefined;
   readonly initialPin: ThreadModelPin;
+  readonly codexServiceTier: CodexServiceTier | null;
   readonly modelSelection: IncomingModelSelection;
 }): Promise<ResolvedThread | ReturnType<typeof notFound>> {
   if (!params.existingThreadId) {
@@ -1609,6 +1641,7 @@ async function resolveThread(params: {
       clientThreadId: params.clientThreadId,
       chatThreadEventId: params.chatThreadEventId,
       pin: params.initialPin,
+      codexServiceTier: params.codexServiceTier,
     });
     if ("status" in thread) {
       return thread;
@@ -1618,6 +1651,7 @@ async function resolveThread(params: {
       sessionId: undefined,
       incompleteContext: "",
       computerUseHostId: null,
+      codexServiceTier: params.codexServiceTier,
       isNewThread: !thread.clientThreadAlreadyExisted,
       isClientThreadRetry: thread.clientThreadAlreadyExisted,
     };
@@ -1628,6 +1662,7 @@ async function resolveThread(params: {
       id: chatThreads.id,
       selectedModel: chatThreads.selectedModel,
       computerUseHostId: chatThreads.computerUseHostId,
+      codexServiceTier: chatThreads.codexServiceTier,
     })
     .from(chatThreads)
     .where(
@@ -1664,6 +1699,7 @@ async function resolveThread(params: {
           groupIncompleteRoundsByRunId(incompleteRows),
         ),
     computerUseHostId: thread.computerUseHostId,
+    codexServiceTier: thread.codexServiceTier,
     isNewThread: false,
     isClientThreadRetry: false,
   };
@@ -2245,6 +2281,7 @@ const prepareNormalSend$ = command(
       clientThreadId: args.body.clientThreadId,
       chatThreadEventId: args.body.chatThreadEventId,
       initialPin: emptyModelFirstThreadPin(),
+      codexServiceTier: args.body.runOptions?.codexServiceTier ?? null,
       modelSelection: args.body.modelSelection,
     });
     signal.throwIfAborted();
@@ -2270,6 +2307,13 @@ const prepareNormalSend$ = command(
         userId: args.userId,
         modelSelection: args.body.modelSelection,
       });
+    signal.throwIfAborted();
+    await maybePersistExplicitCodexServiceTier({
+      db,
+      threadId: thread.threadId,
+      userId: args.userId,
+      body: args.body,
+    });
     signal.throwIfAborted();
     const computerUseHostGrant = await resolveComputerUseHostGrant({
       db,

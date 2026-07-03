@@ -5,6 +5,7 @@ import {
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
   type ChatThreadListItem,
+  type CodexServiceTier,
   type PagedChatMessage,
   type PersistedAttachment,
   type ResolvedAttachFile,
@@ -136,6 +137,7 @@ type ChatThreadRow = {
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: string | null;
   readonly selectedModel: string | null;
+  readonly codexServiceTier: CodexServiceTier | null;
   readonly computerUseHostId: string | null;
   readonly orgId: string | null;
   readonly lastReadAt: Date | null;
@@ -391,6 +393,7 @@ function ownedChatThread(
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
         selectedModel: chatThreads.selectedModel,
+        codexServiceTier: chatThreads.codexServiceTier,
         orgId: zeroAgents.orgId,
         lastReadAt: chatThreads.lastReadAt,
         lastReadMessageId: chatThreads.lastReadMessageId,
@@ -423,6 +426,7 @@ function ownedChatThread(
       modelProviderType: null,
       modelProviderCredentialScope: null,
       selectedModel: thread.selectedModel ?? null,
+      codexServiceTier: thread.codexServiceTier ?? null,
       orgId: thread.orgId ?? null,
       lastReadAt: thread.lastReadAt ?? null,
       lastReadMessageId: thread.lastReadMessageId ?? null,
@@ -719,6 +723,7 @@ export function zeroChatThreadDetail(args: {
       modelProviderType: null,
       modelProviderCredentialScope: null,
       selectedModel: modelPin?.selectedModel ?? thread.selectedModel,
+      codexServiceTier: thread.codexServiceTier,
       renamedAt: thread.renamedAt?.toISOString() ?? null,
     };
   });

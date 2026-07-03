@@ -115,6 +115,7 @@ function createFailingSubscribeDataSource(
     draftAttachments: null,
     modelProviderId: null,
     selectedModel: null,
+    codexServiceTier: null,
     computerUseHostId: null,
   };
 

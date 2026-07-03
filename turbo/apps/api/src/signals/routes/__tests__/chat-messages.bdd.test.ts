@@ -1752,6 +1752,9 @@ describe("CHAT-02: explicit provider pins", () => {
       },
       runOptions: { codexServiceTier: "fast" },
     });
+    expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
+      "fast",
+    );
     const { claim } = await claimChatRun(runnerGroup, fast.runId);
     const environment = claimEnvironment(claim);
     expect(claim.cliAgentType).toBe("codex");
@@ -1764,6 +1767,62 @@ describe("CHAT-02: explicit provider pins", () => {
       ),
     );
     await cancelChatRun(actor, fast.runId);
+    expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
+      "fast",
+    );
+
+    const invalidFastPatch = await chat.requestUpdateThreadModelSelection(
+      actor,
+      fast.threadId,
+      {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "gpt-5.4",
+      },
+      [400],
+      { codexServiceTier: "fast" },
+    );
+    expectApiError(invalidFastPatch.body);
+    expect(invalidFastPatch.body.error.message).toBe(
+      "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 runs",
+    );
+    expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
+      "fast",
+    );
+
+    await chat.updateThreadModelSelection(
+      actor,
+      fast.threadId,
+      {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "gpt-5.4",
+      },
+      { codexServiceTier: null },
+    );
+    await expect(chat.readThread(actor, fast.threadId)).resolves.toMatchObject({
+      selectedModel: "gpt-5.4",
+      codexServiceTier: null,
+    });
+
+    const standard = await sendChatRun(actor, {
+      agentId,
+      threadId: fast.threadId,
+      prompt: "run codex standard",
+      modelSelection: {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "gpt-5.5",
+      },
+    });
+    expect(
+      (await chat.readThread(actor, standard.threadId)).codexServiceTier,
+    ).toBeNull();
+    const { claim: standardClaim } = await claimChatRun(
+      runnerGroup,
+      standard.runId,
+    );
+    const standardEnvironment = claimEnvironment(standardClaim);
+    expect(standardEnvironment.OPENAI_MODEL).toBe("gpt-5.5");
+    expect(standardEnvironment.VM0_CODEX_SERVICE_TIER).toBeUndefined();
+    await cancelChatRun(actor, standard.runId);
 
     const rejectedThreadId = randomUUID();
     const rejected = await chat.requestSendMessage(

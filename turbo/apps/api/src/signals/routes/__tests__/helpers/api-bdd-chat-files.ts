@@ -22,6 +22,7 @@ import {
   type ChatThreadListItem,
   type ChatThreadSnapshotProjection,
   type ChatRunOptionsRequest,
+  type CodexServiceTier,
   type GenerationTemplateRequest,
   type ModelSelectionRequest,
   type PagedChatMessage,
@@ -816,12 +817,16 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       modelSelection: ModelSelectionRequest | null,
+      options?: { readonly codexServiceTier?: CodexServiceTier | null },
     ): Promise<void> {
       await accept(
         threadModelSelectionClient().update({
           headers: authenticate(context, actor),
           params: { id: threadId },
-          body: { modelSelection },
+          body: {
+            modelSelection,
+            codexServiceTier: options?.codexServiceTier,
+          },
         }),
         [204],
       );
@@ -832,12 +837,16 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
       modelSelection: ModelSelectionRequest | null,
       statuses: readonly (204 | 400 | 401 | 402 | 404)[],
+      options?: { readonly codexServiceTier?: CodexServiceTier | null },
     ) {
       return await accept(
         threadModelSelectionClient().update({
           headers: authenticate(context, actor),
           params: { id: threadId },
-          body: { modelSelection },
+          body: {
+            modelSelection,
+            codexServiceTier: options?.codexServiceTier,
+          },
         }),
         statuses,
       );
