@@ -31,18 +31,29 @@ pub(crate) fn open_lock_file(path: &Path) -> RunnerResult<File> {
     Ok(file)
 }
 
-/// Check whether the locked fd still refers to the file currently at `path`.
+/// Check whether an opened lock fd still refers to the file currently at `path`.
 ///
 /// Returns `false` if the file was unlinked and recreated (stale inode),
 /// meaning the caller should retry lock acquisition.
-fn is_current_inode(lock: &Flock<File>, path: &Path) -> bool {
-    let Ok(lock_meta) = lock.metadata() else {
-        return true;
-    };
+fn metadata_is_current_inode(lock_meta: std::fs::Metadata, path: &Path) -> bool {
     let Ok(path_meta) = std::fs::symlink_metadata(path) else {
         return false;
     };
     lock_meta.dev() == path_meta.dev() && lock_meta.ino() == path_meta.ino()
+}
+
+fn is_current_inode(lock: &Flock<File>, path: &Path) -> bool {
+    let Ok(lock_meta) = lock.metadata() else {
+        return true;
+    };
+    metadata_is_current_inode(lock_meta, path)
+}
+
+fn file_is_current_inode(file: &File, path: &Path) -> bool {
+    let Ok(lock_meta) = file.metadata() else {
+        return true;
+    };
+    metadata_is_current_inode(lock_meta, path)
 }
 
 #[derive(Clone, Copy)]
@@ -99,11 +110,14 @@ fn acquire_result_blocking(
         let file = open_lock_file(path)?;
         let lock = match Flock::lock(file, mode.arg()) {
             Ok(lock) => lock,
-            Err((_file, e))
+            Err((file, e))
                 if matches!(mode, LockMode::TryExclusive | LockMode::TryShared)
                     && e == nix::errno::Errno::EWOULDBLOCK =>
             {
-                return Ok(LockAcquire::Busy);
+                if file_is_current_inode(&file, path) {
+                    return Ok(LockAcquire::Busy);
+                }
+                continue;
             }
             Err((_file, e)) => return Err(mode.map_error(path, e)),
         };
@@ -130,8 +144,11 @@ fn acquire_existing_result_blocking(
         };
         let lock = match Flock::lock(file, mode.arg()) {
             Ok(lock) => lock,
-            Err((_file, e)) if e == nix::errno::Errno::EWOULDBLOCK => {
-                return Ok(Some(LockAcquire::Busy));
+            Err((file, e)) if e == nix::errno::Errno::EWOULDBLOCK => {
+                if file_is_current_inode(&file, path) {
+                    return Ok(Some(LockAcquire::Busy));
+                }
+                continue;
             }
             Err((_file, e)) => {
                 return Err(RunnerError::Internal(format!(
@@ -599,6 +616,21 @@ mod tests {
         let result = try_acquire_existing_shared_or_missing(path).await.unwrap();
 
         assert!(matches!(result, ExistingTryLock::Busy));
+    }
+
+    #[test]
+    fn file_inode_check_detects_replaced_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        let file = open_lock_file(&path).unwrap();
+
+        std::fs::remove_file(&path).unwrap();
+        drop(open_lock_file(&path).unwrap());
+
+        assert!(
+            !file_is_current_inode(&file, &path),
+            "inode check must reject an opened lock fd whose path was recreated"
+        );
     }
 
     #[tokio::test]
