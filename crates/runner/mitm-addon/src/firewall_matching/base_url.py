@@ -73,6 +73,11 @@ class _CompiledBase(NamedTuple):
     path_segments: tuple[ParsedSegment, ...]
 
 
+class _CompiledFirewallConfigBase(NamedTuple):
+    base: _CompiledBase
+    malformed: bool
+
+
 class _RawAuthorityHost(NamedTuple):
     hostname: str
     bracketed: bool
@@ -389,20 +394,26 @@ def _compiled_base_params_are_valid(base: _CompiledBase) -> bool:
     return True
 
 
-def firewall_base_config_is_valid(raw_base: str) -> bool:
-    """Return whether a firewall base URL is valid for runtime matching."""
+def _compile_firewall_config_base(raw_base: str) -> _CompiledFirewallConfigBase | None:
     base = _compile_base(raw_base)
     if base is None:
-        return False
-    return not (
+        return None
+    return _CompiledFirewallConfigBase(
+        base,
         base.has_query_or_fragment
         or base.raw_syntax_malformed
         or base.param_parse_malformed
         or base.parts.host_malformed
         or base.parts.has_userinfo
         or base.parts.port_malformed
-        or not _compiled_base_params_are_valid(base)
+        or not _compiled_base_params_are_valid(base),
     )
+
+
+def firewall_base_config_is_valid(raw_base: str) -> bool:
+    """Return whether a firewall base URL is valid for runtime matching."""
+    compiled_config_base = _compile_firewall_config_base(raw_base)
+    return compiled_config_base is not None and not compiled_config_base.malformed
 
 
 def static_firewall_base_config_key(raw_base: str) -> str | None:
@@ -441,6 +452,8 @@ def match_url_authority_key(url: str) -> str | None:
 
 
 def _compiled_base_is_invalid_for_match_base_url(base: _CompiledBase) -> bool:
+    # Direct base matching intentionally has narrower semantics than firewall
+    # config validation, where malformed-but-compilable bases fail closed.
     return (
         base.has_query_or_fragment
         or has_unsafe_runtime_url_syntax(base.raw)
