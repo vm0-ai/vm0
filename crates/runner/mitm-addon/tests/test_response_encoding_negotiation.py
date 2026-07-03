@@ -520,6 +520,10 @@ async def test_model_provider_websocket_upgrade_keeps_accept_encoding(
             (("Connection", "keep-alive, \u2028Upgrade"), ("Upgrade", "websocket")),
             id="invalid-connection-token-whitespace",
         ),
+        pytest.param(
+            (("Upgrade", "websocket"),),
+            id="missing-connection-upgrade-token",
+        ),
     ],
 )
 async def test_invalid_websocket_upgrade_whitespace_normalizes_accept_encoding(

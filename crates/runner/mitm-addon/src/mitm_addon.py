@@ -2952,7 +2952,7 @@ def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
 
     connection_values = flow.request.headers.get_all("Connection")
     if not connection_values:
-        return True
+        return False
 
     return any(
         token.strip(_HTTP_OWS_CHARS).lower() == "upgrade"
