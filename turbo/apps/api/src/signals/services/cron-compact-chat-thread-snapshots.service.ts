@@ -308,7 +308,7 @@ async function writeSnapshot(
     });
 }
 
-export async function compactChatThreadSnapshotsForAllScopes(
+async function compactChatThreadSnapshotsForAllScopes(
   db: SnapshotRootDb,
   signal?: AbortSignal,
 ): Promise<SnapshotCompactionStats> {

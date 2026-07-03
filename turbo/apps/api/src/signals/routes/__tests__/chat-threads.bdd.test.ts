@@ -587,6 +587,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       "Renamed compact title",
       renameEventId,
     );
+    chat.mockObjectStorageObjectsExist();
     await authOrg.deleteAgent(actor, deletedAgent.agentId);
 
     const incrementalCompact = await compactChatThreadSnapshots();
