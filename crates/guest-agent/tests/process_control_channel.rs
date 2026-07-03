@@ -77,6 +77,15 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
     let prompt = "@active-input-smoke:2";
     let workdir = tmp.path().to_string_lossy().into_owned();
     let mock_path = mock.to_string_lossy().into_owned();
+    let runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(tmp.path(), &run_id)?;
+    let run_payload_path = common::write_run_payload_file_for_test(
+        &runtime_dir,
+        &guest_contracts::env::RunPayload {
+            prompt: prompt.to_string(),
+            ..guest_contracts::env::RunPayload::default()
+        },
+    )?;
+    let run_payload_path = run_payload_path.to_string_lossy().into_owned();
     let env = [
         ("CLI_AGENT_TYPE", "claude-code"),
         ("VM0_MOCK_CLAUDE_PATH", mock_path.as_str()),
@@ -84,7 +93,10 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         ("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "1"),
         ("VM0_POST_RESULT_SIGKILL_GRACE_SECS", "1"),
         ("VM0_RUN_ID", run_id.as_str()),
-        ("VM0_PROMPT", prompt),
+        (
+            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            run_payload_path.as_str(),
+        ),
         ("VM0_API_URL", "http://127.0.0.1:1"),
         ("VM0_API_TOKEN", ""),
         ("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc"),
@@ -182,6 +194,15 @@ async fn process_control_enabled_plain_run_does_not_wait_for_stdin_eof() -> Test
     let prompt = "printf no-active-input";
     let workdir = tmp.path().to_string_lossy().into_owned();
     let mock_path = mock.to_string_lossy().into_owned();
+    let runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(tmp.path(), &run_id)?;
+    let run_payload_path = common::write_run_payload_file_for_test(
+        &runtime_dir,
+        &guest_contracts::env::RunPayload {
+            prompt: prompt.to_string(),
+            ..guest_contracts::env::RunPayload::default()
+        },
+    )?;
+    let run_payload_path = run_payload_path.to_string_lossy().into_owned();
     let env = [
         ("CLI_AGENT_TYPE", "claude-code"),
         ("VM0_MOCK_CLAUDE_PATH", mock_path.as_str()),
@@ -189,7 +210,10 @@ async fn process_control_enabled_plain_run_does_not_wait_for_stdin_eof() -> Test
         ("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "1"),
         ("VM0_POST_RESULT_SIGKILL_GRACE_SECS", "1"),
         ("VM0_RUN_ID", run_id.as_str()),
-        ("VM0_PROMPT", prompt),
+        (
+            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            run_payload_path.as_str(),
+        ),
         ("VM0_API_URL", "http://127.0.0.1:1"),
         ("VM0_API_TOKEN", ""),
         ("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc"),
