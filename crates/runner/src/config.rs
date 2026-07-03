@@ -349,7 +349,9 @@ async fn check_snapshot_complete_marker(path: &Path, label: &str) -> RunnerResul
     Ok(())
 }
 
-pub(crate) async fn validate_profile_image_artifacts(
+// This intentionally does not acquire resource locks. Runtime callers that
+// consume image files must use `lock_and_validate_*_image_artifacts` instead.
+async fn validate_profile_image_artifacts(
     name: &str,
     profile: &ProfileConfig,
     home: &HomePaths,
