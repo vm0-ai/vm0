@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.22.6](https://github.com/vm0-ai/vm0/compare/desktop-v0.22.5...desktop-v0.22.6) (2026-07-03)
+
+
+### CI
+
+* smoke-test packaged desktop app launch to catch startup crashes ([#19932](https://github.com/vm0-ai/vm0/issues/19932)) ([3c5b7b2](https://github.com/vm0-ai/vm0/commit/3c5b7b22984bd805b346987491d73a9d02db6161))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.145.0
+
 ## [0.22.5](https://github.com/vm0-ai/vm0/compare/desktop-v0.22.4...desktop-v0.22.5) (2026-07-03)
 
 
