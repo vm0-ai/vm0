@@ -213,24 +213,17 @@ fn merge_held_session_states(
 fn available_profiles_for_heartbeat(
     profiles: &BTreeMap<String, ProfileConfig>,
     budget: &ResourceBudget,
-    idle_pool: &IdlePool,
     mode: RunnerMode,
 ) -> Vec<String> {
     if mode != RunnerMode::Running {
         return Vec::new();
     }
 
-    let mut available: std::collections::BTreeSet<String> = profiles
+    profiles
         .iter()
         .filter(|(_, profile)| budget.can_afford(profile.vcpu, profile.memory_mb))
         .map(|(name, _)| name.clone())
-        .collect();
-    for profile_name in idle_pool.held_session_profile_names() {
-        if profiles.contains_key(&profile_name) {
-            available.insert(profile_name);
-        }
-    }
-    available.into_iter().collect()
+        .collect()
 }
 
 /// Collect current runner state for heartbeat reporting.
@@ -270,7 +263,7 @@ pub(super) fn collect_heartbeat_state(
         allocated_vcpu,
         allocated_memory_mb,
         running_count,
-        available_profiles: available_profiles_for_heartbeat(profiles, budget, idle_pool, mode),
+        available_profiles: available_profiles_for_heartbeat(profiles, budget, mode),
         held_session_states: idle_pool.held_session_states(),
         mode: match mode {
             RunnerMode::Running => "running".to_string(),
@@ -449,7 +442,7 @@ mod tests {
     }
 
     #[test]
-    fn heartbeat_available_profiles_include_parked_reusable_profiles() {
+    fn heartbeat_available_profiles_exclude_unaffordable_parked_profiles() {
         let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 1));
         let mut pool = IdlePool::new(IdlePoolConfig {
             default_timeout: Duration::from_secs(300),
@@ -474,7 +467,7 @@ mod tests {
             RunnerMode::Running,
         );
 
-        assert_eq!(state.available_profiles, vec!["vm0/default"]);
+        assert!(state.available_profiles.is_empty());
     }
 
     #[test]

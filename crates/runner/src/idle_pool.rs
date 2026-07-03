@@ -998,18 +998,6 @@ impl IdlePool {
         states
     }
 
-    pub fn held_session_profile_names(&self) -> Vec<String> {
-        let mut profiles: Vec<String> = self
-            .entries
-            .values()
-            .filter(|entry| entry.metadata.last_completed_at.is_some())
-            .map(|entry| entry.profile_name().to_string())
-            .collect();
-        profiles.sort_unstable();
-        profiles.dedup();
-        profiles
-    }
-
     #[cfg(test)]
     pub fn held_sessions(&self) -> Vec<String> {
         let mut sessions: Vec<String> = self.entries.keys().cloned().collect();
