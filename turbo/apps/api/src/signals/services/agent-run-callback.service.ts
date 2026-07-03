@@ -44,10 +44,6 @@ import {
   type InternalRunCallbackKind,
 } from "./internal-run-callback";
 import {
-  handleTriggerInternalCallback,
-  handleTriggerInternalCallback$,
-} from "./internal-trigger-run-callback.service";
-import {
   handleWorkflowTriggerInternalCallback,
   handleWorkflowTriggerInternalCallback$,
 } from "./zero-workflow-trigger-run-callback.service";
@@ -150,14 +146,6 @@ const dispatchInternalCallback$ = command(
         return await set(
           handleTelegramInternalCallback$,
           input.envelope,
-          signal,
-        );
-      }
-      case "trigger:cron":
-      case "trigger:loop": {
-        return await set(
-          handleTriggerInternalCallback$,
-          { kind: input.kind, callback: input.envelope },
           signal,
         );
       }
@@ -507,13 +495,6 @@ async function dispatchInternalCallbackWithoutCcstate(
         input.db,
         callbackEnvelope(input),
       );
-    }
-    case "trigger:cron":
-    case "trigger:loop": {
-      return await handleTriggerInternalCallback(input.db, {
-        kind,
-        callback: callbackEnvelope(input),
-      });
     }
     case "workflow-trigger:cron":
     case "workflow-trigger:loop": {

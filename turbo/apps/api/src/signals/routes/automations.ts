@@ -7,23 +7,14 @@ import {
   type AutomationTriggerResponse,
 } from "@vm0/api-contracts/contracts/automations";
 
-import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf, pathParamsOf } from "../context/request";
-import { now } from "../external/time";
-import { upsertMemberRoleCache$ } from "../services/auth.service";
+import { pathParamsOf } from "../context/request";
 import {
-  createAutomation$,
-  deleteAutomation$,
   listAutomations$,
-  runAutomationNow$,
-  setAutomationEnabled$,
-  setTriggerEnabled$,
   showAutomation$,
   showTrigger$,
-  updateAutomation$,
-  updateTrigger$,
   type AutomationTriggerRow,
   type AutomationView,
 } from "../services/automations.service";
@@ -31,15 +22,6 @@ import type { RouteEntry } from "../route-entry";
 
 const NOT_FOUND_MESSAGE = "Resource not found";
 const AMBIGUOUS_MESSAGE = "Ambiguous name, use the id";
-const SCHEDULE_AUTOMATION_DISABLED_MESSAGE =
-  "Schedule automation has been disabled. Use zero workflow trigger to create scheduled tasks.";
-
-function forbidden(message: string) {
-  return {
-    status: 403 as const,
-    body: { error: { message, code: "FORBIDDEN" as const } },
-  };
-}
 
 function triggerResponse(
   trigger: AutomationTriggerRow,
@@ -104,66 +86,10 @@ function automationResponse(view: AutomationView): AutomationResponse {
   };
 }
 
-// Legacy automations are frozen after the workflow cutover (#19959): every
-// mutating route returns 403 unconditionally and legacy rows remain readable
-// provenance data. Deliberately NOT feature-switch based — `isFeatureEnabled`
-// honors per-user overrides first, so a switch-based gate would let a user
-// override reopen the legacy write path and re-enable a frozen trigger,
-// double-firing alongside its migrated workflow trigger. A function (rather
-// than a literal const) keeps the guarded handler bodies statically reachable
-// for lint until the legacy removal deletes them.
-function legacyAutomationMutationsDisabled(): boolean {
-  return true;
-}
-
-function scheduleAutomationDisabled() {
-  return forbidden(SCHEDULE_AUTOMATION_DISABLED_MESSAGE);
-}
-
-const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const auth = get(organizationAuthContext$);
-  if (legacyAutomationMutationsDisabled()) {
-    return scheduleAutomationDisabled();
-  }
-  signal.throwIfAborted();
-
-  const bodyResult = await get(bodyResultOf(automationsMainContract.create));
-  signal.throwIfAborted();
-  if (!bodyResult.ok) {
-    return bodyResult.response;
-  }
-
-  if (auth.orgRole !== undefined) {
-    await set(
-      upsertMemberRoleCache$,
-      auth.orgId,
-      auth.userId,
-      auth.orgRole,
-      signal,
-    );
-    signal.throwIfAborted();
-  }
-
-  const result = await set(
-    createAutomation$,
-    { userId: auth.userId, orgId: auth.orgId, body: bodyResult.data },
-    signal,
-  );
-  signal.throwIfAborted();
-
-  if (result.kind === "not_found") {
-    return notFound(result.message);
-  }
-  if (result.kind === "bad_request") {
-    return badRequestMessage(result.message);
-  }
-  return {
-    status: 201 as const,
-    body: {
-      automation: automationResponse(result.view),
-    },
-  };
-});
+// Legacy automations are read-only provenance data after the workflow cutover
+// (#19959): the scheduling system and every mutating route were removed
+// (#20100). Only list/show remain so users can inspect their migrated rows;
+// they go away with the tables in the Phase B removal (#20101).
 
 const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -198,147 +124,7 @@ const showInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (result.kind === "ambiguous") {
     return badRequestMessage(AMBIGUOUS_MESSAGE);
   }
-  if (result.kind === "bad_request") {
-    return badRequestMessage(result.message);
-  }
   return { status: 200 as const, body: automationResponse(result.view) };
-});
-
-const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (legacyAutomationMutationsDisabled()) {
-    return scheduleAutomationDisabled();
-  }
-  const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(automationsByRefContract.update));
-  const bodyResult = await get(bodyResultOf(automationsByRefContract.update));
-  signal.throwIfAborted();
-  if (!bodyResult.ok) {
-    return bodyResult.response;
-  }
-
-  const result = await set(
-    updateAutomation$,
-    {
-      userId: auth.userId,
-      orgId: auth.orgId,
-      ref: params.ref,
-      body: bodyResult.data,
-    },
-    signal,
-  );
-  signal.throwIfAborted();
-
-  if (result.kind === "not_found") {
-    return notFound(NOT_FOUND_MESSAGE);
-  }
-  if (result.kind === "ambiguous") {
-    return badRequestMessage(AMBIGUOUS_MESSAGE);
-  }
-  if (result.kind === "bad_request") {
-    return badRequestMessage(result.message);
-  }
-  return { status: 200 as const, body: automationResponse(result.view) };
-});
-
-const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (legacyAutomationMutationsDisabled()) {
-    return scheduleAutomationDisabled();
-  }
-  const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(automationsByRefContract.delete));
-
-  const result = await set(
-    deleteAutomation$,
-    { userId: auth.userId, orgId: auth.orgId, ref: params.ref },
-    signal,
-  );
-  signal.throwIfAborted();
-
-  if (result.kind === "not_found") {
-    return notFound(NOT_FOUND_MESSAGE);
-  }
-  if (result.kind === "ambiguous") {
-    return badRequestMessage(AMBIGUOUS_MESSAGE);
-  }
-  return { status: 204 as const, body: undefined };
-});
-
-function makeSetEnabledInner(enabled: boolean) {
-  return command(async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(automationsByRefContract.enable));
-
-    if (legacyAutomationMutationsDisabled()) {
-      return scheduleAutomationDisabled();
-    }
-    signal.throwIfAborted();
-
-    if (enabled && auth.orgRole !== undefined) {
-      await set(
-        upsertMemberRoleCache$,
-        auth.orgId,
-        auth.userId,
-        auth.orgRole,
-        signal,
-      );
-      signal.throwIfAborted();
-    }
-
-    const result = await set(
-      setAutomationEnabled$,
-      { userId: auth.userId, orgId: auth.orgId, ref: params.ref, enabled },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (result.kind === "not_found") {
-      return notFound(NOT_FOUND_MESSAGE);
-    }
-    if (result.kind === "ambiguous") {
-      return badRequestMessage(AMBIGUOUS_MESSAGE);
-    }
-    if (result.kind === "bad_request") {
-      return badRequestMessage(result.message);
-    }
-    return { status: 200 as const, body: automationResponse(result.view) };
-  });
-}
-
-const enableInner$ = makeSetEnabledInner(true);
-const disableInner$ = makeSetEnabledInner(false);
-
-const runInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (legacyAutomationMutationsDisabled()) {
-    return scheduleAutomationDisabled();
-  }
-  const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(automationsByRefContract.run));
-
-  const result = await set(
-    runAutomationNow$,
-    {
-      userId: auth.userId,
-      orgId: auth.orgId,
-      ref: params.ref,
-      apiStartTime: now(),
-    },
-    signal,
-  );
-  signal.throwIfAborted();
-
-  if (result.kind === "not_found") {
-    return notFound(NOT_FOUND_MESSAGE);
-  }
-  if (result.kind === "ambiguous") {
-    return badRequestMessage(AMBIGUOUS_MESSAGE);
-  }
-  if (result.kind === "conflict") {
-    return conflict(result.message);
-  }
-  if (result.kind === "run_error") {
-    return result.response;
-  }
-  return { status: 201 as const, body: { runId: result.runId } };
 });
 
 const showTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -358,85 +144,7 @@ const showTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: triggerResponse(result.trigger) };
 });
 
-const updateTriggerInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    if (legacyAutomationMutationsDisabled()) {
-      return scheduleAutomationDisabled();
-    }
-    const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(automationTriggersContract.update));
-    const bodyResult = await get(
-      bodyResultOf(automationTriggersContract.update),
-    );
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-
-    const result = await set(
-      updateTrigger$,
-      {
-        userId: auth.userId,
-        orgId: auth.orgId,
-        id: params.id,
-        body: bodyResult.data,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (result.kind === "not_found" || result.kind === "ambiguous") {
-      return notFound(NOT_FOUND_MESSAGE);
-    }
-    if (result.kind === "bad_request") {
-      return badRequestMessage(result.message);
-    }
-    return { status: 200 as const, body: triggerResponse(result.trigger) };
-  },
-);
-
-function makeSetTriggerEnabledInner(enabled: boolean) {
-  return command(async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(automationTriggersContract.enable));
-
-    if (legacyAutomationMutationsDisabled()) {
-      return scheduleAutomationDisabled();
-    }
-    signal.throwIfAborted();
-
-    const result = await set(
-      setTriggerEnabled$,
-      { userId: auth.userId, orgId: auth.orgId, id: params.id, enabled },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (result.kind === "not_found" || result.kind === "ambiguous") {
-      return notFound(NOT_FOUND_MESSAGE);
-    }
-    if (result.kind === "bad_request") {
-      return badRequestMessage(result.message);
-    }
-    return { status: 200 as const, body: triggerResponse(result.trigger) };
-  });
-}
-
-const enableTriggerInner$ = makeSetTriggerEnabledInner(true);
-const disableTriggerInner$ = makeSetTriggerEnabledInner(false);
-
 export const automationsRoutes: readonly RouteEntry[] = [
-  {
-    route: automationsMainContract.create,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "automation:write",
-      },
-      createInner$,
-    ),
-  },
   {
     route: automationsMainContract.list,
     handler: authRoute(
@@ -460,60 +168,6 @@ export const automationsRoutes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: automationsByRefContract.update,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "automation:write",
-      },
-      updateInner$,
-    ),
-  },
-  {
-    route: automationsByRefContract.delete,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "automation:delete",
-      },
-      deleteInner$,
-    ),
-  },
-  {
-    route: automationsByRefContract.enable,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "automation:write",
-      },
-      enableInner$,
-    ),
-  },
-  {
-    route: automationsByRefContract.disable,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "automation:write",
-      },
-      disableInner$,
-    ),
-  },
-  {
-    route: automationsByRefContract.run,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-      },
-      runInner$,
-    ),
-  },
-  {
     route: automationTriggersContract.show,
     handler: authRoute(
       {
@@ -522,39 +176,6 @@ export const automationsRoutes: readonly RouteEntry[] = [
         requiredCapability: "automation:read",
       },
       showTriggerInner$,
-    ),
-  },
-  {
-    route: automationTriggersContract.update,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "automation:write",
-      },
-      updateTriggerInner$,
-    ),
-  },
-  {
-    route: automationTriggersContract.enable,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "automation:write",
-      },
-      enableTriggerInner$,
-    ),
-  },
-  {
-    route: automationTriggersContract.disable,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "automation:write",
-      },
-      disableTriggerInner$,
     ),
   },
 ];

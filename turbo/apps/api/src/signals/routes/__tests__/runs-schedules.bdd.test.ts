@@ -494,21 +494,14 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 });
 
 // The SCHED-01/SCHED-02-execution/HOOK-01/AUTOMATIONS-01 lifecycle chains
-// were removed with the automation -> workflow cutover (#19959): the legacy
-// mutating API they drove is frozen (403). Equivalent scheduling coverage
-// lives in zero-workflow-triggers.test.ts / zero-workflow-trigger-scheduler
-// tests; residual legacy poller coverage stays in automations.test.ts.
+// were removed with the automation -> workflow cutover (#19959), and the
+// legacy scheduling system itself (poller, cron route, mutating API) was
+// deleted in #20100. Equivalent scheduling coverage lives in
+// zero-workflow-triggers.test.ts / zero-workflow-trigger-scheduler tests.
 
 describe("SCHED-02: cron routes", () => {
   it("rejects invalid cron auth on shared cron routes", async () => {
     const api = createRunsAutomationsApi(context);
-
-    const invalidExecute = await api.executeAutomationsCron(false);
-    if (invalidExecute.status !== 401) {
-      throw new Error("Expected missing cron auth to be rejected");
-    }
-    expectApiError(invalidExecute.body);
-    expect(invalidExecute.body.error.code).toBe("UNAUTHORIZED");
 
     const invalidCronRoutes = await api.requestSharedCronRoutesWithoutAuth();
     expect(

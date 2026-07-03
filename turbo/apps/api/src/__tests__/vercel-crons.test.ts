@@ -9,7 +9,6 @@ import {
   cronCleanupSandboxesContract,
   cronComputerUseScreenshotCleanupContract,
   cronDrainEmailOutboxContract,
-  cronExecuteAutomationsContract,
   cronExecuteWorkflowTriggersContract,
   cronProcessUsageEventsContract,
   cronRenewGoogleCalendarWatchesContract,
@@ -44,10 +43,6 @@ function readVercelConfig(): VercelConfig {
 const expectedVercelCrons = [
   {
     path: cronCleanupSandboxesContract.cleanup.path,
-    schedule: "* * * * *",
-  },
-  {
-    path: cronExecuteAutomationsContract.execute.path,
     schedule: "* * * * *",
   },
   {
