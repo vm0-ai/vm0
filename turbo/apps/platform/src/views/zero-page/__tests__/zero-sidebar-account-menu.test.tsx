@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
@@ -13,12 +13,17 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import { clearMockNow, mockNow } from "../../../lib/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+
+afterEach(() => {
+  clearMockNow();
+});
 
 function connectedPersonalCodexProvider(
   overrides: Partial<ModelProviderResponse> = {},
@@ -626,6 +631,100 @@ describe("zero sidebar account menu", () => {
           redirectUrl: expect.stringMatching(/\/sign-in\?.*redirect_url=/),
         }),
       );
+    });
+  });
+
+  it("suppresses global sign-in redirects during add-account auth transitions", async () => {
+    mockNow(new Date("2026-01-01T00:00:00.000Z"));
+    mockAdminAccountSidebar();
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+        imageUrl: "https://cdn.vm0.test/users/alex.png",
+        clientSessions: [
+          {
+            id: "test-session-id",
+            status: "active",
+            user: {
+              fullName: "Alex Rivera",
+              imageUrl: "https://cdn.vm0.test/users/alex.png",
+              primaryEmailAddress: {
+                emailAddress: "alex.rivera@example.test",
+              },
+            },
+          },
+          {
+            id: "session-jamie",
+            status: "active",
+            user: {
+              fullName: "Jamie Chen",
+              imageUrl: "https://cdn.vm0.test/users/jamie.png",
+              primaryEmailAddress: {
+                emailAddress: "jamie.chen@example.test",
+              },
+            },
+          },
+        ],
+      },
+      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
+    });
+
+    let menu = await openAccountMenu();
+    click(within(menu).getByText("Switch account"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Add account")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Add account"));
+    await waitFor(() => {
+      expect(mockedClerk.openSignIn).toHaveBeenCalledWith({
+        fallbackRedirectUrl: "/",
+        forceRedirectUrl: "/",
+      });
+    });
+
+    let modelProviderRefreshes = 0;
+    context.mocks.api(
+      zeroPersonalModelProvidersMainContract.list,
+      ({ respond }) => {
+        modelProviderRefreshes += 1;
+        return respond(401, {
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Unauthorized",
+          },
+        });
+      },
+    );
+
+    menu = await openAccountMenu();
+    await waitFor(() => {
+      expect(modelProviderRefreshes).toBeGreaterThan(0);
+    });
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    mockedClerk.redirectToSignIn.mockClear();
+    modelProviderRefreshes = 0;
+    mockNow(new Date("2026-01-01T00:00:30.001Z"));
+
+    await openAccountMenu();
+    await waitFor(() => {
+      expect(modelProviderRefreshes).toBeGreaterThan(0);
+      expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
     });
   });
 });
