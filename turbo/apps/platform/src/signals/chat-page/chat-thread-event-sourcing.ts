@@ -28,6 +28,17 @@ interface ChatThreadEventData {
   readonly events: readonly ChatThreadEvent[];
 }
 
+interface ChatThreadSnapshotData {
+  readonly chatThreads: readonly ChatThreadSnapshotProjection[];
+  readonly latestEventId: string | null;
+}
+
+export interface ThreadMeta {
+  readonly threadId: string;
+  readonly agentId: string;
+  readonly title: string | null;
+}
+
 const optimisticChatThreadEventsState$ = state<readonly ChatThreadEvent[]>([]);
 const chatThreadMaxItemState$ = state(CHAT_THREAD_VISIBLE_PAGE_SIZE);
 
@@ -50,7 +61,7 @@ async function replaceFromRemoteSnapshot(
   store: Stores["writeStore"],
   client: ChatThreadsClient,
   signal?: AbortSignal,
-): Promise<string | null> {
+): Promise<ChatThreadSnapshotData> {
   const result = await accept(
     client.snapshot({ fetchOptions: { signal } }),
     [200],
@@ -58,18 +69,24 @@ async function replaceFromRemoteSnapshot(
   );
   signal?.throwIfAborted();
   await store.replaceFromSnapshot(result.body, signal);
-  return result.body.latestEventId;
+  return result.body;
 }
 
 async function syncChatThreadEvents(
   store: Stores,
   client: ChatThreadsClient,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<ChatThreadSnapshotData | null> {
   const existingSnapshot = await store.readStore.readSnapshot(signal);
+  let activeSnapshot = existingSnapshot;
   let cursor = await store.readStore.readLatestEventId(signal);
-  if (!existingSnapshot) {
-    cursor = await replaceFromRemoteSnapshot(store.writeStore, client, signal);
+  if (!activeSnapshot) {
+    activeSnapshot = await replaceFromRemoteSnapshot(
+      store.writeStore,
+      client,
+      signal,
+    );
+    cursor = activeSnapshot.latestEventId;
   }
 
   for (let page = 0; page < 20; page++) {
@@ -85,11 +102,12 @@ async function syncChatThreadEvents(
 
     if (result.status === 410) {
       L.debug("events cursor expired, reloading snapshot");
-      cursor = await replaceFromRemoteSnapshot(
+      activeSnapshot = await replaceFromRemoteSnapshot(
         store.writeStore,
         client,
         signal,
       );
+      cursor = activeSnapshot.latestEventId;
       continue;
     }
 
@@ -99,9 +117,10 @@ async function syncChatThreadEvents(
     }
 
     if (!result.body.hasMore || result.body.events.length === 0) {
-      return;
+      return activeSnapshot;
     }
   }
+  return activeSnapshot;
 }
 
 const chatThreadEventData$ = computed(
@@ -113,14 +132,14 @@ const chatThreadEventData$ = computed(
     }
 
     const client = get(zeroClient$)(chatThreadsContract);
-    await syncChatThreadEvents(store, client);
+    const syncedSnapshot = await syncChatThreadEvents(store, client);
 
     const [snapshot, events] = await Promise.all([
       store.readStore.readSnapshot(),
       store.readStore.readEvents(),
     ]);
     return {
-      snapshot: snapshot?.chatThreads ?? [],
+      snapshot: (snapshot ?? syncedSnapshot)?.chatThreads ?? [],
       events,
     };
   },
@@ -155,6 +174,27 @@ export const eventDrivenChatThreads$ = computed(async (get) => {
     await get(allChatThreadsEvents$),
   );
 });
+
+export const eventDrivenChatThreadMetaMap$ = computed(async (get) => {
+  return new Map<string, ThreadMeta>(
+    (await get(eventDrivenChatThreads$)).map((thread) => {
+      return [
+        thread.id,
+        {
+          threadId: thread.id,
+          agentId: thread.agentId,
+          title: thread.title,
+        },
+      ];
+    }),
+  );
+});
+
+export function eventDrivenChatThreadMeta(threadId: string) {
+  return computed(async (get): Promise<ThreadMeta | null> => {
+    return (await get(eventDrivenChatThreadMetaMap$)).get(threadId) ?? null;
+  });
+}
 
 export const registerOptimisticChatThreadEvent$ = command(
   ({ set }, event: ChatThreadEvent) => {

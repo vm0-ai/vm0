@@ -1101,7 +1101,7 @@ function GithubPrTrackingDock({ thread }: { thread: ChatThreadSignals }) {
 }
 
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
-  const threadDataLoadable = useLastLoadable(thread.threadData$);
+  const threadMetaLoadable = useLastLoadable(thread.threadMeta$);
   const threadTitleEmoji = useLastResolved(thread.threadTitleEmoji$);
   const threadTitleText = useLastResolved(thread.threadTitleText$) ?? "";
   const features = useLastResolved(featureSwitch$);
@@ -1110,19 +1110,19 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const chatThreadEmojiEnabled =
     features?.[FeatureSwitchKey.ChatThreadEmoji] ?? false;
   const agentId =
-    threadDataLoadable.state === "hasData"
-      ? (threadDataLoadable.data?.agentId ?? null)
+    threadMetaLoadable.state === "hasData"
+      ? (threadMetaLoadable.data?.agentId ?? null)
       : null;
   const threadTitle =
-    threadDataLoadable.state === "hasData"
-      ? (threadDataLoadable.data?.title?.trim() ?? "")
+    threadMetaLoadable.state === "hasData"
+      ? (threadMetaLoadable.data?.title?.trim() ?? "")
       : "";
   const displayTitle = chatThreadEmojiEnabled ? threadTitleText : threadTitle;
 
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
       <div className="flex min-w-0 items-center gap-2">
-        {threadDataLoadable.state === "loading" ? (
+        {threadMetaLoadable.state === "loading" ? (
           <Skeleton className="h-5 w-48 rounded" />
         ) : (
           <>
@@ -3367,17 +3367,15 @@ function githubPrTrackingLayoutStyle(
   };
 }
 
-function useGithubPrTrackingOpen(
-  thread: ChatThreadSignals,
-  threadDataLoadable: LoadableValue<ChatThread | null>,
-): boolean {
+function useGithubPrTrackingOpen(thread: ChatThreadSignals): boolean {
   const openGithubPrTrackingThreadId = useGet(githubPrTrackingOpenThreadId$);
+  const threadMetaLoadable = useLastLoadable(thread.threadMeta$);
   const features = useLastResolved(featureSwitch$);
   const githubPrTrackingEnabled =
     features?.[FeatureSwitchKey.ChatGithubPrTracking] ?? false;
   const agentId =
-    threadDataLoadable.state === "hasData"
-      ? (threadDataLoadable.data?.agentId ?? null)
+    threadMetaLoadable.state === "hasData"
+      ? (threadMetaLoadable.data?.agentId ?? null)
       : null;
 
   return (
@@ -4220,10 +4218,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const loadMoreRenderedChatGroups = useSet(thread.loadMoreRenderedChatGroups$);
   const pageSignal = useGet(pageSignal$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
-  const githubPrTrackingOpen = useGithubPrTrackingOpen(
-    thread,
-    threadDataLoadable,
-  );
+  const githubPrTrackingOpen = useGithubPrTrackingOpen(thread);
 
   const handleScroll = (event: ReactUIEvent<HTMLDivElement>) => {
     if (

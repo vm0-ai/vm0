@@ -9,6 +9,7 @@ import type {
   EnrichedChatMessage,
   GroupedChatMessageGroup,
 } from "./chat-message.ts";
+import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 
 export interface LoadHistoryResult {
   hasMore: boolean;
@@ -29,6 +30,7 @@ export interface ChatThreadSignals {
   threadId: string;
   // -- Data signals ----------------------------------------------------------
   threadData$: Computed<Promise<ChatThread | null>>;
+  threadMeta$: Computed<Promise<ThreadMeta | null>>;
   reloadThread$: Command<void, []>;
   threadTitleEmoji$: Computed<Promise<string | null>>;
   threadTitleText$: Computed<Promise<string>>;
