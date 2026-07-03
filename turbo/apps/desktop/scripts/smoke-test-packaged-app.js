@@ -18,18 +18,20 @@ if (!fs.existsSync(executablePath)) {
   throw new Error(`Packaged app executable was not found at ${executablePath}`);
 }
 
+const UNBUNDLED_REQUIRE_PREFIXES = ["@vm0/", "@modelcontextprotocol/sdk/"];
+
 const mainBundle = fs.readFileSync(mainBundlePath, "utf8");
-for (const unbundledRequire of ['require("@vm0/', "require('@vm0/"]) {
-  if (mainBundle.includes(unbundledRequire)) {
-    throw new Error(
-      `Packaged main bundle contains an unbundled workspace require (${unbundledRequire}...). ` +
-        "Workspace packages must be bundled via tsup noExternal; see tsup.electron.config.js.",
-    );
+for (const prefix of UNBUNDLED_REQUIRE_PREFIXES) {
+  for (const unbundledRequire of [`require("${prefix}`, `require('${prefix}`]) {
+    if (mainBundle.includes(unbundledRequire)) {
+      throw new Error(
+        `Packaged main bundle contains an unbundled require (${unbundledRequire}...). ` +
+          "These packages must be bundled via tsup noExternal; see tsup.electron.config.js.",
+      );
+    }
   }
 }
-console.log(
-  `Main bundle has no unbundled workspace requires: ${mainBundlePath}`,
-);
+console.log(`Main bundle has no unbundled requires: ${mainBundlePath}`);
 
 const child = spawn(executablePath, [], {
   env: { ...process.env, VM0_DESKTOP_SMOKE_TEST: "1" },
