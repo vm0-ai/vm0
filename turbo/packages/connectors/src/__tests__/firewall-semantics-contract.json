@@ -1160,6 +1160,121 @@
       }
     },
     {
+      "name": "matched malformed base port blocks",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com:abc",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "items.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": ["items.read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "allow"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com:abc",
+        "relativePath": "/items/123",
+        "reason": "malformed_firewall_config",
+        "permissions": []
+      }
+    },
+    {
+      "name": "base backslash does not match",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com\\evil",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "items.read",
+                  "rules": ["GET /evil/items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": ["items.read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "allow"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/evil/items/123"
+      },
+      "expected": {
+        "kind": "no_match"
+      }
+    },
+    {
+      "name": "matched malformed base query backslash blocks",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com/v1?x=\\",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "items.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": ["items.read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "allow"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/v1/items/123"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com/v1?x=\\",
+        "relativePath": "/items/123",
+        "reason": "malformed_firewall_config",
+        "permissions": []
+      }
+    },
+    {
       "name": "matched malformed network policy blocks",
       "firewalls": [
         {

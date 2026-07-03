@@ -696,9 +696,12 @@ function stripUrlQueryAndFragment(url: string): string {
   return url.slice(0, end);
 }
 
-function stripRawUrlUserinfo(url: string): string {
+function rawUrlAuthorityBounds(url: string): {
+  readonly authorityStart: number;
+  readonly authorityEnd: number;
+} | null {
   const schemeEnd = url.indexOf("://");
-  if (schemeEnd === -1) return url;
+  if (schemeEnd === -1) return null;
 
   const authorityStart = schemeEnd + 3;
   let authorityEnd = url.length;
@@ -708,11 +711,70 @@ function stripRawUrlUserinfo(url: string): string {
       authorityEnd = Math.min(authorityEnd, delimiterIndex);
   }
 
-  const authority = url.slice(authorityStart, authorityEnd);
+  return { authorityStart, authorityEnd };
+}
+
+function replaceRawUrlAuthority(
+  url: string,
+  bounds: { readonly authorityStart: number; readonly authorityEnd: number },
+  authority: string,
+): string {
+  return `${url.slice(0, bounds.authorityStart)}${authority}${url.slice(bounds.authorityEnd)}`;
+}
+
+function stripRawUrlUserinfo(url: string): string {
+  const bounds = rawUrlAuthorityBounds(url);
+  if (bounds === null) return url;
+
+  const authority = url.slice(bounds.authorityStart, bounds.authorityEnd);
   const userinfoEnd = authority.lastIndexOf("@");
   if (userinfoEnd === -1) return url;
 
-  return `${url.slice(0, authorityStart)}${authority.slice(userinfoEnd + 1)}${url.slice(authorityEnd)}`;
+  return replaceRawUrlAuthority(url, bounds, authority.slice(userinfoEnd + 1));
+}
+
+function rawAuthorityPortIsMalformed(port: string): boolean {
+  if (port === "") return true;
+  if (
+    ![...port].every((char) => {
+      return char >= "0" && char <= "9";
+    })
+  ) {
+    return true;
+  }
+  return Number(port) > 65535;
+}
+
+function stripRawUrlMalformedPort(url: string): string {
+  const bounds = rawUrlAuthorityBounds(url);
+  if (bounds === null) return url;
+
+  const authority = url.slice(bounds.authorityStart, bounds.authorityEnd);
+  if (authority.startsWith("[")) {
+    const closeBracketIndex = authority.indexOf("]");
+    if (closeBracketIndex === -1) return url;
+    const portPrefix = authority.slice(closeBracketIndex + 1);
+    if (!portPrefix.startsWith(":")) return url;
+    if (!rawAuthorityPortIsMalformed(portPrefix.slice(1))) return url;
+    return replaceRawUrlAuthority(
+      url,
+      bounds,
+      authority.slice(0, closeBracketIndex + 1),
+    );
+  }
+
+  const portSeparator = authority.lastIndexOf(":");
+  if (portSeparator === -1) return url;
+  if (authority.indexOf(":") !== portSeparator) return url;
+  if (!rawAuthorityPortIsMalformed(authority.slice(portSeparator + 1))) {
+    return url;
+  }
+  return replaceRawUrlAuthority(url, bounds, authority.slice(0, portSeparator));
+}
+
+function rawBaseForDecisionMatch(rawBase: string): string | null {
+  if (stripUrlQueryAndFragment(rawBase).includes("\\")) return null;
+  return stripRawUrlMalformedPort(stripRawUrlUserinfo(rawBase));
 }
 
 function rawPathFromUrl(url: string): string {
@@ -1044,11 +1106,13 @@ function matchFirewallBaseUrlForDecision(
   rawBase: string,
 ): FirewallBaseUrlMatch | null {
   if (!runtimeUrlCanMatchFirewallBase(url)) return null;
+  const baseForMatch = rawBaseForDecisionMatch(rawBase);
+  if (baseForMatch === null) return null;
 
   try {
     return matchStaticFirewallBaseUrl(
       runtimeUrlForBaseMatch(url),
-      stripRawUrlUserinfo(rawBase),
+      baseForMatch,
     );
   } catch {
     return null;
