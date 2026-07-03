@@ -1163,15 +1163,9 @@ Detailed goal procedure:
 - Complete the goal only after auditing every requirement.`;
     await createGoalForRun(actor, first.runId, goalObjective);
 
-    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
-      const apl = typeof args[0] === "string" ? args[0] : "";
-      if (!apl.includes("['agent-run-events']")) {
-        return Promise.resolve([]);
-      }
-      return Promise.resolve([
-        assistantEvent(0, "completed before goal continuation"),
-      ]);
-    });
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before goal continuation"),
+    ]);
 
     const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
     await completeChatRunOk(first.runId, sandboxHeaders, {
