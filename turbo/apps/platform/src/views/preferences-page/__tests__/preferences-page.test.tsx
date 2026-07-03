@@ -146,14 +146,13 @@ describe("preferences page", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Build information")).toBeInTheDocument();
-      expect(screen.getByText("Frontend version")).toBeInTheDocument();
+      expect(screen.getByText("Frontend")).toBeInTheDocument();
       expect(screen.getByText(TEST_FRONTEND_VERSION)).toBeInTheDocument();
-      expect(screen.getByText("Frontend commit SHA")).toBeInTheDocument();
       expect(screen.getByText(TEST_FRONTEND_COMMIT_SHA)).toBeInTheDocument();
-      expect(screen.getByText("Backend version")).toBeInTheDocument();
+      expect(screen.getByText("Backend")).toBeInTheDocument();
       expect(screen.getByText(MOCK_BACKEND_VERSION)).toBeInTheDocument();
-      expect(screen.getByText("Backend commit SHA")).toBeInTheDocument();
       expect(screen.getByText(MOCK_BACKEND_COMMIT_SHA)).toBeInTheDocument();
+      expect(screen.getAllByText("Commit SHA")).toHaveLength(2);
       expect(screen.getByText("Capture network bodies")).toBeInTheDocument();
       expect(screen.getByText("Disabled")).toBeInTheDocument();
     });
