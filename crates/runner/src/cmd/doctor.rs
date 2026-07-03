@@ -11,9 +11,9 @@ use crate::error::RunnerResult;
 use crate::live_runner_instances::LiveRunnerInstance;
 use crate::paths::HomePaths;
 use crate::process;
+use crate::status_file::{self, StatusForDoctor};
 use chrono::{DateTime, Utc};
 use clap::Args;
-use serde::Deserialize;
 
 // ---------------------------------------------------------------------------
 // CLI args
@@ -833,26 +833,6 @@ fn find_stopped_services(
 // Status reading
 // ---------------------------------------------------------------------------
 
-#[derive(Deserialize)]
-struct StatusFile {
-    mode: String,
-    /// `#[serde(default)]` defends against transient schema skew during
-    /// rolling deploys: if a reader binary meets a status.json still
-    /// written by an older runner (or a newer one that renamed fields
-    /// again), we surface an empty active_runs rather than failing to
-    /// parse and losing the whole report.
-    #[serde(default)]
-    active_runs: Vec<ActiveRun>,
-    started_at: String,
-    #[serde(default)]
-    idle_vms: Vec<IdleVm>,
-    #[serde(default)]
-    proxy_port: Option<u16>,
-    #[serde(default)]
-    dns_port: Option<u16>,
-}
-
-#[derive(Deserialize)]
 struct ActiveRun {
     run_id: String,
     sandbox_id: String,
@@ -876,7 +856,6 @@ impl ActiveRun {
     }
 }
 
-#[derive(Deserialize)]
 struct IdleVm {
     session_id: String,
     sandbox_id: String,
@@ -888,20 +867,33 @@ fn is_inactive_mode(mode: &str) -> bool {
 }
 
 async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
-    let path = base_dir.join("status.json");
-    let content = crate::private_fs::read_private_file_to_string_with_max(
-        &path,
-        crate::private_fs::PRIVATE_STATUS_FILE_READ_MAX_BYTES,
-    )
-    .await
-    .ok()
-    .flatten()?;
-    let file: StatusFile = serde_json::from_str(&content).ok()?;
+    let file = status_file::read_as::<StatusForDoctor>(base_dir)
+        .await
+        .ok()
+        .flatten()?;
+    let active_runs = file
+        .active_runs
+        .into_iter()
+        .map(|run| ActiveRun {
+            run_id: run.run_id,
+            sandbox_id: run.sandbox_id,
+            phase: run.phase,
+            phase_started_at: run.phase_started_at,
+        })
+        .collect();
+    let idle_vms = file
+        .idle_vms
+        .into_iter()
+        .map(|vm| IdleVm {
+            session_id: vm.session_id,
+            sandbox_id: vm.sandbox_id,
+        })
+        .collect();
     Some(StatusInfo {
         mode: file.mode,
         started_at: file.started_at,
-        active_runs: file.active_runs,
-        idle_vms: file.idle_vms,
+        active_runs,
+        idle_vms,
         proxy_port: file.proxy_port,
         dns_port: file.dns_port,
     })
@@ -1436,6 +1428,65 @@ mod tests {
         assert_eq!(parse_netns_list_line("vm0-ns-00-0A"), None);
         assert_eq!(parse_netns_list_line("vm0-ns-40-00"), None);
         assert_eq!(parse_netns_list_line("vm0-ns-ff-00"), None);
+    }
+
+    #[tokio::test]
+    async fn read_status_defaults_missing_collections_to_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("status.json"),
+            r#"{"mode":"running","started_at":"2026-01-01T00:00:00.000Z"}"#,
+        )
+        .unwrap();
+
+        let status = read_status(dir.path()).await.unwrap();
+
+        assert!(status.active_runs.is_empty());
+        assert!(status.idle_vms.is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_status_missing_active_run_identifier_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("status.json"),
+            r#"{
+                "mode":"running",
+                "started_at":"2026-01-01T00:00:00.000Z",
+                "active_runs":[{"run_id":"R1"}]
+            }"#,
+        )
+        .unwrap();
+
+        assert!(read_status(dir.path()).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_status_missing_idle_vm_identifier_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("status.json"),
+            r#"{
+                "mode":"running",
+                "started_at":"2026-01-01T00:00:00.000Z",
+                "idle_vms":[{"session_id":"session-a"}]
+            }"#,
+        )
+        .unwrap();
+
+        assert!(read_status(dir.path()).await.is_none());
+    }
+
+    #[test]
+    fn active_run_unknown_phase_defaults_running() {
+        let active = ActiveRun {
+            run_id: "R1".into(),
+            sandbox_id: "S1".into(),
+            phase: Some("future-phase".into()),
+            phase_started_at: None,
+        };
+
+        assert_eq!(active.phase(), ActiveRunPhase::Running);
     }
 
     fn legacy_active_run(run_id: &str, sandbox_id: &str) -> ActiveRun {

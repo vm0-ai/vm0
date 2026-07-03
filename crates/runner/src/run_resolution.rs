@@ -5,50 +5,33 @@ use std::path::Path;
 use crate::error::{RunnerError, RunnerResult};
 use crate::live_runner_instances::LiveRunnerInstance;
 use crate::paths::HomePaths;
+use crate::status_file::{self, StatusActiveRunsOnly, StatusFileReadError};
 
 /// Read `{base_dir}/status.json` and extract `(run_id, sandbox_id)` for
 /// every active run. Returns `None` if the file is missing or unparseable
 /// (logs at `warn` level so the operator sees the miss immediately).
 async fn read_active_runs(base_dir: &Path) -> Option<Vec<(String, String)>> {
-    #[derive(serde::Deserialize)]
-    struct StatusShape {
-        #[serde(default)]
-        active_runs: Vec<ActiveRunShape>,
-    }
-    #[derive(serde::Deserialize)]
-    struct ActiveRunShape {
-        run_id: String,
-        sandbox_id: String,
-    }
-    let path = base_dir.join("status.json");
-    let content = match crate::private_fs::read_private_file_to_string_with_max(
-        &path,
-        crate::private_fs::PRIVATE_STATUS_FILE_READ_MAX_BYTES,
-    )
-    .await
-    {
-        Ok(Some(c)) => c,
+    let status = match status_file::read_as::<StatusActiveRunsOnly>(base_dir).await {
+        Ok(Some(status)) => status,
         Ok(None) => {
+            let path = status_file::path(base_dir);
             tracing::warn!(path = %path.display(), "skipping runner: status.json is missing");
             return None;
         }
-        Err(e) => {
-            tracing::warn!(path = %path.display(), error = %e, "skipping runner: cannot read status.json");
+        Err(StatusFileReadError::Read { path, error }) => {
+            tracing::warn!(path = %path.display(), error = %error, "skipping runner: cannot read status.json");
             return None;
         }
-    };
-    let shape: StatusShape = match serde_json::from_str(&content) {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!(path = %path.display(), error = %e, "skipping runner: cannot parse status.json");
+        Err(StatusFileReadError::ParseJson { path, error }) => {
+            tracing::warn!(path = %path.display(), error = %error, "skipping runner: cannot parse status.json");
             return None;
         }
     };
     Some(
-        shape
+        status
             .active_runs
             .into_iter()
-            .map(|r| (r.run_id, r.sandbox_id))
+            .map(|run| (run.run_id, run.sandbox_id))
             .collect(),
     )
 }
@@ -232,8 +215,8 @@ mod tests {
                 {
                     "run_id": "R1",
                     "sandbox_id": "S1",
-                    "phase": "preparing",
-                    "phase_started_at": "2026-01-01T00:00:00.000Z"
+                    "phase": 42,
+                    "phase_started_at": {"unexpected": true}
                 },
                 {
                     "run_id": "R2",
@@ -261,6 +244,18 @@ mod tests {
         std::fs::write(dir.path().join("status.json"), r#"{"mode":"running"}"#).unwrap();
         let runs = read_active_runs(dir.path()).await.unwrap();
         assert!(runs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_active_runs_missing_entry_identifier_is_unparseable() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("status.json"),
+            r#"{"active_runs":[{"run_id":"run-a"}]}"#,
+        )
+        .unwrap();
+
+        assert!(read_active_runs(dir.path()).await.is_none());
     }
 
     #[tokio::test]
