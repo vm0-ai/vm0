@@ -3,10 +3,11 @@
  *
  * Shortcut strings use `+` as separator with these modifiers:
  * - `mod` — Command on Mac, Ctrl on Windows/Linux
+ * - `ctrl` — Control key on every platform
  * - `shift` — Shift key
  * - `alt` — Option on Mac, Alt on Windows/Linux
  *
- * Examples: `"mod+b"`, `"mod+shift+enter"`, `"j"`, `"escape"`
+ * Examples: `"mod+b"`, `"ctrl+shift+1"`, `"j"`, `"escape"`
  */
 
 // ---------------------------------------------------------------------------
@@ -31,6 +32,7 @@ export interface KeyboardEventLike {
 
 interface ParsedShortcut {
   mod: boolean;
+  ctrl: boolean;
   shift: boolean;
   alt: boolean;
   key: string;
@@ -51,6 +53,7 @@ const isMac =
 function parseShortcut(shortcut: string): ParsedShortcut {
   const parts = shortcut.toLowerCase().split("+");
   let mod = false;
+  let ctrl = false;
   let shift = false;
   let alt = false;
   let key = "";
@@ -59,6 +62,10 @@ function parseShortcut(shortcut: string): ParsedShortcut {
     switch (part) {
       case "mod": {
         mod = true;
+        break;
+      }
+      case "ctrl": {
+        ctrl = true;
         break;
       }
       case "shift": {
@@ -82,7 +89,7 @@ function parseShortcut(shortcut: string): ParsedShortcut {
     key = "?";
   }
 
-  return { mod, shift, alt, key };
+  return { mod, ctrl, shift, alt, key };
 }
 
 const SHIFTED_DIGIT_KEYS: Record<string, string> = {
@@ -128,14 +135,14 @@ function matchesShortcutKey(parsed: ParsedShortcut, e: KeyboardEventLike) {
 
 export function matchShortcut(shortcut: string, e: KeyboardEventLike): boolean {
   const parsed = parseShortcut(shortcut);
-  const modPressed = isMac ? e.metaKey : e.ctrlKey;
-  const extraMod = isMac ? e.ctrlKey : e.metaKey;
+  const expectedMetaKey = parsed.mod && isMac;
+  const expectedCtrlKey = parsed.ctrl || (parsed.mod && !isMac);
 
   return (
-    modPressed === parsed.mod &&
+    e.metaKey === expectedMetaKey &&
+    e.ctrlKey === expectedCtrlKey &&
     e.shiftKey === parsed.shift &&
     e.altKey === parsed.alt &&
-    !extraMod &&
     matchesShortcutKey(parsed, e)
   );
 }
@@ -215,6 +222,9 @@ export function getShortcutLabel(shortcut: string): string {
     if (parsed.mod) {
       parts.push("⌘");
     }
+    if (parsed.ctrl) {
+      parts.push("⌃");
+    }
     if (parsed.shift) {
       parts.push("⇧");
     }
@@ -227,6 +237,9 @@ export function getShortcutLabel(shortcut: string): string {
 
   const parts: string[] = [];
   if (parsed.mod) {
+    parts.push("Ctrl");
+  }
+  if (parsed.ctrl) {
     parts.push("Ctrl");
   }
   if (parsed.shift) {

@@ -79,6 +79,29 @@ describe("matchShortcut", () => {
     ).toBe(false);
   });
 
+  it("should match ctrl+shift+digit with the physical digit code", () => {
+    expect(
+      matchShortcut(
+        "ctrl+shift+1",
+        createEvent({
+          key: "!",
+          code: "Digit1",
+          ctrlKey: true,
+          shiftKey: true,
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("should not match ctrl+shift+digit without ctrl", () => {
+    expect(
+      matchShortcut(
+        "ctrl+shift+1",
+        createEvent({ key: "!", code: "Digit1", shiftKey: true }),
+      ),
+    ).toBe(false);
+  });
+
   it("should match space key", () => {
     expect(matchShortcut(" ", createEvent({ key: " " }))).toBe(true);
   });

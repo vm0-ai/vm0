@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.210.0](https://github.com/vm0-ai/vm0/compare/api-v1.209.3...api-v1.210.0) (2026-07-03)
+
+
+### Features
+
+* render chat threads from event sourcing ([#19929](https://github.com/vm0-ai/vm0/issues/19929)) ([577d15e](https://github.com/vm0-ai/vm0/commit/577d15e5316e45102698c2e33eb0d71a02420228))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.145.0
+    * @vm0/connectors bumped to 1.130.0
+    * @vm0/core bumped to 8.391.0
+    * @vm0/db bumped to 1.85.5
+
 ## [1.209.3](https://github.com/vm0-ai/vm0/compare/api-v1.209.2...api-v1.209.3) (2026-07-03)
 
 

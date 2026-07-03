@@ -52,10 +52,8 @@ import {
 } from "./computer-use-permissions";
 import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
-import {
-  checkForDesktopUpdates,
-  installDesktopAutoUpdates,
-} from "./desktop-auto-updates";
+import { checkForDesktopUpdates } from "./desktop-auto-updates";
+import type { DesktopMainModule } from "./desktop-main-module";
 import { DesktopComputerUseAutoStartSupervisor } from "./desktop-computer-use-autostart";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
 import { readOrCreateComputerUseInstallationId } from "./desktop-computer-use-installation";
@@ -599,6 +597,21 @@ async function prepareForQuitAndInstall(): Promise<void> {
   await computerUseController.stopForQuit();
   disposeComputerUseNativeBackend();
 }
+
+// Bootstrap contract: the auto-updater is owned by bootstrap.ts so it keeps
+// working when this bundle fails to load. Bootstrap reads these typed exports
+// after requiring this module at runtime.
+export const desktopUpdateHooks: DesktopMainModule["desktopUpdateHooks"] =
+  () => ({
+    getComputerUseHostState: () => getComputerUseBridgeState().host,
+    prepareForQuitAndInstall,
+  });
+
+export const notifyDesktopAutoUpdatesInstalled: DesktopMainModule["notifyDesktopAutoUpdatesInstalled"] =
+  (installed) => {
+    desktopAutoUpdatesInstalled = installed;
+    applyApplicationMenu();
+  };
 
 async function clearDesktopAuthStorage(): Promise<void> {
   await session.fromPartition(config.sessionPartition).clearStorageData({
@@ -1171,12 +1184,6 @@ if (!hasSingleInstanceLock) {
     hideDockForInactiveMainWindow();
     registerDesktopAuthProtocol();
     installDesktopRendererProtocol();
-    desktopAutoUpdatesInstalled = installDesktopAutoUpdates({
-      config,
-      apiBaseUrl: desktopApiBaseUrl,
-      getComputerUseHostState: () => getComputerUseBridgeState().host,
-      prepareForQuitAndInstall,
-    });
     applyApplicationMenu();
     installKeepAwake();
     installComputerUse();

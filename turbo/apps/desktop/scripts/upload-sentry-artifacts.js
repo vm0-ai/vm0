@@ -38,6 +38,8 @@ function existing(paths) {
 }
 
 const mainProcessArtifacts = existing([
+  "dist/bootstrap.js",
+  "dist/bootstrap.js.map",
   "dist/main.js",
   "dist/main.js.map",
   "dist/preload.js",

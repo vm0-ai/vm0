@@ -3761,7 +3761,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("adds an emoji to the focused side chat directly with Shift+1", async () => {
+  it("adds an emoji to the focused side chat directly with Ctrl+Shift+1", async () => {
     const renameRequest = vi.fn();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
@@ -3796,6 +3796,7 @@ describe("chat lifecycle", () => {
     fireEvent.keyDown(sideThreadRegion, {
       key: "!",
       code: "Digit1",
+      ctrlKey: true,
       shiftKey: true,
     });
 
@@ -3842,10 +3843,11 @@ describe("chat lifecycle", () => {
     expect(queryAllByRoleFast("menuitem", menu)).toHaveLength(10);
     expect(within(menu).queryByText("Done")).not.toBeInTheDocument();
     expect(within(menu).getByText("Clear icon")).toBeInTheDocument();
+    expect(within(menu).getAllByText("Ctrl").length).toBeGreaterThan(0);
     expect(within(menu).getAllByText("Shift").length).toBeGreaterThan(0);
     expect(within(menu).getByText("1")).toBeInTheDocument();
     expect(within(menu).getByText("0")).toBeInTheDocument();
-    click(menuItemByLabel("Done icon Shift 1", menu));
+    click(menuItemByLabel("Done icon Ctrl Shift 1", menu));
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
@@ -3855,7 +3857,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("adds an emoji to the current chat directly with Shift+1", async () => {
+  it("adds an emoji to the current chat directly with Ctrl+Shift+1", async () => {
     const renameRequest = vi.fn();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
@@ -3884,6 +3886,49 @@ describe("chat lifecycle", () => {
     fireEvent.keyDown(threadRegion, {
       key: "!",
       code: "Digit1",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        "keyboard-current-thread",
+        "✅ Current keyboard thread",
+      );
+    });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("adds an emoji to the current chat directly from the composer with Ctrl+Shift+1", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({ currentDetailTitle: null });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+    });
+
+    const composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, {
+      key: "!",
+      code: "Digit1",
+      ctrlKey: true,
       shiftKey: true,
     });
 
@@ -4022,7 +4067,7 @@ describe("chat lifecycle", () => {
       }),
     ).toBeFalsy();
     const doneItem = queryAllByRoleFast("menuitem", menu).find((item) => {
-      return item.getAttribute("aria-label") === "Done icon Shift 1";
+      return item.getAttribute("aria-label") === "Done icon Ctrl Shift 1";
     });
     if (!doneItem) {
       throw new Error("Done icon menu item not found");
@@ -4037,7 +4082,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("clears the current chat emoji directly with Shift+0", async () => {
+  it("clears the current chat emoji directly with Ctrl+Shift+0", async () => {
     const renameRequest = vi.fn();
     mockResizeObserver();
     mockKeyboardNavigationThreads({
@@ -4066,6 +4111,7 @@ describe("chat lifecycle", () => {
     fireEvent.keyDown(threadRegion, {
       key: ")",
       code: "Digit0",
+      ctrlKey: true,
       shiftKey: true,
     });
 
@@ -4104,6 +4150,7 @@ describe("chat lifecycle", () => {
     fireEvent.keyDown(threadRegion, {
       key: ")",
       code: "Digit0",
+      ctrlKey: true,
       shiftKey: true,
     });
 

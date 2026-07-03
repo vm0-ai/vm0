@@ -281,8 +281,9 @@ function createEmojiShortcutBindings({
     ...(Object.fromEntries(
       CHAT_THREAD_EMOJI_OPTIONS.map((option, index) => {
         return [
-          `shift+${index + 1}`,
+          `ctrl+shift+${index + 1}`,
           {
+            allowInEditableTarget: true,
             run: async () => {
               await setEmoji(option.emoji);
             },
@@ -290,7 +291,8 @@ function createEmojiShortcutBindings({
         ];
       }),
     ) as GlobalShortcutBindings),
-    "shift+0": {
+    "ctrl+shift+0": {
+      allowInEditableTarget: true,
       run: clearEmoji,
     },
   };
