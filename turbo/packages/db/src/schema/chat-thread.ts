@@ -78,14 +78,9 @@ export const chatThreads = pgTable(
     /** Per-thread selected model pin. Provider routing is resolved per run. */
     selectedModel: varchar("selected_model", { length: 255 }),
     /**
-     * Per-thread sticky generation templates, keyed by template type
-     * (illustration style / video preset / presentation design) so a thread can
-     * keep several active at once. Persisted so follow-up messages inherit the
-     * selections the user attached earlier without restating them. Workflow
-     * templates are not stored here; they are one-shot context for a single run.
-     * NULL means none are attached. Thread-scoped on purpose: a new thread
-     * starts clean (no cross-session carry-over) and there is intentionally no
-     * org/global default.
+     * Legacy generation template column retained for schema compatibility.
+     * Current prompt injection reads the generation template attached to the
+     * current chat message only.
      */
     generationTemplate: jsonb(
       "generation_template",

@@ -91,20 +91,17 @@ export function buildGenerationTemplatePrompt(
 // three builders cannot drift. It balances two jobs that pull in opposite
 // directions:
 //   1. The user *deliberately* selected this template — a strong signal, so it is
-//      the default style for that artifact, and the agent must not re-ask for an
-//      already-selected style (vm0-ai/vm0#17525).
-//   2. The selection must not hijack unrelated turns. This block is injected on
-//      every run while the template is thread-sticky (see resolveThread-
-//      GenerationTemplatePrompt), including messages that have nothing to do with
-//      generation, so the "does not force you to generate" boundary is load-
-//      bearing, not decorative.
+//      the default style for that artifact in this run, and the agent must not
+//      re-ask for an already-selected style (vm0-ai/vm0#17525).
+//   2. The selection must not hijack unrelated work in this run, so the "does
+//      not force you to generate" boundary is load-bearing, not decorative.
 // State the facts and hand back the decision, rather than naming a step ("resolve
 // from the registry") without the facts needed to act on it.
 function templateFraming(artifactNoun: string): readonly string[] {
   return [
     "# Artifact Template Context",
     "",
-    `- The user deliberately selected this artifact template for the chat — treat it as the default style for any ${artifactNoun} you produce here, including in follow-up messages.`,
+    `- The user deliberately selected this artifact template for this run — treat it as the default style for any ${artifactNoun} you produce here.`,
     `- It does not force you to generate: the user's prompt decides the task, content, output format, and whether to produce an artifact at all. If a request isn't about producing ${artifactNoun}, just answer it normally.`,
     "- Other artifact templates, files, or attachments may also be present.",
     "",
@@ -303,48 +300,4 @@ function buildIllustrationGenerationTemplatePrompt(
       "- If a flag above no longer applies, run `zero generate image -h` to discover the current flags, models, providers, and styles.",
     ].join("\n"),
   };
-}
-
-/**
- * Short, non-instructional label for a generation template selection, meant to be
- * embedded into replayed prior-turn text (see buildWebChatPriorRunsContext) so a
- * later turn can see *when* the selection changed without repeating the full
- * "# Artifact Template Context" instructions for every past turn. There is no
- * thread-sticky persistence for these templates, so this replayed marker is the
- * only way a future turn learns a selection happened here.
- */
-export function describeGenerationTemplateSelection(
-  generationTemplate: GenerationTemplateInput | null | undefined,
-): string | null {
-  if (!generationTemplate) {
-    return null;
-  }
-  if (generationTemplate.type === "illustration") {
-    const style = findImageStyle(
-      generationTemplate.selection.illustrationStyleId,
-    );
-    return style
-      ? `using illustration style "${style.name}" (${style.id})`
-      : null;
-  }
-  if (generationTemplate.type === "video") {
-    const template = findVideoTemplate(
-      generationTemplate.selection.stylePresetId,
-    );
-    return template
-      ? `using video template "${template.name}" (${template.id})`
-      : null;
-  }
-  if (generationTemplate.type === "presentation") {
-    const template = findTemplate(generationTemplate.selection.templateId);
-    return template
-      ? `using presentation template "${template.name}" (${template.id})`
-      : null;
-  }
-  const template = findWorkflowTemplateItem(
-    generationTemplate.selection.workflowTemplateId,
-  );
-  return template
-    ? `using workflow template "${template.title}" (${template.id})`
-    : null;
 }

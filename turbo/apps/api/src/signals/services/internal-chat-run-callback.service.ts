@@ -75,7 +75,6 @@ import { createZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
-import { describeGenerationTemplateSelection } from "../routes/generation-template-prompt";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -1331,30 +1330,9 @@ function truncateIncomplete(value: string): string {
   return `${value.slice(0, INCOMPLETE_MESSAGE_CHAR_CAP)}...[truncated]`;
 }
 
-// Generation templates are one-shot (see resolveThreadGenerationTemplatePrompt) —
-// there is no thread-sticky DB default, so a later turn only learns a selection
-// happened here by seeing this marker in the replayed text.
-function generationTemplateReplayMarker(
-  role: "user" | "assistant",
-  generationTemplate: ChatMessageGenerationTemplate | null,
-): string {
-  // Workflow templates are one-shot by design (never sticky, see
-  // resolveThreadGenerationTemplatePrompt) — a "stays in effect" marker would
-  // misrepresent that, so only illustration/video/presentation get one.
-  if (role !== "user" || generationTemplate?.type === "workflow") {
-    return "";
-  }
-  const description = describeGenerationTemplateSelection(generationTemplate);
-  return description ? `[Selected a template — ${description}.]\n` : "";
-}
-
 function formatPriorRunMessage(message: PriorRunMessage): string {
   const roleLabel = message.role === "user" ? "User" : "Assistant";
-  const marker = generationTemplateReplayMarker(
-    message.role,
-    message.generationTemplate,
-  );
-  const body = `${marker}${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
+  const body = `${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
   const attach = formatAttachFileIds(message.attachFiles);
   return attach ? `${body}\n${attach}` : body;
 }
@@ -1395,17 +1373,11 @@ function buildWebChatPriorRunsContext(runs: readonly PriorRun[]): string {
 function formatIncompleteMessage(message: IncompleteRoundMessage): string {
   const attach = formatAttachFileIds(message.attachFiles);
   if (message.role === "user") {
-    const marker = generationTemplateReplayMarker(
-      message.role,
-      message.generationTemplate,
-    );
     const body =
       message.content !== null && message.content !== ""
         ? truncateIncomplete(message.content)
         : "[empty message]";
-    return attach
-      ? `${marker}User: ${body}\n${attach}`
-      : `${marker}User: ${body}`;
+    return attach ? `User: ${body}\n${attach}` : `User: ${body}`;
   }
   if (message.content !== null && message.content !== "") {
     return `Assistant (partial): ${truncateIncomplete(message.content)}`;
