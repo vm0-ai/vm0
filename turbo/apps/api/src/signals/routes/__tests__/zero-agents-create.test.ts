@@ -46,7 +46,6 @@ function agentsByIdClient() {
   return setupApp({ context })(zeroAgentsByIdContract);
 }
 
-
 function currentSecond(): number {
   return Math.floor(now() / 1000);
 }

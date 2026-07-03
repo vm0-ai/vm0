@@ -127,16 +127,19 @@ export async function setupPage(options: {
   const activeOrgId = options.org ? options.org.activeOrg?.id : defaultOrgId;
   options.context.store.set(clearFeatureSwitchCacheForTest$);
   // workflowAutomation went globally on with the automation -> workflow
-  // cutover (#19959), which swaps the plain-textarea composer for the tiptap
-  // workflow composer. The platform suite predates that flip and drives the
-  // textarea, so tests pin the switch off by default; tiptap-composer variants
-  // opt in with an explicit `featureSwitches` override. Migrating the suite to
-  // the tiptap default is tracked with the legacy automation removal.
+  // cutover (#19959); the DEFAULT feature-switches msw handler pins it off
+  // for the pre-flip platform suite (see api-feature-switches.ts). The
+  // synchronous featureSwitch$ cache must match that pin before bootstrap,
+  // merged with any explicit per-test overrides. setMockFeatureSwitches is
+  // registered only for explicit overrides so this helper never shadows a
+  // test's own GET handler.
   const featureSwitchOverrides = {
     [FeatureSwitchKey.WorkflowAutomation]: false,
     ...options.featureSwitches,
   };
-  setMockFeatureSwitches(featureSwitchOverrides);
+  if (options.featureSwitches) {
+    setMockFeatureSwitches(featureSwitchOverrides);
+  }
   options.context.store.set(
     setFeatureSwitchCacheForTest$,
     getAllFeatureStates({

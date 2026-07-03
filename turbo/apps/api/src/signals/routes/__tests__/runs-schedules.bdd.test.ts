@@ -10,9 +10,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createEmailApi } from "./helpers/api-bdd-email";
-import {
-  createRunsAutomationsApi,
-} from "./helpers/api-bdd-runs-automations";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import {
   deleteEmailOutboxBySubjectState,
   deleteEmailSuppressionState,
@@ -131,16 +129,6 @@ async function createAgentWithModelProvider(actor: ApiTestUser): Promise<{
 
   return { agentId: agent.agentId };
 }
-
-
-
-
-
-
-
-
-
-
 
 describe("RUN-01: run creation admission and validation", () => {
   it("rejects invalid or unauthorized run creation requests through API validation", async () => {

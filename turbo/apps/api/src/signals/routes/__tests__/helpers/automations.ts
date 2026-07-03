@@ -216,9 +216,6 @@ export async function patchAutomationTriggerState(
   await expectOk(response, "patchAutomationTriggerState");
 }
 
-
-
-
 export async function deleteOrgMembership(
   context: TestContext,
   fixture: AutomationsFixture,
