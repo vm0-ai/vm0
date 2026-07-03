@@ -672,6 +672,46 @@ describe("Python builtin firewall catalog renderer", () => {
           },
         ],
       }),
+      connectorEntry({
+        name: "literal-open-brace-path",
+        apis: [
+          {
+            base: "https://brace-path.example.com/{literal",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.LITERAL_OPEN_BRACE_PATH_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "literal-open-brace-path:read",
+                rules: ["GET /literal-open-brace-path/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "literal-close-brace-path",
+        apis: [
+          {
+            base: "https://brace-path.example.com/literal}",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.LITERAL_CLOSE_BRACE_PATH_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "literal-close-brace-path:read",
+                rules: ["GET /literal-close-brace-path/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
     ]);
     const diagnostics = findGeneratedFile(files, "diagnostics.py");
 
@@ -717,6 +757,28 @@ describe("Python builtin firewall catalog renderer", () => {
           {
             base: "https://unicode-path.example.com/%E8%B7%AF%E5%BE%84",
             envNames: ["ENCODED_UNICODE_PATH_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "literal-close-brace-path",
+        apis: [
+          {
+            base: "https://brace-path.example.com/literal}",
+            envNames: ["LITERAL_CLOSE_BRACE_PATH_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "literal-open-brace-path",
+        apis: [
+          {
+            base: "https://brace-path.example.com/{literal",
+            envNames: ["LITERAL_OPEN_BRACE_PATH_TOKEN"],
             authHeaderNames: ["Authorization"],
             authQueryParamNames: [],
           },

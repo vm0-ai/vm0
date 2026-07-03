@@ -216,7 +216,7 @@ const UNSAFE_UTS46_IGNORABLE_RANGES = [
 ] as const;
 
 function hasDynamicBaseMarker(base: string): boolean {
-  return base.includes("{") || base.includes("}");
+  return base.includes("{") && base.includes("}");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

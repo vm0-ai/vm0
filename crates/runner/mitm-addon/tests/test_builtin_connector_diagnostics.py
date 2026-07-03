@@ -84,6 +84,50 @@ def test_skips_dynamic_template_base_urls():
     assert candidate is None
 
 
+def test_classifies_static_base_with_literal_unbalanced_brace(monkeypatch):
+    _patch_connector_diagnostics(
+        monkeypatch,
+        [
+            _shared_base_firewall(
+                "literal-brace",
+                "LITERAL_BRACE_TOKEN",
+                base="https://literal.example.com/{literal",
+            )
+        ],
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        "https://literal.example.com/{literal/item",
+        "GET",
+        active_firewall_names=set(),
+    )
+
+    assert candidate is not None
+    assert candidate.connector_type == "literal-brace"
+    assert candidate.env_names == ("LITERAL_BRACE_TOKEN",)
+
+
+def test_skips_parameterized_manifest_base_urls(monkeypatch):
+    _patch_connector_diagnostics(
+        monkeypatch,
+        [
+            _shared_base_firewall(
+                "parameterized",
+                "PARAMETERIZED_TOKEN",
+                base="https://parameterized.example.com/{tenant}",
+            )
+        ],
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        "https://parameterized.example.com/acme/item",
+        "GET",
+        active_firewall_names=set(),
+    )
+
+    assert candidate is None
+
+
 def test_skips_parameterized_base_urls():
     for url in (
         "https://s3.amazonaws.com/my-bucket/private-object",

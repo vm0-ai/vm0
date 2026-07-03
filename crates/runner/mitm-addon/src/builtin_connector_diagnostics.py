@@ -550,7 +550,7 @@ def _base_match_permissions() -> list[dict]:
 
 
 def _has_dynamic_base_marker(raw_base: str) -> bool:
-    return any(marker in raw_base for marker in _DYNAMIC_BASE_MARKERS)
+    return all(marker in raw_base for marker in _DYNAMIC_BASE_MARKERS)
 
 
 def _matching_network_policies(
