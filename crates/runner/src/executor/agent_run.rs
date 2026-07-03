@@ -327,6 +327,9 @@ fn validate_agent_bootstrap_exec_boundary(
         "/bin/bash",
     ));
     values.push(guest_contracts::exec_limits::ExecBoundaryValue::arg(
+        "argv[1]", "-c",
+    ));
+    values.push(guest_contracts::exec_limits::ExecBoundaryValue::arg(
         "argv[2] bootstrap command",
         agent_cmd,
     ));
@@ -1609,6 +1612,36 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 mod tests {
     use super::*;
 
+    fn exec_arg_aggregate_bytes(value: &str) -> usize {
+        value.len() + 1
+    }
+
+    fn env_pairs_for_aggregate_bytes(target_bytes: usize) -> Vec<(String, String)> {
+        let mut pairs: Vec<(String, String)> = Vec::new();
+        let mut remaining = target_bytes;
+        let mut index = 0;
+
+        while remaining > 0 {
+            let key = format!("VM0_FILL_{index}");
+            let overhead = key.len() + 2;
+            if remaining <= overhead {
+                pairs
+                    .last_mut()
+                    .expect("aggregate target must require at least one env pair")
+                    .1
+                    .push_str(&"x".repeat(remaining));
+                break;
+            }
+
+            let value_len = (64 * 1024).min(remaining - overhead);
+            pairs.push((key, "x".repeat(value_len)));
+            remaining -= overhead + value_len;
+            index += 1;
+        }
+
+        pairs
+    }
+
     #[test]
     fn bootstrap_exec_boundary_rejects_oversized_env_value_without_value_leak() {
         let secret = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
@@ -1635,6 +1668,23 @@ mod tests {
             validate_agent_bootstrap_exec_boundary("exec /usr/local/bin/guest-agent", &env_pairs)
                 .unwrap_err()
                 .to_string();
+
+        assert!(error.contains("argv/env aggregate too large"));
+    }
+
+    #[test]
+    fn bootstrap_exec_boundary_counts_shell_wrapper_dash_c_arg() {
+        let agent_cmd = "exec /usr/local/bin/guest-agent";
+        let shell_arg_bytes = exec_arg_aggregate_bytes("/bin/bash")
+            + exec_arg_aggregate_bytes("-c")
+            + exec_arg_aggregate_bytes(agent_cmd);
+        let env_pairs = env_pairs_for_aggregate_bytes(
+            guest_contracts::exec_limits::EXECVE_ARG_ENV_MAX_BYTES + 1 - shell_arg_bytes,
+        );
+
+        let error = validate_agent_bootstrap_exec_boundary(agent_cmd, &env_pairs)
+            .unwrap_err()
+            .to_string();
 
         assert!(error.contains("argv/env aggregate too large"));
     }
