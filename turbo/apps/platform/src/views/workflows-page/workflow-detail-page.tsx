@@ -469,6 +469,7 @@ function DetailHeader({
           </div>
           <div className="mt-4 flex items-center gap-2 sm:mt-6">
             <WorkflowTabNav activeTab={activeTab} onTabChange={onTabChange} />
+            {activeTab === "automations" ? <TriggerCreateAction /> : null}
           </div>
         </>
       ) : (
@@ -535,6 +536,23 @@ function WorkflowTabNav({
         </TabsTrigger>
       </TabsList>
     </Tabs>
+  );
+}
+
+function TriggerCreateAction() {
+  const setCreateDialog = useSet(setWorkflowTriggerCreateDialog$);
+  const features = useGet(featureSwitch$);
+  const workflowAutomationEnabled =
+    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
+
+  return (
+    <TriggerCreateMenu
+      onSelect={setCreateDialog}
+      githubLabelTriggersEnabled={workflowAutomationEnabled}
+      googleCalendarTriggersEnabled={workflowAutomationEnabled}
+      googleMeetTriggersEnabled={workflowAutomationEnabled}
+      webhookTriggersEnabled={workflowAutomationEnabled}
+    />
   );
 }
 
@@ -2656,24 +2674,9 @@ function TriggersSection({
     userLoadable.state === "hasData" ? (userLoadable.data?.id ?? "") : "";
   const displayTimezone = preferences?.timezone ?? browserTimezone();
   const triggers = detail.triggers;
-  const features = useGet(featureSwitch$);
-  const workflowAutomationEnabled =
-    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
 
   return (
     <section className="mx-auto flex max-w-[900px] flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className="min-w-0 text-sm text-muted-foreground">
-          Automations run this workflow whenever their trigger fires
-        </p>
-        <TriggerCreateMenu
-          onSelect={setCreateDialog}
-          githubLabelTriggersEnabled={workflowAutomationEnabled}
-          googleCalendarTriggersEnabled={workflowAutomationEnabled}
-          googleMeetTriggersEnabled={workflowAutomationEnabled}
-          webhookTriggersEnabled={workflowAutomationEnabled}
-        />
-      </div>
       <div className="flex flex-col gap-2">
         {triggers.length > 0 ? (
           <div className="zero-card overflow-visible">
