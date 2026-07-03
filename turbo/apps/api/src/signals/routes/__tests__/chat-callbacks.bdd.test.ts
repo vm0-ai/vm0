@@ -9,7 +9,7 @@ import type {
   PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
-import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   TestChatMessagesStateActionBody,
@@ -693,7 +693,7 @@ describe("CHAT-02: completed chat callback", () => {
       selectedModel: "claude-sonnet-4-6",
     });
 
-    const template = PRESENTATION_TEMPLATE_ITEMS[0];
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
     if (!template) {
       throw new Error("Expected a registered presentation template");
     }
@@ -901,10 +901,15 @@ describe("CHAT-02: completed chat callback", () => {
       "# Current Integration\nYou are currently running inside: Web",
     );
     expect(appended).toContain("# Artifact Template Context");
-    expect(appended).toContain("- Artifact type: presentation");
-    expect(appended).toContain(`(${template.designSystemId})`);
     expect(appended).toContain(`(${template.templateId})`);
+    // Runbook flow, not the retired legacy multi-resource flow.
+    expect(appended).toContain(
+      `zero resource pull ${template.templateId}-runbook --dir ./generated/resources`,
+    );
     expect(appended).toContain("--artifact-kind presentation-html");
+    expect(appended).not.toContain(
+      "zero generate presentation --design-system",
+    );
     expect(Object.keys(autoContext.body.environment)).toContain(
       "ANTHROPIC_API_KEY",
     );
