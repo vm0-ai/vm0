@@ -373,6 +373,92 @@ function assertPublicArtifactConsistency(
   }
 }
 
+function assertPrivateAuthMethodMappingConsistency(args: {
+  readonly connectorRef: string;
+  readonly privateAuthMethod: ConnectorCatalogPrivateArtifact["connectors"][number]["authMethods"][number];
+  readonly publicAuthMethod: ConnectorCatalogPublicArtifact["connectors"][number]["authMethods"][number];
+}): void {
+  const publicManualFieldIds = new Set(
+    args.publicAuthMethod.manualFields.map((field) => {
+      return field.id;
+    }),
+  );
+  const publicStartOptionIds = new Set(
+    args.publicAuthMethod.startOptions.map((option) => {
+      return option.id;
+    }),
+  );
+  assertUniqueValues({
+    values: args.privateAuthMethod.manualFieldMappings.map((mapping) => {
+      return mapping.publicId;
+    }),
+    label: `${args.connectorRef}/${args.privateAuthMethod.id} private manual field public ids`,
+  });
+  assertUniqueValues({
+    values: args.privateAuthMethod.manualFieldMappings.map((mapping) => {
+      return mapping.privateName;
+    }),
+    label: `${args.connectorRef}/${args.privateAuthMethod.id} private manual field private names`,
+  });
+  assertUniqueValues({
+    values: args.privateAuthMethod.manualFieldMappings.map((mapping) => {
+      return mapping.runtimeName;
+    }),
+    label: `${args.connectorRef}/${args.privateAuthMethod.id} private manual field runtime names`,
+  });
+  assertUniqueValues({
+    values: args.privateAuthMethod.startOptionMappings.map((mapping) => {
+      return mapping.publicId;
+    }),
+    label: `${args.connectorRef}/${args.privateAuthMethod.id} private start option public ids`,
+  });
+  assertUniqueValues({
+    values: args.privateAuthMethod.startOptionMappings.map((mapping) => {
+      return mapping.privateName;
+    }),
+    label: `${args.connectorRef}/${args.privateAuthMethod.id} private start option private names`,
+  });
+  assertUniqueValues({
+    values: args.privateAuthMethod.startOptionMappings.map((mapping) => {
+      return mapping.runtimeName;
+    }),
+    label: `${args.connectorRef}/${args.privateAuthMethod.id} private start option runtime names`,
+  });
+  assertSameValues({
+    expected: publicManualFieldIds,
+    actual: new Set(
+      args.privateAuthMethod.manualFieldMappings.map((mapping) => {
+        return mapping.publicId;
+      }),
+    ),
+    label: `${args.connectorRef}/${args.privateAuthMethod.id} private manual field public ids`,
+  });
+  assertSameValues({
+    expected: publicStartOptionIds,
+    actual: new Set(
+      args.privateAuthMethod.startOptionMappings.map((mapping) => {
+        return mapping.publicId;
+      }),
+    ),
+    label: `${args.connectorRef}/${args.privateAuthMethod.id} private start option public ids`,
+  });
+
+  for (const mapping of args.privateAuthMethod.manualFieldMappings) {
+    if (!publicManualFieldIds.has(mapping.publicId)) {
+      throw new Error(
+        `Private manual field mapping references unknown public id ${args.connectorRef}/${args.privateAuthMethod.id}/${mapping.publicId}`,
+      );
+    }
+  }
+  for (const mapping of args.privateAuthMethod.startOptionMappings) {
+    if (!publicStartOptionIds.has(mapping.publicId)) {
+      throw new Error(
+        `Private start option mapping references unknown public id ${args.connectorRef}/${args.privateAuthMethod.id}/${mapping.publicId}`,
+      );
+    }
+  }
+}
+
 function assertPrivateArtifactConsistency(args: {
   readonly publicArtifact: ConnectorCatalogPublicArtifact;
   readonly privateArtifact: ConnectorCatalogPrivateArtifact;
@@ -437,62 +523,11 @@ function assertPrivateArtifactConsistency(args: {
           `Private artifact references unknown auth method ${privateConnector.connectorRef}/${privateAuthMethod.id}`,
         );
       }
-
-      const publicManualFieldIds = new Set(
-        publicAuthMethod.manualFields.map((field) => {
-          return field.id;
-        }),
-      );
-      const publicStartOptionIds = new Set(
-        publicAuthMethod.startOptions.map((option) => {
-          return option.id;
-        }),
-      );
-      assertUniqueValues({
-        values: privateAuthMethod.manualFieldMappings.map((mapping) => {
-          return mapping.publicId;
-        }),
-        label: `${privateConnector.connectorRef}/${privateAuthMethod.id} private manual field public ids`,
+      assertPrivateAuthMethodMappingConsistency({
+        connectorRef: privateConnector.connectorRef,
+        privateAuthMethod,
+        publicAuthMethod,
       });
-      assertUniqueValues({
-        values: privateAuthMethod.startOptionMappings.map((mapping) => {
-          return mapping.publicId;
-        }),
-        label: `${privateConnector.connectorRef}/${privateAuthMethod.id} private start option public ids`,
-      });
-      assertSameValues({
-        expected: publicManualFieldIds,
-        actual: new Set(
-          privateAuthMethod.manualFieldMappings.map((mapping) => {
-            return mapping.publicId;
-          }),
-        ),
-        label: `${privateConnector.connectorRef}/${privateAuthMethod.id} private manual field public ids`,
-      });
-      assertSameValues({
-        expected: publicStartOptionIds,
-        actual: new Set(
-          privateAuthMethod.startOptionMappings.map((mapping) => {
-            return mapping.publicId;
-          }),
-        ),
-        label: `${privateConnector.connectorRef}/${privateAuthMethod.id} private start option public ids`,
-      });
-
-      for (const mapping of privateAuthMethod.manualFieldMappings) {
-        if (!publicManualFieldIds.has(mapping.publicId)) {
-          throw new Error(
-            `Private manual field mapping references unknown public id ${privateConnector.connectorRef}/${privateAuthMethod.id}/${mapping.publicId}`,
-          );
-        }
-      }
-      for (const mapping of privateAuthMethod.startOptionMappings) {
-        if (!publicStartOptionIds.has(mapping.publicId)) {
-          throw new Error(
-            `Private start option mapping references unknown public id ${privateConnector.connectorRef}/${privateAuthMethod.id}/${mapping.publicId}`,
-          );
-        }
-      }
     }
   }
 }

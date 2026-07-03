@@ -344,6 +344,35 @@ describe("connector catalog artifacts", () => {
     },
   );
 
+  it("allows relative artifact keys with non-traversal dot substrings", async () => {
+    const records = await fixtureRecords();
+    const manifest = manifestFromRecords(records);
+    const publicBytes = requiredBytes(records, PUBLIC_ARTIFACT_KEY);
+    const recordsWithDottedKey = cloneRecords(records);
+    recordsWithDottedKey.set("public/catalog..v1.json", publicBytes);
+
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithManifest(recordsWithDottedKey, {
+            ...manifest,
+            artifacts: {
+              ...manifest.artifacts,
+              public: {
+                ...manifest.artifacts.public,
+                key: "public/catalog..v1.json",
+              },
+            },
+          }),
+        ),
+      }),
+    ).resolves.toMatchObject({
+      publicArtifact: {
+        catalogVersion: "fixture-2026-07-03.1",
+      },
+    });
+  });
+
   it("rejects invalid referenced artifact keys", async () => {
     const records = await fixtureRecords();
     const manifest = manifestFromRecords(records);
@@ -761,6 +790,67 @@ describe("connector catalog artifacts", () => {
       }),
     ).rejects.toThrow(
       "fixture-manual/api-token private manual field public ids mismatch",
+    );
+  });
+
+  it("rejects duplicate private mapping names within an auth method", async () => {
+    const records = await fixtureRecords();
+    const publicArtifact = publicArtifactFromRecords(records);
+    const manualAuthMethod = fixtureManualAuthMethod(publicArtifact);
+    manualAuthMethod.manualFields.push({
+      id: "secondaryApiKey",
+      label: "Secondary API Key",
+      required: true,
+      placeholder: null,
+      inputType: "password",
+    });
+
+    const privateArtifact = privateArtifactFromRecords(records);
+    const privateConnector = privateArtifact.connectors.find((item) => {
+      return item.connectorRef === "fixture-manual";
+    });
+    const privateAuthMethod = privateConnector?.authMethods.find((item) => {
+      return item.id === "api-token";
+    });
+    const privateMapping = privateAuthMethod?.manualFieldMappings[0];
+    if (!privateAuthMethod || !privateMapping) {
+      throw new Error("Missing fixture private manual field mapping");
+    }
+    privateAuthMethod.manualFieldMappings.push({
+      ...privateMapping,
+      publicId: "secondaryApiKey",
+    });
+
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithPrivateArtifact(
+            recordsWithPublicArtifact(records, publicArtifact),
+            privateArtifact,
+          ),
+        ),
+      }),
+    ).rejects.toThrow(
+      "Duplicate connector catalog fixture-manual/api-token private manual field private names",
+    );
+
+    privateAuthMethod.manualFieldMappings[1] = {
+      ...privateMapping,
+      publicId: "secondaryApiKey",
+      privateName: "FIXTURE_MANUAL_SECONDARY_API_TOKEN",
+    };
+
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithPrivateArtifact(
+            recordsWithPublicArtifact(records, publicArtifact),
+            privateArtifact,
+          ),
+        ),
+      }),
+    ).rejects.toThrow(
+      "Duplicate connector catalog fixture-manual/api-token private manual field runtime names",
     );
   });
 });

@@ -11,10 +11,9 @@ const artifactKeySchema = z
     const segments = key.split("/");
     return (
       !key.startsWith("/") &&
-      !key.includes("..") &&
       !key.includes("\\") &&
       segments.every((segment) => {
-        return segment.length > 0 && segment !== ".";
+        return segment.length > 0 && segment !== "." && segment !== "..";
       })
     );
   }, "Artifact keys must be relative object keys");
