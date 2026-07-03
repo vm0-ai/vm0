@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.132.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.8...runner-rs-v0.132.9) (2026-07-03)
+
+
+### Refactoring
+
+* share runner status file reader ([#20096](https://github.com/vm0-ai/vm0/issues/20096)) ([df6d7d6](https://github.com/vm0-ai/vm0/commit/df6d7d62c1dfbd3a6ff5fe11179f25f47b1006b2))
+
 ## [0.132.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.7...runner-rs-v0.132.8) (2026-07-03)
 
 
