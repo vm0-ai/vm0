@@ -51,6 +51,7 @@ import {
   currentArtifactInboxThreadId$,
   openArtifactInbox$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
+import { ChatShortcutHelpDialog } from "./chat-shortcut-help-dialog.tsx";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -255,6 +256,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
     <div className="zero-app zero-viewport-shell flex w-full bg-background">
       <OrgManageDialogMount />
       <SettingsDialogMount />
+      <ChatShortcutHelpDialog />
       <QueueDrawer />
       <ZeroSidebar />
       <div
