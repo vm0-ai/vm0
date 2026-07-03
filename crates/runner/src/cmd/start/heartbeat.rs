@@ -222,11 +222,8 @@ fn available_profiles_for_heartbeat(
 
     let mut available: std::collections::BTreeSet<String> = profiles
         .iter()
-        .filter_map(|(name, profile)| {
-            budget
-                .can_afford(profile.vcpu, profile.memory_mb)
-                .then(|| name.clone())
-        })
+        .filter(|(_, profile)| budget.can_afford(profile.vcpu, profile.memory_mb))
+        .map(|(name, _)| name.clone())
         .collect();
     for profile_name in idle_pool.held_session_profile_names() {
         if profiles.contains_key(&profile_name) {
