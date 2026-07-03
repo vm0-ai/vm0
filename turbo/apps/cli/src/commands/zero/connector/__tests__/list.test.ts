@@ -12,6 +12,11 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { listCommand } from "../list";
 import chalk from "chalk";
+import {
+  authCodeMethod,
+  catalogStatusItem,
+  stubConnectorCatalogStatus,
+} from "../../__tests__/helpers/connector-catalog";
 
 const AGENT_UUID = "550e8400-e29b-41d4-a716-446655440000";
 const ALT_AGENT_UUID = "550e8400-e29b-41d4-a716-446655440099";
@@ -29,15 +34,45 @@ const connectedGithub = {
   updatedAt: "2025-01-01T00:00:00Z",
 };
 
-function stubConnectors(connectors: Array<Record<string, unknown>>) {
-  return http.get("http://localhost:3000/api/zero/connectors", () => {
-    return HttpResponse.json({
-      connectors,
-      configuredTypes: connectors.map((c) => {
-        return c.type as string;
-      }),
-    });
+function statusItemFromConnector(connector: Record<string, unknown>) {
+  return catalogStatusItem({
+    connectorRef: connector.type as string,
+    authMethods: [authCodeMethod(connector.authMethod as string)],
+    connection: {
+      authMethod: connector.authMethod as string,
+      externalUsername: (connector.externalUsername as string | null) ?? null,
+      externalEmail: (connector.externalEmail as string | null) ?? null,
+      reconnectReason: null,
+    },
+    connected: true,
+    connectionStatus:
+      (connector.connectionStatus as "connected" | "reconnect-required") ??
+      "connected",
   });
+}
+
+function stubConnectors(connectors: Array<Record<string, unknown>>) {
+  const connectedByType = new Map(
+    connectors.map((connector) => {
+      return [connector.type as string, statusItemFromConnector(connector)];
+    }),
+  );
+  const visibleTypes = new Set([
+    "github",
+    "mercury",
+    ...connectedByType.keys(),
+  ]);
+  return stubConnectorCatalogStatus(
+    [...visibleTypes].map((type) => {
+      return (
+        connectedByType.get(type) ??
+        catalogStatusItem({
+          connectorRef: type,
+          authMethods: [authCodeMethod("oauth")],
+        })
+      );
+    }),
+  );
 }
 
 function stubAgent(id: string, displayName: string | null) {
@@ -63,18 +98,14 @@ function stubUserConnectors(id: string, enabledTypes: string[]) {
 }
 
 function stubAvailableConnectors(types: string[]) {
-  return http.get("http://localhost:3000/api/zero/connectors/search", () => {
-    return HttpResponse.json({
-      connectors: types.map((type) => {
-        return {
-          id: type,
-          label: type,
-          description: type,
-          authMethods: ["oauth"],
-        };
-      }),
-    });
-  });
+  return stubConnectorCatalogStatus(
+    types.map((type) => {
+      return catalogStatusItem({
+        connectorRef: type,
+        authMethods: [authCodeMethod("oauth")],
+      });
+    }),
+  );
 }
 
 describe("zero connector list command", () => {
@@ -225,17 +256,20 @@ describe("zero connector list command", () => {
   describe("error handling", () => {
     it("should handle authentication error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "Not authenticated",
-                code: "UNAUTHORIZED",
+        http.get(
+          "http://localhost:3000/api/zero/connector-catalog/status",
+          () => {
+            return HttpResponse.json(
+              {
+                error: {
+                  message: "Not authenticated",
+                  code: "UNAUTHORIZED",
+                },
               },
-            },
-            { status: 401 },
-          );
-        }),
+              { status: 401 },
+            );
+          },
+        ),
       );
 
       await expect(async () => {
@@ -278,7 +312,7 @@ describe("zero connector list command", () => {
     });
 
     it("uses the server-visible catalog for feature-gated oauth connectors", async () => {
-      server.use(stubConnectors([]), stubAvailableConnectors(["google-ads"]));
+      server.use(stubAvailableConnectors(["google-ads"]));
 
       await listCommand.parseAsync(["node", "cli"]);
 

@@ -8,6 +8,7 @@ import type {
   TestMemoryStateFixture,
   TestMemoryStateSummaryRow,
 } from "@vm0/api-contracts/contracts/test-memory-state";
+import type { MemoryActivityResponse } from "@vm0/api-contracts/contracts/zero-memory-activity";
 
 import type { TestContext } from "../../../../__tests__/test-context";
 import { createAppWithRoutes } from "../../../../app-factory-core";
@@ -15,7 +16,8 @@ import { testMemoryStateRoutes } from "../../test-memory-state";
 
 const MEMORY_STATE_ROUTE = "/api/test/memory-state";
 
-type MemoryChangeDiff = unknown;
+type MemoryChangeDiff =
+  MemoryActivityResponse["entries"][number]["items"][number]["diff"];
 
 export interface MemoryFixture {
   readonly orgId: string;

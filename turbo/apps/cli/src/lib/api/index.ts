@@ -146,8 +146,8 @@ export {
 // Domain modules - Zero Connectors
 export {
   listZeroConnectors,
-  getZeroConnector,
-  searchZeroConnectors,
+  listZeroConnectorCatalog,
+  listZeroConnectorCatalogStatus,
   connectZeroConnectorManualGrant,
   listZeroCustomConnectors,
   getZeroCustomConnector,

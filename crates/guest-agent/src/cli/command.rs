@@ -31,11 +31,14 @@ pub(super) fn build_cli_command_for_runtime(
         env::Framework::Codex => Ok(build_codex_command_with_config(
             runtime.use_mock_codex,
             runtime.mock_codex_path.as_ref(),
-            runtime.openai_model.as_ref(),
-            runtime.openai_base_url.as_ref(),
-            runtime.resume_session_id.as_ref(),
-            runtime.append_system_prompt.as_ref(),
-            runtime.prompt.as_ref(),
+            CodexArgsConfig {
+                model: runtime.openai_model.as_ref(),
+                openai_base_url: runtime.openai_base_url.as_ref(),
+                fast_mode: runtime.codex_fast_mode,
+                resume_id: runtime.resume_session_id.as_ref(),
+                append_system_prompt: runtime.append_system_prompt.as_ref(),
+                prompt: runtime.prompt.as_ref(),
+            },
         )),
     }
 }
@@ -178,6 +181,13 @@ fn build_codex_openai_base_url_config(openai_base_url: &str) -> String {
     format!("openai_base_url={value}")
 }
 
+fn push_codex_fast_mode_configs(args: &mut Vec<String>) {
+    args.push("-c".to_string());
+    args.push("features.fast_mode=true".to_string());
+    args.push("-c".to_string());
+    args.push(r#"service_tier="fast""#.to_string());
+}
+
 /// Per-model default for the codex `model_reasoning_effort` config. GPT-5.5
 /// invests heavily in reasoning depth, so default it to `xhigh` rather than
 /// the codex CLI's stock `medium`.
@@ -189,9 +199,19 @@ pub(super) fn default_codex_reasoning_effort_for_model(model: &str) -> Option<&'
     }
 }
 
+struct CodexArgsConfig<'a> {
+    model: &'a str,
+    openai_base_url: &'a str,
+    fast_mode: bool,
+    resume_id: &'a str,
+    append_system_prompt: &'a str,
+    prompt: &'a str,
+}
+
 fn build_codex_args(
     model: &str,
     openai_base_url: &str,
+    fast_mode: bool,
     resume_id: &str,
     append_system_prompt: &str,
     prompt: &str,
@@ -212,6 +232,10 @@ fn build_codex_args(
     if !openai_base_url.is_empty() {
         args.push("-c".to_string());
         args.push(build_codex_openai_base_url_config(openai_base_url));
+    }
+
+    if fast_mode {
+        push_codex_fast_mode_configs(&mut args);
     }
 
     if !model.is_empty() {
@@ -249,11 +273,7 @@ fn build_codex_args(
 fn build_codex_command_with_config(
     use_mock: bool,
     mock_codex_path: &str,
-    model: &str,
-    openai_base_url: &str,
-    resume_id: &str,
-    append_system_prompt: &str,
-    prompt: &str,
+    config: CodexArgsConfig<'_>,
 ) -> Vec<String> {
     let bin = if use_mock {
         log_info!(LOG_TAG, "Using mock-codex for testing");
@@ -264,11 +284,12 @@ fn build_codex_command_with_config(
 
     let mut cmd = vec![bin];
     cmd.extend(build_codex_args(
-        model,
-        openai_base_url,
-        resume_id,
-        append_system_prompt,
-        prompt,
+        config.model,
+        config.openai_base_url,
+        config.fast_mode,
+        config.resume_id,
+        config.append_system_prompt,
+        config.prompt,
     ));
     cmd
 }
@@ -456,7 +477,13 @@ mod tests {
     fn build_codex_args_for_test(model: &str, resume_id: &str, prompt: &str) -> Vec<String> {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
-        build_codex_args(model, "", resume_id, "", prompt)
+        build_codex_args(model, "", false, resume_id, "", prompt)
+    }
+
+    fn build_codex_fast_args_for_test(model: &str, resume_id: &str, prompt: &str) -> Vec<String> {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        disable_system_log();
+        build_codex_args(model, "", true, resume_id, "", prompt)
     }
 
     fn build_codex_args_with_base_url_for_test(
@@ -467,7 +494,7 @@ mod tests {
     ) -> Vec<String> {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
-        build_codex_args(model, openai_base_url, resume_id, "", prompt)
+        build_codex_args(model, openai_base_url, false, resume_id, "", prompt)
     }
 
     fn build_codex_args_with_append_for_test(
@@ -478,7 +505,7 @@ mod tests {
     ) -> Vec<String> {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
-        build_codex_args(model, "", resume_id, append_system_prompt, prompt)
+        build_codex_args(model, "", false, resume_id, append_system_prompt, prompt)
     }
 
     fn codex_args_have_config(args: &[String], config: &str) -> bool {
@@ -496,11 +523,14 @@ mod tests {
             } else {
                 ""
             },
-            "",
-            "",
-            "",
-            "",
-            "",
+            CodexArgsConfig {
+                model: "",
+                openai_base_url: "",
+                fast_mode: false,
+                resume_id: "",
+                append_system_prompt: "",
+                prompt: "",
+            },
         )
     }
 
@@ -511,7 +541,7 @@ mod tests {
         let system_log_path = tmp.path().join("system.log");
         guest_common::log::set_system_log_file(system_log_path.to_string_lossy().as_ref());
 
-        let args = build_codex_args("", "", "thread-secret-123", "", "prompt");
+        let args = build_codex_args("", "", false, "thread-secret-123", "", "prompt");
         guest_common::log::clear_system_log_file();
         let system_log = std::fs::read_to_string(system_log_path).unwrap();
 
@@ -547,6 +577,13 @@ mod tests {
         let args = build_codex_args_for_test("gpt-5", "", "p");
         let m_idx = args.iter().position(|a| a == "-m").unwrap();
         assert_eq!(args[m_idx + 1], "gpt-5");
+    }
+
+    #[test]
+    fn build_codex_args_with_fast_mode_configs() {
+        let args = build_codex_fast_args_for_test("gpt-5.5", "", "p");
+        assert!(codex_args_have_config(&args, "features.fast_mode=true"));
+        assert!(codex_args_have_config(&args, r#"service_tier="fast""#));
     }
 
     #[test]

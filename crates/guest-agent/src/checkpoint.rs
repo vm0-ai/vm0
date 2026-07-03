@@ -577,16 +577,6 @@ async fn create_checkpoint_impl(
         }
     };
     let history_size = history_bytes.len() as u64;
-    if history_size > RESUME_SESSION_HISTORY_MAX_BYTES {
-        return Err(fail(
-            mode,
-            "session_history_read",
-            history_read_start,
-            format!(
-                "Session history exceeds maximum size of {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
-            ),
-        ));
-    }
 
     let session_history_text = match std::str::from_utf8(&history_bytes) {
         Ok(s) => Some(s),

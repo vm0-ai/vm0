@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.22.5](https://github.com/vm0-ai/vm0/compare/desktop-v0.22.4...desktop-v0.22.5) (2026-07-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.144.1
+
+## [0.22.4](https://github.com/vm0-ai/vm0/compare/desktop-v0.22.3...desktop-v0.22.4) (2026-07-02)
+
+
+### Bug Fixes
+
+* **desktop:** bundle workspace packages into electron main process ([#19895](https://github.com/vm0-ai/vm0/issues/19895)) ([c1a532c](https://github.com/vm0-ai/vm0/commit/c1a532c2ab63fa46bd741428b09fc26e75632efa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.144.0
+
 ## [0.22.3](https://github.com/vm0-ai/vm0/compare/desktop-v0.22.2...desktop-v0.22.3) (2026-07-02)
 
 

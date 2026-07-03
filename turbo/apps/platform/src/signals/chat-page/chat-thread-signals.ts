@@ -1,8 +1,5 @@
 import type { Command, Computed } from "ccstate";
-import type {
-  ChatThreadArtifactRun,
-  ModelSelectionRequest,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatThreadArtifactRun } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import type { ChatThread } from "../agent-chat.ts";
@@ -51,7 +48,7 @@ export interface ChatThreadSignals {
     Promise<void>,
     [
       string,
-      ModelSelectionRequest | null,
+      ModelProviderSelection | null,
       SendMessageOptions | undefined,
       AbortSignal,
     ]
@@ -111,6 +108,7 @@ export interface ChatThreadSignals {
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
   renderedGroupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
   hasOlderHistory$: Computed<Promise<boolean>>;
+  messageRunIndicatorState$: Computed<Promise<"running" | "queued" | null>>;
   latestRunStatus$: Computed<Promise<string | null>>;
   // The thread's active goal, folded from goal-state marker messages. Null when
   // there is no active goal. Drives the goal row above the composer.

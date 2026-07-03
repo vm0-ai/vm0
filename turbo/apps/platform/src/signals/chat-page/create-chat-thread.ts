@@ -7,6 +7,7 @@ import {
   type State,
 } from "ccstate";
 import { animationFrame, delay } from "signal-timers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { IN_VITEST } from "../../env.ts";
 import {
   onRef,
@@ -46,11 +47,14 @@ import {
   type AttachFile,
   type GenerationTemplateRequest,
   type ChatThreadArtifactRun,
-  type ModelSelectionRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
+import {
+  modelSelectionRequestFromSelection,
+  runOptionsFromModelProviderSelection,
+} from "./model-selection-request.ts";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
@@ -59,6 +63,7 @@ import { agentById } from "../agent.ts";
 import { chatMessageOrderSequence } from "../chat-message-order.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import {
   MODEL_FIRST_SELECTION_PROVIDER_ID,
@@ -342,18 +347,6 @@ function isRawOptimisticRunMessage(entry: ChatMessageProjectionEntry): boolean {
   );
 }
 
-function isRawQueuedUserMessage(entry: ChatMessageProjectionEntry): boolean {
-  const { message } = entry;
-  return (
-    message.role === "user" &&
-    message.runId === undefined &&
-    entry.optimisticUserMessageAssociation !== "run" &&
-    message.revokesMessageId === undefined &&
-    message.interruptsRunId === undefined &&
-    message.error === undefined
-  );
-}
-
 function terminatedRunIdsFromRawMessages(
   raw: readonly ChatMessageProjectionEntry[],
 ): Set<string> {
@@ -380,113 +373,54 @@ type AssistantPagedChatMessage = Extract<
   { role: "assistant" }
 >;
 
-interface RunIndicatorScanContext {
-  readonly terminatedRunIds: Set<string>;
-  readonly activeRunIds: Set<string>;
-  readonly queuedRunIds: Set<string>;
-  sawQueued: boolean;
-  sawInactiveRunActivity: boolean;
-}
-
-function inactiveRunIndicatorState(
-  scan: RunIndicatorScanContext,
-): RunIndicatorState {
-  return scan.sawQueued ? "queued" : null;
-}
-
-function unresolvedActiveRunIndicatorState(
-  scan: RunIndicatorScanContext,
-): RunIndicatorState {
-  for (const runId of scan.activeRunIds) {
-    if (!scan.queuedRunIds.has(runId)) {
-      return "running";
-    }
-  }
-  return inactiveRunIndicatorState(scan);
-}
-
-function rememberQueuedRun(
-  scan: RunIndicatorScanContext,
-  runId: string | undefined,
-): void {
-  if (runId !== undefined && scan.terminatedRunIds.has(runId)) {
-    return;
-  }
-  scan.sawQueued = true;
-  if (runId !== undefined) {
-    scan.queuedRunIds.add(runId);
-  }
-}
-
 function runActivityIndicatorState(
-  scan: RunIndicatorScanContext,
+  terminatedRunIds: ReadonlySet<string>,
   runId: string,
 ): RunIndicatorState | undefined {
-  if (scan.queuedRunIds.has(runId)) {
-    return "queued";
-  }
-  if (scan.terminatedRunIds.has(runId)) {
-    scan.sawInactiveRunActivity = true;
-    return undefined;
-  }
-  if (scan.sawInactiveRunActivity && !scan.activeRunIds.has(runId)) {
+  if (terminatedRunIds.has(runId)) {
     return undefined;
   }
   return "running";
 }
 
 function assistantRunIndicatorState(
-  scan: RunIndicatorScanContext,
+  terminatedRunIds: ReadonlySet<string>,
   message: AssistantPagedChatMessage,
 ): RunIndicatorState | undefined {
   const runId = message.runId;
-  if (runId !== undefined && message.runLifecycleEvent !== undefined) {
-    scan.sawInactiveRunActivity = true;
-    return undefined;
-  }
   if (isQueueMarkerMessage(message)) {
-    rememberQueuedRun(scan, runId);
+    if (runId !== undefined && terminatedRunIds.has(runId)) {
+      return undefined;
+    }
+    return "queued";
+  }
+  if (runId !== undefined && message.runLifecycleEvent !== undefined) {
+    return null;
+  }
+  if (runId === undefined) {
     return undefined;
   }
-  return runId === undefined
-    ? inactiveRunIndicatorState(scan)
-    : runActivityIndicatorState(scan, runId);
+  return runActivityIndicatorState(terminatedRunIds, runId);
 }
 
 function nonAssistantRunIndicatorState(
-  scan: RunIndicatorScanContext,
+  terminatedRunIds: ReadonlySet<string>,
   entry: ChatMessageProjectionEntry,
 ): RunIndicatorState | undefined {
   if (isRawOptimisticRunMessage(entry)) {
     return "running";
   }
-  if (isRawQueuedUserMessage(entry)) {
-    scan.sawQueued = true;
-    return undefined;
-  }
   const { runId } = entry.message;
   return runId === undefined
     ? undefined
-    : runActivityIndicatorState(scan, runId);
+    : runActivityIndicatorState(terminatedRunIds, runId);
 }
 
 function deriveRunIndicatorStateFromRawMessages(
   raw: readonly ChatMessageProjectionEntry[],
-  activeRunIds: readonly string[],
 ): RunIndicatorState {
   const revokedMessageIds = revokedMessageIdsFromRawMessages(raw);
   const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
-  const scan: RunIndicatorScanContext = {
-    terminatedRunIds,
-    activeRunIds: new Set(
-      activeRunIds.filter((runId) => {
-        return !terminatedRunIds.has(runId);
-      }),
-    ),
-    queuedRunIds: new Set<string>(),
-    sawQueued: false,
-    sawInactiveRunActivity: false,
-  };
 
   for (let index = raw.length - 1; index >= 0; index--) {
     const entry = raw[index]!;
@@ -498,20 +432,18 @@ function deriveRunIndicatorStateFromRawMessages(
       continue;
     }
     if (message.role === "assistant") {
-      const state = assistantRunIndicatorState(scan, message);
+      const state = assistantRunIndicatorState(terminatedRunIds, message);
       if (state !== undefined) {
         return state;
       }
       continue;
     }
-    const state = nonAssistantRunIndicatorState(scan, entry);
+    const state = nonAssistantRunIndicatorState(terminatedRunIds, entry);
     if (state !== undefined) {
       return state;
     }
   }
-  return scan.activeRunIds.size > 0
-    ? unresolvedActiveRunIndicatorState(scan)
-    : inactiveRunIndicatorState(scan);
+  return null;
 }
 
 function liveRunIdsFromRawMessages(
@@ -522,34 +454,27 @@ function liveRunIdsFromRawMessages(
   const liveRunIds: string[] = [];
   const seenRunIds = new Set<string>();
   for (const { message } of raw) {
+    const runId = message.runId;
     if (
-      message.role === "user" &&
-      message.runId !== undefined &&
+      runId !== undefined &&
       !revokedMessageIds.has(message.id) &&
-      !terminatedRunIds.has(message.runId) &&
-      !seenRunIds.has(message.runId)
+      !terminatedRunIds.has(runId) &&
+      !isQueueMarkerMessage(message) &&
+      !isUsageMessage(message) &&
+      !isGoalMarkerMessage(message) &&
+      !seenRunIds.has(runId)
     ) {
-      liveRunIds.push(message.runId);
-      seenRunIds.add(message.runId);
-    }
-  }
-  return liveRunIds;
-}
-
-function cancellableRunIdsFromThreadAndRawMessages(
-  thread: ChatThread,
-  raw: readonly ChatMessageProjectionEntry[],
-): string[] {
-  const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
-  const liveRunIds = liveRunIdsFromRawMessages(raw);
-  const seenRunIds = new Set(liveRunIds);
-  for (const runId of thread.activeRunIds) {
-    if (!terminatedRunIds.has(runId) && !seenRunIds.has(runId)) {
       liveRunIds.push(runId);
       seenRunIds.add(runId);
     }
   }
   return liveRunIds;
+}
+
+function cancellableRunIdsFromRawMessages(
+  raw: readonly ChatMessageProjectionEntry[],
+): string[] {
+  return liveRunIdsFromRawMessages(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -1686,7 +1611,9 @@ function createPagedMessages(
     serverMessages$,
     optimisticMessages$,
   });
-  const latestRunStatus$ = createLatestRunStatus(rawMessages$, threadData$);
+  const messageRunIndicatorState$ =
+    createMessageRunIndicatorState(rawMessages$);
+  const latestRunStatus$ = messageRunIndicatorState$;
 
   // The thread's active goal, folded from the (goal-marker) message stream so
   // the composer reads it without polling /api/automations. Reads rawMessages$
@@ -1791,6 +1718,7 @@ function createPagedMessages(
     refreshGroupedChatMessagesCache$,
     rawMessages$,
     hasOlderHistory$,
+    messageRunIndicatorState$,
     latestRunStatus$,
     activeGoal$,
     fetchNextPage$,
@@ -2032,18 +1960,12 @@ function createInputRef() {
   return { setInputRef$, focusInput$ };
 }
 
-function createLatestRunStatus(
+function createMessageRunIndicatorState(
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
-  threadData$: Computed<Promise<ChatThread | null>>,
 ) {
-  return computed(async (get): Promise<string | null> => {
-    const rawPromise = get(rawMessages$);
-    const threadPromise = get(threadData$);
-    const [raw, thread] = await Promise.all([rawPromise, threadPromise]);
-    return deriveRunIndicatorStateFromRawMessages(
-      raw,
-      thread?.activeRunIds ?? [],
-    );
+  return computed(async (get): Promise<RunIndicatorState> => {
+    const raw = await get(rawMessages$);
+    return deriveRunIndicatorStateFromRawMessages(raw);
   });
 }
 
@@ -2364,9 +2286,9 @@ function createRunTracking({
         return true;
       }
 
-      const thread = await get(threadData$);
+      const latestRunStatus = await get(latestRunStatus$);
       signal.throwIfAborted();
-      return (thread?.activeRunIds.length ?? 0) > 0;
+      return latestRunStatus !== null;
     },
   );
 
@@ -2533,6 +2455,37 @@ function sendMessageRevocationPatch(options: SendMessageOptions | undefined): {
     : {};
 }
 
+function sendMessageRequestBody(params: {
+  readonly agentId: string;
+  readonly threadId: string;
+  readonly clientMessageId: string;
+  readonly result: PreparedSendMessageResult;
+  readonly modelSelection: ModelProviderSelection | null;
+  readonly codexFastModeEnabled: boolean;
+  readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly options: SendMessageOptions | undefined;
+}) {
+  const runOptions = runOptionsFromModelProviderSelection(
+    params.modelSelection,
+    params.codexFastModeEnabled,
+  );
+  return {
+    agentId: params.agentId,
+    prompt: params.result.prompt,
+    threadId: params.threadId,
+    hasTextContent: params.result.hasTextContent,
+    clientMessageId: params.clientMessageId,
+    modelSelection: modelSelectionRequestFromSelection(params.modelSelection),
+    ...(runOptions ? { runOptions } : {}),
+    generationTemplate: params.generationTemplate,
+    ...(params.options && "computerUseHostId" in params.options
+      ? { computerUseHostId: params.options.computerUseHostId ?? null }
+      : {}),
+    attachFiles: params.result.attachFiles,
+    ...sendMessageRevocationPatch(params.options),
+  };
+}
+
 function hasVisualDraftAttachments(
   attachments: readonly { contentType: string; filename: string }[],
 ): boolean {
@@ -2567,7 +2520,7 @@ function createSendMessage(deps: SendMessageDeps) {
     async (
       { get, set },
       prompt: string,
-      modelSelection: ModelSelectionRequest | null,
+      modelSelection: ModelProviderSelection | null,
       options: SendMessageOptions | undefined,
       signal: AbortSignal,
     ) => {
@@ -2637,25 +2590,23 @@ function createSendMessage(deps: SendMessageDeps) {
         { signal },
       );
 
+      const codexFastModeEnabled =
+        get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
       const client = get(zeroClient$)(chatMessagesContract);
       const [, sendResult] = await Promise.all([
         set(flushDraftClear$, signal),
         accept(
           client.send({
-            body: {
+            body: sendMessageRequestBody({
               agentId,
-              prompt: result.prompt,
-              threadId: threadId,
-              hasTextContent: result.hasTextContent,
               clientMessageId,
+              threadId,
+              result,
               modelSelection,
+              codexFastModeEnabled,
               generationTemplate,
-              ...(options && "computerUseHostId" in options
-                ? { computerUseHostId: options.computerUseHostId ?? null }
-                : {}),
-              attachFiles: result.attachFiles,
-              ...sendMessageRevocationPatch(options),
-            },
+              options,
+            }),
             fetchOptions: { signal },
           }),
           [201],
@@ -2924,23 +2875,22 @@ function createCancelRunWithQueuedRecall({
       });
     });
 
-    const interruptRequests = cancellableRunIdsFromThreadAndRawMessages(
-      thread,
-      raw,
-    ).map((runId) => {
-      const clientMessageId = crypto.randomUUID();
-      set(appendOptimisticChatMessage$, {
-        threadId,
-        message: {
-          id: clientMessageId,
-          role: "user",
-          content: null,
-          interruptsRunId: runId,
-          createdAt: nowDate().toISOString(),
-        },
-      });
-      return { runId, clientMessageId };
-    });
+    const interruptRequests = cancellableRunIdsFromRawMessages(raw).map(
+      (runId) => {
+        const clientMessageId = crypto.randomUUID();
+        set(appendOptimisticChatMessage$, {
+          threadId,
+          message: {
+            id: clientMessageId,
+            role: "user",
+            content: null,
+            interruptsRunId: runId,
+            createdAt: nowDate().toISOString(),
+          },
+        });
+        return { runId, clientMessageId };
+      },
+    );
 
     const recallRequests = queuedMessages.map((message) => {
       const clientMessageId = crypto.randomUUID();
@@ -3599,6 +3549,7 @@ export function createChatThreadSignals(
     groupedChatMessages$: messages.groupedChatMessages$,
     renderedGroupedChatMessages$: messages.renderedGroupedChatMessages$,
     hasOlderHistory$: messages.hasOlderHistory$,
+    messageRunIndicatorState$: messages.messageRunIndicatorState$,
     latestRunStatus$: messages.latestRunStatus$,
     activeGoal$: messages.activeGoal$,
     allFinished$: runTracking.allFinished$,

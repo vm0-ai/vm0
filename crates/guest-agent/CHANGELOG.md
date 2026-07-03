@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.46.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.45.3...guest-agent-v0.46.0) (2026-07-02)
+
+
+### Features
+
+* add Codex fast mode for ChatGPT subscription runs ([#19811](https://github.com/vm0-ai/vm0/issues/19811)) ([42e8e48](https://github.com/vm0-ai/vm0/commit/42e8e4883e548d497eb0b86a936b6be308ad1bed))
+
+
+### Bug Fixes
+
+* enforce session history read size cap ([#19878](https://github.com/vm0-ai/vm0/issues/19878)) ([efa2680](https://github.com/vm0-ai/vm0/commit/efa26801d6bdd96aa6e8522b4bfdb6c5e9944990))
+
 ## [0.45.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.45.2...guest-agent-v0.45.3) (2026-07-02)
 
 

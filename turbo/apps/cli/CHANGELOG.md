@@ -1,5 +1,33 @@
 # Changelog
 
+## [9.221.6](https://github.com/vm0-ai/vm0/compare/cli-v9.221.5...cli-v9.221.6) (2026-07-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.144.1
+    * @vm0/core bumped to 8.390.1
+
+## [9.221.5](https://github.com/vm0-ai/vm0/compare/cli-v9.221.4...cli-v9.221.5) (2026-07-02)
+
+
+### Refactoring
+
+* **cli:** use public connector catalog ([#19909](https://github.com/vm0-ai/vm0/issues/19909)) ([bd55ce4](https://github.com/vm0-ai/vm0/commit/bd55ce4a0a9c9974039d23b31af50f5476202ca1))
+
+## [9.221.4](https://github.com/vm0-ai/vm0/compare/cli-v9.221.3...cli-v9.221.4) (2026-07-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.144.0
+    * @vm0/connectors bumped to 1.129.0
+    * @vm0/core bumped to 8.390.0
+
 ## [9.221.3](https://github.com/vm0-ai/vm0/compare/cli-v9.221.2...cli-v9.221.3) (2026-07-02)
 
 

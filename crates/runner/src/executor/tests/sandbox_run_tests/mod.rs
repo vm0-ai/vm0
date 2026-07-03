@@ -52,3 +52,37 @@ mod idle_pool;
 mod proxy_registry;
 mod reuse;
 mod workspace_cache;
+
+fn assert_telemetry_action(
+    telemetry: &crate::telemetry::JobTelemetry,
+    action: &str,
+    success: bool,
+    error: Option<&str>,
+) {
+    let ops = telemetry.pending_ops_snapshot();
+    assert!(
+        ops.iter().any(|(op_action, op_success, op_error)| {
+            op_action == action && *op_success == success && op_error.as_deref() == error
+        }),
+        "expected telemetry action {action} success={success} error={error:?}, got: {ops:?}"
+    );
+}
+
+fn assert_no_telemetry_action(telemetry: &crate::telemetry::JobTelemetry, action: &str) {
+    let ops = telemetry.pending_ops_snapshot();
+    assert!(
+        ops.iter().all(|(op_action, _, _)| op_action != action),
+        "unexpected telemetry action {action}, got: {ops:?}"
+    );
+}
+
+fn telemetry_action_outcomes(
+    telemetry: &crate::telemetry::JobTelemetry,
+    action: &str,
+) -> Vec<(bool, Option<String>)> {
+    telemetry
+        .pending_ops_snapshot()
+        .into_iter()
+        .filter_map(|(op_action, success, error)| (op_action == action).then_some((success, error)))
+        .collect()
+}

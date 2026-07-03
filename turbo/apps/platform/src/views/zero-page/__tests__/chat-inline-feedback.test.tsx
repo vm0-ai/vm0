@@ -66,6 +66,7 @@ describe("chat inline feedback", () => {
   it("turns selected assistant text into an inline feedback follow-up", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The rollout dates are unclear in this summary.";
+    const sentPrompts: string[] = [];
     context.mocks.browser.clipboardWriteText();
 
     mockChatLifecycle(context, {
@@ -87,6 +88,11 @@ describe("chat inline feedback", () => {
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
+      onRunCreate: (body) => {
+        if (body.prompt !== undefined) {
+          sentPrompts.push(body.prompt);
+        }
+      },
     });
 
     detachedSetupPage({
@@ -122,8 +128,15 @@ describe("chat inline feedback", () => {
     await user.click(screen.getByLabelText("Send feedback"));
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(sentPrompts).toHaveLength(1);
     });
+    expect(sentPrompts[0]).toContain("Feedback on this part of your reply:");
+    expect(sentPrompts[0]).toContain(
+      "> The rollout dates are unclear in this summary.",
+    );
+    expect(sentPrompts[0]).toContain(
+      "Mention the dates before the risk summary.",
+    );
 
     expect(
       screen.queryByPlaceholderText("What should change about this?"),
@@ -467,10 +480,9 @@ describe("chat inline feedback", () => {
     await user.click(screen.getByLabelText("Send feedback"));
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(sentPrompts).toHaveLength(1);
     });
 
-    expect(sentPrompts).toHaveLength(1);
     expect(sentPrompts[0]).toContain("Feedback on 2 parts of your reply:");
     expect(sentPrompts[0]).toContain(
       "> The launch summary needs clearer risk ownership.",

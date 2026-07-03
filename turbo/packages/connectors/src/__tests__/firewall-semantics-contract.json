@@ -242,5 +242,469 @@
       "path": "///",
       "expected": ["", "", ""]
     }
+  ],
+  "pathMatchCases": [
+    {
+      "name": "exact literal path",
+      "path": "/api/v1/users",
+      "pattern": "/api/v1/users",
+      "expected": {
+        "kind": "match",
+        "params": {}
+      }
+    },
+    {
+      "name": "root literal path",
+      "path": "/",
+      "pattern": "/",
+      "expected": {
+        "kind": "match",
+        "params": {}
+      }
+    },
+    {
+      "name": "plain path parameters",
+      "path": "/repos/myorg/myrepo/pulls",
+      "pattern": "/repos/{owner}/{repo}/pulls",
+      "expected": {
+        "kind": "match",
+        "params": {
+          "owner": "myorg",
+          "repo": "myrepo"
+        }
+      }
+    },
+    {
+      "name": "plain path parameter rejects empty segment",
+      "path": "/repos//pulls",
+      "pattern": "/repos/{owner}/pulls",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "path matcher requires full path consumption",
+      "path": "/repos/myorg/myrepo/pulls/123",
+      "pattern": "/repos/{owner}/{repo}/pulls",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "mixed path segment captures suffix middle",
+      "path": "/repos/octocat/hello.git",
+      "pattern": "/repos/{owner}/{repo}.git",
+      "expected": {
+        "kind": "match",
+        "params": {
+          "owner": "octocat",
+          "repo": "hello"
+        }
+      }
+    },
+    {
+      "name": "mixed path segment rejects empty capture",
+      "path": "/repos/octocat/.git",
+      "pattern": "/repos/{owner}/{repo}.git",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "greedy plus path preserves repeated slash before non-empty rest",
+      "path": "/repos/a/b/git//heads/main",
+      "pattern": "/repos/{owner}/{repo}/git/{rest+}",
+      "expected": {
+        "kind": "match",
+        "params": {
+          "owner": "a",
+          "repo": "b",
+          "rest": "/heads/main"
+        }
+      }
+    },
+    {
+      "name": "greedy plus path rejects only empty remaining segment",
+      "path": "/repos/a/b/git/",
+      "pattern": "/repos/{owner}/{repo}/git/{rest+}",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "greedy star path matches zero segments",
+      "path": "/",
+      "pattern": "/{path*}",
+      "expected": {
+        "kind": "match",
+        "params": {
+          "path": ""
+        }
+      }
+    },
+    {
+      "name": "explicit empty path segment can match literal empty segment",
+      "path": "/repos//octocat",
+      "pattern": "/repos//{owner}",
+      "expected": {
+        "kind": "match",
+        "params": {
+          "owner": "octocat"
+        }
+      }
+    },
+    {
+      "name": "non-terminal greedy path parameter fails closed",
+      "path": "/api/a/b/tail",
+      "pattern": "/api/{rest+}/tail",
+      "expected": {
+        "kind": "no-match"
+      }
+    }
+  ],
+  "hostMatchCases": [
+    {
+      "name": "literal host matches case-insensitively",
+      "host": "API.GitHub.COM",
+      "pattern": "api.github.com",
+      "expected": {
+        "kind": "match",
+        "params": {}
+      }
+    },
+    {
+      "name": "literal host rejects extra leading segment",
+      "host": "evil.api.github.com",
+      "pattern": "api.github.com",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "plain host parameter captures lowercase segment",
+      "host": "ACME.zendesk.com",
+      "pattern": "{subdomain}.zendesk.com",
+      "expected": {
+        "kind": "match",
+        "params": {
+          "subdomain": "acme"
+        }
+      }
+    },
+    {
+      "name": "plain host parameter rejects multiple leading segments",
+      "host": "a.b.zendesk.com",
+      "pattern": "{subdomain}.zendesk.com",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "mixed host parameter captures lowercase middle",
+      "host": "API-US.example.com",
+      "pattern": "api-{region}.example.com",
+      "expected": {
+        "kind": "match",
+        "params": {
+          "region": "us"
+        }
+      }
+    },
+    {
+      "name": "mixed host parameter rejects empty capture",
+      "host": "api-.example.com",
+      "pattern": "api-{region}.example.com",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "leading greedy plus host preserves input case",
+      "host": "Foo.Bar.example.com",
+      "pattern": "{sub+}.example.com",
+      "expected": {
+        "kind": "match",
+        "params": {
+          "sub": "Foo.Bar"
+        }
+      }
+    },
+    {
+      "name": "leading greedy plus host rejects empty prefix",
+      "host": "example.com",
+      "pattern": "{sub+}.example.com",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "leading greedy star host can capture empty prefix",
+      "host": "example.com",
+      "pattern": "{sub*}.example.com",
+      "expected": {
+        "kind": "match",
+        "params": {
+          "sub": ""
+        }
+      }
+    },
+    {
+      "name": "non-leading greedy host parameter fails closed",
+      "host": "foo.bar.example.com",
+      "pattern": "foo.{sub+}.com",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "mixed greedy host parameter fails closed",
+      "host": "api-us.example.com",
+      "pattern": "api-{region+}.example.com",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "non-default port participates in literal host matching",
+      "host": "api.example.com:9443",
+      "pattern": "api.example.com:8443",
+      "expected": {
+        "kind": "no-match"
+      }
+    }
+  ],
+  "pathPrefixMatchCases": [
+    {
+      "name": "root prefix returns full path",
+      "path": "/v2/demo",
+      "pattern": "/",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/v2/demo"
+      }
+    },
+    {
+      "name": "exact prefix returns slash",
+      "path": "/api/v1",
+      "pattern": "/api/v1",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/"
+      }
+    },
+    {
+      "name": "literal prefix preserves repeated slash after base",
+      "path": "/api/v1//users",
+      "pattern": "/api/v1",
+      "expected": {
+        "kind": "match",
+        "relativePath": "//users"
+      }
+    },
+    {
+      "name": "trailing empty prefix segment is significant",
+      "path": "/api/v1//users",
+      "pattern": "/api/v1/",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/users"
+      }
+    },
+    {
+      "name": "parameterized prefix returns remaining path",
+      "path": "/owner/repo/main/README.md",
+      "pattern": "/{owner}/{repo}",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/main/README.md"
+      }
+    },
+    {
+      "name": "parameterized prefix rejects empty segment",
+      "path": "/owner//main",
+      "pattern": "/{owner}/{repo}",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "mixed parameterized prefix rejects empty capture",
+      "path": "/owner/.git/info/refs",
+      "pattern": "/{owner}/{repo}.git",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "prefix keeps segment boundary strict",
+      "path": "/apiary/users",
+      "pattern": "/api",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "greedy plus prefix consumes remaining path",
+      "path": "/api/users/123",
+      "pattern": "/api/{rest+}",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/"
+      }
+    },
+    {
+      "name": "greedy star prefix consumes zero remaining segments",
+      "path": "/api",
+      "pattern": "/api/{rest*}",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/"
+      }
+    },
+    {
+      "name": "greedy plus prefix rejects only empty remaining segment",
+      "path": "/api/",
+      "pattern": "/api/{rest+}",
+      "expected": {
+        "kind": "no-match"
+      }
+    }
+  ],
+  "baseUrlMatchCases": [
+    {
+      "name": "static base strips query and fragment from relative path",
+      "url": "https://API.GitHub.com/repos?tab=code#readme",
+      "base": "https://api.github.com",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/repos"
+      }
+    },
+    {
+      "name": "static base normalizes trailing dot and default port",
+      "url": "HTTPS://API.GitHub.com.:443/repos",
+      "base": "https://api.github.com.",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/repos"
+      }
+    },
+    {
+      "name": "scheme mismatch fails closed",
+      "url": "http://api.github.com/repos",
+      "base": "https://api.github.com",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "non-default runtime port without base port fails closed",
+      "url": "https://api.github.com:8443/repos",
+      "base": "https://api.github.com",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "exact static base returns slash",
+      "url": "https://api.github.com?per_page=1#ignored",
+      "base": "https://api.github.com",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/"
+      }
+    },
+    {
+      "name": "static base rejects evil domain suffix",
+      "url": "https://api.github.com.evil.com/steal",
+      "base": "https://api.github.com",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "static base path keeps segment boundary strict",
+      "url": "https://example.com/apiary/users",
+      "base": "https://example.com/api",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "parameterized host base matches case-insensitively",
+      "url": "https://ETH.G.ALCHEMY.COM/v2/demo",
+      "base": "https://{network}.g.alchemy.com",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/v2/demo"
+      }
+    },
+    {
+      "name": "parameterized path base returns remaining path",
+      "url": "https://raw.githubusercontent.com/owner/repo/main/README.md",
+      "base": "https://raw.githubusercontent.com/{owner}/{repo}",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/main/README.md"
+      }
+    },
+    {
+      "name": "parameterized path treats encoded slash as segment content",
+      "url": "https://api.example.com/v1/acme%2Fteam/projects/123",
+      "base": "https://api.example.com/v1/{org}",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/projects/123"
+      }
+    },
+    {
+      "name": "repeated root slash base preserves path boundary",
+      "url": "https://api.example.com//users",
+      "base": "https://api.example.com//",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/users"
+      }
+    },
+    {
+      "name": "runtime URL with userinfo fails closed",
+      "url": "https://user:pass@api.github.com/repos",
+      "base": "https://api.github.com",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "runtime URL with backslash fails closed",
+      "url": "https://api.github.com/re\\pos",
+      "base": "https://api.github.com/repos",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "malformed runtime URL fails closed",
+      "url": "https://[::1",
+      "base": "https://api.github.com",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "base URL with query fails closed",
+      "url": "https://api.github.com/repos",
+      "base": "https://api.github.com?token=1",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "malformed base URL fails closed",
+      "url": "https://api.github.com/repos",
+      "base": "https://[::1",
+      "expected": {
+        "kind": "no-match"
+      }
+    }
   ]
 }

@@ -279,6 +279,7 @@ pub(super) struct CliRuntimeConfig<'a> {
     openai_model: Cow<'a, str>,
     openai_base_url: Cow<'a, str>,
     codex_oauth_mode: bool,
+    codex_fast_mode: bool,
     stuck_tool_timeout_secs: u64,
     post_result_cleanup_policy: PostResultCleanupPolicy,
     agent_log_file: Cow<'a, str>,
@@ -311,6 +312,8 @@ impl<'a> CliRuntimeConfig<'a> {
             openai_model: Cow::Borrowed(user_env_value(&config.user_env, "OPENAI_MODEL")),
             openai_base_url: Cow::Borrowed(user_env_value(&config.user_env, "OPENAI_BASE_URL")),
             codex_oauth_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty(),
+            codex_fast_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty()
+                && user_env_value(&config.user_env, "VM0_CODEX_SERVICE_TIER") == "fast",
             stuck_tool_timeout_secs: config.stuck_tool_timeout_secs,
             post_result_cleanup_policy: PostResultCleanupPolicy::new(
                 config.post_result_sigterm_grace,

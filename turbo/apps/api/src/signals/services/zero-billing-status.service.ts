@@ -244,7 +244,10 @@ function buildCreditBreakdown(args: {
       return categoryDelta;
     }
     if (a.category === "plan" && b.category === "plan") {
-      return planTierOrder[a.tier ?? "team"] - planTierOrder[b.tier ?? "team"];
+      if (!a.tier || !b.tier) {
+        throw new Error("Plan credit breakdown segment is missing a tier");
+      }
+      return planTierOrder[a.tier] - planTierOrder[b.tier];
     }
     return 0;
   });

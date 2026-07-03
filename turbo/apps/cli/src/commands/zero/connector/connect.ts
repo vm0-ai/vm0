@@ -1,18 +1,17 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import {
-  CONNECTOR_TYPE_KEYS,
-  CONNECTOR_TYPES,
-  connectorTypeSchema,
-  type ConnectorAuthMethodId,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
-import {
-  getConfiguredConnectorAuthMethodIds,
-  getConnectorAuthMethod,
-} from "@vm0/connectors/connector-utils";
-import { connectZeroConnectorManualGrant } from "../../../lib/api";
+  connectZeroConnectorManualGrant,
+  listZeroConnectorCatalogStatus,
+} from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+import {
+  availableConnectorRefs,
+  findConnectorStatusItem,
+  parseConnectorAuthMethodIdForAction,
+  parseConnectorTypeForAction,
+  resolveManualGrantAuthMethod,
+} from "./public-catalog";
 
 interface ConnectOptions {
   readonly authMethod?: string;
@@ -28,7 +27,7 @@ function parseConnectorValues(rawValues: readonly string[] | undefined) {
   if (!rawValues || rawValues.length === 0) {
     throw new Error("At least one --value NAME=VALUE is required", {
       cause: new Error(
-        "Example: zero connector connect zendesk --value ZENDESK_API_TOKEN=token",
+        "Example: zero connector connect zendesk --value apiToken=token",
       ),
     });
   }
@@ -55,77 +54,6 @@ function parseConnectorValues(rawValues: readonly string[] | undefined) {
   return values;
 }
 
-function parseConnectorType(type: string): ConnectorType {
-  const parsed = connectorTypeSchema.safeParse(type);
-  if (parsed.success) {
-    return parsed.data;
-  }
-
-  throw new Error(`Unknown connector type: ${type}`, {
-    cause: new Error(`Available connectors: ${CONNECTOR_TYPE_KEYS.join(", ")}`),
-  });
-}
-
-function parseConfiguredAuthMethod(
-  type: ConnectorType,
-  rawAuthMethod: string,
-): ConnectorAuthMethodId {
-  const configuredAuthMethodIds = getConfiguredConnectorAuthMethodIds(type);
-  const authMethod = configuredAuthMethodIds.find((method) => {
-    return method === rawAuthMethod;
-  });
-  if (authMethod) {
-    return authMethod;
-  }
-
-  throw new Error(
-    `${type} connector does not have ${rawAuthMethod} auth method`,
-    {
-      cause: new Error(
-        `Available auth methods: ${configuredAuthMethodIds.join(", ")}`,
-      ),
-    },
-  );
-}
-
-function getManualGrantAuthMethods(
-  type: ConnectorType,
-): ConnectorAuthMethodId[] {
-  return getConfiguredConnectorAuthMethodIds(type).filter((authMethod) => {
-    return getConnectorAuthMethod(type, authMethod)?.grant.kind === "manual";
-  });
-}
-
-function parseManualGrantAuthMethod(
-  type: ConnectorType,
-  rawAuthMethod: string | undefined,
-): ConnectorAuthMethodId {
-  if (rawAuthMethod) {
-    const authMethod = parseConfiguredAuthMethod(type, rawAuthMethod);
-    if (getConnectorAuthMethod(type, authMethod)?.grant.kind === "manual") {
-      return authMethod;
-    }
-
-    throw new Error(
-      `${type} ${authMethod} auth method does not use a manual grant`,
-    );
-  }
-
-  const authMethods = getManualGrantAuthMethods(type);
-  const authMethod = authMethods[0];
-  if (authMethods.length === 1 && authMethod) {
-    return authMethod;
-  }
-
-  if (authMethods.length === 0) {
-    throw new Error(`${type} connector does not use a manual grant`);
-  }
-
-  throw new Error(`${type} connector has multiple manual grant auth methods`, {
-    cause: new Error(`Pass --auth-method ${authMethods.join("|")}`),
-  });
-}
-
 export const connectCommand = new Command()
   .name("connect")
   .description("Connect a connector with manual grant values")
@@ -140,15 +68,31 @@ export const connectCommand = new Command()
   .option("--json", "Print the connector response as JSON")
   .action(
     withErrorHandler(async (type: string, options: ConnectOptions) => {
-      const connectorType = parseConnectorType(type);
-      const authMethod = parseManualGrantAuthMethod(
-        connectorType,
+      const values = parseConnectorValues(options.value);
+      const catalog = await listZeroConnectorCatalogStatus();
+      const connectorMetadata = findConnectorStatusItem(
+        catalog.connectors,
+        type,
+      );
+      if (!connectorMetadata) {
+        throw new Error(`Unknown or unavailable connector: ${type}`, {
+          cause: new Error(
+            `Available connectors: ${availableConnectorRefs(catalog.connectors)}`,
+          ),
+        });
+      }
+
+      const connectorType = parseConnectorTypeForAction(
+        connectorMetadata.connectorRef,
+      );
+      const authMethod = resolveManualGrantAuthMethod(
+        connectorMetadata,
         options.authMethod,
       );
       const connector = await connectZeroConnectorManualGrant(
         connectorType,
-        authMethod,
-        parseConnectorValues(options.value),
+        parseConnectorAuthMethodIdForAction(authMethod.id),
+        values,
       );
 
       if (options.json) {
@@ -156,9 +100,7 @@ export const connectCommand = new Command()
         return;
       }
 
-      console.log(
-        chalk.green(`✓ ${CONNECTOR_TYPES[connectorType].label} connected`),
-      );
+      console.log(chalk.green(`✓ ${connectorMetadata.label} connected`));
       console.log(chalk.dim(`  Type: ${connector.type}`));
       console.log(chalk.dim(`  Auth Method: ${connector.authMethod}`));
       console.log(chalk.dim(`  Run: zero connector status ${connector.type}`));

@@ -13,6 +13,7 @@ import {
   chatThreadComputerUseHostContract,
   chatThreadMessagesContract,
   chatMessagesContract,
+  type ChatRunOptionsRequest,
   type GenerationTemplateRequest,
   type ModelSelectionRequest,
   type PagedChatMessage,
@@ -423,6 +424,11 @@ export function mockChatLifecycle(
      * Lets tests prove the latest-message view renders before silent backfill.
      */
     beforeHistoryGate?: Promise<void>;
+    /**
+     * Promise the thread metadata handler awaits before responding. Lets tests
+     * prove message-derived UI does not wait for activeRunIds metadata.
+     */
+    threadGate?: Promise<void>;
     afterInitialMessagesList?: () => void;
     onRunCreate?: (body: {
       prompt?: string;
@@ -436,6 +442,7 @@ export function mockChatLifecycle(
       hasTextContent?: boolean;
       generationTemplate?: GenerationTemplateRequest;
       modelSelection?: ModelSelectionRequest | null;
+      runOptions?: ChatRunOptionsRequest;
       computerUseHostId?: string | null;
       revokesMessageId?: string;
     }) => void;
@@ -657,6 +664,7 @@ export function mockChatLifecycle(
     hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
     modelSelection?: ModelSelectionRequest | null;
+    runOptions?: ChatRunOptionsRequest;
     computerUseHostId?: string | null;
     revokesMessageId?: string;
   }) => {
@@ -752,7 +760,10 @@ export function mockChatLifecycle(
     }
     return respond(200, cloneMockPagedMessage(message));
   });
-  context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+  context.mocks.api(chatThreadByIdContract.get, async ({ respond }) => {
+    if (options?.threadGate) {
+      await options.threadGate;
+    }
     const lifecycleActiveRunIds =
       runAssociated && !terminal.has(runStatus) ? [MOCK_RUN_ID] : [];
     const activeRunIds = [...optionActiveRunIds, ...lifecycleActiveRunIds];
