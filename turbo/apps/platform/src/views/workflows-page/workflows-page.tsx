@@ -769,7 +769,7 @@ function WorkflowFilterBar({
         options={[
           { value: "all", label: "All" },
           { value: "automated", label: "Automated" },
-          { value: "without", label: "Without automation" },
+          { value: "without", label: "Manual" },
           { value: "private", label: "Private" },
           { value: "public", label: "Public" },
         ]}
