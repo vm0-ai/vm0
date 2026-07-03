@@ -1009,49 +1009,28 @@ async fn process_one_hit_or_passthrough(
     let lock_path = home.storage_lock(&target.name, &target.version);
     let cache_dir = home.storage_cache_dir(&target.name, &target.version);
     let archive_path = cache_dir.join("archive.tar.gz");
-    let reader = if cached_archive_exists(&archive_path).await? {
-        let started_at = Instant::now();
-        let reader_result = lock::try_acquire_shared_or_busy(lock_path).await;
-        let success = reader_result.is_ok();
-        metrics.record(
-            STORAGE_CACHE_LOCK_WAIT,
-            started_at.elapsed(),
-            success,
-            (!success).then_some(STORAGE_CACHE_LOCK_WAIT_FAILED),
-        );
-        match reader_result? {
-            lock::TryLock::Acquired(lock) => lock,
-            lock::TryLock::Busy => {
-                return Ok(ProcessedTarget {
-                    outcome: TargetOutcome::LockBusyPassthrough,
-                    stage_write: None,
-                });
-            }
+    let started_at = Instant::now();
+    let reader_result = lock::try_acquire_existing_shared_or_missing(lock_path).await;
+    let success = reader_result.is_ok();
+    metrics.record(
+        STORAGE_CACHE_LOCK_WAIT,
+        started_at.elapsed(),
+        success,
+        (!success).then_some(STORAGE_CACHE_LOCK_WAIT_FAILED),
+    );
+    let reader = match reader_result? {
+        lock::ExistingTryLock::Acquired(lock) => lock,
+        lock::ExistingTryLock::Busy => {
+            return Ok(ProcessedTarget {
+                outcome: TargetOutcome::LockBusyPassthrough,
+                stage_write: None,
+            });
         }
-    } else {
-        let started_at = Instant::now();
-        let reader_result = lock::try_acquire_existing_shared_or_missing(lock_path).await;
-        let success = reader_result.is_ok();
-        metrics.record(
-            STORAGE_CACHE_LOCK_WAIT,
-            started_at.elapsed(),
-            success,
-            (!success).then_some(STORAGE_CACHE_LOCK_WAIT_FAILED),
-        );
-        match reader_result? {
-            lock::ExistingTryLock::Acquired(lock) => lock,
-            lock::ExistingTryLock::Busy => {
-                return Ok(ProcessedTarget {
-                    outcome: TargetOutcome::LockBusyPassthrough,
-                    stage_write: None,
-                });
-            }
-            lock::ExistingTryLock::Missing => {
-                return Ok(ProcessedTarget {
-                    outcome: TargetOutcome::MissPassthrough { reason: "missing" },
-                    stage_write: None,
-                });
-            }
+        lock::ExistingTryLock::Missing => {
+            return Ok(ProcessedTarget {
+                outcome: TargetOutcome::MissPassthrough { reason: "missing" },
+                stage_write: None,
+            });
         }
     };
 
@@ -1078,17 +1057,6 @@ async fn process_one_hit_or_passthrough(
             },
             stage_write: None,
         }),
-    }
-}
-
-async fn cached_archive_exists(archive_path: &Path) -> RunnerResult<bool> {
-    match fs::metadata(archive_path).await {
-        Ok(_) => Ok(true),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(RunnerError::Internal(format!(
-            "stat cached {}: {e}",
-            archive_path.display()
-        ))),
     }
 }
 
@@ -2144,6 +2112,10 @@ mod tests {
         std::fs::write(cache_dir.join("archive.tar.gz"), bytes).unwrap();
     }
 
+    fn write_storage_lock(home: &HomePaths, name: &str, version: &str) {
+        drop(lock::open_lock_file(&home.storage_lock(name, version)).unwrap());
+    }
+
     struct SamePathConcurrentWriteDetectingSandbox {
         inner: MockSandbox,
         gate: MockLifecycleGate,
@@ -2445,6 +2417,7 @@ mod tests {
         let name = "guarded-hit";
         let version = "v1";
         write_cached_archive(&home, name, version, &tarball_bytes());
+        write_storage_lock(&home, name, version);
         let mut manifest = manifest_single_storage(
             "https://r2.example.com/never-called.tar.gz".into(),
             name,
@@ -2477,6 +2450,44 @@ mod tests {
         assert_op(&ops, "storage_cache_passthrough_miss_count_0", true);
         assert_no_op(&ops, "storage_cache_miss");
         assert_no_op(&ops, "storage_cache_download");
+    }
+
+    #[tokio::test]
+    async fn guarded_orphan_archive_without_lock_passthrough_without_creating_lock() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let name = "guarded-orphan-archive";
+        let version = "v1";
+        let original = "https://r2.example.com/orphan.tar.gz".to_string();
+        write_cached_archive(&home, name, version, &tarball_bytes());
+        let lock_path = home.storage_lock(name, version);
+        assert!(!lock_path.exists());
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache_with_options(
+            &mut manifest,
+            &sandbox,
+            &home,
+            &mut telemetry,
+            StorageCacheOptions {
+                miss_passthrough: true,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(!lock_path.exists());
+        assert!(sandbox.write_file_calls().is_empty());
+        assert!(sandbox.write_files_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op_error(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, "missing");
+        assert_no_op(&ops, "storage_cache_hit");
     }
 
     #[tokio::test]
@@ -2548,10 +2559,12 @@ mod tests {
         let empty_dir = home.storage_cache_dir(empty_name, version);
         std::fs::create_dir_all(&empty_dir).unwrap();
         std::fs::write(empty_dir.join("archive.tar.gz"), b"").unwrap();
+        write_storage_lock(&home, empty_name, version);
         let oversized_dir = home.storage_cache_dir(oversized_name, version);
         std::fs::create_dir_all(&oversized_dir).unwrap();
         let oversized_file = std::fs::File::create(oversized_dir.join("archive.tar.gz")).unwrap();
         oversized_file.set_len(CACHE_MAX_SIZE + 1).unwrap();
+        write_storage_lock(&home, oversized_name, version);
         let empty_url = "https://r2.example.com/empty.tar.gz".to_string();
         let oversized_url = "https://r2.example.com/oversized.tar.gz".to_string();
         let mut manifest = GuestDownloadManifest {
