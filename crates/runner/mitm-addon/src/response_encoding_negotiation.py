@@ -29,6 +29,7 @@ def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> bool
         return True
 
     accepted_safe: dict[str, str | None] = {}
+    rejected_safe: set[str] = set()
     identity_accepted = False
     identity_disallowed = False
     wildcard_disallows_identity = False
@@ -50,8 +51,12 @@ def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> bool
             elif name == _WILDCARD and q_value == _MIN_Q_VALUE:
                 wildcard_disallows_identity = True
 
-            if name in _SAFE_ENCODINGS and accepted and name not in accepted_safe:
-                accepted_safe[name] = q_text
+            if name in _SAFE_ENCODINGS:
+                if q_value == _MIN_Q_VALUE:
+                    rejected_safe.add(name)
+                    accepted_safe.pop(name, None)
+                elif accepted and name not in accepted_safe and name not in rejected_safe:
+                    accepted_safe[name] = q_text
 
     identity_rejected = identity_disallowed or (
         wildcard_disallows_identity and not identity_accepted
@@ -80,9 +85,14 @@ def _parse_coding(raw_coding: str) -> tuple[str, Decimal | None]:
 
 
 def _parse_q_value(parameters: list[str]) -> Decimal | None:
+    saw_q_value = False
+    parsed_q_value: Decimal | None = None
     for parameter in parameters:
         key, separator, value = parameter.strip().partition("=")
         if separator and key.strip().lower() == "q":
+            if saw_q_value:
+                return _INVALID_Q_VALUE
+            saw_q_value = True
             q_text = value.strip()
             if not _Q_VALUE_PATTERN.fullmatch(q_text):
                 return _INVALID_Q_VALUE
@@ -92,8 +102,8 @@ def _parse_q_value(parameters: list[str]) -> Decimal | None:
                 return _INVALID_Q_VALUE
             if not q_value.is_finite() or q_value < _MIN_Q_VALUE or q_value > _MAX_Q_VALUE:
                 return _INVALID_Q_VALUE
-            return q_value
-    return None
+            parsed_q_value = q_value
+    return parsed_q_value
 
 
 def _q_text(raw_coding: str) -> str | None:

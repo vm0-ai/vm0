@@ -83,6 +83,30 @@ _BROWSER_USER_AGENT = (
             id="collapses-duplicate-safe-codings",
         ),
         pytest.param(
+            [("Accept-Encoding", "gzip;q=1, gzip;q=0, zstd")],
+            True,
+            ["identity"],
+            id="duplicate-safe-coding-rejection-wins-after-acceptance",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip;q=0, gzip;q=1, zstd")],
+            True,
+            ["identity"],
+            id="duplicate-safe-coding-rejection-wins-before-acceptance",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip;q=1;q=0, zstd")],
+            True,
+            ["identity"],
+            id="duplicate-q-parameter-is-not-readvertised",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip, identity;q=1, identity;q=0, zstd")],
+            True,
+            ["gzip, identity;q=0"],
+            id="duplicate-identity-rejection-is-preserved-with-safe-coding",
+        ),
+        pytest.param(
             [("Accept-Encoding", "gzip;q=2, zstd")],
             True,
             ["identity"],
