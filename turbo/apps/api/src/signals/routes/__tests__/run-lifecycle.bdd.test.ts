@@ -75,6 +75,15 @@ const MODEL_FIRST_SELECTION_PROVIDER_ID =
 const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_insert_runner_job_queue",
 ] as const;
+const EXPECTED_ZERO_RUN_DISALLOWED_TOOLS = [
+  "CronCreate",
+  "CronList",
+  "CronDelete",
+  "ScheduleWakeup",
+  "AskUserQuestion",
+  "Skill(loop)",
+  "Skill(loop *)",
+] as const;
 const CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES = [
   "claim_route_request_prepare",
   "claim_route_lookup_authorization",
@@ -4443,15 +4452,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain(`Email: ${actor.email}`);
     expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
 
-    expect(claim.disallowedTools).toStrictEqual([
-      "CronCreate",
-      "CronList",
-      "CronDelete",
-      "ScheduleWakeup",
-      "AskUserQuestion",
-      "Skill(loop)",
-      "Skill(loop *)",
-    ]);
+    expect(claim.disallowedTools).toStrictEqual(
+      EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
+    );
     expect(claim.environment?.ZERO_AGENT_ID).toBe(agent.agentId);
     const zeroToken = claim.environment?.ZERO_TOKEN;
     expect(zeroToken).toMatch(/^vm0_sandbox_/);
@@ -4465,7 +4468,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("injects the workflow goal skill without denying invalid goal tool names", async () => {
+  it("keeps workflow automation from denying invalid goal tool names", async () => {
     const api = createRunsAutomationsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -4484,15 +4487,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(claim.featureFlags).toMatchObject({
       [FeatureSwitchKey.WorkflowAutomation]: true,
     });
-    expect(claim.disallowedTools).toStrictEqual([
-      "CronCreate",
-      "CronList",
-      "CronDelete",
-      "ScheduleWakeup",
-      "AskUserQuestion",
-      "Skill(loop)",
-      "Skill(loop *)",
-    ]);
+    expect(claim.disallowedTools).toStrictEqual(
+      EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
+    );
+    expect(claim.disallowedTools).not.toContain("goal");
+    expect(claim.disallowedTools).not.toContain("update_goal");
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
