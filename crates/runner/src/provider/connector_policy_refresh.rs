@@ -812,9 +812,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn drop_last_handle_cancels_scheduled_refresh_task() {
+    async fn drop_last_handle_releases_refresh_state_with_scheduled_task() {
         let server = MockServer::start();
         let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
+        let weak_state = Arc::downgrade(&handle.core.inner);
         let run_id = RunId::nil();
         let dir = tempfile::tempdir().expect("tempdir should be created");
         let registry = ProxyRegistryHandle::new(
@@ -838,23 +839,16 @@ mod tests {
                 refreshes: Some(&refreshes),
             })
             .await;
-        let scheduled_task = {
-            let mut active_runs = handle.core.inner.active_runs.lock().await;
-            active_runs
-                .get_mut(&run_id)
-                .expect("run should be registered")
-                .refresh_tasks
-                .remove("slack")
-                .expect("refresh should be scheduled")
-                .handle
-        };
 
         drop(handle);
 
-        tokio::time::timeout(Duration::from_secs(1), scheduled_task)
-            .await
-            .expect("dropping the last handle should cancel scheduled refresh")
-            .expect("scheduled refresh task should not panic");
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while weak_state.upgrade().is_some() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("dropping the last handle should release refresh state");
     }
 
     #[tokio::test]
