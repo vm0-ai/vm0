@@ -1344,8 +1344,11 @@ jobs:
 
       - name: Resolve App Build Commit SHA
         id: build-commit
+        env:
+          RELEASE_TAG: app-v${{ needs.release-please.outputs.app_version }}
         run: |
-          sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
+          git fetch --force --depth=1 origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          sha="$(bash .github/scripts/resolve-build-commit-sha.sh "$RELEASE_TAG")"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Build App Staged Production Deployment
