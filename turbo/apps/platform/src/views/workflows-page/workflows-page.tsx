@@ -443,7 +443,7 @@ const NEXT_RUN_SECTIONS: readonly {
   { key: "today", label: "Runs today" },
   { key: "week", label: "This week" },
   { key: "later", label: "Later" },
-  { key: "event", label: "On event" },
+  { key: "event", label: "On automation" },
   { key: "manual", label: "Manual" },
 ];
 
