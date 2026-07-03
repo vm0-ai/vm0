@@ -90,11 +90,11 @@ function initials(label: string): string {
 function triggerDotClass(entry: WorkflowTriggerAutomationEntry): string {
   const trigger = entry.trigger;
   if (trigger.kind === "schedule") {
-    return "bg-[radial-gradient(circle_at_40%_35%,#93c5fd,#2563eb)] ring-2 ring-blue-400/20";
+    return "bg-blue-500";
   }
   return trigger.eventType === "webhook-received"
-    ? "bg-[radial-gradient(circle_at_40%_35%,#fcd34d,#d97706)] ring-2 ring-amber-400/25"
-    : "bg-[radial-gradient(circle_at_40%_35%,#6ee7b7,#059669)] ring-2 ring-emerald-400/20";
+    ? "bg-amber-500"
+    : "bg-emerald-500";
 }
 
 function connectorNames(
