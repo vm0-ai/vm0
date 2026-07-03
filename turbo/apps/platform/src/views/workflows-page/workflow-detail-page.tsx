@@ -174,6 +174,7 @@ import {
 } from "./workflow-shared.tsx";
 import { WorkflowHoverContent } from "./workflows-page.tsx";
 import { TriggerListIcon } from "../zero-page/workflow-trigger-automations-page.tsx";
+import emptyAutomationsImg from "../zero-page/assets/empty-automations.webp";
 
 const FIELD_CLASS =
   "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none focus:border-primary";
@@ -2478,9 +2479,9 @@ function TriggerCreateMenu({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs"
+          className="zero-btn-morandi inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium"
         >
-          <IconPlus size={13} stroke={1.5} />
+          <IconPlus size={14} stroke={1.5} />
           <span>Add automation</span>
         </button>
       </DropdownMenuTrigger>
@@ -2689,8 +2690,18 @@ function TriggersSection({
             })}
           </div>
         ) : (
-          <div className="zero-card px-5 py-4">
-            <p className="text-sm text-muted-foreground">No automations.</p>
+          <div className="zero-card flex min-h-[16rem] flex-col items-center justify-center px-6 py-10 text-center">
+            <img
+              src={emptyAutomationsImg}
+              alt="No automations"
+              className="h-24 w-24 object-contain opacity-80"
+            />
+            <p className="mt-3 text-sm font-medium text-foreground">
+              No automations yet
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Add an automation to run this workflow whenever its trigger fires.
+            </p>
           </div>
         )}
       </div>
@@ -4182,7 +4193,6 @@ function TriggerRow({
       <div
         className={cn(
           "group grid min-w-0 grid-cols-1 gap-3 px-5 py-4 transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-gray-50 sm:grid-cols-[minmax(0,1.2fr)_minmax(9rem,0.9fr)_minmax(13.5rem,1.1fr)_auto_7.75rem] sm:items-center sm:gap-4",
-          showDivider && "border-b border-border/50",
           !trigger.enabled && "opacity-75",
         )}
       >
@@ -4266,6 +4276,9 @@ function TriggerRow({
           <div aria-hidden="true" />
         )}
       </div>
+      {showDivider ? (
+        <div className="mx-5 h-px bg-border/50" aria-hidden="true" />
+      ) : null}
       {canManage ? (
         <EditWorkflowTriggerDialog
           trigger={trigger}
