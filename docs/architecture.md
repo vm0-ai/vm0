@@ -196,6 +196,10 @@ profiles:
   unrelated environment values fail visibly.
 - `VM0_RUNNER_CONCURRENCY_FACTOR` in this file can override the YAML
   concurrency factor.
+- `VM0_RUNNER_STORAGE_CACHE_MISS_PASSTHROUGH` can enable guarded storage-cache
+  miss passthrough for runner-local performance experiments. When enabled,
+  warm cache hits are still staged into the guest, while misses remain on their
+  original archive URLs for `guest-download`.
 - Firecracker I/O limiter capacity is not configured unless all four capacity
   values are present: `VM0_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC` (MiB/s),
   `VM0_RUNNER_DISK_IOPS` (positive integer IOPS),

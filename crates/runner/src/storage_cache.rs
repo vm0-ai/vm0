@@ -2458,6 +2458,7 @@ mod tests {
             "guarded miss should not contact the archive URL"
         );
         server_task.abort();
+        let _ = server_task.await;
         assert!(!home.storage_cache_dir(name, version).exists());
         assert!(sandbox.write_file_calls().is_empty());
         assert!(sandbox.write_files_calls().is_empty());
