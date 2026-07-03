@@ -50,7 +50,13 @@ function createFirewallPermissionMetadataFactory(): (
       if (result.status === 404) {
         return null;
       }
-      return result.body.permissions;
+      const { permissions } = result.body;
+      if (permissions.connectorRef !== key) {
+        throw new Error(
+          `Permission metadata connectorRef mismatch: expected ${key}, got ${permissions.connectorRef}`,
+        );
+      }
+      return permissions;
     });
     if (cache.size >= FIREWALL_PERMISSION_METADATA_CACHE_LIMIT) {
       evictOldestCacheEntry(cache);
