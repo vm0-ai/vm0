@@ -144,6 +144,7 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
 
     const paidOnboardingBilling = await runsApi.readBillingStatus(admin);
     expect(paidOnboardingBilling).toMatchObject({
+      tier: "pro-suspend",
       onboardingPaymentPending: true,
     });
 
@@ -157,22 +158,36 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     expectApiError(forgedLimitedFree.body);
     expect(forgedLimitedFree.body.error.code).toBe("BAD_REQUEST");
 
-    const completeLimitedFree = await api.completeLimitedFreeOnboarding(admin, {
-      credits: 1000,
-      expiresAt: null,
-    });
+    await runsApi.grantProEntitlement(admin);
+    const paidLimitedFree = await api.completeLimitedFreeOnboarding(admin);
+    if (paidLimitedFree.status !== 409) {
+      throw new Error(
+        `Expected paid limited-free completion to fail, got ${paidLimitedFree.status}`,
+      );
+    }
+    expect(paidLimitedFree.body.error.code).toBe("ORG_TIER_ALREADY_SET");
+    const afterPaidLimitedFree = await runsApi.readBillingStatus(admin);
+    expect(afterPaidLimitedFree.tier).toBe("pro");
+
+    const limitedFreeAdmin = api.user();
+    const completeLimitedFree =
+      await api.completeLimitedFreeOnboarding(limitedFreeAdmin);
     expect(completeLimitedFree.status).toBe(200);
     expect(completeLimitedFree.body).toStrictEqual({
-      agentId: defaultAgentId,
       tier: "limited-free-1",
-      needsOnboarding: false,
+      needsOnboarding: true,
     });
 
-    const afterLimitedFree = await api.readOnboardingStatus(admin);
-    expect(afterLimitedFree.needsOnboarding).toBeFalsy();
-    expect(afterLimitedFree.defaultAgentId).toBe(defaultAgentId);
+    const limitedFreeBeforeSetup =
+      await api.readOnboardingStatus(limitedFreeAdmin);
+    expect(limitedFreeBeforeSetup).toMatchObject({
+      needsOnboarding: true,
+      hasDefaultAgent: false,
+      defaultAgentId: null,
+    });
 
-    const limitedFreeBilling = await runsApi.readBillingStatus(admin);
+    const limitedFreeBilling =
+      await runsApi.readBillingStatus(limitedFreeAdmin);
     expect(limitedFreeBilling).toMatchObject({
       credits: 1000,
       tier: "limited-free-1",
@@ -188,6 +203,18 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       amount: 1000,
       remaining: 1000,
       expiresAt: "2999-12-31T00:00:00.000Z",
+    });
+
+    const limitedFreeAgentId = await onboardAdmin(limitedFreeAdmin, {
+      displayName: "BDD Limited Free Agent",
+      workspaceName: "BDD Limited Free Org",
+    });
+    const afterLimitedFreeSetup =
+      await api.readOnboardingStatus(limitedFreeAdmin);
+    expect(afterLimitedFreeSetup).toMatchObject({
+      needsOnboarding: false,
+      hasDefaultAgent: true,
+      defaultAgentId: limitedFreeAgentId,
     });
 
     const afterRepeatedSetup = await api.listAgents(admin);

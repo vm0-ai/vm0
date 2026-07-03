@@ -31,6 +31,7 @@ const L = logger("onboarding.service");
 const ONBOARDING_CREDIT_SOURCE = "onboarding";
 const ONBOARDING_CREDIT_IDEMPOTENCY_KEY = "limited-free-onboarding";
 const ONBOARDING_CREDITS_NEVER_EXPIRE_AT = "2999-12-31T00:00:00Z";
+const LIMITED_FREE_ONBOARDING_CREDITS = 1000;
 
 interface DefaultAgentInfo {
   readonly composeId: string;
@@ -78,9 +79,8 @@ type CompleteLimitedFreeOnboardingResponse =
   | {
       readonly status: 200;
       readonly body: {
-        readonly agentId: string;
         readonly tier: "limited-free-1";
-        readonly needsOnboarding: false;
+        readonly needsOnboarding: true;
       };
     }
   | {
@@ -88,15 +88,13 @@ type CompleteLimitedFreeOnboardingResponse =
       readonly body: {
         readonly error: {
           readonly message: string;
-          readonly code: "DEFAULT_AGENT_REQUIRED";
+          readonly code: "ORG_TIER_ALREADY_SET";
         };
       };
     };
 
 interface CompleteLimitedFreeOnboardingArgs {
   readonly orgId: string;
-  readonly credits: number;
-  readonly expiresAt: string | null;
 }
 
 async function grantOrgCredits(
@@ -768,56 +766,51 @@ export const completeLimitedFreeOnboarding$ = command(
     signal: AbortSignal,
   ): Promise<CompleteLimitedFreeOnboardingResponse> => {
     const writeDb = set(writeDb$);
-    const agentId = await existingDefaultAgentId(writeDb, args.orgId);
+    const inserted = await writeDb.transaction(async (tx) => {
+      const rows = await tx
+        .insert(orgMetadata)
+        .values({
+          orgId: args.orgId,
+          tier: "limited-free-1",
+          onboardingPaymentPending: false,
+          updatedAt: nowDate(),
+        })
+        .onConflictDoNothing({ target: orgMetadata.orgId })
+        .returning({ orgId: orgMetadata.orgId });
+
+      if (rows.length === 0) {
+        return false;
+      }
+
+      await grantOnboardingCredits(
+        tx,
+        args.orgId,
+        LIMITED_FREE_ONBOARDING_CREDITS,
+        new Date(ONBOARDING_CREDITS_NEVER_EXPIRE_AT),
+      );
+
+      return true;
+    });
     signal.throwIfAborted();
 
-    if (!agentId) {
+    if (!inserted) {
       return {
         status: 409,
         body: {
           error: {
-            message: "A default agent is required before completing onboarding",
-            code: "DEFAULT_AGENT_REQUIRED",
+            message:
+              "Limited free onboarding can only start before an org tier is set",
+            code: "ORG_TIER_ALREADY_SET",
           },
         },
       };
     }
 
-    await writeDb.transaction(async (tx) => {
-      await tx
-        .insert(orgMetadata)
-        .values({
-          orgId: args.orgId,
-          defaultAgentId: agentId,
-          tier: "limited-free-1",
-          onboardingPaymentPending: false,
-          updatedAt: nowDate(),
-        })
-        .onConflictDoUpdate({
-          target: orgMetadata.orgId,
-          set: {
-            defaultAgentId: agentId,
-            tier: "limited-free-1",
-            onboardingPaymentPending: false,
-            updatedAt: nowDate(),
-          },
-        });
-
-      await grantOnboardingCredits(
-        tx,
-        args.orgId,
-        args.credits,
-        new Date(args.expiresAt ?? ONBOARDING_CREDITS_NEVER_EXPIRE_AT),
-      );
-    });
-    signal.throwIfAborted();
-
     return {
       status: 200,
       body: {
-        agentId,
         tier: "limited-free-1",
-        needsOnboarding: false,
+        needsOnboarding: true,
       },
     };
   },

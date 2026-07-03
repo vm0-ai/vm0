@@ -115,21 +115,18 @@ async function makeLimitedFreeWorkspace(
   fixture: ModelPolicyFixture,
 ): Promise<void> {
   authOrgApi.acceptAgentStorageWrites();
+  const completed = await authOrgApi.completeLimitedFreeOnboarding(fixture);
+  if (completed.status !== 200) {
+    throw new Error(
+      `Expected limited-free onboarding to succeed, got ${completed.status}`,
+    );
+  }
   const setup = await authOrgApi.setupOnboarding(fixture, {
     displayName: "BDD Model Policy Agent",
   });
   if (setup.status !== 200 && setup.status !== 409) {
     throw new Error(
       `Expected onboarding setup to succeed, got ${setup.status}`,
-    );
-  }
-  const completed = await authOrgApi.completeLimitedFreeOnboarding(fixture, {
-    credits: 1000,
-    expiresAt: null,
-  });
-  if (completed.status !== 200) {
-    throw new Error(
-      `Expected limited-free onboarding to succeed, got ${completed.status}`,
     );
   }
 }

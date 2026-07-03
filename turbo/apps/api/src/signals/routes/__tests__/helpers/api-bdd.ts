@@ -71,10 +71,7 @@ export interface OnboardingSetupBody {
   readonly role?: string;
 }
 
-interface OnboardingCompleteLimitedFreeBody {
-  readonly credits?: number;
-  readonly expiresAt?: string | null;
-}
+type OnboardingCompleteLimitedFreeBody = Record<string, never>;
 
 function authHeaders(user: ApiTestUser | null): AuthHeaders {
   return user ? { authorization: "Bearer clerk-session" } : {};
