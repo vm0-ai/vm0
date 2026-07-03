@@ -614,6 +614,44 @@ describe("Python builtin firewall catalog renderer", () => {
         ],
       }),
       connectorEntry({
+        name: "backslash-base",
+        apis: [
+          {
+            base: "https://shared-dot.example.com\\api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.BACKSLASH_BASE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "backslash-base:read",
+                rules: ["GET /backslash-base/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "raw-space-base",
+        apis: [
+          {
+            base: "https://shared-dot.example.com/ raw-space",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.RAW_SPACE_BASE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "raw-space-base:read",
+                rules: ["GET /raw-space-base/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
         name: "valid-dot",
         apis: [
           {

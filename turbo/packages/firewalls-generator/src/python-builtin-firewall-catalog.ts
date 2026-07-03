@@ -406,7 +406,11 @@ function percentDecodedHostnameEscapesAreRuntimeSafe(
 }
 
 function diagnosticStaticBaseKey(base: string): string | null {
-  if (hasDynamicBaseMarker(base)) {
+  if (
+    hasDynamicBaseMarker(base) ||
+    base.includes("\\") ||
+    isAsciiSpaceOrControl(base)
+  ) {
     return null;
   }
 
