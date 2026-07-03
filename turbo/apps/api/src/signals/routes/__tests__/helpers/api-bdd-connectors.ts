@@ -241,6 +241,8 @@ export function mockSlackConnectorOAuth(): void {
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
+const GOOGLE_DRIVE_UPLOAD_URL =
+  "https://www.googleapis.com/upload/drive/v3/files";
 const GMAIL_PROFILE_URL =
   "https://www.googleapis.com/gmail/v1/users/me/profile";
 
@@ -383,6 +385,60 @@ export function mockGoogleDriveFilesList(
   );
 
   return recorded;
+}
+
+interface GoogleDriveSlidesUploadOptions {
+  readonly webViewLink?: string | null;
+  readonly uploadStatus?: number;
+}
+
+interface GoogleDriveSlidesUploadRecorder {
+  /** Raw multipart bodies of every POST to the Drive resumable/multipart upload. */
+  readonly uploadBodies: string[];
+}
+
+/**
+ * Google Drive boundary for the "upload PPTX as native Google Slides" flow:
+ * folder lookups always miss (forcing creation), folder creation succeeds, and
+ * the multipart upload records its body and answers with the converted Slides
+ * file. The recorded body lets tests assert the Google Slides conversion
+ * mimeType was requested.
+ */
+export function mockGoogleDriveSlidesUpload(
+  options: GoogleDriveSlidesUploadOptions = {},
+): GoogleDriveSlidesUploadRecorder {
+  const recorder: GoogleDriveSlidesUploadRecorder = { uploadBodies: [] };
+  let folderCounter = 0;
+
+  server.use(
+    http.get(GOOGLE_DRIVE_FILES_URL, () => {
+      return HttpResponse.json({ files: [] });
+    }),
+    http.post(GOOGLE_DRIVE_FILES_URL, async ({ request }) => {
+      const body = (await request.json()) as { name?: string };
+      folderCounter += 1;
+      return HttpResponse.json({
+        id: `drive-folder-${folderCounter}`,
+        name: body.name ?? "folder",
+      });
+    }),
+    http.post(GOOGLE_DRIVE_UPLOAD_URL, async ({ request }) => {
+      recorder.uploadBodies.push(await request.text());
+      const status = options.uploadStatus ?? 200;
+      if (status !== 200) {
+        return new HttpResponse(null, { status });
+      }
+      return HttpResponse.json({
+        id: "slides-file-1",
+        name: "deck",
+        webViewLink:
+          options.webViewLink ??
+          "https://docs.google.com/presentation/d/slides-file-1/edit",
+      });
+    }),
+  );
+
+  return recorder;
 }
 
 function newGithubAppPrivateKeyBase64(): string {

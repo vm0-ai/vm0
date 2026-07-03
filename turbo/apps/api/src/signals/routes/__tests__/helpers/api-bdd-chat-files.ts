@@ -1110,6 +1110,31 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
+    async requestUploadThreadArtifactGoogleSlides(
+      actor: ApiTestUser | null,
+      threadId: string,
+      file: { readonly name: string; readonly bytes: Uint8Array },
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 503)[],
+    ) {
+      const buffer = new ArrayBuffer(file.bytes.byteLength);
+      new Uint8Array(buffer).set(file.bytes);
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new File([buffer], file.name, {
+          type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        }),
+      );
+      return await accept(
+        threadArtifactsClient().uploadGoogleSlides({
+          headers: authenticate(context, actor),
+          params: { threadId },
+          body: formData,
+        }),
+        statuses,
+      );
+    },
+
     async requestSendMessage(
       actor: ApiTestUser | null,
       body: BddSendMessageBody,

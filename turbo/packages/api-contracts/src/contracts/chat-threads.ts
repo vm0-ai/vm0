@@ -1143,6 +1143,28 @@ export const chatThreadArtifactsContract = c.router({
     },
     summary: "Sync a chat artifact file to the user's connected Google Drive",
   },
+  uploadGoogleSlides: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:threadId/artifacts/google-slides",
+    headers: authHeadersSchema,
+    pathParams: chatThreadThreadIdPathParamsSchema,
+    contentType: "multipart/form-data",
+    body: c.type<FormData>(),
+    responses: {
+      200: z.object({
+        id: z.string(),
+        name: z.string(),
+        webViewLink: z.string().nullable(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary:
+      "Upload a presentation artifact to the user's Google Drive as a native Google Slides deck",
+  },
 });
 
 export const chatThreadGithubPrsContract = c.router({

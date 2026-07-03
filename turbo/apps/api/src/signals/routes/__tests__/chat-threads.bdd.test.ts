@@ -34,6 +34,7 @@ import {
   mockGitHubConnectorOAuth,
   mockGoogleDriveConnectorOAuth,
   mockGoogleDriveFilesList,
+  mockGoogleDriveSlidesUpload,
 } from "./helpers/api-bdd-connectors";
 import {
   createRunsAutomationsApi,
@@ -50,6 +51,7 @@ import {
   seedZeroChatThreadRun$,
   updateZeroChatThreadRunStatus$,
 } from "./helpers/zero-chat-threads";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 /**
@@ -2228,6 +2230,77 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run.runId, sandboxHeaders);
+  }, 120_000);
+
+  it("uploads a presentation to Google Slides behind a feature flag", async () => {
+    const { actor } = await entitledChatActor("Slides upload agent");
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("entitled actor is missing an organization");
+    }
+    const threadId = randomUUID();
+    const pptx = {
+      name: "deck.pptx",
+      bytes: new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04]),
+    };
+
+    // Gated off by default: the feature switch hides the endpoint.
+    const gated = await chat.requestUploadThreadArtifactGoogleSlides(
+      actor,
+      threadId,
+      pptx,
+      [403],
+    );
+    expectApiError(gated.body);
+    expect(gated.body.error.code).toBe("FORBIDDEN");
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId },
+      { [FeatureSwitchKey.PresentationGoogleSlidesUpload]: true },
+    );
+
+    // Enabled, but Google Drive is not connected yet.
+    const noDrive = await chat.requestUploadThreadArtifactGoogleSlides(
+      actor,
+      threadId,
+      pptx,
+      [400],
+    );
+    expectApiError(noDrive.body);
+    expect(noDrive.body.error.message).toBe(
+      "Connect Google Drive before uploading to Google Slides",
+    );
+
+    // Connect Google Drive through the public OAuth routes.
+    mockGoogleDriveConnectorOAuth();
+    const start = await connectorsApi.startOauth(
+      actor,
+      "google-drive",
+      "oauth",
+    );
+    await connectorsApi.completeOauthCallback("google-drive", {
+      code: "drive-ok",
+      state: stateFromAuthorizationUrl(start.authorizationUrl),
+    });
+
+    // Drive converts the uploaded PPTX into a native Google Slides deck.
+    const uploadRecorder = mockGoogleDriveSlidesUpload();
+    const uploaded = await chat.requestUploadThreadArtifactGoogleSlides(
+      actor,
+      threadId,
+      pptx,
+      [200],
+    );
+    expect(uploaded.body).toStrictEqual({
+      id: "slides-file-1",
+      name: "deck",
+      webViewLink: "https://docs.google.com/presentation/d/slides-file-1/edit",
+    });
+    expect(uploadRecorder.uploadBodies).toHaveLength(1);
+    expect(uploadRecorder.uploadBodies[0]).toContain(
+      "application/vnd.google-apps.presentation",
+    );
   }, 120_000);
 
   it("dedupes artifact urls and filters hosted-site runs", async () => {

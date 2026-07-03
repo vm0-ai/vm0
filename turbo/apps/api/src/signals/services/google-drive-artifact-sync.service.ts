@@ -1092,3 +1092,170 @@ export const syncArtifactToGoogleDrive$ = command(
     };
   },
 );
+
+// =====================================================================
+// Upload-side: convert a presentation PPTX to a native Google Slides deck.
+// =====================================================================
+
+const GOOGLE_SLIDES_MIME_TYPE = "application/vnd.google-apps.presentation";
+const PPTX_MIME_TYPE =
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+
+function slidesTitle(filename: string): string {
+  const trimmed = filename.trim();
+  const base = trimmed.replace(/\.pptx$/i, "").trim();
+  return base.length > 0 ? base : "presentation";
+}
+
+/**
+ * Upload PPTX bytes and let Drive convert them into a native Google Slides
+ * deck by declaring the target `mimeType` on the file metadata. Unlike the
+ * raw-artifact sync, no `appProperties` are attached so the Slides file does
+ * not appear as a "synced" raw artifact in the Drive status lookup.
+ */
+async function uploadPptxAsGoogleSlides(args: {
+  readonly accessToken: string;
+  readonly parentFolderId: string;
+  readonly filename: string;
+  readonly pptx: Buffer;
+}): Promise<Response> {
+  const boundary = `vm0-${randomUUID()}`;
+  const metadata = JSON.stringify({
+    name: slidesTitle(args.filename),
+    mimeType: GOOGLE_SLIDES_MIME_TYPE,
+    parents: [args.parentFolderId],
+  });
+  const body = Buffer.concat([
+    Buffer.from(
+      [
+        `--${boundary}`,
+        "Content-Type: application/json; charset=UTF-8",
+        "",
+        metadata,
+        `--${boundary}`,
+        `Content-Type: ${PPTX_MIME_TYPE}`,
+        "",
+        "",
+      ].join("\r\n"),
+      "utf8",
+    ),
+    args.pptx,
+    Buffer.from(`\r\n--${boundary}--\r\n`, "utf8"),
+  ]);
+
+  const uploadUrl = new URL(GOOGLE_DRIVE_UPLOAD_URL);
+  uploadUrl.searchParams.set("uploadType", "multipart");
+  uploadUrl.searchParams.set("fields", "id,name,webViewLink");
+
+  return await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${args.accessToken}`,
+      "Content-Type": `multipart/related; boundary=${boundary}`,
+      "Content-Length": String(body.length),
+    },
+    body,
+  });
+}
+
+async function uploadSlidesWithToken(args: {
+  readonly accessToken: string;
+  readonly threadId: string;
+  readonly filename: string;
+  readonly pptx: Buffer;
+}): Promise<DriveTokenResult<Response>> {
+  const folder = await ensureArtifactFolder({
+    accessToken: args.accessToken,
+    threadId: args.threadId,
+  });
+  if (folder.type === "unauthorized") {
+    return folder;
+  }
+  const response = await uploadPptxAsGoogleSlides({
+    accessToken: args.accessToken,
+    parentFolderId: folder.value,
+    filename: args.filename,
+    pptx: args.pptx,
+  });
+  if (response.status === 401) {
+    return { type: "unauthorized" };
+  }
+  return { type: "ok", value: response };
+}
+
+/**
+ * Upload a presentation's PPTX bytes to the caller's Google Drive as a native
+ * Google Slides deck.
+ *
+ * Error mapping mirrors {@link syncArtifactToGoogleDrive$}:
+ *  - 400 "Connect Google Drive before uploading to Google Slides" — connector
+ *    absent or `needsReconnect`.
+ *  - 400 "Google Slides upload failed with HTTP <status>" — upload error after
+ *    refresh-token retry exhausted.
+ *  - 200 with `{ id, name, webViewLink }`.
+ */
+export const uploadPresentationToGoogleSlides$ = command(
+  async (
+    { get },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly threadId: string;
+      readonly filename: string;
+      readonly pptx: Buffer;
+    },
+    signal: AbortSignal,
+  ): Promise<
+    | BadRequestResponse
+    | { readonly status: 200; readonly body: DriveSyncResult }
+  > => {
+    const db = get(db$);
+
+    const featureSwitchOverrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+    const tokens = await loadDriveTokens(db, args.orgId, args.userId, {
+      orgId: args.orgId,
+      userId: args.userId,
+      overrides: featureSwitchOverrides,
+    });
+    signal.throwIfAborted();
+    if (!tokens || tokens.needsReconnect) {
+      return badRequestMessage(
+        "Connect Google Drive before uploading to Google Slides",
+      );
+    }
+
+    let result = await uploadSlidesWithToken({
+      accessToken: tokens.accessToken,
+      threadId: args.threadId,
+      filename: args.filename,
+      pptx: args.pptx,
+    });
+    signal.throwIfAborted();
+
+    if (result.type === "unauthorized" && tokens.refreshToken) {
+      const refreshed = await refreshDriveAccessToken(tokens.refreshToken);
+      signal.throwIfAborted();
+      if (refreshed) {
+        result = await uploadSlidesWithToken({
+          accessToken: refreshed,
+          threadId: args.threadId,
+          filename: args.filename,
+          pptx: args.pptx,
+        });
+        signal.throwIfAborted();
+      }
+    }
+
+    if (result.type === "unauthorized") {
+      return badRequestMessage("Google Slides upload failed with HTTP 401");
+    }
+
+    return {
+      status: 200 as const,
+      body: await parseUploadResponse(result.value),
+    };
+  },
+);

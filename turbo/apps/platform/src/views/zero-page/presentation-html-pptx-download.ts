@@ -1192,36 +1192,35 @@ function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-export async function downloadPresentationHtmlPptx(params: {
-  readonly filename: string;
-  readonly signal: AbortSignal;
-  readonly url: string;
-}): Promise<void> {
-  const htmlUrl = publicAttachmentUrl(params.url);
+async function fetchPresentationHtml(
+  url: string,
+  signal: AbortSignal,
+): Promise<{ readonly baseUrl: string; readonly html: string }> {
+  const htmlUrl = publicAttachmentUrl(url);
   const response = await fetch(readableAttachmentResourceUrl(htmlUrl), {
     cache: "reload",
     mode: "cors",
-    signal: params.signal,
+    signal,
   });
   if (!response.ok) {
     throw new Error(`Failed to fetch presentation HTML (${response.status})`);
   }
   const html = await response.text();
-  params.signal.throwIfAborted();
-  await downloadPresentationHtmlStringPptx({
-    baseUrl: htmlUrl,
-    filename: params.filename,
-    html,
-    signal: params.signal,
-  });
+  signal.throwIfAborted();
+  return { baseUrl: htmlUrl, html };
 }
 
-export async function downloadPresentationHtmlStringPptx(params: {
+interface PresentationPptxBlob {
+  readonly blob: Blob;
+  readonly filename: string;
+}
+
+export async function buildPresentationHtmlPptxBlob(params: {
   readonly baseUrl: string;
   readonly filename: string;
   readonly html: string;
   readonly signal: AbortSignal;
-}): Promise<void> {
+}): Promise<PresentationPptxBlob> {
   const options = {
     fileName: pptxFilename(params.filename),
     skipDownload: true,
@@ -1249,5 +1248,49 @@ export async function downloadPresentationHtmlStringPptx(params: {
     notes,
   });
   params.signal.throwIfAborted();
-  downloadBlob(finalBlob, options.fileName);
+  return { blob: finalBlob, filename: options.fileName };
+}
+
+export async function buildPresentationHtmlPptxBlobFromUrl(params: {
+  readonly filename: string;
+  readonly signal: AbortSignal;
+  readonly url: string;
+}): Promise<PresentationPptxBlob> {
+  const { baseUrl, html } = await fetchPresentationHtml(
+    params.url,
+    params.signal,
+  );
+  return buildPresentationHtmlPptxBlob({
+    baseUrl,
+    filename: params.filename,
+    html,
+    signal: params.signal,
+  });
+}
+
+export async function downloadPresentationHtmlPptx(params: {
+  readonly filename: string;
+  readonly signal: AbortSignal;
+  readonly url: string;
+}): Promise<void> {
+  const { baseUrl, html } = await fetchPresentationHtml(
+    params.url,
+    params.signal,
+  );
+  await downloadPresentationHtmlStringPptx({
+    baseUrl,
+    filename: params.filename,
+    html,
+    signal: params.signal,
+  });
+}
+
+export async function downloadPresentationHtmlStringPptx(params: {
+  readonly baseUrl: string;
+  readonly filename: string;
+  readonly html: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const { blob, filename } = await buildPresentationHtmlPptxBlob(params);
+  downloadBlob(blob, filename);
 }

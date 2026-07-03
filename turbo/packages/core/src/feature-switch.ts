@@ -356,6 +356,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.PresentationGoogleSlidesUpload]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable uploading a presentation artifact to the user's Google Drive as a native, editable Google Slides deck.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {
