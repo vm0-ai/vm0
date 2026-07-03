@@ -8,9 +8,11 @@ pub(super) fn validate_process_argv_env<'a>(
     args: impl IntoIterator<Item = &'a str>,
     env_values: &[(String, String)],
 ) -> Result<(), String> {
-    let mut values = Vec::with_capacity(env_values.len() + 1);
+    let args = args.into_iter();
+    let (lower_args, upper_args) = args.size_hint();
+    let mut values = Vec::with_capacity(env_values.len() + upper_args.unwrap_or(lower_args) + 1);
     values.push(ExecBoundaryValue::arg("argv[0]", bin));
-    for (index, arg) in args.into_iter().enumerate() {
+    for (index, arg) in args.enumerate() {
         let name = format!("argv[{}]", index + 1);
         values.push(ExecBoundaryValue::arg(name, arg));
     }

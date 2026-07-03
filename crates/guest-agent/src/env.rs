@@ -102,8 +102,7 @@ fn bounded_duration_secs_value_or(
 //
 // The runner supplies a JSON array of
 // `{name, mountPath, storageId, versionId, missingRootPolicy?}` entries through
-// the run payload, with legacy `VM0_ARTIFACTS` env fallback. If the value is
-// unset or empty, there are no artifacts.
+// the run payload. If the value is unset or empty, there are no artifacts.
 // ---------------------------------------------------------------------------
 
 /// One artifact mount described by the runner-provided artifact JSON array.
@@ -184,15 +183,15 @@ impl GuestConfigRaw {
             api_token: env_or_empty(guest_contracts::env::API_TOKEN_ENV),
             sandbox_id: env_or_empty(guest_contracts::env::SANDBOX_ID_ENV),
             sandbox_reuse_result: env_or_empty(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV),
-            prompt: env_or_empty(guest_contracts::env::PROMPT_ENV),
-            append_system_prompt: env_or_empty(guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV),
+            prompt: String::new(),
+            append_system_prompt: String::new(),
             vercel_bypass: env_or_empty(guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV),
             resume_session_id: env_or_empty(guest_contracts::env::RESUME_SESSION_ID_ENV),
             api_start_time: env_or_empty(guest_contracts::env::API_START_TIME_ENV),
-            secret_values: env_or_empty(guest_contracts::env::SECRET_VALUES_ENV),
-            disallowed_tools: env_or_empty(guest_contracts::env::DISALLOWED_TOOLS_ENV),
-            tools: env_or_empty(guest_contracts::env::TOOLS_ENV),
-            settings: env_or_empty(guest_contracts::env::SETTINGS_ENV),
+            secret_values: String::new(),
+            disallowed_tools: String::new(),
+            tools: String::new(),
+            settings: String::new(),
             use_mock_claude: env_or_empty(guest_contracts::env::USE_MOCK_CLAUDE_ENV),
             mock_claude_path: std::env::var(guest_contracts::env::MOCK_CLAUDE_PATH_ENV).ok(),
             cli_agent_type: env_or_empty(guest_contracts::env::CLI_AGENT_TYPE_ENV),
@@ -206,8 +205,8 @@ impl GuestConfigRaw {
             home: std::env::var("HOME").ok(),
             runtime_home: std::env::var_os("HOME").map(PathBuf::from),
             guest_runtime_dir,
-            artifacts: env_or_empty(guest_contracts::env::ARTIFACTS_ENV),
-            feature_flags: env_or_empty(guest_contracts::env::FEATURE_FLAGS_ENV),
+            artifacts: String::new(),
+            feature_flags: String::new(),
             stuck_tool_timeout_secs: env_or_empty(
                 guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
             ),
@@ -261,7 +260,11 @@ pub struct GuestConfig {
 impl GuestConfig {
     /// Build an owned config from the current process environment.
     pub fn from_process_env() -> Result<Self, String> {
-        Self::from_raw(GuestConfigRaw::from_process_env())
+        let raw = GuestConfigRaw::from_process_env();
+        if raw.run_payload_file.is_empty() {
+            return Err(format!("{RUN_PAYLOAD_FILE_ENV_KEY} is required"));
+        }
+        Self::from_raw(raw)
     }
 
     /// Build an owned config from explicit startup values.

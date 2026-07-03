@@ -42,11 +42,10 @@ pub const SANDBOX_ID_ENV: &str = "VM0_SANDBOX_ID";
 /// `noSessionId`.
 pub const SANDBOX_REUSE_RESULT_ENV: &str = "VM0_SANDBOX_REUSE_RESULT";
 
-/// Legacy env key and logical run-payload field name for the user prompt.
+/// Logical run-payload field name for the user prompt.
 pub const PROMPT_ENV: &str = "VM0_PROMPT";
 
-/// Legacy env key and logical run-payload field name for optional extra system
-/// prompt text.
+/// Logical run-payload field name for optional extra system prompt text.
 ///
 /// Unset or empty means there is no extra system prompt.
 pub const APPEND_SYSTEM_PROMPT_ENV: &str = "VM0_APPEND_SYSTEM_PROMPT";
@@ -71,28 +70,28 @@ pub const RESUME_SESSION_ID_ENV: &str = "VM0_RESUME_SESSION_ID";
 /// The runner emits an empty string when the timestamp is unavailable.
 pub const API_START_TIME_ENV: &str = "VM0_API_START_TIME";
 
-/// Legacy env key and logical run-payload field name for sensitive values used
-/// by the guest-agent masker.
+/// Logical run-payload field name for sensitive values used by the guest-agent
+/// masker.
 ///
 /// The payload is a comma-separated list of base64-encoded secret values, not
 /// secret names. The runner includes the sandbox token so event payloads and
 /// CLI diagnostics can redact it.
 pub const SECRET_VALUES_ENV: &str = "VM0_SECRET_VALUES";
 
-/// Legacy env key and logical run-payload field name for comma-separated Claude
-/// Code tool names that should be disallowed.
+/// Logical run-payload field name for comma-separated Claude Code tool names
+/// that should be disallowed.
 ///
 /// Unset or empty means there is no explicit deny list.
 pub const DISALLOWED_TOOLS_ENV: &str = "VM0_DISALLOWED_TOOLS";
 
-/// Legacy env key and logical run-payload field name for comma-separated Claude
-/// Code tool names that should be allowed.
+/// Logical run-payload field name for comma-separated Claude Code tool names
+/// that should be allowed.
 ///
 /// Unset or empty means there is no explicit allow list.
 pub const TOOLS_ENV: &str = "VM0_TOOLS";
 
-/// Legacy env key and logical run-payload field name for the raw Claude Code
-/// settings payload passed to the guest-agent.
+/// Logical run-payload field name for the raw Claude Code settings payload
+/// passed to the guest-agent.
 ///
 /// The runner treats this as an opaque string. Unset or empty means there is no
 /// settings override.
@@ -117,8 +116,7 @@ pub const USER_ENV_FILE_ENV: &str = "VM0_USER_ENV_FILE";
 ///
 /// Large prompt-like and configuration payloads use this file instead of
 /// bootstrap environment values so guest-agent startup does not hit Linux
-/// argv/env limits. Unset or empty means the guest-agent should fall back to
-/// legacy env keys.
+/// argv/env limits. Production guest-agent startup requires this key.
 pub const RUN_PAYLOAD_FILE_ENV: &str = "VM0_RUN_PAYLOAD_FILE";
 
 /// Private runtime subdirectory used by [`RUN_PAYLOAD_FILE_ENV`].
@@ -127,16 +125,16 @@ pub const RUN_PAYLOAD_PRIVATE_DIR_NAME: &str = "run-payload";
 /// Private runtime filename used by [`RUN_PAYLOAD_FILE_ENV`].
 pub const RUN_PAYLOAD_FILENAME: &str = "payload.json";
 
-/// Legacy env key and logical run-payload field name for the JSON array
-/// describing artifact mounts prepared by the runner.
+/// Logical run-payload field name for the JSON array describing artifact mounts
+/// prepared by the runner.
 ///
 /// Each entry uses camelCase wire keys: `name`, `mountPath`, `storageId`,
 /// `versionId`, and optional `missingRootPolicy`. Unset or empty means there
 /// are no artifact mounts.
 pub const ARTIFACTS_ENV: &str = "VM0_ARTIFACTS";
 
-/// Legacy env key and logical run-payload field name for the JSON map of
-/// feature flag names to enabled states.
+/// Logical run-payload field name for the JSON map of feature flag names to
+/// enabled states.
 ///
 /// Unset or empty means there are no feature flags.
 pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
@@ -144,8 +142,7 @@ pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
 /// Runner-owned variable-length run payload sent through
 /// [`RUN_PAYLOAD_FILE_ENV`].
 ///
-/// Empty strings retain the legacy env semantics where an unset or empty
-/// value means "no value" for optional fields.
+/// Empty strings mean "no value" for optional fields.
 #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunPayload {

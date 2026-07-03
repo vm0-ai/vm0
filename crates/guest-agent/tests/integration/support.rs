@@ -31,7 +31,15 @@ pub(crate) static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             MOCK_RUNTIME_DIR.as_os_str(),
         );
-        std::env::set_var("VM0_PROMPT", "test prompt");
+        if let Err(error) = crate::common::set_run_payload_file_env_for_test(
+            &MOCK_RUNTIME_DIR,
+            &guest_contracts::env::RunPayload {
+                prompt: "test prompt".to_string(),
+                ..guest_contracts::env::RunPayload::default()
+            },
+        ) {
+            eprintln!("write test run payload: {error}");
+        }
         std::env::set_var("VERCEL_PROTECTION_BYPASS", "test-bypass-value");
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
         std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");

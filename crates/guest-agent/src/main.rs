@@ -1304,6 +1304,29 @@ mod tests {
         MAIN_TEST_RUNTIME_ROOT.join("main-recovery-checkpoint")
     }
 
+    fn write_test_run_payload(prompt: Option<&str>) -> std::path::PathBuf {
+        let dir = test_runtime_dir().join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
+        if let Err(error) = std::fs::create_dir_all(&dir) {
+            eprintln!("create test run payload dir: {error}");
+        }
+        let path = dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
+        let payload = guest_contracts::env::RunPayload {
+            prompt: prompt.unwrap_or_default().to_string(),
+            ..guest_contracts::env::RunPayload::default()
+        };
+        let bytes = match serde_json::to_vec(&payload) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                eprintln!("serialize test run payload: {error}");
+                Vec::new()
+            }
+        };
+        if let Err(error) = std::fs::write(&path, bytes) {
+            eprintln!("write test run payload: {error}");
+        }
+        path
+    }
+
     fn test_guest_paths() -> paths::GuestPaths {
         paths::GuestPaths::from_runtime_dir(test_runtime_dir())
     }
@@ -1389,9 +1412,10 @@ mod tests {
                 guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
                 test_runtime_dir(),
             );
-            if let Some(prompt) = prompt {
-                std::env::set_var("VM0_PROMPT", prompt);
-            }
+            std::env::set_var(
+                guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+                write_test_run_payload(prompt),
+            );
         }
         TestEnvGuard
     }
