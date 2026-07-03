@@ -4952,12 +4952,8 @@ function ChatThreadComposer({
   const hasMessages = groups.length > 0;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   // useLastResolved (not useLastLoadable) so refetches keep the previously
-  // resolved value instead of flipping `sending` and the placeholder. Before
-  // the first resolution, avoid showing a Stop button for a thread that may
-  // already be idle.
-  const allFinishedResolvedValue = useLastResolved(thread.allFinished$);
-  const allFinishedResolved = allFinishedResolvedValue !== undefined;
-  const allFinished = allFinishedResolvedValue ?? false;
+  // resolved value instead of flipping `sending` and the placeholder.
+  const allFinished = useLastResolved(thread.allFinished$)!;
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);
@@ -4993,7 +4989,7 @@ function ChatThreadComposer({
       computerUseHostIdForSend,
       clearComputerUseHostOverride,
     });
-  const sending = (allFinishedResolved && !allFinished) || sendLoading;
+  const sending = !allFinished || sendLoading;
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const { composerSending, queueWhileSending } =
     resolveChatThreadComposerActivity({
@@ -5035,7 +5031,7 @@ function ChatThreadComposer({
             sending={composerSending}
             queueWhileSending={queueWhileSending}
             onCancel={
-              allFinishedResolved
+              !allFinished || sendLoading
                 ? () => {
                     detach(cancelRun(pageSignal), Reason.DomCallback);
                   }
@@ -5404,15 +5400,16 @@ function getThinkingIndicatorState(args: {
     !lastAssistantHasRenderableMessage;
   const lastAssistantCancelled =
     isCancelledAssistantMessage(lastAssistantMessage);
-  const lastThinkingMessage = args.initialThinkingEnabled
-    ? rawLastThinkingMessage
-    : undefined;
   const isQueued = args.messageRunIndicatorState === "queued";
+  const lastThinkingMessage =
+    args.initialThinkingEnabled && !isQueued
+      ? rawLastThinkingMessage
+      : undefined;
   const runActive =
-    args.messageRunIndicatorState !== null &&
-    args.messageRunIndicatorState !== undefined &&
+    (args.messageRunIndicatorState === "running" || isQueued) &&
     !lastAssistantCancelled;
   const waitingForAssistant =
+    runActive &&
     lastGroup?.role === "user" &&
     lastGroup.messages.length > 0 &&
     lastGroup.messages.some((message) => {

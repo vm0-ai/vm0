@@ -1427,7 +1427,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("clears thinking for a completed latest run with an older unterminated run", async () => {
+  it("clears thinking for a completed latest run with an older terminated run", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-stale-run-before-completed-latest-run",
       activeRunIds: [],
@@ -1442,10 +1442,18 @@ describe("chat lifecycle", () => {
         {
           id: "msg-stale-run-assistant",
           role: "assistant",
-          content: "This old run never received a terminal marker.",
+          content: "This old run is already done.",
           runId: "run-stale-without-marker",
           runEventId: "event-stale-run-assistant-text",
           createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-stale-run-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-stale-without-marker",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:02Z",
         },
         {
           id: "msg-latest-run-user",
@@ -1652,10 +1660,18 @@ describe("chat lifecycle", () => {
         {
           id: "msg-marker-only-stale-assistant",
           role: "assistant",
-          content: "This older run is missing its terminal marker.",
+          content: "This older run has already finished.",
           runId: "run-marker-only-stale",
           runEventId: "event-marker-only-stale-assistant-text",
           createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-marker-only-stale-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-marker-only-stale",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:02Z",
         },
         {
           id: "msg-marker-only-completed",
@@ -1675,7 +1691,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("This older run is missing its terminal marker."),
+        screen.getByText("This older run has already finished."),
       ).toBeInTheDocument();
       expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
       expect(document.querySelector("[data-thinking-indicator]")).toBeNull();

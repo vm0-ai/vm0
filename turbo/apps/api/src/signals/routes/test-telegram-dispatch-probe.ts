@@ -1,5 +1,8 @@
 import { command } from "ccstate";
-import { testTelegramDispatchProbeContract } from "@vm0/api-contracts/contracts/test-telegram-dispatch-probe";
+import {
+  testTelegramDispatchProbeContract,
+  type TestTelegramDispatchProbeBody,
+} from "@vm0/api-contracts/contracts/test-telegram-dispatch-probe";
 
 import { now } from "../external/time";
 import { request$ } from "../context/hono";
@@ -14,16 +17,6 @@ import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-oauth-provider-helpers";
-
-interface ProbeBody {
-  readonly bot_id: string;
-  readonly chat_id: string;
-  readonly telegram_user_id: string;
-  readonly message_text: string;
-  readonly message_id?: number;
-  readonly chat_type?: "private" | "group" | "supergroup";
-  readonly bot_username?: string;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -47,7 +40,7 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-function parseProbeBody(value: unknown): ProbeBody | null {
+function parseProbeBody(value: unknown): TestTelegramDispatchProbeBody | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -69,7 +62,9 @@ function parseProbeBody(value: unknown): ProbeBody | null {
   };
 }
 
-function buildMessage(body: ProbeBody): TelegramDispatchMessage {
+function buildMessage(
+  body: TestTelegramDispatchProbeBody,
+): TelegramDispatchMessage {
   const text = body.message_text;
   const chatType = body.chat_type ?? "private";
   const message: TelegramDispatchMessage = {

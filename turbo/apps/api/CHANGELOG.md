@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.209.2](https://github.com/vm0-ai/vm0/compare/api-v1.209.1...api-v1.209.2) (2026-07-03)
+
+
+### Refactoring
+
+* reduce fallback slop in test support contracts ([#19915](https://github.com/vm0-ai/vm0/issues/19915)) ([d2ca8c0](https://github.com/vm0-ai/vm0/commit/d2ca8c013c73602f2ed48b34693914b78a31cf3d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.144.1
+    * @vm0/core bumped to 8.390.1
+    * @vm0/db bumped to 1.85.4
+
 ## [1.209.1](https://github.com/vm0-ai/vm0/compare/api-v1.209.0...api-v1.209.1) (2026-07-02)
 
 

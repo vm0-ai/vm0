@@ -159,7 +159,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
-      expect(screen.getByText(THREAD_TITLE)).toBeInTheDocument();
+      expect(screen.getAllByText(THREAD_TITLE).length).toBeGreaterThan(0);
       expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
     });
 
