@@ -105,10 +105,10 @@ pub fn timestamp() -> String {
 /// Updating this path drops any cached file handle, including same-path
 /// updates. This lets callers force the next write to reopen the path.
 ///
-/// The file is still opened lazily by the next log line. System log writes are
-/// synchronous and complete before the logging macro returns. This matters for
-/// guest-agent's final telemetry upload, which reads the same file immediately
-/// after some fatal-path log lines are emitted.
+/// The file is still opened lazily by the next log line. System log append
+/// attempts are synchronous and finish before the logging macro returns. This
+/// matters for guest-agent's final telemetry upload, which reads the same file
+/// immediately after some fatal-path log lines are emitted.
 pub fn set_system_log_file(path: impl AsRef<Path>) {
     let mut guard = SYSTEM_LOG.lock().unwrap_or_else(|e| e.into_inner());
     guard.set_path(path.as_ref().to_path_buf());
@@ -133,8 +133,8 @@ fn write_stderr_line(line: &str) {
     let _ = stderr.flush();
 }
 
-/// Emit one formatted log line to stderr and, when enabled, the guest-side
-/// system log file.
+/// Emit one formatted log line to stderr and attempt to append it to the
+/// configured guest-side system log.
 pub fn emit(level: &str, tag: &str, args: std::fmt::Arguments<'_>) {
     let line = format!("[{}] [{level}] [{tag}] {args}", timestamp());
     if let Err(e) = append_system_log_line(&line) {
