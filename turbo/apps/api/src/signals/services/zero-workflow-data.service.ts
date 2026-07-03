@@ -364,7 +364,9 @@ export function zeroWorkflowList(args: {
     const winners = shadowWinnerFromRows(rows, args.member);
     const ownerImageUrlByUserId = await fetchOwnerImageUrls(
       get(clerk$),
-      rows.map((row) => row.workflow.ownerUserId),
+      rows.map((row) => {
+        return row.workflow.ownerUserId;
+      }),
     );
 
     return rows.map((row) => {
