@@ -53,6 +53,32 @@ export const openRenameChatThreadDialogFromThreadData$ = command(
   },
 );
 
+export const openRenameChatThreadDialogForThreadId$ = command(
+  async ({ get, set }, threadId: string, signal: AbortSignal) => {
+    let threadMeta: ThreadMeta | null = null;
+    if (chatThreadEventSourcingEnabled(get(featureSwitch$))) {
+      threadMeta = await get(eventDrivenChatThreadMeta(threadId));
+    } else {
+      const thread = paneThreadForId(
+        threadId,
+        get(currentLeftThread$),
+        get(currentRightThread$),
+      );
+      threadMeta = thread ? await get(thread.threadMeta$) : null;
+    }
+    signal.throwIfAborted();
+    set(
+      openRenameChatThreadDialogFromThreadData$,
+      {
+        threadId,
+        title: threadMeta?.title,
+        agentId: threadMeta?.agentId,
+      },
+      signal,
+    );
+  },
+);
+
 export const reloadChatThreadDataForId$ = command(
   ({ get, set }, threadId: string) => {
     if (chatThreadEventSourcingEnabled(get(featureSwitch$))) {

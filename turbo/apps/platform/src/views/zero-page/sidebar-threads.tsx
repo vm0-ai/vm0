@@ -53,7 +53,7 @@ import {
   renameChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
 import {
-  openRenameChatThreadDialogFromThreadData$,
+  openRenameChatThreadDialogForThreadId$,
   reloadChatThreadDataForId$,
 } from "../../signals/chat-page/chat-thread-rename.ts";
 import {
@@ -270,16 +270,12 @@ function ChatThreadMenuTriggerContent({
 
 function ChatThreadMenu({
   threadId,
-  title,
-  agentId,
   isPinned,
   isHighlighted,
   hasOtherIndicator,
   usePinnedIndicatorTrigger,
 }: {
   threadId: string;
-  title: string | null | undefined;
-  agentId: string;
   isPinned: boolean;
   isHighlighted: boolean;
   hasOtherIndicator: boolean;
@@ -290,7 +286,7 @@ function ChatThreadMenu({
   const pinChatThread = useSet(pinChatThread$);
   const unpinChatThread = useSet(unpinChatThread$);
   const openRenameChatThreadDialog = useSet(
-    openRenameChatThreadDialogFromThreadData$,
+    openRenameChatThreadDialogForThreadId$,
   );
   const features = useGet(featureSwitch$);
   const workflowAutomationEnabled =
@@ -312,7 +308,7 @@ function ChatThreadMenu({
 
   function openRenameDialog() {
     detach(
-      openRenameChatThreadDialog({ threadId, title, agentId }, pageSignal),
+      openRenameChatThreadDialog(threadId, pageSignal),
       Reason.DomCallback,
     );
   }
@@ -400,15 +396,11 @@ function ChatThreadMenu({
 
 function ChatThreadSideDecorator({
   threadId,
-  title,
-  agentId,
   isPinned,
   isHighlighted,
   indicatorState,
 }: {
   threadId: string;
-  title: string | null | undefined;
-  agentId: string;
   isPinned: boolean;
   isHighlighted: boolean;
   indicatorState: IndicatorState | null;
@@ -428,8 +420,6 @@ function ChatThreadSideDecorator({
     <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
       <ChatThreadMenu
         threadId={threadId}
-        title={title}
-        agentId={agentId}
         isPinned={isPinned}
         isHighlighted={isHighlighted}
         hasOtherIndicator={hasOtherIndicator}
@@ -531,7 +521,7 @@ function ChatThreadItemLink({
   state: ReturnType<typeof useChatThreadItemState>;
 }) {
   const openRenameChatThreadDialog = useSet(
-    openRenameChatThreadDialogFromThreadData$,
+    openRenameChatThreadDialogForThreadId$,
   );
   const closeSidebarOnSelect = () => {
     state.setSidebarExpanded(false);
@@ -561,14 +551,7 @@ function ChatThreadItemLink({
       onDoubleClick={(e) => {
         e.preventDefault();
         detach(
-          openRenameChatThreadDialog(
-            {
-              threadId: session.id,
-              title: session.title,
-              agentId: session.agent.id,
-            },
-            state.pageSignal,
-          ),
+          openRenameChatThreadDialog(session.id, state.pageSignal),
           Reason.DomCallback,
         );
       }}
@@ -598,8 +581,6 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
       <ChatThreadItemLink session={session} state={state} />
       <ChatThreadSideDecorator
         threadId={session.id}
-        title={session.title}
-        agentId={session.agent.id}
         isPinned={state.isPinned}
         isHighlighted={state.isHighlighted}
         indicatorState={state.indicatorState}
