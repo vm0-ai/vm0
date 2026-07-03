@@ -37,10 +37,6 @@ inputs:
     description: "Backend API URL used by web proxy routes"
     required: false
     default: ""
-  build-commit-sha:
-    description: "Full commit SHA for the build; defaults to the checked-out HEAD"
-    required: false
-    default: ""
 
 runs:
   using: "composite"
@@ -57,7 +53,6 @@ runs:
         INPUT_APP_URL: ${{ inputs.app-url }}
         INPUT_API_URL: ${{ inputs.api-url }}
         INPUT_API_BACKEND_URL: ${{ inputs.api-backend-url }}
-        INPUT_BUILD_COMMIT_SHA: ${{ inputs.build-commit-sha }}
       run: |
         set -euo pipefail
 
@@ -212,14 +207,7 @@ runs:
         # tag service.version and release on every deploy. Vercel CLI prebuilt
         # deploys do not reliably populate Vercel's own VERCEL_GIT_* system
         # vars, and we don't want runtime to depend on Vercel auto-injection.
-        build_commit_sha="$INPUT_BUILD_COMMIT_SHA"
-        if [[ -z "$build_commit_sha" ]]; then
-          build_commit_sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
-        fi
-        if [[ ! "$build_commit_sha" =~ ^[0-9a-f]{40}$ ]]; then
-          echo "::error::build commit SHA is not a full SHA-1: $build_commit_sha" >&2
-          exit 1
-        fi
+        build_commit_sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
         add_env GIT_COMMIT_SHA "$build_commit_sha"
         add_env BLOG_BASE_URL "$web_url"
         add_env STRAPI_URL "$strapi_url"
