@@ -586,6 +586,56 @@ describe("connector catalog artifacts", () => {
     });
   });
 
+  it("allows forbidden-looking permission names inside category maps", async () => {
+    const records = await fixtureRecords();
+    const publicArtifact = publicArtifactFromRecords(records);
+    const permission = publicArtifact.permissions[0];
+    if (!permission?.categories) {
+      throw new Error("Missing fixture permission categories");
+    }
+    const readPermission = permission.permissions.find((item) => {
+      return item.name === "files.read";
+    });
+    if (!readPermission) {
+      throw new Error("Missing fixture read permission");
+    }
+
+    readPermission.name = "storage";
+    readPermission.description = "Read storage fixtures";
+    permission.categories.categories = {
+      storage: "Storage",
+      "files.write": "Files",
+    };
+    permission.categories.displayOrder = ["Files", "Storage"];
+    permission.defaultPolicy.permissionOverrides = {
+      allow: ["storage"],
+    };
+
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithPublicArtifact(records, publicArtifact),
+        ),
+      }),
+    ).resolves.toMatchObject({
+      publicArtifact: {
+        permissions: [
+          {
+            permissions: [
+              {
+                name: "storage",
+                description: "Read storage fixtures",
+              },
+              {
+                name: "files.write",
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
   it("rejects invalid permission categories and default policy overrides", async () => {
     const records = await fixtureRecords();
     const categoryDriftArtifact = publicArtifactFromRecords(records);

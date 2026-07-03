@@ -22,6 +22,10 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function hasPublicDataKeys(path: string): boolean {
+  return /^\$\.permissions\[\d+\]\.categories\.categories$/.test(path);
+}
+
 export function privateCatalogArtifactSensitiveValues(
   privateArtifact: ConnectorCatalogPrivateArtifact,
 ): ReadonlySet<string> {
@@ -100,8 +104,9 @@ export function assertPublicCatalogArtifactHasNoPrivateFields(
     return;
   }
 
+  const checkPropertyNames = !hasPublicDataKeys(path);
   for (const [key, child] of Object.entries(value)) {
-    if (isForbiddenPublicPropertyName(key)) {
+    if (checkPropertyNames && isForbiddenPublicPropertyName(key)) {
       throw new Error(
         `Public connector catalog artifact leaked private property ${key} at ${path}`,
       );
