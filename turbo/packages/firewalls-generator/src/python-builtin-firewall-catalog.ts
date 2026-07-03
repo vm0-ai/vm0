@@ -88,7 +88,12 @@ const PYTHON_MODULE_HASH_LENGTH = 12;
 const PYTHON_JSON_PART_ASSIGNMENT_PREFIX = "JSON_PART = ";
 const DIAGNOSTIC_JSON_ASSIGNMENT_PREFIX =
   "MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS = json.loads(";
+const ARABIC_SCRIPT_PATTERN = /^\p{Script=Arabic}$/u;
+const ASCII_LETTER_PATTERN = /^[A-Za-z]$/;
+const ASCII_PUNCTUATION_PATTERN =
+  /^[\u0021-\u002f\u003a-\u0040\u005b-\u0060\u007b-\u007e]$/;
 const HEX_DIGIT_PATTERN = /^[0-9a-fA-F]$/;
+const UNICODE_MARK_PATTERN = /^\p{Mark}$/u;
 const PERCENT_DECODED_FORBIDDEN_HOST_CHARS = new Set([
   "#",
   "%",
@@ -111,6 +116,25 @@ const PERCENT_DECODED_FORBIDDEN_HOST_CHARS = new Set([
   "\uff0e",
   "\uff61",
 ]);
+const FORBIDDEN_RUNTIME_HOST_LABEL_CHARS = new Set([
+  "#",
+  "%",
+  ",",
+  "/",
+  ":",
+  "<",
+  ">",
+  "?",
+  "@",
+  "[",
+  "\\",
+  "]",
+  "^",
+  "|",
+  "{",
+  "}",
+  "*",
+]);
 // Fallback JSON string literals can double quotes and backslashes.
 const MAX_JSON_PART_SOURCE_CHARS = Math.floor(
   (MAX_GENERATED_PYTHON_LINE_LENGTH -
@@ -126,6 +150,25 @@ const MAX_DIAGNOSTIC_JSON_SOURCE_CHARS = Math.floor(
 );
 const DIAGNOSTIC_REFERENCE_NAME_PATTERN =
   /\b(?:secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)/g;
+const IDNA_DOT_VARIANT_PATTERN = /[\u3002\uff0e\uff61]/g;
+const IPV4_MAX_OCTET = 255;
+const UNSAFE_UTS46_COLLISION_CODEPOINTS = new Set([
+  0x03f2, 0x04c0, 0x1e9e, 0x1806, 0x2132, 0x2183, 0x3164, 0xffa0, 0xfffc,
+  0xfffd, 0x2f868, 0x2f874, 0x2f91f, 0x2f95f, 0x2f9bf,
+]);
+const UNSAFE_UTS46_COLLISION_RANGES = [
+  [0x10a0, 0x10c5],
+  [0x115f, 0x1160],
+  [0x17b4, 0x17b5],
+  [0x2ff0, 0x2ffb],
+] as const;
+const UNSAFE_UTS46_IGNORABLE_RANGES = [
+  [0x034f, 0x034f],
+  [0x180b, 0x180d],
+  [0x180f, 0x180f],
+  [0xfe00, 0xfe0f],
+  [0xe0100, 0xe01ef],
+] as const;
 
 function hasDynamicBaseMarker(base: string): boolean {
   return base.includes("{") || base.includes("}");
@@ -408,12 +451,12 @@ function isAuthoritySpaceOrControl(value: string): boolean {
   return false;
 }
 
-function percentDecodedHostnameEscapesAreRuntimeSafe(
-  hostname: string,
-): boolean {
+function percentDecodeRuntimeSafeHostname(hostname: string): string | null {
   let index = 0;
+  let decodedHostname = "";
   while (index < hostname.length) {
     if (hostname[index] !== "%") {
+      decodedHostname += hostname[index];
       index += 1;
       continue;
     }
@@ -428,7 +471,7 @@ function percentDecodedHostnameEscapesAreRuntimeSafe(
         !HEX_DIGIT_PATTERN.test(first) ||
         !HEX_DIGIT_PATTERN.test(second)
       ) {
-        return false;
+        return null;
       }
       encoded += `%${first}${second}`;
       index += 3;
@@ -438,15 +481,185 @@ function percentDecodedHostnameEscapesAreRuntimeSafe(
     try {
       decoded = decodeURIComponent(encoded);
     } catch {
-      return false;
+      return null;
     }
     if (isAuthoritySpaceOrControl(decoded)) {
-      return false;
+      return null;
     }
     for (const char of decoded) {
       if (PERCENT_DECODED_FORBIDDEN_HOST_CHARS.has(char)) {
-        return false;
+        return null;
       }
+    }
+    decodedHostname += decoded;
+  }
+  return decodedHostname;
+}
+
+function isIpv4NumberComponent(value: string): boolean {
+  if (value.length === 0) {
+    return false;
+  }
+  if (value.toLowerCase().startsWith("0x")) {
+    return (
+      value.length > 2 &&
+      [...value.slice(2)].every((char) => {
+        return HEX_DIGIT_PATTERN.test(char);
+      })
+    );
+  }
+  return /^[0-9]+$/.test(value);
+}
+
+function isIpv4LiteralLike(hostname: string): boolean {
+  const parts = hostname.split(".");
+  return (
+    parts.length >= 1 &&
+    parts.length <= 4 &&
+    parts.every((part) => {
+      return isIpv4NumberComponent(part);
+    })
+  );
+}
+
+function isCanonicalIpv4Address(hostname: string): boolean {
+  const parts = hostname.split(".");
+  if (parts.length !== 4) {
+    return false;
+  }
+  return parts.every((part) => {
+    if (!/^[0-9]+$/.test(part)) {
+      return false;
+    }
+    if (part.length > 1 && part.startsWith("0")) {
+      return false;
+    }
+    return Number(part) <= IPV4_MAX_OCTET;
+  });
+}
+
+function isCodepointInRanges(
+  codepoint: number,
+  ranges: readonly (readonly [number, number])[],
+): boolean {
+  return ranges.some(([start, end]) => {
+    return codepoint >= start && codepoint <= end;
+  });
+}
+
+function hasUnsafeUts46MappingChars(value: string): boolean {
+  for (const char of value) {
+    const codepoint = char.codePointAt(0);
+    if (
+      codepoint !== undefined &&
+      (UNSAFE_UTS46_COLLISION_CODEPOINTS.has(codepoint) ||
+        isCodepointInRanges(codepoint, UNSAFE_UTS46_COLLISION_RANGES) ||
+        isCodepointInRanges(codepoint, UNSAFE_UTS46_IGNORABLE_RANGES))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasForbiddenRuntimeHostLabelChars(value: string): boolean {
+  for (const char of value) {
+    if (FORBIDDEN_RUNTIME_HOST_LABEL_CHARS.has(char)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasRuntimeIncompatibleArabicBidiLabel(value: string): boolean {
+  const chars = [...value];
+  const firstArabicIndex = chars.findIndex((char) => {
+    return ARABIC_SCRIPT_PATTERN.test(char);
+  });
+  if (firstArabicIndex === -1) {
+    return false;
+  }
+
+  const prefix = chars.slice(0, firstArabicIndex);
+  const suffix = chars.slice(firstArabicIndex + 1);
+  const prefixHasAsciiLetter = prefix.some((char) => {
+    return ASCII_LETTER_PATTERN.test(char);
+  });
+  if (
+    prefixHasAsciiLetter &&
+    suffix.some((char) => {
+      return !UNICODE_MARK_PATTERN.test(char);
+    })
+  ) {
+    return true;
+  }
+  if (
+    suffix.some((char) => {
+      return ASCII_LETTER_PATTERN.test(char);
+    })
+  ) {
+    return true;
+  }
+
+  const lastSuffixChar = suffix.at(-1);
+  return (
+    lastSuffixChar !== undefined &&
+    ASCII_PUNCTUATION_PATTERN.test(lastSuffixChar)
+  );
+}
+
+function stripRuntimeHostnameTrailingDot(hostname: string): string | null {
+  if (!hostname.endsWith(".")) {
+    return hostname;
+  }
+  const stripped = hostname.slice(0, -1);
+  return stripped.length > 0 && !stripped.endsWith(".") ? stripped : null;
+}
+
+function runtimeCompatibleHostname(
+  rawHostname: string,
+  parsedHostname: string,
+): boolean {
+  const decodedHostname = percentDecodeRuntimeSafeHostname(rawHostname);
+  if (decodedHostname === null || decodedHostname.includes("*")) {
+    return false;
+  }
+  if (decodedHostname.includes(":")) {
+    return true;
+  }
+
+  const dottedHostname = decodedHostname.replace(IDNA_DOT_VARIANT_PATTERN, ".");
+  const normalizedHostname = stripRuntimeHostnameTrailingDot(dottedHostname);
+  if (normalizedHostname === null || normalizedHostname.length === 0) {
+    return false;
+  }
+  if (isIpv4LiteralLike(normalizedHostname)) {
+    return isCanonicalIpv4Address(normalizedHostname);
+  }
+
+  const parsedLabels = stripSingleHostnameTrailingDot(
+    parsedHostname.toLowerCase(),
+  ).split(".");
+  const rawLabels = normalizedHostname.split(".");
+  if (rawLabels.length !== parsedLabels.length) {
+    return false;
+  }
+
+  for (let index = 0; index < rawLabels.length; index += 1) {
+    const rawLabel = rawLabels[index];
+    const parsedLabel = parsedLabels[index];
+    if (rawLabel === undefined || parsedLabel === undefined) {
+      return false;
+    }
+    if (
+      hasForbiddenRuntimeHostLabelChars(rawLabel) ||
+      hasUnsafeUts46MappingChars(rawLabel) ||
+      hasRuntimeIncompatibleArabicBidiLabel(rawLabel)
+    ) {
+      return false;
+    }
+    if (!/^[\x00-\x7f]*$/.test(rawLabel) && !parsedLabel.startsWith("xn--")) {
+      return false;
     }
   }
   return true;
@@ -472,10 +685,7 @@ function diagnosticStaticBaseKey(base: string): string | null {
   }
 
   const rawHostname = rawAuthorityHostname(rawAuthority);
-  if (
-    rawHostname === null ||
-    !percentDecodedHostnameEscapesAreRuntimeSafe(rawHostname)
-  ) {
+  if (rawHostname === null) {
     return null;
   }
 
@@ -489,6 +699,9 @@ function diagnosticStaticBaseKey(base: string): string | null {
       url.hash !== "" ||
       hostnameHasEmptyLabel(url.hostname.toLowerCase())
     ) {
+      return null;
+    }
+    if (!runtimeCompatibleHostname(rawHostname, url.hostname)) {
       return null;
     }
 

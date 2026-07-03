@@ -974,6 +974,121 @@ describe("Python builtin firewall catalog renderer", () => {
         ],
       }),
       connectorEntry({
+        name: "wildcard-host",
+        apis: [
+          {
+            base: "https://exa*mple.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.WILDCARD_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "wildcard-host:read",
+                rules: ["GET /wildcard-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "comma-host",
+        apis: [
+          {
+            base: "https://exa,mple.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.COMMA_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "comma-host:read",
+                rules: ["GET /comma-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "noncanonical-ipv4-host",
+        apis: [
+          {
+            base: "https://127.000.000.001/api",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.NONCANONICAL_IPV4_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "noncanonical-ipv4-host:read",
+                rules: ["GET /noncanonical-ipv4-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "compat-ascii-host",
+        apis: [
+          {
+            base: "https://０.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.COMPAT_ASCII_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "compat-ascii-host:read",
+                rules: ["GET /compat-ascii-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "unsafe-uts46-host",
+        apis: [
+          {
+            base: "https://a\u03f2b.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.UNSAFE_UTS46_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "unsafe-uts46-host:read",
+                rules: ["GET /unsafe-uts46-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "arabic-bidi-host",
+        apis: [
+          {
+            base: "https://a\u0870b.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.ARABIC_BIDI_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "arabic-bidi-host:read",
+                rules: ["GET /arabic-bidi-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
         name: "valid-dot",
         apis: [
           {
@@ -1052,6 +1167,63 @@ describe("Python builtin firewall catalog renderer", () => {
           },
         ],
       }),
+      connectorEntry({
+        name: "unicode-dot-host",
+        apis: [
+          {
+            base: "https://shared-dot。example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.UNICODE_DOT_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "unicode-dot-host:read",
+                rules: ["GET /unicode-dot-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "unicode-idna-host",
+        apis: [
+          {
+            base: "https://faß.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.UNICODE_IDNA_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "unicode-idna-host:read",
+                rules: ["GET /unicode-idna-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "punycode-idna-host",
+        apis: [
+          {
+            base: "https://xn--fa-hia.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.PUNYCODE_IDNA_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "punycode-idna-host:read",
+                rules: ["GET /punycode-idna-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
     ]);
     const diagnostics = findGeneratedFile(files, "diagnostics.py");
 
@@ -1087,6 +1259,57 @@ describe("Python builtin firewall catalog renderer", () => {
               {
                 name: "encoded-host:read",
                 rules: ["GET /encoded-host/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "punycode-idna-host",
+        apis: [
+          {
+            base: "https://xn--fa-hia.example.com/api",
+            envNames: ["PUNYCODE_IDNA_HOST_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "punycode-idna-host:read",
+                rules: ["GET /punycode-idna-host/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "unicode-dot-host",
+        apis: [
+          {
+            base: "https://shared-dot。example.com/api",
+            envNames: ["UNICODE_DOT_HOST_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "unicode-dot-host:read",
+                rules: ["GET /unicode-dot-host/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "unicode-idna-host",
+        apis: [
+          {
+            base: "https://faß.example.com/api",
+            envNames: ["UNICODE_IDNA_HOST_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "unicode-idna-host:read",
+                rules: ["GET /unicode-idna-host/{id}"],
               },
             ],
           },
