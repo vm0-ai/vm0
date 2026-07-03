@@ -213,6 +213,7 @@ async function finalizeBootstrap(
       defaultAgentId: agentRow.id,
       tier: "limited-free-1",
       onboardingPaymentPending: false,
+      onboardingComplete: false,
       updatedAt: nowDate(),
     })
     .onConflictDoUpdate({

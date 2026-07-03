@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { authContract } from "@vm0/api-contracts/contracts/auth";
 import {
+  onboardingCompleteContract,
   onboardingCompleteLimitedFreeContract,
   onboardingSetupContract,
   onboardingStatusContract,
@@ -24,6 +25,7 @@ import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { authMeRoutes } from "../../auth-me";
 import { zeroAgentsRoutes } from "../../zero-agents";
 import { zeroDefaultAgentRoutes } from "../../zero-default-agent";
+import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
 import { zeroOnboardingCompleteLimitedFreeRoutes } from "../../zero-onboarding-complete-limited-free";
 import { zeroOnboardingSetupRoutes } from "../../zero-onboarding-setup";
 import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
@@ -128,6 +130,13 @@ export function createBddApi(context: TestContext) {
       context,
       routes: zeroOnboardingCompleteLimitedFreeRoutes,
     })(onboardingCompleteLimitedFreeContract);
+  }
+
+  function onboardingCompleteClient() {
+    return setupAppWithRoutes({
+      context,
+      routes: zeroOnboardingCompleteRoutes,
+    })(onboardingCompleteContract);
   }
 
   function orgClient() {
@@ -250,6 +259,16 @@ export function createBddApi(context: TestContext) {
           body,
         }),
         [200, 403, 409],
+      );
+    },
+
+    async completeOnboarding(nextUser: ApiTestUser) {
+      return await accept(
+        onboardingCompleteClient().complete({
+          headers: authenticate(nextUser),
+          body: {},
+        }),
+        [200, 403],
       );
     },
 

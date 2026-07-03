@@ -10,6 +10,7 @@ import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 const ONBOARDING_STATUS_PATH = "**/api/zero/onboarding/status";
 const READY_ONBOARDING_STATUS = JSON.stringify({
   needsOnboarding: false,
+  onboardingComplete: true,
   isAdmin: true,
   hasOrg: true,
   hasDefaultAgent: false,

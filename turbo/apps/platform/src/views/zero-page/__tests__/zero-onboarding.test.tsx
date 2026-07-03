@@ -17,6 +17,7 @@ function mockOnboardingNeeded(): void {
   context.mocks.api(onboardingStatusContract.getStatus, ({ respond }) => {
     return respond(200, {
       needsOnboarding: true,
+      onboardingComplete: false,
       isAdmin: true,
       hasOrg: true,
       hasDefaultAgent: false,
