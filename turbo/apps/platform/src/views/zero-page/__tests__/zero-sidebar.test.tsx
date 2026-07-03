@@ -378,6 +378,60 @@ describe("zero sidebar", () => {
     createDeferred.resolve();
   });
 
+  it("renders event-sourced sidebar threads while active run ids are pending", async () => {
+    prepareDefaultAgent();
+    let activeIdsRequests = 0;
+
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      return respond(200, {
+        chatThreads: [
+          {
+            id: EXISTING_THREAD_ID,
+            agentId: AGENT_ID,
+            title: "Event-sourced conversation",
+            sortAt: "2026-03-10T00:00:00Z",
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+            pinnedAt: null,
+            renamedAt: null,
+          },
+        ],
+        latestEventId: null,
+      });
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
+    context.mocks.api(chatThreadsContract.activeIds, ({ never }) => {
+      activeIdsRequests += 1;
+      return never();
+    });
+    context.mocks.api(chatThreadsContract.list, ({ never }) => {
+      return never();
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEventSourcing]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Event-sourced conversation"),
+      ).toBeInTheDocument();
+      expect(
+        sidebar().querySelectorAll('[data-testid="sidebar-skeleton"]'),
+      ).toHaveLength(0);
+      expect(activeIdsRequests).toBe(1);
+    });
+    expect(
+      within(threadRowByTitle("Event-sourced conversation")).queryByLabelText(
+        "Running",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
   it("preserves server thread order while creating an optimistic new chat", async () => {
     prepareDefaultAgent();
     const createDeferred = context.mocks.deferred<void>();

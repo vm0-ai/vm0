@@ -72,6 +72,7 @@ import {
   sidebarChatThreads$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import {
+  activeRunChatThreadIds$,
   chatThreadsHasMore$,
   chatThreadsNextCursor$,
   currentChatAgentId$,
@@ -180,6 +181,13 @@ function getIndicatorState({
     return "unread";
   }
   return hasDraft ? "draft" : null;
+}
+
+function isChatThreadRunning(
+  session: ChatThreadListItem,
+  activeRunThreadIds: ReadonlySet<string> | undefined,
+): boolean {
+  return session.running || (activeRunThreadIds?.has(session.id) ?? false);
 }
 
 function handleChatThreadClick(
@@ -471,6 +479,7 @@ function useChatThreadItemState(session: ChatThreadListItem) {
   const pageSignal = useGet(pageSignal$);
   const draftThreadIds = useLastResolved(sidebarDraftThreadIds$);
   const unreadThreadIds = useLastResolved(sidebarUnreadThreadIds$);
+  const activeRunThreadIds = useLastResolved(activeRunChatThreadIds$);
 
   const isPinned = session.pinnedAt !== null && session.pinnedAt !== undefined;
   const onChatPage = urlMainThreadId !== null;
@@ -490,7 +499,7 @@ function useChatThreadItemState(session: ChatThreadListItem) {
     (unreadThreadIds?.has(session.id) ?? false) && !isHighlighted;
   const indicatorState = getIndicatorState({
     hasDraft: (draftThreadIds?.has(session.id) ?? false) && !isHighlighted,
-    isRunning: session.running,
+    isRunning: isChatThreadRunning(session, activeRunThreadIds),
     isUnread,
   });
 
