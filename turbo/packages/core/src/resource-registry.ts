@@ -4365,7 +4365,8 @@ export interface PresentationRunbookPackage {
   readonly source: ResourceSourceRef;
 }
 
-// Archive digests for uploaded private R2 presentation runbook packages.
+// Archive digests for uploaded private R2 presentation runbook packages. Keep
+// these in sync with the private R2 version ids served by the API download route.
 const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
   "playful-launch":
     "c0d5ee9d37a45550865517aff796dae245cce4a63dfc5e1068423a1c918bb43c",
