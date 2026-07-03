@@ -310,7 +310,7 @@ function WorkflowRowIcon({
     return <TriggerListIcon trigger={lead.trigger} size="sm" />;
   }
   return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-gray-100 text-muted-foreground">
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-muted-foreground">
       <IconRoute size={16} stroke={1.7} />
     </span>
   );
