@@ -37,23 +37,18 @@ function chatThreadEventSourcingEnabled(
   return features[FeatureSwitchKey.ChatThreadEventSourcing] ?? false;
 }
 
+export interface RenameChatThreadDialogRequest {
+  readonly threadId: string;
+  readonly title?: string | null;
+  readonly agentId?: string | null;
+}
+
 export const openRenameChatThreadDialogFromThreadData$ = command(
-  async ({ get, set }, threadId: string, signal: AbortSignal) => {
-    let threadMeta: ThreadMeta | null = null;
-    if (chatThreadEventSourcingEnabled(get(featureSwitch$))) {
-      threadMeta = await get(eventDrivenChatThreadMeta(threadId));
-    } else {
-      const thread = paneThreadForId(
-        threadId,
-        get(currentLeftThread$),
-        get(currentRightThread$),
-      );
-      threadMeta = thread ? await get(thread.threadMeta$) : null;
-    }
-    signal.throwIfAborted();
+  ({ set }, request: RenameChatThreadDialogRequest, _signal: AbortSignal) => {
     set(openRenameChatThreadDialog$, {
-      threadId,
-      title: threadMeta?.title,
+      threadId: request.threadId,
+      title: request.title,
+      agentId: request.agentId,
     });
   },
 );
@@ -99,7 +94,11 @@ export const setChatThreadEmojiFromThreadData$ = command(
     const currentTitle = title !== undefined ? title : threadMeta?.title;
     await set(
       renameChatThread$,
-      { threadId, title: applyChatThreadEmoji(currentTitle, emoji) },
+      {
+        threadId,
+        title: applyChatThreadEmoji(currentTitle, emoji),
+        agentId: threadMeta?.agentId,
+      },
       signal,
     );
     set(reloadChatThreadDataForId$, threadId);
@@ -129,7 +128,11 @@ export const clearChatThreadEmojiFromThreadData$ = command(
     if (!nextTitle) {
       return;
     }
-    await set(renameChatThread$, { threadId, title: nextTitle }, signal);
+    await set(
+      renameChatThread$,
+      { threadId, title: nextTitle, agentId: threadMeta?.agentId },
+      signal,
+    );
     set(reloadChatThreadDataForId$, threadId);
   },
 );

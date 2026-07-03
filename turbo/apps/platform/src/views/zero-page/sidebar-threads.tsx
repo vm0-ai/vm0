@@ -99,9 +99,11 @@ import {
 } from "../../signals/chat-page/chat-thread-only-unread.ts";
 import {
   pendingDeleteThreadId$,
+  renameDialogAgentId$,
   setPendingDeleteThreadId$,
   renameDialogThreadId$,
   renameDialogInput$,
+  setRenameDialogAgentId$,
   setRenameDialogThreadId$,
   setRenameDialogInput$,
   sessionListCollapsed$,
@@ -250,14 +252,34 @@ function handleChatThreadClick(
   closeSidebarOnSelect();
 }
 
+function ChatThreadMenuTriggerContent({
+  usePinnedIndicatorTrigger,
+}: {
+  usePinnedIndicatorTrigger: boolean;
+}) {
+  if (!usePinnedIndicatorTrigger) {
+    return <IconDots size={16} stroke={2} />;
+  }
+  return (
+    <>
+      <IconPin size={16} stroke={2} className="md:hidden" />
+      <IconDots size={16} stroke={2} className="hidden md:block" />
+    </>
+  );
+}
+
 function ChatThreadMenu({
   threadId,
+  title,
+  agentId,
   isPinned,
   isHighlighted,
   hasOtherIndicator,
   usePinnedIndicatorTrigger,
 }: {
   threadId: string;
+  title: string | null | undefined;
+  agentId: string;
   isPinned: boolean;
   isHighlighted: boolean;
   hasOtherIndicator: boolean;
@@ -290,7 +312,7 @@ function ChatThreadMenu({
 
   function openRenameDialog() {
     detach(
-      openRenameChatThreadDialog(threadId, pageSignal),
+      openRenameChatThreadDialog({ threadId, title, agentId }, pageSignal),
       Reason.DomCallback,
     );
   }
@@ -325,18 +347,9 @@ function ChatThreadMenu({
                       : undefined
                   }
                 >
-                  {usePinnedIndicatorTrigger ? (
-                    <>
-                      <IconPin size={16} stroke={2} className="md:hidden" />
-                      <IconDots
-                        size={16}
-                        stroke={2}
-                        className="hidden md:block"
-                      />
-                    </>
-                  ) : (
-                    <IconDots size={16} stroke={2} />
-                  )}
+                  <ChatThreadMenuTriggerContent
+                    usePinnedIndicatorTrigger={usePinnedIndicatorTrigger}
+                  />
                 </span>
               </TooltipTrigger>
               <TooltipContent side="bottom">
@@ -387,11 +400,15 @@ function ChatThreadMenu({
 
 function ChatThreadSideDecorator({
   threadId,
+  title,
+  agentId,
   isPinned,
   isHighlighted,
   indicatorState,
 }: {
   threadId: string;
+  title: string | null | undefined;
+  agentId: string;
   isPinned: boolean;
   isHighlighted: boolean;
   indicatorState: IndicatorState | null;
@@ -411,6 +428,8 @@ function ChatThreadSideDecorator({
     <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
       <ChatThreadMenu
         threadId={threadId}
+        title={title}
+        agentId={agentId}
         isPinned={isPinned}
         isHighlighted={isHighlighted}
         hasOtherIndicator={hasOtherIndicator}
@@ -542,7 +561,14 @@ function ChatThreadItemLink({
       onDoubleClick={(e) => {
         e.preventDefault();
         detach(
-          openRenameChatThreadDialog(session.id, state.pageSignal),
+          openRenameChatThreadDialog(
+            {
+              threadId: session.id,
+              title: session.title,
+              agentId: session.agent.id,
+            },
+            state.pageSignal,
+          ),
           Reason.DomCallback,
         );
       }}
@@ -572,6 +598,8 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
       <ChatThreadItemLink session={session} state={state} />
       <ChatThreadSideDecorator
         threadId={session.id}
+        title={session.title}
+        agentId={session.agent.id}
         isPinned={state.isPinned}
         isHighlighted={state.isHighlighted}
         indicatorState={state.indicatorState}
@@ -582,8 +610,10 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
 
 function ChatThreadRenameDialog() {
   const renameDialogThreadId = useGet(renameDialogThreadId$);
+  const renameDialogAgentId = useGet(renameDialogAgentId$);
   const renameDialogInput = useGet(renameDialogInput$);
   const setRenameDialogInput = useSet(setRenameDialogInput$);
+  const setRenameDialogAgentId = useSet(setRenameDialogAgentId$);
   const setRenameDialogThreadId = useSet(setRenameDialogThreadId$);
   const renameChatThread = useSet(renameChatThread$);
   const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
@@ -593,6 +623,7 @@ function ChatThreadRenameDialog() {
   function closeRenameDialog() {
     const threadId = renameDialogThreadId;
     setRenameDialogThreadId(null);
+    setRenameDialogAgentId(null);
     setRenameDialogInput("");
     if (threadId) {
       queueMicrotask(() => {
@@ -606,10 +637,11 @@ function ChatThreadRenameDialog() {
       return;
     }
     const threadId = renameDialogThreadId;
+    const agentId = renameDialogAgentId;
     const title = renameDialogInput.trim();
     detach(
       (async () => {
-        await renameChatThread({ threadId, title }, pageSignal);
+        await renameChatThread({ threadId, title, agentId }, pageSignal);
         reloadChatThreadDataForId(threadId);
       })(),
       Reason.DomCallback,

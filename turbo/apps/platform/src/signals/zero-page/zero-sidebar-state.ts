@@ -39,6 +39,14 @@ export const setRenameDialogThreadId$ = command(
   },
 );
 
+const internalRenameDialogAgentId$ = state<string | null>(null);
+export const renameDialogAgentId$ = computed((get) => {
+  return get(internalRenameDialogAgentId$);
+});
+export const setRenameDialogAgentId$ = command(({ set }, id: string | null) => {
+  set(internalRenameDialogAgentId$, id);
+});
+
 const internalRenameDialogInput$ = state("");
 export const renameDialogInput$ = computed((get) => {
   return get(internalRenameDialogInput$);
@@ -50,9 +58,18 @@ export const setRenameDialogInput$ = command(({ set }, input: string) => {
 export const openRenameChatThreadDialog$ = command(
   (
     { set },
-    { threadId, title }: { threadId: string; title: string | null | undefined },
+    {
+      threadId,
+      title,
+      agentId,
+    }: {
+      threadId: string;
+      title: string | null | undefined;
+      agentId?: string | null | undefined;
+    },
   ) => {
     set(internalRenameDialogInput$, title?.trim() ?? "");
+    set(internalRenameDialogAgentId$, agentId?.trim() || null);
     set(internalRenameDialogThreadId$, threadId);
   },
 );

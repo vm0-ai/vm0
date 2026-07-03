@@ -262,7 +262,7 @@ describe("chat thread event sourcing local-first list", () => {
     expect(listRequests).toBe(0);
   });
 
-  it("prefills rename dialog title from event-driven threads", async () => {
+  it("prefills rename dialog title from provided event-driven thread metadata", async () => {
     context.store.set(setChatAgentId$, AGENT_ID);
 
     idbThreadEventStoreMock.setData({
@@ -318,7 +318,11 @@ describe("chat thread event sourcing local-first list", () => {
     detailRequests = 0;
     await context.store.set(
       openRenameChatThreadDialogFromThreadData$,
-      THREAD_ID,
+      {
+        threadId: THREAD_ID,
+        title: "Cached renamed title",
+        agentId: AGENT_ID,
+      },
       context.signal,
     );
 
