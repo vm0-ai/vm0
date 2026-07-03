@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.132.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.4...runner-rs-v0.132.5) (2026-07-03)
+
+
+### Bug Fixes
+
+* diagnose shared-base connector ownership before auth ([#19964](https://github.com/vm0-ai/vm0/issues/19964)) ([d87b6ea](https://github.com/vm0-ai/vm0/commit/d87b6ea41b76b65960f0c9949d1e03bd85d9a1bb))
+
 ## [0.132.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.3...runner-rs-v0.132.4) (2026-07-03)
 
 
