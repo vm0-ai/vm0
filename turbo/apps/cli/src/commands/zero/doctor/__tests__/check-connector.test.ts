@@ -790,7 +790,7 @@ describe("zero doctor check-connector command", () => {
 
       const output = getOutput();
       expect(output).toContain(
-        "zero doctor check-connector --env-name GH_TOKEN",
+        "zero doctor check-connector --env-name 'GH_TOKEN'",
       );
     });
 
@@ -825,7 +825,7 @@ describe("zero doctor check-connector command", () => {
 
       const output = getOutput();
       expect(output).toContain(
-        "zero doctor check-connector --env-name GH_TOKEN --check-permission contents:read",
+        "zero doctor check-connector --env-name 'GH_TOKEN' --check-permission 'contents:read'",
       );
     });
   });
@@ -868,7 +868,7 @@ describe("zero doctor check-connector command", () => {
         "Step 3: Permission policy check (auto-detected from URL)",
       );
       expect(output).toContain(
-        "zero doctor check-connector --url https://api.github.com/repos/owner/repo",
+        "zero doctor check-connector --url 'https://api.github.com/repos/owner/repo'",
       );
     });
 
@@ -1132,6 +1132,42 @@ describe("zero doctor check-connector command", () => {
         "Matched permissions: [accounting.settings.read]",
       );
       expect(output).not.toContain("Matched permissions: [connections");
+      expect(output).not.toContain("secret-token");
+      expect(output).not.toContain("token=");
+      expect(output).not.toContain("#ignored");
+    });
+
+    it("should shell-quote sanitized URL in re-diagnose hint", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(connectedResponse);
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json(runContextResponse);
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://api.github.com/repos/owner/repo'$(touch-pwn)?token=secret-token#ignored",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain(
+        "zero doctor check-connector --url 'https://api.github.com/repos/owner/repo'\\''$(touch-pwn)'",
+      );
       expect(output).not.toContain("secret-token");
       expect(output).not.toContain("token=");
       expect(output).not.toContain("#ignored");
@@ -1675,7 +1711,7 @@ describe("zero doctor check-connector command", () => {
 
       const output = getOutput();
       expect(output).toContain(
-        "zero doctor check-connector --url https://api.github.com/repos/owner/repo --method POST",
+        "zero doctor check-connector --url 'https://api.github.com/repos/owner/repo' --method 'POST'",
       );
     });
   });

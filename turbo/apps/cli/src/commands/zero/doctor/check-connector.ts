@@ -123,6 +123,10 @@ function stripUrlQueryAndFragment(url: string): string {
   return url.slice(0, end);
 }
 
+function shellQuoteArg(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 function routesToDecisionPermissions(
   routes: readonly FirewallRoutingPermissionRoute[],
 ): DiagnosticDecisionPermission[] {
@@ -1032,15 +1036,15 @@ How connectors work:
       // Re-diagnose hint
       const args: string[] = [];
       if (opts.url) {
-        args.push(`--url ${stripUrlQueryAndFragment(opts.url)}`);
+        args.push(`--url ${shellQuoteArg(stripUrlQueryAndFragment(opts.url))}`);
         if (opts.method !== "GET") {
-          args.push(`--method ${opts.method}`);
+          args.push(`--method ${shellQuoteArg(opts.method)}`);
         }
       } else {
-        args.push(`--env-name ${envName}`);
+        args.push(`--env-name ${shellQuoteArg(envName)}`);
       }
       if (opts.checkPermission) {
-        args.push(`--check-permission ${opts.checkPermission}`);
+        args.push(`--check-permission ${shellQuoteArg(opts.checkPermission)}`);
       }
       console.log(
         `To re-diagnose after changes, run: zero doctor check-connector ${args.join(" ")}`,
