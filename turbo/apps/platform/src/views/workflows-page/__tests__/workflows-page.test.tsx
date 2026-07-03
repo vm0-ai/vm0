@@ -1224,7 +1224,7 @@ describe("workflow detail page", () => {
       ).toBeInTheDocument();
     });
 
-    click(buttonByText("Chat with Research Bot"));
+    click(buttonByText("Refine with Research Bot"));
 
     await waitFor(() => {
       expect(openedWorkflowIds).toStrictEqual([SALES_WORKFLOW_ID]);

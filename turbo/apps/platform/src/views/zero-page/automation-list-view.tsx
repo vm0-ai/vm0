@@ -49,6 +49,10 @@ function AutomationListRow<T extends AutomationEntry>({
 }) {
   const dimmed = entry.enabled === false;
   const clickable = !!onOpenDetails;
+  const instructionLabel = entry.description || entry.prompt;
+  const runsAtLabel = entry.timezone
+    ? `${entry.time} · ${entry.timezone.replace(/_/g, " ")}`
+    : entry.time;
 
   return (
     <tr
@@ -67,7 +71,10 @@ function AutomationListRow<T extends AutomationEntry>({
     >
       {showAgent && (
         <td className="py-2.5 pr-2 align-middle w-[5rem]">
-          <span className="block min-w-0 truncate text-sm font-medium text-foreground">
+          <span
+            className="block min-w-0 truncate text-sm font-medium text-foreground"
+            title={agentLabel}
+          >
             {agentLabel}
           </span>
         </td>
@@ -78,6 +85,7 @@ function AutomationListRow<T extends AutomationEntry>({
             pathname="/automations/:automationId"
             options={{ pathParams: { automationId: entry.id } }}
             aria-label={`Open automation ${entry.prompt}`}
+            title={instructionLabel}
             onClick={(e) => {
               e.stopPropagation();
             }}
@@ -86,7 +94,7 @@ function AutomationListRow<T extends AutomationEntry>({
               dimmed && "text-muted-foreground",
             )}
           >
-            {entry.description || entry.prompt}
+            {instructionLabel}
           </Link>
         ) : (
           <span
@@ -94,8 +102,9 @@ function AutomationListRow<T extends AutomationEntry>({
               "text-sm text-foreground leading-snug block truncate whitespace-nowrap",
               dimmed && "text-muted-foreground",
             )}
+            title={instructionLabel}
           >
-            {entry.description || entry.prompt}
+            {instructionLabel}
           </span>
         )}
       </td>
@@ -105,7 +114,10 @@ function AutomationListRow<T extends AutomationEntry>({
           dimmed && "text-muted-foreground/80",
         )}
       >
-        <span className="block min-w-0 truncate whitespace-nowrap leading-snug tabular-nums">
+        <span
+          className="block min-w-0 truncate whitespace-nowrap leading-snug tabular-nums"
+          title={runsAtLabel}
+        >
           {entry.time}
           {entry.timezone && (
             <span className="text-muted-foreground/70">
