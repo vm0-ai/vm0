@@ -47,10 +47,16 @@ test("sign in through onboarding handoff to chat page", async ({ page }) => {
     { timeout: 30_000 },
   );
 
-  // Follow the external onboarding auth handoff if needed
+  // Follow the external onboarding auth handoff if needed. Since Clerk org
+  // creation bootstraps limited-free workspaces (#20029), fresh users usually
+  // skip the handoff entirely, so the Pro trial checkout below must run
+  // unconditionally: the feature tests (billing spec) assert a Pro
+  // subscription, and limited-free -> pro is an upgrade, never a tier
+  // conflict.
   if (page.url().includes("/onboarding")) {
-    await completeOnboardingThroughApi(page, appUrl);
+    await completeOnboardingSetupThroughApi(page, appUrl);
   }
+  await completeProTrialCheckout(page, appUrl);
 
   // Verify: landed on chat page
   await page.waitForURL("**/agents/*/chat", {
@@ -63,7 +69,7 @@ test("sign in through onboarding handoff to chat page", async ({ page }) => {
   await page.context().storageState({ path: STORAGE_STATE });
 });
 
-async function completeOnboardingThroughApi(
+async function completeOnboardingSetupThroughApi(
   page: Page,
   appUrl: string,
 ): Promise<void> {
@@ -82,6 +88,32 @@ async function completeOnboardingThroughApi(
     },
   );
   await expectStatus(setupResponse, [200, 409], "onboarding setup");
+}
+
+async function completeProTrialCheckout(
+  page: Page,
+  appUrl: string,
+): Promise<void> {
+  const apiUrl = deriveApiUrl(appUrl);
+  const headers = await authHeadersForApp(page, appUrl);
+
+  // Idempotent across playwright retries: a pro checkout for an org that is
+  // already pro is a tier conflict, so skip when the trial is already active.
+  const statusResponse = await page.request.get(
+    `${apiUrl}/api/zero/billing/status`,
+    { headers },
+  );
+  if (statusResponse.ok()) {
+    const status: unknown = await statusResponse.json();
+    if (
+      typeof status === "object" &&
+      status !== null &&
+      "tier" in status &&
+      (status as { tier?: unknown }).tier === "pro"
+    ) {
+      return;
+    }
+  }
 
   const checkoutUrl = await createOnboardingTrialCheckout(
     page,
