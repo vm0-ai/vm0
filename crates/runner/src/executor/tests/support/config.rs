@@ -37,7 +37,6 @@ pub(in crate::executor::tests) async fn test_executor_config(dir: &Path) -> Exec
         mitm_jsonl_flush: None,
         home: HomePaths::with_root(dir.to_path_buf()),
         workspace_cache: None,
-        storage_cache: crate::storage_cache::StorageCacheOptions::default(),
     }
 }
 

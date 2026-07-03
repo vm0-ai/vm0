@@ -159,7 +159,6 @@ pub struct ExecutorConfig {
     pub mitm_jsonl_flush: Option<MitmJsonlFlushHandle>,
     pub home: HomePaths,
     pub workspace_cache: Option<SessionWorkspaceCache>,
-    pub storage_cache: crate::storage_cache::StorageCacheOptions,
 }
 
 /// Per-job VM parameters resolved from the profile config.

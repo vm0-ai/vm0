@@ -254,7 +254,6 @@ fn build_mock_run_config_with_runtime(
             mitm_jsonl_flush: None,
             home,
             workspace_cache: None,
-            storage_cache: crate::storage_cache::StorageCacheOptions::default(),
         }),
         shutdown: ShutdownHandles {
             kmsg_handle: kmsg_log::KmsgHandle::noop(),

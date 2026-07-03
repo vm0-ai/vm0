@@ -74,6 +74,34 @@ async fn serve_history_once(body: &'static [u8]) -> String {
     format!("http://{address}/history.blob?token=secret")
 }
 
+async fn serve_storage_archive_for_cache(
+    body: &'static [u8],
+) -> (String, tokio::task::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let handle = tokio::spawn(async move {
+        let probe_response = format!(
+            "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-0/{}\r\nContent-Length: 1\r\nConnection: close\r\n\r\nx",
+            body.len()
+        )
+        .into_bytes();
+        let mut full_response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        )
+        .into_bytes();
+        full_response.extend_from_slice(body);
+
+        for response in [probe_response, full_response] {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request).await;
+            stream.write_all(&response).await.unwrap();
+        }
+    });
+    (format!("http://{address}/archive.tar.gz"), handle)
+}
+
 async fn serve_history_once_after_request(
     body: &'static [u8],
     request_received: oneshot::Sender<()>,
@@ -504,20 +532,13 @@ async fn run_in_sandbox_runs_guest_download_for_cached_instruction_normalization
 }
 
 #[tokio::test]
-async fn run_in_sandbox_guarded_storage_cache_miss_passthrough_reaches_guest_download() {
+async fn run_in_sandbox_storage_cache_miss_passthrough_reaches_guest_download() {
     let dir = tempfile::tempdir().unwrap();
-    let mut config = test_executor_config(dir.path()).await;
-    config.storage_cache = crate::storage_cache::StorageCacheOptions {
-        miss_passthrough: true,
-    };
+    let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
     let mut ctx = minimal_context();
-    let storage = api_storage(
-        "instructions",
-        "/home/user/.codex",
-        "v1",
-        "https://r2.example.com/instructions.tar.gz",
-    );
+    let (archive_url, archive_server) = serve_storage_archive_for_cache(b"cache-archive").await;
+    let storage = api_storage("instructions", "/home/user/.codex", "v1", &archive_url);
     ctx.storage_manifest = Some(StorageManifest {
         storages: vec![storage],
         artifacts: vec![],
@@ -544,8 +565,12 @@ async fn run_in_sandbox_guarded_storage_cache_miss_passthrough_reaches_guest_dow
         exec_calls
             .iter()
             .any(|call| call.cmd == guest_download_stdin_command()),
-        "guarded cache miss should leave work for guest-download; calls: {exec_calls:?}"
+        "cache miss passthrough should leave work for guest-download; calls: {exec_calls:?}"
     );
+    tokio::time::timeout(Duration::from_secs(5), archive_server)
+        .await
+        .expect("background cache fill should fetch archive")
+        .expect("background cache fill server task should not panic");
     let ops = telemetry.pending_ops_snapshot();
     assert_successful_action_once(&ops, "runner_storage_manifest_has_work");
     assert_successful_action_once(&ops, "runner_storage_manifest_cache_populate");
