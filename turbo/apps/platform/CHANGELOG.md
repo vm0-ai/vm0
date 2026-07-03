@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.543.2](https://github.com/vm0-ai/vm0/compare/app-v0.543.1...app-v0.543.2) (2026-07-03)
+
+
+### Bug Fixes
+
+* prune chat thread events after compaction ([#20072](https://github.com/vm0-ai/vm0/issues/20072)) ([5b382db](https://github.com/vm0-ai/vm0/commit/5b382db8883a14abff23cda3ac79772ed6423c31))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.149.1
+    * @vm0/core bumped to 8.394.2
+
 ## [0.543.1](https://github.com/vm0-ai/vm0/compare/app-v0.543.0...app-v0.543.1) (2026-07-03)
 
 
