@@ -1,14 +1,15 @@
 /**
- * Tests for the `zero schedule` removal stub (#17307, #20100).
+ * Tests for the `zero automation` removal stub (#19959, #20100).
  *
- * The schedule command tree was removed; any invocation prints a notice
- * pointing at `zero workflow` and exits non-zero.
+ * The automation command tree was removed with the automation -> workflow
+ * migration; any invocation prints a notice pointing at `zero workflow` and
+ * exits non-zero.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { zeroScheduleCommand } from "../schedule";
+import { zeroAutomationCommand } from "../automation";
 
-describe("zero schedule (removal stub)", () => {
+describe("zero automation (removal stub)", () => {
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -24,8 +25,8 @@ describe("zero schedule (removal stub)", () => {
   });
 
   it("prints the removal notice and fails for any subcommand", async () => {
-    await zeroScheduleCommand.parseAsync(
-      ["schedule", "setup", "my-agent", "--frequency", "daily"],
+    await zeroAutomationCommand.parseAsync(
+      ["automation", "create", "-n", "alerts", "--cron", "0 9 * * *"],
       { from: "user" },
     );
 
