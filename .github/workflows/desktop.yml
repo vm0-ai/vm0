@@ -189,6 +189,9 @@ jobs:
           unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/app/dist/main.js"
           unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/app/assets/icon.png"
 
+      - name: Smoke test production artifact launch
+        run: node apps/desktop/scripts/smoke-test-packaged-app.js
+
       - name: Upload unsigned macOS artifact
         uses: actions/upload-artifact@v7
         with:
@@ -334,6 +337,12 @@ jobs:
           unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/dist/main.js"
           unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/assets/icon.png"
           unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/desktop-runtime-config.json"
+
+      - name: Smoke test PR preview artifact launch
+        if: github.event_name == 'pull_request'
+        env:
+          VM0_DESKTOP_PLATFORM_URL: ${{ steps.preview.outputs.platform-url }}
+        run: node apps/desktop/scripts/smoke-test-packaged-app.js
 
       - name: Upload unsigned PR preview macOS artifact
         if: github.event_name == 'pull_request'
