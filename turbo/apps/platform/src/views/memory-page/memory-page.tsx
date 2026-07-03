@@ -512,7 +512,9 @@ function formatActivityDate(date: string): string {
   if (Number.isNaN(parsed.getTime())) {
     return date;
   }
-  return parsed.toLocaleDateString(undefined, {
+  // Pin the locale to en-US so the date header matches the English memory
+  // content instead of following the viewer's browser locale (e.g. zh-CN).
+  return parsed.toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
