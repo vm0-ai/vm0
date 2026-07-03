@@ -516,7 +516,7 @@ describe("Python builtin firewall catalog renderer", () => {
     ]);
   });
 
-  it("does not collapse malformed host trailing dots into shared static bases", () => {
+  it("omits connector diagnostic APIs whose static bases are invalid at runtime", () => {
     const files = renderEntries([
       connectorEntry({
         name: "malformed-dot",
@@ -532,6 +532,82 @@ describe("Python builtin firewall catalog renderer", () => {
               {
                 name: "malformed:read",
                 rules: ["GET /malformed/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "empty-port",
+        apis: [
+          {
+            base: "https://shared-dot.example.com:/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.EMPTY_PORT_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "empty-port:read",
+                rules: ["GET /empty-port/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "userinfo",
+        apis: [
+          {
+            base: "https://user@shared-dot.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.USERINFO_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "userinfo:read",
+                rules: ["GET /userinfo/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "query-base",
+        apis: [
+          {
+            base: "https://shared-dot.example.com/api?version=1",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.QUERY_BASE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "query-base:read",
+                rules: ["GET /query-base/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "encoded-dot",
+        apis: [
+          {
+            base: "https://shared-dot.example%2ecom/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.ENCODED_DOT_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "encoded-dot:read",
+                rules: ["GET /encoded-dot/{id}"],
               },
             ],
           },
@@ -563,17 +639,6 @@ describe("Python builtin firewall catalog renderer", () => {
       jsonAssignmentFromModule(diagnostics, "CONNECTOR_DIAGNOSTIC_FIREWALLS"),
     ).toStrictEqual([
       {
-        name: "malformed-dot",
-        apis: [
-          {
-            base: "https://shared-dot.example.com../api",
-            envNames: ["MALFORMED_DOT_TOKEN"],
-            authHeaderNames: ["Authorization"],
-            authQueryParamNames: [],
-          },
-        ],
-      },
-      {
         name: "valid-dot",
         apis: [
           {
@@ -581,6 +646,89 @@ describe("Python builtin firewall catalog renderer", () => {
             envNames: ["VALID_DOT_TOKEN"],
             authHeaderNames: ["Authorization"],
             authQueryParamNames: [],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("keeps runtime-safe percent-encoded host escapes in shared static base matching", () => {
+    const files = renderEntries([
+      connectorEntry({
+        name: "encoded-host",
+        apis: [
+          {
+            base: "https://shared%2ddot.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.ENCODED_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "encoded-host:read",
+                rules: ["GET /encoded-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "decoded-host",
+        apis: [
+          {
+            base: "https://shared-dot.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.DECODED_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "decoded-host:read",
+                rules: ["GET /decoded-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+    const diagnostics = findGeneratedFile(files, "diagnostics.py");
+
+    expect(
+      jsonAssignmentFromModule(diagnostics, "CONNECTOR_DIAGNOSTIC_FIREWALLS"),
+    ).toStrictEqual([
+      {
+        name: "decoded-host",
+        apis: [
+          {
+            base: "https://shared-dot.example.com/api",
+            envNames: ["DECODED_HOST_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "decoded-host:read",
+                rules: ["GET /decoded-host/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "encoded-host",
+        apis: [
+          {
+            base: "https://shared%2ddot.example.com/api",
+            envNames: ["ENCODED_HOST_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "encoded-host:read",
+                rules: ["GET /encoded-host/{id}"],
+              },
+            ],
           },
         ],
       },

@@ -88,6 +88,29 @@ const PYTHON_MODULE_HASH_LENGTH = 12;
 const PYTHON_JSON_PART_ASSIGNMENT_PREFIX = "JSON_PART = ";
 const DIAGNOSTIC_JSON_ASSIGNMENT_PREFIX =
   "MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS = json.loads(";
+const HEX_DIGIT_PATTERN = /^[0-9a-fA-F]$/;
+const PERCENT_DECODED_FORBIDDEN_HOST_CHARS = new Set([
+  "#",
+  "%",
+  "/",
+  "<",
+  ">",
+  "?",
+  "@",
+  "[",
+  "\\",
+  "]",
+  "^",
+  "|",
+  "{",
+  "}",
+  "*",
+  ".",
+  ":",
+  "\u3002",
+  "\uff0e",
+  "\uff61",
+]);
 // Fallback JSON string literals can double quotes and backslashes.
 const MAX_JSON_PART_SOURCE_CHARS = Math.floor(
   (MAX_GENERATED_PYTHON_LINE_LENGTH -
@@ -269,18 +292,155 @@ function stripHostnameTrailingDot(host: string): string {
   return `${hostname}${host.slice(portStart)}`;
 }
 
+function rawUrlAuthority(base: string): string | null {
+  const schemeMatch = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.exec(base);
+  if (schemeMatch === null) {
+    return null;
+  }
+
+  const authorityStart = schemeMatch[0].length;
+  const authoritySuffix = base.slice(authorityStart);
+  const authorityEnd = authoritySuffix.search(/[/?#]/);
+  const end = authorityEnd === -1 ? base.length : authorityStart + authorityEnd;
+  const authority = base.slice(authorityStart, end);
+  return authority.length > 0 ? authority : null;
+}
+
+function rawAuthorityHostPort(authority: string): string {
+  const userInfoEnd = authority.lastIndexOf("@");
+  return userInfoEnd === -1 ? authority : authority.slice(userInfoEnd + 1);
+}
+
+function rawAuthorityHasEmptyPort(authority: string): boolean {
+  return rawAuthorityHostPort(authority).endsWith(":");
+}
+
+function rawAuthorityHostname(authority: string): string | null {
+  const hostPort = rawAuthorityHostPort(authority);
+  if (hostPort.length === 0) {
+    return null;
+  }
+
+  if (hostPort.startsWith("[")) {
+    const closeIndex = hostPort.indexOf("]");
+    if (closeIndex === -1) {
+      return null;
+    }
+    const rest = hostPort.slice(closeIndex + 1);
+    if (rest.length > 0 && !rest.startsWith(":")) {
+      return null;
+    }
+    return hostPort.slice(1, closeIndex);
+  }
+
+  if (hostPort.split(":").length === 2) {
+    return hostPort.slice(0, hostPort.lastIndexOf(":"));
+  }
+
+  return hostPort;
+}
+
+function hostnameHasEmptyLabel(hostname: string): boolean {
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    return false;
+  }
+
+  const normalizedHostname = stripSingleHostnameTrailingDot(hostname);
+  return normalizedHostname.split(".").some((label) => {
+    return label.length === 0;
+  });
+}
+
+function isAsciiSpaceOrControl(value: string): boolean {
+  for (const char of value) {
+    const codepoint = char.codePointAt(0);
+    if (codepoint !== undefined && codepoint <= 0x20) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function percentDecodedHostnameEscapesAreRuntimeSafe(
+  hostname: string,
+): boolean {
+  let index = 0;
+  while (index < hostname.length) {
+    if (hostname[index] !== "%") {
+      index += 1;
+      continue;
+    }
+
+    let encoded = "";
+    while (hostname[index] === "%") {
+      const first = hostname[index + 1];
+      const second = hostname[index + 2];
+      if (
+        first === undefined ||
+        second === undefined ||
+        !HEX_DIGIT_PATTERN.test(first) ||
+        !HEX_DIGIT_PATTERN.test(second)
+      ) {
+        return false;
+      }
+      encoded += `%${first}${second}`;
+      index += 3;
+    }
+
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(encoded);
+    } catch {
+      return false;
+    }
+    if (isAsciiSpaceOrControl(decoded)) {
+      return false;
+    }
+    for (const char of decoded) {
+      if (PERCENT_DECODED_FORBIDDEN_HOST_CHARS.has(char)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 function diagnosticStaticBaseKey(base: string): string | null {
   if (hasDynamicBaseMarker(base)) {
     return null;
   }
 
+  const rawAuthority = rawUrlAuthority(base);
+  if (rawAuthority === null || rawAuthorityHasEmptyPort(rawAuthority)) {
+    return null;
+  }
+
+  const rawHostname = rawAuthorityHostname(rawAuthority);
+  if (
+    rawHostname === null ||
+    !percentDecodedHostnameEscapesAreRuntimeSafe(rawHostname)
+  ) {
+    return null;
+  }
+
   try {
     const url = new URL(base);
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      url.username !== "" ||
+      url.password !== "" ||
+      url.search !== "" ||
+      url.hash !== "" ||
+      hostnameHasEmptyLabel(url.hostname.toLowerCase())
+    ) {
+      return null;
+    }
+
     const host = stripHostnameTrailingDot(url.host.toLowerCase());
     const pathname = url.pathname.replace(/\/+$/, "");
     return `${url.protocol}//${host}${pathname}`;
   } catch {
-    return base;
+    return null;
   }
 }
 
