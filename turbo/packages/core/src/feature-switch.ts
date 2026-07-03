@@ -335,6 +335,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Render the chat sidebar from local chat thread snapshots plus lifecycle events instead of the paged thread list response.",
     enabled: false,
   },
+  [FeatureSwitchKey.ChatThreadLatestUserMessageScrollAnchor]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "After chat sends, keep auto-scroll moving only until the latest rendered user message reaches the top of the thread viewport instead of always pinning to the absolute bottom.",
+    enabled: false,
+  },
   [FeatureSwitchKey.TeamsIntegration]: {
     maintainer: "linghan@vm0.ai",
     description:
