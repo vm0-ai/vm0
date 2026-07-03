@@ -2,7 +2,6 @@
 # Use 1Password CLI to inject secrets: ./scripts/sync-env.sh
 VITE_CLERK_PUBLISHABLE_KEY=op://Development/clerk/CLERK_PUBLISHABLE_KEY
 VITE_API_URL=http://localhost:3000
-VITE_GIT_COMMIT_SHA=local-dev
 PUBLIC_ARTIFACTS_BASE_URL=https://cdn.vm7.io
 VITE_STATIC_ASSETS_BASE_URL=https://static.vm7.io
 VITE_ZERO_HOST_DOMAIN=sites.vm7.io
