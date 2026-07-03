@@ -1286,7 +1286,12 @@ function resolveModelProviderModel(args: {
   if (model === null && args.defaultModel !== undefined) {
     model = args.defaultModel;
   }
-  if (args.envBindings && envBindingsRequireModel(args.envBindings) && !model) {
+  if (
+    args.envBindings &&
+    envBindingsRequireModel(args.envBindings) &&
+    !model &&
+    args.defaultModel !== ""
+  ) {
     throw new Error(`Missing model for model provider ${args.type}`);
   }
   return model === "" ? null : model;
