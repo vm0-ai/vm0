@@ -333,6 +333,69 @@ async fn ready_direct_drain_continues_after_affinity_defer() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn ready_direct_drain_continues_after_claim_conflict() {
+    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let trigger_run_id = RunId::new_v4();
+    let conflict_run_id = RunId::new_v4();
+    let followup_run_id = RunId::new_v4();
+    env.provider.set_claim_result(conflict_run_id, None);
+    env.provider
+        .set_claim_result(followup_run_id, Some(minimal_context(followup_run_id)));
+    env.handle
+        .push_ready_candidate(crate::provider::JobCandidate::new(
+            conflict_run_id,
+            "vm0/default".into(),
+        ));
+    env.handle
+        .push_ready_candidate(crate::provider::JobCandidate::new(
+            followup_run_id,
+            "vm0/default".into(),
+        ));
+
+    push_job(
+        &env,
+        trigger_run_id,
+        "vm0/default",
+        Some(minimal_context(trigger_run_id)),
+    );
+
+    let trigger_completion = env
+        .handle
+        .wait_completion(trigger_run_id, Duration::from_secs(5))
+        .await;
+    assert!(trigger_completion.is_some(), "trigger job should complete");
+    let followup_completion = env
+        .handle
+        .wait_completion(followup_run_id, Duration::from_secs(5))
+        .await;
+    assert!(
+        followup_completion.is_some(),
+        "ready drain should continue to a later candidate after a claim conflict"
+    );
+    wait_cancel_token_removed(&env.cancel_tokens, conflict_run_id, Duration::from_secs(5)).await;
+
+    let claim_candidates = env.handle.claim_candidates();
+    assert!(
+        claim_candidates
+            .iter()
+            .any(|candidate| candidate.run_id() == conflict_run_id),
+        "claim conflict candidate should reach claim"
+    );
+    assert!(
+        claim_candidates
+            .iter()
+            .any(|candidate| candidate.run_id() == followup_run_id),
+        "follow-up ready candidate should still be claimed"
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn affinity_protected_candidate_with_local_session_claims() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let budget = Arc::clone(&config.capacity.budget);
