@@ -51,6 +51,8 @@ export const testBillingStatusStateActionBodySchema = z.discriminatedUnion(
   [
     z.object({
       action: z.literal("seed-org"),
+      org_id: z.string().optional(),
+      user_id: z.string().optional(),
       credits: z.number().optional(),
       onboarding_payment_pending: z.boolean().optional(),
       tier: z.string().optional(),
