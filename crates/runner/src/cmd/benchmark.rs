@@ -160,6 +160,7 @@ pub async fn run_benchmark(
     {
         Ok(handle) => handle,
         Err(e) => {
+            drop(resource_locks);
             stop_benchmark_proxy(&mut mitm, "live_runner_publish").await;
             return Err(e);
         }
@@ -218,6 +219,7 @@ pub async fn run_benchmark(
     // Shutdown factory first (releases the COW pool), then runtime-owned pools.
     factory.shutdown().await;
     runtime.shutdown().await;
+    drop(resource_locks);
     if let Err(e) = mitm.stop().await {
         warn!(error = %e, "proxy stop failed");
     }
