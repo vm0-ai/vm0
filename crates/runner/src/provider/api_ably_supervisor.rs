@@ -630,12 +630,9 @@ async fn handle_ably_message_with_connector_policy_refresh(
         let Some(connector_policy_refresh) = connector_policy_refresh else {
             return;
         };
-        let refresh = connector_policy_refresh.clone();
-        tokio::spawn(async move {
-            refresh
-                .notify_permission_refresh(notification.run_id, notification.connector_ref)
-                .await;
-        });
+        connector_policy_refresh
+            .notify_permission_refresh(notification.run_id, notification.connector_ref)
+            .await;
         return;
     }
 

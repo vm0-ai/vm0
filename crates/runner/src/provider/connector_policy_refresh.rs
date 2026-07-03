@@ -201,12 +201,22 @@ impl ConnectorPolicyRefreshCore {
     }
 
     async fn notify_permission_refresh(&self, run_id: RunId, connector_ref: String) {
+        if !self.has_active_connector(run_id, &connector_ref).await {
+            return;
+        }
         self.enqueue_refresh(RefreshRequest {
             run_id,
             connector_ref,
             trigger: RefreshTrigger::Notification,
         })
         .await;
+    }
+
+    async fn has_active_connector(&self, run_id: RunId, connector_ref: &str) -> bool {
+        let active_runs = self.inner.active_runs.lock().await;
+        active_runs
+            .get(&run_id)
+            .is_some_and(|active| active.connector_refs.contains(connector_ref))
     }
 
     async fn enqueue_refresh(&self, request: RefreshRequest) {
@@ -486,6 +496,26 @@ mod tests {
         )
     }
 
+    fn core_without_worker(
+        server: &MockServer,
+    ) -> (
+        ConnectorPolicyRefreshCore,
+        tokio::sync::mpsc::Receiver<RefreshRequest>,
+    ) {
+        let (request_tx, request_rx) = mpsc::channel(REFRESH_REQUEST_QUEUE_CAPACITY);
+        (
+            ConnectorPolicyRefreshCore {
+                inner: Arc::new(ConnectorPolicyRefreshState {
+                    api: api_client_for_server(server),
+                    active_runs: Mutex::new(HashMap::new()),
+                    cancel: CancellationToken::new(),
+                }),
+                request_tx,
+            },
+            request_rx,
+        )
+    }
+
     struct RefreshPolicyHarness {
         _dir: tempfile::TempDir,
         handle: ConnectorPolicyRefreshHandle,
@@ -643,6 +673,52 @@ mod tests {
             .await;
 
         assert!(handle.core.inner.active_runs.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn inactive_permission_notification_is_not_enqueued() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+
+        core.notify_permission_refresh(RunId::nil(), "slack".to_string())
+            .await;
+
+        assert!(matches!(
+            requests.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ));
+    }
+
+    #[tokio::test]
+    async fn active_permission_notification_is_enqueued() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let registry = ProxyRegistryHandle::new(
+            dir.path().join("proxy-registry.json"),
+            dir.path().join("proxy-registry.lock"),
+        );
+        core.inner.active_runs.lock().await.insert(
+            run_id,
+            ActiveRunPolicyState {
+                source_ip: "10.200.0.2".to_string(),
+                registry,
+                connector_refs: HashSet::from(["slack".to_string()]),
+                cancel: CancellationToken::new(),
+                refresh_tasks: HashMap::new(),
+            },
+        );
+
+        core.notify_permission_refresh(run_id, "slack".to_string())
+            .await;
+
+        let request = requests
+            .try_recv()
+            .expect("active connector notification should enqueue refresh");
+        assert_eq!(request.run_id, run_id);
+        assert_eq!(request.connector_ref, "slack");
+        assert!(matches!(request.trigger, RefreshTrigger::Notification));
     }
 
     #[tokio::test]
