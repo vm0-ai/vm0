@@ -11,9 +11,10 @@ use super::super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
 use super::super::env::{
-    HostEnv, build_env_json_with_host_env, build_user_env_json, guest_user_env_file_path,
-    is_runner_owned_env_key, validate_execution_context_before_sandbox,
-    validate_model_provider_env_placeholders, write_user_env_file,
+    HostEnv, build_env_json_with_host_env, build_run_payload_for_run, build_user_env_json,
+    guest_run_payload_file_path, guest_user_env_file_path, is_runner_owned_env_key,
+    validate_execution_context_before_sandbox, validate_model_provider_env_placeholders,
+    write_run_payload_file, write_user_env_file,
 };
 use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
 use super::support::{
@@ -186,7 +187,7 @@ fn execution_context_validation_rejects_bootstrap_env_nul_before_sandbox() {
 
     let error = validate_context_for_test(&ctx).unwrap_err();
 
-    assert!(error.contains("bootstrap environment"));
+    assert!(error.contains("run payload"));
     assert!(error.contains("NUL byte"));
     assert!(error.contains("VM0_PROMPT"));
     assert!(!error.contains(secret));
@@ -333,7 +334,7 @@ fn build_env_json_required_keys() {
             .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
     );
-    assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
+    assert!(!env.contains_key("VM0_PROMPT"));
     assert!(!env.contains_key("VM0_WORKING_DIR"));
     // Guest-agent needs these to post /complete with full metadata when
     // checkpoint lands before VM teardown.
@@ -406,12 +407,13 @@ fn build_env_json_claude_code_gets_only_claude_framework_env() {
     );
 
     assert_eq!(env.get("USE_MOCK_CLAUDE").unwrap(), "true");
-    assert_eq!(
-        env.get("VM0_DISALLOWED_TOOLS").unwrap(),
-        "CronCreate,CronDelete"
-    );
-    assert_eq!(env.get("VM0_TOOLS").unwrap(), "Bash,Edit");
-    assert_eq!(env.get("VM0_SETTINGS").unwrap(), r#"{"hooks":{}}"#);
+    assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
+    assert!(!env.contains_key("VM0_TOOLS"));
+    assert!(!env.contains_key("VM0_SETTINGS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert_eq!(payload.disallowed_tools, "CronCreate,CronDelete");
+    assert_eq!(payload.tools, "Bash,Edit");
+    assert_eq!(payload.settings, r#"{"hooks":{}}"#);
     assert!(!env.contains_key("USE_MOCK_CODEX"));
 }
 
@@ -498,9 +500,13 @@ fn build_env_json_unknown_framework_preserves_claude_compatible_env() {
 
     assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "custom-agent");
     assert_eq!(env.get("USE_MOCK_CLAUDE").unwrap(), "true");
-    assert_eq!(env.get("VM0_DISALLOWED_TOOLS").unwrap(), "CronCreate");
-    assert_eq!(env.get("VM0_TOOLS").unwrap(), "Bash");
-    assert_eq!(env.get("VM0_SETTINGS").unwrap(), r#"{"hooks":{}}"#);
+    assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
+    assert!(!env.contains_key("VM0_TOOLS"));
+    assert!(!env.contains_key("VM0_SETTINGS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert_eq!(payload.disallowed_tools, "CronCreate");
+    assert_eq!(payload.tools, "Bash");
+    assert_eq!(payload.settings, r#"{"hooks":{}}"#);
     assert!(!env.contains_key("USE_MOCK_CODEX"));
 }
 
@@ -568,13 +574,21 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
             "/tmp/mock-codex".into(),
         ),
         (USER_ENV_FILE_ENV_KEY.into(), "/tmp/user-env".into()),
+        (
+            guest_contracts::env::RUN_PAYLOAD_FILE_ENV.into(),
+            "/tmp/run-payload".into(),
+        ),
     ]));
 
     let bootstrap_env = build_env_for_test(&ctx, "http://localhost");
     let user_env = build_user_env_json(&ctx);
 
     assert!(!bootstrap_env.contains_key("CUSTOM_ENV"));
-    assert_eq!(bootstrap_env.get("VM0_PROMPT").unwrap(), "test prompt");
+    assert!(!bootstrap_env.contains_key("VM0_PROMPT"));
+    assert_eq!(
+        build_run_payload_for_run(&ctx).unwrap().prompt,
+        "test prompt"
+    );
     assert_eq!(bootstrap_env.get("VM0_API_TOKEN").unwrap(), "tok");
     assert_eq!(
         bootstrap_env
@@ -607,6 +621,7 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
         guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
         guest_contracts::env::MOCK_CODEX_PATH_ENV,
         USER_ENV_FILE_ENV_KEY,
+        guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
     ] {
         assert!(!user_env.contains_key(key), "{key} should be scrubbed");
     }
@@ -704,11 +719,10 @@ fn build_env_json_codex_keeps_shared_runner_env() {
     ));
 
     let env = build_env_for_test(&ctx, "http://localhost");
+    let payload = build_run_payload_for_run(&ctx).unwrap();
 
-    assert_eq!(
-        env.get("VM0_APPEND_SYSTEM_PROMPT").unwrap(),
-        "Use terse answers."
-    );
+    assert!(!env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
+    assert_eq!(payload.append_system_prompt, "Use terse answers.");
     assert_eq!(
         env.get("VM0_RESUME_SESSION_ID").unwrap(),
         "019e9154-c304-70f0-adde-36efb1be1701"
@@ -754,7 +768,9 @@ fn build_env_json_with_single_artifact() {
     });
 
     let env = build_env_for_test(&ctx, "http://localhost");
-    let raw = env.get("VM0_ARTIFACTS").expect("VM0_ARTIFACTS must be set");
+    assert!(!env.contains_key("VM0_ARTIFACTS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    let raw = &payload.artifacts;
     let parsed: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
     assert_eq!(parsed.len(), 1);
     assert_eq!(parsed[0]["name"], "my-vol");
@@ -786,7 +802,9 @@ fn build_env_json_with_artifact_missing_root_policy() {
     });
 
     let env = build_env_for_test(&ctx, "http://localhost");
-    let raw = env.get("VM0_ARTIFACTS").expect("VM0_ARTIFACTS must be set");
+    assert!(!env.contains_key("VM0_ARTIFACTS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    let raw = &payload.artifacts;
     let parsed: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
 
     assert_eq!(parsed.len(), 1);
@@ -818,7 +836,9 @@ fn build_env_json_with_two_artifacts() {
     });
 
     let env = build_env_for_test(&ctx, "http://localhost");
-    let raw = env.get("VM0_ARTIFACTS").unwrap();
+    assert!(!env.contains_key("VM0_ARTIFACTS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    let raw = &payload.artifacts;
     let parsed: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
     assert_eq!(parsed.len(), 2);
     assert_eq!(parsed[0]["name"], "art-a");
@@ -839,6 +859,8 @@ fn build_env_json_empty_artifacts_emits_no_env_var() {
 
     let env = build_env_for_test(&ctx, "http://localhost");
     assert!(!env.contains_key("VM0_ARTIFACTS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert!(payload.artifacts.is_empty());
 }
 
 #[test]
@@ -848,7 +870,9 @@ fn build_env_json_with_secrets() {
     ctx.secret_values = Some(vec!["secret1".into(), "secret,with\nnewline".into()]);
 
     let env = build_env_for_test(&ctx, "http://localhost");
-    let val = env.get("VM0_SECRET_VALUES").unwrap();
+    assert!(!env.contains_key("VM0_SECRET_VALUES"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    let val = &payload.secret_values;
 
     use base64::Engine as _;
     let parts: Vec<&str> = val.split(',').collect();
@@ -891,9 +915,11 @@ fn build_env_json_user_vars_cannot_override_system() {
     ]));
 
     let env = build_env_for_test(&ctx, "http://localhost");
+    let payload = build_run_payload_for_run(&ctx).unwrap();
     let user_env = build_user_env_json(&ctx);
     // System variables take precedence over user environment
-    assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
+    assert!(!env.contains_key("VM0_PROMPT"));
+    assert_eq!(payload.prompt, "test prompt");
     assert!(!env.contains_key("CUSTOM"));
     assert_eq!(user_env.get("CUSTOM").unwrap(), "value");
     assert!(!user_env.contains_key("VM0_PROMPT"));
@@ -982,6 +1008,53 @@ async fn write_user_env_file_returns_private_write_error() {
     assert_eq!(writes.len(), 1);
 }
 
+#[tokio::test]
+async fn write_run_payload_file_uses_private_write_for_large_payload() {
+    let sandbox = MockSandbox::new("test");
+    let run_id = RunId::nil();
+    let payload = guest_contracts::env::RunPayload {
+        prompt: "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
+        append_system_prompt: "system".to_string(),
+        secret_values: "secret".to_string(),
+        ..guest_contracts::env::RunPayload::default()
+    };
+
+    let path = write_run_payload_file(&sandbox, run_id, &payload)
+        .await
+        .unwrap();
+
+    assert_eq!(path, guest_run_payload_file_path(run_id).unwrap());
+    assert!(sandbox.exec_calls().is_empty());
+    assert!(sandbox.write_file_calls().is_empty());
+    let writes = sandbox.private_write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].path, path);
+    let decoded: guest_contracts::env::RunPayload =
+        serde_json::from_slice(&writes[0].content).unwrap();
+    assert_eq!(decoded, payload);
+}
+
+#[tokio::test]
+async fn write_run_payload_file_returns_private_write_error() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_private_write_file_result(Err(sandbox_write_file_error("private write failed")));
+    let run_id = RunId::nil();
+    let payload = guest_contracts::env::RunPayload {
+        prompt: "test prompt".to_string(),
+        ..guest_contracts::env::RunPayload::default()
+    };
+
+    let err = write_run_payload_file(&sandbox, run_id, &payload)
+        .await
+        .unwrap_err();
+    let message = err.to_string();
+
+    assert!(message.contains("private write failed"), "got: {message}");
+    assert!(sandbox.exec_calls().is_empty());
+    assert!(sandbox.write_file_calls().is_empty());
+    assert_eq!(sandbox.private_write_file_calls().len(), 1);
+}
+
 #[test]
 fn build_env_json_with_environment() {
     let mut ctx = minimal_context();
@@ -1013,8 +1086,10 @@ fn build_env_json_empty_secrets_still_has_sandbox_token() {
     ctx.secret_values = Some(vec![]);
 
     let env = build_env_for_test(&ctx, "http://localhost");
-    // VM0_SECRET_VALUES always present because sandbox_token is included
-    let val = env.get("VM0_SECRET_VALUES").unwrap();
+    assert!(!env.contains_key("VM0_SECRET_VALUES"));
+    // VM0_SECRET_VALUES payload always includes the sandbox token for masking.
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    let val = &payload.secret_values;
     use base64::Engine as _;
     let decoded = base64::engine::general_purpose::STANDARD
         .decode(val)
@@ -1027,10 +1102,9 @@ fn build_env_json_with_append_system_prompt() {
     let mut ctx = minimal_context();
     ctx.append_system_prompt = Some("Your name is Aria.".into());
     let env = build_env_for_test(&ctx, "http://localhost");
-    assert_eq!(
-        env.get("VM0_APPEND_SYSTEM_PROMPT").unwrap(),
-        "Your name is Aria."
-    );
+    assert!(!env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert_eq!(payload.append_system_prompt, "Your name is Aria.");
 }
 
 #[test]
@@ -1082,9 +1156,11 @@ fn build_env_json_environment_cannot_override_system() {
     ]));
 
     let env = build_env_for_test(&ctx, "http://localhost");
+    let payload = build_run_payload_for_run(&ctx).unwrap();
     let user_env = build_user_env_json(&ctx);
     // System variables take precedence over user environment
-    assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
+    assert!(!env.contains_key("VM0_PROMPT"));
+    assert_eq!(payload.prompt, "test prompt");
     assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
     assert!(!env.contains_key("CUSTOM_ENV"));
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
@@ -1242,10 +1318,9 @@ fn build_env_json_with_disallowed_tools() {
     let mut ctx = minimal_context();
     ctx.disallowed_tools = Some(vec!["CronCreate".into(), "CronDelete".into()]);
     let env = build_env_for_test(&ctx, "http://localhost");
-    assert_eq!(
-        env.get("VM0_DISALLOWED_TOOLS").unwrap(),
-        "CronCreate,CronDelete"
-    );
+    assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert_eq!(payload.disallowed_tools, "CronCreate,CronDelete");
 }
 
 #[test]
@@ -1254,6 +1329,8 @@ fn build_env_json_empty_disallowed_tools_omitted() {
     ctx.disallowed_tools = Some(vec![]);
     let env = build_env_for_test(&ctx, "http://localhost");
     assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert!(payload.disallowed_tools.is_empty());
 }
 
 #[test]
@@ -1261,6 +1338,8 @@ fn build_env_json_no_disallowed_tools() {
     let ctx = minimal_context();
     let env = build_env_for_test(&ctx, "http://localhost");
     assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert!(payload.disallowed_tools.is_empty());
 }
 
 #[test]
@@ -1268,7 +1347,9 @@ fn build_env_json_with_tools() {
     let mut ctx = minimal_context();
     ctx.tools = Some(vec!["Bash".into(), "Edit".into()]);
     let env = build_env_for_test(&ctx, "http://localhost");
-    assert_eq!(env.get("VM0_TOOLS").unwrap(), "Bash,Edit");
+    assert!(!env.contains_key("VM0_TOOLS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert_eq!(payload.tools, "Bash,Edit");
 }
 
 #[test]
@@ -1277,6 +1358,8 @@ fn build_env_json_empty_tools_omitted() {
     ctx.tools = Some(vec![]);
     let env = build_env_for_test(&ctx, "http://localhost");
     assert!(!env.contains_key("VM0_TOOLS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert!(payload.tools.is_empty());
 }
 
 #[test]
@@ -1284,10 +1367,12 @@ fn build_env_json_no_tools() {
     let ctx = minimal_context();
     let env = build_env_for_test(&ctx, "http://localhost");
     assert!(!env.contains_key("VM0_TOOLS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert!(payload.tools.is_empty());
 }
 
-fn assert_tool_env_error(
-    result: RunnerResult<HashMap<String, String>>,
+fn assert_tool_env_error<T: std::fmt::Debug>(
+    result: RunnerResult<T>,
     env_name: &str,
     expected: &str,
 ) {
@@ -1310,7 +1395,7 @@ fn build_env_json_rejects_invalid_disallowed_tools_entries() {
     ] {
         let mut ctx = minimal_context();
         ctx.disallowed_tools = Some(vec![tool.into()]);
-        let result = build_env_for_test_result(&ctx, "http://localhost");
+        let result = build_run_payload_for_run(&ctx);
         assert_tool_env_error(result, "VM0_DISALLOWED_TOOLS", expected);
     }
 }
@@ -1326,7 +1411,7 @@ fn build_env_json_rejects_invalid_tools_entries() {
     ] {
         let mut ctx = minimal_context();
         ctx.tools = Some(vec![tool.into()]);
-        let result = build_env_for_test_result(&ctx, "http://localhost");
+        let result = build_run_payload_for_run(&ctx);
         assert_tool_env_error(result, "VM0_TOOLS", expected);
     }
 }
@@ -1340,6 +1425,9 @@ fn build_env_json_codex_ignores_claude_tool_lists() {
     let env = build_env_for_test(&ctx, "http://localhost");
     assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
     assert!(!env.contains_key("VM0_TOOLS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert!(payload.disallowed_tools.is_empty());
+    assert!(payload.tools.is_empty());
 }
 
 #[test]
@@ -1347,7 +1435,9 @@ fn build_env_json_with_settings() {
     let mut ctx = minimal_context();
     ctx.settings = Some(r#"{"hooks":{}}"#.into());
     let env = build_env_for_test(&ctx, "http://localhost");
-    assert_eq!(env.get("VM0_SETTINGS").unwrap(), r#"{"hooks":{}}"#);
+    assert!(!env.contains_key("VM0_SETTINGS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert_eq!(payload.settings, r#"{"hooks":{}}"#);
 }
 
 #[test]
@@ -1356,6 +1446,8 @@ fn build_env_json_empty_settings_omitted() {
     ctx.settings = Some("".into());
     let env = build_env_for_test(&ctx, "http://localhost");
     assert!(!env.contains_key("VM0_SETTINGS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert!(payload.settings.is_empty());
 }
 
 #[test]
@@ -1363,6 +1455,8 @@ fn build_env_json_no_settings() {
     let ctx = minimal_context();
     let env = build_env_for_test(&ctx, "http://localhost");
     assert!(!env.contains_key("VM0_SETTINGS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert!(payload.settings.is_empty());
 }
 
 #[test]
@@ -1373,9 +1467,9 @@ fn build_env_json_with_feature_flags() {
     flags.insert("audioOutput".into(), false);
     ctx.feature_flags = Some(flags);
     let env = build_env_for_test(&ctx, "http://localhost");
-    let raw = env
-        .get("VM0_FEATURE_FLAGS")
-        .expect("VM0_FEATURE_FLAGS should be set");
+    assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    let raw = &payload.feature_flags;
     let parsed: HashMap<String, bool> = serde_json::from_str(raw).unwrap();
     assert_eq!(parsed.get("computerUse"), Some(&true));
     assert_eq!(parsed.get("audioOutput"), Some(&false));
@@ -1387,6 +1481,8 @@ fn build_env_json_empty_feature_flags_omitted() {
     ctx.feature_flags = Some(HashMap::new());
     let env = build_env_for_test(&ctx, "http://localhost");
     assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert!(payload.feature_flags.is_empty());
 }
 
 #[test]
@@ -1394,6 +1490,8 @@ fn build_env_json_no_feature_flags() {
     let ctx = minimal_context();
     let env = build_env_for_test(&ctx, "http://localhost");
     assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert!(payload.feature_flags.is_empty());
 }
 
 #[tokio::test]
@@ -1415,7 +1513,9 @@ async fn build_env_json_with_memory_as_artifact() {
     assert!(!env.contains_key("VM0_MEMORY_MOUNT_PATH"));
     assert!(!env.contains_key("VM0_MEMORY_NAME"));
     assert!(!env.contains_key("VM0_MEMORY_VERSION_ID"));
-    let artifacts = env.get("VM0_ARTIFACTS").unwrap();
+    assert!(!env.contains_key("VM0_ARTIFACTS"));
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    let artifacts = &payload.artifacts;
     assert!(artifacts.contains("\"memory\""));
     assert!(artifacts.contains("\"/memory\""));
     assert!(artifacts.contains("\"v2\""));

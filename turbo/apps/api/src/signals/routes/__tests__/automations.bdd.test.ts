@@ -3,198 +3,92 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
-import {
-  createBddApi,
-  expectApiError,
-  type ApiTestUser,
-} from "./helpers/api-bdd";
-import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import {
   createRunsAutomationsApi,
   uniqueAutomationName,
 } from "./helpers/api-bdd-runs-automations";
 
 /**
- * AUTOMATIONS-03: the events-first automations surface run-now dispatch. The
- * AUTOMATIONS-01 lifecycle chain lives in runs-schedules.bdd.test.ts.
+ * AUTOMATIONS-03: the legacy automations surface is FROZEN after the
+ * automation -> workflow cutover (#19959, migration 0535). Every mutating
+ * route answers 403 with the workflow-trigger guidance — unconditionally, so
+ * not even a feature-switch override can reopen the legacy write path — while
+ * list stays readable for provenance. The run-now dispatch chain this scenario
+ * used to exercise lives on the workflow trigger surface now
+ * (zero-workflow-triggers tests).
  *
- * Shared-database isolation: this file never calls cron-execute-schedules (or
- * any other cron route) — those global sweeps are owned by
- * runs-schedules.bdd.test.ts. Every time automation created here is
- * enabled:false (runAutomationNow$ has no enabled gate, and a disabled row can
- * never be claimed by a foreign worker's execute-schedules sweep). No mockNow
- * anywhere: nothing here depends on due-time math.
- *
- * Run provenance (zeroRuns.automationId/triggerId) has no API read surface;
- * the dispatch is asserted through its visible effects instead (chat-thread
- * user message carrying the runId plus the runner-claim render). If a
- * provenance read API appears, promote it to a visible Then.
+ * Shared-database isolation: this file never calls any cron route and creates
+ * no automation rows at all, so there is nothing a foreign worker's sweep
+ * could claim.
  */
 
 const context = testContext();
 
-async function entitledAutomationActor(): Promise<{
-  readonly actor: ApiTestUser;
-  readonly agentId: string;
-  readonly runnerGroup: string;
-}> {
-  const bdd = createBddApi(context);
-  const api = createRunsAutomationsApi(context);
-  const actor = bdd.user();
-  bdd.acceptAgentStorageWrites();
-  api.acceptStorageDownloads();
-  api.acceptTelemetryIngest();
-  const runnerGroup = api.configureRunnerGroup();
-  await api.grantProEntitlement(actor);
-  await api.ensureOrgModelProvider(actor);
-  const agent = await bdd.createAgent(actor, {
-    displayName: "BDD automation agent",
-    description: "Exercises the automations API surface.",
-    visibility: "private",
-  });
-  await api.enableAutomations(actor);
-  return { actor, agentId: agent.agentId, runnerGroup };
-}
+const DISABLED_MESSAGE =
+  "Schedule automation has been disabled. Use zero workflow trigger to create scheduled tasks.";
 
-interface ThreadMessageView {
-  readonly role: "user" | "assistant";
-  readonly content: string | null;
-  readonly runId?: string;
-}
-
-function automationRunIdFromThread(
-  messages: readonly ThreadMessageView[],
-  prompt: string,
-): string {
-  const runId = messages.find((message) => {
-    return message.role === "user" && message.content === prompt;
-  })?.runId;
-  if (!runId) {
-    throw new Error("Expected an automation user message carrying a runId");
-  }
-  return runId;
-}
-
-describe("AUTOMATIONS-03: automation run-now dispatch", () => {
-  it("dispatches a run-now automation visible through chat, claim, and queue", async () => {
+describe("AUTOMATIONS-03: legacy automation surface is frozen", () => {
+  it("answers 403 on every mutating route and keeps list readable", async () => {
+    const bdd = createBddApi(context);
     const api = createRunsAutomationsApi(context);
-    const chat = createChatFilesBddApi(context);
 
-    // Given an entitled actor with the automations switch on
-    const { actor, agentId, runnerGroup } = await entitledAutomationActor();
-    const prompt = `Run the automation report ${randomUUID().slice(0, 8)}.`;
-    const automationName = uniqueAutomationName("bdd-auto-run");
+    // Given an authenticated org member (entitlements and agents are
+    // irrelevant: the freeze guard answers before billing or agent resolution)
+    const actor = bdd.user();
+    const missingRef = { name: uniqueAutomationName("bdd-frozen") };
 
-    // When the actor creates a disabled cron automation (enabled:false keeps
-    // the row invisible to any foreign execute-schedules sweep on the shared
-    // database; run-now has no enabled gate)
-    const created = await api.createAutomation(actor, {
-      name: automationName,
-      agentId,
-      cronExpression: "0 9 * * *",
-      prompt,
-      appendSystemPrompt: "Automation tone.",
-      timezone: "UTC",
-      enabled: false,
-    });
-    expect(created.created).toBeTruthy();
-    const automation = created.automation;
-
-    // Then the automation is visible through list
-    const listed = await api.listAutomations(actor);
-    expect(
-      listed.automations.some((item) => {
-        return item.id === automation.id;
-      }),
-    ).toBeTruthy();
-
-    // When the actor runs the automation now
-    const runNow = await api.requestRunAutomation(actor, automation.id, [201]);
-    if (runNow.status !== 201) {
-      throw new Error("Expected the automation run-now to create a run");
-    }
-    const runId = runNow.body.runId;
-
-    // Then the linked chat thread carries the prompt as a user message bound
-    // to the created run
-    const thread = await chat.listThreadMessages(
+    // When the actor tries to create an automation
+    // Then the freeze guard rejects it with the workflow-trigger guidance
+    const created = await api.requestCreateAutomationUnchecked(
       actor,
-      automation.chatThreadId,
-    );
-    expect(automationRunIdFromThread(thread.messages, prompt)).toBe(runId);
-
-    // When the runner claims the dispatched run
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(runId);
-
-    // Then the claim renders the schedule-interpreter context through the
-    // automations surface
-    expect(claim.prompt).toBe(prompt);
-    expect(claim.appendSystemPrompt).toContain(
-      "You are currently running inside: Automation",
-    );
-    expect(claim.appendSystemPrompt).toContain("Trigger type: manual");
-    expect(claim.appendSystemPrompt).toContain("Automation tone.");
-
-    // Then a second run-now conflicts while the previous run is still active
-    const conflict = await api.requestRunAutomation(
-      actor,
-      automation.id,
-      [409],
-    );
-    expectApiError(conflict.body);
-    expect(conflict.body.error.code).toBe("CONFLICT");
-
-    // Then the run is terminal-ized and the org queue drains
-    await api.requestCancelRun(actor, runId, [200]);
-    const queue = await api.readRunQueue(actor);
-    expect(queue.body.concurrency.active).toBe(0);
-
-    // When a disabled loop automation is run now, the manual fire still
-    // belongs to the automation rather than to a specific trigger.
-    const loopCreated = await api.createAutomation(actor, {
-      name: uniqueAutomationName("bdd-auto-loop"),
-      agentId,
-      intervalSeconds: 300,
-      prompt,
-      timezone: "UTC",
-      enabled: false,
-    });
-    expect(loopCreated.created).toBeTruthy();
-    const loopRun = await api.requestRunAutomation(
-      actor,
-      loopCreated.automation.id,
-      [201],
-    );
-    if (loopRun.status !== 201) {
-      throw new Error("Expected the loop automation run-now to create a run");
-    }
-
-    // Then the claim renders the manual trigger context, and the run drains.
-    const loopClaim = await api.claimRunnerJob(loopRun.body.runId);
-    expect(loopClaim.appendSystemPrompt).toContain("Trigger type: manual");
-    await api.requestCancelRun(actor, loopRun.body.runId, [200]);
-    await api.deleteAutomation(actor, loopCreated.automation);
-
-    // Then updating a missing automation reports not-found
-    const updateMissingAutomation = await api.requestUpdateAutomationUnchecked(
-      actor,
-      uniqueAutomationName("bdd-missing-auto"),
       {
-        prompt,
+        name: uniqueAutomationName("bdd-frozen-create"),
+        agentId: randomUUID(),
+        prompt: "Frozen surface probe.",
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
       },
-      [404],
+      [403],
     );
-    expectApiError(updateMissingAutomation.body);
-    expect(updateMissingAutomation.body.error.code).toBe("NOT_FOUND");
+    expectApiError(created.body);
+    expect(created.body.error.code).toBe("FORBIDDEN");
+    expect(created.body.error.message).toBe(DISABLED_MESSAGE);
 
-    // Cleanup: delete the automation and verify it left the list
-    await api.deleteAutomation(actor, automation);
-    const afterDelete = await api.listAutomations(actor);
-    expect(
-      afterDelete.automations.some((item) => {
-        return item.id === automation.id;
-      }),
-    ).toBeFalsy();
+    // Then every other mutating route is frozen the same way, even for refs
+    // that do not exist (the guard answers before any lookup)
+    const update = await api.requestUpdateAutomationUnchecked(
+      actor,
+      missingRef.name,
+      { prompt: "New instruction" },
+      [403],
+    );
+    expectApiError(update.body);
+    expect(update.body.error.message).toBe(DISABLED_MESSAGE);
+
+    const run = await api.requestRunAutomation(actor, randomUUID(), [403]);
+    expectApiError(run.body);
+    expect(run.body.error.message).toBe(DISABLED_MESSAGE);
+
+    const deleted = await api.requestDeleteAutomation(actor, missingRef, [403]);
+    expectApiError(deleted.body);
+    expect(deleted.body.error.message).toBe(DISABLED_MESSAGE);
+
+    const enabled = await api.requestEnableAutomation(actor, missingRef, [403]);
+    expectApiError(enabled.body);
+    expect(enabled.body.error.message).toBe(DISABLED_MESSAGE);
+
+    const disabled = await api.requestDisableAutomation(
+      actor,
+      missingRef,
+      [403],
+    );
+    expectApiError(disabled.body);
+    expect(disabled.body.error.message).toBe(DISABLED_MESSAGE);
+
+    // Then the read surface stays open: the actor can still list (empty here;
+    // migrated rows remain readable provenance in production)
+    const listed = await api.listAutomations(actor);
+    expect(listed.automations).toStrictEqual([]);
   });
 });
