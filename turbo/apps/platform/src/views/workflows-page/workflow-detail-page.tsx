@@ -65,6 +65,10 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@vm0/ui";
 
 import { agents$ } from "../../signals/agent.ts";
@@ -4371,102 +4375,139 @@ function TriggerControls({
   const navigate = useSet(detachedNavigateTo$);
   const setEditingTriggerId = useSet(setEditingWorkflowTriggerId$);
   const setEditingScheduleCronFields = useSet(setEditingScheduleCronFields$);
-  const [deleteLoadable, deleteTrigger] = useLoadableSet(
-    deleteWorkflowTrigger$,
-  );
   const [runNowLoadable, runNow] = useLoadableSet(runWorkflowTriggerNow$);
-  const busy =
-    deleteLoadable.state === "loading" || runNowLoadable.state === "loading";
-  const running = runNowLoadable.state === "loading";
+  const busy = runNowLoadable.state === "loading";
+  const running = busy;
   const canEdit = canEditWorkflowTrigger(trigger);
 
   return (
-    <div className="flex min-w-0 items-center justify-end">
-      <div className="flex items-center justify-end gap-1 opacity-100 transition-opacity pointer-events-auto [@media(hover:hover)]:pointer-events-none [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:pointer-events-auto [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:pointer-events-auto [@media(hover:hover)]:group-focus-within:opacity-100">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          disabled={busy}
-          aria-label="Run now"
-          className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-50 hover:text-foreground"
-          onClick={() => {
-            detach(
-              (async () => {
-                const result = await runNow(trigger.id, pageSignal);
-                navigate(ROUTES.chat, {
-                  pathParams: { threadId: result.chatThreadId },
-                });
-              })(),
-              Reason.DomCallback,
-              "run workflow trigger now",
-            );
-          }}
-        >
-          {running ? (
-            <IconLoader2 size={14} className="animate-spin" />
-          ) : (
-            <IconPlayerPlay size={14} stroke={1.5} />
-          )}
-        </Button>
-        {canEdit ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            disabled={busy}
-            aria-label="Edit automation"
-            className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-50 hover:text-foreground"
-            onClick={() => {
-              if (
-                trigger.kind === "schedule" &&
-                trigger.schedule.type === "cron"
-              ) {
-                setEditingScheduleCronFields(
-                  parseWorkflowCronFields(trigger.schedule, displayTimezone),
-                );
-              }
-              setEditingTriggerId(trigger.id);
-            }}
-          >
-            <IconPencil size={14} stroke={1.5} />
-          </Button>
-        ) : null}
-        <DropdownMenu>
+    <div className="flex min-w-0 items-center justify-end pr-1.5">
+      <TooltipProvider delayDuration={200}>
+        <div className="flex items-center justify-end gap-1 opacity-100 transition-opacity pointer-events-auto [@media(hover:hover)]:pointer-events-none [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:pointer-events-auto [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:pointer-events-auto [@media(hover:hover)]:group-focus-within:opacity-100">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                disabled={busy}
+                aria-label="Run now"
+                className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-200 hover:text-foreground"
+                onClick={() => {
+                  detach(
+                    (async () => {
+                      const result = await runNow(trigger.id, pageSignal);
+                      navigate(ROUTES.chat, {
+                        pathParams: { threadId: result.chatThreadId },
+                      });
+                    })(),
+                    Reason.DomCallback,
+                    "run workflow trigger now",
+                  );
+                }}
+              >
+                {running ? (
+                  <IconLoader2 size={14} className="animate-spin" />
+                ) : (
+                  <IconPlayerPlay size={14} stroke={1.5} />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-xs">Run now</p>
+            </TooltipContent>
+          </Tooltip>
+          {canEdit ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={busy}
+                  aria-label="Edit automation"
+                  className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-200 hover:text-foreground"
+                  onClick={() => {
+                    if (
+                      trigger.kind === "schedule" &&
+                      trigger.schedule.type === "cron"
+                    ) {
+                      setEditingScheduleCronFields(
+                        parseWorkflowCronFields(
+                          trigger.schedule,
+                          displayTimezone,
+                        ),
+                      );
+                    }
+                    setEditingTriggerId(trigger.id);
+                  }}
+                >
+                  <IconPencil size={14} stroke={1.5} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">Edit automation</p>
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
+          <TriggerMoreActionsMenu trigger={trigger} disabled={busy} />
+        </div>
+      </TooltipProvider>
+    </div>
+  );
+}
+
+function TriggerMoreActionsMenu({
+  trigger,
+  disabled,
+}: {
+  readonly trigger: ZeroWorkflowTriggerSummary;
+  readonly disabled: boolean;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [deleteLoadable, deleteTrigger] = useLoadableSet(
+    deleteWorkflowTrigger$,
+  );
+  const deleting = deleteLoadable.state === "loading";
+
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              disabled={busy}
+              disabled={disabled || deleting}
               aria-label="More actions"
-              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-50 hover:text-foreground data-[state=open]:bg-gray-50 data-[state=open]:text-foreground"
+              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-200 hover:text-foreground data-[state=open]:bg-gray-200 data-[state=open]:text-foreground"
             >
               <IconDotsVertical size={14} stroke={1.5} />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem
-              disabled={deleteLoadable.state === "loading"}
-              className="gap-2 text-destructive focus:text-destructive"
-              onClick={() => {
-                detach(
-                  deleteTrigger(trigger.id, pageSignal),
-                  Reason.DomCallback,
-                );
-              }}
-            >
-              {deleteLoadable.state === "loading" ? (
-                <IconLoader2 size={14} className="animate-spin" />
-              ) : (
-                <IconTrash size={14} stroke={1.5} />
-              )}
-              Delete automation
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p className="text-xs">More actions</p>
+        </TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuItem
+          disabled={deleting}
+          className="gap-2 text-destructive focus:text-destructive"
+          onClick={() => {
+            detach(deleteTrigger(trigger.id, pageSignal), Reason.DomCallback);
+          }}
+        >
+          {deleting ? (
+            <IconLoader2 size={14} className="animate-spin" />
+          ) : (
+            <IconTrash size={14} stroke={1.5} />
+          )}
+          Delete automation
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
