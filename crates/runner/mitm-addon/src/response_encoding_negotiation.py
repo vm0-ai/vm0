@@ -13,6 +13,7 @@ _INVALID_Q_VALUE = Decimal(-1)
 _MIN_Q_VALUE = Decimal(0)
 _MAX_Q_VALUE = Decimal(1)
 _Q_VALUE_PATTERN = re.compile(r"(?:0(?:\.[0-9]{1,3})?|1(?:\.0{1,3})?)")
+_HTTP_OWS_CHARS = " \t"
 
 
 def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> bool:
@@ -79,7 +80,7 @@ def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> bool
 
 def _parse_coding(raw_coding: str) -> tuple[str, Decimal | None]:
     parts = raw_coding.split(";")
-    name = parts[0].strip().lower()
+    name = parts[0].strip(_HTTP_OWS_CHARS).lower()
     q_value = _parse_q_value(parts[1:])
     return name, q_value
 
@@ -88,16 +89,16 @@ def _parse_q_value(parameters: list[str]) -> Decimal | None:
     saw_q_value = False
     parsed_q_value: Decimal | None = None
     for parameter in parameters:
-        parameter = parameter.strip()
+        parameter = parameter.strip(_HTTP_OWS_CHARS)
         if not parameter:
             return _INVALID_Q_VALUE
         key, separator, value = parameter.partition("=")
-        if not separator or key.strip().lower() != "q":
+        if not separator or key.strip(_HTTP_OWS_CHARS).lower() != "q":
             return _INVALID_Q_VALUE
         if saw_q_value:
             return _INVALID_Q_VALUE
         saw_q_value = True
-        q_text = value.strip()
+        q_text = value.strip(_HTTP_OWS_CHARS)
         if not _Q_VALUE_PATTERN.fullmatch(q_text):
             return _INVALID_Q_VALUE
         try:
@@ -112,9 +113,9 @@ def _parse_q_value(parameters: list[str]) -> Decimal | None:
 
 def _q_text(raw_coding: str) -> str | None:
     for parameter in raw_coding.split(";")[1:]:
-        key, separator, value = parameter.strip().partition("=")
-        if separator and key.strip().lower() == "q":
-            return value.strip()
+        key, separator, value = parameter.strip(_HTTP_OWS_CHARS).partition("=")
+        if separator and key.strip(_HTTP_OWS_CHARS).lower() == "q":
+            return value.strip(_HTTP_OWS_CHARS)
     return None
 
 

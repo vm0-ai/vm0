@@ -119,6 +119,36 @@ _BROWSER_USER_AGENT = (
             id="empty-parameter-is-not-readvertised",
         ),
         pytest.param(
+            [("Accept-Encoding", "gzip\u2028, zstd")],
+            True,
+            ["identity"],
+            id="unicode-whitespace-suffix-is-not-readvertised",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "\u2028gzip, zstd")],
+            True,
+            ["identity"],
+            id="unicode-whitespace-prefix-is-not-readvertised",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip\v, zstd")],
+            True,
+            ["identity"],
+            id="vertical-tab-suffix-is-not-readvertised",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip\n, zstd")],
+            True,
+            ["identity"],
+            id="newline-suffix-is-not-readvertised",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip;q=0.5\u2028, zstd")],
+            True,
+            ["identity"],
+            id="unicode-whitespace-q-value-is-not-readvertised",
+        ),
+        pytest.param(
             [("Accept-Encoding", "gzip, identity;q=1, identity;q=0, zstd")],
             True,
             ["gzip, identity;q=0"],
