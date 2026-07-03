@@ -344,13 +344,12 @@ async fn run_start_with_home(
     info!(runner_id = %runner_id, runner_name = %runner_config.name, "runner identity");
 
     // Shared locks on rootfs + snapshot per profile — allows `runner gc` to detect in-use resources.
-    let image_artifact_locks =
+    let resource_locks =
         config::lock_and_validate_runner_image_artifacts(&runner_config.profiles, &home).await?;
-    for (_, profile_paths) in image_artifact_locks.profile_paths() {
+    for (_, profile_paths) in resource_locks.profile_paths() {
         touch_mtime(profile_paths.rootfs_paths().dir());
         touch_mtime(profile_paths.snapshot_paths().dir());
     }
-    let resource_locks = image_artifact_locks;
 
     let log_paths = LogPaths::new(home.logs_dir());
     crate::log_file::ensure_log_dir(log_paths.dir()).map_err(|e| {
@@ -387,12 +386,11 @@ async fn run_start_with_home(
     };
 
     // Start background prefetch of snapshot memory for all profiles.
-    let mut memory_prefetch =
-        prefetch::MemoryPrefetchTasks::spawn(runner_config.profiles.values().map(|profile| {
-            crate::paths::RootfsPaths::new(&home, &profile.rootfs_hash)
-                .snapshot(&profile.snapshot_hash)
-                .memory_bin()
-        }));
+    let mut memory_prefetch = prefetch::MemoryPrefetchTasks::spawn(
+        resource_locks
+            .profile_paths()
+            .map(|(_, profile_paths)| profile_paths.snapshot_paths().memory_bin()),
+    );
 
     // Compute the smallest profile resources for budget pre-check.
     // When budget is exhausted for all profiles, we wait instead of polling.
