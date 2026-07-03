@@ -135,7 +135,8 @@ What should you mock? Only external third-party packages:
 
 ```typescript
 // These are correct
-vi.mock("@clerk/nextjs");
+vi.mock("@clerk/backend");
+vi.mock("@clerk/clerk-js");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@anthropic-ai/sdk");
 ```
@@ -146,7 +147,7 @@ Here's the mock hierarchy:
 
 | Category           | Example                               | Mock?     |
 | ------------------ | ------------------------------------- | --------- |
-| Third-party SaaS   | `@clerk/nextjs`, `@aws-sdk/client-s3` | Yes       |
+| Third-party SaaS   | `@clerk/backend`, `@aws-sdk/client-s3` | Yes       |
 | Node.js built-ins  | `child_process`                       | Sometimes |
 | Database           | `globalThis.services.db`              | Never     |
 | Internal services  | `../../lib/*`                         | Never     |

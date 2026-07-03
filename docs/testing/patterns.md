@@ -9,11 +9,10 @@ API endpoints live in `apps/api` and are tested through the Hono app with
 [api-testing.md](./api-testing.md) for the full route-test pattern — file
 layout, fixtures, mocking rules, and service-level exceptions.
 
-`apps/web` no longer hosts API route handlers: the `app/api` directory was
-removed and a custom `no-new-api-routes` lint rule forbids adding new ones.
-Web-side tests therefore cover only routing compatibility — exact
-`API_BACKEND_REWRITES` entries, middleware bypass matchers, and security headers
-around proxied paths.
+Frontend apps do not host API route handlers or thin proxy route handlers.
+Frontend-side tests therefore cover only routing compatibility — exact Vercel
+rewrite entries, service-worker handling of API and navigation requests, and
+security headers around proxied paths.
 
 ---
 
@@ -172,41 +171,46 @@ This pattern catches real bugs—permission issues, race conditions, encoding pr
 
 When the same mock setup appears in multiple test files, extract it into a reusable helper.
 
-**Clerk Mock Helper** (`turbo/apps/web/src/__tests__/clerk-mock.ts`):
+**Clerk Mock Helper** (`turbo/apps/platform/src/__tests__/mock-auth.ts`):
 
 ```typescript
-import { vi } from "vitest";
-import { auth } from "@clerk/nextjs/server";
+import { clearMockedAuth, mockUser } from "../../../__tests__/mock-auth";
 
-const mockAuth = vi.mocked(auth);
+mockUser(
+  {
+    id: "user_test",
+    fullName: "Test User",
+    email: "test@example.com",
+  },
+  { token: "test-token" },
+);
 
-export function mockClerk(options: { userId: string | null }) {
-  mockAuth.mockResolvedValue({
-    userId: options.userId,
-  } as Awaited<ReturnType<typeof auth>>);
-}
-
-export function clearClerkMock() {
-  mockAuth.mockClear();
-}
+clearMockedAuth();
 ```
 
 **Usage patterns**:
 
 ```typescript
-import { mockClerk, clearClerkMock } from "@/__tests__/clerk-mock";
+import { clearMockedAuth, mockUser } from "../../../__tests__/mock-auth";
 
 beforeEach(() => {
-  mockClerk({ userId: testUserId });
+  mockUser(
+    {
+      id: testUserId,
+      fullName: "Test User",
+      email: "test@example.com",
+    },
+    { token: "test-token" },
+  );
 });
 
 afterEach(() => {
-  clearClerkMock();
+  clearMockedAuth();
 });
 
 // Override for specific test
 it("should reject unauthenticated request", () => {
-  mockClerk({ userId: null });
+  mockUser(null, null);
   // ...
 });
 ```
@@ -465,64 +469,61 @@ describe("org signals", () => {
 
 ## Standard Test File Structure
 
-Every legacy web route test file should follow this structure:
+Every API route test file should follow this structure:
 
 ```typescript
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { POST, GET } from "../route";
-import {
-  createTestRequest,
-  createTestCompose,
-  createTestRun,
-} from "../../../../../src/__tests__/api-test-helpers";
-import {
-  testContext,
-  type UserContext,
-} from "../../../../../src/__tests__/test-helpers";
-import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { describe, expect, it } from "vitest";
 
-// ========== MOCKS SECTION ==========
-// Only mock EXTERNAL third-party packages
-vi.mock("@clerk/nextjs/server");
-vi.mock("@aws-sdk/client-s3");
-vi.mock("@aws-sdk/s3-request-presigner");
-vi.mock("@axiomhq/js");
+import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 
 // ========== TEST CONTEXT ==========
 const context = testContext();
 
+function apiClient() {
+  return setupApp({ context })(zeroAgentsMainContract);
+}
+
+function authHeaders() {
+  return { authorization: "Bearer clerk-session" };
+}
+
 // ========== TEST SUITE ==========
-describe("POST /api/agent/runs", () => {
-  let user: UserContext;
-  let testComposeId: string;
+describe("POST /api/zero/agents", () => {
+  it("creates an agent and returns it from the list endpoint", async () => {
+    context.mocks.clerk.session("user_test", "org_test");
 
-  beforeEach(async () => {
-    context.setupMocks();
-    user = await context.setupUser();
-    const { composeId } = await createTestCompose(`agent-${Date.now()}`);
-    testComposeId = composeId;
-  });
+    const created = await accept(
+      apiClient().create({
+        headers: authHeaders(),
+        body: {
+          displayName: "Support Agent",
+          description: "Handles support tasks",
+          sound: "friendly",
+        },
+      }),
+      [201],
+    );
 
-  // ========== TEST CASES ==========
-  it("should create a run with pending status", async () => {
-    // Given - fixtures prepared in beforeEach
+    const listed = await accept(
+      apiClient().list({ headers: authHeaders() }),
+      [200],
+    );
 
-    // When - execute behavior under test
-    const data = await createTestRun(testComposeId, "Test prompt");
-
-    // Then - assert the HTTP response
-    expect(data.status).toBe("pending");
-    expect(data.runId).toBeDefined();
+    expect(listed.body).toContainEqual(
+      expect.objectContaining({ agentId: created.body.agentId }),
+    );
   });
 
   it("should reject unauthenticated request", async () => {
-    mockClerk({ userId: null });
-
-    const request = createTestRequest("http://localhost/api/agent/runs", {
-      method: "POST",
-      body: JSON.stringify({ name: "Test" }),
+    const response = await apiClient().create({
+      headers: {},
+      body: {
+        displayName: "Support Agent",
+        description: "Handles support tasks",
+        sound: "friendly",
+      },
     });
-    const response = await POST(request);
 
     expect(response.status).toBe(401);
   });
@@ -532,9 +533,10 @@ describe("POST /api/agent/runs", () => {
 Note what's absent compared to older patterns:
 
 - No `vi.clearAllMocks()` — Vitest config has `clearMocks: true`
-- No `initServices()` — Route handlers call it internally
-- No `afterEach` database cleanup — `setupUser()` provides isolated user context
-- No database state assertions — Test HTTP responses only
+- No route handler imports — tests call the real Hono app through `setupApp()`
+- No `initServices()` — API app entry points initialize services
+- No direct database setup or assertions — create and verify state through API
+  behavior
 
 ---
 
@@ -544,7 +546,8 @@ Note what's absent compared to older patterns:
 
 **Third-party SaaS/APIs**:
 
-- `@clerk/nextjs` - Authentication service
+- `@clerk/backend` - API authentication service
+- `@clerk/clerk-js` / `@clerk/clerk-react` - Platform authentication service
 - `@aws-sdk/client-s3` - Cloud storage
 - `@anthropic-ai/sdk` - AI API
 - `@axiomhq/js` - Logging SaaS
@@ -568,9 +571,10 @@ Note what's absent compared to older patterns:
 
 **Test data management**:
 
-- Create test data via API helpers (`createTestCompose`, `createTestRun`, etc.)
-- `testContext().setupUser()` provides isolated user context with unique IDs
-- No manual cleanup needed — user isolation handles it
+- Create and verify test data via API calls
+- `testContext()` provides isolated route context and centralized mocks
+- No manual cleanup needed for API route tests that stay inside the route
+  context
 
 ---
 
@@ -602,8 +606,11 @@ vi.mock("../../lib/run", () => ({
   runService: { createRun: vi.fn() },
 }));
 
-// AFTER (remove mock, use API helpers to create fixtures)
-import { createTestRun } from "../../../../../src/__tests__/api-test-helpers";
+// AFTER: remove the mock and build state through the API contract client
+const created = await accept(
+  apiClient().create({ headers: authHeaders(), body: requestBody }),
+  [201],
+);
 ```
 
 ### Step 3: Use testContext Pattern
@@ -611,13 +618,23 @@ import { createTestRun } from "../../../../../src/__tests__/api-test-helpers";
 ```typescript
 const context = testContext();
 
-beforeEach(async () => {
-  context.setupMocks();
-  user = await context.setupUser();
+function authHeaders() {
+  return { authorization: "Bearer clerk-session" };
+}
+
+it("handles an authenticated request", async () => {
+  context.mocks.clerk.session("user_test", "org_test");
+
+  const response = await apiClient().create({
+    headers: authHeaders(),
+    body: requestBody,
+  });
+
+  expect(response.status).toBe(201);
 });
 
 // No vi.clearAllMocks() — Vitest config has clearMocks: true
-// No afterEach cleanup — setupUser() provides isolated user context
+// No direct DB cleanup — route tests should stay inside the route context
 ```
 
 ### Step 4: Verify Test Quality
@@ -632,24 +649,23 @@ expect(mockService.doSomething).toHaveBeenCalled();
 const result = await service.doSomething();
 expect(result.status).toBe("success");
 
-// Verify with real database
-const dbRecord = await globalThis.services.db.select()...
-expect(dbRecord).toMatchObject({ status: "success" });
+// For API route tests, verify persisted effects through a follow-up API call
+const listed = await accept(apiClient().list({ headers: authHeaders() }), [200]);
+expect(listed.body).toContainEqual(expect.objectContaining({ id: result.id }));
 ```
 
 ### Step 5: Check for Helpers
 
-- Can you use `mockClerk()` helper for Clerk auth?
+- Can you use `context.mocks.clerk` for API auth or `mockUser()` for platform
+  auth?
 - Can you share MSW handlers in `mocks/handlers/`?
 - Can you extract common test setup into helpers?
 
 ```typescript
-// BEFORE: Verbose Clerk mock
-vi.mock("@clerk/nextjs/server", () => ({ auth: vi.fn() }));
-const mockAuth = vi.mocked(auth);
-mockAuth.mockResolvedValue({ userId: testUserId });
+// BEFORE: Verbose Clerk module mock in a platform test
+vi.mock("@clerk/clerk-js", () => ({ Clerk: vi.fn() }));
 
-// AFTER: Use helper
-import { mockClerk } from "@/__tests__/clerk-mock";
-mockClerk({ userId: testUserId });
+// AFTER: Use the platform auth helper
+import { mockUser } from "../../../__tests__/mock-auth";
+mockUser({ id: testUserId, fullName: "Test User" }, { token: "test-token" });
 ```

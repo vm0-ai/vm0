@@ -83,6 +83,14 @@ review "authentication changes"     # Review by description
    - Highlight breaking changes
    - Review API design decisions
 
+   **Deployment Compatibility**
+   - Read `docs/deployment-compatibility.md` when changes touch frontend/backend, runner/backend, queue payloads, or persisted state
+   - Verify old frontend requests still work with the new backend while open browser pages keep already-loaded code
+   - Verify old runner requests still work with the new backend while old runners drain active runs
+   - Verify new frontend or runner code can tolerate old backend responses during rollout when deployment order can overlap
+   - Flag one-shot protocol flips that require all deployable surfaces to update at exactly the same time
+   - Ensure temporary compatibility logic has an explicit cleanup condition or follow-up issue
+
    **Timer and Delay Analysis (Bad Smell #5)**
    - Identify artificial delays in production code
    - Flag useFakeTimers/advanceTimers in tests
