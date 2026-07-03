@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { FirewallPermissionDetailMetadata } from "@vm0/connectors/firewall-metadata";
+import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 
 import {
   createEmptyPermissionDraftIntent,
@@ -21,7 +21,7 @@ interface InitialPermissionDrawerUiState {
 }
 
 interface PermissionDrawerApplyOptions {
-  readonly metadata: FirewallPermissionDetailMetadata;
+  readonly metadata: PublicConnectorCatalogPermissionDetail;
 }
 
 type PermissionDrawerApply = (
@@ -31,7 +31,7 @@ type PermissionDrawerApply = (
 
 interface ApplyPermissionDrawerParams {
   readonly intent: PermissionDraftIntent;
-  readonly metadata: FirewallPermissionDetailMetadata;
+  readonly metadata: PublicConnectorCatalogPermissionDetail;
   readonly onApply: PermissionDrawerApply;
   readonly onClose: () => void;
 }

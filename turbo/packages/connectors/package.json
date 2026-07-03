@@ -44,6 +44,10 @@
       "import": "./src/firewall-metadata/index.ts",
       "types": "./src/firewall-metadata/index.ts"
     },
+    "./firewall-metadata/policy": {
+      "import": "./src/firewall-metadata/policy.ts",
+      "types": "./src/firewall-metadata/policy.ts"
+    },
     "./firewall-metadata/server": {
       "import": "./src/firewall-metadata/server.ts",
       "types": "./src/firewall-metadata/server.ts"

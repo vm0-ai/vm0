@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 const SERVER_FIREWALL_METADATA_SPECIFIER =
   "@vm0/connectors/firewall-metadata/server";
+const ROOT_FIREWALL_METADATA_SPECIFIER = "@vm0/connectors/firewall-metadata";
 const IMPORT_SPECIFIER_PATTERN =
   /\bfrom\s+["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)|\bimport\s+["']([^"']+)["']|\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;
 
@@ -49,6 +50,12 @@ function importsSpecifier(source: string, specifier: string): boolean {
   });
 }
 
+function importsExactSpecifier(source: string, specifier: string): boolean {
+  return importSpecifiers(source).some((importedSpecifier) => {
+    return importedSpecifier === specifier;
+  });
+}
+
 describe("firewall metadata import boundary", () => {
   it("keeps server-only firewall metadata out of platform production source", () => {
     const offenders = Object.entries(productionSourceModules)
@@ -59,6 +66,25 @@ describe("firewall metadata import boundary", () => {
         return (
           isProductionSourcePath(path) &&
           importsSpecifier(source, SERVER_FIREWALL_METADATA_SPECIFIER)
+        );
+      });
+
+    expect(
+      offenders.map((offender) => {
+        return offender.path;
+      }),
+    ).toStrictEqual([]);
+  });
+
+  it("keeps generated firewall metadata root imports out of platform production source", () => {
+    const offenders = Object.entries(productionSourceModules)
+      .map(([path, source]) => {
+        return { path: sourcePathFromGlobKey(path), source };
+      })
+      .filter(({ path, source }) => {
+        return (
+          isProductionSourcePath(path) &&
+          importsExactSpecifier(source, ROOT_FIREWALL_METADATA_SPECIFIER)
         );
       });
 

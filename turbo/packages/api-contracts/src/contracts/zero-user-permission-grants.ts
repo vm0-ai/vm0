@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
+import { connectorRefSchema } from "./connector-ref";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
 const agentIdSchema = z.string().uuid();
-const connectorRefSchema = z.string().min(1).max(64);
 const permissionSchema = z.string().min(1).max(128);
 
 export const userPermissionGrantActionSchema = z.enum(["allow", "deny"]);

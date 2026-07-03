@@ -2,12 +2,12 @@ import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
   createFirewallMetadataPolicyResolver,
   type FirewallMetadataPolicyOverlay,
   type FirewallMetadataPolicyResolver,
-  type FirewallPermissionDetailMetadata,
-} from "@vm0/connectors/firewall-metadata";
+} from "@vm0/connectors/firewall-metadata/policy";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicy,
@@ -34,7 +34,7 @@ export interface PermissionDraftIntent {
 }
 
 export interface PermissionDraftContext {
-  readonly metadata: FirewallPermissionDetailMetadata;
+  readonly metadata: PublicConnectorCatalogPermissionDetail;
   readonly defaultResolver: FirewallMetadataPolicyResolver;
   readonly initialResolver: FirewallMetadataPolicyResolver;
 }
@@ -100,7 +100,7 @@ function omitKeys<T>(
 }
 
 function permissionCategory(
-  metadata: FirewallPermissionDetailMetadata,
+  metadata: PublicConnectorCatalogPermissionDetail,
   permissionName: string,
 ): string | undefined {
   return metadata.categories?.categories[permissionName];
@@ -252,7 +252,7 @@ export function createPermissionDraftContext({
   metadata,
   initialPolicies,
 }: {
-  readonly metadata: FirewallPermissionDetailMetadata;
+  readonly metadata: PublicConnectorCatalogPermissionDetail;
   readonly initialPolicies: FirewallPolicies;
 }): PermissionDraftContext {
   return {
@@ -260,16 +260,16 @@ export function createPermissionDraftContext({
     defaultResolver: createFirewallMetadataPolicyResolver(metadata),
     initialResolver: createFirewallMetadataPolicyResolver(
       metadata,
-      firewallPolicyToOverlay(initialPolicies[metadata.type]),
+      firewallPolicyToOverlay(initialPolicies[metadata.connectorRef]),
     ),
   };
 }
 
 export function permissionDraftMetadataKey(
-  metadata: FirewallPermissionDetailMetadata,
+  metadata: PublicConnectorCatalogPermissionDetail,
 ): string {
   return JSON.stringify({
-    type: metadata.type,
+    connectorRef: metadata.connectorRef,
     permissions: metadata.permissions.map((permission) => {
       return permission.name;
     }),
@@ -1027,7 +1027,7 @@ export function materializePermissionDraftForLegacySave({
 
   return {
     policies: {
-      [context.metadata.type]: {
+      [context.metadata.connectorRef]: {
         policies: connectorPolicies,
         unknownPolicy,
       },

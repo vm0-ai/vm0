@@ -19,11 +19,15 @@ import { featureSwitch$ } from "./feature-switch.ts";
  */
 const internalReloadConnectors$ = state(0);
 
+export const connectorsReloadVersion$ = computed((get) => {
+  return get(internalReloadConnectors$);
+});
+
 /**
  * Current user's connectors.
  */
 export const connectors$ = computed(async (get) => {
-  get(internalReloadConnectors$);
+  get(connectorsReloadVersion$);
   get(featureSwitch$);
 
   const createClient = get(zeroClient$);
@@ -36,7 +40,7 @@ export const connectors$ = computed(async (get) => {
  * Public connector catalog metadata joined with the current user's connector status.
  */
 export const connectorCatalogStatus$ = computed(async (get) => {
-  get(internalReloadConnectors$);
+  get(connectorsReloadVersion$);
   get(featureSwitch$);
 
   const createClient = get(zeroClient$);
