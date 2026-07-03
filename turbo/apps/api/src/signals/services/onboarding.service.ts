@@ -5,13 +5,12 @@ import type { OnboardingStatusResponse } from "@vm0/api-contracts/contracts/onbo
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { SEED_INSTRUCTIONS } from "@vm0/core/zero-seed-instructions";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import type { AuthContext } from "../../types/auth";
 import { logger } from "../../lib/log";
@@ -24,13 +23,14 @@ import {
   unavailableUserConnectorTypes,
   userConnectorAvailability,
 } from "./connector-availability.service";
+import {
+  grantOnboardingCredits,
+  ONBOARDING_CREDITS_NEVER_EXPIRE_AT,
+} from "./onboarding-credit-grants.service";
 import { updateUserConnectors } from "./user-connectors.service";
 import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
 
 const L = logger("onboarding.service");
-const ONBOARDING_CREDIT_SOURCE = "onboarding";
-const ONBOARDING_CREDIT_IDEMPOTENCY_KEY = "limited-free-onboarding";
-const ONBOARDING_CREDITS_NEVER_EXPIRE_AT = "2999-12-31T00:00:00Z";
 
 interface DefaultAgentInfo {
   readonly composeId: string;
@@ -97,46 +97,6 @@ interface CompleteLimitedFreeOnboardingArgs {
   readonly orgId: string;
   readonly credits: number;
   readonly expiresAt: string | null;
-}
-
-async function grantOrgCredits(
-  tx: Parameters<Parameters<Db["transaction"]>[0]>[0],
-  orgId: string,
-  amount: number,
-): Promise<void> {
-  await tx.execute(
-    sql`INSERT INTO org_metadata (org_id, credits, created_at, updated_at)
-        VALUES (${orgId}, ${amount}, now(), now())
-        ON CONFLICT (org_id)
-        DO UPDATE SET credits = org_metadata.credits + ${amount}, updated_at = now()`,
-  );
-}
-
-async function grantOnboardingCredits(
-  tx: Parameters<Parameters<Db["transaction"]>[0]>[0],
-  orgId: string,
-  amount: number,
-  expiresAt: Date,
-): Promise<void> {
-  const rows = await tx
-    .insert(creditExpiresRecord)
-    .values({
-      orgId,
-      source: ONBOARDING_CREDIT_SOURCE,
-      stripeInvoiceId: ONBOARDING_CREDIT_IDEMPOTENCY_KEY,
-      amount,
-      remaining: amount,
-      expiresAt,
-    })
-    .onConflictDoNothing()
-    .returning({ id: creditExpiresRecord.id });
-
-  if (rows.length === 0) {
-    L.debug("Onboarding credits already granted", { orgId });
-    return;
-  }
-
-  await grantOrgCredits(tx, orgId, amount);
 }
 
 function unavailableSelectedConnectorsError(

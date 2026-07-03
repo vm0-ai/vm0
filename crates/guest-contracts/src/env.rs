@@ -42,13 +42,12 @@ pub const SANDBOX_ID_ENV: &str = "VM0_SANDBOX_ID";
 /// `noSessionId`.
 pub const SANDBOX_REUSE_RESULT_ENV: &str = "VM0_SANDBOX_REUSE_RESULT";
 
-/// User prompt payload sent to the guest-agent.
+/// Logical run-payload field name for the user prompt.
 pub const PROMPT_ENV: &str = "VM0_PROMPT";
 
-/// Optional extra system prompt text.
+/// Logical run-payload field name for optional extra system prompt text.
 ///
-/// The runner omits this key when the append-system-prompt value is absent or
-/// empty.
+/// Unset or empty means there is no extra system prompt.
 pub const APPEND_SYSTEM_PROMPT_ENV: &str = "VM0_APPEND_SYSTEM_PROMPT";
 
 /// Sensitive Vercel protection bypass secret for guest API calls.
@@ -71,28 +70,31 @@ pub const RESUME_SESSION_ID_ENV: &str = "VM0_RESUME_SESSION_ID";
 /// The runner emits an empty string when the timestamp is unavailable.
 pub const API_START_TIME_ENV: &str = "VM0_API_START_TIME";
 
-/// Sensitive values used by the guest-agent masker.
+/// Logical run-payload field name for sensitive values used by the guest-agent
+/// masker.
 ///
 /// The payload is a comma-separated list of base64-encoded secret values, not
 /// secret names. The runner includes the sandbox token so event payloads and
 /// CLI diagnostics can redact it.
 pub const SECRET_VALUES_ENV: &str = "VM0_SECRET_VALUES";
 
-/// Comma-separated Claude Code tool names that should be disallowed.
+/// Logical run-payload field name for comma-separated Claude Code tool names
+/// that should be disallowed.
 ///
 /// Unset or empty means there is no explicit deny list.
 pub const DISALLOWED_TOOLS_ENV: &str = "VM0_DISALLOWED_TOOLS";
 
-/// Comma-separated Claude Code tool names that should be allowed.
+/// Logical run-payload field name for comma-separated Claude Code tool names
+/// that should be allowed.
 ///
 /// Unset or empty means there is no explicit allow list.
 pub const TOOLS_ENV: &str = "VM0_TOOLS";
 
-/// Raw Claude Code settings payload passed to the guest-agent.
+/// Logical run-payload field name for the raw Claude Code settings payload
+/// passed to the guest-agent.
 ///
-/// The runner treats this as an opaque string and currently emits JSON from
-/// the API execution context. Unset or empty means there is no settings
-/// override.
+/// The runner treats this as an opaque string. Unset or empty means there is no
+/// settings override.
 pub const SETTINGS_ENV: &str = "VM0_SETTINGS";
 
 /// CLI framework selector, for example `claude-code` or `codex`.
@@ -110,17 +112,64 @@ pub const CLI_AGENT_TYPE_ENV: &str = "CLI_AGENT_TYPE";
 /// payload.
 pub const USER_ENV_FILE_ENV: &str = "VM0_USER_ENV_FILE";
 
-/// JSON array describing artifact mounts prepared by the runner.
+/// Path to the private runner-owned run payload JSON file.
+///
+/// Large prompt-like and configuration payloads use this file instead of
+/// bootstrap environment values so guest-agent startup does not hit Linux
+/// argv/env limits. Production guest-agent startup requires this key.
+pub const RUN_PAYLOAD_FILE_ENV: &str = "VM0_RUN_PAYLOAD_FILE";
+
+/// Private runtime subdirectory used by [`RUN_PAYLOAD_FILE_ENV`].
+pub const RUN_PAYLOAD_PRIVATE_DIR_NAME: &str = "run-payload";
+
+/// Private runtime filename used by [`RUN_PAYLOAD_FILE_ENV`].
+pub const RUN_PAYLOAD_FILENAME: &str = "payload.json";
+
+/// Logical run-payload field name for the JSON array describing artifact mounts
+/// prepared by the runner.
 ///
 /// Each entry uses camelCase wire keys: `name`, `mountPath`, `storageId`,
 /// `versionId`, and optional `missingRootPolicy`. Unset or empty means there
 /// are no artifact mounts.
 pub const ARTIFACTS_ENV: &str = "VM0_ARTIFACTS";
 
-/// JSON map of feature flag names to enabled states.
+/// Logical run-payload field name for the JSON map of feature flag names to
+/// enabled states.
 ///
-/// The runner omits this key when there are no feature flags.
+/// Unset or empty means there are no feature flags.
 pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
+
+/// Runner-owned variable-length run payload sent through
+/// [`RUN_PAYLOAD_FILE_ENV`].
+///
+/// Empty strings mean "no value" for optional fields.
+#[derive(Clone, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunPayload {
+    /// User prompt payload sent to the guest-agent.
+    pub prompt: String,
+    /// Optional extra system prompt text.
+    #[serde(default)]
+    pub append_system_prompt: String,
+    /// Sensitive values used by the guest-agent masker.
+    #[serde(default)]
+    pub secret_values: String,
+    /// Comma-separated Claude Code tool names that should be disallowed.
+    #[serde(default)]
+    pub disallowed_tools: String,
+    /// Comma-separated Claude Code tool names that should be allowed.
+    #[serde(default)]
+    pub tools: String,
+    /// Raw Claude Code settings payload passed to the guest-agent.
+    #[serde(default)]
+    pub settings: String,
+    /// JSON array describing artifact mounts prepared by the runner.
+    #[serde(default)]
+    pub artifacts: String,
+    /// JSON map of feature flag names to enabled states.
+    #[serde(default)]
+    pub feature_flags: String,
+}
 
 /// Guest-agent stuck-tool timeout override in seconds.
 ///
@@ -277,6 +326,29 @@ mod tests {
         assert_eq!(RUN_ID_ENV, "VM0_RUN_ID");
         assert_eq!(CLI_AGENT_TYPE_ENV, "CLI_AGENT_TYPE");
         assert_eq!(USER_ENV_FILE_ENV, "VM0_USER_ENV_FILE");
+        assert_eq!(RUN_PAYLOAD_FILE_ENV, "VM0_RUN_PAYLOAD_FILE");
+    }
+
+    #[test]
+    fn run_payload_uses_camel_case_wire_keys() {
+        let payload = RunPayload {
+            prompt: "hello".to_string(),
+            append_system_prompt: "system".to_string(),
+            secret_values: "secret".to_string(),
+            disallowed_tools: "WebFetch".to_string(),
+            tools: "Bash".to_string(),
+            settings: "{}".to_string(),
+            artifacts: "[]".to_string(),
+            feature_flags: r#"{"flag":true}"#.to_string(),
+        };
+
+        let json = serde_json::to_value(&payload).unwrap();
+
+        assert_eq!(json["prompt"], "hello");
+        assert_eq!(json["appendSystemPrompt"], "system");
+        assert_eq!(json["secretValues"], "secret");
+        assert_eq!(json["disallowedTools"], "WebFetch");
+        assert_eq!(json["featureFlags"], r#"{"flag":true}"#);
     }
 
     #[test]
@@ -322,6 +394,7 @@ mod tests {
         for key in [
             API_URL_ENV,
             WORKING_DIR_ENV,
+            RUN_PAYLOAD_FILE_ENV,
             CLI_AGENT_TYPE_ENV,
             USE_MOCK_CLAUDE_ENV,
             USE_MOCK_CODEX_ENV,

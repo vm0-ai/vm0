@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.29](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.28...guest-common-v0.2.29) (2026-07-03)
+
+
+### Documentation
+
+* clarify guest logging sinks ([#20027](https://github.com/vm0-ai/vm0/issues/20027)) ([bd1af03](https://github.com/vm0-ai/vm0/commit/bd1af03d01668b707b23df85372d5512a013e046))
+
 ## [0.2.28](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.27...guest-common-v0.2.28) (2026-07-02)
 
 

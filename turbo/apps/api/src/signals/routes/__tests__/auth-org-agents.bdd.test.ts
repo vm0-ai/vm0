@@ -104,15 +104,6 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     expectApiError(noOrgAgent.body);
     expect(noOrgAgent.body.error.code).toBe("UNAUTHORIZED");
 
-    const before = await api.readOnboardingStatus(admin);
-    expect(before).toMatchObject({
-      needsOnboarding: true,
-      isAdmin: true,
-      hasOrg: true,
-      hasDefaultAgent: false,
-      defaultAgentId: null,
-    });
-
     const defaultAgentId = await onboardAdmin(admin, {
       displayName: "BDD Default Agent",
       workspaceName: "BDD Chain Org",
@@ -615,17 +606,33 @@ describe("ORG-03 onboarding status mapping", () => {
       defaultAgentMetadata: null,
     });
 
+    api.acceptAgentStorageWrites();
     const adminBeforeSetup = await api.readOnboardingStatus(admin);
-    expect(adminBeforeSetup).toStrictEqual({
-      needsOnboarding: true,
+    expect(adminBeforeSetup).toMatchObject({
+      needsOnboarding: false,
       isAdmin: true,
       hasOrg: true,
-      hasDefaultAgent: false,
-      defaultAgentId: null,
-      defaultAgentMetadata: null,
+      hasDefaultAgent: true,
+      defaultAgentMetadata: {
+        displayName: "Zero",
+        sound: "professional",
+      },
+    });
+    expect(adminBeforeSetup.defaultAgentId).toBeTruthy();
+    if (!adminBeforeSetup.defaultAgentId) {
+      throw new Error(
+        "Expected lazy onboarding status bootstrap to create an agent",
+      );
+    }
+    const bootstrappedAgentId = adminBeforeSetup.defaultAgentId;
+
+    const bootstrappedBilling = await runsApi.readBillingStatus(admin);
+    expect(bootstrappedBilling).toMatchObject({
+      credits: 1000,
+      tier: "limited-free-1",
+      onboardingPaymentPending: false,
     });
 
-    api.acceptAgentStorageWrites();
     const setup = await api.setupOnboarding(admin, {
       displayName: "BDD Status Agent",
       sound: "friendly",
@@ -636,17 +643,18 @@ describe("ORG-03 onboarding status mapping", () => {
       );
     }
     const agentId = setup.body.agentId;
+    expect(agentId).toBe(bootstrappedAgentId);
 
     const paymentPending = await api.readOnboardingStatus(admin);
     expect(paymentPending).toStrictEqual({
-      needsOnboarding: true,
+      needsOnboarding: false,
       isAdmin: true,
       hasOrg: true,
       hasDefaultAgent: true,
       defaultAgentId: agentId,
       defaultAgentMetadata: {
-        displayName: "BDD Status Agent",
-        sound: "friendly",
+        displayName: "Zero",
+        sound: "professional",
       },
     });
 
@@ -659,20 +667,28 @@ describe("ORG-03 onboarding status mapping", () => {
       hasDefaultAgent: true,
       defaultAgentId: agentId,
       defaultAgentMetadata: {
-        displayName: "BDD Status Agent",
-        sound: "friendly",
+        displayName: "Zero",
+        sound: "professional",
       },
     });
 
     await api.deleteAgent(admin, agentId);
     const orphaned = await api.readOnboardingStatus(admin);
-    expect(orphaned).toStrictEqual({
-      needsOnboarding: true,
+    expect(orphaned).toMatchObject({
+      needsOnboarding: false,
       isAdmin: true,
       hasOrg: true,
-      hasDefaultAgent: false,
-      defaultAgentId: null,
-      defaultAgentMetadata: null,
+      hasDefaultAgent: true,
+      defaultAgentMetadata: {
+        displayName: "Zero",
+        sound: "professional",
+      },
+    });
+    expect(orphaned.defaultAgentId).toBeTruthy();
+    expect(orphaned.defaultAgentId).not.toBe(agentId);
+    const preservedPaidBilling = await runsApi.readBillingStatus(admin);
+    expect(preservedPaidBilling).toMatchObject({
+      tier: "pro",
     });
   });
 });
