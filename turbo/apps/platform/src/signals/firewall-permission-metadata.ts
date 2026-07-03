@@ -42,7 +42,7 @@ function createFirewallPermissionMetadataFactory(): (
       const client = createClient(zeroConnectorCatalogContract);
       const result = await accept(
         client.permissions({
-          params: { connectorRef: params.connectorRef },
+          params: { connectorRef: key },
         }),
         [200, 404],
         { toast: false },
