@@ -8,7 +8,7 @@ import { currentMessageImageArtifactNavigation } from "../zero-artifact-image-na
 
 type MessageFixture = Parameters<
   typeof currentMessageImageArtifactNavigation
->[1][number];
+>[1][number]["messages"][number];
 
 function artifactFile(
   url: string,
@@ -26,22 +26,14 @@ function artifactFile(
   };
 }
 
-function assistantMessage({
-  content,
-  runId,
-}: {
-  content: string;
-  runId: string;
-}): MessageFixture {
+function assistantMessage({ content }: { content: string }): MessageFixture {
   return {
-    role: "assistant",
-    runId,
     blocks: parseBodyRenderBlocks(content, { previews: true }).blocks,
   };
 }
 
 describe("currentMessageImageArtifactNavigation", () => {
-  it("navigates assistant images split across messages in the same run", () => {
+  it("navigates assistant images split across messages in the same group", () => {
     const firstImageUrl =
       "https://cdn.vm7.io/artifacts/test/body-image-split-navigation/first.png";
     const secondImageUrl =
@@ -62,21 +54,23 @@ describe("currentMessageImageArtifactNavigation", () => {
         ],
       },
     ];
-    const messages: MessageFixture[] = [
-      assistantMessage({ content: "Generated images:", runId }),
-      assistantMessage({
-        content: `1. ![first.png](${firstImageUrl})`,
-        runId,
-      }),
-      assistantMessage({
-        content: `2. ![second.png](${secondImageUrl})`,
-        runId,
-      }),
+    const groups = [
+      {
+        messages: [
+          assistantMessage({ content: "Generated images:" }),
+          assistantMessage({
+            content: `1. ![first.png](${firstImageUrl})`,
+          }),
+          assistantMessage({
+            content: `2. ![second.png](${secondImageUrl})`,
+          }),
+        ],
+      },
     ];
 
     const navigation = currentMessageImageArtifactNavigation(
       runs,
-      messages,
+      groups,
       firstImageUrl,
     );
 

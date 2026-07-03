@@ -35,14 +35,16 @@ type ImageArtifactNavigation = {
  * agent-generated images). Structurally satisfied by `EnrichedChatMessage`.
  */
 type MessageImageSource = {
-  readonly role?: "user" | "assistant";
-  readonly runId?: string;
   readonly attachFiles?: readonly {
     readonly url: string;
     readonly filename: string;
     readonly contentType: string;
   }[];
   readonly blocks?: readonly BodyRenderBlock[];
+};
+
+type MessageImageGroup = {
+  readonly messages: readonly MessageImageSource[];
 };
 
 function isImageDescriptor(descriptor: {
@@ -127,20 +129,6 @@ function messageHasImageUrl(
   });
 }
 
-function navigationScopeMessages(
-  messages: readonly MessageImageSource[],
-  currentMessage: MessageImageSource,
-): readonly MessageImageSource[] {
-  if (currentMessage.role !== "assistant" || !currentMessage.runId) {
-    return [currentMessage];
-  }
-  return messages.filter((candidate) => {
-    return (
-      candidate.role === "assistant" && candidate.runId === currentMessage.runId
-    );
-  });
-}
-
 function scopedMessageImages(
   messages: readonly MessageImageSource[],
 ): MessageImage[] {
@@ -171,23 +159,24 @@ function artifactMetadataForUrl(
 
 /**
  * Navigate image previews within the displayed image scope for `currentUrl`.
- * User images stay scoped to their single message. Assistant images with a
- * runId navigate across that run's rendered assistant messages, because a
- * single generated result can be persisted as multiple assistant message rows
- * while still rendering as one visual assistant group. Run artifacts only
- * enrich metadata when available; generated/hosted artifacts that live in the
- * run but are not shown in rendered messages are excluded.
+ * The rendered chat message group is the scope boundary, so agent and human
+ * messages use the same rule: extract the images visible in the group that
+ * contains the current image. Run artifacts only enrich metadata when
+ * available; generated/hosted artifacts that live in the run but are not shown
+ * in rendered messages are excluded.
  */
 export function currentMessageImageArtifactNavigation(
   runs: readonly ChatThreadArtifactRun[],
-  messages: readonly MessageImageSource[],
+  groups: readonly MessageImageGroup[],
   currentUrl: string,
 ): ImageArtifactNavigation {
-  const message = messages.find((candidate) => {
-    return messageHasImageUrl(candidate, currentUrl);
+  const group = groups.find((candidateGroup) => {
+    return candidateGroup.messages.some((message) => {
+      return messageHasImageUrl(message, currentUrl);
+    });
   });
 
-  if (!message) {
+  if (!group) {
     return {};
   }
 
@@ -199,7 +188,7 @@ export function currentMessageImageArtifactNavigation(
   }
 
   const images: ImageArtifactNavigationItem[] = scopedMessageImages(
-    navigationScopeMessages(messages, message),
+    group.messages,
   ).map((image) => {
     const artifact = artifactMetadataForUrl(artifacts, image.url);
     if (artifact) {
