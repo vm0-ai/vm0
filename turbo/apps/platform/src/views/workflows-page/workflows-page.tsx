@@ -288,7 +288,7 @@ function ConnectorCell({
   );
 }
 
-function WorkflowHoverContent({
+export function WorkflowHoverContent({
   workflow,
 }: {
   readonly workflow: ZeroWorkflowSummary;
