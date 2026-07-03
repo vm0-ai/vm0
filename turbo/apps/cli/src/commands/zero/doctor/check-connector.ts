@@ -114,12 +114,6 @@ function connectorEnvName(type: ConnectorType): string | null {
   return getConnectorEnvBindingEntries(type)[0]?.envName ?? null;
 }
 
-function hasRoutingPermissionRules(config: DiagnosticRoutingConfig): boolean {
-  return config.apis.some((api) => {
-    return api.routes.length > 0;
-  });
-}
-
 function routesToDecisionPermissions(
   routes: readonly FirewallRoutingPermissionRoute[],
 ): DiagnosticDecisionPermission[] {
@@ -328,9 +322,7 @@ async function resolveConnectorFromRunContext(
     envName,
     matchedBase: bestMatch.match.displayBase,
     relativePath: bestMatch.match.relativePath,
-    ...(hasRoutingPermissionRules(bestMatch.routingConfig)
-      ? { routingConfig: bestMatch.routingConfig }
-      : {}),
+    routingConfig: bestMatch.routingConfig,
   };
 }
 

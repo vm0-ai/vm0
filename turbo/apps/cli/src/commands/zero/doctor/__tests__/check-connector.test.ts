@@ -969,6 +969,69 @@ describe("zero doctor check-connector command", () => {
       expect(output).toContain("  - https://acme.zendesk.com");
     });
 
+    it("should keep resolved run context bases for connectors without permission routes", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        stubAvailableConnectors(["altium-365"]),
+        http.get("https://app.vm0.ai/api/zero/connectors/altium-365", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            type: "altium-365",
+            authMethod: "api-token",
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["altium-365"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                kind: "builtin",
+                name: "altium-365",
+                baseUrlVars: {
+                  ALTIUM365_WORKSPACE_URL: "https://acme.365.altium.com",
+                },
+              },
+            ],
+            networkPolicies: {
+              "altium-365": {
+                allow: [],
+                deny: [],
+                ask: [],
+                unknownPolicy: "deny" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://acme.365.altium.com/api/v1/projects",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("matches the Altium 365 connector");
+      expect(output).toContain("Matched base URL: https://acme.365.altium.com");
+      expect(output).toContain("Relative path:    /api/v1/projects");
+      expect(output).toContain(
+        "No named permission matches GET /api/v1/projects. This request falls through to the unknown-endpoint policy.",
+      );
+      expect(output).toContain(
+        "Result: No permission matched. The unknown endpoint policy applies: deny.",
+      );
+    });
+
     it("should reject compact built-in run context base URL vars outside host policy", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
@@ -1036,14 +1099,8 @@ describe("zero doctor check-connector command", () => {
             ...runContextResponse,
             firewalls: [
               {
+                kind: "builtin",
                 name: "xero",
-                apis: [
-                  { base: "https://api.xero.com", permissions: [] },
-                  {
-                    base: "https://api.xero.com/api.xro/2.0",
-                    permissions: [],
-                  },
-                ],
               },
             ],
             networkPolicies: {
