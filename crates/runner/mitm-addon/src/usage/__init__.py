@@ -51,7 +51,11 @@ from .openai_responses import (
     extract_openai_responses_usage_with_error_from_json,
     merge_openai_responses_usage_result,
 )
-from .providers.connectors import create_connector_response_parser, report_connector_usage
+from .providers.connectors import (
+    create_connector_response_parser,
+    has_connector_response_parser,
+    report_connector_usage,
+)
 from .providers.model_provider import (
     has_positive_model_provider_usage,
     is_model_provider_usage_observable,
@@ -80,6 +84,7 @@ __all__ = [
     "extract_openai_responses_usage_from_json",
     "extract_openai_responses_usage_with_error_from_json",
     "flush_usage_events",
+    "has_connector_response_parser",
     "has_positive_model_provider_usage",
     "increment_in_flight_flows",
     "is_model_provider_usage_observable",

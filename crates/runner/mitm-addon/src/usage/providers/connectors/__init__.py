@@ -103,6 +103,11 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
     handler(flow, run_id, original_url)
 
 
+def has_connector_response_parser(firewall_name: str) -> bool:
+    """Return whether a connector has response-body parser capability."""
+    return firewall_name in _RESPONSE_PARSER_FACTORIES
+
+
 def create_connector_response_parser(flow: http.HTTPFlow) -> ConnectorResponseParser | None:
     """Create the connector-specific response parser for this flow, if registered.
 
