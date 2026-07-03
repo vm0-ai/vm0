@@ -48,6 +48,7 @@ import {
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
+import emptyWorkflowImg from "../zero-page/assets/empty-workflow.webp";
 import {
   CreateWorkflowAutomationDialog,
   humanReadableTriggerRuleLabel,
@@ -287,7 +288,7 @@ function ConnectorCell({
   );
 }
 
-function WorkflowHoverContent({
+export function WorkflowHoverContent({
   workflow,
 }: {
   readonly workflow: ZeroWorkflowSummary;
@@ -299,7 +300,7 @@ function WorkflowHoverContent({
       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
         {workflow.description ?? workflow.name}
       </p>
-      <div className="mt-2.5 flex flex-col gap-1.5 border-t border-border/60 pt-2.5 text-xs text-foreground/80">
+      <div className="mt-2.5 flex flex-col gap-3 border-t border-border/60 pt-2.5 text-xs text-foreground/80">
         <div className="flex items-center gap-2">
           <span className="w-16 shrink-0 text-muted-foreground">
             Created by
@@ -623,7 +624,14 @@ export function WorkflowListPanel({
         )
       ) : (
         <div className="zero-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
-          <p className="text-sm font-medium text-foreground">No workflows</p>
+          <img
+            src={emptyWorkflowImg}
+            alt="No workflows"
+            className="h-24 w-24 object-contain opacity-80"
+          />
+          <p className="mt-3 text-sm font-medium text-foreground">
+            No workflows
+          </p>
           <p className="mt-1 text-sm text-muted-foreground">
             {emptyDescription}
           </p>
@@ -809,7 +817,8 @@ export function WorkflowsPage() {
               Workflows
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Reusable instructions your team can run, edit, or automate.
+              A reusable SOP for a task. Write one from scratch or distill it
+              from your daily work, then run, edit, or automate it.
             </p>
           </div>
           <Button

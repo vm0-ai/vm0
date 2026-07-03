@@ -1,5 +1,5 @@
 {
-  "id": "2f3df930-2213-44b6-aee4-8b0136e0c29d",
+  "id": "827428cf-edb4-4774-9eeb-f085fb29db9c",
   "prevId": "1337e48e-cf5c-42af-b07f-5df492591d94",
   "version": "7",
   "dialect": "postgresql",
@@ -1852,6 +1852,12 @@
           "notNull": true,
           "default": true
         },
+        "migrated_to_workflow_id": {
+          "name": "migrated_to_workflow_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -3540,12 +3546,6 @@
         "selected_model": {
           "name": "selected_model",
           "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "codex_service_tier": {
-          "name": "codex_service_tier",
-          "type": "varchar(20)",
           "primaryKey": false,
           "notNull": false
         },

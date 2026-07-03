@@ -9,12 +9,20 @@ use tracing::warn;
 use crate::duration::duration_ms;
 use crate::http::HttpClient;
 use crate::ids::RunId;
+use crate::types::{ResumeSessionHistoryEncoding, ResumeSessionHistoryRef};
 
 /// How long before we auto-flush pending ops (matching TS: 30s).
 const FLUSH_THRESHOLD: Duration = Duration::from_secs(30);
 
 /// Timeout for telemetry HTTP requests (shorter than default API timeout).
 const TELEMETRY_TIMEOUT: Duration = Duration::from_secs(5);
+
+const SIZE_64_KIB: u64 = 64 * 1024;
+const SIZE_256_KIB: u64 = 256 * 1024;
+const SIZE_1_MIB: u64 = 1024 * 1024;
+const SIZE_4_MIB: u64 = 4 * SIZE_1_MIB;
+const SIZE_16_MIB: u64 = 16 * SIZE_1_MIB;
+const SIZE_64_MIB: u64 = 64 * SIZE_1_MIB;
 
 /// Per-job telemetry collector. Buffers sandbox operations and flushes them
 /// periodically (auto on 30 s threshold) and at job end.
@@ -40,6 +48,12 @@ struct SandboxOp {
     error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     encoding: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_history_raw_size_bucket: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_history_encoded_size_bucket: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_history_compression_ratio_bucket: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -47,6 +61,48 @@ struct SandboxOp {
 struct TelemetryPayload {
     run_id: String,
     sandbox_operations: Vec<SandboxOp>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SessionHistoryTelemetryMetadata {
+    encoding: &'static str,
+    raw_size_bucket: &'static str,
+    encoded_size_bucket: &'static str,
+    compression_ratio_bucket: &'static str,
+}
+
+impl SessionHistoryTelemetryMetadata {
+    pub(crate) fn from_ref(history_ref: &ResumeSessionHistoryRef) -> Self {
+        let encoding = history_ref
+            .encoding
+            .unwrap_or(ResumeSessionHistoryEncoding::Identity);
+        Self {
+            encoding: session_history_encoding_value(encoding),
+            raw_size_bucket: size_bucket(history_ref.raw_size),
+            encoded_size_bucket: size_bucket(history_ref.encoded_size),
+            compression_ratio_bucket: compression_ratio_bucket(
+                encoding,
+                history_ref.raw_size,
+                history_ref.encoded_size,
+            ),
+        }
+    }
+
+    pub(crate) fn encoding(self) -> &'static str {
+        self.encoding
+    }
+
+    fn raw_size_bucket(self) -> &'static str {
+        self.raw_size_bucket
+    }
+
+    fn encoded_size_bucket(self) -> &'static str {
+        self.encoded_size_bucket
+    }
+
+    fn compression_ratio_bucket(self) -> &'static str {
+        self.compression_ratio_bucket
+    }
 }
 
 impl JobTelemetry {
@@ -71,20 +127,27 @@ impl JobTelemetry {
         success: bool,
         error: Option<&str>,
     ) {
-        self.record_inner(action_type, duration, success, error, None);
+        self.record_inner(action_type, duration, success, error, None, None);
     }
 
-    /// Record a timed operation with a low-cardinality session-history
-    /// transport encoding dimension.
-    pub fn record_with_encoding(
+    /// Record a timed operation with low-cardinality session-history transport
+    /// dimensions derived from the hash-backed resume history ref.
+    pub fn record_with_session_history_metadata(
         &mut self,
         action_type: &str,
         duration: Duration,
         success: bool,
         error: Option<&str>,
-        encoding: Option<&'static str>,
+        metadata: Option<SessionHistoryTelemetryMetadata>,
     ) {
-        self.record_inner(action_type, duration, success, error, encoding);
+        self.record_inner(
+            action_type,
+            duration,
+            success,
+            error,
+            metadata.map(SessionHistoryTelemetryMetadata::encoding),
+            metadata,
+        );
     }
 
     fn record_inner(
@@ -94,6 +157,7 @@ impl JobTelemetry {
         success: bool,
         error: Option<&str>,
         encoding: Option<&'static str>,
+        metadata: Option<SessionHistoryTelemetryMetadata>,
     ) {
         self.pending_ops.push(SandboxOp {
             ts: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
@@ -102,6 +166,15 @@ impl JobTelemetry {
             success,
             error: error.map(String::from),
             encoding: encoding.map(String::from),
+            session_history_raw_size_bucket: metadata
+                .map(SessionHistoryTelemetryMetadata::raw_size_bucket)
+                .map(String::from),
+            session_history_encoded_size_bucket: metadata
+                .map(SessionHistoryTelemetryMetadata::encoded_size_bucket)
+                .map(String::from),
+            session_history_compression_ratio_bucket: metadata
+                .map(SessionHistoryTelemetryMetadata::compression_ratio_bucket)
+                .map(String::from),
         });
         if self.oldest_pending.is_none() {
             self.oldest_pending = Some(Instant::now());
@@ -159,9 +232,9 @@ impl JobTelemetry {
     }
 
     #[cfg(test)]
-    pub(crate) fn pending_ops_with_encoding_snapshot(
+    pub(crate) fn pending_ops_with_session_history_metadata_snapshot(
         &self,
-    ) -> Vec<(String, bool, Option<String>, Option<String>)> {
+    ) -> Vec<SessionHistoryTelemetrySnapshot> {
         self.pending_ops
             .iter()
             .map(|op| {
@@ -170,6 +243,9 @@ impl JobTelemetry {
                     op.success,
                     op.error.clone(),
                     op.encoding.clone(),
+                    op.session_history_raw_size_bucket.clone(),
+                    op.session_history_encoded_size_bucket.clone(),
+                    op.session_history_compression_ratio_bucket.clone(),
                 )
             })
             .collect()
@@ -198,6 +274,68 @@ impl JobTelemetry {
             send_telemetry(&http, run_id, &sandbox_token, ops).await;
         });
         self.in_flight_flushes.push(handle);
+    }
+}
+
+#[cfg(test)]
+type SessionHistoryTelemetrySnapshot = (
+    String,
+    bool,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+const fn session_history_encoding_value(encoding: ResumeSessionHistoryEncoding) -> &'static str {
+    match encoding {
+        ResumeSessionHistoryEncoding::Identity => "identity",
+        ResumeSessionHistoryEncoding::Gzip => "gzip",
+    }
+}
+
+const fn size_bucket(size: u64) -> &'static str {
+    if size < SIZE_64_KIB {
+        "lt_64_kib"
+    } else if size < SIZE_256_KIB {
+        "64_256_kib"
+    } else if size < SIZE_1_MIB {
+        "256_kib_1_mib"
+    } else if size < SIZE_4_MIB {
+        "1_4_mib"
+    } else if size < SIZE_16_MIB {
+        "4_16_mib"
+    } else if size < SIZE_64_MIB {
+        "16_64_mib"
+    } else {
+        "64_128_mib"
+    }
+}
+
+fn compression_ratio_bucket(
+    encoding: ResumeSessionHistoryEncoding,
+    raw_size: u64,
+    encoded_size: u64,
+) -> &'static str {
+    if encoding == ResumeSessionHistoryEncoding::Identity {
+        return "identity";
+    }
+    if raw_size == 0 {
+        return "ge_1";
+    }
+
+    let ratio = encoded_size as f64 / raw_size as f64;
+    if ratio < 0.25 {
+        "lt_0_25"
+    } else if ratio < 0.5 {
+        "0_25_0_5"
+    } else if ratio < 0.75 {
+        "0_5_0_75"
+    } else if ratio < 1.0 {
+        "0_75_1"
+    } else {
+        "ge_1"
     }
 }
 
@@ -310,6 +448,9 @@ mod tests {
             success: true,
             error: None,
             encoding: None,
+            session_history_raw_size_bucket: None,
+            session_history_encoded_size_bucket: None,
+            session_history_compression_ratio_bucket: None,
         };
         let json = serde_json::to_value(&op).unwrap();
         assert_eq!(json["ts"], "2026-01-15T10:00:00+00:00");
@@ -330,12 +471,27 @@ mod tests {
                 success: true,
                 error: None,
                 encoding: Some("gzip".to_string()),
+                session_history_raw_size_bucket: Some("64_256_kib".to_string()),
+                session_history_encoded_size_bucket: Some("lt_64_kib".to_string()),
+                session_history_compression_ratio_bucket: Some("lt_0_25".to_string()),
             }],
         };
         let json = serde_json::to_value(&payload).unwrap();
         assert!(json.get("runId").is_some());
         assert!(json.get("sandboxOperations").is_some());
         assert_eq!(json["sandboxOperations"][0]["encoding"], "gzip");
+        assert_eq!(
+            json["sandboxOperations"][0]["session_history_raw_size_bucket"],
+            "64_256_kib"
+        );
+        assert_eq!(
+            json["sandboxOperations"][0]["session_history_encoded_size_bucket"],
+            "lt_64_kib"
+        );
+        assert_eq!(
+            json["sandboxOperations"][0]["session_history_compression_ratio_bucket"],
+            "lt_0_25"
+        );
     }
 
     #[test]
@@ -372,25 +528,34 @@ mod tests {
     }
 
     #[test]
-    fn record_with_encoding_buffers_low_cardinality_encoding() {
+    fn record_with_session_history_metadata_buffers_low_cardinality_buckets() {
         let http = http_client();
         let mut telemetry = JobTelemetry::new(http, RunId::nil(), "tok".to_string());
+        let metadata = SessionHistoryTelemetryMetadata {
+            encoding: "gzip",
+            raw_size_bucket: "64_256_kib",
+            encoded_size_bucket: "lt_64_kib",
+            compression_ratio_bucket: "lt_0_25",
+        };
 
-        telemetry.record_with_encoding(
+        telemetry.record_with_session_history_metadata(
             "session_history_download",
             Duration::from_millis(500),
             true,
             None,
-            Some("gzip"),
+            Some(metadata),
         );
 
         assert_eq!(
-            telemetry.pending_ops_with_encoding_snapshot(),
+            telemetry.pending_ops_with_session_history_metadata_snapshot(),
             vec![(
                 "session_history_download".to_string(),
                 true,
                 None,
-                Some("gzip".to_string())
+                Some("gzip".to_string()),
+                Some("64_256_kib".to_string()),
+                Some("lt_64_kib".to_string()),
+                Some("lt_0_25".to_string())
             )]
         );
     }

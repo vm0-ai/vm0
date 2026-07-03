@@ -42,6 +42,41 @@ const MODEL_USAGE_KIND = "model";
 
 const L = logger("webhooks:agent");
 
+interface SandboxOperationDimensionInput {
+  readonly error?: string;
+  readonly encoding?: string;
+  readonly session_history_raw_size_bucket?: string;
+  readonly session_history_encoded_size_bucket?: string;
+  readonly session_history_compression_ratio_bucket?: string;
+}
+
+function sandboxOperationDimensions(
+  op: SandboxOperationDimensionInput,
+): Record<string, string> {
+  return {
+    source: "sandbox",
+    ...(op.error ? { error: op.error } : {}),
+    ...(op.encoding ? { encoding: op.encoding } : {}),
+    ...(op.session_history_raw_size_bucket
+      ? {
+          session_history_raw_size_bucket: op.session_history_raw_size_bucket,
+        }
+      : {}),
+    ...(op.session_history_encoded_size_bucket
+      ? {
+          session_history_encoded_size_bucket:
+            op.session_history_encoded_size_bucket,
+        }
+      : {}),
+    ...(op.session_history_compression_ratio_bucket
+      ? {
+          session_history_compression_ratio_bucket:
+            op.session_history_compression_ratio_bucket,
+        }
+      : {}),
+  };
+}
+
 function isForeignKeyViolation(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
@@ -342,11 +377,7 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
         success: op.success,
         runId: body.runId,
         timestamp: op.ts,
-        dimensions: {
-          source: "sandbox",
-          ...(op.error ? { error: op.error } : {}),
-          ...(op.encoding ? { encoding: op.encoding } : {}),
-        },
+        dimensions: sandboxOperationDimensions(op),
       });
     }
   }

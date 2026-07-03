@@ -17,6 +17,7 @@ import {
   postAutomationUserMessage,
   resolveAutomationChatThreadModelPin,
 } from "./zero-chat-automation-message.service";
+import { hasUnclaimedQueuedUserMessage } from "./zero-chat-queued-message.service";
 import {
   pauseActiveGoalForThread,
   loadActiveGoalForThread,
@@ -190,6 +191,10 @@ async function featureEnabledForRun(
 }
 
 async function threadIsIdle(db: Db, chatThreadId: string): Promise<boolean> {
+  if (await hasUnclaimedQueuedUserMessage(db, chatThreadId)) {
+    return false;
+  }
+
   const [activeRun] = await db
     .select({ id: zeroRuns.id })
     .from(zeroRuns)

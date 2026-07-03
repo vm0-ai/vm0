@@ -52,7 +52,7 @@ use crate::restored_session_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_READ_LIMIT, RestoredSessionFinalMetadataVerification,
     RestoredSessionIdentity, RestoredSessionIdentityMismatchReason,
 };
-use crate::telemetry::JobTelemetry;
+use crate::telemetry::{JobTelemetry, SessionHistoryTelemetryMetadata};
 use crate::types::{ExecutionContext, GuestDownloadManifest};
 
 const AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
@@ -209,30 +209,30 @@ fn record_session_history_download_timings(
     telemetry: &mut JobTelemetry,
     timings: &SessionHistoryDownloadTimings,
 ) {
-    let encoding = timings.encoding();
+    let metadata = timings.metadata();
     record_session_history_download_phase(
         telemetry,
         "session_history_download_request_status",
         timings.request_status(),
-        encoding,
+        metadata,
     );
     record_session_history_download_phase(
         telemetry,
         "session_history_download_body_read",
         timings.body_read(),
-        encoding,
+        metadata,
     );
     record_session_history_download_phase(
         telemetry,
         "session_history_download_validation",
         timings.validation(),
-        encoding,
+        metadata,
     );
     record_session_history_download_phase(
         telemetry,
         "session_history_download_hash_verification",
         timings.hash_verification(),
-        encoding,
+        metadata,
     );
 }
 
@@ -240,15 +240,15 @@ fn record_session_history_download_phase(
     telemetry: &mut JobTelemetry,
     action_type: &'static str,
     phase: Option<SessionHistoryDownloadPhaseTiming>,
-    encoding: Option<&'static str>,
+    metadata: Option<SessionHistoryTelemetryMetadata>,
 ) {
     if let Some(phase) = phase {
-        telemetry.record_with_encoding(
+        telemetry.record_with_session_history_metadata(
             action_type,
             phase.elapsed(),
             phase.success(),
             (!phase.success()).then_some(SESSION_HISTORY_DOWNLOAD_PHASE_TELEMETRY_ERROR),
-            encoding,
+            metadata,
         );
     }
 }
@@ -259,26 +259,26 @@ fn record_session_history_materializer_state(
     completed_before_restore: bool,
     wait: Duration,
     success: bool,
-    encoding: Option<&'static str>,
+    metadata: Option<SessionHistoryTelemetryMetadata>,
 ) {
     if !was_downloading {
         return;
     }
     if completed_before_restore {
-        telemetry.record_with_encoding(
+        telemetry.record_with_session_history_metadata(
             "session_history_materializer_completed_before_restore",
             Duration::ZERO,
             success,
             (!success).then_some(SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR),
-            encoding,
+            metadata,
         );
     } else {
-        telemetry.record_with_encoding(
+        telemetry.record_with_session_history_metadata(
             "session_history_materializer_waited_at_restore",
             wait,
             success,
             (!success).then_some(SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR),
-            encoding,
+            metadata,
         );
     }
 }
@@ -951,23 +951,23 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     materializer_completed_before_restore,
                     materialization_wait,
                     true,
-                    timings.encoding(),
+                    timings.metadata(),
                 );
                 if should_record_materialization_wait {
-                    telemetry.record_with_encoding(
+                    telemetry.record_with_session_history_metadata(
                         "session_history_materialization_wait",
                         materialization_wait,
                         true,
                         None,
-                        timings.encoding(),
+                        timings.metadata(),
                     );
                 }
-                telemetry.record_with_encoding(
+                telemetry.record_with_session_history_metadata(
                     "session_history_download",
                     elapsed,
                     true,
                     None,
-                    timings.encoding(),
+                    timings.metadata(),
                 );
                 record_session_history_download_timings(telemetry, &timings);
                 Some(session)
@@ -983,23 +983,23 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     materializer_completed_before_restore,
                     materialization_wait,
                     false,
-                    timings.encoding(),
+                    timings.metadata(),
                 );
                 if should_record_materialization_wait {
-                    telemetry.record_with_encoding(
+                    telemetry.record_with_session_history_metadata(
                         "session_history_materialization_wait",
                         materialization_wait,
                         false,
                         Some(SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR),
-                        timings.encoding(),
+                        timings.metadata(),
                     );
                 }
-                telemetry.record_with_encoding(
+                telemetry.record_with_session_history_metadata(
                     "session_history_download",
                     elapsed,
                     false,
                     Some(SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR),
-                    timings.encoding(),
+                    timings.metadata(),
                 );
                 record_session_history_download_timings(telemetry, &timings);
                 return Err(error);

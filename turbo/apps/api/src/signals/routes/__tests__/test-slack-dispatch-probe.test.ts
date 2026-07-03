@@ -10,7 +10,6 @@ import type {
   TestSlackStatePostResponse,
   TestSlackStateResponse,
 } from "@vm0/api-contracts/contracts/test-slack-state";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -24,7 +23,6 @@ import { testSlackStateRoutes } from "../test-slack-state";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -186,23 +184,6 @@ function actorForFixture(fixture: SlackProbeFixture): ApiTestUser {
     orgRole: "org:admin",
     email: `${fixture.userId}@example.test`,
   };
-}
-
-async function enableComputerUseDelegatedAuthorization(
-  fixture: SlackProbeFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(
-    context,
-    {
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      orgRole: "org:admin",
-    },
-    {
-      [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: true,
-    },
-  );
-  mockTestUserMembership(fixture.userId, fixture.orgId);
 }
 
 async function heartbeatRunner() {
@@ -500,7 +481,7 @@ describe("POST /api/test/slack-dispatch-probe", () => {
     const channelId = "C-test";
     const threadTs = "1710000004.000000";
     const actor = actorForFixture(fixture);
-    await enableComputerUseDelegatedAuthorization(fixture);
+    mockTestUserMembership(fixture.userId, fixture.orgId);
     const host = await computerUseApi.startComputerUseHost(actor, {
       hostName: "Slack authorized host",
     });

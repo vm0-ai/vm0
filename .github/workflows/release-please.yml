@@ -1342,6 +1342,12 @@ jobs:
         id: timer
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve App Build Commit SHA
+        id: build-commit
+        run: |
+          sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
       - name: Build App Staged Production Deployment
         id: deploy
         uses: ./.github/actions/vercel-deploy
@@ -1359,6 +1365,7 @@ jobs:
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             VITE_VERCEL_ENV=production
             VITE_API_URL=https://www.vm0.ai
+            VITE_GIT_COMMIT_SHA=${{ steps.build-commit.outputs.sha }}
             VITE_ONBOARDING_URL=${{ vars.ONBOARDING_URL || 'https://www.vm0.ai' }}
             PUBLIC_ARTIFACTS_BASE_URL=${{ vars.PUBLIC_ARTIFACTS_BASE_URL }}
             VITE_STATIC_ASSETS_BASE_URL=${{ vars.STATIC_ASSETS_BASE_URL_PROD || vars.STATIC_ASSETS_BASE_URL || 'https://static.vm0.io' }}

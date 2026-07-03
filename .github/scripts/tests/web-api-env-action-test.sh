@@ -3,6 +3,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 ACTION="${REPO_ROOT}/.github/actions/web-api-env/action.yml"
+EXPECTED_BUILD_COMMIT_SHA="$(git -C "$REPO_ROOT" rev-parse --verify HEAD)"
 TEMP_DIRS=()
 
 cleanup() {
@@ -166,6 +167,7 @@ assert_env_value "$success_env_file" ATOM_URL "https://tunnel-yuma-atom-api.vm7.
 assert_env_value "$success_env_file" VM0_MACHINE_SECRET_KEY "github-atom-machine-secret"
 assert_env_value "$success_env_file" VM0_PREVIEW_JOB_REF "pr-123"
 assert_env_value "$success_env_file" VM0_WEB_URL "https://pr-123-www.vm0.test"
+assert_env_value "$success_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
 assert_env_value "$success_env_file" ONBOARDING_URL "https://staging-www.vm6.ai"
 assert_env_value "$success_env_file" ZERO_PRICE_PRO "price_test_pro"
 assert_env_value "$success_env_file" ZERO_PRICE_TEAM "price_test_team"
@@ -192,6 +194,7 @@ production_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' 
 assert_contains "$production_web_output" "Rendered"
 assert_env_value "$production_web_env_file" POSTHOG_KEY "github-posthog-key"
 assert_env_value "$production_web_env_file" POSTHOG_HOST "https://posthog.github.test"
+assert_env_value "$production_web_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
 assert_env_absent_value "$production_web_env_file" "ATOM_URL="
 assert_env_absent_value "$production_web_env_file" "VM0_MACHINE_SECRET_KEY="
 

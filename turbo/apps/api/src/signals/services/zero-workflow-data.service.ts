@@ -6,6 +6,7 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { and, asc, eq, or, sql, type SQL } from "drizzle-orm";
 
 import { db$, type ReadonlyDb } from "../external/db";
+import { clerk$ } from "../external/clerk";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
 
 export interface WorkflowMember {
@@ -296,6 +297,27 @@ export async function loadWorkflowShadowWinner(
   return winner;
 }
 
+/**
+ * Batch-fetch owner avatar URLs from Clerk (the source of truth for user
+ * images) keyed by user id. user_cache only stores name/email, so the image
+ * has to come from Clerk directly.
+ */
+async function fetchOwnerImageUrls(
+  client: ReturnType<typeof clerk$.read>,
+  userIds: readonly string[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const uniqueUserIds = [...new Set(userIds)];
+  if (uniqueUserIds.length === 0) {
+    return map;
+  }
+  const users = await client.users.getUserList({ userId: uniqueUserIds });
+  for (const user of users.data) {
+    map.set(user.id, user.imageUrl);
+  }
+  return map;
+}
+
 export function zeroWorkflowList(args: {
   readonly orgId: string;
   readonly member: WorkflowMember;
@@ -340,6 +362,12 @@ export function zeroWorkflowList(args: {
       .orderBy(asc(zeroWorkflows.name));
 
     const winners = shadowWinnerFromRows(rows, args.member);
+    const ownerImageUrlByUserId = await fetchOwnerImageUrls(
+      get(clerk$),
+      rows.map((row) => {
+        return row.workflow.ownerUserId;
+      }),
+    );
 
     return rows.map((row) => {
       const key = `${row.workflow.agentId}:${row.workflow.name}`;
@@ -351,7 +379,7 @@ export function zeroWorkflowList(args: {
         ownerProfile: {
           displayName:
             row.ownerProfile?.name ?? row.ownerProfile?.email ?? null,
-          imageUrl: null,
+          imageUrl: ownerImageUrlByUserId.get(row.workflow.ownerUserId) ?? null,
         },
         shadowedBy:
           winner && winner.id !== row.workflow.id ? winner : undefined,

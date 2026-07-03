@@ -277,13 +277,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the HTML artifact comment-editing workflow for collecting DOM comments and preparing instrumented working-copy edits.",
     enabled: false,
   },
-  [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Enable short-lived Computer Use authorization links for agent runs that need a user to bind a Desktop host to the current chat or Slack thread.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ComputerUseDesktopPlugins]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -295,13 +288,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Show Intel Mac download links for Zero Computer Use after darwin-x64 release artifacts are available.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.PresentationTemplateRunbook]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Generate presentations from a selected template via its self-contained runbook package: the agent pulls one R2 archive, follows AGENT_RUNBOOK.md, and selects a color system at runtime. When off, presentation generation uses the legacy multi-resource selection flow.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

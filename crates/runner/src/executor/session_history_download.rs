@@ -27,6 +27,7 @@ use tokio_util::sync::CancellationToken;
 use super::session_restore::MaterializedResumeSession;
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
+use crate::telemetry::SessionHistoryTelemetryMetadata;
 use crate::types::{
     ResumeSession, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
     ResumeSessionHistoryRefKind,
@@ -43,7 +44,7 @@ enum SessionHistoryMaterializerState {
     NoDownloadNeeded,
     Downloading {
         started_at: Instant,
-        encoding: ResumeSessionHistoryEncoding,
+        metadata: SessionHistoryTelemetryMetadata,
         task: Option<JoinHandle<SessionHistoryDownloadTaskResult>>,
     },
 }
@@ -71,7 +72,7 @@ struct SessionHistoryDownloadTaskResult {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct SessionHistoryDownloadTimings {
-    encoding: Option<ResumeSessionHistoryEncoding>,
+    metadata: Option<SessionHistoryTelemetryMetadata>,
     request_status: Option<SessionHistoryDownloadPhaseTiming>,
     body_read: Option<SessionHistoryDownloadPhaseTiming>,
     validation: Option<SessionHistoryDownloadPhaseTiming>,
@@ -85,9 +86,13 @@ pub(super) struct SessionHistoryDownloadPhaseTiming {
 }
 
 impl SessionHistoryDownloadTimings {
+    #[cfg(test)]
     pub(super) fn encoding(&self) -> Option<&'static str> {
-        self.encoding
-            .map(ResumeSessionHistoryEncoding::telemetry_value)
+        self.metadata.map(SessionHistoryTelemetryMetadata::encoding)
+    }
+
+    pub(super) fn metadata(&self) -> Option<SessionHistoryTelemetryMetadata> {
+        self.metadata
     }
 
     pub(super) fn request_status(&self) -> Option<SessionHistoryDownloadPhaseTiming> {
@@ -110,13 +115,9 @@ impl SessionHistoryDownloadTimings {
         self.request_status = Some(SessionHistoryDownloadPhaseTiming { elapsed, success });
     }
 
-    fn record_encoding(&mut self, encoding: ResumeSessionHistoryEncoding) {
-        self.encoding = Some(encoding);
-    }
-
-    fn for_encoding(encoding: ResumeSessionHistoryEncoding) -> Self {
+    fn for_metadata(metadata: SessionHistoryTelemetryMetadata) -> Self {
         Self {
-            encoding: Some(encoding),
+            metadata: Some(metadata),
             ..Self::default()
         }
     }
@@ -141,15 +142,6 @@ impl SessionHistoryDownloadPhaseTiming {
 
     pub(super) fn success(self) -> bool {
         self.success
-    }
-}
-
-impl ResumeSessionHistoryEncoding {
-    const fn telemetry_value(self) -> &'static str {
-        match self {
-            Self::Identity => "identity",
-            Self::Gzip => "gzip",
-        }
     }
 }
 
@@ -185,9 +177,7 @@ impl SessionHistoryMaterializer {
                 state: SessionHistoryMaterializerState::NoDownloadNeeded,
             };
         };
-        let encoding = history_ref
-            .encoding
-            .unwrap_or(ResumeSessionHistoryEncoding::Identity);
+        let metadata = SessionHistoryTelemetryMetadata::from_ref(history_ref);
 
         let http = http.clone();
         let session = session.clone();
@@ -197,14 +187,14 @@ impl SessionHistoryMaterializer {
         Self {
             state: SessionHistoryMaterializerState::Downloading {
                 started_at,
-                encoding,
+                metadata,
                 task: Some(tokio::spawn(async move {
                     tokio::select! {
                         biased;
                         _ = cancel.cancelled() => {
-                            SessionHistoryDownloadTaskResult::cancelled(started_at, encoding)
+                            SessionHistoryDownloadTaskResult::cancelled(started_at, metadata)
                         }
-                        result = download_resume_session_history_timed(http, session) => result,
+                        result = download_resume_session_history_timed(http, session, metadata) => result,
                     }
                 })),
             },
@@ -241,23 +231,23 @@ impl SessionHistoryMaterializer {
             }
             SessionHistoryMaterializerState::Downloading {
                 started_at,
-                encoding,
+                metadata,
                 task,
             } => {
                 let started_at = *started_at;
-                let encoding = *encoding;
+                let metadata = *metadata;
                 if cancel.is_cancelled() {
                     if let Some(task) = task.take() {
                         task.abort();
                         let _ = task.await;
                     }
-                    return SessionHistoryDownloadTaskResult::cancelled(started_at, encoding)
+                    return SessionHistoryDownloadTaskResult::cancelled(started_at, metadata)
                         .into_materialization();
                 }
                 let Some(mut task) = task.take() else {
                     return SessionHistoryMaterialization::Failed {
                         elapsed: Duration::ZERO,
-                        timings: SessionHistoryDownloadTimings::for_encoding(encoding),
+                        timings: SessionHistoryDownloadTimings::for_metadata(metadata),
                         error: RunnerError::Internal(
                             "session history materializer lost download task".into(),
                         ),
@@ -268,13 +258,13 @@ impl SessionHistoryMaterializer {
                     _ = cancel.cancelled() => {
                         task.abort();
                         let _ = task.await;
-                        SessionHistoryDownloadTaskResult::cancelled(started_at, encoding)
+                        SessionHistoryDownloadTaskResult::cancelled(started_at, metadata)
                     }
                     joined = &mut task => {
                         joined.unwrap_or_else(|error| {
                             SessionHistoryDownloadTaskResult {
                                 elapsed: started_at.elapsed(),
-                                timings: SessionHistoryDownloadTimings::for_encoding(encoding),
+                                timings: SessionHistoryDownloadTimings::for_metadata(metadata),
                                 result: Err(RunnerError::Internal(format!(
                                     "session history download task failed: {error}"
                                 ))),
@@ -285,7 +275,7 @@ impl SessionHistoryMaterializer {
                 // Re-check after joining because the task itself can observe
                 // cancellation while still producing a successful result.
                 if cancel.is_cancelled() {
-                    return SessionHistoryDownloadTaskResult::cancelled(started_at, encoding)
+                    return SessionHistoryDownloadTaskResult::cancelled(started_at, metadata)
                         .into_materialization();
                 }
                 result.into_materialization()
@@ -310,10 +300,10 @@ impl SessionHistoryDownloadTaskResult {
         }
     }
 
-    fn cancelled(started_at: Instant, encoding: ResumeSessionHistoryEncoding) -> Self {
+    fn cancelled(started_at: Instant, metadata: SessionHistoryTelemetryMetadata) -> Self {
         Self {
             elapsed: started_at.elapsed(),
-            timings: SessionHistoryDownloadTimings::for_encoding(encoding),
+            timings: SessionHistoryDownloadTimings::for_metadata(metadata),
             result: Err(RunnerError::Internal(
                 "session history download cancelled".into(),
             )),
@@ -337,9 +327,10 @@ impl Drop for SessionHistoryMaterializer {
 async fn download_resume_session_history_timed(
     http: HttpClient,
     session: ResumeSession,
+    metadata: SessionHistoryTelemetryMetadata,
 ) -> SessionHistoryDownloadTaskResult {
     let started_at = Instant::now();
-    let mut timings = SessionHistoryDownloadTimings::default();
+    let mut timings = SessionHistoryDownloadTimings::for_metadata(metadata);
     let result = download_resume_session_history(http, session, &mut timings).await;
     SessionHistoryDownloadTaskResult {
         elapsed: started_at.elapsed(),
@@ -369,7 +360,6 @@ async fn download_resume_session_history(
     let encoding = history_ref
         .encoding
         .unwrap_or(ResumeSessionHistoryEncoding::Identity);
-    timings.record_encoding(encoding);
 
     let bytes = match encoding {
         ResumeSessionHistoryEncoding::Identity => {
@@ -741,6 +731,16 @@ mod tests {
             Some(session),
             CancellationToken::new(),
         )
+    }
+
+    fn identity_metadata() -> SessionHistoryTelemetryMetadata {
+        let session = ref_session(
+            "http://127.0.0.1/history.blob".to_string(),
+            hex::encode(Sha256::digest(b"")),
+            1,
+            1,
+        );
+        SessionHistoryTelemetryMetadata::from_ref(session.history_ref().unwrap())
     }
 
     fn assert_phase_success(phase: Option<SessionHistoryDownloadPhaseTiming>) {
@@ -1283,7 +1283,7 @@ mod tests {
         let materializer = SessionHistoryMaterializer {
             state: SessionHistoryMaterializerState::Downloading {
                 started_at: Instant::now(),
-                encoding: ResumeSessionHistoryEncoding::Identity,
+                metadata: identity_metadata(),
                 task: Some(task),
             },
         };
@@ -1315,7 +1315,7 @@ mod tests {
         let materializer = SessionHistoryMaterializer {
             state: SessionHistoryMaterializerState::Downloading {
                 started_at: Instant::now(),
-                encoding: ResumeSessionHistoryEncoding::Identity,
+                metadata: identity_metadata(),
                 task: Some(task),
             },
         };

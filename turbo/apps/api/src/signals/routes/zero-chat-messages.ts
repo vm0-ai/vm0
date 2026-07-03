@@ -216,7 +216,6 @@ interface PreparedNormalSend {
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
-  readonly presentationRunbookEnabled: boolean;
   readonly initialThinkingEnabled: boolean;
 }
 
@@ -1340,10 +1339,6 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.CodexFastMode,
       context,
     ),
-    presentationRunbookEnabled: isFeatureEnabled(
-      FeatureSwitchKey.PresentationTemplateRunbook,
-      context,
-    ),
     initialThinkingEnabled:
       isFeatureEnabled(
         FeatureSwitchKey.ChatInitialThinkingIndicator,
@@ -2298,7 +2293,6 @@ const prepareNormalSend$ = command(
     signal.throwIfAborted();
     const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
       explicit: args.body.generationTemplate,
-      presentationRunbookEnabled: featureSwitches.presentationRunbookEnabled,
     });
     const persistedExplicitSelection =
       await maybePersistExplicitModelFirstSelection({

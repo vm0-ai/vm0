@@ -7,7 +7,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
 import {
   chatMessages,
-  type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
@@ -22,7 +21,6 @@ import {
   eq,
   inArray,
   isNotNull,
-  isNull,
   lte,
   ne,
   sql,
@@ -63,6 +61,10 @@ import {
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
+import {
+  loadNextUnclaimedQueuedUserMessage,
+  type QueuedUserMessage,
+} from "./zero-chat-queued-message.service";
 import { sendUserPushNotifications } from "./zero-push-notifications.service";
 import {
   type ChatCompletionContextMessage,
@@ -73,11 +75,8 @@ import {
 } from "./zero-chat-title.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -329,18 +328,6 @@ interface PriorRun {
 
 interface LatestThreadSession {
   readonly sessionId: string;
-  readonly selectedModel: string | null;
-}
-
-interface QueuedUserMessage {
-  readonly id: string;
-  readonly content: string | null;
-  readonly attachFiles: readonly string[] | null;
-  readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
-  readonly generationTemplate: ChatMessageGenerationTemplate | null;
-  readonly modelProviderId: string | null;
-  readonly modelProviderType: string | null;
-  readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly selectedModel: string | null;
 }
 
@@ -1545,44 +1532,6 @@ async function getIncompleteRoundsSinceLastSuccess(
   });
 }
 
-async function nextQueuedUserMessage(
-  db: Db,
-  threadId: string,
-): Promise<QueuedUserMessage | null> {
-  const [message] = await db
-    .select({
-      id: chatMessages.id,
-      content: chatMessages.content,
-      attachFiles: chatMessages.attachFiles,
-      attachFileMetadata: chatMessages.attachFileMetadata,
-      generationTemplate: chatMessages.generationTemplate,
-      modelProviderId: sql<null>`NULL`,
-      modelProviderType: sql<null>`NULL`,
-      modelProviderCredentialScope: sql<null>`NULL`,
-      selectedModel: chatThreads.selectedModel,
-    })
-    .from(chatMessages)
-    .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, threadId),
-        eq(chatMessages.role, "user"),
-        isNull(chatMessages.runId),
-        isNull(chatMessages.revokesMessageId),
-        isNull(chatMessages.interruptsRunId),
-        sql`NOT EXISTS (
-          SELECT 1
-          FROM ${chatMessages} AS revoker
-          WHERE revoker.revokes_message_id = ${chatMessages.id}
-        )`,
-      ),
-    )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
-    .limit(1);
-
-  return message ?? null;
-}
-
 async function getLatestRunsByThreadId(
   db: Db,
   threadId: string,
@@ -1972,22 +1921,6 @@ async function buildCreateQueuedChatRunInput(args: {
       });
     },
   );
-  const featureSwitchContext = await measureChatCallbackPreCreateTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_load_feature_switch_context",
-    "nested",
-    () => {
-      return loadUserFeatureSwitchContext(
-        args.db,
-        args.agent.orgId,
-        args.userId,
-      );
-    },
-  );
-  const presentationRunbookEnabled = isFeatureEnabled(
-    FeatureSwitchKey.PresentationTemplateRunbook,
-    featureSwitchContext,
-  );
   const generationTemplatePrompt = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_generation_template",
@@ -1995,7 +1928,6 @@ async function buildCreateQueuedChatRunInput(args: {
     () => {
       return resolveThreadGenerationTemplatePrompt({
         explicit: resolvedQueuedMessage.generationTemplate,
-        presentationRunbookEnabled,
       });
     },
   );
@@ -2275,7 +2207,7 @@ async function autoSendQueuedMessageOnRunComplete(args: {
     "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
     "nested",
     () => {
-      return nextQueuedUserMessage(args.db, threadId);
+      return loadNextUnclaimedQueuedUserMessage(args.db, threadId);
     },
   );
   if (!queuedMessage) {

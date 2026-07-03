@@ -968,9 +968,7 @@ function ArtifactPreviewDialogThreadResolver({
     loadable.state === "hasData"
       ? currentMessageImageArtifactNavigation(
           loadable.data,
-          (messageGroups ?? []).flatMap((group) => {
-            return group.messages;
-          }),
+          messageGroups ?? [],
           preview.url,
         )
       : {};
