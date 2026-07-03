@@ -48,7 +48,10 @@ import {
   SESSION_HISTORY_ENCODING_GZIP,
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
-import { runnerSessionAffinityProtection } from "../services/runner-session-affinity";
+import {
+  runnerSessionAffinityLookupError,
+  runnerSessionAffinityProtection,
+} from "../services/runner-session-affinity";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
 
@@ -478,7 +481,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   const affinity = affinityResult.ok
     ? affinityResult.value
-    : { protectedUntil: null, status: "lookup_error" };
+    : runnerSessionAffinityLookupError();
   if (!affinityResult.ok) {
     L.warn("Failed to resolve runner session affinity for poll response", {
       runId: pendingJob.runId,

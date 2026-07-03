@@ -10,11 +10,19 @@ type RunnerSessionAffinityStatus =
   | "no_session"
   | "expired"
   | "protected"
-  | "no_viable_holder";
+  | "no_viable_holder"
+  | "lookup_error";
 
 interface RunnerSessionAffinityProtection {
   readonly protectedUntil: Date | null;
   readonly status: RunnerSessionAffinityStatus;
+}
+
+export function runnerSessionAffinityLookupError(): RunnerSessionAffinityProtection {
+  return {
+    protectedUntil: null,
+    status: "lookup_error",
+  };
 }
 
 function affinityProtectedUntil(

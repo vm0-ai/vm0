@@ -3,7 +3,10 @@ import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { now, nowDate } from "../external/time";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
-import { runnerSessionAffinityProtection } from "./runner-session-affinity";
+import {
+  runnerSessionAffinityLookupError,
+  runnerSessionAffinityProtection,
+} from "./runner-session-affinity";
 import { settle } from "../utils";
 
 const L = logger("RunnerDispatch");
@@ -15,6 +18,7 @@ export async function notifyRunnerJob(
     readonly runId: string;
     readonly profile: string;
     readonly cliAgentSessionId: string | null;
+    readonly createdAt: Date;
   },
 ): Promise<boolean> {
   const currentDate = nowDate();
@@ -24,13 +28,13 @@ export async function notifyRunnerJob(
       runnerGroup: args.runnerGroup,
       profile: args.profile,
       cliAgentSessionId: args.cliAgentSessionId,
-      createdAt: currentDate,
+      createdAt: args.createdAt,
       currentDate,
     }),
   );
   const affinity = affinityResult.ok
     ? affinityResult.value
-    : { protectedUntil: null, status: "lookup_error" };
+    : runnerSessionAffinityLookupError();
   if (!affinityResult.ok) {
     L.warn("Failed to resolve runner session affinity for job notification", {
       runId: args.runId,
