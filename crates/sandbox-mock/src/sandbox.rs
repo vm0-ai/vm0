@@ -543,10 +543,23 @@ impl Sandbox for MockSandbox {
                 .lock_ignoring_poison()
                 .push(call);
         }
-        self.private_write_file_results
+        if let Some(result) = self
+            .private_write_file_results
             .lock_ignoring_poison()
             .pop_front()
-            .unwrap_or(Ok(()))
+        {
+            return result;
+        }
+        if let Some(result) = self.overrides.as_ref().and_then(|overrides| {
+            overrides
+                .file
+                .private_write_file_results
+                .lock_ignoring_poison()
+                .pop_front()
+        }) {
+            return result;
+        }
+        Ok(())
     }
 
     async fn start_process(&self, request: &StartProcessRequest<'_>) -> Result<GuestProcessHandle> {
