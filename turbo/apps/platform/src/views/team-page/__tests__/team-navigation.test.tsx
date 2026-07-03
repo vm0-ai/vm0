@@ -3,6 +3,11 @@ import type { ConnectorType } from "@vm0/connectors/connectors";
 import { loadFirewallPermissionMetadata } from "@vm0/connectors/firewall-metadata";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogPermissionSummary,
+  type PublicConnectorCatalogStatusItem,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
   chatThreadsContract,
@@ -111,6 +116,43 @@ function createConnector(
     tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+function axiomCatalogStatusItem(
+  permissionSummary: PublicConnectorCatalogPermissionSummary,
+): PublicConnectorCatalogStatusItem {
+  return {
+    connectorRef: "axiom",
+    label: "Axiom",
+    description: "Observability and log analytics",
+    category: "data-automation-infrastructure",
+    generation: [],
+    tags: [],
+    authMethods: [
+      {
+        id: "api-token",
+        label: "API Token",
+        description: null,
+        grantKind: "manual",
+        manualFields: [],
+        startOptions: [],
+      },
+    ],
+    permissionSummary,
+    connection: {
+      authMethod: "api-token",
+      externalUsername: "workspace",
+      externalEmail: null,
+      reconnectReason: null,
+    },
+    connected: true,
+    connectionStatus: "connected",
+    scopeMismatch: false,
+    authMethodSupportsRefresh: false,
+    tokenExpiresAt: null,
+    singleAuthCodeAuthMethodId: null,
+    connectNotice: null,
   };
 }
 
@@ -955,6 +997,34 @@ describe("team page navigation", () => {
       within(reopenedPermissionRow).queryByText("24h"),
     ).not.toBeInTheDocument();
     expect(buttonByText("Apply", reopenedPermissionsDialog)).toBeDisabled();
+  });
+
+  it("hides connector permission management when catalog status has no permissions", async () => {
+    mockTeamAPIs();
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          axiomCatalogStatusItem({
+            hasPermissions: false,
+            permissionCount: 0,
+            hasCategories: false,
+            hasDefaultPolicyOverrides: false,
+          }),
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("@workspace")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByLabelText("Manage Axiom permissions"),
+    ).not.toBeInTheDocument();
   });
 
   it("applies and restores connector permission policies from an agent page", async () => {

@@ -966,6 +966,45 @@ async def test_capture_enabled_firewall_allow_header_auth_installs_request_strea
     assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
 
 
+async def test_firewall_allow_header_auth_requestheaders_strips_connector_intent(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_github_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("X-VM0-Connector-Intent", "github"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+
+        assert callable(flow.request.stream)
+        assert flow.request.headers["Authorization"] == "Bearer resolved"
+        assert "X-VM0-Connector-Intent" not in flow.request.headers
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+    assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
+
+
 async def test_firewall_allow_header_auth_requestheaders_falls_back_when_upstream_is_unbound(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):

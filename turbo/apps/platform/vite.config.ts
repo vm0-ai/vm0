@@ -5,6 +5,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { get as httpsGet } from "node:https";
 import { defineConfig, type PluginOption } from "vite";
 
+import platformPackage from "./package.json";
+
 const DEV_ARTIFACT_FETCH_PROXY_PATH = "/__vm0-dev-artifact-fetch";
 const DEV_ARTIFACT_FETCH_PROXY_HEADERS = [
   "cache-control",
@@ -28,6 +30,7 @@ const FIREWALL_PERMISSION_DETAIL_METADATA_MODULE_ID_RE =
 const FIREWALL_PERMISSION_DETAIL_METADATA_CHUNK_NAME_RE =
   /^vm0-firewall-permission-detail-metadata-([a-z0-9][a-z0-9-]*)\.generated$/;
 
+process.env.VITE_APP_VERSION = platformPackage.version;
 process.env.VITE_STATIC_ASSETS_BASE_URL = STATIC_ASSETS_BASE_URL;
 
 function normalizedModuleId(id: string): string {

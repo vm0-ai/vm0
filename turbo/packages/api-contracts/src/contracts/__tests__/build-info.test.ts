@@ -4,6 +4,7 @@ import {
   buildCommitShaSchema,
   buildInfoContract,
   buildInfoResponseSchema,
+  buildVersionSchema,
 } from "../build-info";
 
 const TEST_SHA = "0123456789abcdef0123456789abcdef01234567";
@@ -15,11 +16,17 @@ describe("build info contract", () => {
   });
 
   it("accepts a valid build info response body", () => {
+    expect(
+      buildInfoResponseSchema.parse({ commitSha: TEST_SHA, version: "1.2.3" }),
+    ).toEqual({
+      commitSha: TEST_SHA,
+      version: "1.2.3",
+    });
+    expect(
+      buildInfoResponseSchema.parse({ commitSha: null, version: null }),
+    ).toEqual({ commitSha: null, version: null });
     expect(buildInfoResponseSchema.parse({ commitSha: TEST_SHA })).toEqual({
       commitSha: TEST_SHA,
-    });
-    expect(buildInfoResponseSchema.parse({ commitSha: null })).toEqual({
-      commitSha: null,
     });
   });
 
@@ -29,5 +36,9 @@ describe("build info contract", () => {
     expect(buildCommitShaSchema.safeParse(TEST_SHA.toUpperCase()).success).toBe(
       false,
     );
+  });
+
+  it("rejects malformed build versions", () => {
+    expect(buildVersionSchema.safeParse("").success).toBe(false);
   });
 });

@@ -2,6 +2,10 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogPermissionDetail,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -14,6 +18,28 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 const user = userEvent.setup();
+
+function catalogPermissionDetail(
+  overrides: Partial<PublicConnectorCatalogPermissionDetail> &
+    Pick<
+      PublicConnectorCatalogPermissionDetail,
+      "connectorRef" | "label" | "permissions"
+    >,
+): PublicConnectorCatalogPermissionDetail {
+  const { connectorRef, label, permissions, ...rest } = overrides;
+  return {
+    connectorRef,
+    label,
+    permissionCount: permissions.length,
+    permissions,
+    categories: null,
+    defaultPolicy: {
+      permissionDefault: "ask",
+      unknownPolicy: "ask",
+    },
+    ...rest,
+  };
+}
 
 describe("permission allow page", () => {
   it("rejects unsupported permission actions instead of defaulting to allow", async () => {
@@ -38,7 +64,9 @@ describe("permission allow page", () => {
   });
 
   it("lets a user grant an expiring connector permission to an agent", async () => {
+    mockNow();
     const agentId = "c0000000-0000-4000-a000-000000000001";
+    let capturedBody: unknown = null;
 
     context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
       return respond(200, {
@@ -53,10 +81,49 @@ describe("permission allow page", () => {
         preferPersonalProvider: false,
       });
     });
+    context.mocks.api(
+      zeroConnectorCatalogContract.permissions,
+      ({ params, respond }) => {
+        expect(params.connectorRef).toBe("slack");
+        return respond(200, {
+          permissions: catalogPermissionDetail({
+            connectorRef: "slack",
+            label: "Catalog Slack",
+            permissions: [
+              {
+                name: "catalog.analytics:read",
+                description: "Catalog analytics access",
+              },
+            ],
+          }),
+        });
+      },
+    );
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.apply,
+      ({ body, respond }) => {
+        capturedBody = body;
+        const appliedGrant = body.grants[0];
+        if (!appliedGrant) {
+          throw new Error("Expected a permission grant");
+        }
+        return respond(200, [
+          {
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: appliedGrant.permission,
+            action: appliedGrant.action,
+            expiresAt: isoFromNowMs(24 * 60 * 60 * 1000),
+            createdAt: "2026-03-10T00:00:00.000Z",
+            updatedAt: "2026-03-10T00:01:00.000Z",
+          },
+        ]);
+      },
+    );
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      path: `/agents/${agentId}/permissions?ref=slack&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h`,
       user: {
         id: "test-user-123",
         fullName: "Dana Analyst",
@@ -72,11 +139,9 @@ describe("permission allow page", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByText("Research Bot")).toBeInTheDocument();
-    expect(screen.getByText("Slack")).toBeInTheDocument();
-    expect(
-      screen.getByText("Access workspace analytics data"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("admin.analytics:read")).toBeInTheDocument();
+    expect(screen.getByText("Catalog Slack")).toBeInTheDocument();
+    expect(screen.getByText("Catalog analytics access")).toBeInTheDocument();
+    expect(screen.getByText("catalog.analytics:read")).toBeInTheDocument();
     expect(screen.getByText("Duration")).toBeInTheDocument();
     expect(screen.getByText("24 hours")).toBeInTheDocument();
 
@@ -89,6 +154,61 @@ describe("permission allow page", () => {
       screen.getByText("Your connector permission grant has been updated"),
     ).toBeInTheDocument();
     expect(screen.getByText(/Expires in (1 day|24 hours)/)).toBeInTheDocument();
+    expect(capturedBody).toMatchObject({
+      agentId,
+      connectorRef: "slack",
+      mode: "patch",
+      grants: [
+        {
+          permission: "catalog.analytics:read",
+          action: "allow",
+          expiresIn: "24h",
+        },
+      ],
+    });
+  });
+
+  it("fails closed when catalog permissions returns not found", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000009";
+
+    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        agentId,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: "Hidden Connector Bot",
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+    context.mocks.api(
+      zeroConnectorCatalogContract.permissions,
+      ({ respond }) => {
+        return respond(404, {
+          error: { message: "Connector not found", code: "NOT_FOUND" },
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/permissions?ref=hidden-connector&permission=hidden.permission&action=allow`,
+      user: {
+        id: "test-user-123",
+        fullName: "Dana Analyst",
+        firstName: "Dana",
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Unknown connector: hidden-connector"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
   });
 
   it("lets a user deny a connector permission without an expiry choice", async () => {

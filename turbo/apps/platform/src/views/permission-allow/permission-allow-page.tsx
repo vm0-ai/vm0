@@ -12,11 +12,7 @@ import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
-import {
-  isFirewallMetadataConnectorType,
-  type FirewallPermissionDetailMetadata,
-} from "@vm0/connectors/firewall-metadata";
+import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import { firewallPermissionMetadataByConnector } from "../../signals/firewall-permission-metadata.ts";
@@ -43,7 +39,10 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { VM0Logo } from "../components/vm0-logo.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
-import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
+import {
+  ConnectorIcon,
+  isConnectorIconType,
+} from "../zero-page/components/settings/connector-icons.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 
 function TargetPill({
@@ -97,24 +96,20 @@ function resolvePermissionGrantTarget({
 
 function ConnectorPermissionCard({
   connectorRef,
+  connectorLabel,
   permission,
   action,
 }: {
   connectorRef: string;
+  connectorLabel: string;
   permission: Permission;
   action: "allow" | "deny";
 }) {
-  const connectorConfig = isFirewallMetadataConnectorType(connectorRef)
-    ? CONNECTOR_TYPES[connectorRef]
-    : undefined;
-  const connectorLabel = connectorConfig?.label ?? connectorRef;
-  const connectorHelpText = connectorConfig?.helpText ?? "";
-
   return (
     <div className="w-full rounded-lg border border-border px-4 py-3">
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 border-b border-border/70 pb-4 pt-1">
-          {isFirewallMetadataConnectorType(connectorRef) && (
+          {isConnectorIconType(connectorRef) && (
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-muted/40">
               <ConnectorIcon type={connectorRef} size={20} />
             </span>
@@ -123,11 +118,6 @@ function ConnectorPermissionCard({
             <p className="text-sm font-medium text-foreground">
               {connectorLabel}
             </p>
-            {connectorHelpText && (
-              <p className="text-xs text-muted-foreground line-clamp-1">
-                {connectorHelpText}
-              </p>
-            )}
           </div>
         </div>
         <div className="flex items-center gap-2 py-2">
@@ -292,7 +282,7 @@ function resolveExistingPermissionGrantResult({
   connectorRef: string;
   focusedPermission: Permission;
   grants: readonly UserPermissionGrantResponse[];
-  metadata: FirewallPermissionDetailMetadata;
+  metadata: PublicConnectorCatalogPermissionDetail;
 }): { expiresAt?: string | null } | null {
   const effectivePolicy = resolveUserPermissionGrantPolicy(
     grants,
@@ -316,6 +306,7 @@ function resolveExistingPermissionGrantResult({
 function ConfirmGrantCard({
   target,
   connectorRef,
+  connectorLabel,
   permission,
   action,
   initialExpiresIn,
@@ -325,6 +316,7 @@ function ConfirmGrantCard({
 }: {
   target: PermissionGrantTarget;
   connectorRef: string;
+  connectorLabel: string;
   permission: Permission;
   action: "allow" | "deny";
   initialExpiresIn: UserPermissionGrantExpiresIn | null;
@@ -388,6 +380,7 @@ function ConfirmGrantCard({
             <p className="text-sm font-medium text-foreground">Would like to</p>
             <ConnectorPermissionCard
               connectorRef={connectorRef}
+              connectorLabel={connectorLabel}
               permission={permission}
               action={action}
             />
@@ -447,7 +440,7 @@ function PermissionAllowDoctorPage({
   const userLoadable = useLastLoadable(user$);
   const grantsLoadable = useLastLoadable(permissionAllowUserPermissionGrants$);
   const metadataLoadable = useLoadable(
-    firewallPermissionMetadataByConnector({ connectorType: ref }),
+    firewallPermissionMetadataByConnector({ connectorRef: ref }),
   );
   const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
 
@@ -526,6 +519,7 @@ function PermissionAllowDoctorPage({
     <ConfirmGrantCard
       target={targetResult.target}
       connectorRef={ref}
+      connectorLabel={metadata.label}
       permission={focusedPermission}
       action={action}
       initialExpiresIn={initialExpiresIn}
@@ -550,10 +544,6 @@ export function PermissionAllowPage() {
 
   if (!ref || !permission) {
     return <ErrorMessage message="Missing permission in URL parameters" />;
-  }
-
-  if (!isFirewallMetadataConnectorType(ref)) {
-    return <ErrorMessage message={`Unknown connector: ${ref}`} />;
   }
 
   if (actionParam !== null && action === null) {

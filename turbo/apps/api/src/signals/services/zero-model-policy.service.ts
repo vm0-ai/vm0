@@ -105,6 +105,13 @@ function modelAllowedForOrgTier(model: string, limitedFree1: boolean): boolean {
   return !limitedFree1 || !isLimitedFree1RestrictedRunModel(model);
 }
 
+function modelProviderAllowedForOrgTier(
+  providerType: ModelProviderType,
+  limitedFree1: boolean,
+): boolean {
+  return !limitedFree1 || providerType === "vm0";
+}
+
 function getSupportedModelRank(model: string): number {
   const index = SUPPORTED_RUN_MODELS.indexOf(model as SupportedRunModel);
   return index === -1 ? SUPPORTED_RUN_MODELS.length : index;
@@ -293,8 +300,12 @@ async function validateUpdatePolicies(
     if (!modelAllowedForOrgTier(policy.model, limitedFree1)) {
       return limitedFree1Restricted();
     }
-    if (!parseProviderType(policy.defaultProviderType)) {
+    const providerType = parseProviderType(policy.defaultProviderType);
+    if (!providerType) {
       return bad(`Unknown model provider type "${policy.defaultProviderType}"`);
+    }
+    if (!modelProviderAllowedForOrgTier(providerType, limitedFree1)) {
+      return limitedFree1Restricted();
     }
     if (!parseCredentialScope(policy.credentialScope)) {
       return bad(`Unknown credential scope "${policy.credentialScope}"`);

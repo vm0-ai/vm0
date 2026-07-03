@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
 import { connectorReconnectReasonSchema } from "./connector-schemas";
+import { connectorRefSchema } from "./connector-ref";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -27,7 +28,7 @@ const publicConnectorCatalogPermissionSummarySchema = z.object({
 });
 
 const publicConnectorCatalogItemSchema = z.object({
-  connectorRef: z.string(),
+  connectorRef: connectorRefSchema,
   label: z.string(),
   description: z.string(),
   category: z.string(),
@@ -127,7 +128,7 @@ const publicConnectorCatalogDefaultPolicySchema = z.object({
 });
 
 const publicConnectorCatalogPermissionDetailSchema = z.object({
-  connectorRef: z.string(),
+  connectorRef: connectorRefSchema,
   label: z.string(),
   permissionCount: z.number().int().nonnegative(),
   permissions: z.array(publicConnectorCatalogPermissionSchema),
@@ -140,7 +141,7 @@ const publicConnectorCatalogPermissionDetailResponseSchema = z.object({
 });
 
 const connectorCatalogPathParamsSchema = z.object({
-  connectorRef: z.string().min(1),
+  connectorRef: connectorRefSchema,
 });
 
 export type PublicConnectorCatalogAuthMethodSummary = z.infer<
@@ -219,6 +220,7 @@ export const zeroConnectorCatalogContract = c.router({
     pathParams: connectorCatalogPathParamsSchema,
     responses: {
       200: publicConnectorCatalogDetailResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -232,6 +234,7 @@ export const zeroConnectorCatalogContract = c.router({
     pathParams: connectorCatalogPathParamsSchema,
     responses: {
       200: publicConnectorCatalogPermissionDetailResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,

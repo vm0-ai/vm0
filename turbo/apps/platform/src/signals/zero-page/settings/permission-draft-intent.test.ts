@@ -1,5 +1,5 @@
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type { FirewallPermissionDetailMetadata } from "@vm0/connectors/firewall-metadata";
+import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
@@ -34,24 +34,26 @@ const READ_PERMISSIONS = [
   { name: "channels:history" },
 ] as const;
 
-const METADATA = {
-  type: "slack",
-  label: "Slack",
-  permissionCount: READ_PERMISSIONS.length,
-  permissions: READ_PERMISSIONS,
-  categories: {
+function createMetadata(): PublicConnectorCatalogPermissionDetail {
+  return {
+    connectorRef: "slack",
+    label: "Slack",
+    permissionCount: READ_PERMISSIONS.length,
+    permissions: [...READ_PERMISSIONS],
     categories: {
-      "bookmarks:read": "Read",
-      "channels:read": "Read",
-      "channels:history": "Read",
+      categories: {
+        "bookmarks:read": "Read",
+        "channels:read": "Read",
+        "channels:history": "Read",
+      },
+      displayOrder: ["Read"],
     },
-    displayOrder: ["Read"],
-  },
-  defaultPolicy: {
-    permissionDefault: "allow",
-    unknownPolicy: "allow",
-  },
-} satisfies FirewallPermissionDetailMetadata;
+    defaultPolicy: {
+      permissionDefault: "allow",
+      unknownPolicy: "allow",
+    },
+  };
+}
 
 const INITIAL_POLICIES = {} satisfies FirewallPolicies;
 
@@ -73,7 +75,7 @@ function createGrant(
 
 function createContext() {
   return createPermissionDraftContext({
-    metadata: METADATA,
+    metadata: createMetadata(),
     initialPolicies: INITIAL_POLICIES,
   });
 }
@@ -81,11 +83,11 @@ function createContext() {
 describe("permission draft intent keys", () => {
   it("fingerprints resolved initial permission policies", () => {
     const initialAllowContext = createPermissionDraftContext({
-      metadata: METADATA,
+      metadata: createMetadata(),
       initialPolicies: INITIAL_POLICIES,
     });
     const initialDenyContext = createPermissionDraftContext({
-      metadata: METADATA,
+      metadata: createMetadata(),
       initialPolicies: {
         slack: {
           policies: {
@@ -583,7 +585,7 @@ describe("permission draft intent reset persistence", () => {
       ["bookmarks:read", createGrant("bookmarks:read", "deny")],
     ]);
     const context = createPermissionDraftContext({
-      metadata: METADATA,
+      metadata: createMetadata(),
       initialPolicies: {
         slack: {
           policies: {
@@ -625,7 +627,7 @@ describe("permission draft intent reset persistence", () => {
       [UNKNOWN_PERMISSION_GRANT, createGrant(UNKNOWN_PERMISSION_GRANT, "deny")],
     ]);
     const context = createPermissionDraftContext({
-      metadata: METADATA,
+      metadata: createMetadata(),
       initialPolicies: {
         slack: {
           policies: {},

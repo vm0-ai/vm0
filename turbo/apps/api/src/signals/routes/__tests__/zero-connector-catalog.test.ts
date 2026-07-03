@@ -595,6 +595,32 @@ describe("GET /api/zero/connector-catalog", () => {
     );
   });
 
+  it("rejects connector catalog refs outside the public connector-ref bounds", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const connectorRef = "x".repeat(65);
+    const detailResponse = await accept(
+      client.get({
+        params: { connectorRef },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+    const permissionResponse = await accept(
+      client.permissions({
+        params: { connectorRef },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(detailResponse.body.error.code).toBe("BAD_REQUEST");
+    expect(permissionResponse.body.error.code).toBe("BAD_REQUEST");
+  });
+
   it("returns semantic public ids for device-auth start options", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
