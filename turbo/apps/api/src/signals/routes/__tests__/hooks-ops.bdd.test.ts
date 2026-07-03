@@ -7,6 +7,7 @@ import { zeroReportErrorContract } from "@vm0/api-contracts/contracts/zero-repor
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
+import apiPackage from "../../../../package.json";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { healthAuthProbeContract } from "../health-auth-probe";
@@ -77,7 +78,10 @@ describe("OPS-02: API health and auth boundary", () => {
 
     const response = await accept(buildInfoClient().get(), [200]);
 
-    expect(response.body).toStrictEqual({ commitSha });
+    expect(response.body).toStrictEqual({
+      commitSha,
+      version: apiPackage.version,
+    });
     expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
@@ -86,7 +90,10 @@ describe("OPS-02: API health and auth boundary", () => {
 
     const response = await accept(buildInfoClient().get(), [200]);
 
-    expect(response.body).toStrictEqual({ commitSha: null });
+    expect(response.body).toStrictEqual({
+      commitSha: null,
+      version: apiPackage.version,
+    });
     expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
