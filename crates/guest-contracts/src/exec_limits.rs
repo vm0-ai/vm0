@@ -19,6 +19,8 @@ pub const EXECVE_STRING_MAX_BYTES: usize = 128 * 1024 - 1;
 /// guard rather than a product-level payload limit.
 pub const EXECVE_ARG_ENV_MAX_BYTES: usize = 2 * 1024 * 1024;
 
+const EXECVE_POINTER_OVERHEAD_BYTES: usize = std::mem::size_of::<usize>();
+
 /// Process boundary value kind.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExecBoundaryValueKind {
@@ -85,7 +87,8 @@ pub enum ExecBoundarySizeError {
     },
     /// Aggregate argv+env payload exceeds the conservative total budget.
     AggregateTooLarge {
-        /// Actual aggregate byte count including per-string NUL bytes.
+        /// Actual aggregate byte count including per-string NUL bytes and
+        /// argv/env pointer-table overhead.
         bytes: usize,
         /// Maximum allowed aggregate byte count.
         max_bytes: usize,
@@ -119,7 +122,14 @@ impl std::error::Error for ExecBoundarySizeError {}
 pub fn validate_exec_boundary_sizes(
     values: impl IntoIterator<Item = ExecBoundaryValue>,
 ) -> Result<(), ExecBoundarySizeError> {
-    let mut aggregate_bytes = 0usize;
+    validate_exec_boundary_sizes_with_budget(values, EXECVE_ARG_ENV_MAX_BYTES)
+}
+
+fn validate_exec_boundary_sizes_with_budget(
+    values: impl IntoIterator<Item = ExecBoundaryValue>,
+    aggregate_max_bytes: usize,
+) -> Result<(), ExecBoundarySizeError> {
+    let mut aggregate_bytes = EXECVE_POINTER_OVERHEAD_BYTES;
 
     for value in values {
         if value.bytes > EXECVE_STRING_MAX_BYTES {
@@ -130,13 +140,18 @@ pub fn validate_exec_boundary_sizes(
                 max_bytes: EXECVE_STRING_MAX_BYTES,
             });
         }
-        aggregate_bytes = aggregate_bytes.saturating_add(value.bytes.saturating_add(1));
+        aggregate_bytes = aggregate_bytes.saturating_add(
+            value
+                .bytes
+                .saturating_add(1)
+                .saturating_add(EXECVE_POINTER_OVERHEAD_BYTES),
+        );
     }
 
-    if aggregate_bytes > EXECVE_ARG_ENV_MAX_BYTES {
+    if aggregate_bytes > aggregate_max_bytes {
         return Err(ExecBoundarySizeError::AggregateTooLarge {
             bytes: aggregate_bytes,
-            max_bytes: EXECVE_ARG_ENV_MAX_BYTES,
+            max_bytes: aggregate_max_bytes,
         });
     }
 
@@ -208,6 +223,27 @@ mod tests {
         assert!(matches!(
             error,
             ExecBoundarySizeError::AggregateTooLarge { .. }
+        ));
+    }
+
+    #[test]
+    fn rejects_aggregate_overflow_from_pointer_overhead() {
+        let string_only_bytes = "/bin/bash".len() + 1 + "A=".len() + 1;
+        let error = validate_exec_boundary_sizes_with_budget(
+            [
+                ExecBoundaryValue::arg("argv[0]", "/bin/bash"),
+                ExecBoundaryValue::env("A", ""),
+            ],
+            string_only_bytes,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            ExecBoundarySizeError::AggregateTooLarge {
+                bytes,
+                max_bytes
+            } if bytes > string_only_bytes && max_bytes == string_only_bytes
         ));
     }
 }
