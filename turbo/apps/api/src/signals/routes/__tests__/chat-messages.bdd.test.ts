@@ -356,6 +356,19 @@ async function waitForThreadMessages(
   return page;
 }
 
+async function waitForRunUserMessage(
+  actor: ApiTestUser,
+  threadId: string,
+  runId: string,
+  content: string,
+): Promise<void> {
+  await waitForThreadMessages(actor, threadId, (items) => {
+    return userMessages(items).some((message) => {
+      return message.runId === runId && message.content === content;
+    });
+  });
+}
+
 async function waitForRunStatus(
   actor: ApiTestUser,
   runId: string,
@@ -2639,6 +2652,12 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(secondPrompt).toContain("# Web Chat Run Context");
     expect(secondPrompt).not.toContain("Selected a template");
     expect(secondPrompt).not.toContain(style.illustrationStyleId);
+    await waitForRunUserMessage(
+      actor,
+      first.threadId,
+      second.runId,
+      "another one",
+    );
     await cancelChatRun(actor, second.runId);
 
     // Turn 3: attaching a video preset now only resolves the video template live
@@ -2666,6 +2685,8 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(thirdPrompt).toContain(
       `zero generate video --provider built-in --template ${videoTemplate.id}`,
     );
+    expect(thirdPrompt).toContain("# Incomplete Rounds Context");
+    expect(thirdPrompt).not.toContain("# Web Chat Run Context");
     // The illustration style is gone entirely for this turn: it's not attached
     // to this message, and prior/incomplete context no longer repeats template
     // selections.
