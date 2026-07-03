@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   chatThreadsContract,
   type ChatThreadListItem,
+  type CodexServiceTier,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -121,6 +122,7 @@ export interface ChatThread {
    */
   modelProviderId: string | null;
   selectedModel: string | null;
+  codexServiceTier: CodexServiceTier | null;
   computerUseHostId: string | null;
 }
 

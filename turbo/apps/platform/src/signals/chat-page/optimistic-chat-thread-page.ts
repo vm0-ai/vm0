@@ -6,6 +6,7 @@ import {
   chatMessagesContract,
   chatThreadsContract,
   type AttachFile,
+  type ChatRunOptionsRequest,
   type ChatThreadEvent,
   type GenerationTemplateRequest,
   type ChatThreadListItem,
@@ -231,6 +232,7 @@ async function appendQueuedMessage(
         hasTextContent: append.hasTextContent,
         clientMessageId: append.clientMessageId,
         modelSelection: append.modelSelection,
+        ...(append.runOptions ? { runOptions: append.runOptions } : {}),
         generationTemplate: append.generationTemplate,
         ...(append.computerUseHostId === undefined
           ? {}
@@ -253,12 +255,14 @@ function queuedReplayAppendArgs({
   threadId,
   agentId,
   modelSelection,
+  runOptions,
   computerUseHostId,
   entry,
 }: {
   threadId: string;
   agentId: string;
   modelSelection: ModelSelectionRequest | null;
+  runOptions?: ChatRunOptionsRequest;
   computerUseHostId?: string | null;
   entry: OptimisticChatMessageEntry;
 }): AppendQueuedMessageArgs {
@@ -270,6 +274,7 @@ function queuedReplayAppendArgs({
     clientMessageId: entry.message.id,
     hasTextContent: hasTextContentForQueuedReplay(entry.message),
     modelSelection,
+    runOptions,
     generationTemplate: entry.message.generationTemplate,
     computerUseHostId,
   };
@@ -280,6 +285,7 @@ async function replayQueuedOptimisticMessages({
   threadId,
   agentId,
   modelSelection,
+  runOptions,
   computerUseHostId,
   entries,
   signal,
@@ -288,6 +294,7 @@ async function replayQueuedOptimisticMessages({
   threadId: string;
   agentId: string;
   modelSelection: ModelSelectionRequest | null;
+  runOptions?: ChatRunOptionsRequest;
   computerUseHostId?: string | null;
   entries: OptimisticChatMessageEntry[];
   signal: AbortSignal;
@@ -301,6 +308,7 @@ async function replayQueuedOptimisticMessages({
         threadId,
         agentId,
         modelSelection,
+        runOptions,
         computerUseHostId,
         entry,
       }),
@@ -308,6 +316,69 @@ async function replayQueuedOptimisticMessages({
     );
   }
 }
+
+const settleNewThreadSend$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly clearDraftResult: Promise<void>;
+      readonly createClient: ZeroClientFactory;
+      readonly body: ReturnType<typeof newThreadSendBody>;
+      readonly threadId: string;
+      readonly agentId: string;
+      readonly pendingThread: ChatThreadSignals;
+      readonly queuedOptimisticMessages$: ReturnType<
+        typeof createQueuedOptimisticUserMessagesForThread
+      >;
+      readonly computerUseHostId?: string | null;
+    },
+    signal: AbortSignal,
+  ): Promise<SendNewThreadMessageResult> => {
+    const [, result] = await Promise.all([
+      args.clearDraftResult,
+      accept(
+        args.createClient(chatMessagesContract).send({
+          body: args.body,
+          fetchOptions: { signal },
+        }),
+        [201],
+      ),
+    ]);
+    signal.throwIfAborted();
+    L.debug("sendNewThreadMessage$ POST chat/messages 201", {
+      threadId: result.body.threadId,
+      runId: result.body.runId,
+    });
+    const queuedMessages = await get(args.queuedOptimisticMessages$);
+    signal.throwIfAborted();
+    const replayModelSelection = await get(args.pendingThread.modelSelection$);
+    signal.throwIfAborted();
+    const replayRunOptions = runOptionsFromModelProviderSelection(
+      replayModelSelection,
+      codexFastModeSwitchEnabled(get(featureSwitch$)),
+    );
+    const replayComputerUseHostId = await get(
+      args.pendingThread.computerUseHostId$,
+    );
+    signal.throwIfAborted();
+    await replayQueuedOptimisticMessages({
+      createClient: args.createClient,
+      threadId: result.body.threadId,
+      agentId: args.agentId,
+      modelSelection: modelSelectionRequestFromSelection(replayModelSelection),
+      ...(replayRunOptions ? { runOptions: replayRunOptions } : {}),
+      computerUseHostId:
+        args.computerUseHostId === undefined
+          ? undefined
+          : replayComputerUseHostId,
+      entries: queuedMessages,
+      signal,
+    });
+    signal.throwIfAborted();
+    set(reloadChatThreads$);
+    return { threadId: result.body.threadId, runId: result.body.runId };
+  },
+);
 
 const routeMainOptimisticChatThread$ = command(
   ({ get, set }, pending: PendingChatThread) => {
@@ -393,6 +464,7 @@ const mintOptimisticPendingThread$ = command(
       agentId: string;
       pendingRunId?: string;
       computerUseHostId?: string | null;
+      modelSelection?: ModelProviderSelection | null;
     },
     signal: AbortSignal,
   ): Promise<{
@@ -406,12 +478,14 @@ const mintOptimisticPendingThread$ = command(
     await set(writeThreadAgentToCache$, args.threadId, args.agentId, signal);
     const createdAt = nowDate().toISOString();
     const dataSource = createLocalChatThreadDataSource({
-      threadData: createPendingChatThread(
-        args.threadId,
-        args.agentId,
-        args.pendingRunId,
-        args.computerUseHostId ?? null,
-      ),
+      threadData: createPendingChatThread({
+        threadId: args.threadId,
+        agentId: args.agentId,
+        pendingRunId: args.pendingRunId,
+        computerUseHostId: args.computerUseHostId ?? null,
+        selectedModel: args.modelSelection?.selectedModel ?? null,
+        codexServiceTier: args.modelSelection?.codexServiceTier ?? null,
+      }),
       messages: [],
     });
     const { draft } = set(ensureDraft$, args.threadId);
@@ -433,6 +507,7 @@ const mintOptimisticPendingThreadWithEvent$ = command(
       readonly agentId: string;
       readonly pendingRunId?: string;
       readonly computerUseHostId?: string | null;
+      readonly modelSelection?: ModelProviderSelection | null;
     },
     signal: AbortSignal,
   ): Promise<{
@@ -446,6 +521,7 @@ const mintOptimisticPendingThreadWithEvent$ = command(
         agentId: args.agentId,
         pendingRunId: args.pendingRunId,
         computerUseHostId: args.computerUseHostId,
+        modelSelection: args.modelSelection,
       },
       signal,
     );
@@ -751,6 +827,7 @@ const sendNewThreadMessage$ = command(
         agentId,
         pendingRunId: `pending-${threadId}`,
         computerUseHostId,
+        modelSelection,
       },
       signal,
     );
@@ -759,55 +836,30 @@ const sendNewThreadMessage$ = command(
     const createClient = get(zeroClient$);
     const queuedOptimisticMessages$ =
       createQueuedOptimisticUserMessagesForThread(threadId);
-    const sendResult = (async (): Promise<SendNewThreadMessageResult> => {
-      const [, result] = await Promise.all([
+    const sendResult = set(
+      settleNewThreadSend$,
+      {
         clearDraftResult,
-        accept(
-          createClient(chatMessagesContract).send({
-            body: newThreadSendBody({
-              agentId,
-              threadId,
-              clientMessageId,
-              chatThreadEventId,
-              prepared,
-              modelSelection,
-              codexFastModeEnabled: codexFastModeSwitchEnabled(
-                get(featureSwitch$),
-              ),
-              generationTemplate,
-              computerUseHostId,
-            }),
-            fetchOptions: { signal },
-          }),
-          [201],
-        ),
-      ]);
-      signal.throwIfAborted();
-      L.debug("sendNewThreadMessage$ POST chat/messages 201", {
-        threadId: result.body.threadId,
-        runId: result.body.runId,
-      });
-      const queuedMessages = await get(queuedOptimisticMessages$);
-      signal.throwIfAborted();
-      const replayModelSelection = await get(pendingThread.modelSelection$);
-      const replayComputerUseHostId = await get(
-        pendingThread.computerUseHostId$,
-      );
-      signal.throwIfAborted();
-      await replayQueuedOptimisticMessages({
         createClient,
-        threadId: result.body.threadId,
+        body: newThreadSendBody({
+          agentId,
+          threadId,
+          clientMessageId,
+          chatThreadEventId,
+          prepared,
+          modelSelection,
+          codexFastModeEnabled: codexFastModeSwitchEnabled(get(featureSwitch$)),
+          generationTemplate,
+          computerUseHostId,
+        }),
+        threadId,
         agentId,
-        modelSelection:
-          modelSelectionRequestFromSelection(replayModelSelection),
-        computerUseHostId:
-          computerUseHostId === undefined ? undefined : replayComputerUseHostId,
-        entries: queuedMessages,
-        signal,
-      });
-      set(reloadChatThreads$);
-      return { threadId: result.body.threadId, runId: result.body.runId };
-    })();
+        pendingThread,
+        queuedOptimisticMessages$,
+        computerUseHostId,
+      },
+      signal,
+    );
     return {
       pane: "main",
       threadId,

@@ -565,6 +565,9 @@ function createModelSelection(
         return {
           modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
           selectedModel: thread.selectedModel,
+          ...(thread.codexServiceTier
+            ? { codexServiceTier: thread.codexServiceTier }
+            : {}),
         };
       }
       // Unstarted model-first threads inherit the current user preference;
@@ -2751,6 +2754,12 @@ function createQueueMessage(deps: QueueMessageDeps) {
         { signal },
       );
 
+      const codexFastModeEnabled =
+        get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
+      const runOptions = runOptionsFromModelProviderSelection(
+        modelSelection,
+        codexFastModeEnabled,
+      );
       await Promise.all([
         set(flushDraftClear$, signal),
         set(
@@ -2762,7 +2771,8 @@ function createQueueMessage(deps: QueueMessageDeps) {
             attachments: result.attachments ?? null,
             clientMessageId,
             hasTextContent: result.hasTextContent,
-            modelSelection,
+            modelSelection: modelSelectionRequestFromSelection(modelSelection),
+            ...(runOptions ? { runOptions } : {}),
             generationTemplate,
             ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
           },

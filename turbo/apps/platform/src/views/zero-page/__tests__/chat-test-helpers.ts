@@ -11,9 +11,11 @@ import {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadComputerUseHostContract,
+  chatThreadModelSelectionContract,
   chatThreadMessagesContract,
   chatMessagesContract,
   type ChatRunOptionsRequest,
+  type CodexServiceTier,
   type GenerationTemplateRequest,
   type ModelSelectionRequest,
   type PagedChatMessage,
@@ -389,6 +391,7 @@ export function mockChatLifecycle(
     chatMessages?: MockPagedMessage[];
     threadTitle?: string | null;
     selectedModel?: string | null;
+    codexServiceTier?: CodexServiceTier | null;
     computerUseHostId?: string | null;
     activeRunIds?: string[];
     onQueuedMessageAppend?: (body: {
@@ -397,6 +400,7 @@ export function mockChatLifecycle(
       attachments?: PersistedAttachment[];
       clientMessageId: string;
       generationTemplate?: GenerationTemplateRequest;
+      runOptions?: ChatRunOptionsRequest;
     }) => void;
     onRecallMessageAppend?: (body: {
       revokesMessageId: string;
@@ -463,6 +467,9 @@ export function mockChatLifecycle(
   let runUserMessageId = "msg-user-sent";
   let runAssociated = false;
   let threadTitle: string | null = options?.threadTitle ?? null;
+  let selectedModel: string | null = options?.selectedModel ?? null;
+  let codexServiceTier: CodexServiceTier | null =
+    options?.codexServiceTier ?? null;
   let computerUseHostId: string | null = options?.computerUseHostId ?? null;
   const queuedMessages: MockPagedMessage[] = [];
   const optionActiveRunIds = options?.activeRunIds ?? [];
@@ -622,6 +629,7 @@ export function mockChatLifecycle(
     clientMessageId?: string;
     hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
+    runOptions?: ChatRunOptionsRequest;
   }) => {
     const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
     const attachFiles = body.attachFiles?.map((file) => {
@@ -636,6 +644,7 @@ export function mockChatLifecycle(
       attachments: attachFiles,
       clientMessageId,
       generationTemplate: body.generationTemplate,
+      runOptions: body.runOptions,
     });
     if (options?.appendGate) {
       await options.appendGate;
@@ -676,6 +685,8 @@ export function mockChatLifecycle(
     }
     rememberRunUserMessageId(body.clientMessageId);
     options?.onRunCreate?.(body);
+    selectedModel = body.modelSelection?.selectedModel ?? selectedModel;
+    codexServiceTier = body.runOptions?.codexServiceTier ?? null;
     runAssociated = true;
     createChatRun(threadId);
     createChatMessage(threadId);
@@ -778,10 +789,19 @@ export function mockChatLifecycle(
       updatedAt: "2026-03-10T00:00:00Z",
       draftContent: null,
       draftAttachments: null,
-      selectedModel: options?.selectedModel ?? null,
+      selectedModel,
+      codexServiceTier,
       computerUseHostId,
     });
   });
+  context.mocks.api(
+    chatThreadModelSelectionContract.update,
+    ({ body, respond }) => {
+      selectedModel = body.modelSelection?.selectedModel ?? null;
+      codexServiceTier = body.codexServiceTier ?? null;
+      return respond(204);
+    },
+  );
   context.mocks.api(
     chatThreadComputerUseHostContract.update,
     ({ body, respond }) => {

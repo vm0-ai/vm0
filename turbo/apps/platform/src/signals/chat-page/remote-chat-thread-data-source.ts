@@ -11,7 +11,10 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { modelSelectionRequestFromSelection } from "./model-selection-request.ts";
+import {
+  modelSelectionRequestFromSelection,
+  threadCodexServiceTierFromSelection,
+} from "./model-selection-request.ts";
 import { setAblyLoop$, setAblyPayloadLoop$ } from "../realtime.ts";
 import {
   createDeferredPromise,
@@ -91,6 +94,7 @@ const patchModelSelection$ = command(
         params: { id: threadId },
         body: {
           modelSelection: modelSelectionRequestFromSelection(modelSelection),
+          codexServiceTier: threadCodexServiceTierFromSelection(modelSelection),
         },
         fetchOptions: { signal },
       }),
@@ -130,6 +134,7 @@ const appendQueuedMessage$ = command(
       modelSelection,
       generationTemplate,
       computerUseHostId,
+      runOptions,
     }: AppendQueuedMessageArgs,
     signal: AbortSignal,
   ) => {
@@ -144,6 +149,7 @@ const appendQueuedMessage$ = command(
           clientMessageId,
           modelSelection,
           generationTemplate,
+          ...(runOptions ? { runOptions } : {}),
           ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
           attachFiles: attachments ?? undefined,
         },
@@ -479,6 +485,7 @@ export function createRemoteChatThreadDataSource(
       computerUseHostId: body.computerUseHostId ?? null,
       modelProviderId: body.modelProviderId ?? null,
       selectedModel: body.selectedModel ?? null,
+      codexServiceTier: body.codexServiceTier ?? null,
     };
   });
 

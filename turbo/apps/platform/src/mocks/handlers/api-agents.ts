@@ -226,6 +226,7 @@ export const apiAgentsHandlers = [
       updatedAt: "2026-03-10T00:00:00Z",
       draftContent: null,
       draftAttachments: null,
+      codexServiceTier: null,
     });
   }),
 

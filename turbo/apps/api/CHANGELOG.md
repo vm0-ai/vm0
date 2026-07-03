@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.212.1](https://github.com/vm0-ai/vm0/compare/api-v1.212.0...api-v1.212.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* coalesce runner direct candidate bursts ([#19969](https://github.com/vm0-ai/vm0/issues/19969)) ([1135a51](https://github.com/vm0-ai/vm0/commit/1135a514c5e5ca21bb0b929885e98e9061fe581b))
+* remove invalid goal deny rules ([#19996](https://github.com/vm0-ai/vm0/issues/19996)) ([f990cc2](https://github.com/vm0-ai/vm0/commit/f990cc2bc5c16e924fa9f08dfe7ad46cf550db2f))
+* run goal continuations from the full objective prompt ([#19991](https://github.com/vm0-ai/vm0/issues/19991)) ([05a2ef8](https://github.com/vm0-ai/vm0/commit/05a2ef8136d310b8068f53d70e485992ee891639))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.147.1
+    * @vm0/core bumped to 8.391.4
+    * @vm0/db bumped to 1.86.2
+
 ## [1.212.0](https://github.com/vm0-ai/vm0/compare/api-v1.211.0...api-v1.212.0) (2026-07-03)
 
 
