@@ -415,8 +415,8 @@ function WorkflowHeaderIcon({
     return <TriggerListIcon trigger={trigger} size="md" />;
   }
   return (
-    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-muted-foreground">
-      <IconRoute size={20} stroke={1.7} />
+    <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-muted-foreground sm:h-16 sm:w-16">
+      <IconRoute size={28} stroke={1.7} />
     </span>
   );
 }
@@ -437,7 +437,7 @@ function DetailHeader({
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <WorkflowHeaderIcon trigger={detail.triggers[0]} />
-              <div className="flex h-11 min-w-0 flex-col justify-center">
+              <div className="flex min-w-0 flex-col justify-center">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger asChild>
