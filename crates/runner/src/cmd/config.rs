@@ -66,6 +66,11 @@ async fn run_config_with_home(args: ConfigArgs, paths: HomePaths) -> RunnerResul
             "--profile, --rootfs-hash, and --snapshot-hash must be specified the same number of times".into(),
         ));
     }
+    if args.profile.is_empty() {
+        return Err(RunnerError::Config(
+            "--profile, --rootfs-hash, and --snapshot-hash must be specified at least once".into(),
+        ));
+    }
     for profile_name in &args.profile {
         profile::validate_or_err(profile_name)?;
     }
@@ -77,6 +82,11 @@ async fn run_config_with_home(args: ConfigArgs, paths: HomePaths) -> RunnerResul
     // Build profiles map.
     let mut profiles = BTreeMap::new();
     for (i, profile_name) in args.profile.iter().enumerate() {
+        if profiles.contains_key(profile_name) {
+            return Err(RunnerError::Config(format!(
+                "--profile {profile_name} must not be specified more than once"
+            )));
+        }
         let def = profile::get(profile_name)?;
         // Length equality is validated above, so these indices are safe.
         let rootfs_hash = args
@@ -308,6 +318,34 @@ mod tests {
                 "{field} mismatch returned unexpected error: {msg}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn run_config_rejects_empty_profile_args() {
+        let mut args = args_with_dirname("runner-01");
+        args.profile.clear();
+        args.rootfs_hash.clear();
+        args.snapshot_hash.clear();
+
+        let err = run_config(args).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("at least once"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn run_config_rejects_duplicate_profile_args() {
+        let mut args = args_with_valid_image_hashes();
+        args.profile.push("vm0/default".into());
+        args.rootfs_hash.push(args.rootfs_hash[0].clone());
+        args.snapshot_hash.push(args.snapshot_hash[0].clone());
+
+        let err = run_config(args).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("more than once"), "got: {msg}");
+        assert!(
+            !msg.contains("rootfs not found"),
+            "duplicate profile validation should happen before image artifact checks: {msg}"
+        );
     }
 
     #[tokio::test]
