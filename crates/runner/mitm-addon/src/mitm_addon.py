@@ -94,6 +94,7 @@ _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
 _ADDRESS_PAIR_LENGTH = 2
 _HTTP_DEFAULT_PORT = 80
 _HTTPS_DEFAULT_PORT = 443
+_HTTP_OWS_CHARS = " \t"
 _BROWSER_USER_AGENT_MARKERS = (
     " chrome/",
     " chromium/",
@@ -2946,7 +2947,7 @@ def _expects_http_response_body_usage_inspection(
 
 
 def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
-    if flow.request.headers.get("Upgrade", "").strip().lower() != "websocket":
+    if flow.request.headers.get("Upgrade", "").strip(_HTTP_OWS_CHARS).lower() != "websocket":
         return False
 
     connection_values = flow.request.headers.get_all("Connection")
@@ -2954,7 +2955,7 @@ def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
         return True
 
     return any(
-        token.strip().lower() == "upgrade"
+        token.strip(_HTTP_OWS_CHARS).lower() == "upgrade"
         for value in connection_values
         for token in value.split(",")
     )
