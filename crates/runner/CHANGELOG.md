@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.132.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.1...runner-rs-v0.132.2) (2026-07-03)
+
+
+### Bug Fixes
+
+* coalesce runner direct candidate bursts ([#19969](https://github.com/vm0-ai/vm0/issues/19969)) ([1135a51](https://github.com/vm0-ai/vm0/commit/1135a514c5e5ca21bb0b929885e98e9061fe581b))
+
+
+### Performance Improvements
+
+* **mitm-addon:** negotiate safe response encodings ([#19951](https://github.com/vm0-ai/vm0/issues/19951)) ([c80fdba](https://github.com/vm0-ai/vm0/commit/c80fdbabe57e88312280782a180710b2b4eb333e))
+
 ## [0.132.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.0...runner-rs-v0.132.1) (2026-07-03)
 
 
