@@ -208,6 +208,9 @@ class TestMatchBaseUrl:
         [
             ("https://acme.zendesk.com/api", "https://{sub}.zendesk.com."),
             ("https://acme.zendesk.com./api", "https://{sub}.zendesk.com"),
+            ("https://acme.example.com/api", "https://{sub}.example。com"),
+            ("https://acme.example.com/api", "https://{sub}.example\uff0ecom"),
+            ("https://acme.example.com/api", "https://{sub}.example\uff61com"),
             ("https://acme.zendesk.com:8443/api", "https://{sub}.zendesk.com.:08443"),
             ("https://acme.zendesk.com.:8443/api", "https://{sub}.zendesk.com:8443"),
         ],
@@ -258,6 +261,7 @@ class TestMatchBaseUrl:
             "https://user:pass@{sub}.zendesk.com",
             "https://.{sub}.zendesk.com",
             "https://{sub}..zendesk.com",
+            "https://{sub}.zendesk.com。。",
             "https://{sub}.zendesk.com:bad",
             "https://{sub}.zendesk.com:99999",
         ],
