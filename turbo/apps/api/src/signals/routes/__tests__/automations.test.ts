@@ -5,7 +5,9 @@ import {
   automationsMainContract,
   automationTriggersContract,
 } from "@vm0/api-contracts/contracts/automations";
+import { chatThreadMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { cronExecuteAutomationsContract } from "@vm0/api-contracts/contracts/cron";
+import { zeroRunsByIdContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { afterEach } from "vitest";
 
@@ -19,12 +21,10 @@ import {
   deleteAutomationsScenario,
   deleteOrgMembership,
   enableAutomationsFakeKms,
-  findAutomationTriggerRows,
   patchAutomationTriggerState,
   readAutomationsState,
   resetAutomationsFakeKms,
   seedAutomationsScenario,
-  seedAutomationRun,
   seedExtraCompose,
 } from "./helpers/automations";
 import {
@@ -72,6 +72,14 @@ function triggerApi() {
 
 function cronApi() {
   return setupApp({ context })(cronExecuteAutomationsContract);
+}
+
+function zeroRunApi() {
+  return setupApp({ context })(zeroRunsByIdContract);
+}
+
+function chatThreadMessagesApi() {
+  return setupApp({ context })(chatThreadMessagesContract);
 }
 
 const trackAutomations = createFixtureTracker<AutomationsFixture>(
@@ -162,10 +170,6 @@ async function createAutomation(args: CreateArgs) {
     [201],
   );
   return response.body;
-}
-
-async function findTriggerRows(automationId: string) {
-  return await findAutomationTriggerRows(context, automationId);
 }
 
 describe("Automations API", () => {
@@ -584,6 +588,10 @@ describe("Automations API", () => {
       trigger: { kind: "cron", cronExpression: "0 9 * * *" },
     });
     const automationId = created.automation.id;
+    const [createdTrigger] = created.automation.triggers;
+    if (createdTrigger?.kind !== "cron") {
+      throw new Error("Expected a cron trigger");
+    }
     const dueTime = new Date(now() - 60_000);
     await patchAutomationTriggerState(context, {
       automation_id: automationId,
@@ -601,9 +609,18 @@ describe("Automations API", () => {
     expect(disabled.body.enabled).toBeFalsy();
     // Disable clears next_run_at on the time trigger so the poller stops seeing
     // it (#17546), but leaves the trigger's own enabled flag intact.
-    const [suspended] = await findTriggerRows(automationId);
-    expect(suspended?.enabled).toBeTruthy();
-    expect(suspended?.next_run_at).toBeNull();
+    const suspended = await accept(
+      triggerApi().show({
+        params: { id: createdTrigger.id },
+        headers: SESSION_HEADERS,
+      }),
+      [200],
+    );
+    expect(suspended.body.enabled).toBeTruthy();
+    if (suspended.body.kind !== "cron") {
+      throw new Error("Expected a cron trigger");
+    }
+    expect(suspended.body.nextRunAt).toBeNull();
 
     // The poller's SQL filter no longer surfaces the disabled automation's
     // trigger at all, so it is neither claimed nor counted as skipped.
@@ -614,9 +631,6 @@ describe("Automations API", () => {
       [200],
     );
     expect(cronResponse.body.executed).toBe(0);
-    await expect(
-      readAutomationsState(context, { automationIds: [automationId] }),
-    ).resolves.toMatchObject({ runs: [] });
 
     const enabled = await accept(
       refApi().enable({
@@ -689,21 +703,13 @@ describe("Automations API", () => {
     expect(loopTrigger.nextRunAt).toBeNull();
   });
 
-  it("disable clears the next run but keeps enabled and last run; re-enable recomputes", async () => {
+  it("disable clears the next run but keeps the trigger enabled; re-enable recomputes", async () => {
     const fixture = await seedFixture();
 
-    const created = await createAutomation({
+    await createAutomation({
       name: "round-trip",
       agentId: fixture.composeId,
       trigger: { kind: "cron", cronExpression: "0 9 * * *" },
-    });
-    const automationId = created.automation.id;
-
-    // Stamp a last run on the trigger to prove disable does not clear it.
-    const fakeRunId = await seedAutomationRun(context, fixture);
-    await patchAutomationTriggerState(context, {
-      automation_id: automationId,
-      last_run_id: fakeRunId,
     });
 
     const disabled = await accept(
@@ -715,12 +721,12 @@ describe("Automations API", () => {
       [200],
     );
     expect(disabled.body.enabled).toBeFalsy();
-    const suspendedRows = await findTriggerRows(automationId);
-    for (const row of suspendedRows) {
-      expect(row.next_run_at).toBeNull();
-      expect(row.enabled).toBeTruthy();
-      expect(row.last_run_id).toBe(fakeRunId);
+    const [suspended] = disabled.body.triggers;
+    if (suspended?.kind !== "cron") {
+      throw new Error("Expected a cron trigger");
     }
+    expect(suspended.nextRunAt).toBeNull();
+    expect(suspended.enabled).toBeTruthy();
 
     const enabled = await accept(
       refApi().enable({
@@ -736,12 +742,6 @@ describe("Automations API", () => {
       throw new Error("Expected a cron trigger");
     }
     expect(Date.parse(cronTrigger.nextRunAt!)).toBeGreaterThan(now());
-
-    // The last-run history (an internal column) survives the round trip.
-    const enabledRows = await findTriggerRows(automationId);
-    for (const row of enabledRows) {
-      expect(row.last_run_id).toBe(fakeRunId);
-    }
   });
 
   it("the poller does not let disabled-automation zombies starve a due trigger", async () => {
@@ -813,46 +813,44 @@ describe("Automations API", () => {
     // the healthy trigger was claimed and run despite 12 starving zombies.
     expect(response.body.success).toBeTruthy();
 
-    const [healthyTrigger] = await findTriggerRows(healthyId);
-    expect(healthyTrigger?.next_run_at).toBeNull();
-    expect(healthyTrigger?.last_run_id).not.toBeNull();
-    const { runs: healthyRuns } = await readAutomationsState(context, {
-      automationIds: [healthyId],
-    });
-    expect(healthyRuns).toHaveLength(1);
-    const healthyRunId = healthyRuns[0]?.id;
-    if (!healthyRunId) {
-      throw new Error("Expected healthy automation run");
-    }
-    const callbacks = (
-      await readAutomationsState(context, { runId: healthyRunId })
-    ).run?.callbacks;
-    expect(callbacks).toStrictEqual(
-      expect.arrayContaining([
-        {
-          url: null,
-          internal_kind: "trigger:loop",
-          payload: { triggerId: healthyTrigger?.id },
-        },
-      ]),
-    );
-    expect(
-      callbacks?.some((callback) => {
-        return callback.url === null && callback.internal_kind === "chat";
+    const healthyAutomation = await accept(
+      refApi().show({
+        params: { ref: healthyId },
+        headers: SESSION_HEADERS,
       }),
-    ).toBeTruthy();
+      [200],
+    );
+    const [healthyTrigger] = healthyAutomation.body.triggers;
+    if (healthyTrigger?.kind !== "loop") {
+      throw new Error("Expected a loop trigger");
+    }
+    expect(healthyTrigger.nextRunAt).toBeNull();
+    expect(healthyTrigger.lastRunAt).not.toBeNull();
 
     // The zombies were never touched: still due, never run.
-    const zombieState = await readAutomationsState(context, {
-      automationIds: zombieIds,
-    });
-    const zombieTriggers = zombieState.triggers;
-    expect(zombieTriggers).toHaveLength(12);
-    for (const zombie of zombieTriggers) {
-      expect(zombie.next_run_at).toBe(pastDue.toISOString());
-      expect(zombie.last_run_id).toBeNull();
+    const zombieAutomations = await Promise.all(
+      zombieIds.map(async (zombieId) => {
+        return (
+          await accept(
+            refApi().show({
+              params: { ref: zombieId },
+              headers: SESSION_HEADERS,
+            }),
+            [200],
+          )
+        ).body;
+      }),
+    );
+    expect(zombieAutomations).toHaveLength(12);
+    for (const zombieAutomation of zombieAutomations) {
+      expect(zombieAutomation.enabled).toBeFalsy();
+      const [zombieTrigger] = zombieAutomation.triggers;
+      if (zombieTrigger?.kind !== "loop") {
+        throw new Error("Expected a loop trigger");
+      }
+      expect(zombieTrigger.nextRunAt).toBe(pastDue.toISOString());
+      expect(zombieTrigger.lastRunAt).toBeNull();
     }
-    expect(zombieState.runs).toHaveLength(0);
   });
 
   it("suspends due time automations whose owner is no longer an org member", async () => {
@@ -891,6 +889,9 @@ describe("Automations API", () => {
     );
     expect(response.body.skipped).toBeGreaterThanOrEqual(1);
 
+    // Once the owner is no longer an org member, no production user API can
+    // read their automation; the cron route is infrastructure-only. Keep this
+    // test-state read narrowly scoped to verifying that suspension side effect.
     const storedState = await readAutomationsState(context, {
       automationId,
       automationIds: [automationId],
@@ -980,7 +981,7 @@ describe("Automations API", () => {
     expect(expired.body.error.message).toContain("already passed");
   });
 
-  it("updates a trigger's schedule in place, preserving id and run history", async () => {
+  it("updates a trigger's schedule in place, preserving id", async () => {
     const fixture = await seedFixture();
 
     const created = await createAutomation({
@@ -1020,9 +1021,7 @@ describe("Automations API", () => {
     expect(updated.body.intervalSeconds).toBe(600);
     expect(updated.body.consecutiveFailures).toBe(0);
     expect(updated.body.nextRunAt).not.toBeNull();
-
-    const [row] = await findTriggerRows(created.automation.id);
-    expect(row?.last_run_id).toBe(runResponse.body.runId);
+    expect(runResponse.body.runId).toStrictEqual(expect.any(String));
 
     // The kind may switch: loop → cron swaps the config columns in place.
     const switched = await accept(
@@ -1044,13 +1043,7 @@ describe("Automations API", () => {
     expect(switched.body.cronExpression).toBe("0 9 * * *");
     expect(switched.body.timezone).toBe("Asia/Shanghai");
     expect(Date.parse(switched.body.nextRunAt!)).toBeGreaterThan(now());
-
-    const [switchedRow] = await findTriggerRows(created.automation.id);
-    expect(switchedRow?.kind).toBe("cron");
-    expect(switchedRow?.interval_seconds).toBeNull();
-    expect(switchedRow?.at_time).toBeNull();
-    expect(switchedRow?.last_run_id).toBe(runResponse.body.runId);
-    expect(switchedRow?.enabled).toBeTruthy();
+    expect(switched.body.enabled).toBeTruthy();
   });
 
   it("rejects invalid schedule updates", async () => {
@@ -1083,10 +1076,19 @@ describe("Automations API", () => {
     );
     expect(badCron.body.error.message).toContain("Invalid cron expression");
 
-    // A failed validation leaves the row untouched.
-    const [row] = await findTriggerRows(created.automation.id);
-    expect(row?.kind).toBe("loop");
-    expect(row?.interval_seconds).toBe(300);
+    // A failed validation leaves the trigger untouched.
+    const row = await accept(
+      triggerApi().show({
+        params: { id: triggerId },
+        headers: SESSION_HEADERS,
+      }),
+      [200],
+    );
+    expect(row.body.kind).toBe("loop");
+    if (row.body.kind !== "loop") {
+      throw new Error("Expected a loop trigger");
+    }
+    expect(row.body.intervalSeconds).toBe(300);
   });
 
   it("scopes trigger updates to the caller and gates cron next runs on the automation flag", async () => {
@@ -1100,12 +1102,22 @@ describe("Automations API", () => {
         ],
       }),
     );
-    const [otherTrigger] = await findTriggerRows(
-      otherFixture.automationIds[0]!,
+    mocks.clerk.session(otherFixture.userId, otherFixture.orgId);
+    const otherAutomation = await accept(
+      refApi().show({
+        params: { ref: otherFixture.automationIds[0]! },
+        headers: SESSION_HEADERS,
+      }),
+      [200],
     );
+    const [otherTrigger] = otherAutomation.body.triggers;
+    if (otherTrigger?.kind !== "loop") {
+      throw new Error("Expected a loop trigger");
+    }
+    mocks.clerk.session(fixture.userId, fixture.orgId);
     const denied = await accept(
       triggerApi().update({
-        params: { id: otherTrigger!.id },
+        params: { id: otherTrigger.id },
         headers: SESSION_HEADERS,
         body: { kind: "loop", intervalSeconds: 600 },
       }),
@@ -1135,7 +1147,7 @@ describe("Automations API", () => {
     expect(updated.body.nextRunAt).toBeNull();
   });
 
-  it("manually fires an automation: chat callback only, automation-only provenance", async () => {
+  it("manually fires an automation with run context and chat message chip", async () => {
     const fixture = await seedFixture();
 
     const created = await createAutomation({
@@ -1157,44 +1169,35 @@ describe("Automations API", () => {
     );
     const { runId } = runResponse.body;
 
-    const runState = (await readAutomationsState(context, { runId })).run;
-    // Provenance: the automation alone — no trigger fired this run. B2 is
-    // deferred, so the run records the automation trigger source.
-    expect(runState?.zero_run).toStrictEqual({
-      trigger_source: "automation",
-      automation_id: created.automation.id,
-      trigger_id: null,
-      chat_thread_id: created.automation.chatThreadId,
-    });
-
-    expect(runState?.agent_run?.prompt).toBe("Manual run test");
-    expect(runState?.agent_run?.append_system_prompt).toContain(
-      "Trigger type: manual",
+    const run = await accept(
+      zeroRunApi().getById({
+        params: { id: runId },
+        headers: SESSION_HEADERS,
+      }),
+      [200],
     );
-    expect(runState?.agent_run?.append_system_prompt).toContain(
-      "Use the run context.",
-    );
-
-    // Only the chat callback: nothing was claimed, so there is no reschedule.
-    const callbacks = runState?.callbacks ?? [];
-    expect(callbacks).toHaveLength(1);
-    expect(callbacks[0]).toMatchObject({
-      url: null,
-      internal_kind: "chat",
-    });
+    expect(run.body.prompt).toBe("Manual run test");
+    expect(run.body.appendSystemPrompt).toContain("Trigger type: manual");
+    expect(run.body.appendSystemPrompt).toContain("Use the run context.");
 
     // The prompt renders as a user chat message with the automation chip.
-    const chipMessage = runState?.messages.find((message) => {
+    const messages = await accept(
+      chatThreadMessagesApi().list({
+        params: { threadId: created.automation.chatThreadId },
+        headers: SESSION_HEADERS,
+        query: { limit: 50 },
+      }),
+      [200],
+    );
+    const chipMessage = messages.body.messages.find((message) => {
       return message.role === "user" && message.content === "Manual run test";
     });
     expect(chipMessage).toMatchObject({
-      automation_title: "fire-now",
-      automation_snapshot: { id: created.automation.id, title: "fire-now" },
+      automationTitle: "fire-now",
+      automationSnapshot: { id: created.automation.id, title: "fire-now" },
     });
-    // The manual run is stamped on the trigger, so a second fire conflicts
-    // while it is still active (per-trigger skip-if-active semantics).
-    const [trigger] = await findTriggerRows(created.automation.id);
-    expect(trigger?.last_run_id).toBe(runId);
+    // While the manual run is active, a second fire conflicts through the
+    // public endpoint.
     const conflictResponse = await accept(
       refApi().run({
         params: { ref: "fire-now" },
@@ -1206,31 +1209,6 @@ describe("Automations API", () => {
     expect(conflictResponse.body.error.code).toBe("CONFLICT");
   });
 
-  it("manually fires an automation without binding the run to a trigger", async () => {
-    const fixture = await seedFixture();
-
-    const created = await createAutomation({
-      name: "manual-unbound-run",
-      agentId: fixture.composeId,
-    });
-    const runResponse = await accept(
-      refApi().run({
-        params: { ref: created.automation.id },
-        headers: SESSION_HEADERS,
-        body: {},
-      }),
-      [201],
-    );
-
-    const runState = (
-      await readAutomationsState(context, { runId: runResponse.body.runId })
-    ).run;
-    expect(runState?.zero_run).toMatchObject({
-      automation_id: created.automation.id,
-      trigger_id: null,
-    });
-  });
-
   it("deletes an automation and cascades its trigger", async () => {
     const fixture = await seedFixture();
 
@@ -1239,8 +1217,13 @@ describe("Automations API", () => {
       agentId: fixture.composeId,
       trigger: { kind: "cron", cronExpression: "0 9 * * *" },
     });
-    await expect(findTriggerRows(created.automation.id)).resolves.toHaveLength(
-      1,
+    const triggerId = created.automation.triggers[0]!.id;
+    await accept(
+      triggerApi().show({
+        params: { id: triggerId },
+        headers: SESSION_HEADERS,
+      }),
+      [200],
     );
 
     await accept(
@@ -1257,8 +1240,12 @@ describe("Automations API", () => {
       }),
       [404],
     );
-    await expect(findTriggerRows(created.automation.id)).resolves.toHaveLength(
-      0,
+    await accept(
+      triggerApi().show({
+        params: { id: triggerId },
+        headers: SESSION_HEADERS,
+      }),
+      [404],
     );
   });
 
