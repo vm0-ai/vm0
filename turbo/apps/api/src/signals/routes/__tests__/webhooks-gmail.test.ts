@@ -63,6 +63,23 @@ function triggersClient() {
   return setupApp({ context })(zeroWorkflowTriggersContract);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sandboxOperationEvents(): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event);
+    });
+  });
+}
+
 function encodeJwtPart(value: unknown): string {
   return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
 }
@@ -585,6 +602,55 @@ describe("POST /api/webhooks/gmail", () => {
     await expect(readTrigger(actor, created.body.id)).resolves.toMatchObject({
       lastRunAt: expect.any(String),
     });
+    const timingEvents = sandboxOperationEvents().filter((event) => {
+      return event.workflow_event_source === "gmail";
+    });
+    const timingRunIds = new Set(
+      timingEvents.map((event) => {
+        return event.run_id;
+      }),
+    );
+    expect(timingRunIds.size).toBe(1);
+    expect([...timingRunIds][0]).toStrictEqual(expect.any(String));
+    const actionTypes = new Set(
+      timingEvents.map((event) => {
+        return event.op_type;
+      }),
+    );
+    for (const actionType of [
+      "api_dispatch_pre_create_zero_workflow_trigger_entrypoint_gap",
+      "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+      "api_dispatch_pre_create_zero_workflow_event_load_external_events",
+      "api_dispatch_pre_create_zero_workflow_event_load_triggers",
+      "api_dispatch_pre_create_zero_workflow_event_check_feature_gate",
+      "api_dispatch_pre_create_zero_workflow_event_match_triggers",
+      "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
+      "api_dispatch_pre_create_zero_workflow_event_build_run_input",
+      "api_dispatch_pre_create_zero_workflow_event_handoff_run",
+    ]) {
+      expect(actionTypes).toContain(actionType);
+    }
+    expect(timingEvents).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_workflow_event_handoff_run",
+          workflow_event_source: "gmail",
+          trigger_source: "workflow-event",
+          zero_run_origin: "workflow_trigger",
+          span_kind: "nested",
+        }),
+      ]),
+    );
+    const serializedTiming = JSON.stringify(timingEvents);
+    expect(serializedTiming).not.toContain(gmailEmail);
+    expect(serializedTiming).not.toContain("pubsub-1");
+    expect(serializedTiming).not.toContain("msg-1");
+    expect(serializedTiming).not.toContain("gmail-thread-1");
+    expect(serializedTiming).not.toContain("customer@example.com");
+    expect(serializedTiming).not.toContain("Invoice needs a reply");
+    expect(serializedTiming).not.toContain("Please draft a helpful reply.");
+    expect(serializedTiming).not.toContain(created.body.id);
+    expect(serializedTiming).not.toContain(WORKFLOW_NAME);
 
     const second = await postGmailWebhook(body);
 
