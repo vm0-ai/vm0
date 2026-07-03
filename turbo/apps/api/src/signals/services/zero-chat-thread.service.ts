@@ -1050,6 +1050,37 @@ export function zeroChatThreadUnreadAgentIds(args: {
 }
 
 /**
+ * Chat threads owned by the user in the current org that currently have at
+ * least one non-terminal run. Used by local-first thread lists to hydrate the
+ * transient sidebar running indicator outside lifecycle event replay.
+ */
+export function zeroChatThreadActiveRunThreadIds(args: {
+  readonly userId: string;
+  readonly orgId: string;
+}): Computed<Promise<readonly string[]>> {
+  return computed(async (get) => {
+    const rows = await get(db$)
+      .selectDistinct({ threadId: zeroRuns.chatThreadId })
+      .from(zeroRuns)
+      .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+      .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+      .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
+      .where(
+        and(
+          eq(chatThreads.userId, args.userId),
+          eq(zeroAgents.orgId, args.orgId),
+          isNotNull(zeroRuns.chatThreadId),
+          inArray(agentRuns.status, [...ACTIVE_RUN_STATUSES]),
+        ),
+      );
+
+    return rows.flatMap((row) => {
+      return row.threadId ? [row.threadId] : [];
+    });
+  });
+}
+
+/**
  * Of the given thread ids, the ones owned by the user that currently hold an
  * unsent composer draft (non-empty `draftContent` or one+ `draftAttachments`).
  */

@@ -1034,10 +1034,12 @@ export {
 export {
   onboardingStatusContract,
   onboardingSetupContract,
+  onboardingCompleteContract,
   onboardingCompleteLimitedFreeContract,
   onboardingStatusResponseSchema,
   type OnboardingStatusContract,
   type OnboardingSetupContract,
+  type OnboardingCompleteContract,
   type OnboardingCompleteLimitedFreeContract,
   type OnboardingStatusResponse,
 } from "./onboarding";

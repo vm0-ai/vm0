@@ -25,7 +25,8 @@ import {
 } from "./connector-availability.service";
 import {
   grantOnboardingCredits,
-  ONBOARDING_CREDITS_NEVER_EXPIRE_AT,
+  LIMITED_FREE_ONBOARDING_CREDITS,
+  onboardingCreditsExpiresAt,
 } from "./onboarding-credit-grants.service";
 import { updateUserConnectors } from "./user-connectors.service";
 import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
@@ -93,6 +94,14 @@ type CompleteLimitedFreeOnboardingResponse =
         };
       };
     };
+
+type CompleteOnboardingResponse = {
+  readonly status: 200;
+  readonly body: {
+    readonly onboardingComplete: true;
+    readonly needsOnboarding: false;
+  };
+};
 
 interface CompleteLimitedFreeOnboardingArgs {
   readonly orgId: string;
@@ -309,11 +318,13 @@ async function upsertDefaultAgentMetadata(
         orgId: args.orgId,
         defaultAgentId: args.agentId,
         onboardingPaymentPending: args.onboardingPaymentPending ?? false,
+        onboardingComplete: true,
       })
       .onConflictDoUpdate({
         target: orgMetadata.orgId,
         set: {
           defaultAgentId: args.agentId,
+          onboardingComplete: true,
           updatedAt: nowDate(),
         },
       });
@@ -326,6 +337,23 @@ async function upsertDefaultAgentMetadata(
       args.onboardingPaymentPending,
     );
   }
+}
+
+async function markOnboardingComplete(db: Db, orgId: string): Promise<void> {
+  await db
+    .insert(orgMetadata)
+    .values({
+      orgId,
+      onboardingComplete: true,
+      updatedAt: nowDate(),
+    })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: {
+        onboardingComplete: true,
+        updatedAt: nowDate(),
+      },
+    });
 }
 
 async function upsertSetupMemberMetadata(
@@ -457,6 +485,9 @@ async function completeExistingDefaultAgentSetup(
     signal.throwIfAborted();
   }
 
+  await markOnboardingComplete(db, args.orgId);
+  signal.throwIfAborted();
+
   return { status: 200 as const, body: { agentId } };
 }
 
@@ -473,31 +504,16 @@ function defaultAgentId(orgId: string): Computed<Promise<string | null>> {
   });
 }
 
-function onboardingPaymentPending(orgId: string): Computed<Promise<boolean>> {
+function onboardingComplete(orgId: string): Computed<Promise<boolean>> {
   return computed(async (get): Promise<boolean> => {
     const db = get(db$);
     const [row] = await db
-      .select({
-        onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
-      })
+      .select({ onboardingComplete: orgMetadata.onboardingComplete })
       .from(orgMetadata)
       .where(eq(orgMetadata.orgId, orgId))
       .limit(1);
 
-    return row?.onboardingPaymentPending ?? false;
-  });
-}
-
-function orgTier(orgId: string): Computed<Promise<string>> {
-  return computed(async (get): Promise<string> => {
-    const db = get(db$);
-    const [row] = await db
-      .select({ tier: orgMetadata.tier })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId))
-      .limit(1);
-
-    return row?.tier ?? "pro-suspend";
+    return row?.onboardingComplete ?? false;
   });
 }
 
@@ -551,9 +567,12 @@ export function onboardingStatus(
 ): Computed<Promise<OnboardingStatusResponse>> {
   return computed(async (get): Promise<OnboardingStatusResponse> => {
     if (!auth.orgId) {
+      const isAdmin = false;
+      const complete = false;
       return {
-        needsOnboarding: true,
-        isAdmin: false,
+        needsOnboarding: isAdmin && !complete,
+        onboardingComplete: complete,
+        isAdmin,
         hasOrg: false,
         hasDefaultAgent: false,
         defaultAgentId: null,
@@ -563,19 +582,14 @@ export function onboardingStatus(
 
     const isAdmin = "orgRole" in auth && auth.orgRole === "admin";
     const agentId = await get(defaultAgentId(auth.orgId));
-    const paymentPending = await get(onboardingPaymentPending(auth.orgId));
-    const tier = await get(orgTier(auth.orgId));
+    const complete = await get(onboardingComplete(auth.orgId));
     const defaultAgent = agentId
       ? await get(defaultAgentInfo(auth.orgId, agentId))
       : null;
 
-    // New pro-suspend onboarding stays active until checkout clears the
-    // pending marker. Paid orgs do not re-enter onboarding just because a
-    // stale marker exists.
     return {
-      needsOnboarding:
-        isAdmin &&
-        (!defaultAgent || (tier === "pro-suspend" && paymentPending)),
+      needsOnboarding: isAdmin && !complete,
+      onboardingComplete: complete,
       isAdmin,
       hasOrg: true,
       hasDefaultAgent: defaultAgent !== null,
@@ -728,6 +742,26 @@ export const setupOnboarding$ = command(
   },
 );
 
+export const completeOnboarding$ = command(
+  async (
+    { set },
+    args: { readonly orgId: string },
+    signal: AbortSignal,
+  ): Promise<CompleteOnboardingResponse> => {
+    const writeDb = set(writeDb$);
+    await markOnboardingComplete(writeDb, args.orgId);
+    signal.throwIfAborted();
+
+    return {
+      status: 200,
+      body: {
+        onboardingComplete: true,
+        needsOnboarding: false,
+      },
+    };
+  },
+);
+
 export const completeLimitedFreeOnboarding$ = command(
   async (
     { set },
@@ -758,6 +792,7 @@ export const completeLimitedFreeOnboarding$ = command(
           defaultAgentId: agentId,
           tier: "limited-free-1",
           onboardingPaymentPending: false,
+          onboardingComplete: true,
           updatedAt: nowDate(),
         })
         .onConflictDoUpdate({
@@ -766,6 +801,7 @@ export const completeLimitedFreeOnboarding$ = command(
             defaultAgentId: agentId,
             tier: "limited-free-1",
             onboardingPaymentPending: false,
+            onboardingComplete: true,
             updatedAt: nowDate(),
           },
         });
@@ -773,8 +809,8 @@ export const completeLimitedFreeOnboarding$ = command(
       await grantOnboardingCredits(
         tx,
         args.orgId,
-        args.credits,
-        new Date(args.expiresAt ?? ONBOARDING_CREDITS_NEVER_EXPIRE_AT),
+        LIMITED_FREE_ONBOARDING_CREDITS,
+        onboardingCreditsExpiresAt(nowDate()),
       );
     });
     signal.throwIfAborted();

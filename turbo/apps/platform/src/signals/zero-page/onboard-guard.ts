@@ -6,7 +6,7 @@ import {
   zeroNeedsOnboarding$,
 } from "./zero-onboarding.ts";
 
-const ONBOARDING_PATH = "/onboarding/2afcf6";
+const ONBOARDING_PATH = "/onboarding/491858";
 
 function onboardingUrl(searchParams: URLSearchParams): string {
   // Onboarding lives on the www sibling of the current host; the onboarding

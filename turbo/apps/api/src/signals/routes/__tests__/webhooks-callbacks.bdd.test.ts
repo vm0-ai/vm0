@@ -31,6 +31,7 @@ import {
 
 const context = testContext();
 const api = createWebhookCallbackApi(context);
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
 
 function orgOf(actor: ApiTestUser): string {
@@ -46,6 +47,17 @@ function epochSeconds(offsetDays: number): number {
 
 function isoOf(epoch: number): string {
   return new Date(epoch * 1000).toISOString();
+}
+
+function expectExpiresAboutThirtyDaysFromNow(value: unknown): void {
+  expect(typeof value).toBe("string");
+  if (typeof value !== "string") {
+    throw new Error("Expected a string credit expiration");
+  }
+
+  const expiresInMs = Date.parse(value) - now();
+  expect(expiresInMs).toBeGreaterThan(THIRTY_DAYS_MS - 60_000);
+  expect(expiresInMs).toBeLessThanOrEqual(THIRTY_DAYS_MS + 5000);
 }
 
 async function waitForExpectation(
@@ -446,10 +458,18 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
 
     const billing = await runs.readBillingStatus(admin);
     expect(billing).toMatchObject({
-      credits: 1000,
+      credits: 3000,
       tier: "limited-free-1",
       onboardingPaymentPending: false,
     });
+    const onboardingCreditGrant = billing.creditGrants.find((grant) => {
+      return grant.source === "onboarding";
+    });
+    expect(onboardingCreditGrant).toMatchObject({
+      amount: 3000,
+      remaining: 3000,
+    });
+    expectExpiresAboutThirtyDaysFromNow(onboardingCreditGrant?.expiresAt);
 
     api.verifyNextClerkWebhook({
       type: "organizationMembership.created",
@@ -466,14 +486,15 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
 
     const repeatedBilling = await runs.readBillingStatus(admin);
     expect(repeatedBilling).toMatchObject({
-      credits: 1000,
+      credits: 3000,
       tier: "limited-free-1",
       onboardingPaymentPending: false,
     });
 
     const status = await bdd.readOnboardingStatus(admin);
     expect(status).toMatchObject({
-      needsOnboarding: false,
+      needsOnboarding: true,
+      onboardingComplete: false,
       isAdmin: true,
       hasOrg: true,
       hasDefaultAgent: true,

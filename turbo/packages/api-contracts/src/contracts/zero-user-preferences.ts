@@ -12,6 +12,8 @@ export type SendMode = z.infer<typeof sendModeSchema>;
 
 export const userPreferencesResponseSchema = z.object({
   timezone: z.string().nullable(),
+  // Pinned agents are exposed as membership only. The API returns a stable
+  // canonical order and ignores client-provided order on writes.
   pinnedAgentIds: z.array(z.string()),
   sendMode: sendModeSchema,
   captureNetworkBodiesRemaining: z.number().int().min(0),
@@ -24,6 +26,7 @@ export type UserPreferencesResponse = z.infer<
 export const updateUserPreferencesRequestSchema = z
   .object({
     timezone: z.string().min(1).optional(),
+    // Membership update only; request order is not used for display ordering.
     pinnedAgentIds: z.array(z.string()).optional(),
     sendMode: sendModeSchema.optional(),
     captureNetworkBodiesRemaining: z.number().int().min(0).optional(),

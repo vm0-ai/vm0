@@ -18,3 +18,21 @@ export function workflowAutomationEnabledForOwner(
     });
   });
 }
+
+export function workflowWebhookTriggerCreationEnabledForOwner(
+  orgId: string,
+  userId: string,
+) {
+  return computed(async (get) => {
+    const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
+    const context = {
+      orgId,
+      userId,
+      overrides,
+    };
+    return (
+      isFeatureEnabled(FeatureSwitchKey.WorkflowAutomation, context) &&
+      isFeatureEnabled(FeatureSwitchKey.WorkflowWebhookTriggers, context)
+    );
+  });
+}

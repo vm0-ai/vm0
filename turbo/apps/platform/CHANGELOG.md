@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.542.0](https://github.com/vm0-ai/vm0/compare/app-v0.541.0...app-v0.542.0) (2026-07-03)
+
+
+### Features
+
+* **workflows:** gate webhook trigger creation with a separate switch ([#20041](https://github.com/vm0-ai/vm0/issues/20041)) ([9c0f0c2](https://github.com/vm0-ai/vm0/commit/9c0f0c21a0cf62d97d682d6f4de2831c17e1a832))
+
+
+### Bug Fixes
+
+* **platform:** anchor chat scroll to latest user message ([#20045](https://github.com/vm0-ai/vm0/issues/20045)) ([22742bb](https://github.com/vm0-ai/vm0/commit/22742bb21f10f8383de3e5ba7cd7aea779dad92c))
+* recolor private automation lock icon to brand teal ([#20042](https://github.com/vm0-ai/vm0/issues/20042)) ([1b23579](https://github.com/vm0-ai/vm0/commit/1b2357938a17ec8b3a2d26b3d285e883baee0511))
+* show help cursor on workflow detail title hover ([#20040](https://github.com/vm0-ai/vm0/issues/20040)) ([b892cb1](https://github.com/vm0-ai/vm0/commit/b892cb1b9674fdec9cbe212d25c353559bc7bd62))
+
+
+### Refactoring
+
+* **platform:** remove pinned agent sorting ([#20051](https://github.com/vm0-ai/vm0/issues/20051)) ([e3e7436](https://github.com/vm0-ai/vm0/commit/e3e7436aeee8170a54e846a86bf7dd4a36449f0a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.148.0
+    * @vm0/connectors bumped to 1.132.0
+    * @vm0/core bumped to 8.393.0
+
 ## [0.541.0](https://github.com/vm0-ai/vm0/compare/app-v0.540.0...app-v0.541.0) (2026-07-03)
 
 

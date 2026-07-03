@@ -33,6 +33,7 @@ export const orgMetadata = pgTable(
     onboardingPaymentPending: boolean("onboarding_payment_pending")
       .notNull()
       .default(false),
+    onboardingComplete: boolean("onboarding_complete").notNull().default(false),
     // Stripe billing fields
     stripeCustomerId: text("stripe_customer_id"),
     stripeSubscriptionId: text("stripe_subscription_id"),
