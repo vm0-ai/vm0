@@ -52,7 +52,7 @@ describe("buildGenerationTemplatePrompt", () => {
     );
   });
 
-  it("builds presentation template guidance for the switched picker catalog", () => {
+  it("builds runbook presentation guidance for a template that ships a runbook package", () => {
     const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
 
     const result = buildGenerationTemplatePrompt({
@@ -63,39 +63,6 @@ describe("buildGenerationTemplatePrompt", () => {
         templateId: item.templateId,
       },
     });
-
-    expect(result.status).toBe("resolved");
-    if (result.status !== "resolved") {
-      return;
-    }
-    expect(result.prompt).toContain("Playful Launch Presentation");
-    expect(result.prompt).toContain(`(${item.designSystemId})`);
-    expect(result.prompt).toContain(`(${item.templateId})`);
-    expect(result.prompt).toContain("Color system: Carnival");
-    expect(result.prompt).toContain("color-system:carnival");
-    expect(result.prompt).toContain(
-      "Apply the selected color system (color-system:carnival)",
-    );
-    expect(result.prompt).toContain("media seed names");
-    expect(result.prompt).toContain(
-      `zero generate presentation --design-system ${item.designSystemId} --template ${item.templateId}`,
-    );
-  });
-
-  it("builds runbook presentation guidance when the switch is on", () => {
-    const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-
-    const result = buildGenerationTemplatePrompt(
-      {
-        type: "presentation",
-        selection: {
-          colorSystemId: item.colorSystemId,
-          designSystemId: item.designSystemId,
-          templateId: item.templateId,
-        },
-      },
-      { presentationRunbookEnabled: true },
-    );
 
     expect(result.status).toBe("resolved");
     if (result.status !== "resolved") {
@@ -119,19 +86,16 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("zero generate presentation");
   });
 
-  it("falls back to the default color token when none is selected (runbook on)", () => {
+  it("falls back to the default color token when none is selected", () => {
     const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
 
-    const result = buildGenerationTemplatePrompt(
-      {
-        type: "presentation",
-        selection: {
-          designSystemId: item.designSystemId,
-          templateId: item.templateId,
-        },
+    const result = buildGenerationTemplatePrompt({
+      type: "presentation",
+      selection: {
+        designSystemId: item.designSystemId,
+        templateId: item.templateId,
       },
-      { presentationRunbookEnabled: true },
-    );
+    });
 
     expect(result.status).toBe("resolved");
     if (result.status !== "resolved") {
@@ -141,13 +105,14 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain('"colorSystem": "carnival"');
   });
 
-  it("uses the legacy presentation flow when the switch is off", () => {
-    const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+  it("uses the legacy multi-resource flow for a template without a runbook package", () => {
+    // PRESENTATION_TEMPLATE_ITEMS[0] ships no runbook package, so it resolves
+    // through the legacy design-system + `zero generate presentation` flow.
+    const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
 
     const result = buildGenerationTemplatePrompt({
       type: "presentation",
       selection: {
-        colorSystemId: item.colorSystemId,
         designSystemId: item.designSystemId,
         templateId: item.templateId,
       },

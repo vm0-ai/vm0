@@ -52,7 +52,6 @@ export enum FeatureSwitchKey {
   ComputerUseDelegatedAuthorization = "computerUseDelegatedAuthorization",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   DesktopX64Download = "desktopX64Download",
-  PresentationTemplateRunbook = "presentationTemplateRunbook",
   PresentationImageUnsplashPreferred = "presentationImageUnsplashPreferred",
   AgentUnreadIndicators = "agentUnreadIndicators",
   ImageArtifactKeyboardNavigation = "imageArtifactKeyboardNavigation",

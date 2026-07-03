@@ -177,7 +177,7 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
     "b4639811099781c662a9671126762c67c1cc726e7a545b7bfbed18032faace9b",
   "template:html-ppt-vantage":
     "93e9a05f8c9c7f5ad99b51b1b9dae87a16d026782458edcfa629a514242de3f6",
-  // Presentation runbook packages (feature: presentationTemplateRunbook).
+  // Presentation runbook packages (self-contained per-template archives).
   "template:html-ppt-playful-launch-runbook":
     "1c46e7d953de0ea47924b9e9936433d7ede1d21ac595f62cbcdee160bded6c26",
   "template:html-ppt-bloom-pitch-runbook":

@@ -15,13 +15,10 @@ import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
  */
 export function resolveThreadGenerationTemplatePrompt(args: {
   readonly explicit: GenerationTemplateRequest | null | undefined;
-  readonly presentationRunbookEnabled?: boolean;
 }): string {
   if (!args.explicit) {
     return "";
   }
-  const built = buildGenerationTemplatePrompt(args.explicit, {
-    presentationRunbookEnabled: args.presentationRunbookEnabled,
-  });
+  const built = buildGenerationTemplatePrompt(args.explicit);
   return built.status === "resolved" ? built.prompt : "";
 }

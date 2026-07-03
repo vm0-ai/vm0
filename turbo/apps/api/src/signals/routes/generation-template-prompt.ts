@@ -57,18 +57,8 @@ type GenerationTemplatePromptResult =
       readonly message: string;
     };
 
-interface BuildGenerationTemplatePromptOptions {
-  /**
-   * When true, presentation templates that ship a self-contained runbook package
-   * use the runbook flow (pull one resource, follow AGENT_RUNBOOK.md, pick the
-   * color system at runtime). When false, the legacy multi-resource flow is used.
-   */
-  readonly presentationRunbookEnabled?: boolean;
-}
-
 export function buildGenerationTemplatePrompt(
   generationTemplate: GenerationTemplateInput | null | undefined,
-  options?: BuildGenerationTemplatePromptOptions,
 ): GenerationTemplatePromptResult {
   if (!generationTemplate) {
     return { status: "resolved", prompt: "" };
@@ -84,7 +74,7 @@ export function buildGenerationTemplatePrompt(
     return buildWorkflowGenerationTemplatePrompt(generationTemplate);
   }
 
-  return buildPresentationGenerationTemplatePrompt(generationTemplate, options);
+  return buildPresentationGenerationTemplatePrompt(generationTemplate);
 }
 
 // Shared framing for every artifact-template block, kept in one place so the
@@ -125,7 +115,6 @@ function buildWorkflowGenerationTemplatePrompt(
 
 function buildPresentationGenerationTemplatePrompt(
   generationTemplate: PresentationGenerationTemplateInput,
-  options?: BuildGenerationTemplatePromptOptions,
 ): GenerationTemplatePromptResult {
   const template = findTemplate(generationTemplate.selection.templateId);
   if (!template) {
@@ -138,9 +127,13 @@ function buildPresentationGenerationTemplatePrompt(
     };
   }
 
-  const runbookPackage = options?.presentationRunbookEnabled
-    ? findPresentationRunbookPackage(generationTemplate.selection.templateId)
-    : undefined;
+  // Presentation templates that ship a self-contained runbook package use the
+  // runbook flow (pull one resource, follow AGENT_RUNBOOK.md, pick the color
+  // system at runtime). Templates without a package fall back to the legacy
+  // multi-resource flow below.
+  const runbookPackage = findPresentationRunbookPackage(
+    generationTemplate.selection.templateId,
+  );
   if (runbookPackage) {
     return buildPresentationRunbookPrompt(
       generationTemplate,

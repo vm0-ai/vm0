@@ -4346,12 +4346,13 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
 
 // ── Presentation runbook packages ────────────────────────────────────────────
 // Self-contained per-template presentation packages (agent runbook + renderer)
-// uploaded to private R2 as one archive each. Gated behind the
-// `presentationTemplateRunbook` feature switch: when on, the agent pulls exactly
-// one of these by template, then selects a color system at runtime — no separate
-// design system or color archive to resolve. These are intentionally NOT part of
-// RESOURCE_REGISTRY so they never leak into the legacy multi-resource candidate
-// slice (selectResourceCandidates) or listTemplates.
+// uploaded to private R2 as one archive each. When a selected template ships one
+// of these, the agent pulls exactly that archive by template, then selects a
+// color system at runtime — no separate design system or color archive to
+// resolve. Templates without a package fall back to the legacy multi-resource
+// flow. These are intentionally NOT part of RESOURCE_REGISTRY so they never leak
+// into the legacy multi-resource candidate slice (selectResourceCandidates) or
+// listTemplates.
 
 export interface PresentationRunbookPackage {
   /** Picker template id (the legacy `template:html-ppt-*` id the user selects). */
