@@ -1044,7 +1044,6 @@ function ChatThreadsSkeleton() {
 
 function ChatThreadsContent() {
   const chatThreadsLoading = useLastLoadable(chatThreads$).state === "loading";
-
   const collapsed = useGet(sessionListCollapsed$);
 
   return (

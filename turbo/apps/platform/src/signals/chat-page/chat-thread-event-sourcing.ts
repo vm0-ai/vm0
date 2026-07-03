@@ -5,6 +5,7 @@ import {
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   InitClientArgs,
   InitClientReturn,
@@ -15,6 +16,9 @@ import { clerk$ } from "../auth.ts";
 import { createIdbChatThreadEventStores } from "../external/idb-chat-thread-event-store.ts";
 import { logger } from "../log.ts";
 import { reloadChatThreadsCounter$ } from "../chat-thread-list-reload.ts";
+import { setAblyLoop$ } from "../realtime.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import { settle, withCleanup } from "../utils.ts";
 import { replayChatThreadEvents } from "./chat-thread-event-replay.ts";
 
 const L = logger("ChatThreadEventSourcing");
@@ -41,6 +45,8 @@ export interface ThreadMeta {
 
 const optimisticChatThreadEventsState$ = state<readonly ChatThreadEvent[]>([]);
 const chatThreadMaxItemState$ = state(CHAT_THREAD_VISIBLE_PAGE_SIZE);
+const chatThreadEventSyncVersionState$ = state(0);
+const chatThreadEventSyncInFlightState$ = state(false);
 
 export const chatThreadMaxItem$ = computed((get) => {
   return get(chatThreadMaxItemState$);
@@ -126,13 +132,18 @@ async function syncChatThreadEvents(
 const chatThreadEventData$ = computed(
   async (get): Promise<ChatThreadEventData> => {
     get(reloadChatThreadsCounter$);
+    get(chatThreadEventSyncVersionState$);
     const store = await get(chatThreadEventStores$);
     if (!store) {
       return { snapshot: [], events: [] };
     }
 
-    const client = get(zeroClient$)(chatThreadsContract);
-    const syncedSnapshot = await syncChatThreadEvents(store, client);
+    const cachedSnapshot = await store.readStore.readSnapshot();
+    let syncedSnapshot: ChatThreadSnapshotData | null = null;
+    if (!cachedSnapshot) {
+      const client = get(zeroClient$)(chatThreadsContract);
+      syncedSnapshot = await syncChatThreadEvents(store, client);
+    }
 
     const [snapshot, events] = await Promise.all([
       store.readStore.readSnapshot(),
@@ -142,6 +153,61 @@ const chatThreadEventData$ = computed(
       snapshot: (snapshot ?? syncedSnapshot)?.chatThreads ?? [],
       events,
     };
+  },
+);
+
+export const syncEventDrivenChatThreads$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const store = await get(chatThreadEventStores$);
+    signal.throwIfAborted();
+    if (!store || get(chatThreadEventSyncInFlightState$)) {
+      return;
+    }
+
+    set(chatThreadEventSyncInFlightState$, true);
+    await withCleanup(
+      (async () => {
+        const client = get(zeroClient$)(chatThreadsContract);
+        const synced = await settle(
+          syncChatThreadEvents(store, client, signal),
+          signal,
+        );
+        if (!synced.ok) {
+          L.debug("event sync failed", { error: synced.error });
+          return;
+        }
+        signal.throwIfAborted();
+        set(chatThreadEventSyncVersionState$, (version) => {
+          return version + 1;
+        });
+      })(),
+      () => {
+        set(chatThreadEventSyncInFlightState$, false);
+      },
+    );
+  },
+);
+
+export const subscribeEventDrivenChatThreads$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    if (!get(featureSwitch$)[FeatureSwitchKey.ChatThreadEventSourcing]) {
+      return;
+    }
+
+    const syncOnThreadListChanged$ = command(
+      async ({ set }, signal: AbortSignal): Promise<boolean> => {
+        await set(syncEventDrivenChatThreads$, signal);
+        return false;
+      },
+    );
+
+    await set(syncEventDrivenChatThreads$, signal);
+    signal.throwIfAborted();
+    await set(
+      setAblyLoop$,
+      { topic: "threadListChanged", loopCommand$: syncOnThreadListChanged$ },
+      signal,
+    );
   },
 );
 
