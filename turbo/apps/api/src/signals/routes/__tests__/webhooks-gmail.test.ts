@@ -539,6 +539,7 @@ describe("POST /api/webhooks/gmail", () => {
     const { actor, workflowId } = await setupFixture();
     await enableGmailWorkflowTriggers(actor);
     await connectGmail(actor, gmailEmail);
+    await configureWorkspaceModelProvider(actor);
 
     const created = await accept(
       triggersClient().create({
@@ -557,7 +558,6 @@ describe("POST /api/webhooks/gmail", () => {
       [201],
     );
     const chatThreadId = requireTriggerChatThreadId(created.body);
-    await configureWorkspaceModelProvider(actor);
 
     const body = gmailPushBody({
       emailAddress: gmailEmail,
@@ -668,6 +668,7 @@ describe("POST /api/webhooks/gmail", () => {
     const { actor, workflowId } = await setupFixture();
     await enableGmailWorkflowTriggers(actor);
     await connectGmail(actor, gmailEmail);
+    await configureWorkspaceModelProvider(actor);
 
     const created = await accept(
       triggersClient().create({
@@ -686,7 +687,6 @@ describe("POST /api/webhooks/gmail", () => {
       [201],
     );
     const chatThreadId = requireTriggerChatThreadId(created.body);
-    await configureWorkspaceModelProvider(actor);
 
     expect(created.body).toMatchObject({
       eventType: "gmail-label-applied",
@@ -736,6 +736,7 @@ describe("POST /api/webhooks/gmail", () => {
     const { actor, workflowId } = await setupFixture();
     await enableGmailWorkflowTriggers(actor);
     await connectGmail(actor, gmailEmail);
+    await configureWorkspaceModelProvider(actor);
 
     const created = await accept(
       triggersClient().create({
@@ -754,7 +755,6 @@ describe("POST /api/webhooks/gmail", () => {
       [201],
     );
     const chatThreadId = requireTriggerChatThreadId(created.body);
-    await configureWorkspaceModelProvider(actor);
     const activeRun = await runTriggerNow(actor, created.body.id);
     expect(activeRun.chatThreadId).toBe(chatThreadId);
     const triggerBriefsBeforeWebhook = await workflowTriggerBriefs(
