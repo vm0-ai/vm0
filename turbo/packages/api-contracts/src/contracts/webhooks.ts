@@ -623,6 +623,25 @@ const metricDataSchema = z.object({
   disk_total: z.number(),
 });
 
+const sessionHistorySizeBucketSchema = z.enum([
+  "lt_64_kib",
+  "64_256_kib",
+  "256_kib_1_mib",
+  "1_4_mib",
+  "4_16_mib",
+  "16_64_mib",
+  "64_128_mib",
+]);
+
+const sessionHistoryCompressionRatioBucketSchema = z.enum([
+  "identity",
+  "lt_0_25",
+  "0_25_0_5",
+  "0_5_0_75",
+  "0_75_1",
+  "ge_1",
+]);
+
 /**
  * Sandbox operation schema for internal sandbox operations (init, storage, cli, checkpoint, cleanup)
  */
@@ -633,6 +652,11 @@ const sandboxOperationSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
   encoding: sessionHistoryEncodingSchema.optional(),
+  session_history_raw_size_bucket: sessionHistorySizeBucketSchema.optional(),
+  session_history_encoded_size_bucket:
+    sessionHistorySizeBucketSchema.optional(),
+  session_history_compression_ratio_bucket:
+    sessionHistoryCompressionRatioBucketSchema.optional(),
 });
 
 /**

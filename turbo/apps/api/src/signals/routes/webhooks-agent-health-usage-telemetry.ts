@@ -346,6 +346,24 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
           source: "sandbox",
           ...(op.error ? { error: op.error } : {}),
           ...(op.encoding ? { encoding: op.encoding } : {}),
+          ...(op.session_history_raw_size_bucket
+            ? {
+                session_history_raw_size_bucket:
+                  op.session_history_raw_size_bucket,
+              }
+            : {}),
+          ...(op.session_history_encoded_size_bucket
+            ? {
+                session_history_encoded_size_bucket:
+                  op.session_history_encoded_size_bucket,
+              }
+            : {}),
+          ...(op.session_history_compression_ratio_bucket
+            ? {
+                session_history_compression_ratio_bucket:
+                  op.session_history_compression_ratio_bucket,
+              }
+            : {}),
         },
       });
     }
