@@ -6,6 +6,7 @@ import {
   type BodyRenderBlock,
   classifyChatAttachment,
 } from "../../signals/chat-page/parse-body-blocks.ts";
+import { artifactPreviewUrlsMatch } from "./zero-attachment-url.ts";
 
 export type ImageArtifactNavigationItem = {
   readonly url: string;
@@ -42,6 +43,10 @@ type MessageImageSource = {
   readonly blocks?: readonly BodyRenderBlock[];
 };
 
+type MessageImageGroup = {
+  readonly messages: readonly MessageImageSource[];
+};
+
 function isImageDescriptor(descriptor: {
   contentType: string;
   filename: string;
@@ -59,6 +64,11 @@ function isImageDescriptor(descriptor: {
 type MessageImage = {
   readonly url: string;
   readonly filename: string;
+};
+
+type ArtifactImageMetadata = {
+  readonly file: ChatThreadArtifactFile;
+  readonly runId: string;
 };
 
 // Matches a markdown image `![alt](url)`, capturing the alt (filename) and url
@@ -110,57 +120,88 @@ function messageImages(message: MessageImageSource): MessageImage[] {
   return images;
 }
 
+function messageHasImageUrl(
+  message: MessageImageSource,
+  currentUrl: string,
+): boolean {
+  return messageImages(message).some((image) => {
+    return artifactPreviewUrlsMatch(image.url, currentUrl);
+  });
+}
+
+function scopedMessageImages(
+  messages: readonly MessageImageSource[],
+): MessageImage[] {
+  const images: MessageImage[] = [];
+  for (const message of messages) {
+    for (const image of messageImages(message)) {
+      if (
+        images.some((candidate) => {
+          return artifactPreviewUrlsMatch(candidate.url, image.url);
+        })
+      ) {
+        continue;
+      }
+      images.push(image);
+    }
+  }
+  return images;
+}
+
+function artifactMetadataForUrl(
+  artifacts: readonly ArtifactImageMetadata[],
+  url: string,
+): ArtifactImageMetadata | undefined {
+  return artifacts.find((artifact) => {
+    return artifactPreviewUrlsMatch(artifact.file.url, url);
+  });
+}
+
 /**
- * Navigate image previews strictly within the images shown in the same chat
- * message as `currentUrl`. The message is the source of truth (both attached
- * files and body-rendered images), so both human-uploaded and agent-generated
- * images navigate. Run artifacts only enrich metadata when available; images
- * that are not run artifacts (human uploads) still navigate with url + filename.
- * Generated/hosted artifacts that live in the run but are not shown in the
- * message are excluded.
+ * Navigate image previews within the displayed image scope for `currentUrl`.
+ * The rendered chat message group is the scope boundary, so agent and human
+ * messages use the same rule: extract the images visible in the group that
+ * contains the current image. Run artifacts only enrich metadata when
+ * available; generated/hosted artifacts that live in the run but are not shown
+ * in rendered messages are excluded.
  */
 export function currentMessageImageArtifactNavigation(
   runs: readonly ChatThreadArtifactRun[],
-  messages: readonly MessageImageSource[],
+  groups: readonly MessageImageGroup[],
   currentUrl: string,
 ): ImageArtifactNavigation {
-  const message = messages.find((candidate) => {
-    return messageImages(candidate).some((image) => {
-      return image.url === currentUrl;
+  const group = groups.find((candidateGroup) => {
+    return candidateGroup.messages.some((message) => {
+      return messageHasImageUrl(message, currentUrl);
     });
   });
 
-  if (!message) {
+  if (!group) {
     return {};
   }
 
-  const artifactByUrl = new Map<
-    string,
-    { file: ChatThreadArtifactFile; runId: string }
-  >();
+  const artifacts: ArtifactImageMetadata[] = [];
   for (const run of runs) {
     for (const file of run.files) {
-      if (!artifactByUrl.has(file.url)) {
-        artifactByUrl.set(file.url, { file, runId: run.runId });
-      }
+      artifacts.push({ file, runId: run.runId });
     }
   }
 
-  const images: ImageArtifactNavigationItem[] = messageImages(message).map(
-    (image) => {
-      const artifact = artifactByUrl.get(image.url);
-      if (artifact) {
-        return {
-          url: image.url,
-          filename: artifact.file.filename,
-          artifact,
-        };
-      }
-      return { url: image.url, filename: image.filename };
-    },
-  );
+  const images: ImageArtifactNavigationItem[] = scopedMessageImages(
+    group.messages,
+  ).map((image) => {
+    const artifact = artifactMetadataForUrl(artifacts, image.url);
+    if (artifact) {
+      return {
+        url: image.url,
+        filename: artifact.file.filename,
+        artifact,
+      };
+    }
+    return { url: image.url, filename: image.filename };
+  });
   const currentIndex = images.findIndex((item) => {
-    return item.url === currentUrl;
+    return artifactPreviewUrlsMatch(item.url, currentUrl);
   });
 
   if (currentIndex === -1) {
