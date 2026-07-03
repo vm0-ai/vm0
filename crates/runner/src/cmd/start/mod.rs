@@ -344,14 +344,13 @@ async fn run_start_with_home(
     info!(runner_id = %runner_id, runner_name = %runner_config.name, "runner identity");
 
     // Shared locks on rootfs + snapshot per profile — allows `runner gc` to detect in-use resources.
-    let mut _resource_locks = Vec::new();
-    for (profile_name, profile) in &runner_config.profiles {
-        let image_artifact_guard =
-            config::lock_and_validate_profile_image_artifacts(profile_name, profile, &home).await?;
-        touch_mtime(image_artifact_guard.rootfs_paths().dir());
-        touch_mtime(image_artifact_guard.snapshot_paths().dir());
-        _resource_locks.push(image_artifact_guard);
+    let image_artifact_locks =
+        config::lock_and_validate_runner_image_artifacts(&runner_config.profiles, &home).await?;
+    for (_, profile_paths) in image_artifact_locks.profile_paths() {
+        touch_mtime(profile_paths.rootfs_paths().dir());
+        touch_mtime(profile_paths.snapshot_paths().dir());
     }
+    let _resource_locks = image_artifact_locks;
 
     let log_paths = LogPaths::new(home.logs_dir());
     crate::log_file::ensure_log_dir(log_paths.dir()).map_err(|e| {

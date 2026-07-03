@@ -123,18 +123,13 @@ async fn run_config_with_home(args: ConfigArgs, paths: HomePaths) -> RunnerResul
         }),
     };
 
-    let mut image_artifact_guards = Vec::new();
-    for (profile_name, profile) in &runner_config.profiles {
-        image_artifact_guards.push(
-            config::lock_and_validate_profile_image_artifacts(profile_name, profile, &paths)
-                .await?,
-        );
-    }
+    let image_artifact_guards =
+        config::lock_and_validate_runner_image_artifacts(&runner_config.profiles, &paths).await?;
 
     config::generate(&runner_config).await?;
-    for guard in &image_artifact_guards {
-        touch_mtime(guard.rootfs_paths().dir());
-        touch_mtime(guard.snapshot_paths().dir());
+    for (_, profile_paths) in image_artifact_guards.profile_paths() {
+        touch_mtime(profile_paths.rootfs_paths().dir());
+        touch_mtime(profile_paths.snapshot_paths().dir());
     }
     let config_path = runner_dir.join("runner.yaml");
     tracing::info!("config written to {}", config_path.display());
