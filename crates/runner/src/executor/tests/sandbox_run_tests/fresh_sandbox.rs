@@ -292,6 +292,42 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
 }
 
 #[tokio::test]
+async fn execute_inner_run_payload_private_write_failure_does_not_start_agent() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_private_write_file_result(Err(sandbox_write_file_error(
+        "payload private write failed",
+    )));
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+    let (exit_code, error_msg) =
+        run_new_sandbox_status(&factory, &minimal_context(), &config, &default_params())
+            .await
+            .unwrap();
+
+    assert_eq!(exit_code, 1);
+    let error = error_msg.unwrap();
+    assert!(
+        error.contains("payload private write failed"),
+        "got: {error}"
+    );
+    let private_writes = overrides.private_write_file_calls();
+    assert_eq!(private_writes.len(), 1);
+    assert!(
+        private_writes[0]
+            .path
+            .ends_with("/run-payload/payload.json"),
+        "got: {}",
+        private_writes[0].path
+    );
+    assert!(
+        overrides.start_process_calls().is_empty(),
+        "agent must not start after run payload write failure"
+    );
+}
+
+#[tokio::test]
 async fn execute_inner_passes_device_rate_limits_to_sandbox_create() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
