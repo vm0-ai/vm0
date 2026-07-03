@@ -1896,7 +1896,7 @@ describe("workflow detail page", () => {
       queryAllByRoleFast("menuitem").some((item) => {
         return item.textContent?.startsWith("Webhook");
       }),
-    ).toBe(false);
+    ).toBeFalsy();
   });
 
   it("creates a cron schedule trigger from the preferred time zone", async () => {
