@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.544.1](https://github.com/vm0-ai/vm0/compare/app-v0.544.0...app-v0.544.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* render event-sourced chat list before active ids ([#20076](https://github.com/vm0-ai/vm0/issues/20076)) ([f82ed59](https://github.com/vm0-ai/vm0/commit/f82ed594b4d46ac60b5a9f6bd1c656af53b182e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.150.1
+    * @vm0/connectors bumped to 1.132.1
+    * @vm0/core bumped to 8.394.4
+
 ## [0.544.0](https://github.com/vm0-ai/vm0/compare/app-v0.543.2...app-v0.544.0) (2026-07-03)
 
 
