@@ -1,10 +1,11 @@
 import { command, computed, type Computed } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { userCache } from "@vm0/db/schema/user-cache";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
@@ -21,7 +22,7 @@ import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { clerk$ } from "../external/clerk";
 import { fetchClerkMembershipRequests } from "../external/clerk-membership-requests";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
-import { nowDate } from "../../lib/time";
+import { now, nowDate } from "../../lib/time";
 import { settle } from "../utils";
 import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
 
@@ -38,6 +39,7 @@ interface OrgIdentity {
 }
 
 const CACHE_TTL_MS = 60_000;
+const USER_PROFILE_CACHE_TTL_MS = 15 * 60 * 1000;
 
 const forbiddenAccess = Object.freeze({
   status: 403 as const,
@@ -677,21 +679,79 @@ function userPrimaryEmail(user: User): string {
 }
 
 async function fetchUserProfileMap(
+  db: Db,
   client: ReturnType<typeof clerk$.read>,
   userIds: readonly string[],
 ): Promise<Map<string, ClerkUserProfile>> {
   const map = new Map<string, ClerkUserProfile>();
-  if (userIds.length === 0) {
+  const uniqueUserIds = [...new Set(userIds)];
+  if (uniqueUserIds.length === 0) {
     return map;
   }
-  const users = await client.users.getUserList({ userId: [...userIds] });
+
+  const currentTime = now();
+  const cachedUsers = await db
+    .select({
+      userId: userCache.userId,
+      email: userCache.email,
+      name: userCache.name,
+      imageUrl: userCache.imageUrl,
+      cachedAt: userCache.cachedAt,
+    })
+    .from(userCache)
+    .where(inArray(userCache.userId, uniqueUserIds));
+  const missingUserIds = new Set(uniqueUserIds);
+  for (const cached of cachedUsers) {
+    if (currentTime - cached.cachedAt.getTime() >= USER_PROFILE_CACHE_TTL_MS) {
+      continue;
+    }
+    const [firstName = null, ...rest] = (cached.name ?? "").split(/\s+/);
+    map.set(cached.userId, {
+      email: cached.email,
+      firstName: firstName || null,
+      lastName: rest.join(" ") || null,
+      imageUrl: cached.imageUrl ?? "",
+    });
+    missingUserIds.delete(cached.userId);
+  }
+
+  if (missingUserIds.size === 0) {
+    return map;
+  }
+
+  const users = await client.users.getUserList({ userId: [...missingUserIds] });
+  const refreshedAt = nowDate();
   for (const user of users.data) {
+    const email = userPrimaryEmail(user);
+    const name =
+      [user.firstName, user.lastName].filter(Boolean).join(" ") || null;
+    const imageUrl = user.imageUrl || null;
     map.set(user.id, {
-      email: userPrimaryEmail(user),
+      email,
       firstName: user.firstName,
       lastName: user.lastName,
-      imageUrl: user.imageUrl,
+      imageUrl: imageUrl ?? "",
     });
+    if (email) {
+      await db
+        .insert(userCache)
+        .values({
+          userId: user.id,
+          email,
+          name,
+          imageUrl,
+          cachedAt: refreshedAt,
+        })
+        .onConflictDoUpdate({
+          target: userCache.userId,
+          set: {
+            email,
+            name,
+            imageUrl,
+            cachedAt: refreshedAt,
+          },
+        });
+    }
   }
   return map;
 }
@@ -701,6 +761,7 @@ export function zeroOrgMembersList(
 ): Computed<Promise<OrgMembersResponse>> {
   return computed(async (get): Promise<OrgMembersResponse> => {
     const client = get(clerk$);
+    const db = get(db$) as Db;
 
     const [org, memberships, invitations] = await Promise.all([
       client.organizations.getOrganization({ organizationId: args.orgId }),
@@ -720,7 +781,7 @@ export function zeroOrgMembersList(
       .filter((id): id is string => {
         return Boolean(id);
       });
-    const memberProfiles = await fetchUserProfileMap(client, memberUserIds);
+    const memberProfiles = await fetchUserProfileMap(db, client, memberUserIds);
 
     const memberList: OrgMember[] = memberships.data.map((membership) => {
       const uid = membership.publicUserData?.userId ?? "";
@@ -762,7 +823,11 @@ export function zeroOrgMembersList(
         .filter((id): id is string => {
           return Boolean(id);
         });
-      const requestProfiles = await fetchUserProfileMap(client, requestUserIds);
+      const requestProfiles = await fetchUserProfileMap(
+        db,
+        client,
+        requestUserIds,
+      );
       membershipRequests = requestsData.map((req) => {
         const uid = req.public_user_data?.user_id ?? "";
         const profile = requestProfiles.get(uid);

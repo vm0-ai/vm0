@@ -942,11 +942,17 @@ async function getCachedUserEmail(
       userId,
       email,
       name: displayName(user),
+      imageUrl: user.imageUrl ?? null,
       cachedAt: nowDate(),
     })
     .onConflictDoUpdate({
       target: userCache.userId,
-      set: { email, name: displayName(user), cachedAt: nowDate() },
+      set: {
+        email,
+        name: displayName(user),
+        imageUrl: user.imageUrl ?? null,
+        cachedAt: nowDate(),
+      },
     });
   runtime.signal.throwIfAborted();
 

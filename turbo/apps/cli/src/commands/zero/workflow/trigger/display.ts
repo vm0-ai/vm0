@@ -102,6 +102,12 @@ function formatGithubSubject(subject: string): string {
   return subject;
 }
 
+function formatWebhookTriggerEntry(
+  trigger: WorkflowWebhookTriggerSummary,
+): string {
+  return `Webhook: ${trigger.webhookUrl ?? "hidden"}`;
+}
+
 function formatWorkflowTriggerEntry(
   trigger: ZeroWorkflowTriggerSummary,
 ): string {
@@ -144,7 +150,7 @@ function formatWorkflowTriggerEntry(
     return "Google Meet transcript ready: meetings you organize";
   }
   if (isWebhookTrigger(trigger)) {
-    return `Webhook: ${trigger.webhookUrl}`;
+    return formatWebhookTriggerEntry(trigger);
   }
 
   if (trigger.kind !== "schedule") {
@@ -192,11 +198,12 @@ function workflowTriggerKindLabel(trigger: ZeroWorkflowTriggerSummary): string {
 
 function signedCurlExample(trigger: WorkflowWebhookTriggerSummary): string {
   const secret = trigger.webhookSecret ?? "<signing-secret>";
+  const webhookUrl = trigger.webhookUrl ?? "<webhook-url>";
   return [
     `BODY='{"hello":"world"}'`,
     "TIMESTAMP=$(date +%s)",
     `SIGNATURE=$(printf "%s.%s" "$TIMESTAMP" "$BODY" | openssl dgst -sha256 -hmac "${secret}" -hex | awk '{print $2}')`,
-    `curl -X POST "${trigger.webhookUrl}" \\`,
+    `curl -X POST "${webhookUrl}" \\`,
     '  -H "Content-Type: application/json" \\',
     '  -H "X-VM0-Timestamp: $TIMESTAMP" \\',
     '  -H "X-VM0-Signature: $SIGNATURE" \\',
@@ -287,7 +294,9 @@ export function printWorkflowTriggerDetails(
     console.log(`${"Calendar:".padEnd(14)}${trigger.eventConfig.calendarId}`);
   }
   if (isWebhookTrigger(trigger)) {
-    console.log(`${"Webhook URL:".padEnd(14)}${trigger.webhookUrl}`);
+    console.log(
+      `${"Webhook URL:".padEnd(14)}${trigger.webhookUrl ?? "hidden"}`,
+    );
     console.log(
       `${"Secret:".padEnd(14)}${chalk.dim(`ends with ${trigger.secretLastFour}`)}`,
     );

@@ -322,6 +322,29 @@ function webhookWorkflowTrigger(): WorkflowWebhookTriggerSummary {
   };
 }
 
+function publicWorkflowTrigger(
+  trigger: ZeroWorkflowTriggerSummary,
+): ZeroWorkflowTriggerSummary {
+  if (trigger.kind !== "event" || trigger.eventType !== "webhook-received") {
+    return trigger;
+  }
+  const {
+    webhookUrl: _webhookUrl,
+    webhookSecret: _webhookSecret,
+    ...rest
+  } = trigger;
+  return rest;
+}
+
+function publicWorkflowDetail(
+  detail: ZeroWorkflowDetailResponse,
+): ZeroWorkflowDetailResponse {
+  return {
+    ...detail,
+    triggers: detail.triggers.map(publicWorkflowTrigger),
+  };
+}
+
 function salesResearch(): ZeroWorkflowDetailResponse {
   return {
     id: SALES_WORKFLOW_ID,
@@ -561,7 +584,7 @@ function mockWorkflowApis(
         error: { code: "NOT_FOUND", message: "missing" },
       });
     }
-    return respond(200, detail);
+    return respond(200, publicWorkflowDetail(detail));
   });
   context.mocks.api(
     zeroWorkflowTriggersContract.listWorkspace,
@@ -570,10 +593,40 @@ function mockWorkflowApis(
         200,
         workflows.flatMap((workflow) => {
           return workflow.triggers.map((trigger) => {
-            return { workflow: summary(workflow), trigger };
+            return {
+              workflow: summary(workflow),
+              trigger: publicWorkflowTrigger(trigger),
+            };
           });
         }),
       );
+    },
+  );
+  context.mocks.api(
+    zeroWorkflowTriggersContract.revealWebhookSecret,
+    ({ params, respond }) => {
+      const trigger = workflows
+        .flatMap((workflow) => {
+          return workflow.triggers;
+        })
+        .find((item) => {
+          return item.id === params.id;
+        });
+      if (
+        trigger &&
+        trigger.kind === "event" &&
+        trigger.eventType === "webhook-received"
+      ) {
+        return respond(200, {
+          webhookUrl:
+            trigger.webhookUrl ??
+            "https://api.vm0.test/api/webhooks/workflow-triggers/whk_test",
+          webhookSecret: trigger.webhookSecret ?? "webhook-secret",
+        });
+      }
+      return respond(404, {
+        error: { code: "NOT_FOUND", message: "missing" },
+      });
     },
   );
   context.mocks.api(
@@ -1861,10 +1914,12 @@ describe("workflow detail page", () => {
       });
     });
     const webhookUrlField = await screen.findByDisplayValue(
-      webhookWorkflowTrigger().webhookUrl,
+      webhookWorkflowTrigger().webhookUrl ?? "",
     );
     expect(webhookUrlField).toBeInTheDocument();
-    expect(webhookUrlField).toHaveValue(webhookWorkflowTrigger().webhookUrl);
+    expect(webhookUrlField).toHaveValue(
+      webhookWorkflowTrigger().webhookUrl ?? "",
+    );
     expect(webhookUrlField).toHaveClass("min-w-0");
     expect(screen.getByDisplayValue("webhook-secret")).toHaveValue(
       "webhook-secret",
@@ -1874,6 +1929,37 @@ describe("workflow detail page", () => {
       .closest("pre");
     expect(signedCurlExample).toBeInTheDocument();
     expect(signedCurlExample).toHaveClass("whitespace-pre-wrap", "break-all");
+  });
+
+  it("reveals an existing webhook secret on demand", async () => {
+    const workflow = {
+      ...salesResearch(),
+      triggers: [webhookWorkflowTrigger()],
+    };
+    mockWorkflowApis([workflow]);
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.WorkflowAutomation]: true,
+      [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Webhook URL hidden")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByDisplayValue(webhookWorkflowTrigger().webhookUrl ?? ""),
+    ).not.toBeInTheDocument();
+    click(buttonByText("More actions"));
+    click(menuItemByText("View webhook secret"));
+    click(await screen.findByText("Reveal secret"));
+
+    const webhookUrlField = await screen.findByDisplayValue(
+      webhookWorkflowTrigger().webhookUrl ?? "",
+    );
+    expect(webhookUrlField).toBeInTheDocument();
+    expect(screen.getByDisplayValue("webhook-secret")).toHaveValue(
+      "webhook-secret",
+    );
   });
 
   it("hides webhook creation when the webhook trigger switch is disabled", async () => {

@@ -39,6 +39,7 @@ import {
   IconTrash,
   IconUpload,
   IconDotsVertical,
+  IconEye,
   IconVideo,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -97,6 +98,8 @@ import {
   openWorkflowChat$,
   pauseWorkflowTriggers$,
   reloadWorkflows$,
+  revealWebhookSecretTriggerId$,
+  revealWorkflowWebhookSecret$,
   resetWorkflowMetadataForm$,
   runWorkflowTriggerNow$,
   selectedWorkflowFilePath$,
@@ -106,6 +109,7 @@ import {
   setEditingGithubLabelActor$,
   setEditingScheduleCronFields$,
   setEditingWorkflowTriggerId$,
+  setRevealWebhookSecretTriggerId$,
   setSelectedWorkflowFilePath$,
   setWorkflowActionDialog$,
   setWorkflowDetailActiveTab$,
@@ -3516,14 +3520,15 @@ function CreateGmailNewMessageTriggerDialog({
 }
 
 function signedWebhookCurlExample(
-  trigger: WebhookWorkflowTriggerSummary,
+  trigger: Pick<WebhookWorkflowTriggerSummary, "webhookSecret" | "webhookUrl">,
 ): string {
   const secret = trigger.webhookSecret ?? "<signing-secret>";
+  const webhookUrl = trigger.webhookUrl ?? "<webhook-url>";
   return [
     `BODY='{"hello":"world"}'`,
     "TIMESTAMP=$(date +%s)",
     `SIGNATURE=$(printf "%s.%s" "$TIMESTAMP" "$BODY" | openssl dgst -sha256 -hmac "${secret}" -hex | awk '{print $2}')`,
-    `curl -X POST "${trigger.webhookUrl}" \\`,
+    `curl -X POST "${webhookUrl}" \\`,
     '  -H "Content-Type: application/json" \\',
     '  -H "X-VM0-Timestamp: $TIMESTAMP" \\',
     '  -H "X-VM0-Signature: $SIGNATURE" \\',
@@ -4080,12 +4085,14 @@ function CreatedWebhookTriggerView({
     <div className="flex min-w-0 flex-col gap-3">
       <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
         Webhook URL
-        <WebhookReadonlyField
-          value={trigger.webhookUrl}
-          onCopy={() => {
-            copyText(trigger.webhookUrl);
-          }}
-        />
+        {trigger.webhookUrl ? (
+          <WebhookReadonlyField
+            value={trigger.webhookUrl}
+            onCopy={() => {
+              copyText(trigger.webhookUrl ?? "");
+            }}
+          />
+        ) : null}
       </label>
       {trigger.webhookSecret ? (
         <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
@@ -4141,6 +4148,118 @@ function WebhookReadonlyField({
         Copy
       </Button>
     </div>
+  );
+}
+
+function RevealWebhookSecretDialog({
+  trigger,
+  onOpenChange,
+}: {
+  readonly trigger: WebhookWorkflowTriggerSummary;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [revealLoadable, revealSecret] = useLoadableSet(
+    revealWorkflowWebhookSecret$,
+  );
+  const secret =
+    revealLoadable.state === "hasData" ? revealLoadable.data : null;
+  const revealing = revealLoadable.state === "loading";
+  const curlExample = secret ? signedWebhookCurlExample(secret) : null;
+
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>View webhook secret</DialogTitle>
+          <DialogDescription>
+            Reveal the signed endpoint and secret ending in{" "}
+            {trigger.secretLastFour}.
+          </DialogDescription>
+        </DialogHeader>
+        {secret ? (
+          <div className="flex min-w-0 flex-col gap-3">
+            <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+              Webhook URL
+              <WebhookReadonlyField
+                value={secret.webhookUrl}
+                onCopy={() => {
+                  copyText(secret.webhookUrl);
+                }}
+              />
+            </label>
+            <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+              Signing secret
+              <WebhookReadonlyField
+                value={secret.webhookSecret}
+                onCopy={() => {
+                  copyText(secret.webhookSecret);
+                }}
+              />
+            </label>
+            {curlExample ? (
+              <div className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+                Signed curl
+                <div className="relative min-w-0">
+                  <pre className="max-h-56 overflow-y-auto whitespace-pre-wrap break-all rounded-md border border-border/60 bg-muted/40 p-3 pr-20 font-mono text-xs leading-5 text-foreground">
+                    {curlExample}
+                  </pre>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="absolute right-2 top-2 h-7 px-2 text-xs"
+                    onClick={() => {
+                      copyText(curlExample);
+                    }}
+                  >
+                    <IconCopy size={13} />
+                    Copy
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+            Secret values are hidden from the automation list. Reveal them only
+            when you need to configure or test this webhook.
+          </div>
+        )}
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              onOpenChange(false);
+            }}
+          >
+            {secret ? "Done" : "Cancel"}
+          </Button>
+          {!secret ? (
+            <Button
+              type="button"
+              disabled={revealing}
+              onClick={() => {
+                detach(
+                  (async () => {
+                    await revealSecret({ triggerId: trigger.id }, pageSignal);
+                  })(),
+                  Reason.DomCallback,
+                  "reveal workflow webhook secret",
+                );
+              }}
+            >
+              {revealing ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : (
+                <IconEye size={14} stroke={1.5} />
+              )}
+              Reveal secret
+            </Button>
+          ) : null}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -4314,7 +4433,7 @@ function workflowTriggerSubtitle(
     return matchSummary;
   }
   if (isWebhookWorkflowTrigger(trigger)) {
-    return trigger.webhookUrl;
+    return "Webhook URL hidden";
   }
   return triggerKindLabel(trigger);
 }
@@ -4402,10 +4521,17 @@ function TriggerControls({
   const navigate = useSet(detachedNavigateTo$);
   const setEditingTriggerId = useSet(setEditingWorkflowTriggerId$);
   const setEditingScheduleCronFields = useSet(setEditingScheduleCronFields$);
+  const revealWebhookSecretTriggerId = useGet(revealWebhookSecretTriggerId$);
+  const setRevealWebhookSecretTriggerId = useSet(
+    setRevealWebhookSecretTriggerId$,
+  );
   const [runNowLoadable, runNow] = useLoadableSet(runWorkflowTriggerNow$);
   const busy = runNowLoadable.state === "loading";
   const running = busy;
   const canEdit = canEditWorkflowTrigger(trigger);
+  const revealWebhookSecretOpen =
+    revealWebhookSecretTriggerId === trigger.id &&
+    isWebhookWorkflowTrigger(trigger);
 
   return (
     <div className="flex min-w-0 items-center justify-end pr-1.5">
@@ -4477,9 +4603,29 @@ function TriggerControls({
               </TooltipContent>
             </Tooltip>
           ) : null}
-          <TriggerMoreActionsMenu trigger={trigger} disabled={busy} />
+          <TriggerMoreActionsMenu
+            trigger={trigger}
+            disabled={busy}
+            onRevealWebhookSecret={
+              isWebhookWorkflowTrigger(trigger)
+                ? () => {
+                    setRevealWebhookSecretTriggerId(trigger.id);
+                  }
+                : undefined
+            }
+          />
         </div>
       </TooltipProvider>
+      {revealWebhookSecretOpen && isWebhookWorkflowTrigger(trigger) ? (
+        <RevealWebhookSecretDialog
+          trigger={trigger}
+          onOpenChange={(open) => {
+            if (!open) {
+              setRevealWebhookSecretTriggerId(null);
+            }
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -4487,9 +4633,11 @@ function TriggerControls({
 function TriggerMoreActionsMenu({
   trigger,
   disabled,
+  onRevealWebhookSecret,
 }: {
   readonly trigger: ZeroWorkflowTriggerSummary;
   readonly disabled: boolean;
+  readonly onRevealWebhookSecret?: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [deleteLoadable, deleteTrigger] = useLoadableSet(
@@ -4519,6 +4667,16 @@ function TriggerMoreActionsMenu({
         </TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="end" className="w-44">
+        {onRevealWebhookSecret ? (
+          <DropdownMenuItem
+            disabled={deleting}
+            className="gap-2"
+            onClick={onRevealWebhookSecret}
+          >
+            <IconEye size={14} stroke={1.5} />
+            View webhook secret
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem
           disabled={deleting}
           className="gap-2 text-destructive focus:text-destructive"
