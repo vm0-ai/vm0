@@ -34,7 +34,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   click,
-  detachedSetupPage,
+  detachedSetupPage as baseDetachedSetupPage,
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
@@ -48,6 +48,18 @@ import { ROUTES } from "../../../signals/route-paths.ts";
 const context = testContext();
 const zeroAgentId = "c0000000-0000-4000-a000-000000000001";
 const researchAgentId = "a0000000-0000-4000-a000-000000000401";
+
+function detachedSetupPage(
+  options: Parameters<typeof baseDetachedSetupPage>[0],
+): void {
+  baseDetachedSetupPage({
+    ...options,
+    featureSwitches: {
+      [FeatureSwitchKey.ChatThreadEventSourcing]: false,
+      ...options.featureSwitches,
+    },
+  });
+}
 
 function applyUserConnectorUpdate(
   current: readonly string[],
