@@ -75,11 +75,8 @@ import {
 } from "./zero-chat-title.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -1924,22 +1921,6 @@ async function buildCreateQueuedChatRunInput(args: {
       });
     },
   );
-  const featureSwitchContext = await measureChatCallbackPreCreateTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_load_feature_switch_context",
-    "nested",
-    () => {
-      return loadUserFeatureSwitchContext(
-        args.db,
-        args.agent.orgId,
-        args.userId,
-      );
-    },
-  );
-  const presentationRunbookEnabled = isFeatureEnabled(
-    FeatureSwitchKey.PresentationTemplateRunbook,
-    featureSwitchContext,
-  );
   const generationTemplatePrompt = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_generation_template",
@@ -1947,7 +1928,6 @@ async function buildCreateQueuedChatRunInput(args: {
     () => {
       return resolveThreadGenerationTemplatePrompt({
         explicit: resolvedQueuedMessage.generationTemplate,
-        presentationRunbookEnabled,
       });
     },
   );
