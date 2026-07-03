@@ -756,7 +756,7 @@ async fn validate_profile_image_artifacts_rejects_missing_cow_bitmap() {
 }
 
 #[tokio::test]
-async fn lock_and_validate_profile_image_artifacts_holds_snapshot_lock() {
+async fn lock_and_validate_profile_image_artifacts_holds_resource_locks() {
     let dir = tempfile::tempdir().unwrap();
     let home =
         test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
@@ -766,15 +766,27 @@ async fn lock_and_validate_profile_image_artifacts_holds_snapshot_lock() {
         .await
         .unwrap();
 
-    let err = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
+    let rootfs_err = crate::lock::try_acquire(home.rootfs_lock(TEST_ROOTFS_HASH))
         .await
         .unwrap_err();
     assert!(
-        err.to_string().contains("lock is already held"),
-        "got: {err}"
+        rootfs_err.to_string().contains("lock is already held"),
+        "got: {rootfs_err}"
+    );
+
+    let snapshot_err = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
+        .await
+        .unwrap_err();
+    assert!(
+        snapshot_err.to_string().contains("lock is already held"),
+        "got: {snapshot_err}"
     );
 
     drop(guard);
+    let released_lock = crate::lock::try_acquire(home.rootfs_lock(TEST_ROOTFS_HASH))
+        .await
+        .unwrap();
+    drop(released_lock);
     let released_lock = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
         .await
         .unwrap();
