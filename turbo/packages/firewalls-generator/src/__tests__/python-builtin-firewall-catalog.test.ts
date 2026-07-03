@@ -1089,6 +1089,65 @@ describe("Python builtin firewall catalog renderer", () => {
         ],
       }),
       connectorEntry({
+        name: "format-char-host",
+        apis: [
+          {
+            base: "https://a\u00ad\u0301.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.FORMAT_CHAR_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "format-char-host:read",
+                rules: ["GET /format-char-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "normalized-comma-host",
+        apis: [
+          {
+            base: "https://a\uff0c\u0301.example.com/api",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.NORMALIZED_COMMA_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "normalized-comma-host:read",
+                rules: ["GET /normalized-comma-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "noncanonical-greek-host",
+        apis: [
+          {
+            base: "https://\u03aa\u0301.example.com/api",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.NONCANONICAL_GREEK_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "noncanonical-greek-host:read",
+                rules: ["GET /noncanonical-greek-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
         name: "arabic-bidi-host",
         apis: [
           {
@@ -1207,6 +1266,26 @@ describe("Python builtin firewall catalog renderer", () => {
         ],
       }),
       connectorEntry({
+        name: "decomposed-idna-host",
+        apis: [
+          {
+            base: "https://e\u0301.example.com/api",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.DECOMPOSED_IDNA_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "decomposed-idna-host:read",
+                rules: ["GET /decomposed-idna-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
         name: "unicode-dot-host",
         apis: [
           {
@@ -1239,6 +1318,26 @@ describe("Python builtin firewall catalog renderer", () => {
               {
                 name: "unicode-idna-host:read",
                 rules: ["GET /unicode-idna-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "precomposed-idna-host",
+        apis: [
+          {
+            base: "https://é.example.com/api",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.PRECOMPOSED_IDNA_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "precomposed-idna-host:read",
+                rules: ["GET /precomposed-idna-host/{id}"],
               },
             ],
           },
@@ -1287,6 +1386,23 @@ describe("Python builtin firewall catalog renderer", () => {
         ],
       },
       {
+        name: "decomposed-idna-host",
+        apis: [
+          {
+            base: "https://e\u0301.example.com/api",
+            envNames: ["DECOMPOSED_IDNA_HOST_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "decomposed-idna-host:read",
+                rules: ["GET /decomposed-idna-host/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
         name: "encoded-host",
         apis: [
           {
@@ -1298,6 +1414,23 @@ describe("Python builtin firewall catalog renderer", () => {
               {
                 name: "encoded-host:read",
                 rules: ["GET /encoded-host/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "precomposed-idna-host",
+        apis: [
+          {
+            base: "https://é.example.com/api",
+            envNames: ["PRECOMPOSED_IDNA_HOST_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "precomposed-idna-host:read",
+                rules: ["GET /precomposed-idna-host/{id}"],
               },
             ],
           },

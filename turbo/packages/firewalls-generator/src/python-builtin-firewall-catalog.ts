@@ -96,6 +96,7 @@ const ASCII_PUNCTUATION_PATTERN =
   /^[\u0021-\u002f\u003a-\u0040\u005b-\u0060\u007b-\u007e]$/;
 const HEX_DIGIT_PATTERN = /^[0-9a-fA-F]$/;
 const UNICODE_MARK_PATTERN = /^\p{Mark}$/u;
+const UNICODE_OTHER_PATTERN = /^\p{Other}$/u;
 const PERCENT_DECODED_FORBIDDEN_HOST_CHARS = new Set([
   "#",
   "%",
@@ -136,6 +137,26 @@ const FORBIDDEN_RUNTIME_HOST_LABEL_CHARS = new Set([
   "{",
   "}",
   "*",
+]);
+const FORBIDDEN_RUNTIME_NORMALIZED_HOST_LABEL_CHARS = new Set([
+  "#",
+  "%",
+  ",",
+  "/",
+  ":",
+  "<",
+  ">",
+  "?",
+  "@",
+  "[",
+  "\\",
+  "]",
+  "^",
+  "|",
+  ".",
+  "\u3002",
+  "\uff0e",
+  "\uff61",
 ]);
 // Fallback JSON string literals can double quotes and backslashes.
 const MAX_JSON_PART_SOURCE_CHARS = Math.floor(
@@ -573,9 +594,36 @@ function hasForbiddenRuntimeHostLabelChars(value: string): boolean {
   return false;
 }
 
-function hasRuntimeLeadingUnicodeMarkLabel(value: string): boolean {
-  const firstChar = [...value.normalize("NFKD").normalize("NFC")][0];
-  return firstChar !== undefined && UNICODE_MARK_PATTERN.test(firstChar);
+function runtimeLowerNormalizedLabel(value: string): string {
+  // Match Python's normalize-then-per-codepoint-lower order.
+  return [...value.normalize("NFKD").normalize("NFC")]
+    .map((char) => {
+      return char === "\u03a3" ? "\u03c3" : char.toLowerCase();
+    })
+    .join("");
+}
+
+function hasRuntimeIncompatibleNormalizedLabelText(value: string): boolean {
+  const normalized = runtimeLowerNormalizedLabel(value);
+  if (normalized !== normalized.normalize("NFC")) {
+    return true;
+  }
+
+  const firstChar = [...normalized][0];
+  if (firstChar === undefined || UNICODE_MARK_PATTERN.test(firstChar)) {
+    return true;
+  }
+
+  for (const char of normalized) {
+    if (
+      FORBIDDEN_RUNTIME_NORMALIZED_HOST_LABEL_CHARS.has(char) ||
+      /\s/u.test(char) ||
+      UNICODE_OTHER_PATTERN.test(char)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function hasRuntimeIncompatibleBidiLabel(value: string): boolean {
@@ -661,7 +709,7 @@ function runtimeCompatibleHostname(
     if (
       hasForbiddenRuntimeHostLabelChars(rawLabel) ||
       hasUnsafeUts46MappingChars(rawLabel) ||
-      hasRuntimeLeadingUnicodeMarkLabel(rawLabel) ||
+      hasRuntimeIncompatibleNormalizedLabelText(rawLabel) ||
       hasRuntimeIncompatibleBidiLabel(rawLabel)
     ) {
       return false;
