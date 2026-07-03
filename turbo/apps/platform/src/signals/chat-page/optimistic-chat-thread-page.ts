@@ -18,6 +18,7 @@ import { nowDate } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import {
   type ChatThread,
+  chatThreadEventSourcingEnabled$,
   chatThreads$,
   currentChatAgentId$,
   currentChatThreadId$,
@@ -83,6 +84,13 @@ export { optimisticChatThread$ };
 const SIDEBAR_PARAM = "sidebar";
 
 const L = logger("OptimisticChat");
+
+export const newChatThreadDisabled$ = computed((get) => {
+  if (get(chatThreadEventSourcingEnabled$)) {
+    return false;
+  }
+  return get(optimisticChatThread$) !== null;
+});
 
 /**
  * Persist the (threadId, agentId) pairing into the IDB cache the moment the
@@ -611,7 +619,9 @@ export const createNewChatThreadOptimistically$ = command(
   ) => {
     const targetPane =
       pane === "sidebar" && get(currentChatThreadId$) ? "sidebar" : "main";
-    const optimisticThread = get(optimisticChatThreadByPane$)(targetPane);
+    const optimisticThread = get(chatThreadEventSourcingEnabled$)
+      ? null
+      : get(optimisticChatThreadByPane$)(targetPane);
     if (optimisticThread) {
       await set(showExistingOptimisticChatThread$, optimisticThread, signal);
       return;
@@ -701,7 +711,9 @@ export const sidebarChatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
     const persisted = await get(chatThreads$);
     const extraPersisted = await get(sidebarChatThreadsExtraThreads$);
-    const pending = get(allPendingChatThreads$);
+    const pending = get(chatThreadEventSourcingEnabled$)
+      ? []
+      : get(allPendingChatThreads$);
     const currentAgentId = await get(currentChatAgentId$);
     if (!currentAgentId) {
       return [...persisted, ...extraPersisted];
