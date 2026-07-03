@@ -17,6 +17,7 @@ import {
   COMPUTER_USE_NEEDS_ORGANIZATION_MESSAGE,
   COMPUTER_USE_UNAUTHENTICATED_MESSAGE,
 } from "./computer-use-startup-gate";
+import { resolveComputerUseApiBaseUrl } from "./desktop-api-base-url";
 
 const ONLINE_POLL_MS = 2_000;
 const RECOVERY_RETRY_BASE_MS = 2_000;
@@ -193,15 +194,7 @@ function localCommandLogResult(
   return next;
 }
 
-function replaceHostPrefix(hostname: string, target: string): string {
-  return hostname.replace(/(^|-)(api|app|platform|www)\./, `$1${target}.`);
-}
-
-export function resolveComputerUseApiBaseUrl(platformUrl: URL): string {
-  const url = new URL(platformUrl.toString());
-  url.hostname = replaceHostPrefix(url.hostname, "api");
-  return url.toString().replace(/\/$/, "");
-}
+export { resolveComputerUseApiBaseUrl };
 
 export function buildComputerUseRuntimeBody(args: {
   readonly installationId: string;

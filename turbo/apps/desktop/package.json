@@ -4,10 +4,10 @@
   "private": true,
   "productName": "Zero Computer Use",
   "description": "Zero desktop shell",
-  "main": "dist/main.js",
+  "main": "dist/bootstrap.js",
   "scripts": {
     "build": "pnpm build:native && pnpm build:electron && pnpm build:mcp-filesystem && pnpm build:renderer",
-    "build:electron": "tsup --config tsup.electron.config.js",
+    "build:electron": "tsup --config tsup.electron.config.js && node scripts/check-bootstrap-bundle.mjs",
     "build:mcp-filesystem": "tsup --config tsup.mcp-filesystem.config.js",
     "build:native": "node scripts/build-native-helper.js",
     "build:renderer": "vite build --config vite.renderer.config.ts",

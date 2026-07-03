@@ -146,6 +146,11 @@ jobs:
             find "$app_dir/Contents/Resources" -maxdepth 2 -print || true
             exit 1
           fi
+          if [ ! -f "$app_dir/Contents/Resources/app/dist/bootstrap.js" ]; then
+            echo "No packaged app bootstrap bundle found"
+            find "$app_dir/Contents/Resources" -maxdepth 2 -print || true
+            exit 1
+          fi
           if [ ! -x "$app_dir/Contents/Resources/native/computer-use-helper" ]; then
             echo "No executable native Computer Use helper found"
             find "$app_dir/Contents/Resources" -maxdepth 3 -print || true
@@ -187,6 +192,7 @@ jobs:
           unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/icon.icns"
           unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/native/computer-use-helper"
           unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/app/dist/main.js"
+          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/app/dist/bootstrap.js"
           unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/app/assets/icon.png"
 
       - name: Smoke test production artifact launch
@@ -280,6 +286,11 @@ jobs:
             find "$app_dir/Contents/Resources" -maxdepth 2 -print || true
             exit 1
           fi
+          if [ ! -f "$app_dir/Contents/Resources/app/dist/bootstrap.js" ]; then
+            echo "No packaged preview app bootstrap bundle found"
+            find "$app_dir/Contents/Resources" -maxdepth 2 -print || true
+            exit 1
+          fi
           if [ ! -x "$app_dir/Contents/Resources/native/computer-use-helper" ]; then
             echo "No executable native Computer Use helper found"
             find "$app_dir/Contents/Resources" -maxdepth 3 -print || true
@@ -335,6 +346,7 @@ jobs:
           unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/icon.icns"
           unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/native/computer-use-helper"
           unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/dist/main.js"
+          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/dist/bootstrap.js"
           unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/assets/icon.png"
           unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/desktop-runtime-config.json"
 

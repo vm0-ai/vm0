@@ -4,14 +4,16 @@ const { readFileSync } = require("node:fs");
 const pkg = JSON.parse(readFileSync("./package.json", "utf8"));
 
 module.exports = defineConfig({
-  entry: ["src/main.ts", "src/preload.ts"],
+  entry: ["src/bootstrap.ts", "src/main.ts", "src/preload.ts"],
   format: ["cjs"],
   platform: "node",
   target: "node20",
   outDir: "dist",
   sourcemap: true,
   clean: true,
-  external: ["electron"],
+  // "./main.js" stays external so bootstrap.js loads the main bundle at
+  // runtime instead of inlining it, which would defeat its crash isolation.
+  external: ["electron", "./main.js"],
   noExternal: [
     "update-electron-app",
     "@sentry/electron",
