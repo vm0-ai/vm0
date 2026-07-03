@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.545.0](https://github.com/vm0-ai/vm0/compare/app-v0.544.2...app-v0.545.0) (2026-07-03)
+
+
+### Features
+
+* redesign automation trigger picker as a categorized modal ([#20065](https://github.com/vm0-ai/vm0/issues/20065)) ([938c44b](https://github.com/vm0-ai/vm0/commit/938c44be0ea5d4b94f687d1ada5b5c955496574d))
+
+
+### Bug Fixes
+
+* show shortcut help across sidebar pages ([#20091](https://github.com/vm0-ai/vm0/issues/20091)) ([68d2c41](https://github.com/vm0-ai/vm0/commit/68d2c41b814d75a308306e2fd919e3d6a2cf5e42))
+
 ## [0.544.2](https://github.com/vm0-ai/vm0/compare/app-v0.544.1...app-v0.544.2) (2026-07-03)
 
 
