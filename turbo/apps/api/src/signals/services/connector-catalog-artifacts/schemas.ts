@@ -142,8 +142,8 @@ const publicConnectorCatalogPermissionSchema = z
 
 const publicConnectorCatalogPermissionCategoriesSchema = z
   .object({
-    categories: z.record(z.string(), z.string()),
-    displayOrder: z.array(z.string()),
+    categories: z.record(z.string().min(1), z.string().min(1)),
+    displayOrder: z.array(z.string().min(1)),
   })
   .strict();
 

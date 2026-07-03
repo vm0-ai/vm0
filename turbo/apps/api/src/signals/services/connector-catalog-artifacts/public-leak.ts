@@ -28,6 +28,9 @@ export function privateCatalogArtifactSensitiveValues(
   const values = new Set<string>();
 
   for (const connector of privateArtifact.connectors) {
+    for (const artifactRef of connector.runtimeArtifactRefs) {
+      values.add(artifactRef.key);
+    }
     for (const authMethod of connector.authMethods) {
       for (const mapping of authMethod.manualFieldMappings) {
         values.add(mapping.privateName);

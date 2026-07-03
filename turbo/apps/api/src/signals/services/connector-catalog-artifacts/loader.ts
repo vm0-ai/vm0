@@ -218,7 +218,7 @@ function assertPermissionSummaryConsistency(
     const permission = permissionByConnectorRef.get(connector.connectorRef);
     const expectedSummary = permission
       ? {
-          hasPermissions: true,
+          hasPermissions: permission.permissionCount > 0,
           permissionCount: permission.permissionCount,
           hasCategories: permission.categories !== null,
           hasDefaultPolicyOverrides: hasPermissionOverrides(permission),

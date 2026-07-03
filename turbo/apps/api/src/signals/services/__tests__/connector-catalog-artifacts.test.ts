@@ -450,6 +450,42 @@ describe("connector catalog artifacts", () => {
     );
   });
 
+  it("rejects public artifacts that leak private runtime artifact keys", async () => {
+    const records = await fixtureRecords();
+    const publicArtifact = publicArtifactFromRecords(records);
+    fixtureManualConnector(publicArtifact).description =
+      "Runtime schema: private/fixture-manual/runtime.json";
+
+    const privateArtifact = privateArtifactFromRecords(records);
+    const privateConnector = privateArtifact.connectors.find((item) => {
+      return item.connectorRef === "fixture-manual";
+    });
+    if (!privateConnector) {
+      throw new Error("Missing fixture private connector");
+    }
+    privateConnector.runtimeArtifactRefs = [
+      {
+        kind: "runtime-schema",
+        key: "private/fixture-manual/runtime.json",
+        digest:
+          "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      },
+    ];
+
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithPrivateArtifact(
+            recordsWithPublicArtifact(records, publicArtifact),
+            privateArtifact,
+          ),
+        ),
+      }),
+    ).rejects.toThrow(
+      "Public connector catalog artifact leaked private/fixture-manual/runtime.json",
+    );
+  });
+
   it("rejects public permission summary drift", async () => {
     const records = await fixtureRecords();
     const publicArtifact = publicArtifactFromRecords(records);
@@ -465,6 +501,42 @@ describe("connector catalog artifacts", () => {
     ).rejects.toThrow(
       "Connector catalog permission summary mismatch for fixture-manual",
     );
+  });
+
+  it("allows permission detail entries with zero permissions", async () => {
+    const records = await fixtureRecords();
+    const publicArtifact = publicArtifactFromRecords(records);
+    publicArtifact.permissions.push({
+      connectorRef: "fixture-oauth",
+      label: "Fixture OAuth",
+      permissionCount: 0,
+      permissions: [],
+      categories: null,
+      defaultPolicy: {
+        permissionDefault: "allow",
+        unknownPolicy: "allow",
+      },
+    });
+
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithPublicArtifact(records, publicArtifact),
+        ),
+      }),
+    ).resolves.toMatchObject({
+      publicArtifact: {
+        permissions: [
+          {
+            connectorRef: "fixture-manual",
+          },
+          {
+            connectorRef: "fixture-oauth",
+            permissionCount: 0,
+          },
+        ],
+      },
+    });
   });
 
   it("rejects invalid permission categories and default policy overrides", async () => {
