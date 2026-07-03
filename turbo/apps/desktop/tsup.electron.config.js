@@ -12,7 +12,12 @@ module.exports = defineConfig({
   sourcemap: true,
   clean: true,
   external: ["electron"],
-  noExternal: ["update-electron-app", "@sentry/electron", /^@vm0\//],
+  noExternal: [
+    "update-electron-app",
+    "@sentry/electron",
+    /^@vm0\//,
+    /^@modelcontextprotocol\/sdk\//,
+  ],
   define: {
     __DESKTOP_VERSION__: JSON.stringify(pkg.version),
     __DESKTOP_SENTRY_DSN__: JSON.stringify(

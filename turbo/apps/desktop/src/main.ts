@@ -67,6 +67,10 @@ import {
   buildDesktopQuitConfirmationOptions,
   isDesktopQuitConfirmed,
 } from "./desktop-quit-confirmation";
+import {
+  DESKTOP_SMOKE_TEST_READY_MARKER,
+  isDesktopSmokeTestEnabled,
+} from "./desktop-smoke-test";
 import { installDesktopTray, type DesktopTrayController } from "./desktop-tray";
 import { DesktopAuthSession } from "./desktop-auth-session";
 import {
@@ -1202,6 +1206,12 @@ if (!hasSingleInstanceLock) {
     app.on("activate", () => {
       void createMainWindow();
     });
+
+    if (isDesktopSmokeTestEnabled(process.env)) {
+      console.log(DESKTOP_SMOKE_TEST_READY_MARKER);
+      quitConfirmation.allowQuitWithoutConfirmation();
+      app.quit();
+    }
   });
 
   app.on("window-all-closed", () => {
