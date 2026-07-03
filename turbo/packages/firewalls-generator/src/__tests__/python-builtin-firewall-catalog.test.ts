@@ -917,6 +917,63 @@ describe("Python builtin firewall catalog renderer", () => {
         ],
       }),
       connectorEntry({
+        name: "raw-delete-base",
+        apis: [
+          {
+            base: "https://shared-dot.example.com/\u007fdelete",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.RAW_DELETE_BASE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "raw-delete-base:read",
+                rules: ["GET /raw-delete-base/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "raw-surrogate-base",
+        apis: [
+          {
+            base: "https://shared-dot.example.com/\ud800surrogate",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.RAW_SURROGATE_BASE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "raw-surrogate-base:read",
+                rules: ["GET /raw-surrogate-base/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "encoded-space-host",
+        apis: [
+          {
+            base: "https://shared-dot.example%C2%A0com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.ENCODED_SPACE_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "encoded-space-host:read",
+                rules: ["GET /encoded-space-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
         name: "valid-dot",
         apis: [
           {

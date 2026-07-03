@@ -376,10 +376,32 @@ function hostnameHasEmptyLabel(hostname: string): boolean {
   });
 }
 
+function isSurrogateCodepoint(codepoint: number): boolean {
+  return codepoint >= 0xd800 && codepoint <= 0xdfff;
+}
+
 function isAsciiSpaceOrControl(value: string): boolean {
   for (const char of value) {
     const codepoint = char.codePointAt(0);
-    if (codepoint !== undefined && codepoint <= 0x20) {
+    if (
+      codepoint !== undefined &&
+      (codepoint <= 0x20 ||
+        codepoint === 0x7f ||
+        isSurrogateCodepoint(codepoint))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isAuthoritySpaceOrControl(value: string): boolean {
+  for (const char of value) {
+    const codepoint = char.codePointAt(0);
+    if (
+      codepoint !== undefined &&
+      (/\s/u.test(char) || codepoint < 0x20 || codepoint === 0x7f)
+    ) {
       return true;
     }
   }
@@ -418,7 +440,7 @@ function percentDecodedHostnameEscapesAreRuntimeSafe(
     } catch {
       return false;
     }
-    if (isAsciiSpaceOrControl(decoded)) {
+    if (isAuthoritySpaceOrControl(decoded)) {
       return false;
     }
     for (const char of decoded) {
