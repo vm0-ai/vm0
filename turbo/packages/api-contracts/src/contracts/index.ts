@@ -1181,6 +1181,7 @@ export {
   type PublicConnectorCatalogStatusResponse,
   type ZeroConnectorCatalogContract,
 } from "./zero-connector-catalog";
+export { CONNECTOR_REF_MAX_LENGTH, connectorRefSchema } from "./connector-ref";
 export {
   codexDeviceAuthScopeSchema,
   zeroCodexDeviceAuthContract,
