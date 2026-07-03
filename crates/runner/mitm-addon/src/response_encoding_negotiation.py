@@ -1,5 +1,6 @@
 """Request-side response encoding negotiation for body-inspected flows."""
 
+import re
 from decimal import Decimal, InvalidOperation
 
 from mitmproxy import http
@@ -11,6 +12,7 @@ _SAFE_ENCODINGS = frozenset(("gzip", "deflate", _IDENTITY))
 _INVALID_Q_VALUE = Decimal(-1)
 _MIN_Q_VALUE = Decimal(0)
 _MAX_Q_VALUE = Decimal(1)
+_Q_VALUE_PATTERN = re.compile(r"(?:0(?:\.[0-9]{1,3})?|1(?:\.0{1,3})?)")
 
 
 def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> bool:
@@ -81,8 +83,11 @@ def _parse_q_value(parameters: list[str]) -> Decimal | None:
     for parameter in parameters:
         key, separator, value = parameter.strip().partition("=")
         if separator and key.strip().lower() == "q":
+            q_text = value.strip()
+            if not _Q_VALUE_PATTERN.fullmatch(q_text):
+                return _INVALID_Q_VALUE
             try:
-                q_value = Decimal(value.strip())
+                q_value = Decimal(q_text)
             except InvalidOperation:
                 return _INVALID_Q_VALUE
             if not q_value.is_finite() or q_value < _MIN_Q_VALUE or q_value > _MAX_Q_VALUE:

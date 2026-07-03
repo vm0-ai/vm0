@@ -89,10 +89,34 @@ _BROWSER_USER_AGENT = (
             id="invalid-q-value-not-readvertised",
         ),
         pytest.param(
+            [("Accept-Encoding", "gzip;q=1.0000, zstd")],
+            True,
+            ["identity"],
+            id="q-value-with-too-many-digits-not-readvertised",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip;q=.5, zstd")],
+            True,
+            ["identity"],
+            id="q-value-without-leading-zero-not-readvertised",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip;q=1e-1, zstd")],
+            True,
+            ["identity"],
+            id="exponent-q-value-not-readvertised",
+        ),
+        pytest.param(
             [("Accept-Encoding", "identity;q=bogus, zstd")],
             True,
             ["identity"],
             id="malformed-identity-q-is-not-explicit-rejection",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "identity;q=0.0000, zstd")],
+            True,
+            ["identity"],
+            id="malformed-identity-zero-is-not-explicit-rejection",
         ),
     ],
 )
