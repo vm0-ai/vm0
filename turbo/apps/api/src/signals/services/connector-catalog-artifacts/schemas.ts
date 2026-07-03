@@ -150,7 +150,14 @@ const publicConnectorCatalogPermissionCategoriesSchema = z
 const publicConnectorCatalogDefaultPolicySchema = z
   .object({
     permissionDefault: publicFirewallPolicyValueSchema,
-    permissionOverrides: z.record(z.string(), z.array(z.string())).optional(),
+    permissionOverrides: z
+      .object({
+        allow: z.array(z.string()).optional(),
+        deny: z.array(z.string()).optional(),
+        ask: z.array(z.string()).optional(),
+      })
+      .strict()
+      .optional(),
     unknownPolicy: publicFirewallPolicyValueSchema,
   })
   .strict();

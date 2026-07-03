@@ -118,9 +118,10 @@
       ],
       "categories": {
         "categories": {
-          "files": "Files"
+          "files.read": "Files",
+          "files.write": "Files"
         },
-        "displayOrder": ["files"]
+        "displayOrder": ["Files"]
       },
       "defaultPolicy": {
         "permissionDefault": "ask",

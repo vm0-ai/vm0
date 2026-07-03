@@ -177,6 +177,34 @@ function hasPermissionOverrides(
   );
 }
 
+function assertPermissionOverridesConsistency(
+  permission: ConnectorCatalogPublicArtifactPermission,
+  permissionNames: ReadonlySet<string>,
+): void {
+  const overrides = permission.defaultPolicy.permissionOverrides;
+  if (!overrides) {
+    return;
+  }
+
+  const overridePermissionNames = Object.values(overrides).flatMap(
+    (permissions) => {
+      return permissions ?? [];
+    },
+  );
+  assertUniqueValues({
+    values: overridePermissionNames,
+    label: `${permission.connectorRef} default policy override permission names`,
+  });
+
+  for (const permissionName of overridePermissionNames) {
+    if (!permissionNames.has(permissionName)) {
+      throw new Error(
+        `Connector catalog default policy override references unknown permission ${permission.connectorRef}/${permissionName}`,
+      );
+    }
+  }
+}
+
 function assertPermissionSummaryConsistency(
   publicArtifact: ConnectorCatalogPublicArtifact,
 ): void {
@@ -224,16 +252,60 @@ function assertPermissionSummaryConsistency(
         `Connector catalog permission count mismatch for ${permission.connectorRef}`,
       );
     }
+    assertUniqueValues({
+      values: permission.permissions.map((item) => {
+        return item.name;
+      }),
+      label: `${permission.connectorRef} permission names`,
+    });
+    const permissionNames = new Set(
+      permission.permissions.map((item) => {
+        return item.name;
+      }),
+    );
+    assertPermissionOverridesConsistency(permission, permissionNames);
+
     if (permission.categories) {
-      const categoryKeys = new Set(
-        Object.keys(permission.categories.categories),
+      assertSameValues({
+        expected: permissionNames,
+        actual: new Set(Object.keys(permission.categories.categories)),
+        label: `${permission.connectorRef} permission category permission names`,
+      });
+      assertUniqueValues({
+        values: permission.categories.displayOrder,
+        label: `${permission.connectorRef} permission category display order`,
+      });
+      const categoryValues = new Set(
+        Object.values(permission.categories.categories),
       );
       assertSameValues({
-        expected: categoryKeys,
+        expected: categoryValues,
         actual: new Set(permission.categories.displayOrder),
         label: `${permission.connectorRef} permission category display order`,
       });
     }
+  }
+}
+
+function assertAuthMethodShape(args: {
+  readonly connectorRef: string;
+  readonly authMethod: ConnectorCatalogPublicArtifact["connectors"][number]["authMethods"][number];
+}): void {
+  if (
+    args.authMethod.grantKind !== "manual" &&
+    args.authMethod.manualFields.length > 0
+  ) {
+    throw new Error(
+      `Connector catalog auth method ${args.connectorRef}/${args.authMethod.id} has manual fields for ${args.authMethod.grantKind} grant`,
+    );
+  }
+  if (
+    args.authMethod.grantKind !== "device-auth" &&
+    args.authMethod.startOptions.length > 0
+  ) {
+    throw new Error(
+      `Connector catalog auth method ${args.connectorRef}/${args.authMethod.id} has start options for ${args.authMethod.grantKind} grant`,
+    );
   }
 }
 
@@ -275,6 +347,10 @@ function assertPublicArtifactConsistency(
       label: `${connector.connectorRef} auth method ids`,
     });
     for (const authMethod of connector.authMethods) {
+      assertAuthMethodShape({
+        connectorRef: connector.connectorRef,
+        authMethod,
+      });
       assertUniqueValues({
         values: authMethod.manualFields.map((field) => {
           return field.id;

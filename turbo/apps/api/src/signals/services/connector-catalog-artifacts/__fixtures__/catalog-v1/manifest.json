@@ -12,7 +12,7 @@
   "artifacts": {
     "public": {
       "key": "public/catalog.json",
-      "digest": "sha256:25bbd36af13a9c628e7d67aad75832322fe749ab9eeab0fae05b63bdf8fdf647"
+      "digest": "sha256:ff578d3c42af1bc8b4708f18611e6ad91d8848b7f2e1767e7762cf553c500a27"
     },
     "private": {
       "key": "private/runtime.json",

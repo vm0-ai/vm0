@@ -310,6 +310,18 @@ describe("connector catalog artifacts", () => {
         description: "Write fixture files",
       },
     ]);
+    expect(
+      getPublicConnectorCatalogPermissionDetailFromArtifact(
+        artifacts.publicArtifact,
+        "fixture-manual",
+      )?.categories,
+    ).toStrictEqual({
+      categories: {
+        "files.read": "Files",
+        "files.write": "Files",
+      },
+      displayOrder: ["Files"],
+    });
   });
 
   it("rejects a fixture key that escapes the fixture root", async () => {
@@ -452,6 +464,76 @@ describe("connector catalog artifacts", () => {
       }),
     ).rejects.toThrow(
       "Connector catalog permission summary mismatch for fixture-manual",
+    );
+  });
+
+  it("rejects invalid permission categories and default policy overrides", async () => {
+    const records = await fixtureRecords();
+    const categoryDriftArtifact = publicArtifactFromRecords(records);
+    const categoryDriftPermission = categoryDriftArtifact.permissions[0];
+    if (!categoryDriftPermission?.categories) {
+      throw new Error("Missing fixture permission categories");
+    }
+    categoryDriftPermission.categories.displayOrder = ["Unknown"];
+
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithPublicArtifact(records, categoryDriftArtifact),
+        ),
+      }),
+    ).rejects.toThrow(
+      "fixture-manual permission category display order mismatch",
+    );
+
+    const overrideDriftArtifact = publicArtifactFromRecords(records);
+    const overrideDriftPermission = overrideDriftArtifact.permissions[0];
+    if (!overrideDriftPermission) {
+      throw new Error("Missing fixture permission metadata");
+    }
+    overrideDriftPermission.defaultPolicy.permissionOverrides = {
+      allow: ["files.read", "files.delete"],
+    };
+
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithPublicArtifact(records, overrideDriftArtifact),
+        ),
+      }),
+    ).rejects.toThrow(
+      "default policy override references unknown permission fixture-manual/files.delete",
+    );
+  });
+
+  it("rejects auth method fields that do not match the grant kind", async () => {
+    const records = await fixtureRecords();
+    const publicArtifact = publicArtifactFromRecords(records);
+    const oauthConnector = publicArtifact.connectors.find((item) => {
+      return item.connectorRef === "fixture-oauth";
+    });
+    const oauthAuthMethod = oauthConnector?.authMethods[0];
+    if (!oauthAuthMethod) {
+      throw new Error("Missing fixture OAuth auth method");
+    }
+    oauthAuthMethod.manualFields = [
+      {
+        id: "apiKey",
+        label: "API Key",
+        required: true,
+        placeholder: null,
+        inputType: "password",
+      },
+    ];
+
+    await expect(
+      loadConnectorCatalogArtifacts({
+        reader: readerFromRecords(
+          recordsWithPublicArtifact(records, publicArtifact),
+        ),
+      }),
+    ).rejects.toThrow(
+      "fixture-oauth/oauth has manual fields for auth-code grant",
     );
   });
 
