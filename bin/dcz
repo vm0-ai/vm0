@@ -2,8 +2,57 @@
 
 set -eu
 
+if [ "$#" -lt 1 ]; then
+    echo "Usage: dcz <workspace> [extra-workspace ...]" >&2
+    exit 2
+fi
+
 VM0_WORKSPACES="${VM0_WORKSPACES:-$HOME/workspaces}"
-FOLDER="$VM0_WORKSPACES/$1"
+WORKSPACE="$1"
+shift
+FOLDER="$VM0_WORKSPACES/$WORKSPACE"
+
+if [ ! -d "$FOLDER" ]; then
+    echo "Workspace not found: $FOLDER" >&2
+    exit 1
+fi
+
+MOUNT_ARGS=()
+EXTRA_MOUNT_TARGETS=()
+for EXTRA_WORKSPACE in "$@"; do
+    if [ "$EXTRA_WORKSPACE" = "$WORKSPACE" ]; then
+        echo "Extra workspace must be different from primary workspace: $EXTRA_WORKSPACE" >&2
+        exit 1
+    fi
+
+    EXTRA_FOLDER="$VM0_WORKSPACES/$EXTRA_WORKSPACE"
+    if [ ! -d "$EXTRA_FOLDER" ]; then
+        echo "Extra workspace not found: $EXTRA_FOLDER" >&2
+        exit 1
+    fi
+
+    MOUNT_ARGS+=(
+        --mount "type=bind,source=$EXTRA_FOLDER,target=/workspaces/$EXTRA_WORKSPACE"
+    )
+    EXTRA_MOUNT_TARGETS+=("/workspaces/$EXTRA_WORKSPACE")
+done
+
+if [ "${#MOUNT_ARGS[@]}" -gt 0 ]; then
+    NEEDS_RECREATE=0
+    for TARGET in "${EXTRA_MOUNT_TARGETS[@]}"; do
+        if ! npx @devcontainers/cli exec --workspace-folder "$FOLDER" mountpoint -q "$TARGET" >/dev/null 2>&1; then
+            NEEDS_RECREATE=1
+            break
+        fi
+    done
+
+    if [ "$NEEDS_RECREATE" -eq 1 ]; then
+        npx @devcontainers/cli up --workspace-folder "$FOLDER" \
+            --dotfiles-repository "$VM0_DOTFILES" \
+            "${MOUNT_ARGS[@]}" \
+            --remove-existing-container
+    fi
+fi
 
 npx @devcontainers/cli exec --workspace-folder "$FOLDER" \
     --remote-env "OP_SERVICE_ACCOUNT_TOKEN=$VM0_DEV_CONTAINER_SERVICE_ACCOUNT_TOKEN" \
