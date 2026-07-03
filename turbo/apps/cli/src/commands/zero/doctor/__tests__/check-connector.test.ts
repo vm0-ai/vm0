@@ -1350,6 +1350,73 @@ describe("zero doctor check-connector command", () => {
       );
     });
 
+    it("should allow matched permissions that are not denied or asked", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        stubAvailableConnectors(["test-oauth"]),
+        http.get("https://app.vm0.ai/api/zero/connectors/test-oauth", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            type: "test-oauth",
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["test-oauth"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                name: "test-oauth",
+                apis: [
+                  {
+                    base: "https://tenant-123.{pr}.vm6.ai/api/test/oauth-provider",
+                    permissions: [
+                      {
+                        name: "echo",
+                        description:
+                          "Test echo endpoint used to verify token injection",
+                        rules: ["GET /echo"],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            networkPolicies: {
+              "test-oauth": {
+                allow: [],
+                deny: [],
+                ask: [],
+                unknownPolicy: "deny" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://tenant-123.pr-123.vm6.ai/api/test/oauth-provider/echo",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("Matched permissions: [echo]");
+      expect(output).toContain(
+        'Result: "echo" is not blocked by the deny or ask list',
+      );
+      expect(output).not.toContain("unknown endpoint policy applies: deny");
+    });
+
     it("should fail for unrecognized URL", async () => {
       await expect(async () => {
         await checkConnectorCommand.parseAsync([

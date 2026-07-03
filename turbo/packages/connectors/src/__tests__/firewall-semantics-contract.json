@@ -706,5 +706,370 @@
         "kind": "no-match"
       }
     }
+  ],
+  "finalDecisionCases": [
+    {
+      "name": "no base match returns no_match",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "items.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": [],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://other.example.com/items/123"
+      },
+      "expected": {
+        "kind": "no_match"
+      }
+    },
+    {
+      "name": "known permission is allowed when not blocked",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "items.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": [],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/items/123",
+        "permission": "items.read",
+        "rule": "GET /items/{id}"
+      }
+    },
+    {
+      "name": "denied permission blocks before unknown policy",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "items.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": [],
+          "deny": ["items.read"],
+          "ask": [],
+          "unknownPolicy": "allow"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/items/123",
+        "reason": "permission_denied",
+        "permissions": ["items.read"]
+      }
+    },
+    {
+      "name": "unknown endpoint follows deny policy",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "items.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": [],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/items/123",
+        "reason": "unknown_endpoint",
+        "permissions": []
+      }
+    },
+    {
+      "name": "missing network policy entry is permissive",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "items.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "other": {
+          "allow": [],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/items/123"
+      }
+    },
+    {
+      "name": "most specific base wins before policy evaluation",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "all.read",
+                  "rules": ["GET /admin/{rest+}"]
+                }
+              ]
+            },
+            {
+              "base": "https://api.example.com/admin",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "admin.read",
+                  "rules": ["GET /users/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": [],
+          "deny": ["admin.read"],
+          "ask": [],
+          "unknownPolicy": "allow"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/admin/users/42"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com/admin",
+        "relativePath": "/users/42",
+        "reason": "permission_denied",
+        "permissions": ["admin.read"]
+      }
+    },
+    {
+      "name": "matched malformed firewall config blocks",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com/admin?token=1",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "admin.read",
+                  "rules": ["GET /delete"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": ["admin.read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "allow"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/admin/delete"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com/admin?token=1",
+        "relativePath": "/delete",
+        "reason": "malformed_firewall_config",
+        "permissions": []
+      }
+    },
+    {
+      "name": "matched malformed network policy blocks",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "items.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": "items.read",
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "allow"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/items/123",
+        "reason": "malformed_network_policy",
+        "permissions": []
+      }
+    },
+    {
+      "name": "unsafe path blocks after base match",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "full",
+                  "rules": ["ANY /{path+}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": ["full"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "allow"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/users/%2e%2e/admin"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/users/%2e%2e/admin",
+        "reason": "unsafe_path",
+        "permissions": []
+      }
+    }
   ]
 }

@@ -9,9 +9,11 @@ import {
 } from "@vm0/connectors/connector-utils";
 import {
   type FirewallBaseUrlMatch,
-  findMatchingRoutingPermissions,
+  type FirewallRequestDecision,
   matchFirewallBaseUrl,
+  matchFirewallRequestDecision,
   type FirewallRoutingPermissionApi,
+  type FirewallRoutingPermissionRoute,
 } from "@vm0/connectors/firewall-rule-matcher";
 import {
   type FirewallBaseHostPolicy,
@@ -64,6 +66,22 @@ interface DiagnosticRoutingConfig {
   apis: readonly FirewallRoutingPermissionApi[];
 }
 
+interface DiagnosticDecisionPermission {
+  readonly name: string;
+  readonly rules: readonly string[];
+}
+
+interface DiagnosticDecisionApi {
+  readonly base: string;
+  readonly auth: Record<string, never>;
+  readonly permissions: readonly DiagnosticDecisionPermission[];
+}
+
+interface DiagnosticDecisionFirewall {
+  readonly name: ConnectorType;
+  readonly apis: readonly DiagnosticDecisionApi[];
+}
+
 interface UrlLookupResult {
   connectorType: ConnectorType;
   envName: string;
@@ -100,6 +118,41 @@ function hasRoutingPermissionRules(config: DiagnosticRoutingConfig): boolean {
   return config.apis.some((api) => {
     return api.routes.length > 0;
   });
+}
+
+function routesToDecisionPermissions(
+  routes: readonly FirewallRoutingPermissionRoute[],
+): DiagnosticDecisionPermission[] {
+  const rulesByPermission = new Map<string, string[]>();
+  for (const route of routes) {
+    const rules = rulesByPermission.get(route.permissionName);
+    if (rules) {
+      rules.push(route.rule);
+    } else {
+      rulesByPermission.set(route.permissionName, [route.rule]);
+    }
+  }
+
+  return [...rulesByPermission.entries()].map(([name, rules]) => {
+    return { name, rules };
+  });
+}
+
+function routingConfigToDecisionFirewalls(
+  config: DiagnosticRoutingConfig,
+): readonly DiagnosticDecisionFirewall[] {
+  return [
+    {
+      name: config.type,
+      apis: config.apis.map((api) => {
+        return {
+          base: api.base,
+          auth: {},
+          permissions: routesToDecisionPermissions(api.routes),
+        };
+      }),
+    },
+  ];
 }
 
 interface RoutingBaseExecutionTemplate {
@@ -582,6 +635,99 @@ function unknownPermissionChangeCommand(connectorRef: string): string {
   return `zero doctor permission-change ${connectorRef} --permission ${UNKNOWN_PERMISSION_GRANT} --enable --duration 1h`;
 }
 
+function matchedPermissionsFromDecision(
+  decision: FirewallRequestDecision,
+): string[] {
+  if (decision.kind === "allow") {
+    return decision.permission === undefined ? [] : [decision.permission];
+  }
+  if (decision.kind === "block" && decision.reason === "permission_denied") {
+    return [...decision.permissions];
+  }
+  return [];
+}
+
+function printAllowedPermissionResult(
+  permission: string,
+  connectorPolicies: NetworkPolicies[string],
+): void {
+  if (connectorPolicies.allow.includes(permission)) {
+    console.log(`Result: "${permission}" is in the allow list — allowed.`);
+    return;
+  }
+  console.log(
+    `Result: "${permission}" is not blocked by the deny or ask list — allowed.`,
+  );
+}
+
+function printDeniedPermissionResult(
+  permission: string,
+  connectorPolicies: NetworkPolicies[string],
+): void {
+  if (connectorPolicies.deny.includes(permission)) {
+    console.log(`Result: "${permission}" is in the deny list — denied.`);
+    return;
+  }
+  if (connectorPolicies.ask.includes(permission)) {
+    console.log(`Result: "${permission}" is in the ask list — blocked.`);
+    return;
+  }
+  console.log(`Result: "${permission}" is blocked by permission policy.`);
+}
+
+function printFirewallDecisionResult(
+  connectorType: ConnectorType,
+  decision: FirewallRequestDecision,
+  connectorPolicies: NetworkPolicies[string],
+): void {
+  if (decision.kind === "allow") {
+    if (decision.permission === undefined) {
+      console.log(
+        "Result: No permission matched. The unknown endpoint policy applies: allow.",
+      );
+      return;
+    }
+    printAllowedPermissionResult(decision.permission, connectorPolicies);
+    return;
+  }
+
+  if (decision.kind === "no_match") {
+    console.log("Result: No connector firewall base matched this request.");
+    return;
+  }
+
+  switch (decision.reason) {
+    case "permission_denied":
+      for (const permission of decision.permissions) {
+        printDeniedPermissionResult(permission, connectorPolicies);
+      }
+      return;
+    case "unknown_endpoint":
+      console.log(
+        `Result: No permission matched. The unknown endpoint policy applies: ${connectorPolicies.unknownPolicy}.`,
+      );
+      console.log(
+        `To allow unknown endpoints, run: ${unknownPermissionChangeCommand(connectorType)}`,
+      );
+      return;
+    case "malformed_firewall_config":
+      console.log(
+        "Result: The matched firewall config is malformed, so the request is blocked.",
+      );
+      return;
+    case "malformed_network_policy":
+      console.log(
+        "Result: The matched network policy is malformed, so the request is blocked.",
+      );
+      return;
+    case "unsafe_path":
+      console.log(
+        "Result: The request path contains unsafe path syntax, so the request is blocked.",
+      );
+      return;
+  }
+}
+
 /**
  * When --url is provided, auto-detect the matching permission by running
  * the URL's relative path against the connector's firewall rules.
@@ -590,6 +736,7 @@ async function resolvePermissionFromUrl(
   connectorType: ConnectorType,
   label: string,
   method: string,
+  url: string,
   relativePath: string,
   matchedBase: string,
   routingConfig: DiagnosticRoutingConfig | undefined,
@@ -618,12 +765,13 @@ async function resolvePermissionFromUrl(
     return;
   }
 
-  const matchedPermissions = findMatchingRoutingPermissions(
+  const decision = matchFirewallRequestDecision(
+    routingConfigToDecisionFirewalls(config),
     method,
-    relativePath,
-    config.apis,
-    { apiBase: matchedBase },
+    url,
+    networkPolicies,
   );
+  const matchedPermissions = matchedPermissionsFromDecision(decision);
 
   if (matchedPermissions.length === 0) {
     console.log(
@@ -665,33 +813,11 @@ async function resolvePermissionFromUrl(
   console.log(`Permission policies for the ${label} connector:`);
   console.log(`  allow list: [${connectorPolicies.allow.join(", ")}]`);
   console.log(`  deny list:  [${connectorPolicies.deny.join(", ")}]`);
+  console.log(`  ask list:   [${connectorPolicies.ask.join(", ")}]`);
   console.log(`  unknown endpoint policy: ${connectorPolicies.unknownPolicy}`);
   console.log("");
 
-  if (matchedPermissions.length === 0) {
-    console.log(
-      `Result: No permission matched. The unknown endpoint policy applies: ${connectorPolicies.unknownPolicy}.`,
-    );
-    if (connectorPolicies.unknownPolicy !== "allow") {
-      console.log(
-        `To allow unknown endpoints, run: ${unknownPermissionChangeCommand(connectorType)}`,
-      );
-    }
-  } else {
-    for (const perm of matchedPermissions) {
-      const isInAllow = connectorPolicies.allow.includes(perm);
-      const isInDeny = connectorPolicies.deny.includes(perm);
-      if (isInAllow) {
-        console.log(`Result: "${perm}" is in the allow list — allowed.`);
-      } else if (isInDeny) {
-        console.log(`Result: "${perm}" is in the deny list — denied.`);
-      } else {
-        console.log(
-          `Result: "${perm}" is not in any list — falls through to unknown endpoint policy: ${connectorPolicies.unknownPolicy}.`,
-        );
-      }
-    }
-  }
+  printFirewallDecisionResult(connectorType, decision, connectorPolicies);
   console.log("");
 }
 
@@ -831,12 +957,14 @@ How connectors work:
       console.log("");
 
       // Step 3: Permission policy check
-      if (urlLookup) {
+      const diagnosedUrl = opts.url;
+      if (urlLookup && diagnosedUrl) {
         // --url mode: auto-detect permission from URL path
         await resolvePermissionFromUrl(
           connectorType,
           label,
           opts.method,
+          diagnosedUrl,
           urlLookup.relativePath,
           urlLookup.matchedBase,
           urlLookup.routingConfig,
