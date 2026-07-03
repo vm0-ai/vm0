@@ -8,7 +8,7 @@ use crate::config::{
 };
 use crate::deps::{FIRECRACKER_VERSION, KERNEL_VERSION};
 use crate::error::{RunnerError, RunnerResult};
-use crate::paths::HomePaths;
+use crate::paths::{HomePaths, touch_mtime};
 use crate::profile;
 
 #[derive(Args)]
@@ -50,6 +50,11 @@ pub struct ConfigArgs {
 }
 
 pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
+    let paths = HomePaths::new()?;
+    run_config_with_home(args, paths).await
+}
+
+async fn run_config_with_home(args: ConfigArgs, paths: HomePaths) -> RunnerResult<()> {
     // Pure-CPU validation first — fail fast before any filesystem I/O.
     crate::group::validate_or_err(&args.group)?;
     crate::runner_dirname::validate_or_err(&args.runner_dirname)?;
@@ -69,8 +74,6 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
     }
     let api_url = config::normalize_api_base_url(&args.api_url)?;
 
-    let paths = HomePaths::new()?;
-
     // Build profiles map.
     let mut profiles = BTreeMap::new();
     for (i, profile_name) in args.profile.iter().enumerate() {
@@ -84,17 +87,6 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
             .snapshot_hash
             .get(i)
             .ok_or_else(|| RunnerError::Internal(format!("missing snapshot_hash at index {i}")))?;
-
-        // Verify rootfs directory exists on disk.
-        let rootfs_dir = paths.images_dir().join(rootfs_hash);
-        if !tokio::fs::try_exists(&rootfs_dir)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("check rootfs dir: {e}")))?
-        {
-            return Err(RunnerError::Config(format!(
-                "rootfs not found for hash {rootfs_hash}; run `build --profile {profile_name}` first"
-            )));
-        }
 
         profiles.insert(
             profile_name.clone(),
@@ -110,7 +102,6 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
     }
 
     let runner_dir = paths.runners_dir().join(&args.runner_dirname);
-
     let runner_config = RunnerConfig {
         name: args.name,
         group: args.group,
@@ -132,7 +123,19 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
         }),
     };
 
+    let mut image_artifact_guards = Vec::new();
+    for (profile_name, profile) in &runner_config.profiles {
+        image_artifact_guards.push(
+            config::lock_and_validate_profile_image_artifacts(profile_name, profile, &paths)
+                .await?,
+        );
+    }
+
     config::generate(&runner_config).await?;
+    for guard in &image_artifact_guards {
+        touch_mtime(guard.rootfs_paths().dir());
+        touch_mtime(guard.snapshot_paths().dir());
+    }
     let config_path = runner_dir.join("runner.yaml");
     tracing::info!("config written to {}", config_path.display());
 
@@ -165,6 +168,40 @@ mod tests {
         args.snapshot_hash =
             vec!["fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210".into()];
         args
+    }
+
+    async fn write_rootfs(home: &HomePaths, rootfs_hash: &str) -> crate::paths::RootfsPaths {
+        let rootfs = crate::paths::RootfsPaths::new(home, rootfs_hash);
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        tokio::fs::write(rootfs.rootfs(), b"rootfs").await.unwrap();
+        rootfs
+    }
+
+    async fn write_snapshot_without_complete_marker(
+        rootfs: &crate::paths::RootfsPaths,
+        snapshot_hash: &str,
+    ) {
+        let snapshot = rootfs.snapshot(snapshot_hash);
+        tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
+        for path in [
+            snapshot.snapshot_bin(),
+            snapshot.memory_bin(),
+            snapshot.cow_img(),
+            snapshot.cow_bitmap(),
+        ] {
+            tokio::fs::write(path, b"snapshot").await.unwrap();
+        }
+    }
+
+    async fn write_complete_snapshot(rootfs: &crate::paths::RootfsPaths, snapshot_hash: &str) {
+        let snapshot = rootfs.snapshot(snapshot_hash);
+        write_snapshot_without_complete_marker(rootfs, snapshot_hash).await;
+        tokio::fs::write(
+            snapshot.complete_marker(),
+            sandbox_fc::SNAPSHOT_COMPLETE_MARKER_CONTENT,
+        )
+        .await
+        .unwrap();
     }
 
     /// Asserts that `--runner-dirname` validation is wired into `run_config`.
@@ -276,6 +313,53 @@ mod tests {
                 "{field} mismatch returned unexpected error: {msg}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn run_config_rejects_incomplete_snapshot_without_writing_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let args = args_with_valid_image_hashes();
+        let config_path = home
+            .runners_dir()
+            .join(&args.runner_dirname)
+            .join("runner.yaml");
+        let rootfs_hash = args.rootfs_hash[0].clone();
+        let snapshot_hash = args.snapshot_hash[0].clone();
+        let rootfs = write_rootfs(&home, &rootfs_hash).await;
+        write_snapshot_without_complete_marker(&rootfs, &snapshot_hash).await;
+
+        let err = run_config_with_home(args, home).await.unwrap_err();
+
+        let msg = err.to_string();
+        assert!(msg.contains(".snapshot-complete"), "got: {msg}");
+        assert!(
+            !config_path.exists(),
+            "runner config should not be written when snapshot validation fails"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_config_writes_config_for_complete_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let args = args_with_valid_image_hashes();
+        let config_path = home
+            .runners_dir()
+            .join(&args.runner_dirname)
+            .join("runner.yaml");
+        let rootfs_hash = args.rootfs_hash[0].clone();
+        let snapshot_hash = args.snapshot_hash[0].clone();
+        let rootfs = write_rootfs(&home, &rootfs_hash).await;
+        write_complete_snapshot(&rootfs, &snapshot_hash).await;
+
+        run_config_with_home(args, home).await.unwrap();
+
+        let config_content = tokio::fs::read_to_string(config_path).await.unwrap();
+        let runner_config: RunnerConfig = serde_yaml_ng::from_str(&config_content).unwrap();
+        let profile = runner_config.profiles.get("vm0/default").unwrap();
+        assert_eq!(profile.rootfs_hash, rootfs_hash);
+        assert_eq!(profile.snapshot_hash, snapshot_hash);
     }
 
     fn args_with_concurrency_factor(factor: f64) -> ConfigArgs {

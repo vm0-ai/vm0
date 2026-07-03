@@ -10,8 +10,9 @@
 //!    resolves any relative paths against the config file's parent directory.
 //! 2. `validate` checks group name, profile names, image hashes, static host
 //!    paths, resource ceilings, and the concurrency factor.
-//! 3. Callers that consume image artifacts hold the relevant rootfs/snapshot
-//!    locks and call [`validate_profile_image_artifacts`].
+//! 3. Callers that consume image artifacts call
+//!    [`lock_and_validate_profile_image_artifacts`] to hold the relevant
+//!    rootfs/snapshot locks while validating artifact completeness.
 //! 4. Callers derive runtime objects (e.g. [`sandbox::FactoryConfig`]) from
 //!    the loaded config.
 //!
@@ -39,13 +40,15 @@
 //! sensible default; rename fields only with a migration plan.
 
 use std::collections::BTreeMap;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
+use nix::fcntl::Flock;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::idle_pool::DEFAULT_IDLE_TIMEOUT_SECS;
-use crate::paths::{HomePaths, RootfsPaths};
+use crate::paths::{HomePaths, RootfsPaths, SnapshotPaths};
 use crate::profile;
 
 /// 0 means auto-detect from host CPU and memory at startup.
@@ -366,6 +369,44 @@ pub(crate) async fn validate_profile_image_artifacts(
     )
     .await?;
     Ok(())
+}
+
+pub(crate) struct LockedProfileImageArtifacts {
+    _rootfs_lock: Flock<File>,
+    _snapshot_lock: Flock<File>,
+    rootfs_paths: RootfsPaths,
+    snapshot_paths: SnapshotPaths,
+}
+
+impl LockedProfileImageArtifacts {
+    pub(crate) fn rootfs_paths(&self) -> &RootfsPaths {
+        &self.rootfs_paths
+    }
+
+    pub(crate) fn snapshot_paths(&self) -> &SnapshotPaths {
+        &self.snapshot_paths
+    }
+}
+
+pub(crate) async fn lock_and_validate_profile_image_artifacts(
+    name: &str,
+    profile: &ProfileConfig,
+    home: &HomePaths,
+) -> RunnerResult<LockedProfileImageArtifacts> {
+    let rootfs_lock = crate::lock::acquire_shared(home.rootfs_lock(&profile.rootfs_hash)).await?;
+    let rootfs_paths = RootfsPaths::new(home, &profile.rootfs_hash);
+    let snapshot_lock =
+        crate::lock::acquire_shared(home.snapshot_lock(&profile.snapshot_hash)).await?;
+    let snapshot_paths = rootfs_paths.snapshot(&profile.snapshot_hash);
+
+    validate_profile_image_artifacts(name, profile, home).await?;
+
+    Ok(LockedProfileImageArtifacts {
+        _rootfs_lock: rootfs_lock,
+        _snapshot_lock: snapshot_lock,
+        rootfs_paths,
+        snapshot_paths,
+    })
 }
 
 async fn validate(

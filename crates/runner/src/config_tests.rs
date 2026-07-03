@@ -756,6 +756,32 @@ async fn validate_profile_image_artifacts_rejects_missing_cow_bitmap() {
 }
 
 #[tokio::test]
+async fn lock_and_validate_profile_image_artifacts_holds_snapshot_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let home =
+        test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
+    let profile = default_profile_config();
+
+    let guard = lock_and_validate_profile_image_artifacts("vm0/default", &profile, &home)
+        .await
+        .unwrap();
+
+    let err = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("lock is already held"),
+        "got: {err}"
+    );
+
+    drop(guard);
+    let released_lock = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
+        .await
+        .unwrap();
+    drop(released_lock);
+}
+
+#[tokio::test]
 async fn load_rejects_snapshot_without_complete_marker() {
     let fixture = ConfigFixture::without_image_artifacts().await;
 
