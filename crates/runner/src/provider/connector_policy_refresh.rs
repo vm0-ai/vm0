@@ -133,6 +133,9 @@ impl ConnectorPolicyRefreshCore {
     }
 
     async fn register_run(&self, registration: ConnectorPolicyRefreshRegistration<'_>) {
+        if self.inner.cancel.is_cancelled() {
+            return;
+        }
         if registration.connector_refs.is_empty() {
             self.unregister_run(registration.run_id).await;
             return;
@@ -147,6 +150,9 @@ impl ConnectorPolicyRefreshCore {
         let mut old_tasks = Vec::new();
         {
             let mut active_runs = self.inner.active_runs.lock().await;
+            if self.inner.cancel.is_cancelled() {
+                return;
+            }
             if let Some(old) = active_runs.remove(&registration.run_id) {
                 old.cancel.cancel();
                 old_tasks.extend(old.refresh_tasks.into_values());
@@ -177,11 +183,12 @@ impl ConnectorPolicyRefreshCore {
         }
 
         for connector_ref in initial_refresh_connector_refs {
-            self.try_enqueue_initial_refresh(RefreshRequest {
+            self.enqueue_refresh(RefreshRequest {
                 run_id: registration.run_id,
                 connector_ref,
                 trigger: RefreshTrigger::Initial,
-            });
+            })
+            .await;
         }
     }
 
@@ -210,12 +217,6 @@ impl ConnectorPolicyRefreshCore {
                 }
             }
             () = self.inner.cancel.cancelled() => {}
-        }
-    }
-
-    fn try_enqueue_initial_refresh(&self, request: RefreshRequest) {
-        if let Err(error) = self.request_tx.try_send(request) {
-            warn!(error = %error, "initial connector policy refresh queue unavailable");
         }
     }
 
@@ -338,11 +339,13 @@ impl ConnectorPolicyRefreshCore {
         };
 
         let cancel = active.cancel.clone();
+        let global_cancel = self.inner.cancel.clone();
         let connector_ref = connector_ref.to_string();
         let handle = self.clone();
         let task_connector_ref = connector_ref.clone();
         let task = tokio::spawn(async move {
             tokio::select! {
+                () = global_cancel.cancelled() => {}
                 () = cancel.cancelled() => {}
                 () = tokio::time::sleep_until(deadline) => {
                     handle
@@ -614,6 +617,32 @@ mod tests {
 
         let worker_task = handle.worker_task.lock().await;
         assert!(worker_task.is_none());
+    }
+
+    #[tokio::test]
+    async fn register_after_shutdown_is_ignored() {
+        let server = MockServer::start();
+        let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
+        handle.shutdown().await;
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let registry = ProxyRegistryHandle::new(
+            dir.path().join("proxy-registry.json"),
+            dir.path().join("proxy-registry.lock"),
+        );
+
+        handle
+            .core
+            .register_run(ConnectorPolicyRefreshRegistration {
+                run_id: RunId::nil(),
+                source_ip: "10.200.0.2",
+                registry,
+                connector_refs: HashSet::from(["slack".to_string()]),
+                initial_refresh_connector_refs: HashSet::from(["slack".to_string()]),
+                refreshes: None,
+            })
+            .await;
+
+        assert!(handle.core.inner.active_runs.lock().await.is_empty());
     }
 
     #[tokio::test]
