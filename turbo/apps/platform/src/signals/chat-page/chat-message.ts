@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { onRef } from "../utils.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
@@ -21,7 +22,11 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import { nowDate } from "../../lib/time.ts";
-import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import {
+  eventDrivenChatThreadMeta,
+  registerOptimisticChatThreadEvent$,
+} from "./chat-thread-event-sourcing.ts";
 
 export { chatThreads$, reloadChatThreads$ } from "../agent-chat.ts";
 
@@ -190,22 +195,39 @@ export const renameChatThread$ = command(
     { threadId, title }: { threadId: string; title: string },
     signal: AbortSignal,
   ) => {
-    const threads = await get(chatThreads$);
-    signal.throwIfAborted();
     const eventId = crypto.randomUUID();
-    const existingThread = threads.find((thread) => {
-      return thread.id === threadId;
-    });
-    if (existingThread) {
-      set(registerOptimisticChatThreadEvent$, {
-        id: eventId,
-        kind: "renamed",
-        chatThreadId: threadId,
-        agentId: existingThread.agent.id,
-        title,
-        createdAt: nowDate().toISOString(),
-      } satisfies ChatThreadEvent);
+
+    if (get(featureSwitch$)[FeatureSwitchKey.ChatThreadEventSourcing]) {
+      const threadMeta = await get(eventDrivenChatThreadMeta(threadId));
+      signal.throwIfAborted();
+      if (threadMeta) {
+        set(registerOptimisticChatThreadEvent$, {
+          id: eventId,
+          kind: "renamed",
+          chatThreadId: threadId,
+          agentId: threadMeta.agentId,
+          title,
+          createdAt: nowDate().toISOString(),
+        } satisfies ChatThreadEvent);
+      }
+    } else {
+      const threads = await get(chatThreads$);
+      signal.throwIfAborted();
+      const existingThread = threads.find((thread) => {
+        return thread.id === threadId;
+      });
+      if (existingThread) {
+        set(registerOptimisticChatThreadEvent$, {
+          id: eventId,
+          kind: "renamed",
+          chatThreadId: threadId,
+          agentId: existingThread.agent.id,
+          title,
+          createdAt: nowDate().toISOString(),
+        } satisfies ChatThreadEvent);
+      }
     }
+
     const client = get(zeroClient$)(chatThreadRenameContract);
     await accept(
       client.rename({

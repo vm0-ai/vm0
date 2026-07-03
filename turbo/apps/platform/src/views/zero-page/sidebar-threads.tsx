@@ -889,15 +889,11 @@ function ChatThreads() {
 
   if (chatThreads.length === 0) {
     return (
-      <>
-        <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
-          {unreadOnly
-            ? "No unread chats"
-            : "Start a conversation and it'll show up here"}
-        </p>
-        <ChatThreadRenameDialog />
-        <DeleteChatThreadDialog />
-      </>
+      <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
+        {unreadOnly
+          ? "No unread chats"
+          : "Start a conversation and it'll show up here"}
+      </p>
     );
   }
   return (
@@ -911,8 +907,6 @@ function ChatThreads() {
           onLoadMore={handleLoadMore}
         />
       )}
-      <ChatThreadRenameDialog />
-      <DeleteChatThreadDialog />
     </>
   );
 }
@@ -1061,6 +1055,8 @@ export function ChatThreadsSection() {
     <div className="mt-4 flex flex-col">
       <ChatThreadsTitle />
       <ChatThreadsContent />
+      <ChatThreadRenameDialog />
+      <DeleteChatThreadDialog />
     </div>
   );
 }

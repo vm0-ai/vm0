@@ -21,6 +21,7 @@ import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onRef } from "../utils.ts";
 import { openChatThreadEmojiMenu$ } from "../zero-page/zero-sidebar-state.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
+import { currentChatThreadId$ } from "../agent-chat.ts";
 import {
   setupGlobalShortcut,
   type GlobalShortcutBindings,
@@ -447,10 +448,11 @@ export const setChatKeyboardScrollRoot$ = onRef(
         },
         renameThread: async () => {
           const thread = focusedThread();
-          if (thread) {
+          const threadId = thread?.threadId ?? get(currentChatThreadId$);
+          if (threadId) {
             await set(
               openRenameChatThreadDialogFromThreadData$,
-              thread.threadId,
+              threadId,
               signal,
             );
           }
