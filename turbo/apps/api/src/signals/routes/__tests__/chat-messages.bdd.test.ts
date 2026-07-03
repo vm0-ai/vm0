@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { HttpResponse, http } from "msw";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
@@ -748,10 +748,7 @@ async function upsertOrgModelProvider(
   actor: ApiTestUser,
   body: {
     readonly type:
-      | "anthropic-api-key"
-      | "deepseek-api-key"
-      | "openrouter-api-key"
-      | "vm0";
+      "anthropic-api-key" | "deepseek-api-key" | "openrouter-api-key" | "vm0";
     readonly secret?: string;
   },
 ): Promise<{ readonly providerId: string; readonly created: boolean }> {
@@ -1422,7 +1419,7 @@ describe("CHAT-02: org queue markers", () => {
 
     // The queued run still counts as the thread's active run, so a template
     // send queues as an unassociated message carrying its template.
-    const template = PRESENTATION_TEMPLATE_ITEMS[0];
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
     if (!template) {
       throw new Error("Expected a registered presentation template");
     }
@@ -2594,7 +2591,7 @@ describe("CHAT-02: generation templates and attachments", () => {
   it("renders generation template guidance into the run system prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const template = PRESENTATION_TEMPLATE_ITEMS[0];
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
     if (!template) {
       throw new Error("Expected a registered presentation template");
     }
@@ -2618,22 +2615,27 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(presentationPrompt).toContain(
       "The user deliberately selected this artifact template",
     );
-    expect(presentationPrompt).toContain("- Artifact type: presentation");
-    expect(presentationPrompt).toContain(`(${template.designSystemId})`);
-    expect(presentationPrompt).toContain(`(${template.templateId})`);
-    if (template.colorSystemId) {
-      expect(presentationPrompt).toContain(`(${template.colorSystemId})`);
-      expect(presentationPrompt).toContain(
-        `Apply the selected color system (${template.colorSystemId})`,
-      );
-    }
     expect(presentationPrompt).toContain(
       "It does not force you to generate: the user's prompt decides the task",
     );
+    expect(presentationPrompt).toContain(`(${template.templateId})`);
+    // Runbook flow: pull the template's self-contained runbook package; the
+    // legacy multi-resource `zero generate presentation --design-system` flow
+    // is retired.
     expect(presentationPrompt).toContain(
-      `zero generate presentation --design-system ${template.designSystemId} --template ${template.templateId}`,
+      `zero resource pull ${template.templateId}-runbook --dir ./generated/resources`,
     );
+    if (template.colorSystemId) {
+      const colorToken = template.colorSystemId
+        .replace("color-system:", "")
+        .replaceAll("-", "_");
+      expect(presentationPrompt).toContain(`"colorSystem": "${colorToken}"`);
+    }
     expect(presentationPrompt).toContain("--artifact-kind presentation-html");
+    expect(presentationPrompt).not.toContain(
+      "zero generate presentation --design-system",
+    );
+    expect(presentationPrompt).not.toContain("- Artifact type: presentation");
     await cancelChatRun(actor, presentation.runId);
 
     const videoTemplate = VIDEO_TEMPLATE_ITEMS.find((item) => {
@@ -2846,7 +2848,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const agent = await bdd.createAgent(actor, {
       displayName: "Invalid template agent",
     });
-    const template = PRESENTATION_TEMPLATE_ITEMS[0];
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
     if (!template) {
       throw new Error("Expected a registered presentation template");
     }
@@ -2866,16 +2868,8 @@ describe("CHAT-02: generation templates and attachments", () => {
         message: "Unknown generation template",
       },
       {
-        generationTemplate: {
-          type: "presentation",
-          selection: {
-            designSystemId: "design-system:missing",
-            templateId: template.templateId,
-          },
-        },
-        message: "Unknown generation template design system",
-      },
-      {
+        // A runbook template with an unknown color system is still rejected by
+        // the runbook flow (the design system is not validated / not used).
         generationTemplate: {
           type: "presentation",
           selection: {
@@ -2887,6 +2881,8 @@ describe("CHAT-02: generation templates and attachments", () => {
         message: "Unknown generation template color system",
       },
       {
+        // A template id without a runbook package is unknown; presentations are
+        // runbook-only, so there is no separate "wrong target type" path.
         generationTemplate: {
           type: "presentation",
           selection: {
@@ -2894,7 +2890,7 @@ describe("CHAT-02: generation templates and attachments", () => {
             templateId: "template:web-prototype-taste-editorial",
           },
         },
-        message: "Generation template does not support the requested type",
+        message: "Unknown generation template",
       },
       {
         generationTemplate: {
