@@ -971,44 +971,60 @@ function AgentHeader({
 
   return (
     <DetailPageHeader>
-      <div className="flex items-center gap-4">
-        <div className="group relative shrink-0">
-          <AgentAvatarImg
-            name={agentId}
-            alt={displayName}
-            className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
-          />
-          {showProfileAndInstructions && (
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onTabChange("profile");
-                      openMaker();
-                    }}
-                    className="absolute -right-0.5 -bottom-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
-                    aria-label="Customize avatar"
-                  >
-                    <IconWand size={12} stroke={1.5} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p className="text-xs">Customize avatar</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-4">
+          <div className="group relative shrink-0">
+            <AgentAvatarImg
+              name={agentId}
+              alt={displayName}
+              className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
+            />
+            {showProfileAndInstructions && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onTabChange("profile");
+                        openMaker();
+                      }}
+                      className="absolute -right-0.5 -bottom-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
+                      aria-label="Customize avatar"
+                    >
+                      <IconWand size={12} stroke={1.5} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">Customize avatar</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl truncate">
+              {displayName}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1.5 leading-tight line-clamp-2">
+              {description || "Your AI teammate, tuned to you"}
+            </p>
+          </div>
         </div>
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl truncate">
-            {displayName}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1.5 leading-tight line-clamp-2">
-            {description || "Your AI teammate, tuned to you"}
-          </p>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="zero-btn-morandi max-w-[220px] shrink-0 gap-1.5"
+          onClick={() => {
+            nav("/agents/:agentId/chat", {
+              pathParams: { agentId: agentId },
+            });
+          }}
+          aria-label={`Chat with ${displayName}`}
+        >
+          <IconMessageCircle size={14} stroke={2} className="shrink-0" />
+          <span className="truncate">Chat with {displayName}</span>
+        </Button>
       </div>
 
       <div className="mt-4 sm:mt-6 flex items-center gap-2">
@@ -1019,20 +1035,6 @@ function AgentHeader({
           showAutomations={showAutomations}
           showWorkflows={showWorkflows}
         />
-        <Button
-          variant="outline"
-          size="sm"
-          className="shrink-0 zero-btn-morandi gap-1.5"
-          onClick={() => {
-            nav("/agents/:agentId/chat", {
-              pathParams: { agentId: agentId },
-            });
-          }}
-          aria-label={`Chat with ${displayName}`}
-        >
-          <IconMessageCircle size={14} stroke={2} />
-          Chat with {displayName}
-        </Button>
       </div>
     </DetailPageHeader>
   );
