@@ -667,32 +667,63 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       agentId,
       title: "limited free model pin",
     });
-    const restrictedSelection = await chat.requestUpdateThreadModelSelection(
+    for (const selectedModel of [
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+      "claude-sonnet-4-6",
+      "claude-sonnet-5",
+    ] as const) {
+      const restrictedSelection = await chat.requestUpdateThreadModelSelection(
+        actor,
+        thread.id,
+        {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel,
+        },
+        [402],
+      );
+      expectApiError(restrictedSelection.body);
+      expect(restrictedSelection.body.error).toStrictEqual({
+        message:
+          "Insufficient credits. Add credits or configure your own API key to continue.",
+        code: "INSUFFICIENT_CREDITS",
+      });
+
+      await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
+        selectedModel: null,
+      });
+    }
+
+    const { providerId: byokProviderId } = await api.createOrgModelProvider(
+      actor,
+      {
+        type: "anthropic-api-key",
+        secret: "sk-ant-limited-free-byok",
+      },
+    );
+    const byokSelection = await chat.requestUpdateThreadModelSelection(
       actor,
       thread.id,
       {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "gpt-5.5",
+        modelProviderId: byokProviderId,
+        selectedModel: "MiniMax-M3",
       },
       [402],
     );
-    expectApiError(restrictedSelection.body);
-    expect(restrictedSelection.body.error).toStrictEqual({
-      message:
-        "Insufficient credits. Add credits or configure your own API key to continue.",
-      code: "INSUFFICIENT_CREDITS",
-    });
-
+    expectApiError(byokSelection.body);
+    expect(byokSelection.body.error.code).toBe("INSUFFICIENT_CREDITS");
     await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
+      modelProviderId: null,
       selectedModel: null,
     });
 
     await chat.updateThreadModelSelection(actor, thread.id, {
       modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "MiniMax-M3",
     });
     const detail = await chat.readThread(actor, thread.id);
-    expect(detail.selectedModel).toBe("claude-sonnet-4-6");
+    expect(detail.selectedModel).toBe("MiniMax-M3");
   }, 90_000);
 
   it("updates the Computer Use host binding on a chat thread", async () => {

@@ -7065,6 +7065,7 @@ export const createAgentRun$ = command(
     const modelTierGate = await checkLimitedFreeRunModelAdmission({
       db,
       orgId: args.orgId,
+      modelProviderType: context.modelProvider?.type ?? args.modelProviderType,
       selectedModel:
         context.modelProvider?.selectedModel ?? args.selectedModelOverride,
     });
