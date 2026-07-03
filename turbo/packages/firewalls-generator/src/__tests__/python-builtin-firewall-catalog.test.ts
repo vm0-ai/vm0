@@ -516,6 +516,271 @@ describe("Python builtin firewall catalog renderer", () => {
     ]);
   });
 
+  it("uses runtime path semantics for diagnostic shared static bases", () => {
+    const files = renderEntries([
+      connectorEntry({
+        name: "dot-segment",
+        apis: [
+          {
+            base: "https://path.example.com/a/../b",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.DOT_SEGMENT_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "dot-segment:read",
+                rules: ["GET /dot-segment/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "encoded-dot-segment",
+        apis: [
+          {
+            base: "https://encoded-path.example.com/a/%2e%2e/b",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.ENCODED_DOT_SEGMENT_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "encoded-dot-segment:read",
+                rules: ["GET /encoded-dot-segment/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "encoded-target",
+        apis: [
+          {
+            base: "https://encoded-path.example.com/b",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.ENCODED_TARGET_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "encoded-target:read",
+                rules: ["GET /encoded-target/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "encoded-unicode-path",
+        apis: [
+          {
+            base: "https://unicode-path.example.com/%E8%B7%AF%E5%BE%84",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.ENCODED_UNICODE_PATH_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "encoded-unicode-path:read",
+                rules: ["GET /encoded-unicode-path/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "normalized-target",
+        apis: [
+          {
+            base: "https://path.example.com/b",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.NORMALIZED_TARGET_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "normalized-target:read",
+                rules: ["GET /normalized-target/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "shared-path-one",
+        apis: [
+          {
+            base: "https://shared-path.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.SHARED_PATH_ONE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "shared-path-one:read",
+                rules: ["GET /one/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "shared-path-two",
+        apis: [
+          {
+            base: "https://shared-path.example.com/api/",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.SHARED_PATH_TWO_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "shared-path-two:read",
+                rules: ["GET /two/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "unicode-path",
+        apis: [
+          {
+            base: "https://unicode-path.example.com/路径",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.UNICODE_PATH_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "unicode-path:read",
+                rules: ["GET /unicode-path/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+    const diagnostics = findGeneratedFile(files, "diagnostics.py");
+
+    expect(
+      jsonAssignmentFromModule(diagnostics, "CONNECTOR_DIAGNOSTIC_FIREWALLS"),
+    ).toStrictEqual([
+      {
+        name: "dot-segment",
+        apis: [
+          {
+            base: "https://path.example.com/a/../b",
+            envNames: ["DOT_SEGMENT_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "encoded-dot-segment",
+        apis: [
+          {
+            base: "https://encoded-path.example.com/a/%2e%2e/b",
+            envNames: ["ENCODED_DOT_SEGMENT_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "encoded-target",
+        apis: [
+          {
+            base: "https://encoded-path.example.com/b",
+            envNames: ["ENCODED_TARGET_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "encoded-unicode-path",
+        apis: [
+          {
+            base: "https://unicode-path.example.com/%E8%B7%AF%E5%BE%84",
+            envNames: ["ENCODED_UNICODE_PATH_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "normalized-target",
+        apis: [
+          {
+            base: "https://path.example.com/b",
+            envNames: ["NORMALIZED_TARGET_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "shared-path-one",
+        apis: [
+          {
+            base: "https://shared-path.example.com/api",
+            envNames: ["SHARED_PATH_ONE_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "shared-path-one:read",
+                rules: ["GET /one/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "shared-path-two",
+        apis: [
+          {
+            base: "https://shared-path.example.com/api/",
+            envNames: ["SHARED_PATH_TWO_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "shared-path-two:read",
+                rules: ["GET /two/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "unicode-path",
+        apis: [
+          {
+            base: "https://unicode-path.example.com/路径",
+            envNames: ["UNICODE_PATH_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+    ]);
+  });
+
   it("omits connector diagnostic APIs whose static bases are invalid at runtime", () => {
     const files = renderEntries([
       connectorEntry({

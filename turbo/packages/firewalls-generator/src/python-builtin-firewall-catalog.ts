@@ -306,6 +306,31 @@ function rawUrlAuthority(base: string): string | null {
   return authority.length > 0 ? authority : null;
 }
 
+function rawUrlPath(base: string): string | null {
+  const schemeMatch = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.exec(base);
+  if (schemeMatch === null) {
+    return null;
+  }
+
+  const authorityStart = schemeMatch[0].length;
+  const authoritySuffix = base.slice(authorityStart);
+  const authorityEnd = authoritySuffix.search(/[/?#]/);
+  if (authorityEnd === -1) {
+    return "";
+  }
+
+  const separatorIndex = authorityStart + authorityEnd;
+  if (base[separatorIndex] !== "/") {
+    return "";
+  }
+
+  const pathSuffix = base.slice(separatorIndex);
+  const queryOrFragmentStart = pathSuffix.search(/[?#]/);
+  return queryOrFragmentStart === -1
+    ? pathSuffix
+    : pathSuffix.slice(0, queryOrFragmentStart);
+}
+
 function rawAuthorityHostPort(authority: string): string {
   const userInfoEnd = authority.lastIndexOf("@");
   return userInfoEnd === -1 ? authority : authority.slice(userInfoEnd + 1);
@@ -415,7 +440,12 @@ function diagnosticStaticBaseKey(base: string): string | null {
   }
 
   const rawAuthority = rawUrlAuthority(base);
-  if (rawAuthority === null || rawAuthorityHasEmptyPort(rawAuthority)) {
+  const rawPath = rawUrlPath(base);
+  if (
+    rawAuthority === null ||
+    rawPath === null ||
+    rawAuthorityHasEmptyPort(rawAuthority)
+  ) {
     return null;
   }
 
@@ -441,7 +471,7 @@ function diagnosticStaticBaseKey(base: string): string | null {
     }
 
     const host = stripHostnameTrailingDot(url.host.toLowerCase());
-    const pathname = url.pathname.replace(/\/+$/, "");
+    const pathname = rawPath.replace(/\/+$/, "");
     return `${url.protocol}//${host}${pathname}`;
   } catch {
     return null;
