@@ -37,6 +37,8 @@ const miscApi = createMiscRoutesApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 
 const WORKFLOW_NAME = "gmail-webhook-workflow";
+const MODEL_FIRST_SELECTION_PROVIDER_ID =
+  "00000000-0000-4000-8000-000000000000";
 const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
 const GMAIL_AUDIENCE = "https://api.vm0.ai/api/webhooks/gmail";
 const GMAIL_PUSH_SERVICE_ACCOUNT =
@@ -373,6 +375,16 @@ async function configureWorkspaceModelProvider(
   });
 }
 
+async function configureTriggerThreadModel(
+  actor: ApiTestUser,
+  chatThreadId: string,
+): Promise<void> {
+  await chatApi.updateThreadModelSelection(actor, chatThreadId, {
+    modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+    selectedModel: GMAIL_WORKSPACE_MODEL,
+  });
+}
+
 async function grantVisibleCredits(
   actor: ApiTestUser & { readonly orgId: string },
 ): Promise<void> {
@@ -558,6 +570,7 @@ describe("POST /api/webhooks/gmail", () => {
       [201],
     );
     const chatThreadId = requireTriggerChatThreadId(created.body);
+    await configureTriggerThreadModel(actor, chatThreadId);
 
     const body = gmailPushBody({
       emailAddress: gmailEmail,
@@ -687,6 +700,7 @@ describe("POST /api/webhooks/gmail", () => {
       [201],
     );
     const chatThreadId = requireTriggerChatThreadId(created.body);
+    await configureTriggerThreadModel(actor, chatThreadId);
 
     expect(created.body).toMatchObject({
       eventType: "gmail-label-applied",
@@ -755,6 +769,7 @@ describe("POST /api/webhooks/gmail", () => {
       [201],
     );
     const chatThreadId = requireTriggerChatThreadId(created.body);
+    await configureTriggerThreadModel(actor, chatThreadId);
     const activeRun = await runTriggerNow(actor, created.body.id);
     expect(activeRun.chatThreadId).toBe(chatThreadId);
     const triggerBriefsBeforeWebhook = await workflowTriggerBriefs(
