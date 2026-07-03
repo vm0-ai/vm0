@@ -11,7 +11,6 @@ import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
-import { readAutomationsState } from "./helpers/automations";
 import {
   createBddApi,
   expectApiError,
@@ -20,10 +19,7 @@ import {
 import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createGithubBddApi, newGithubUserId } from "./helpers/api-bdd-github";
-import {
-  createRunsAutomationsApi,
-  uniqueAutomationName,
-} from "./helpers/api-bdd-runs-automations";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
@@ -429,61 +425,76 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     expect(membershipDeleted.body).toBe("OK");
   });
 
-  it("suspends org-member automations after a verified organizationMembership.deleted event", async () => {
+  it("bootstraps limited-free orgs after verified Clerk org creation events", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsAutomationsApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
-    runs.acceptStorageDownloads();
-    runs.acceptTelemetryIngest();
 
-    const member = bdd.user();
-    await runs.grantProEntitlement(member);
-    await runs.ensureOrgModelProvider(member);
-    await runs.enableAutomations(member);
-    const agent = await bdd.createAgent(member, {
-      displayName: "BDD Membership Deleted Agent",
-      visibility: "private",
-    });
-    const created = await runs.createAutomation(member, {
-      name: uniqueAutomationName("bdd-membership-deleted"),
-      agentId: agent.agentId,
-      cronExpression: "0 9 * * *",
-      prompt: "membership deleted scheduled automation",
-      timezone: "UTC",
-      enabled: true,
-    });
-
-    expect(created.automation.enabled).toBeTruthy();
-    expect(created.automation.nextRunAt).not.toBeNull();
-
+    const admin = bdd.user();
     api.verifyNextClerkWebhook({
-      type: "organizationMembership.deleted",
+      type: "organization.created",
       data: {
-        id: "mem_bdd_deleted",
-        organization: { id: orgOf(member) },
-        publicUserData: { userId: member.userId },
+        id: orgOf(admin),
+        created_by: admin.userId,
       },
     });
-    const response = await api.requestClerkWebhook("{}", {}, [200]);
-    expect(response.body).toBe("OK");
+    const created = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(created.body).toBe("OK");
     await flushWaitUntilForTest();
 
-    // The webhook removes the owner's org membership, so no production user API
-    // can read this automation after cleanup. Keep this state read scoped to the
-    // infrastructure-only suspension side effect.
-    const storedState = await readAutomationsState(context, {
-      automationId: created.automation.id,
-      automationIds: [created.automation.id],
+    const billing = await runs.readBillingStatus(admin);
+    expect(billing).toMatchObject({
+      credits: 1000,
+      tier: "limited-free-1",
+      onboardingPaymentPending: false,
     });
-    expect(storedState.automation?.enabled).toBeFalsy();
 
-    const [storedTrigger] = storedState.triggers;
-    expect(storedTrigger).toMatchObject({
-      enabled: false,
-      next_run_at: null,
+    api.verifyNextClerkWebhook({
+      type: "organizationMembership.created",
+      data: {
+        id: "mem_bdd_created",
+        organization: { id: orgOf(admin) },
+        publicUserData: { userId: admin.userId },
+        role: "org:admin",
+      },
     });
+    const duplicate = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(duplicate.body).toBe("OK");
+    await flushWaitUntilForTest();
+
+    const repeatedBilling = await runs.readBillingStatus(admin);
+    expect(repeatedBilling).toMatchObject({
+      credits: 1000,
+      tier: "limited-free-1",
+      onboardingPaymentPending: false,
+    });
+
+    const status = await bdd.readOnboardingStatus(admin);
+    expect(status).toMatchObject({
+      needsOnboarding: false,
+      isAdmin: true,
+      hasOrg: true,
+      hasDefaultAgent: true,
+      defaultAgentMetadata: {
+        displayName: "Zero",
+        sound: "professional",
+      },
+    });
+    expect(status.defaultAgentId).toBeTruthy();
+
+    const agents = await bdd.listAgents(admin);
+    expect(
+      agents.filter((agent) => {
+        return agent.displayName === "Zero";
+      }),
+    ).toHaveLength(1);
   });
+
+  // The membership-deleted automation-suspension scenario was removed with
+  // the automation -> workflow cutover (#19959): the frozen legacy API can
+  // no longer create automations. Poller-level owner-suspension coverage
+  // lives in automations.test.ts on seeded rows.
 
   it("rejects GitHub requests with missing headers or invalid signatures", async () => {
     api.configureGithubWebhookSecret();
@@ -3522,15 +3533,8 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
         githubUserId: newGithubUserId(),
       },
     });
-    const schedule = await runs.deployAutomation(actor, {
-      name: uniqueAutomationName("teardown"),
-      agentId: agent.agentId,
-      intervalSeconds: 3600,
-      prompt: "scheduled teardown probe",
-      timezone: "UTC",
-      enabled: false,
-    });
-    expect(schedule.automation.name).toContain("teardown");
+    // No automation is seeded into the teardown state: the legacy automation
+    // API is frozen after the workflow cutover (#19959).
     const botToken = await registerTelegramBot(actor, agent.agentId);
     await runs.applyUserPermissionGrant(actor, {
       agentId: agent.agentId,
@@ -3541,7 +3545,6 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     await expect(
       runs.listUserPermissionGrants(actor, agent.agentId),
     ).resolves.toHaveLength(1);
-    expect((await runs.listAutomations(actor)).automations).toHaveLength(1);
 
     // The first delivery hits a failing Stripe subscription update (a per-step
     // failure the cleanup continues over) and then a failing org S3 listing,
@@ -3624,9 +3627,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     await waitForExpectation(async () => {
       await expect(bdd.listAgents(actor)).resolves.toStrictEqual([]);
     });
-    await waitForExpectation(async () => {
-      expect((await runs.listAutomations(actor)).automations).toStrictEqual([]);
-    });
+    await waitForExpectation(async () => {});
 
     // An org without a live subscription skips the Stripe update.
     const updateCalls =
@@ -4010,15 +4011,9 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     });
     expect(run.status).toBe("pending");
 
-    const created = await runs.createAutomation(banned, {
-      name: uniqueAutomationName("bdd-banned-user"),
-      agentId: agent.agentId,
-      cronExpression: "0 9 * * *",
-      prompt: "banned user scheduled automation",
-      timezone: "UTC",
-      enabled: true,
-    });
-    expect(created.automation.nextRunAt).not.toBeNull();
+    // No automation is created here: the legacy automation API is frozen
+    // after the workflow cutover (#19959), so this scenario covers the run
+    // cancellation and subscription side effects of a ban.
 
     context.mocks.stripe.subscriptions.list.mockResolvedValue({
       data: [],
@@ -4040,15 +4035,6 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       { cancel_at_period_end: true },
     );
     expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
-
-    // Once Clerk reports the user banned, the normal user-facing automation
-    // endpoints are no longer a valid observation surface for this owner.
-    const storedState = await readAutomationsState(context, {
-      automationId: created.automation.id,
-      automationIds: [created.automation.id],
-    });
-    expect(storedState.automation?.enabled).toBeFalsy();
-    expect(storedState.triggers[0]?.next_run_at).toBeNull();
 
     const queue = await runs.readRunQueue(banned);
     expect(queue.body.concurrency.active).toBe(0);
