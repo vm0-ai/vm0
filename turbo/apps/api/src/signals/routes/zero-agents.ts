@@ -260,6 +260,15 @@ function validateAgentVisibilityUpdate(args: {
   });
 }
 
+function requireExistingAgentVisibility(
+  existing: ExistingAgentVisibility,
+): ZeroAgentVisibility {
+  if (existing.visibility === null) {
+    throw new Error("Existing zero agent is missing visibility");
+  }
+  return existing.visibility;
+}
+
 function upsertZeroAgentAfterCompose(
   writeDb: Db,
   args: {
@@ -555,7 +564,8 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return permissionError;
   }
 
-  const nextVisibility = body.data.visibility ?? existing.visibility;
+  const nextVisibility =
+    body.data.visibility ?? requireExistingAgentVisibility(existing);
   const visibilityError = await validateAgentVisibilityUpdate({
     writeDb,
     orgId: auth.orgId,

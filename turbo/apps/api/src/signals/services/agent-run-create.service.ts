@@ -1255,8 +1255,6 @@ interface SingleSecretModelProviderConfig {
   readonly defaultModel?: string;
 }
 
-const EMPTY_MODEL_PROVIDER_ENV_BINDINGS: ModelProviderEnvBindings = {};
-
 function isSingleSecretModelProviderConfig(
   value: unknown,
 ): value is SingleSecretModelProviderConfig {
@@ -1282,13 +1280,13 @@ function resolveModelProviderModel(args: {
   readonly type: ModelProviderType;
   readonly selectedModel: string | null;
   readonly defaultModel: string | undefined;
-  readonly envBindings: ModelProviderEnvBindings;
+  readonly envBindings: ModelProviderEnvBindings | undefined;
 }): string | null {
   let model = args.selectedModel;
   if (model === null && args.defaultModel !== undefined) {
     model = args.defaultModel;
   }
-  if (envBindingsRequireModel(args.envBindings) && !model) {
+  if (args.envBindings && envBindingsRequireModel(args.envBindings) && !model) {
     throw new Error(`Missing model for model provider ${args.type}`);
   }
   return model === "" ? null : model;
@@ -1613,10 +1611,7 @@ async function multiAuthModelProviderEnvironment(
     type: args.type,
     selectedModel: args.selectedModel,
     defaultModel: getDefaultModel(args.type),
-    envBindings:
-      selectedModelEnvBindings === undefined
-        ? EMPTY_MODEL_PROVIDER_ENV_BINDINGS
-        : selectedModelEnvBindings,
+    envBindings: selectedModelEnvBindings,
   });
   const runtimeModel = selectedModel
     ? getProviderRuntimeModel(args.type, selectedModel)
@@ -1719,8 +1714,7 @@ interface ModelProviderEnvironmentRow {
   readonly encryptedValue: string | null;
 }
 
-interface ResolvableModelProviderEnvironmentRow
-  extends ModelProviderEnvironmentRow {
+interface ResolvableModelProviderEnvironmentRow extends ModelProviderEnvironmentRow {
   readonly type: ModelProviderType;
 }
 
