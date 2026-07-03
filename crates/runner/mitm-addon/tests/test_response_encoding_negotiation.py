@@ -71,6 +71,41 @@ _BROWSER_USER_AGENT = (
             id="wildcard-zero-rejects-implicit-identity",
         ),
         pytest.param(
+            [("Accept-Encoding", "zstd, br, *;q=0.5, identity;q=0")],
+            True,
+            ["gzip;q=0.5, deflate;q=0.5, identity;q=0"],
+            id="wildcard-allows-safe-compression-when-identity-rejected",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "zstd, br, *, identity;q=0")],
+            True,
+            ["gzip, deflate, identity;q=0"],
+            id="wildcard-default-q-allows-safe-compression-when-identity-rejected",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip;q=0, zstd, *;q=0.5, identity;q=0")],
+            True,
+            ["deflate;q=0.5, identity;q=0"],
+            id="wildcard-safe-compression-respects-explicit-safe-rejection",
+        ),
+        pytest.param(
+            [
+                (
+                    "Accept-Encoding",
+                    "gzip;q=0, deflate;q=0, zstd, *;q=0.5, identity;q=0",
+                )
+            ],
+            False,
+            ["gzip;q=0, deflate;q=0, zstd, *;q=0.5, identity;q=0"],
+            id="wildcard-keeps-original-when-all-safe-codings-rejected",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "*;q=0.5, *;q=0, identity;q=0, zstd")],
+            False,
+            ["*;q=0.5, *;q=0, identity;q=0, zstd"],
+            id="duplicate-wildcard-rejection-wins",
+        ),
+        pytest.param(
             [("Accept-Encoding", "GZip;q=1, zstd"), ("Accept-Encoding", "deflate;q=0.5, br")],
             True,
             ["gzip;q=1, deflate;q=0.5"],

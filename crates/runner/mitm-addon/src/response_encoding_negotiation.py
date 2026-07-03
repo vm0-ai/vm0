@@ -34,6 +34,9 @@ def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> bool
     identity_accepted = False
     identity_disallowed = False
     wildcard_disallows_identity = False
+    wildcard_accepted = False
+    wildcard_q_text: str | None = None
+    wildcard_rejected = False
 
     for raw_value in values:
         for raw_coding in raw_value.split(","):
@@ -49,8 +52,15 @@ def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> bool
                     identity_accepted = True
                 elif q_value == _MIN_Q_VALUE:
                     identity_disallowed = True
-            elif name == _WILDCARD and q_value == _MIN_Q_VALUE:
-                wildcard_disallows_identity = True
+            elif name == _WILDCARD:
+                if q_value == _MIN_Q_VALUE:
+                    wildcard_disallows_identity = True
+                    wildcard_rejected = True
+                    wildcard_accepted = False
+                    wildcard_q_text = None
+                elif accepted and not wildcard_rejected and not wildcard_accepted:
+                    wildcard_accepted = True
+                    wildcard_q_text = q_text
 
             if name in _SAFE_ENCODINGS:
                 if q_value == _MIN_Q_VALUE:
@@ -73,6 +83,18 @@ def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> bool
         return _set_if_changed(headers, values, rewritten)
 
     if identity_rejected:
+        _add_wildcard_safe_compression_encodings(
+            accepted_safe,
+            rejected_safe,
+            wildcard_accepted,
+            wildcard_q_text,
+        )
+        if accepted_safe:
+            accepted_safe[_IDENTITY] = "0"
+            rewritten = ", ".join(
+                _format_coding(name, q_text) for name, q_text in accepted_safe.items()
+            )
+            return _set_if_changed(headers, values, rewritten)
         return False
 
     return _set_if_changed(headers, values, _IDENTITY)
@@ -123,6 +145,19 @@ def _format_coding(name: str, q_text: str | None) -> str:
     if q_text is None:
         return name
     return f"{name};q={q_text}"
+
+
+def _add_wildcard_safe_compression_encodings(
+    accepted_safe: dict[str, str | None],
+    rejected_safe: set[str],
+    wildcard_accepted: bool,
+    wildcard_q_text: str | None,
+) -> None:
+    if not wildcard_accepted:
+        return
+    for name in ("gzip", "deflate"):
+        if name not in rejected_safe:
+            accepted_safe[name] = wildcard_q_text
 
 
 def _set_if_changed(headers: http.Headers, original_values: list[str], value: str) -> bool:
