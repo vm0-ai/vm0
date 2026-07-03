@@ -1067,7 +1067,8 @@ async fn process_one_hit_or_passthrough(
             })
         }
         CachedArchive::Missing => {
-            remove_storage_lock_after_missing_cache(&lock_path, &reader).await;
+            drop(reader);
+            remove_storage_lock_after_missing_cache(&lock_path, &archive_path).await;
             Ok(ProcessedTarget {
                 outcome: TargetOutcome::MissPassthrough { reason: "missing" },
                 stage_write: None,
@@ -1086,10 +1087,18 @@ async fn process_one_hit_or_passthrough(
     }
 }
 
-async fn remove_storage_lock_after_missing_cache(
-    lock_path: &Path,
-    lock: &nix::fcntl::Flock<std::fs::File>,
-) {
+async fn remove_storage_lock_after_missing_cache(lock_path: &Path, archive_path: &Path) {
+    let lock = match lock::try_acquire_existing_or_missing(lock_path.to_path_buf()).await {
+        Ok(lock::ExistingTryLock::Acquired(lock)) => lock,
+        Ok(lock::ExistingTryLock::Busy | lock::ExistingTryLock::Missing) => return,
+        Err(_) => return,
+    };
+
+    match cached_archive_exists(archive_path).await {
+        Ok(false) => {}
+        Ok(true) | Err(_) => return,
+    }
+
     let Ok(lock_meta) = lock.metadata() else {
         return;
     };
@@ -2637,6 +2646,48 @@ mod tests {
             Some(original.as_str())
         );
         assert!(!lock_path.exists());
+        assert!(sandbox.write_file_calls().is_empty());
+        assert!(sandbox.write_files_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op_error(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, "missing");
+        assert_no_op(&ops, "storage_cache_hit");
+    }
+
+    #[tokio::test]
+    async fn guarded_missing_archive_keeps_lock_when_another_reader_holds_it() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let name = "guarded-orphan-lock-shared";
+        let version = "v1";
+        let original = "https://r2.example.com/orphan-lock-shared.tar.gz".to_string();
+        let lock_path = home.storage_lock(name, version);
+        let _other_reader = lock::acquire_shared(lock_path.clone()).await.unwrap();
+        assert!(lock_path.exists());
+        assert!(!home.storage_cache_dir(name, version).exists());
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache_with_options(
+            &mut manifest,
+            &sandbox,
+            &home,
+            &mut telemetry,
+            StorageCacheOptions {
+                miss_passthrough: true,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            lock_path.exists(),
+            "cleanup must not remove a lock while another reader still holds it"
+        );
         assert!(sandbox.write_file_calls().is_empty());
         assert!(sandbox.write_files_calls().is_empty());
         let ops = telemetry.pending_ops_snapshot();
