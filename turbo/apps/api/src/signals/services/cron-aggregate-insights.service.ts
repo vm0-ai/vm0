@@ -368,6 +368,11 @@ function logSkippedNetworkInsightRows(
   });
 }
 
+function emailLocalPart(email: string): string {
+  const separatorIndex = email.indexOf("@");
+  return separatorIndex === -1 ? email : email.slice(0, separatorIndex);
+}
+
 async function resolveUserNames(
   db: Db,
   clerk: ClerkLike,
@@ -390,7 +395,7 @@ async function resolveUserNames(
 
   const nameMap = new Map(
     cachedUsers.map((user) => {
-      return [user.userId, user.name ?? user.email.split("@")[0] ?? user.email];
+      return [user.userId, user.name ?? emailLocalPart(user.email)];
     }),
   );
 
@@ -413,8 +418,13 @@ async function resolveUserNames(
       return email.id === user.primaryEmailAddressId;
     });
     const email = primaryEmail?.emailAddress ?? "unknown";
-    const name =
-      user.firstName ?? user.username ?? email.split("@")[0] ?? "unknown";
+    let name = user.firstName;
+    if (name === null) {
+      name = user.username;
+    }
+    if (name === null) {
+      name = emailLocalPart(email);
+    }
     nameMap.set(user.id, name);
 
     await db
