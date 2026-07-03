@@ -1,0 +1,52 @@
+{
+  "artifactSchemaVersion": 1,
+  "catalogVersion": "fixture-2026-07-03.1",
+  "connectors": [
+    {
+      "connectorRef": "fixture-manual",
+      "authMethods": [
+        {
+          "id": "api-token",
+          "manualFieldMappings": [
+            {
+              "publicId": "apiKey",
+              "privateName": "FIXTURE_MANUAL_API_TOKEN",
+              "storage": "secret",
+              "runtimeName": "FIXTURE_MANUAL_API_TOKEN"
+            }
+          ],
+          "startOptionMappings": []
+        }
+      ],
+      "runtimeArtifactRefs": []
+    },
+    {
+      "connectorRef": "fixture-oauth",
+      "authMethods": [
+        {
+          "id": "oauth",
+          "manualFieldMappings": [],
+          "startOptionMappings": []
+        }
+      ],
+      "runtimeArtifactRefs": []
+    },
+    {
+      "connectorRef": "fixture-device",
+      "authMethods": [
+        {
+          "id": "device",
+          "manualFieldMappings": [],
+          "startOptionMappings": [
+            {
+              "publicId": "mode",
+              "privateName": "FIXTURE_DEVICE_MODE",
+              "runtimeName": "FIXTURE_DEVICE_MODE"
+            }
+          ]
+        }
+      ],
+      "runtimeArtifactRefs": []
+    }
+  ]
+}
