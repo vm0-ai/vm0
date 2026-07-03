@@ -462,6 +462,19 @@ export const chatThreadsContract = c.router({
     summary:
       "List chat thread lifecycle events after an optional event id cursor.",
   },
+  activeIds: {
+    method: "GET",
+    path: "/api/zero/chat-threads/active-ids",
+    headers: authHeadersSchema,
+    responses: {
+      200: z.object({
+        threadIds: z.array(z.string().uuid()),
+      }),
+      401: apiErrorSchema,
+    },
+    summary:
+      "List chat thread ids that currently have queued, pending, or running runs.",
+  },
   create: {
     method: "POST",
     path: "/api/zero/chat-threads",
