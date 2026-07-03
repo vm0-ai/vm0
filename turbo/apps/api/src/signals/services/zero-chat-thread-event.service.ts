@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, gt, or } from "drizzle-orm";
 import type {
   ChatThreadEvent,
   ChatThreadSnapshotProjection,
@@ -153,8 +153,15 @@ export async function getChatThreadEventsSince(
     eq(chatThreadEvents.orgId, args.orgId),
   ];
   if (cursor) {
-    filters.push(sql`(${chatThreadEvents.createdAt}, ${chatThreadEvents.id}) >
-      (${cursor.createdAt}, ${cursor.id})`);
+    filters.push(
+      or(
+        gt(chatThreadEvents.createdAt, cursor.createdAt),
+        and(
+          eq(chatThreadEvents.createdAt, cursor.createdAt),
+          gt(chatThreadEvents.id, cursor.id),
+        ),
+      )!,
+    );
   }
 
   const rows = await db
