@@ -1,6 +1,5 @@
 """Diagnostic-only matching for unavailable built-in connector URLs."""
 
-import urllib.parse
 from dataclasses import dataclass
 from typing import Final
 
@@ -36,7 +35,7 @@ class SharedBaseOwnershipResolution:
 
 @dataclass(frozen=True)
 class _DiagnosticConnectorMatcher:
-    base_hosts: frozenset[str]
+    base_authorities: frozenset[str]
     compiled_firewalls: matching.CompiledFirewallSet | None
     compiled_network_policies: matching.CompiledNetworkPolicies | None
 
@@ -170,9 +169,9 @@ def _ownership_matches(
     catalog: _DiagnosticCatalog,
 ) -> list[_OwnershipMatch]:
     matches: list[_OwnershipMatch] = []
-    hostname = _url_hostname(url)
+    authority = matching.match_url_authority_key(url)
     for matcher in catalog.connector_matchers:
-        if hostname is not None and hostname not in matcher.base_hosts:
+        if authority is not None and authority not in matcher.base_authorities:
             continue
         match = matching.match_compiled_firewall_request(
             url,
@@ -267,7 +266,7 @@ def _diagnostic_catalog() -> _DiagnosticCatalog:
         if route_aware_firewall is not None:
             connector_matchers.append(
                 _DiagnosticConnectorMatcher(
-                    base_hosts=_firewall_base_hosts(route_aware_firewall),
+                    base_authorities=_firewall_base_authorities(route_aware_firewall),
                     compiled_firewalls=matching.compile_firewalls([route_aware_firewall]),
                     compiled_network_policies=matching.compile_network_policies(
                         _matching_network_policies(
@@ -358,29 +357,21 @@ def _shared_route_aware_base_keys(firewalls: object) -> frozenset[str]:
     )
 
 
-def _url_hostname(url: str) -> str | None:
-    try:
-        hostname = urllib.parse.urlparse(url).hostname
-    except ValueError:
-        return None
-    return hostname.lower() if hostname else None
-
-
-def _firewall_base_hosts(firewall: dict) -> frozenset[str]:
+def _firewall_base_authorities(firewall: dict) -> frozenset[str]:
     raw_apis = firewall.get("apis")
     if not isinstance(raw_apis, list):
         return frozenset()
-    hosts: set[str] = set()
+    authorities: set[str] = set()
     for api in raw_apis:
         if not isinstance(api, dict):
             continue
         base = api.get("base")
         if not isinstance(base, str):
             continue
-        hostname = _url_hostname(base)
-        if hostname is not None:
-            hosts.add(hostname)
-    return frozenset(hosts)
+        authority = matching.static_firewall_base_authority_key(base)
+        if authority is not None:
+            authorities.add(authority)
+    return frozenset(authorities)
 
 
 def _diagnostic_firewall_from_manifest(firewall: object) -> dict | None:

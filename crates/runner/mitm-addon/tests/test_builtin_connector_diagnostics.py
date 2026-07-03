@@ -284,7 +284,7 @@ def test_shared_base_ownership_normalizes_static_base_keys(monkeypatch):
             _shared_base_firewall(
                 "active",
                 "ACTIVE_TOKEN",
-                base="https://Shared.Example.com:443/api/",
+                base="https://Shared.Example.com.:443/api/",
                 permissions=[{"name": "active-read", "rules": ["GET /active/{id}"]}],
             ),
             _shared_base_firewall(
