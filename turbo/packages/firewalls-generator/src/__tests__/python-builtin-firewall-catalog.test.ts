@@ -359,7 +359,7 @@ describe("Python builtin firewall catalog renderer", () => {
         name: "shared-one",
         apis: [
           {
-            base: "https://shared.example.com/api",
+            base: "https://Shared.Example.com.:443/api",
             auth: {
               headers: {
                 Authorization: "Bearer ${{ secrets.SHARED_ONE_TOKEN }}",
@@ -472,7 +472,7 @@ describe("Python builtin firewall catalog renderer", () => {
         name: "shared-one",
         apis: [
           {
-            base: "https://shared.example.com/api",
+            base: "https://Shared.Example.com.:443/api",
             envNames: ["SHARED_ONE_TOKEN"],
             authHeaderNames: ["Authorization"],
             authQueryParamNames: [],

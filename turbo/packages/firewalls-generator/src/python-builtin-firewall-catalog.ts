@@ -246,6 +246,24 @@ function diagnosticAuthQueryParamNames(auth: unknown): readonly string[] {
     .sort();
 }
 
+function trimTrailingDots(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 46) {
+    end -= 1;
+  }
+  return end === value.length ? value : value.slice(0, end);
+}
+
+function stripHostnameTrailingDot(host: string): string {
+  const portStart = host.startsWith("[") ? -1 : host.lastIndexOf(":");
+  if (portStart === -1) {
+    return trimTrailingDots(host);
+  }
+
+  const hostname = trimTrailingDots(host.slice(0, portStart));
+  return `${hostname}${host.slice(portStart)}`;
+}
+
 function diagnosticStaticBaseKey(base: string): string | null {
   if (hasDynamicBaseMarker(base)) {
     return null;
@@ -253,8 +271,9 @@ function diagnosticStaticBaseKey(base: string): string | null {
 
   try {
     const url = new URL(base);
+    const host = stripHostnameTrailingDot(url.host.toLowerCase());
     const pathname = url.pathname.replace(/\/+$/, "");
-    return `${url.protocol}//${url.host}${pathname}`;
+    return `${url.protocol}//${host}${pathname}`;
   } catch {
     return base;
   }
