@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import auth_base_forwarder as forwarder
 
-__all__ = ["FakeSocket", "fake_forwarder_upstream", "http_response"]
+__all__ = ["FakeForwarderUpstream", "FakeSocket", "fake_forwarder_upstream", "http_response"]
 
 
 def _addrinfo(address: str, port: int):
@@ -35,7 +35,12 @@ def http_response(
     body: bytes = b"ok",
     headers: list[tuple[str, str]] | None = None,
 ) -> bytes:
-    """Build raw HTTP/1.1 response bytes for a fake upstream socket."""
+    """Build raw HTTP/1.1 response bytes for a fake upstream socket.
+
+    The status line uses the standard reason phrase when Python knows the
+    status code, repeated headers are preserved in order, and ``body`` is
+    appended verbatim after the header terminator.
+    """
     reason = http_client.responses.get(status, "OK")
     header_bytes = b"".join(f"{name}: {value}\r\n".encode() for name, value in (headers or []))
     return f"HTTP/1.1 {status} {reason}\r\n".encode("ascii") + header_bytes + b"\r\n" + body
@@ -73,8 +78,12 @@ class FakeSocket:
 
     The forwarder writes to ``sent``, calls ``setsockopt``/``makefile``/``close``,
     and reads the provided response bytes from the file object returned by
-    ``makefile``. Side-effect arguments raise at the matching boundary so tests
-    can exercise send, read, response setup, and TCP option failures.
+    ``makefile``. ``closed``, ``close_count``, ``setsockopt_calls``, and
+    ``response_file`` are stable assertion state for tests that need to verify
+    cleanup and TCP option behavior.
+
+    Side-effect arguments raise at the matching boundary so tests can exercise
+    send, read, response setup, and TCP option failures.
 
     Use ``request_text``, ``request_lines``, and ``request_header_values`` for
     assertions about the HTTP request that the real forwarder serialized.
@@ -179,13 +188,16 @@ class _FakeTLSContext:
         return raw_sock
 
 
-class _FakeForwarderUpstream:
+class FakeForwarderUpstream:
     """Assertion handle yielded by ``fake_forwarder_upstream``.
 
-    Tests normally obtain this from the context manager because direct
-    construction does not patch ``auth_base_forwarder``. Stable assertion state
-    includes DNS calls, connection calls, created sockets, TLS contexts, and the
-    most recent socket via ``socket``.
+    The class is public so the context manager's return value and stable fields
+    are explicit. Tests should still obtain instances from
+    ``fake_forwarder_upstream`` because direct construction does not patch
+    ``auth_base_forwarder``.
+
+    Stable assertion state includes DNS calls, connection calls, created
+    sockets, TLS contexts, and the most recent socket via ``socket``.
     """
 
     def __init__(
@@ -268,7 +280,7 @@ def fake_forwarder_upstream(
     wrap_side_effect: Exception | None = None,
     on_action: Callable[[], None] | None = None,
     create_connection: _CreateConnection | None = None,
-) -> Iterator[_FakeForwarderUpstream]:
+) -> Iterator[FakeForwarderUpstream]:
     """Patch auth.base DNS/connect/TLS boundaries and yield an upstream handle.
 
     The context manager patches only ``auth_base_forwarder.socket.getaddrinfo``,
@@ -281,7 +293,7 @@ def fake_forwarder_upstream(
     ``create_connection_calls``, ``sockets``, ``contexts``, and ``socket`` for
     the most recent connection.
     """
-    upstream = _FakeForwarderUpstream(
+    upstream = FakeForwarderUpstream(
         status=status,
         body=body,
         headers=headers,
