@@ -142,7 +142,7 @@ function AgentAvatar({ workflow }: { readonly workflow: ZeroWorkflowSummary }) {
     <AgentAvatarImg
       name={workflow.agentId}
       alt={`Runs as ${label}`}
-      className="h-6 w-6 shrink-0 rounded-md border border-border/60 bg-gray-50"
+      className="h-6 w-6 shrink-0 rounded-md"
       size={24}
     />
   );
