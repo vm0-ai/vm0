@@ -483,6 +483,7 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::SETTINGS_ENV,
         guest_contracts::env::CLI_AGENT_TYPE_ENV,
         guest_contracts::env::USER_ENV_FILE_ENV,
+        guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
         guest_contracts::env::ARTIFACTS_ENV,
         guest_contracts::env::FEATURE_FLAGS_ENV,
         guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,

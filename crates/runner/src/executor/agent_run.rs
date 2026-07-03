@@ -29,7 +29,10 @@ use super::diagnostics::{
     should_collect_agent_abnormal_exit_diagnostics,
     should_log_agent_bootstrap_abnormal_exit_diagnostics,
 };
-use super::env::{build_env_json_for_run, build_user_env_json, write_user_env_file};
+use super::env::{
+    build_env_json_for_run, build_run_payload_for_run, build_user_env_json, write_run_payload_file,
+    write_user_env_file,
+};
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::session_history_download::{
     SessionHistoryDownloadPhaseTiming, SessionHistoryDownloadTimings,
@@ -41,7 +44,7 @@ use super::telemetry::{RunnerSpawnTiming, record_api_latency};
 use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
     JOB_TIMEOUT_EXIT_CODE, PROCESS_CANCEL_TIMEOUTS, ResourceFailureDiagnostics,
-    ResourceFailureKind, RunnerResult, SandboxReuseResult, USER_ENV_FILE_ENV_KEY,
+    ResourceFailureKind, RunnerError, RunnerResult, SandboxReuseResult, USER_ENV_FILE_ENV_KEY,
     agent_exit_failure_message, guest_runtime_dir, guest_runtime_path, job_terminal_wait_timeout,
     normalize_failure_exit_code,
 };
@@ -312,6 +315,31 @@ pub(super) fn build_agent_start_command(run_agent_path: &str) -> String {
         fi; \
         exec {run_agent_path} 2>&1"
     )
+}
+
+fn validate_agent_bootstrap_exec_boundary(
+    agent_cmd: &str,
+    env_pairs: &[(String, String)],
+) -> RunnerResult<()> {
+    let mut values = Vec::with_capacity(env_pairs.len() + 2);
+    values.push(guest_contracts::exec_limits::ExecBoundaryValue::arg(
+        "argv[0]",
+        "/bin/bash",
+    ));
+    values.push(guest_contracts::exec_limits::ExecBoundaryValue::arg(
+        "argv[2] bootstrap command",
+        agent_cmd,
+    ));
+    for (key, value) in env_pairs {
+        values.push(guest_contracts::exec_limits::ExecBoundaryValue::env(
+            key.as_str(),
+            value,
+        ));
+    }
+
+    guest_contracts::exec_limits::validate_exec_boundary_sizes(values).map_err(|error| {
+        RunnerError::Internal(format!("guest-agent bootstrap argv/env too large: {error}"))
+    })
 }
 
 async fn verify_restored_session_identity_for_reuse(
@@ -1055,6 +1083,52 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     };
     let env_build_started = Instant::now();
+    let run_payload = match build_run_payload_for_run(context) {
+        Ok(run_payload) => run_payload,
+        Err(error) => {
+            telemetry.record(
+                "runner_agent_env_build",
+                env_build_started.elapsed(),
+                false,
+                None,
+            );
+            return Err(error);
+        }
+    };
+    info!(
+        run_id = %context.run_id,
+        prompt_bytes = run_payload.prompt.len(),
+        append_system_prompt_bytes = run_payload.append_system_prompt.len(),
+        secret_values_bytes = run_payload.secret_values.len(),
+        disallowed_tools_bytes = run_payload.disallowed_tools.len(),
+        tools_bytes = run_payload.tools.len(),
+        settings_bytes = run_payload.settings.len(),
+        artifacts_bytes = run_payload.artifacts.len(),
+        feature_flags_bytes = run_payload.feature_flags.len(),
+        "guest-agent run payload prepared"
+    );
+    let run_payload_write_started = Instant::now();
+    let run_payload_file = match write_run_payload_file(sandbox, context.run_id, &run_payload).await
+    {
+        Ok(path) => {
+            telemetry.record(
+                "runner_run_payload_write",
+                run_payload_write_started.elapsed(),
+                true,
+                None,
+            );
+            path
+        }
+        Err(error) => {
+            telemetry.record(
+                "runner_run_payload_write",
+                run_payload_write_started.elapsed(),
+                false,
+                None,
+            );
+            return Err(error);
+        }
+    };
     let mut env_map = match build_env_json_for_run(
         context,
         &config.api_url,
@@ -1076,6 +1150,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     if let Some(path) = user_env_file {
         env_map.insert(USER_ENV_FILE_ENV_KEY.into(), path);
     }
+    env_map.insert(
+        guest_contracts::env::RUN_PAYLOAD_FILE_ENV.into(),
+        run_payload_file,
+    );
     let env_diagnostics = build_agent_env_diagnostics(&env_map, &user_env_map);
     let env_pairs: Vec<(String, String)> = env_map.into_iter().collect();
     let env_refs: Vec<(&str, &str)> = env_pairs
@@ -1094,6 +1172,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     //    merged into stdout, while a small stderr capture keeps shell/wrapper
     //    startup failures visible when the process exits before guest logging.
     let agent_cmd = build_agent_start_command(guest::RUN_AGENT);
+    validate_agent_bootstrap_exec_boundary(&agent_cmd, &env_pairs)?;
     info!(run_id = %context.run_id, "spawning agent");
 
     // JOB_TIMEOUT remains the guest-side runtime budget. The host waits a
@@ -1524,4 +1603,39 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             .map(|failure| failure.error.as_str()),
     );
     Ok(agent_result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bootstrap_exec_boundary_rejects_oversized_env_value_without_value_leak() {
+        let secret = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
+        let env_pairs = vec![("VM0_OVERSIZED".to_string(), secret.clone())];
+
+        let error =
+            validate_agent_bootstrap_exec_boundary("exec /usr/local/bin/guest-agent", &env_pairs)
+                .unwrap_err()
+                .to_string();
+
+        assert!(error.contains("guest-agent bootstrap argv/env too large"));
+        assert!(error.contains("VM0_OVERSIZED"));
+        assert!(!error.contains(&secret));
+    }
+
+    #[test]
+    fn bootstrap_exec_boundary_rejects_aggregate_overflow() {
+        let value = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES - 16);
+        let env_pairs: Vec<(String, String)> = (0..20)
+            .map(|index| (format!("VM0_CHUNK_{index}"), value.clone()))
+            .collect();
+
+        let error =
+            validate_agent_bootstrap_exec_boundary("exec /usr/local/bin/guest-agent", &env_pairs)
+                .unwrap_err()
+                .to_string();
+
+        assert!(error.contains("argv/env aggregate too large"));
+    }
 }

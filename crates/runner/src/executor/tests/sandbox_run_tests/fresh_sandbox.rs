@@ -221,12 +221,34 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     assert_eq!(start_calls.len(), 1);
     let start_env: BTreeMap<String, String> = start_calls[0].env.iter().cloned().collect();
     let expected_user_env_file = guest_user_env_file_path(ctx.run_id).unwrap();
+    let expected_run_payload_file = guest_run_payload_file_path(ctx.run_id).unwrap();
     assert_eq!(start_env.get("VM0_API_TOKEN").unwrap(), "tok");
     assert_eq!(start_env.get("VM0_STUCK_TOOL_TIMEOUT_SECS").unwrap(), "3");
     assert_eq!(
         start_env.get(USER_ENV_FILE_ENV_KEY).map(String::as_str),
         Some(expected_user_env_file.as_str())
     );
+    assert_eq!(
+        start_env
+            .get(guest_contracts::env::RUN_PAYLOAD_FILE_ENV)
+            .map(String::as_str),
+        Some(expected_run_payload_file.as_str())
+    );
+    for key in [
+        guest_contracts::env::PROMPT_ENV,
+        guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
+        guest_contracts::env::SECRET_VALUES_ENV,
+        guest_contracts::env::DISALLOWED_TOOLS_ENV,
+        guest_contracts::env::TOOLS_ENV,
+        guest_contracts::env::SETTINGS_ENV,
+        guest_contracts::env::ARTIFACTS_ENV,
+        guest_contracts::env::FEATURE_FLAGS_ENV,
+    ] {
+        assert!(
+            !start_env.contains_key(key),
+            "{key} should be passed through the run payload file"
+        );
+    }
     for key in ["CUSTOM_USER_ENV", "BASH_ENV", "NODE_OPTIONS", "TZ"] {
         assert!(
             !start_env.contains_key(key),
@@ -243,10 +265,17 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         "user env file should not be written through shell exec"
     );
     let private_writes = overrides.private_write_file_calls();
-    assert_eq!(private_writes.len(), 1);
-    assert_eq!(private_writes[0].path, expected_user_env_file);
+    assert_eq!(private_writes.len(), 2);
+    let user_env_write = private_writes
+        .iter()
+        .find(|write| write.path == expected_user_env_file)
+        .unwrap();
+    let run_payload_write = private_writes
+        .iter()
+        .find(|write| write.path == expected_run_payload_file)
+        .unwrap();
     let user_env: HashMap<String, String> =
-        serde_json::from_slice(&private_writes[0].content).unwrap();
+        serde_json::from_slice(&user_env_write.content).unwrap();
     assert_eq!(user_env.get("CUSTOM_USER_ENV").unwrap(), "visible-to-cli");
     assert_eq!(user_env.get("BASH_ENV").unwrap(), "/tmp/user-bash-env");
     assert_eq!(
@@ -257,6 +286,9 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     assert!(!user_env.contains_key("VM0_API_TOKEN"));
     assert!(!user_env.contains_key(USER_ENV_FILE_ENV_KEY));
     assert!(!user_env.contains_key("VM0_STUCK_TOOL_TIMEOUT_SECS"));
+    let run_payload: guest_contracts::env::RunPayload =
+        serde_json::from_slice(&run_payload_write.content).unwrap();
+    assert_eq!(run_payload.prompt, ctx.prompt);
 }
 
 #[tokio::test]

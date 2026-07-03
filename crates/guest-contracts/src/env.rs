@@ -110,6 +110,20 @@ pub const CLI_AGENT_TYPE_ENV: &str = "CLI_AGENT_TYPE";
 /// payload.
 pub const USER_ENV_FILE_ENV: &str = "VM0_USER_ENV_FILE";
 
+/// Path to the private runner-owned run payload JSON file.
+///
+/// Large prompt-like and configuration payloads use this file instead of
+/// bootstrap environment values so guest-agent startup does not hit Linux
+/// argv/env limits. Unset or empty means the guest-agent should fall back to
+/// legacy env keys.
+pub const RUN_PAYLOAD_FILE_ENV: &str = "VM0_RUN_PAYLOAD_FILE";
+
+/// Private runtime subdirectory used by [`RUN_PAYLOAD_FILE_ENV`].
+pub const RUN_PAYLOAD_PRIVATE_DIR_NAME: &str = "run-payload";
+
+/// Private runtime filename used by [`RUN_PAYLOAD_FILE_ENV`].
+pub const RUN_PAYLOAD_FILENAME: &str = "payload.json";
+
 /// JSON array describing artifact mounts prepared by the runner.
 ///
 /// Each entry uses camelCase wire keys: `name`, `mountPath`, `storageId`,
@@ -121,6 +135,39 @@ pub const ARTIFACTS_ENV: &str = "VM0_ARTIFACTS";
 ///
 /// The runner omits this key when there are no feature flags.
 pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
+
+/// Runner-owned variable-length run payload sent through
+/// [`RUN_PAYLOAD_FILE_ENV`].
+///
+/// Empty strings retain the legacy env semantics where an unset or empty
+/// value means "no value" for optional fields.
+#[derive(Clone, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunPayload {
+    /// User prompt payload sent to the guest-agent.
+    pub prompt: String,
+    /// Optional extra system prompt text.
+    #[serde(default)]
+    pub append_system_prompt: String,
+    /// Sensitive values used by the guest-agent masker.
+    #[serde(default)]
+    pub secret_values: String,
+    /// Comma-separated Claude Code tool names that should be disallowed.
+    #[serde(default)]
+    pub disallowed_tools: String,
+    /// Comma-separated Claude Code tool names that should be allowed.
+    #[serde(default)]
+    pub tools: String,
+    /// Raw Claude Code settings payload passed to the guest-agent.
+    #[serde(default)]
+    pub settings: String,
+    /// JSON array describing artifact mounts prepared by the runner.
+    #[serde(default)]
+    pub artifacts: String,
+    /// JSON map of feature flag names to enabled states.
+    #[serde(default)]
+    pub feature_flags: String,
+}
 
 /// Guest-agent stuck-tool timeout override in seconds.
 ///
@@ -277,6 +324,29 @@ mod tests {
         assert_eq!(RUN_ID_ENV, "VM0_RUN_ID");
         assert_eq!(CLI_AGENT_TYPE_ENV, "CLI_AGENT_TYPE");
         assert_eq!(USER_ENV_FILE_ENV, "VM0_USER_ENV_FILE");
+        assert_eq!(RUN_PAYLOAD_FILE_ENV, "VM0_RUN_PAYLOAD_FILE");
+    }
+
+    #[test]
+    fn run_payload_uses_camel_case_wire_keys() {
+        let payload = RunPayload {
+            prompt: "hello".to_string(),
+            append_system_prompt: "system".to_string(),
+            secret_values: "secret".to_string(),
+            disallowed_tools: "WebFetch".to_string(),
+            tools: "Bash".to_string(),
+            settings: "{}".to_string(),
+            artifacts: "[]".to_string(),
+            feature_flags: r#"{"flag":true}"#.to_string(),
+        };
+
+        let json = serde_json::to_value(&payload).unwrap();
+
+        assert_eq!(json["prompt"], "hello");
+        assert_eq!(json["appendSystemPrompt"], "system");
+        assert_eq!(json["secretValues"], "secret");
+        assert_eq!(json["disallowedTools"], "WebFetch");
+        assert_eq!(json["featureFlags"], r#"{"flag":true}"#);
     }
 
     #[test]
@@ -322,6 +392,7 @@ mod tests {
         for key in [
             API_URL_ENV,
             WORKING_DIR_ENV,
+            RUN_PAYLOAD_FILE_ENV,
             CLI_AGENT_TYPE_ENV,
             USE_MOCK_CLAUDE_ENV,
             USE_MOCK_CODEX_ENV,

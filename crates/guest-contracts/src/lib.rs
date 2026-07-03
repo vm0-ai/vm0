@@ -8,5 +8,6 @@
 pub mod codex_thread_id;
 pub mod diagnostics;
 pub mod env;
+pub mod exec_limits;
 pub mod runtime_paths;
 pub mod session_history_identity;
