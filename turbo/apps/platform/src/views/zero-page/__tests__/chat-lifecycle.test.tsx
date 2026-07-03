@@ -7616,14 +7616,20 @@ describe("initial thinking indicator", () => {
     });
 
     const label = await screen.findByLabelText(thinking);
+    const sawFollowUpLine = () => {
+      if (label.textContent) {
+        displayedLabels.add(label.textContent);
+      }
+      return Array.from(displayedLabels).some((value) => {
+        return value === "D" || value === "DE" || value === "DEF";
+      });
+    };
+    await waitFor(() => {
+      expect(sawFollowUpLine()).toBeTruthy();
+    });
     await waitFor(() => {
       expect(label).toHaveTextContent(/^G$/);
     });
-    expect(
-      Array.from(displayedLabels).some((value) => {
-        return value === "D" || value === "DE" || value === "DEF";
-      }),
-    ).toBeTruthy();
     expect(displayedLabels.has("...EFG")).toBeFalsy();
     expect(label).not.toHaveTextContent(thinking);
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
