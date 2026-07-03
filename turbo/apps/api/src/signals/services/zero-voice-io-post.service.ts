@@ -25,7 +25,7 @@ export const OPENAI_AUDIO_SPEECH_URL = "https://api.openai.com/v1/audio/speech";
 const OPENAI_AUDIO_TRANSCRIPTIONS_URL =
   "https://api.openai.com/v1/audio/transcriptions";
 const BYTEPLUS_ASR_FLASH_URL =
-  "https://voice.ap-southeast-1.bytepluses.com/api/v3/auc/bigmodel/recognize/flash";
+  "https://byteplus-proxy.vm0.ai/api/v3/auc/bigmodel/recognize/flash";
 const BYTEPLUS_ASR_RESOURCE_ID = "volc.seedasr.auc_turbo";
 const BYTEPLUS_ASR_MODEL = "bigmodel";
 const BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH = 4000;
