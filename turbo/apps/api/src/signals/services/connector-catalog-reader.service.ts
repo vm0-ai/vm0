@@ -102,12 +102,15 @@ function categoryMetadataForCatalog(
       return item.category ? [item.category] : [];
     }),
   );
-  const orderedCategories = [
-    ...CONNECTOR_DISPLAY_CATEGORY_ORDER.filter((category) => {
+  const orderedConnectorDisplayCategories =
+    CONNECTOR_DISPLAY_CATEGORY_ORDER.filter((category) => {
       return visibleCategories.has(category);
-    }),
+    });
+  const orderedCategoryIds = new Set<string>(orderedConnectorDisplayCategories);
+  const orderedCategories = [
+    ...orderedConnectorDisplayCategories,
     ...[...visibleCategories].filter((category) => {
-      return !isConnectorDisplayCategory(category);
+      return !orderedCategoryIds.has(category);
     }),
   ];
   const visibleGroups = new Set<ConnectorDisplayCategoryGroup>();

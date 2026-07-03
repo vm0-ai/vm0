@@ -81,13 +81,24 @@ function assertCategoryMetadataMatchesVisibleConnectors(
       return connector.category;
     }),
   );
-  expect(
-    new Set(
-      metadata.categories.map((category) => {
-        return category.id;
-      }),
-    ),
-  ).toStrictEqual(connectorCategories);
+  const metadataCategoryIds = metadata.categories.map((category) => {
+    return category.id;
+  });
+  expect(metadataCategoryIds).toHaveLength(new Set(metadataCategoryIds).size);
+  expect(new Set(metadataCategoryIds)).toStrictEqual(connectorCategories);
+  const referencedGroupIds = new Set(
+    metadata.categories.flatMap((category) => {
+      return category.groupId ? [category.groupId] : [];
+    }),
+  );
+  const metadataGroupIds = metadata.groups.map((group) => {
+    return group.id;
+  });
+  expect(metadataGroupIds).toHaveLength(new Set(metadataGroupIds).size);
+  expect(new Set(metadataGroupIds)).toStrictEqual(referencedGroupIds);
+  for (const groupId of metadataGroupIds) {
+    expect(connectorCategories.has(groupId)).toBeFalsy();
+  }
 
   const aiCategoryIndex = metadata.categories.findIndex((category) => {
     return category.id === "ai-general-models";
