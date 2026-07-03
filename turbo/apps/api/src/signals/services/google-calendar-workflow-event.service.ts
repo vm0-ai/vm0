@@ -36,6 +36,10 @@ import {
 } from "./crypto.utils";
 import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
 import {
+  WorkflowEventSourceTiming,
+  type WorkflowEventRunTiming,
+} from "./workflow-event-source-timing.service";
+import {
   buildChatOnlyWorkflowTriggerCallbacks,
   runWorkflowTriggerNow$,
   type TriggerRow,
@@ -217,6 +221,7 @@ type GoogleCalendarRunStarter = (args: {
   readonly state: GoogleCalendarWatchStateRow;
   readonly notification: GoogleCalendarWebhookNotification;
   readonly event: CalendarEventContext;
+  readonly timing: WorkflowEventRunTiming;
 }) => Promise<"ok" | "error">;
 
 interface GoogleCalendarWorkflowRunStartTestInput {
@@ -1472,10 +1477,16 @@ async function dispatchGoogleCalendarTriggerEvent(args: {
   readonly notification: GoogleCalendarWebhookNotification;
   readonly event: CalendarEventContext;
   readonly eventChangeKey: string;
+  readonly timing: WorkflowEventRunTiming;
   readonly startRun: GoogleCalendarRunStarter;
   readonly signal: AbortSignal;
 }): Promise<"dispatched" | "duplicate" | { readonly kind: "run_error" }> {
-  const processedId = await insertGoogleCalendarProcessedEvent(args);
+  const processedId = await args.timing.measure(
+    "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
+    async () => {
+      return await insertGoogleCalendarProcessedEvent(args);
+    },
+  );
   if (!processedId) {
     return "duplicate";
   }
@@ -1485,6 +1496,7 @@ async function dispatchGoogleCalendarTriggerEvent(args: {
     state: args.state,
     notification: args.notification,
     event: args.event,
+    timing: args.timing,
   });
   args.signal.throwIfAborted();
   if (result !== "ok") {
@@ -1517,6 +1529,7 @@ async function dispatchCalendarEventChanges(args: {
   readonly notification: GoogleCalendarWebhookNotification;
   readonly changes: readonly CalendarEventChange[];
   readonly triggers: readonly GoogleCalendarEventTriggerRow[];
+  readonly sourceTiming: WorkflowEventSourceTiming;
   readonly startRun: GoogleCalendarRunStarter;
   readonly signal: AbortSignal;
 }): Promise<GoogleCalendarDispatchStateResult> {
@@ -1527,9 +1540,17 @@ async function dispatchCalendarEventChanges(args: {
   let dispatched = 0;
   let duplicates = 0;
   for (const change of args.changes) {
+    const changeTiming = args.sourceTiming.fork();
     const context = eventPromptContext(args.state.calendarId, change);
     for (const trigger of args.triggers) {
-      if (!googleCalendarTriggerMatchesChange(trigger, change.changeType)) {
+      const runTiming = changeTiming.createRunTiming();
+      const matches = await runTiming.measure(
+        "api_dispatch_pre_create_zero_workflow_event_match_triggers",
+        () => {
+          return googleCalendarTriggerMatchesChange(trigger, change.changeType);
+        },
+      );
+      if (!matches) {
         continue;
       }
       const result = await dispatchGoogleCalendarTriggerEvent({
@@ -1539,6 +1560,7 @@ async function dispatchCalendarEventChanges(args: {
         notification: args.notification,
         event: context,
         eventChangeKey: change.eventChangeKey,
+        timing: runTiming,
         startRun: args.startRun,
         signal: args.signal,
       });
@@ -1561,15 +1583,21 @@ async function dispatchGoogleCalendarChanges(args: {
   readonly state: GoogleCalendarWatchStateRow;
   readonly notification: GoogleCalendarWebhookNotification;
   readonly changes: CalendarEventsListOk;
+  readonly sourceTiming: WorkflowEventSourceTiming;
   readonly startRun: GoogleCalendarRunStarter;
   readonly signal: AbortSignal;
 }): Promise<GoogleCalendarDispatchStateResult> {
-  const snapshotMap = await loadCalendarEventSnapshotMap({
-    db: args.db,
-    watchStateId: args.state.id,
-    events: args.changes.events,
-    signal: args.signal,
-  });
+  const snapshotMap = await args.sourceTiming.measure(
+    "api_dispatch_pre_create_zero_workflow_event_load_external_events",
+    async () => {
+      return await loadCalendarEventSnapshotMap({
+        db: args.db,
+        watchStateId: args.state.id,
+        events: args.changes.events,
+        signal: args.signal,
+      });
+    },
+  );
   const calendarEventChanges = args.changes.events
     .map((event) => {
       return calendarEventChangeForSnapshot({
@@ -1581,17 +1609,23 @@ async function dispatchGoogleCalendarChanges(args: {
       return change !== null;
     });
 
-  const triggers = await loadGoogleCalendarEventTriggers({
-    db: args.db,
-    state: args.state,
-    signal: args.signal,
-  });
+  const triggers = await args.sourceTiming.measure(
+    "api_dispatch_pre_create_zero_workflow_event_load_triggers",
+    async () => {
+      return await loadGoogleCalendarEventTriggers({
+        db: args.db,
+        state: args.state,
+        signal: args.signal,
+      });
+    },
+  );
   const result = await dispatchCalendarEventChanges({
     db: args.db,
     state: args.state,
     notification: args.notification,
     changes: calendarEventChanges,
     triggers,
+    sourceTiming: args.sourceTiming,
     startRun: args.startRun,
     signal: args.signal,
   });
@@ -1626,25 +1660,36 @@ async function dispatchGoogleCalendarWatchState(args: {
   readonly state: GoogleCalendarWatchStateRow;
   readonly notification: GoogleCalendarWebhookNotification;
   readonly isFeatureEnabledForOwner: GoogleCalendarFeatureGateChecker;
+  readonly sourceTiming: WorkflowEventSourceTiming;
   readonly startRun: GoogleCalendarRunStarter;
   readonly signal: AbortSignal;
 }): Promise<GoogleCalendarDispatchStateResult> {
-  const gateEnabled = await args.isFeatureEnabledForOwner(
-    args.state.orgId,
-    args.state.userId,
+  const gateEnabled = await args.sourceTiming.measure(
+    "api_dispatch_pre_create_zero_workflow_event_check_feature_gate",
+    async () => {
+      return await args.isFeatureEnabledForOwner(
+        args.state.orgId,
+        args.state.userId,
+      );
+    },
   );
   args.signal.throwIfAborted();
   if (!gateEnabled) {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
 
-  const access = await resolveGoogleCalendarAccess({
-    db: args.db,
-    orgId: args.state.orgId,
-    userId: args.state.userId,
-    connectorId: args.state.connectorId,
-    signal: args.signal,
-  });
+  const access = await args.sourceTiming.measure(
+    "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+    async () => {
+      return await resolveGoogleCalendarAccess({
+        db: args.db,
+        orgId: args.state.orgId,
+        userId: args.state.userId,
+        connectorId: args.state.connectorId,
+        signal: args.signal,
+      });
+    },
+  );
   args.signal.throwIfAborted();
   if (access.kind !== "ok") {
     log.warn(
@@ -1686,12 +1731,17 @@ async function dispatchGoogleCalendarWatchState(args: {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
 
-  const changes = await listCalendarEvents({
-    accessToken: access.access.accessToken,
-    calendarId: args.state.calendarId,
-    syncToken: args.state.syncToken,
-    signal: args.signal,
-  });
+  const changes = await args.sourceTiming.measure(
+    "api_dispatch_pre_create_zero_workflow_event_load_external_events",
+    async () => {
+      return await listCalendarEvents({
+        accessToken: access.access.accessToken,
+        calendarId: args.state.calendarId,
+        syncToken: args.state.syncToken,
+        signal: args.signal,
+      });
+    },
+  );
   args.signal.throwIfAborted();
   if (changes.kind === "stale_cursor") {
     const baseline = await baselineCalendarWatchState({
@@ -1721,6 +1771,7 @@ async function dispatchGoogleCalendarWatchState(args: {
     state: args.state,
     notification: args.notification,
     changes,
+    sourceTiming: args.sourceTiming,
     startRun: args.startRun,
     signal: args.signal,
   });
@@ -1743,12 +1794,22 @@ export const dispatchGoogleCalendarWebhook$ = command(
       };
     }
 
+    const sourceTiming = new WorkflowEventSourceTiming(
+      "google_calendar",
+      args.apiStartTime,
+    );
     const db = set(writeDb$);
-    const state = await loadCalendarWatchStateForNotification({
-      db,
-      notification,
-      signal,
-    });
+    const state = await sourceTiming.measure(
+      "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+      async () => {
+        return await loadCalendarWatchStateForNotification({
+          db,
+          notification,
+          signal,
+        });
+      },
+    );
+    signal.throwIfAborted();
     if (!state) {
       return { kind: "unauthorized" };
     }
@@ -1771,7 +1832,23 @@ export const dispatchGoogleCalendarWebhook$ = command(
             summary: event.summary,
           });
         }
-      : async ({ trigger, event }) => {
+      : async ({ trigger, event, timing }) => {
+          const runInput = await timing.measure(
+            "api_dispatch_pre_create_zero_workflow_event_build_run_input",
+            () => {
+              return {
+                appendSystemPrompt:
+                  buildGoogleCalendarWorkflowEventSystemPrompt({
+                    triggerId: trigger.trigger.id,
+                    event,
+                  }),
+                callbacks: buildChatOnlyWorkflowTriggerCallbacks(
+                  trigger.chatThreadId,
+                  trigger.agentId,
+                ),
+              };
+            },
+          );
           const result = await set(
             runWorkflowTriggerNow$,
             {
@@ -1783,18 +1860,13 @@ export const dispatchGoogleCalendarWebhook$ = command(
               },
               apiStartTime: args.apiStartTime,
               triggerSource: "workflow-event",
-              appendSystemPrompt: buildGoogleCalendarWorkflowEventSystemPrompt({
-                triggerId: trigger.trigger.id,
-                event,
-              }),
-              callbacks: buildChatOnlyWorkflowTriggerCallbacks(
-                trigger.chatThreadId,
-                trigger.agentId,
-              ),
+              appendSystemPrompt: runInput.appendSystemPrompt,
+              callbacks: runInput.callbacks,
               activePreviousRunPolicy: "allow",
               recordLastRunId: false,
               recordLastRunAt: true,
               dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+              timing: timing.collectorForRunStart(),
             },
             signal,
           );
@@ -1807,6 +1879,7 @@ export const dispatchGoogleCalendarWebhook$ = command(
       state,
       notification,
       isFeatureEnabledForOwner,
+      sourceTiming,
       startRun,
       signal,
     });

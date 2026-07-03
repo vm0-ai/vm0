@@ -114,6 +114,7 @@ const postGithubWebhook$ = command(
         return jsonError("Invalid payload structure", 400);
       }
 
+      const backgroundScheduledAt = now();
       waitUntil(
         tapError(
           set(
@@ -122,6 +123,7 @@ const postGithubWebhook$ = command(
               payload: parsed.data,
               deliveryId: headers.deliveryId,
               apiStartTime,
+              backgroundScheduledAt,
             },
             signal,
           ),
@@ -142,6 +144,7 @@ const postGithubWebhook$ = command(
         return jsonError("Invalid payload structure", 400);
       }
 
+      const backgroundScheduledAt = now();
       waitUntil(
         tapError(
           set(
@@ -150,6 +153,7 @@ const postGithubWebhook$ = command(
               payload: parsed.data,
               deliveryId: headers.deliveryId,
               apiStartTime,
+              backgroundScheduledAt,
             },
             signal,
           ),
