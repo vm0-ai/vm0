@@ -297,10 +297,15 @@ export async function resolveEmails(
     emailMap.set(user.id, email);
     await db
       .insert(userCache)
-      .values({ userId: user.id, email, cachedAt: now })
+      .values({
+        userId: user.id,
+        email,
+        imageUrl: user.imageUrl ?? null,
+        cachedAt: now,
+      })
       .onConflictDoUpdate({
         target: userCache.userId,
-        set: { email, cachedAt: now },
+        set: { email, imageUrl: user.imageUrl ?? null, cachedAt: now },
       });
     signal.throwIfAborted();
   }

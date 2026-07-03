@@ -817,9 +817,22 @@ describe("zero workflow triggers", () => {
     ) {
       throw new Error("Expected created webhook trigger to be listed");
     }
-    expect(listedWebhook.webhookUrl).toBe(created.body.webhookUrl);
+    expect(listedWebhook.webhookUrl).toBeUndefined();
     expect(listedWebhook.secretLastFour).toBe(created.body.secretLastFour);
     expect(listedWebhook.webhookSecret).toBeUndefined();
+
+    const revealed = await accept(
+      triggersClient().revealWebhookSecret({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: undefined,
+      }),
+      [200],
+    );
+    expect(revealed.body).toStrictEqual({
+      webhookUrl: created.body.webhookUrl,
+      webhookSecret: created.body.webhookSecret,
+    });
   });
 
   it("requires a connected Gmail account for Gmail event triggers", async () => {

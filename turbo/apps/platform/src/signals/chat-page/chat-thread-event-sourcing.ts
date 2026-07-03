@@ -47,9 +47,15 @@ const optimisticChatThreadEventsState$ = state<readonly ChatThreadEvent[]>([]);
 const chatThreadMaxItemState$ = state(CHAT_THREAD_VISIBLE_PAGE_SIZE);
 const chatThreadEventSyncVersionState$ = state(0);
 const chatThreadEventSyncInFlightState$ = state(false);
+const activeRunChatThreadIdsState$ = state<ReadonlySet<string>>(new Set());
+const activeRunChatThreadIdsRefreshInFlightState$ = state(false);
 
 export const chatThreadMaxItem$ = computed((get) => {
   return get(chatThreadMaxItemState$);
+});
+
+export const eventDrivenActiveRunChatThreadIds$ = computed((get) => {
+  return get(activeRunChatThreadIdsState$);
 });
 
 const chatThreadEventStores$ = computed(async (get): Promise<Stores | null> => {
@@ -188,6 +194,36 @@ const syncEventDrivenChatThreads$ = command(
   },
 );
 
+const refreshEventDrivenActiveRunChatThreadIds$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    if (
+      !get(featureSwitch$)[FeatureSwitchKey.ChatThreadEventSourcing] ||
+      get(activeRunChatThreadIdsRefreshInFlightState$)
+    ) {
+      return;
+    }
+
+    set(activeRunChatThreadIdsRefreshInFlightState$, true);
+    await withCleanup(
+      (async () => {
+        const client = get(zeroClient$)(chatThreadsContract);
+        const result = await accept(
+          client.activeIds({ fetchOptions: { signal } }),
+          [200],
+          {
+            toast: false,
+          },
+        );
+        signal.throwIfAborted();
+        set(activeRunChatThreadIdsState$, new Set(result.body.threadIds));
+      })(),
+      () => {
+        set(activeRunChatThreadIdsRefreshInFlightState$, false);
+      },
+    );
+  },
+);
+
 export const subscribeEventDrivenChatThreads$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     if (!get(featureSwitch$)[FeatureSwitchKey.ChatThreadEventSourcing]) {
@@ -197,11 +233,14 @@ export const subscribeEventDrivenChatThreads$ = command(
     const syncOnThreadListChanged$ = command(
       async ({ set }, signal: AbortSignal): Promise<boolean> => {
         await set(syncEventDrivenChatThreads$, signal);
+        await set(refreshEventDrivenActiveRunChatThreadIds$, signal);
         return false;
       },
     );
 
     await set(syncEventDrivenChatThreads$, signal);
+    signal.throwIfAborted();
+    await set(refreshEventDrivenActiveRunChatThreadIds$, signal);
     signal.throwIfAborted();
     await set(
       setAblyLoop$,

@@ -12,8 +12,17 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { chatThreads$, setChatAgentId$ } from "../../agent-chat.ts";
 import { renameDialogInput$ } from "../../zero-page/zero-sidebar-state.ts";
+import {
+  createChatThreadSignals,
+  ensureDraft$,
+} from "../create-chat-thread.ts";
+import { createLocalChatThreadDataSource } from "../local-chat-thread-data-source.ts";
+import { registerOptimisticChatThread$ } from "../optimistic-chat-thread-state.ts";
+import { createPendingChatThread } from "../pending-chat-thread.ts";
+import { sidebarChatThreadIds$ } from "../sidebar-chat-thread-ids.ts";
 import { setChatThreadOnlyUnread$ } from "../chat-thread-only-unread.ts";
 import { openRenameChatThreadDialogFromThreadData$ } from "../chat-thread-rename.ts";
+import { registerOptimisticChatThreadEvent$ } from "../chat-thread-event-sourcing.ts";
 
 const idbThreadEventStoreMock = vi.hoisted(() => {
   let snapshot: {
@@ -89,7 +98,10 @@ const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000001";
 const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000002";
+const OPTIMISTIC_THREAD_ID = "b0000000-0000-4000-a000-000000000003";
+const LEGACY_PENDING_THREAD_ID = "b0000000-0000-4000-a000-000000000004";
 const EVENT_ID = "d0000000-0000-4000-a000-000000000001";
+const OPTIMISTIC_EVENT_ID = "d0000000-0000-4000-a000-000000000002";
 
 function expectCallback(callback: (() => void) | null): () => void {
   expect(callback).not.toBeNull();
@@ -279,6 +291,96 @@ describe("chat thread event sourcing local-first list", () => {
       }),
     ).toStrictEqual([THREAD_ID]);
     expect(unreadsRequests).toBe(1);
+    expect(listRequests).toBe(0);
+  });
+
+  it("uses optimistic create events instead of pending thread ids for event-sourced sidebar ids", async () => {
+    context.store.set(setChatAgentId$, AGENT_ID);
+
+    idbThreadEventStoreMock.setData({
+      snapshot: {
+        latestEventId: null,
+        chatThreads: [],
+      },
+      events: [],
+    });
+
+    let listRequests = 0;
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
+    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+      return respond(200, { threadIds: [] });
+    });
+    context.mocks.api(chatThreadsContract.list, ({ never }) => {
+      listRequests += 1;
+      return never();
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+      user: { id: "user_1", fullName: "Test User" },
+      session: { token: "token" },
+      org: {
+        activeOrg: { id: "org_1", name: "Test Org" },
+        memberships: [{ id: "org_1" }],
+      },
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEventSourcing]: true },
+    });
+
+    const { draft } = context.store.set(ensureDraft$, LEGACY_PENDING_THREAD_ID);
+    const pendingThread = createChatThreadSignals(
+      LEGACY_PENDING_THREAD_ID,
+      draft,
+      createLocalChatThreadDataSource({
+        threadData: createPendingChatThread({
+          threadId: LEGACY_PENDING_THREAD_ID,
+          agentId: AGENT_ID,
+          pendingRunId: `pending-${LEGACY_PENDING_THREAD_ID}`,
+        }),
+        messages: [],
+      }),
+    );
+    context.store.set(registerOptimisticChatThread$, {
+      pane: "main",
+      threadId: LEGACY_PENDING_THREAD_ID,
+      agentId: AGENT_ID,
+      createdAt: "2026-07-03T04:00:00.000Z",
+      running: true,
+      pendingThread,
+      settleResult: Promise.resolve(),
+    });
+
+    await expect(
+      context.store.get(sidebarChatThreadIds$),
+    ).resolves.toStrictEqual([]);
+
+    context.store.set(registerOptimisticChatThreadEvent$, {
+      id: OPTIMISTIC_EVENT_ID,
+      kind: "created",
+      chatThreadId: OPTIMISTIC_THREAD_ID,
+      agentId: AGENT_ID,
+      title: null,
+      createdAt: "2026-07-03T05:00:00.000Z",
+    });
+
+    await expect(
+      context.store.get(sidebarChatThreadIds$),
+    ).resolves.toStrictEqual([OPTIMISTIC_THREAD_ID]);
+    await expect(context.store.get(chatThreads$)).resolves.toStrictEqual([
+      {
+        id: OPTIMISTIC_THREAD_ID,
+        title: null,
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-07-03T05:00:00.000Z",
+        updatedAt: "2026-07-03T05:00:00.000Z",
+        running: false,
+        pinnedAt: null,
+        renamedAt: null,
+      },
+    ]);
     expect(listRequests).toBe(0);
   });
 

@@ -1376,6 +1376,30 @@ describe("zero sidebar", () => {
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
   });
 
+  it("toggles the sidebar with mod+b while the chat composer is focused", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([createThread(EXISTING_THREAD_ID, "Release plan")]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Collapse sidebar")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Expand sidebar")).not.toBeInTheDocument();
+    });
+
+    composer.focus();
+    expect(composer).toHaveFocus();
+    fireEvent.keyDown(composer, { key: "b", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Expand sidebar")).toBeInTheDocument();
+    });
+  });
+
   it("ignores global shortcuts while a dialog is open", async () => {
     prepareAgentTeam();
     context.mocks.api(chatThreadsContract.list, ({ respond }) => {
