@@ -1730,11 +1730,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
 
     async function heartbeatHolder(args: {
+      readonly profiles?: string[];
       readonly availableProfiles?: string[];
       readonly mode?: "running" | "draining" | "stopping";
     }): Promise<void> {
       await api.requestHeartbeatRunner(true, [200], {
         group: runnerGroup,
+        profiles: args.profiles,
         availableProfiles: args.availableProfiles,
         heldSessionStates: [
           {
@@ -1782,6 +1784,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, unavailableHolder.run.runId, [200]);
 
     mockNow(now() - 60_000);
+    onTestFinished(() => {
+      clearMockNow();
+    });
     await heartbeatHolder({ availableProfiles: ["vm0/default"] });
     clearMockNow();
     const staleHolder = await pollFollowUp(
@@ -1789,6 +1794,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expect(staleHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
     expect(staleHolder.job?.affinityProtectedUntil).toBeNull();
+
+    await heartbeatHolder({
+      profiles: ["vm0/default", "vm0/large"],
+      availableProfiles: ["vm0/large"],
+    });
+    const profileIncompatibleHolder = await pollFollowUp(
+      "continue when holder cannot run requested profile",
+    );
+    expect(profileIncompatibleHolder.job?.cliAgentSessionId).toBe(
+      cliAgentSessionId,
+    );
+    expect(profileIncompatibleHolder.job?.affinityProtectedUntil).toBeNull();
 
     await heartbeatHolder({
       availableProfiles: ["vm0/default"],
