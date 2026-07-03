@@ -38,7 +38,7 @@ load '../../helpers/setup'
     assert_output --partial "zero workflow"
 }
 
-@test "zero workflow trigger list returns successfully" {
-    run $ZERO_CLI workflow trigger list
+@test "zero workflow list returns successfully" {
+    run $ZERO_CLI workflow list
     assert_success
 }
