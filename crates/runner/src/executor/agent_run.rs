@@ -1099,7 +1099,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         run_id = %context.run_id,
         prompt_bytes = run_payload.prompt.len(),
         append_system_prompt_bytes = run_payload.append_system_prompt.len(),
-        secret_values_bytes = run_payload.secret_values.len(),
+        secret_values_present = !run_payload.secret_values.is_empty(),
         disallowed_tools_bytes = run_payload.disallowed_tools.len(),
         tools_bytes = run_payload.tools.len(),
         settings_bytes = run_payload.settings.len(),
