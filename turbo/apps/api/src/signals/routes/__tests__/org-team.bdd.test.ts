@@ -181,11 +181,9 @@ describe("ORG-01: org logo lifecycle through the Clerk boundary", () => {
       hasImage: true,
     });
     const file = pngLogoFile();
-    const uploaded = await api.requestUploadOrgLogo(
-      admin,
-      logoForm(file),
-      [200],
-    );
+    const uploaded = await api.requestUploadOrgLogo(admin, logoForm(file), [
+      200,
+    ]);
     expect(uploaded.body).toStrictEqual({
       logoUrl: "https://img.clerk.test/new-logo.png",
       hasImage: true,
@@ -240,21 +238,17 @@ describe("ORG-01: org logo lifecycle through the Clerk boundary", () => {
     });
 
     // POST file validation arms.
-    const emptyForm = await api.requestUploadOrgLogo(
-      admin,
-      new FormData(),
-      [400],
-    );
+    const emptyForm = await api.requestUploadOrgLogo(admin, new FormData(), [
+      400,
+    ]);
     expect(emptyForm.body).toStrictEqual({
       error: { message: "No file provided", code: "BAD_REQUEST" },
     });
     const stringForm = new FormData();
     stringForm.append("file", "not-a-file");
-    const stringField = await api.requestUploadOrgLogo(
-      admin,
-      stringForm,
-      [400],
-    );
+    const stringField = await api.requestUploadOrgLogo(admin, stringForm, [
+      400,
+    ]);
     expect(stringField.body).toStrictEqual({
       error: { message: "No file provided", code: "BAD_REQUEST" },
     });
@@ -371,11 +365,9 @@ describe("ORG-01: org logo lifecycle through the Clerk boundary", () => {
 describe("ORG-01: org update and delete error matrix", () => {
   it("maps no-org, slug-force, reserved, conflict, admin-leave, and delete failure arms [ORG-UPDATE-B]", async () => {
     const noOrg = api.user({ orgId: null });
-    const noOrgUpdate = await api.requestUpdateOrg(
-      noOrg,
-      { force: false },
-      [400],
-    );
+    const noOrgUpdate = await api.requestUpdateOrg(noOrg, { force: false }, [
+      400,
+    ]);
     expectApiError(noOrgUpdate.body);
     expect(noOrgUpdate.body.error.message).toBe(
       "No org configured. Set your org with: zero org set <slug>",
@@ -454,21 +446,17 @@ describe("ORG-01: org update and delete error matrix", () => {
       orgId: admin.orgId,
       orgRole: "org:member",
     });
-    const memberDelete = await api.requestDeleteOrg(
-      memberCaller,
-      baseSlug,
-      [403],
-    );
+    const memberDelete = await api.requestDeleteOrg(memberCaller, baseSlug, [
+      403,
+    ]);
     expectApiError(memberDelete.body);
     expect(memberDelete.body.error.message).toBe(
       "Only admins can delete the organization",
     );
 
-    const wrongSlug = await api.requestDeleteOrg(
-      admin,
-      slug("bdd-r5-wrong"),
-      [400],
-    );
+    const wrongSlug = await api.requestDeleteOrg(admin, slug("bdd-r5-wrong"), [
+      400,
+    ]);
     expectApiError(wrongSlug.body);
     expect(wrongSlug.body.error.message).toBe(
       "Organization name does not match",
@@ -859,10 +847,9 @@ describe("ORG-02: member cleanup detaches Slack connections", () => {
       workspaceId: install.teamId,
       slackUserId: `U_LEAVE_${shortId().toUpperCase()}`,
     });
-    const connected = await integrations.requestSlackConnectStatus(
-      member,
-      [200],
-    );
+    const connected = await integrations.requestSlackConnectStatus(member, [
+      200,
+    ]);
     expect(connected.body).toMatchObject({ isConnected: true });
 
     api.mockClerkOrg(member, {
@@ -874,10 +861,9 @@ describe("ORG-02: member cleanup detaches Slack connections", () => {
     await expect(api.leaveOrg(member)).resolves.toStrictEqual({
       message: "Left org",
     });
-    const afterLeave = await integrations.requestSlackConnectStatus(
-      member,
-      [200],
-    );
+    const afterLeave = await integrations.requestSlackConnectStatus(member, [
+      200,
+    ]);
     expect(afterLeave.body).toMatchObject({ isConnected: false });
 
     await integrations.connectSlackUser(secondMember, {
@@ -1024,19 +1010,12 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
     expect(peerTeamIds).not.toContain(ownPrivate.agentId);
     await expect(api.listTeam(crossOrgAdmin)).resolves.toStrictEqual([]);
 
-    // Deleting the default agent clears the selection (FK set-null) and a
-    // new default can then be configured.
+    // Deleting the default agent clears the FK, then onboarding status lazily
+    // restores a usable org default for admins.
     await api.deleteAgent(admin, defaultAgentId);
-    const orphaned = await api.readOnboardingStatus(admin);
-    expect(orphaned.defaultAgentId).toBeNull();
-    const replacement = await api.createAgent(admin, {
-      displayName: "BDD Replacement Default",
-      visibility: "public",
-    });
-    const selected = await api.setDefaultAgent(admin, replacement.agentId);
-    expect(selected).toStrictEqual({ agentId: replacement.agentId });
     const restored = await api.readOnboardingStatus(admin);
-    expect(restored.defaultAgentId).toBe(replacement.agentId);
+    expect(restored.defaultAgentId).toBeTruthy();
+    expect(restored.defaultAgentId).not.toBe(defaultAgentId);
 
     const missingAgent = await api.requestSetDefaultAgent(
       crossOrgAdmin,
@@ -1256,10 +1235,9 @@ describe("AUTH-02/ORG-01: run-scoped zero tokens on org routes", () => {
       role: "admin",
     });
 
-    const membersRead = await api.requestListMembersWithBearer(
-      zeroToken,
-      [200],
-    );
+    const membersRead = await api.requestListMembersWithBearer(zeroToken, [
+      200,
+    ]);
     expect(membersRead.body.role).toBe("admin");
     expect(
       membersRead.body.members.some((candidate) => {

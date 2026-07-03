@@ -104,15 +104,6 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     expectApiError(noOrgAgent.body);
     expect(noOrgAgent.body.error.code).toBe("UNAUTHORIZED");
 
-    const before = await api.readOnboardingStatus(admin);
-    expect(before).toMatchObject({
-      needsOnboarding: true,
-      isAdmin: true,
-      hasOrg: true,
-      hasDefaultAgent: false,
-      defaultAgentId: null,
-    });
-
     const defaultAgentId = await onboardAdmin(admin, {
       displayName: "BDD Default Agent",
       workspaceName: "BDD Chain Org",
@@ -209,11 +200,9 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       }),
     ).toBeTruthy();
 
-    const selected = await api.requestSetDefaultAgent(
-      admin,
-      created.agentId,
-      [409],
-    );
+    const selected = await api.requestSetDefaultAgent(admin, created.agentId, [
+      409,
+    ]);
     expectApiError(selected.body);
     expect(selected.body.error.code).toBe("CONFLICT");
     const selectedStatus = await api.readOnboardingStatus(admin);
@@ -261,11 +250,9 @@ describe("AUTH-02 and AUTH-03", () => {
     expect(metadata.name).toBe("BDD CLI token");
     expect("token" in metadata).toBeFalsy();
 
-    const tokenMe = await api.requestReadMeWithBearer(
-      created.token,
-      admin,
-      [200],
-    );
+    const tokenMe = await api.requestReadMeWithBearer(created.token, admin, [
+      200,
+    ]);
     expect(tokenMe.body).toStrictEqual({
       userId: admin.userId,
       email: admin.email,
@@ -279,11 +266,9 @@ describe("AUTH-02 and AUTH-03", () => {
       }),
     ).toBeFalsy();
 
-    const revoked = await api.requestReadMeWithBearer(
-      created.token,
-      admin,
-      [401],
-    );
+    const revoked = await api.requestReadMeWithBearer(created.token, admin, [
+      401,
+    ]);
     expectApiError(revoked.body);
     expect(revoked.body.error.code).toBe("UNAUTHORIZED");
   });
@@ -615,17 +600,33 @@ describe("ORG-03 onboarding status mapping", () => {
       defaultAgentMetadata: null,
     });
 
+    api.acceptAgentStorageWrites();
     const adminBeforeSetup = await api.readOnboardingStatus(admin);
-    expect(adminBeforeSetup).toStrictEqual({
-      needsOnboarding: true,
+    expect(adminBeforeSetup).toMatchObject({
+      needsOnboarding: false,
       isAdmin: true,
       hasOrg: true,
-      hasDefaultAgent: false,
-      defaultAgentId: null,
-      defaultAgentMetadata: null,
+      hasDefaultAgent: true,
+      defaultAgentMetadata: {
+        displayName: "Zero",
+        sound: "professional",
+      },
+    });
+    expect(adminBeforeSetup.defaultAgentId).toBeTruthy();
+    if (!adminBeforeSetup.defaultAgentId) {
+      throw new Error(
+        "Expected lazy onboarding status bootstrap to create an agent",
+      );
+    }
+    const bootstrappedAgentId = adminBeforeSetup.defaultAgentId;
+
+    const bootstrappedBilling = await runsApi.readBillingStatus(admin);
+    expect(bootstrappedBilling).toMatchObject({
+      credits: 1000,
+      tier: "limited-free-1",
+      onboardingPaymentPending: false,
     });
 
-    api.acceptAgentStorageWrites();
     const setup = await api.setupOnboarding(admin, {
       displayName: "BDD Status Agent",
       sound: "friendly",
@@ -636,17 +637,18 @@ describe("ORG-03 onboarding status mapping", () => {
       );
     }
     const agentId = setup.body.agentId;
+    expect(agentId).toBe(bootstrappedAgentId);
 
     const paymentPending = await api.readOnboardingStatus(admin);
     expect(paymentPending).toStrictEqual({
-      needsOnboarding: true,
+      needsOnboarding: false,
       isAdmin: true,
       hasOrg: true,
       hasDefaultAgent: true,
       defaultAgentId: agentId,
       defaultAgentMetadata: {
-        displayName: "BDD Status Agent",
-        sound: "friendly",
+        displayName: "Zero",
+        sound: "professional",
       },
     });
 
@@ -659,20 +661,28 @@ describe("ORG-03 onboarding status mapping", () => {
       hasDefaultAgent: true,
       defaultAgentId: agentId,
       defaultAgentMetadata: {
-        displayName: "BDD Status Agent",
-        sound: "friendly",
+        displayName: "Zero",
+        sound: "professional",
       },
     });
 
     await api.deleteAgent(admin, agentId);
     const orphaned = await api.readOnboardingStatus(admin);
-    expect(orphaned).toStrictEqual({
-      needsOnboarding: true,
+    expect(orphaned).toMatchObject({
+      needsOnboarding: false,
       isAdmin: true,
       hasOrg: true,
-      hasDefaultAgent: false,
-      defaultAgentId: null,
-      defaultAgentMetadata: null,
+      hasDefaultAgent: true,
+      defaultAgentMetadata: {
+        displayName: "Zero",
+        sound: "professional",
+      },
+    });
+    expect(orphaned.defaultAgentId).toBeTruthy();
+    expect(orphaned.defaultAgentId).not.toBe(agentId);
+    const preservedPaidBilling = await runsApi.readBillingStatus(admin);
+    expect(preservedPaidBilling).toMatchObject({
+      tier: "pro",
     });
   });
 });
@@ -975,11 +985,9 @@ describe("COMPOSE-01", () => {
     expect(crossOrg.body.error.code).toBe("NOT_FOUND");
 
     await api.deleteAgent(admin, created.composeId);
-    const deleted = await api.requestReadComposeById(
-      admin,
-      created.composeId,
-      [404],
-    );
+    const deleted = await api.requestReadComposeById(admin, created.composeId, [
+      404,
+    ]);
     expectApiError(deleted.body);
     expect(deleted.body.error.code).toBe("NOT_FOUND");
   });
