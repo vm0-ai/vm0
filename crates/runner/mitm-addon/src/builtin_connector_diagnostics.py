@@ -255,11 +255,15 @@ def _diagnostic_catalog() -> _DiagnosticCatalog:
 
     connector_firewalls: list[dict] = []
     connector_matchers: list[_DiagnosticConnectorMatcher] = []
+    shared_route_aware_base_keys = _shared_route_aware_base_keys(CONNECTOR_DIAGNOSTIC_FIREWALLS)
     for firewall in CONNECTOR_DIAGNOSTIC_FIREWALLS:
         diagnostic_firewall = _diagnostic_firewall_from_manifest(firewall)
         if diagnostic_firewall is not None:
             connector_firewalls.append(diagnostic_firewall)
-        route_aware_firewall = _route_aware_diagnostic_firewall_from_manifest(firewall)
+        route_aware_firewall = _route_aware_diagnostic_firewall_from_manifest(
+            firewall,
+            shared_base_keys=shared_route_aware_base_keys,
+        )
         if route_aware_firewall is not None:
             connector_matchers.append(
                 _DiagnosticConnectorMatcher(
@@ -319,6 +323,49 @@ def _manifest_str_tuple(value: object) -> tuple[str, ...]:
     return tuple(result)
 
 
+def _diagnostic_static_base_key(raw_base: str) -> str | None:
+    if _has_dynamic_base_marker(raw_base):
+        return None
+    if not matching.firewall_base_config_is_valid(raw_base):
+        return None
+    try:
+        parsed = urllib.parse.urlparse(raw_base)
+    except ValueError:
+        return None
+    if not parsed.scheme or not parsed.netloc:
+        return None
+    return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}{parsed.path.rstrip('/')}"
+
+
+def _shared_route_aware_base_keys(firewalls: object) -> frozenset[str]:
+    if not isinstance(firewalls, (list, tuple)):
+        return frozenset()
+    connector_names_by_base: dict[str, set[str]] = {}
+    for firewall in firewalls:
+        if not isinstance(firewall, dict):
+            continue
+        raw_name = firewall.get("name")
+        raw_apis = firewall.get("apis")
+        if not isinstance(raw_name, str) or raw_name == "" or not isinstance(raw_apis, list):
+            continue
+        for api in raw_apis:
+            if not isinstance(api, dict):
+                continue
+            raw_base = api.get("base")
+            if not isinstance(raw_base, str) or not _manifest_str_tuple(api.get("envNames")):
+                continue
+            base_key = _diagnostic_static_base_key(raw_base)
+            if base_key is None:
+                continue
+            connector_names = connector_names_by_base.setdefault(base_key, set())
+            connector_names.add(raw_name)
+    return frozenset(
+        base_key
+        for base_key, connector_names in connector_names_by_base.items()
+        if len(connector_names) > 1
+    )
+
+
 def _url_hostname(url: str) -> str | None:
     try:
         hostname = urllib.parse.urlparse(url).hostname
@@ -365,7 +412,11 @@ def _diagnostic_firewall_from_manifest(firewall: object) -> dict | None:
     return {"name": raw_name, "apis": apis}
 
 
-def _route_aware_diagnostic_firewall_from_manifest(firewall: object) -> dict | None:
+def _route_aware_diagnostic_firewall_from_manifest(
+    firewall: object,
+    *,
+    shared_base_keys: frozenset[str],
+) -> dict | None:
     if not isinstance(firewall, dict):
         return None
     raw_name = firewall.get("name")
@@ -377,7 +428,10 @@ def _route_aware_diagnostic_firewall_from_manifest(firewall: object) -> dict | N
 
     apis: list[dict] = []
     for api in raw_apis:
-        diagnostic_api = _route_aware_diagnostic_api_from_manifest(api)
+        diagnostic_api = _route_aware_diagnostic_api_from_manifest(
+            api,
+            shared_base_keys=shared_base_keys,
+        )
         if diagnostic_api is not None:
             apis.append(diagnostic_api)
 
@@ -430,13 +484,18 @@ def _diagnostic_api_from_manifest(api: object) -> dict | None:
     }
 
 
-def _route_aware_diagnostic_api_from_manifest(api: object) -> dict | None:
+def _route_aware_diagnostic_api_from_manifest(
+    api: object,
+    *,
+    shared_base_keys: frozenset[str],
+) -> dict | None:
     if not isinstance(api, dict):
         return None
     raw_base = api.get("base")
-    if not isinstance(raw_base, str) or _has_dynamic_base_marker(raw_base):
+    if not isinstance(raw_base, str):
         return None
-    if not matching.firewall_base_config_is_valid(raw_base):
+    base_key = _diagnostic_static_base_key(raw_base)
+    if base_key is None or base_key not in shared_base_keys:
         return None
 
     env_names = _manifest_str_tuple(api.get("envNames"))
