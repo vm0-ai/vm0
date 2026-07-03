@@ -2446,7 +2446,7 @@ function TriggerCreateCategoryButton({
         "flex h-8 w-full shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 transition-colors duration-200",
         active
           ? "bg-gray-200 font-medium text-gray-900"
-          : "text-sidebar-foreground hover:bg-sidebar-accent",
+          : "text-sidebar-foreground hover:bg-gray-50",
       )}
     >
       <Icon size={16} className="shrink-0" />
