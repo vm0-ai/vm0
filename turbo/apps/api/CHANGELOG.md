@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.214.0](https://github.com/vm0-ai/vm0/compare/api-v1.213.0...api-v1.214.0) (2026-07-03)
+
+
+### Features
+
+* migrate legacy automations to workflow schedule triggers globally ([#20033](https://github.com/vm0-ai/vm0/issues/20033)) ([eeb91c2](https://github.com/vm0-ai/vm0/commit/eeb91c258a50f67b05a341ebbbbb7e1b872d0030))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.392.0
+    * @vm0/db bumped to 1.87.0
+
 ## [1.213.0](https://github.com/vm0-ai/vm0/compare/api-v1.212.2...api-v1.213.0) (2026-07-03)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.2...guest-contracts-v0.3.3) (2026-07-03)
+
+
+### Bug Fixes
+
+* move runner bootstrap payloads out of env ([#19989](https://github.com/vm0-ai/vm0/issues/19989)) ([847d8d2](https://github.com/vm0-ai/vm0/commit/847d8d24372d84568133007db87c44a0ebd72b95))
+
 ## [0.3.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.1...guest-contracts-v0.3.2) (2026-07-01)
 
 
