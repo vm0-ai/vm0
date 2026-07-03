@@ -864,6 +864,94 @@
       }
     },
     {
+      "name": "same-specificity allowed permission wins over blocked permission",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "items.blocked",
+                  "rules": ["GET /items/{id}"]
+                },
+                {
+                  "name": "items.allowed",
+                  "rules": ["GET /items/{itemId}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": [],
+          "deny": ["items.blocked"],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/items/123",
+        "permission": "items.allowed",
+        "rule": "GET /items/{itemId}"
+      }
+    },
+    {
+      "name": "more-specific blocked permission wins over broader allowed permission",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "items.broad",
+                  "rules": ["GET /items/{path+}"]
+                },
+                {
+                  "name": "items.specific",
+                  "rules": ["GET /items/admin"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": [],
+          "deny": ["items.specific"],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/admin"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/items/admin",
+        "reason": "permission_denied",
+        "permissions": ["items.specific"]
+      }
+    },
+    {
       "name": "unknown endpoint follows deny policy",
       "firewalls": [
         {
