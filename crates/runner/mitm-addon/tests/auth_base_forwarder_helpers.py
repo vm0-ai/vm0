@@ -8,7 +8,14 @@ from unittest.mock import patch
 
 import auth_base_forwarder as forwarder
 
-__all__ = ["FakeForwarderUpstream", "FakeSocket", "fake_forwarder_upstream", "http_response"]
+__all__ = [
+    "FakeForwarderUpstream",
+    "FakeResponseFile",
+    "FakeSocket",
+    "FakeTLSContext",
+    "fake_forwarder_upstream",
+    "http_response",
+]
 
 
 def _addrinfo(address: str, port: int):
@@ -46,7 +53,14 @@ def http_response(
     return f"HTTP/1.1 {status} {reason}\r\n".encode("ascii") + header_bytes + b"\r\n" + body
 
 
-class _FakeResponseFile(io.BytesIO):
+class FakeResponseFile(io.BytesIO):
+    """Readable response handle exposed through ``FakeSocket.response_file``.
+
+    Tests use this object to assert how the real forwarder read and closed the
+    upstream response. ``read_sizes`` and ``close_count`` are stable assertion
+    state.
+    """
+
     def __init__(
         self,
         payload: bytes,
@@ -106,7 +120,7 @@ class FakeSocket:
         self._setsockopt_side_effect = setsockopt_side_effect
         self._on_action = on_action
         self.sent = bytearray()
-        self.response_file: _FakeResponseFile | None = None
+        self.response_file: FakeResponseFile | None = None
         self.closed = False
         self.close_count = 0
         self.setsockopt_calls: list[tuple[int, int, int]] = []
@@ -127,11 +141,11 @@ class FakeSocket:
             raise self._send_side_effect
         self.sent.extend(data)
 
-    def makefile(self, *_args, **_kwargs) -> _FakeResponseFile:
+    def makefile(self, *_args, **_kwargs) -> FakeResponseFile:
         self._record_action()
         if self._makefile_side_effect is not None:
             raise self._makefile_side_effect
-        self.response_file = _FakeResponseFile(
+        self.response_file = FakeResponseFile(
             self._response,
             read_side_effect=self._read_side_effect,
             on_action=self._on_action,
@@ -163,7 +177,14 @@ class FakeSocket:
 _CreateConnection = Callable[[tuple[str, int], object, object], FakeSocket]
 
 
-class _FakeTLSContext:
+class FakeTLSContext:
+    """TLS context test double created by ``fake_forwarder_upstream``.
+
+    Tests use ``server_hostnames`` to assert SNI behavior. ``alpn_protocols`` and
+    ``post_handshake_auth`` reflect how the real forwarder configures the TLS
+    context before wrapping sockets.
+    """
+
     def __init__(
         self,
         *,
@@ -225,7 +246,7 @@ class FakeForwarderUpstream:
         self._on_action = on_action
         self._create_connection = create_connection
         self.sockets: list[FakeSocket] = []
-        self.contexts: list[_FakeTLSContext] = []
+        self.contexts: list[FakeTLSContext] = []
         self.getaddrinfo_calls: list[tuple[str, int]] = []
         self.create_connection_calls: list[tuple[tuple[str, int], object, object]] = []
 
@@ -252,8 +273,8 @@ class FakeForwarderUpstream:
             on_action=self._on_action,
         )
 
-    def create_default_context(self) -> _FakeTLSContext:
-        context = _FakeTLSContext(
+    def create_default_context(self) -> FakeTLSContext:
+        context = FakeTLSContext(
             wrap_side_effect=self._wrap_side_effect,
             on_action=self._on_action,
         )
