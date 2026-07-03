@@ -567,7 +567,7 @@ function WorkflowChatButton({
   const pageSignal = useGet(pageSignal$);
   const [openLoadable, openWorkflowChat] = useLoadableSet(openWorkflowChat$);
   const opening = openLoadable.state === "loading";
-  const chatLabel = `Chat with ${agentLabel(detail)}`;
+  const chatLabel = `Refine with ${agentLabel(detail)}`;
 
   return (
     <Button
