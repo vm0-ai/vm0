@@ -13,7 +13,6 @@ export async function notifyRunnerJob(
     readonly cliAgentSessionId: string | null;
   },
 ): Promise<boolean> {
-  const publishStartedAt = now();
   const currentDate = nowDate();
   const affinity = await runnerSessionAffinityProtection({
     db,
@@ -23,6 +22,7 @@ export async function notifyRunnerJob(
     createdAt: currentDate,
     currentDate,
   });
+  const publishStartedAt = now();
   const published = await publishRunnerJobNotification(
     args.runnerGroup,
     args.runId,
