@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.537.0](https://github.com/vm0-ai/vm0/compare/app-v0.536.0...app-v0.537.0) (2026-07-03)
+
+
+### Features
+
+* add Google Meet transcript-generated workflow trigger ([#19789](https://github.com/vm0-ai/vm0/issues/19789)) ([91aef71](https://github.com/vm0-ai/vm0/commit/91aef711953cb2107c62ae7d2d3a7f9da38a071f))
+* rename templates picker modal title to Create with template ([#19958](https://github.com/vm0-ai/vm0/issues/19958)) ([d5d3536](https://github.com/vm0-ai/vm0/commit/d5d3536a69f5065bb1cd79afb25505122499a917))
+
+
+### Bug Fixes
+
+* align chat video attachment preview size ([#19872](https://github.com/vm0-ai/vm0/issues/19872)) ([5d2668e](https://github.com/vm0-ai/vm0/commit/5d2668e344d09be1de9909f9d0d296ad14a0772b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.146.0
+    * @vm0/connectors bumped to 1.131.0
+    * @vm0/core bumped to 8.391.2
+
 ## [0.536.0](https://github.com/vm0-ai/vm0/compare/app-v0.535.0...app-v0.536.0) (2026-07-03)
 
 

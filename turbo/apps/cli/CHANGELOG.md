@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.222.0](https://github.com/vm0-ai/vm0/compare/cli-v9.221.9...cli-v9.222.0) (2026-07-03)
+
+
+### Features
+
+* add Google Meet transcript-generated workflow trigger ([#19789](https://github.com/vm0-ai/vm0/issues/19789)) ([91aef71](https://github.com/vm0-ai/vm0/commit/91aef711953cb2107c62ae7d2d3a7f9da38a071f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.146.0
+    * @vm0/connectors bumped to 1.131.0
+    * @vm0/core bumped to 8.391.2
+
 ## [9.221.9](https://github.com/vm0-ai/vm0/compare/cli-v9.221.8...cli-v9.221.9) (2026-07-03)
 
 
