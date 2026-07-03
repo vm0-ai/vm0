@@ -70,6 +70,7 @@ const POLL_FAST: Duration = Duration::from_secs(5);
 /// Retry delay after a job-notification wakeup reaches poll but poll fails.
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
 const DIRECT_CANDIDATE_INBOX_CAPACITY: usize = 128;
+const CONNECTOR_POLICY_REFRESH_TIMEOUT: Duration = Duration::from_secs(3);
 
 enum DiscoveryWakeup {
     Direct(DirectJobCandidate),
@@ -534,22 +535,29 @@ impl ApiClient {
     ) -> RunnerResult<ConnectorPolicyRefreshResponse> {
         let run_id = run_id.to_string();
         let resp = send_api(
-            self.http
-                .request_resolved_route(
-                    routes::runners::runs::by_run_id::connector_network_policy::route(
-                        routes::runners::runs::by_run_id::connector_network_policy::Params {
-                            run_id: run_id.as_str(),
-                        },
-                    ),
-                    &self.token,
-                )
-                .json(&serde_json::json!({ "connectorRef": connector_ref })),
+            self.connector_policy_refresh_request(&run_id, connector_ref),
             "connector policy refresh",
         )
         .await?;
 
         let resp = check_api_status(resp, "connector policy refresh").await?;
         decode_api_json(resp, "connector policy refresh").await
+    }
+
+    fn connector_policy_refresh_request(
+        &self,
+        run_id: &str,
+        connector_ref: &str,
+    ) -> RequestBuilder {
+        self.http
+            .request_resolved_route(
+                routes::runners::runs::by_run_id::connector_network_policy::route(
+                    routes::runners::runs::by_run_id::connector_network_policy::Params { run_id },
+                ),
+                &self.token,
+            )
+            .timeout(CONNECTOR_POLICY_REFRESH_TIMEOUT)
+            .json(&serde_json::json!({ "connectorRef": connector_ref }))
     }
 }
 
@@ -888,6 +896,19 @@ mod tests {
             .unwrap(),
             "runner-token".to_string(),
         )
+    }
+
+    #[test]
+    fn connector_policy_refresh_request_uses_short_timeout() {
+        let server = MockServer::start();
+        let api = api_client_for_server(&server);
+
+        let request = api
+            .connector_policy_refresh_request("00000000-0000-0000-0000-000000000001", "slack")
+            .build()
+            .expect("connector policy refresh request should build");
+
+        assert_eq!(request.timeout(), Some(&CONNECTOR_POLICY_REFRESH_TIMEOUT));
     }
 
     fn assert_api_error(err: RunnerError, expected: &str) {
