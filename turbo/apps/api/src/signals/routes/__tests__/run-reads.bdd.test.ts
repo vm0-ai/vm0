@@ -16,10 +16,7 @@ import {
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
-import {
-  createRunsAutomationsApi,
-  uniqueAutomationName,
-} from "./helpers/api-bdd-runs-automations";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -3465,20 +3462,6 @@ describe("RUN-04: agent run telemetry families", () => {
   });
 });
 
-/**
- * Quiet capture handlers for the callback URLs a schedule-fired run can
- * still deliver over HTTP, so cancelling the run-now run never hits an unhandled MSW route
- * (same pattern as runs-schedules.bdd.test.ts).
- */
-function captureScheduleRunCallbacks(): void {
-  webhooks.captureInternalCallbackDeliveries(
-    "/api/internal/callbacks/schedule/loop",
-  );
-  webhooks.captureInternalCallbackDeliveries(
-    "/api/internal/callbacks/schedule/cron",
-  );
-}
-
 describe("RUN-04/OPS-01: zero run logs", () => {
   it("lists run logs with filters, paging, zero tokens, and detail residue", async () => {
     const actor = await entitledActor();
@@ -3504,7 +3487,6 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     const agentOneName = (
       await authOrg.readComposeById(actor, agentOne.agentId)
     ).name;
-    captureScheduleRunCallbacks();
 
     const webRun = await api.createRun(actor, {
       agentId: agentOne.agentId,
@@ -3524,27 +3506,10 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     });
     await api.requestCancelRun(actor, cliRun.runId, [200]);
 
-    // A far-future yearly cron keeps the global execute-schedules sweep from
-    // ever considering this schedule due; only run-now fires it.
-    const schedule = await api.deployAutomation(actor, {
-      name: uniqueAutomationName("bdd-log-sched"),
-      agentId: agentOne.agentId,
-      cronExpression: "0 0 1 1 *",
-      prompt: "scheduled run for logs",
-      description: "Schedule-source log entries",
-      timezone: "UTC",
-      enabled: true,
-    });
-    const scheduleRun = await api.requestRunAutomation(
-      actor,
-      schedule.automation.id,
-      [201],
-    );
-    if (scheduleRun.status !== 201) {
-      throw new Error("Expected the run-now schedule run to be created");
-    }
-    await api.requestCancelRun(actor, scheduleRun.body.runId, [200]);
-
+    // The automation-sourced log leg was removed with the automation ->
+    // workflow cutover (#19959): the frozen legacy API can no longer create
+    // or fire automations. Trigger-source provenance for workflow runs is
+    // covered by the workflow trigger suites.
     const memberRun = await api.createRun(member, {
       agentId: memberAgent.agentId,
       prompt: "member run stays invisible",
@@ -3558,12 +3523,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       return entry.id;
     });
     expect([...listedIds].sort()).toStrictEqual(
-      [
-        webRun.runId,
-        secondAgentRun.runId,
-        cliRun.runId,
-        scheduleRun.body.runId,
-      ].sort(),
+      [webRun.runId, secondAgentRun.runId, cliRun.runId].sort(),
     );
 
     const invalidListSince = await reads.requestListLogs(
@@ -3594,14 +3554,6 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       triggerSource: "cli",
       automationId: null,
     });
-    const scheduleEntry = listed.body.data.find((entry) => {
-      return entry.id === scheduleRun.body.runId;
-    });
-    expect(scheduleEntry).toMatchObject({
-      triggerSource: "automation",
-      automationId: schedule.automation.id,
-    });
-
     const pageOne = await reads.requestListLogs(actor, { limit: 1 }, [200]);
     mustOk(pageOne, "the first log page");
     expect(pageOne.body.data).toHaveLength(1);
@@ -3645,7 +3597,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     mustOk(malformedCursorId, "malformed cursor id list");
     expect(malformedCursorId.body.data[0]?.id).toBe(pageOne.body.data[0]?.id);
 
-    const agentOneRunIds = [webRun.runId, scheduleRun.body.runId].sort();
+    const agentOneRunIds = [webRun.runId];
     const fuzzy = await reads.requestListLogs(
       actor,
       { search: agentOneName.toUpperCase() },
@@ -3708,11 +3660,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       [200],
     );
     mustOk(automationSourceList, "automation-source log list");
-    expect(
-      automationSourceList.body.data.map((entry) => {
-        return entry.id;
-      }),
-    ).toStrictEqual([scheduleRun.body.runId]);
+    expect(automationSourceList.body.data).toStrictEqual([]);
 
     const noSourceMatch = await reads.requestListLogs(
       actor,
@@ -3722,38 +3670,15 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     mustOk(noSourceMatch, "the empty source list");
     expect(noSourceMatch.body.data).toStrictEqual([]);
 
-    const byAutomationId = await reads.requestListLogs(
-      actor,
-      { automationId: schedule.automation.id, limit: 1 },
-      [200],
-    );
-    mustOk(byAutomationId, "the automation-filtered list");
-    expect(byAutomationId.body.data).toStrictEqual([
-      expect.objectContaining({ id: scheduleRun.body.runId }),
-    ]);
-    expect(byAutomationId.body.pagination.totalPages).toBe(1);
-
     expect(listed.body.filters.statuses).toContain("cancelled");
     expect([...listed.body.filters.sources].sort()).toStrictEqual([
-      "automation",
       "cli",
       "web",
     ]);
     expect(listed.body.filters.agents).toContain(agentOne.agentId);
     expect(listed.body.filters.agents).toContain(agentTwo.agentId);
 
-    // Detail residue: schedule provenance, pending nulls, and failure error.
-    const scheduleDetail = await reads.requestReadLogById(
-      actor,
-      scheduleRun.body.runId,
-      [200],
-    );
-    expect(scheduleDetail.body).toMatchObject({
-      id: scheduleRun.body.runId,
-      triggerSource: "automation",
-      automationId: schedule.automation.id,
-    });
-
+    // Detail residue: pending nulls and failure error.
     const pendingRun = await api.createRun(actor, {
       agentId: agentOne.agentId,
       prompt: "pending detail run",
