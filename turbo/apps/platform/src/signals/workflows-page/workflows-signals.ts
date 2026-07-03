@@ -46,20 +46,17 @@ export type WorkflowFilter =
   | "private"
   | "public";
 export type WorkflowSortMode = "next-run" | "alphabetical" | "created";
-export type WorkflowCopyDialogAgent = {
-  readonly id: string;
-  readonly displayName: string | null;
-  readonly visibility?: string | null;
-};
-export type WorkflowCopyDialogState =
-  | { readonly kind: "select" }
-  | { readonly kind: "copying"; readonly agent: WorkflowCopyDialogAgent }
-  | {
-      readonly kind: "copied";
-      readonly agent: WorkflowCopyDialogAgent;
-      readonly workflow: ZeroWorkflowSummary;
-      readonly sourceTriggersPaused: boolean;
-    };
+export interface WorkflowCopyFormState {
+  readonly selectedAgentId: string | null;
+  readonly removeOriginal: boolean;
+}
+
+function defaultWorkflowCopyForm(): WorkflowCopyFormState {
+  return {
+    selectedAgentId: null,
+    removeOriginal: false,
+  };
+}
 type WorkflowTriggerCreateDialog =
   | "interval"
   | "scheduled"
@@ -177,9 +174,9 @@ const internalWorkflowDetailActiveTab$ =
 
 const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
-const internalWorkflowCopyDialogState$ = state<WorkflowCopyDialogState>({
-  kind: "select",
-});
+const internalWorkflowCopyForm$ = state<WorkflowCopyFormState>(
+  defaultWorkflowCopyForm(),
+);
 const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
 const internalEditingWorkflowTriggerId$ = state<string | null>(null);
 const internalWorkflowMetadataPatch$ = state<WorkflowMetadataPatch | null>(
@@ -204,8 +201,8 @@ export const workflowActionDialog$ = computed((get) => {
   return get(internalWorkflowActionDialog$);
 });
 
-export const workflowCopyDialogState$ = computed((get) => {
-  return get(internalWorkflowCopyDialogState$);
+export const workflowCopyForm$ = computed((get) => {
+  return get(internalWorkflowCopyForm$);
 });
 
 const FILTER_PARAM = "filter";
@@ -277,15 +274,13 @@ export const setWorkflowSortMode$ = command(
 export const setWorkflowActionDialog$ = command(
   ({ set }, dialog: WorkflowDetailActionDialog) => {
     set(internalWorkflowActionDialog$, dialog);
-    if (dialog === "copy") {
-      set(internalWorkflowCopyDialogState$, { kind: "select" });
-    }
+    set(internalWorkflowCopyForm$, defaultWorkflowCopyForm());
   },
 );
 
-export const setWorkflowCopyDialogState$ = command(
-  ({ set }, copyState: WorkflowCopyDialogState) => {
-    set(internalWorkflowCopyDialogState$, copyState);
+export const setWorkflowCopyForm$ = command(
+  ({ set }, form: WorkflowCopyFormState) => {
+    set(internalWorkflowCopyForm$, form);
   },
 );
 
@@ -328,7 +323,7 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalWorkflowDetailActiveTab$, "automations");
   set(internalSelectedFilePath$, null);
   set(internalWorkflowActionDialog$, null);
-  set(internalWorkflowCopyDialogState$, { kind: "select" });
+  set(internalWorkflowCopyForm$, defaultWorkflowCopyForm());
   set(internalWorkflowFileDraft$, null);
   set(internalEditingWorkflowTriggerId$, null);
   set(internalWorkflowMetadataPatch$, null);
