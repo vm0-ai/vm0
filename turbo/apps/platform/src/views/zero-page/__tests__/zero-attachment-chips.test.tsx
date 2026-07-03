@@ -1297,6 +1297,86 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("navigates markdown images generated in an ordered assistant list", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/body-image-ordered-navigation/first.png";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/body-image-ordered-navigation/second.png";
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-body-image-ordered-navigation",
+            files: [
+              artifactFile(firstImageUrl, {
+                id: "artifact-body-ordered-first-image",
+                filename: "first.png",
+                contentType: "image/png",
+                size: 128,
+              }),
+              artifactFile(secondImageUrl, {
+                id: "artifact-body-ordered-second-image",
+                filename: "second.png",
+                contentType: "image/png",
+                size: 256,
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-body-image-ordered-navigation",
+          role: "assistant",
+          content: [
+            "Generated images:",
+            "",
+            `1. ![first.png](${firstImageUrl})`,
+            `2. ![second.png](${secondImageUrl})`,
+          ].join("\n"),
+          runId: "run-body-image-ordered-navigation",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
+      },
+    });
+
+    const bodyImage = await screen.findByAltText("first.png");
+    const previewButton = bodyImage.closest("button");
+    if (!previewButton) {
+      throw new Error("Markdown image preview button not found");
+    }
+    fireEvent.load(bodyImage);
+    click(previewButton);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+    expect(screen.getByLabelText("Next image artifact")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Next image artifact"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "second.png",
+      );
+    });
+  });
+
   it("navigates human-uploaded images that are not run artifacts", async () => {
     const user = userEvent.setup({ delay: null });
     const firstImageUrl =

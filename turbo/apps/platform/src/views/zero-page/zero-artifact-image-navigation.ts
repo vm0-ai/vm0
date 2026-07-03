@@ -6,6 +6,7 @@ import {
   type BodyRenderBlock,
   classifyChatAttachment,
 } from "../../signals/chat-page/parse-body-blocks.ts";
+import { artifactPreviewUrlsMatch } from "./zero-attachment-url.ts";
 
 export type ImageArtifactNavigationItem = {
   readonly url: string;
@@ -34,6 +35,8 @@ type ImageArtifactNavigation = {
  * agent-generated images). Structurally satisfied by `EnrichedChatMessage`.
  */
 type MessageImageSource = {
+  readonly role?: "user" | "assistant";
+  readonly runId?: string;
   readonly attachFiles?: readonly {
     readonly url: string;
     readonly filename: string;
@@ -59,6 +62,11 @@ function isImageDescriptor(descriptor: {
 type MessageImage = {
   readonly url: string;
   readonly filename: string;
+};
+
+type ArtifactImageMetadata = {
+  readonly file: ChatThreadArtifactFile;
+  readonly runId: string;
 };
 
 // Matches a markdown image `![alt](url)`, capturing the alt (filename) and url
@@ -110,14 +118,65 @@ function messageImages(message: MessageImageSource): MessageImage[] {
   return images;
 }
 
+function messageHasImageUrl(
+  message: MessageImageSource,
+  currentUrl: string,
+): boolean {
+  return messageImages(message).some((image) => {
+    return artifactPreviewUrlsMatch(image.url, currentUrl);
+  });
+}
+
+function navigationScopeMessages(
+  messages: readonly MessageImageSource[],
+  currentMessage: MessageImageSource,
+): readonly MessageImageSource[] {
+  if (currentMessage.role !== "assistant" || !currentMessage.runId) {
+    return [currentMessage];
+  }
+  return messages.filter((candidate) => {
+    return (
+      candidate.role === "assistant" && candidate.runId === currentMessage.runId
+    );
+  });
+}
+
+function scopedMessageImages(
+  messages: readonly MessageImageSource[],
+): MessageImage[] {
+  const images: MessageImage[] = [];
+  for (const message of messages) {
+    for (const image of messageImages(message)) {
+      if (
+        images.some((candidate) => {
+          return artifactPreviewUrlsMatch(candidate.url, image.url);
+        })
+      ) {
+        continue;
+      }
+      images.push(image);
+    }
+  }
+  return images;
+}
+
+function artifactMetadataForUrl(
+  artifacts: readonly ArtifactImageMetadata[],
+  url: string,
+): ArtifactImageMetadata | undefined {
+  return artifacts.find((artifact) => {
+    return artifactPreviewUrlsMatch(artifact.file.url, url);
+  });
+}
+
 /**
- * Navigate image previews strictly within the images shown in the same chat
- * message as `currentUrl`. The message is the source of truth (both attached
- * files and body-rendered images), so both human-uploaded and agent-generated
- * images navigate. Run artifacts only enrich metadata when available; images
- * that are not run artifacts (human uploads) still navigate with url + filename.
- * Generated/hosted artifacts that live in the run but are not shown in the
- * message are excluded.
+ * Navigate image previews within the displayed image scope for `currentUrl`.
+ * User images stay scoped to their single message. Assistant images with a
+ * runId navigate across that run's rendered assistant messages, because a
+ * single generated result can be persisted as multiple assistant message rows
+ * while still rendering as one visual assistant group. Run artifacts only
+ * enrich metadata when available; generated/hosted artifacts that live in the
+ * run but are not shown in rendered messages are excluded.
  */
 export function currentMessageImageArtifactNavigation(
   runs: readonly ChatThreadArtifactRun[],
@@ -125,42 +184,35 @@ export function currentMessageImageArtifactNavigation(
   currentUrl: string,
 ): ImageArtifactNavigation {
   const message = messages.find((candidate) => {
-    return messageImages(candidate).some((image) => {
-      return image.url === currentUrl;
-    });
+    return messageHasImageUrl(candidate, currentUrl);
   });
 
   if (!message) {
     return {};
   }
 
-  const artifactByUrl = new Map<
-    string,
-    { file: ChatThreadArtifactFile; runId: string }
-  >();
+  const artifacts: ArtifactImageMetadata[] = [];
   for (const run of runs) {
     for (const file of run.files) {
-      if (!artifactByUrl.has(file.url)) {
-        artifactByUrl.set(file.url, { file, runId: run.runId });
-      }
+      artifacts.push({ file, runId: run.runId });
     }
   }
 
-  const images: ImageArtifactNavigationItem[] = messageImages(message).map(
-    (image) => {
-      const artifact = artifactByUrl.get(image.url);
-      if (artifact) {
-        return {
-          url: image.url,
-          filename: artifact.file.filename,
-          artifact,
-        };
-      }
-      return { url: image.url, filename: image.filename };
-    },
-  );
+  const images: ImageArtifactNavigationItem[] = scopedMessageImages(
+    navigationScopeMessages(messages, message),
+  ).map((image) => {
+    const artifact = artifactMetadataForUrl(artifacts, image.url);
+    if (artifact) {
+      return {
+        url: image.url,
+        filename: artifact.file.filename,
+        artifact,
+      };
+    }
+    return { url: image.url, filename: image.filename };
+  });
   const currentIndex = images.findIndex((item) => {
-    return item.url === currentUrl;
+    return artifactPreviewUrlsMatch(item.url, currentUrl);
   });
 
   if (currentIndex === -1) {
