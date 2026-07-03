@@ -748,7 +748,10 @@ async function upsertOrgModelProvider(
   actor: ApiTestUser,
   body: {
     readonly type:
-      "anthropic-api-key" | "deepseek-api-key" | "openrouter-api-key" | "vm0";
+      | "anthropic-api-key"
+      | "deepseek-api-key"
+      | "openrouter-api-key"
+      | "vm0";
     readonly secret?: string;
   },
 ): Promise<{ readonly providerId: string; readonly created: boolean }> {
