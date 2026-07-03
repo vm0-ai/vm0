@@ -21,7 +21,7 @@ import {
   setSearch,
 } from "../signals/location";
 import { vi } from "vitest";
-import type { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { setMockFeatureSwitches } from "../mocks/handlers/api-feature-switches.helpers";
 import { FEATURE_SWITCH_CACHE_KEY } from "../signals/external/feature-switch";
@@ -126,16 +126,24 @@ export async function setupPage(options: {
   const defaultOrgId = "org_default";
   const activeOrgId = options.org ? options.org.activeOrg?.id : defaultOrgId;
   options.context.store.set(clearFeatureSwitchCacheForTest$);
-  if (options.featureSwitches) {
-    setMockFeatureSwitches(options.featureSwitches);
-    options.context.store.set(
-      setFeatureSwitchCacheForTest$,
-      getAllFeatureStates({
-        orgId: activeOrgId,
-        overrides: options.featureSwitches,
-      }),
-    );
-  }
+  // workflowAutomation went globally on with the automation -> workflow
+  // cutover (#19959), which swaps the plain-textarea composer for the tiptap
+  // workflow composer. The platform suite predates that flip and drives the
+  // textarea, so tests pin the switch off by default; tiptap-composer variants
+  // opt in with an explicit `featureSwitches` override. Migrating the suite to
+  // the tiptap default is tracked with the legacy automation removal.
+  const featureSwitchOverrides = {
+    [FeatureSwitchKey.WorkflowAutomation]: false,
+    ...options.featureSwitches,
+  };
+  setMockFeatureSwitches(featureSwitchOverrides);
+  options.context.store.set(
+    setFeatureSwitchCacheForTest$,
+    getAllFeatureStates({
+      orgId: activeOrgId,
+      overrides: featureSwitchOverrides,
+    }),
+  );
 
   mockUser(
     options.user !== undefined

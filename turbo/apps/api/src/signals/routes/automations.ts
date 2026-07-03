@@ -6,8 +6,6 @@ import {
   type AutomationResponse,
   type AutomationTriggerResponse,
 } from "@vm0/api-contracts/contracts/automations";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -29,7 +27,6 @@ import {
   type AutomationTriggerRow,
   type AutomationView,
 } from "../services/automations.service";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 
 const NOT_FOUND_MESSAGE = "Resource not found";
@@ -107,17 +104,17 @@ function automationResponse(view: AutomationView): AutomationResponse {
   };
 }
 
-const scheduleAutomationToWorkflowTriggerEnabled$ = command(async ({ get }) => {
-  const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  return isFeatureEnabled(FeatureSwitchKey.WorkflowAutomation, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-    overrides,
-  });
-});
+// Legacy automations are frozen after the workflow cutover (#19959): every
+// mutating route returns 403 unconditionally and legacy rows remain readable
+// provenance data. Deliberately NOT feature-switch based — `isFeatureEnabled`
+// honors per-user overrides first, so a switch-based gate would let a user
+// override reopen the legacy write path and re-enable a frozen trigger,
+// double-firing alongside its migrated workflow trigger. A function (rather
+// than a literal const) keeps the guarded handler bodies statically reachable
+// for lint until the legacy removal deletes them.
+function legacyAutomationMutationsDisabled(): boolean {
+  return true;
+}
 
 function scheduleAutomationDisabled() {
   return forbidden(SCHEDULE_AUTOMATION_DISABLED_MESSAGE);
@@ -125,7 +122,7 @@ function scheduleAutomationDisabled() {
 
 const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (await set(scheduleAutomationToWorkflowTriggerEnabled$)) {
+  if (legacyAutomationMutationsDisabled()) {
     return scheduleAutomationDisabled();
   }
   signal.throwIfAborted();
@@ -208,6 +205,9 @@ const showInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  if (legacyAutomationMutationsDisabled()) {
+    return scheduleAutomationDisabled();
+  }
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(automationsByRefContract.update));
   const bodyResult = await get(bodyResultOf(automationsByRefContract.update));
@@ -241,6 +241,9 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  if (legacyAutomationMutationsDisabled()) {
+    return scheduleAutomationDisabled();
+  }
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(automationsByRefContract.delete));
 
@@ -265,7 +268,7 @@ function makeSetEnabledInner(enabled: boolean) {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(automationsByRefContract.enable));
 
-    if (enabled && (await set(scheduleAutomationToWorkflowTriggerEnabled$))) {
+    if (legacyAutomationMutationsDisabled()) {
       return scheduleAutomationDisabled();
     }
     signal.throwIfAborted();
@@ -305,6 +308,9 @@ const enableInner$ = makeSetEnabledInner(true);
 const disableInner$ = makeSetEnabledInner(false);
 
 const runInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  if (legacyAutomationMutationsDisabled()) {
+    return scheduleAutomationDisabled();
+  }
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(automationsByRefContract.run));
 
@@ -354,6 +360,9 @@ const showTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const updateTriggerInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    if (legacyAutomationMutationsDisabled()) {
+      return scheduleAutomationDisabled();
+    }
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(automationTriggersContract.update));
     const bodyResult = await get(
@@ -391,7 +400,7 @@ function makeSetTriggerEnabledInner(enabled: boolean) {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(automationTriggersContract.enable));
 
-    if (enabled && (await set(scheduleAutomationToWorkflowTriggerEnabled$))) {
+    if (legacyAutomationMutationsDisabled()) {
       return scheduleAutomationDisabled();
     }
     signal.throwIfAborted();

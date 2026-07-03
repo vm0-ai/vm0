@@ -216,42 +216,8 @@ export async function patchAutomationTriggerState(
   await expectOk(response, "patchAutomationTriggerState");
 }
 
-export async function cleanupCreatedAutomations(
-  context: TestContext,
-  fixture: AutomationsFixture,
-): Promise<void> {
-  await postAction(context, {
-    action: "cleanup-created-automations",
-    org_id: fixture.orgId,
-  });
-}
 
-export async function seedExtraCompose(
-  context: TestContext,
-  fixture: AutomationsFixture,
-  composeId: string,
-): Promise<string> {
-  const response = await postAction(context, {
-    action: "seed-compose",
-    org_id: fixture.orgId,
-    user_id: fixture.userId,
-    compose_id: composeId,
-  });
-  if (!response.compose_id) {
-    throw new Error("seedExtraCompose did not return compose_id");
-  }
-  return response.compose_id;
-}
 
-export async function deleteExtraCompose(
-  context: TestContext,
-  composeId: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "delete-compose",
-    compose_id: composeId,
-  });
-}
 
 export async function deleteOrgMembership(
   context: TestContext,

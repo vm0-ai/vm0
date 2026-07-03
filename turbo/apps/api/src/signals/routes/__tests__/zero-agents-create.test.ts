@@ -4,14 +4,8 @@ import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
-import {
-  automationsByRefContract,
-  automationsMainContract,
-} from "@vm0/api-contracts/contracts/automations";
-import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
@@ -52,43 +46,9 @@ function agentsByIdClient() {
   return setupApp({ context })(zeroAgentsByIdContract);
 }
 
-function automationsClient() {
-  return setupApp({ context })(automationsMainContract);
-}
-
-function automationsByRefClient() {
-  return setupApp({ context })(automationsByRefContract);
-}
-
-function modelProvidersClient() {
-  return setupApp({ context })(zeroModelProvidersMainContract);
-}
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
-}
-
-async function completeLimitedFreeWorkspace(
-  fixture: AgentsFixture,
-): Promise<void> {
-  authOrgApi.acceptAgentStorageWrites();
-  const setup = await authOrgApi.setupOnboarding(fixture, {
-    displayName: "BDD Agent Create Workspace",
-  });
-  if (setup.status !== 200 && setup.status !== 409) {
-    throw new Error(
-      `Expected onboarding setup to succeed, got ${setup.status}`,
-    );
-  }
-  const completed = await authOrgApi.completeLimitedFreeOnboarding(fixture, {
-    credits: 1000,
-    expiresAt: null,
-  });
-  if (completed.status !== 200) {
-    throw new Error(
-      `Expected limited-free onboarding to succeed, got ${completed.status}`,
-    );
-  }
 }
 
 describe("POST /api/zero/agents", () => {
@@ -283,62 +243,8 @@ describe("POST /api/zero/agents", () => {
     expect(response.body.displayName).toBe("After Delete");
   });
 
-  it("executes an automation for an agent created via POST /api/zero/agents", async () => {
-    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
-    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-    const fixture = agentsFixture("automation");
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    await completeLimitedFreeWorkspace(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    await accept(
-      modelProvidersClient().upsert({
-        headers: authHeaders(),
-        body: { type: "anthropic-api-key", secret: "sk-ant-test" },
-      }),
-      [201],
-    );
-    context.mocks.s3.send.mockClear();
-    context.mocks.s3.send.mockResolvedValue({});
-
-    const created = await accept(
-      agentsClient().create({
-        headers: authHeaders(),
-        body: { displayName: "Schedule Bug Agent" },
-      }),
-      [201],
-    );
-
-    const deployed = await accept(
-      automationsClient().create({
-        headers: authHeaders(),
-        body: {
-          agentId: created.body.agentId,
-          name: "zero-api-run",
-          instruction: "Scheduled run",
-          trigger: { kind: "cron", cronExpression: "0 9 * * *" },
-        },
-      }),
-      [201],
-    );
-
-    const enabled = await accept(
-      automationsByRefClient().enable({
-        params: { ref: deployed.body.automation.id },
-        headers: authHeaders(),
-        body: {},
-      }),
-      [200],
-    );
-    expect(enabled.body.enabled).toBeTruthy();
-
-    const run = await accept(
-      automationsByRefClient().run({
-        params: { ref: deployed.body.automation.id },
-        headers: authHeaders(),
-        body: {},
-      }),
-      [201],
-    );
-    expect(run.body.runId).toStrictEqual(expect.any(String));
-  });
+  // The "agent created via POST /api/zero/agents is automatable" regression
+  // was removed with the automation -> workflow cutover (#19959): the frozen
+  // legacy automation API can no longer create or run automations. The
+  // agent-compose linkage is exercised by the workflow trigger tests.
 });
