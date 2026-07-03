@@ -156,7 +156,7 @@ const chatThreadEventData$ = computed(
   },
 );
 
-export const syncEventDrivenChatThreads$ = command(
+const syncEventDrivenChatThreads$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const store = await get(chatThreadEventStores$);
     signal.throwIfAborted();
@@ -211,7 +211,7 @@ export const subscribeEventDrivenChatThreads$ = command(
   },
 );
 
-export const chatThreadsSnapshot$ = computed(async (get) => {
+const chatThreadsSnapshot$ = computed(async (get) => {
   return (await get(chatThreadEventData$)).snapshot;
 });
 
@@ -241,7 +241,7 @@ export const eventDrivenChatThreads$ = computed(async (get) => {
   );
 });
 
-export const eventDrivenChatThreadMetaMap$ = computed(async (get) => {
+const eventDrivenChatThreadMetaMap$ = computed(async (get) => {
   return new Map<string, ThreadMeta>(
     (await get(eventDrivenChatThreads$)).map((thread) => {
       return [
