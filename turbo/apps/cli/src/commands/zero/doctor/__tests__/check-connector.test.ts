@@ -1119,7 +1119,7 @@ describe("zero doctor check-connector command", () => {
         "node",
         "cli",
         "--url",
-        "https://API.XERO.COM.:443/api.xro/2.0/Accounts?where=Name#ignored",
+        "https://API.XERO.COM.:443/api.xro/2.0/Accounts?token=secret-token#ignored",
       ]);
 
       const output = getOutput();
@@ -1132,6 +1132,9 @@ describe("zero doctor check-connector command", () => {
         "Matched permissions: [accounting.settings.read]",
       );
       expect(output).not.toContain("Matched permissions: [connections");
+      expect(output).not.toContain("secret-token");
+      expect(output).not.toContain("token=");
+      expect(output).not.toContain("#ignored");
     });
 
     it("should not resolve connector base paths without a segment boundary", async () => {
@@ -1145,7 +1148,7 @@ describe("zero doctor check-connector command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("No connector found for URL"),
+        expect.stringContaining("No connector found for provided URL"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -1591,7 +1594,7 @@ describe("zero doctor check-connector command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("No connector found for URL"),
+        expect.stringContaining("No connector found for provided URL"),
       );
     });
 
@@ -1636,7 +1639,7 @@ describe("zero doctor check-connector command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("No connector found for URL"),
+        expect.stringContaining("No connector found for provided URL"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

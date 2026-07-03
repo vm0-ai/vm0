@@ -114,6 +114,15 @@ function connectorEnvName(type: ConnectorType): string | null {
   return getConnectorEnvBindingEntries(type)[0]?.envName ?? null;
 }
 
+function stripUrlQueryAndFragment(url: string): string {
+  const queryIndex = url.indexOf("?");
+  const fragmentIndex = url.indexOf("#");
+  let end = url.length;
+  if (queryIndex !== -1) end = Math.min(end, queryIndex);
+  if (fragmentIndex !== -1) end = Math.min(end, fragmentIndex);
+  return url.slice(0, end);
+}
+
 function routesToDecisionPermissions(
   routes: readonly FirewallRoutingPermissionRoute[],
 ): DiagnosticDecisionPermission[] {
@@ -930,13 +939,14 @@ How connectors work:
         }
         if (!urlLookup) {
           throw new Error(
-            `No connector found for URL: ${opts.url} — no registered base URL matches this URL`,
+            "No connector found for provided URL — no registered base URL matches this URL",
           );
         }
+        const displayUrl = stripUrlQueryAndFragment(opts.url);
         connectorType = urlLookup.connectorType;
         envName = opts.envName ?? urlLookup.envName;
         console.log(
-          `URL ${opts.url} matches the ${CONNECTOR_TYPES[connectorType].label} connector (type: ${connectorType}).`,
+          `URL ${displayUrl} matches the ${CONNECTOR_TYPES[connectorType].label} connector (type: ${connectorType}).`,
         );
         console.log(`  Matched base URL: ${urlLookup.matchedBase}`);
         console.log(`  Relative path:    ${urlLookup.relativePath}`);
@@ -1022,7 +1032,7 @@ How connectors work:
       // Re-diagnose hint
       const args: string[] = [];
       if (opts.url) {
-        args.push(`--url ${opts.url}`);
+        args.push(`--url ${stripUrlQueryAndFragment(opts.url)}`);
         if (opts.method !== "GET") {
           args.push(`--method ${opts.method}`);
         }
