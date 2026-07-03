@@ -118,24 +118,23 @@ fn acquire_result_blocking(
     )))
 }
 
-fn acquire_existing_result_blocking(
-    path: &Path,
-    mode: LockMode,
-) -> RunnerResult<Option<LockAcquire>> {
+fn acquire_existing_shared_result_blocking(path: &Path) -> RunnerResult<Option<LockAcquire>> {
     for _ in 0..LOCK_REPLACED_MAX_RETRIES {
         let file = match open_existing_lock_file(path)? {
             Some(file) => file,
             None => return Ok(None),
         };
-        let lock = match Flock::lock(file, mode.arg()) {
+        let lock = match Flock::lock(file, FlockArg::LockSharedNonblock) {
             Ok(lock) => lock,
-            Err((_file, e))
-                if matches!(mode, LockMode::TryExclusive | LockMode::TryShared)
-                    && e == nix::errno::Errno::EWOULDBLOCK =>
-            {
+            Err((_file, e)) if e == nix::errno::Errno::EWOULDBLOCK => {
                 return Ok(Some(LockAcquire::Busy));
             }
-            Err((_file, e)) => return Err(mode.map_error(path, e)),
+            Err((_file, e)) => {
+                return Err(RunnerError::Internal(format!(
+                    "flock {}: {e}",
+                    path.display()
+                )));
+            }
         };
         if is_current_inode(&lock, path) {
             return Ok(Some(LockAcquire::Acquired(lock)));
@@ -148,6 +147,28 @@ fn acquire_existing_result_blocking(
 }
 
 fn open_existing_lock_file(path: &Path) -> RunnerResult<Option<File>> {
+    let parent = host_file::file_parent(path);
+    match std::fs::symlink_metadata(parent) {
+        Ok(_) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "stat lock parent {}: {e}",
+                parent.display()
+            )));
+        }
+    }
+    match host_file::validate_file_parent(path, "lock directory") {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "validate lock parent {}: {e}",
+                path.display()
+            )));
+        }
+    }
+
     let file = match File::options()
         .read(true)
         .write(true)
@@ -214,11 +235,9 @@ pub async fn try_acquire_shared_or_busy(path: PathBuf) -> RunnerResult<TryLock> 
 pub async fn try_acquire_existing_shared_or_missing(
     path: PathBuf,
 ) -> RunnerResult<ExistingTryLock> {
-    match tokio::task::spawn_blocking(move || {
-        acquire_existing_result_blocking(&path, LockMode::TryShared)
-    })
-    .await
-    .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))??
+    match tokio::task::spawn_blocking(move || acquire_existing_shared_result_blocking(&path))
+        .await
+        .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))??
     {
         Some(LockAcquire::Acquired(lock)) => Ok(ExistingTryLock::Acquired(lock)),
         Some(LockAcquire::Busy) => Ok(ExistingTryLock::Busy),
@@ -505,6 +524,18 @@ mod tests {
 
         assert!(matches!(result, ExistingTryLock::Missing));
         assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn try_acquire_existing_shared_or_missing_does_not_create_missing_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("missing-parent");
+        let path = parent.join("missing.lock");
+
+        let result = try_acquire_existing_shared_or_missing(path).await.unwrap();
+
+        assert!(matches!(result, ExistingTryLock::Missing));
+        assert!(!parent.exists());
     }
 
     #[tokio::test]
