@@ -1160,6 +1160,86 @@
       }
     },
     {
+      "name": "terminal slash base is preserved in allow decision output",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com/",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "items.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": ["items.read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "example",
+        "base": "https://api.example.com/",
+        "relativePath": "/items/123",
+        "permission": "items.read",
+        "rule": "GET /items/{id}"
+      }
+    },
+    {
+      "name": "terminal slash base is normalized in block decision output",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com/",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "items.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": ["items.read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "PATCH",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/items/123",
+        "reason": "unknown_endpoint",
+        "permissions": []
+      }
+    },
+    {
       "name": "matched malformed base port blocks",
       "firewalls": [
         {
@@ -1309,6 +1389,156 @@
         "kind": "block",
         "firewallName": "example",
         "base": "https://api.{env+}.example.com",
+        "relativePath": "/items/123",
+        "reason": "malformed_firewall_config",
+        "permissions": []
+      }
+    },
+    {
+      "name": "normalized unicode dot base can override prior malformed same-specificity base",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://user@api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "malformed.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            },
+            {
+              "base": "https://api。example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "unicode.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": ["malformed.read", "unicode.read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "example",
+        "base": "https://api。example.com",
+        "relativePath": "/items/123",
+        "permission": "unicode.read",
+        "rule": "GET /items/{id}"
+      }
+    },
+    {
+      "name": "malformed percent-encoded dot base outranks host parameter base",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api%2eexample.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "percent.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            },
+            {
+              "base": "https://{tenant}.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "tenant.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": ["percent.read", "tenant.read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api%2eexample.com",
+        "relativePath": "/items/123",
+        "reason": "malformed_firewall_config",
+        "permissions": []
+      }
+    },
+    {
+      "name": "malformed host parameter score preserves config order on tie",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.{a}{b}.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "double.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            },
+            {
+              "base": "https://api.{env+}.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "greedy.read",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": ["double.read", "greedy.read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.prod.example.com/items/123"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.{a}{b}.example.com",
         "relativePath": "/items/123",
         "reason": "malformed_firewall_config",
         "permissions": []

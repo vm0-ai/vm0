@@ -127,15 +127,23 @@ interface DecisionFirewall {
 interface DecisionBaseMatch {
   readonly firewallName: string;
   readonly base: string;
+  readonly allowBase: string;
   readonly relativePath: string;
 }
 
-interface DecisionAllowedRuleMatch extends DecisionBaseMatch {
+interface DecisionAllowedRuleMatch {
+  readonly firewallName: string;
+  readonly base: string;
+  readonly relativePath: string;
   readonly permission: string;
   readonly rule: string;
 }
 
-type DecisionBlockMatch = DecisionBaseMatch;
+interface DecisionBlockMatch {
+  readonly firewallName: string;
+  readonly base: string;
+  readonly relativePath: string;
+}
 
 interface FirewallDecisionState {
   bestBaseScore: number | null;
@@ -942,11 +950,7 @@ function scoreLiteralSegment(segment: string): number {
   return LITERAL_SEGMENT_SCORE + codePointLength(segment);
 }
 
-function scorePatternSegment(segment: string, allowParams: boolean): number {
-  if (!allowParams) return scoreLiteralSegment(segment);
-
-  const parsed = parseSegment(segment);
-  if (parsed.kind === "error") return 0;
+function scoreParsedPatternSegment(parsed: MatchableSegment): number {
   if (parsed.kind === "literal") {
     return scoreLiteralSegment(parsed.value);
   }
@@ -961,19 +965,38 @@ function scorePatternSegment(segment: string, allowParams: boolean): number {
   return PLAIN_PARAM_SEGMENT_SCORE;
 }
 
-function scorePatternSegments(
-  segments: string[],
-  allowParams: boolean,
-): number {
+function scoreStaticSegments(segments: string[]): number {
   return segments.reduce((score, segment) => {
-    return score + scorePatternSegment(segment, allowParams);
+    return score + scoreLiteralSegment(segment);
   }, 0);
 }
 
-function scorePathPattern(path: string, allowParams: boolean): number {
+function scorePatternSegmentsWithParser(
+  segments: string[],
+  parsePatternSegment: SegmentMatchParser,
+): number {
+  const lastPatternIndex = segments.length - 1;
+  let score = 0;
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index]!;
+    const parsed = parsePatternSegment(segment, index, lastPatternIndex);
+    if (parsed !== null) {
+      score += scoreParsedPatternSegment(parsed);
+    }
+  }
+  return score;
+}
+
+function scorePathPattern(
+  path: string,
+  parsePatternSegment: SegmentMatchParser | null,
+): number {
   if (path === "") return 0;
   if (path === "/") return ROOT_PATH_SCORE;
-  return scorePatternSegments(splitPathSegments(path), allowParams);
+  const segments = splitPathSegments(path);
+  return parsePatternSegment === null
+    ? scoreStaticSegments(segments)
+    : scorePatternSegmentsWithParser(segments, parsePatternSegment);
 }
 
 function splitAuthoritySegments(authority: string): string[] {
@@ -984,16 +1007,31 @@ function splitAuthoritySegments(authority: string): string[] {
   return normalized === "" ? [] : normalized.split(".");
 }
 
-function baseUrlSpecificityScore(rawBase: string, hasParams: boolean): number {
-  const baseForMatch = stripTrailingSlash(rawBase);
-  const authorityScore = scorePatternSegments(
-    splitAuthoritySegments(rawAuthorityFromUrl(baseForMatch) ?? ""),
-    hasParams,
-  );
-  const pathScore = scorePathPattern(
-    rawBasePathFromUrl(baseForMatch),
-    hasParams,
-  );
+function baseUrlSpecificityScore({
+  authority,
+  path,
+  hasParams,
+  tolerateMalformedBaseParams = false,
+}: {
+  readonly authority: string;
+  readonly path: string;
+  readonly hasParams: boolean;
+  readonly tolerateMalformedBaseParams?: boolean;
+}): number {
+  const patternParser = hasParams
+    ? tolerateMalformedBaseParams
+      ? parseMalformedTolerantBaseSegment
+      : parseStrictMatchSegment
+    : null;
+  const authoritySegments = splitAuthoritySegments(authority);
+  const authorityScore =
+    patternParser === null
+      ? scoreStaticSegments(authoritySegments)
+      : scorePatternSegmentsWithParser(
+          [...authoritySegments].reverse(),
+          patternParser,
+        );
+  const pathScore = scorePathPattern(path, patternParser);
   return (
     pathScore * PATH_SCORE_MULTIPLIER +
     authorityScore * AUTHORITY_SCORE_MULTIPLIER +
@@ -1114,7 +1152,12 @@ function matchStaticFirewallBaseUrl(
   return {
     displayBase,
     relativePath,
-    score: baseUrlSpecificityScore(rawBase, baseHasParams),
+    score: baseUrlSpecificityScore({
+      authority: baseAuthority,
+      path: basePath,
+      hasParams: baseHasParams,
+      tolerateMalformedBaseParams: options.tolerateMalformedBaseParams === true,
+    }),
   };
 }
 
@@ -1148,9 +1191,11 @@ function matchFirewallBaseUrlForDecision(
   if (baseForMatch === null) return null;
 
   try {
-    return matchStaticFirewallBaseUrl(url, baseForMatch, {
+    const match = matchStaticFirewallBaseUrl(url, baseForMatch, {
       tolerateMalformedBaseParams: true,
     });
+    if (match === null) return null;
+    return { ...match, displayBase: stripTrailingSlash(rawBase) };
   } catch {
     return null;
   }
@@ -1297,7 +1342,7 @@ function resolveFirewallDecision(
     return {
       kind: "allow",
       firewallName: baseMatch.firewallName,
-      base: baseMatch.base,
+      base: baseMatch.allowBase,
       relativePath: baseMatch.relativePath,
     };
   }
@@ -1315,7 +1360,7 @@ function resolveFirewallDecision(
     return {
       kind: "allow",
       firewallName: baseMatch.firewallName,
-      base: baseMatch.base,
+      base: baseMatch.allowBase,
       relativePath: baseMatch.relativePath,
     };
   }
@@ -1332,13 +1377,12 @@ function resolveFirewallDecision(
 
 function unsafePathBlockDecision(
   firewall: DecisionFirewall,
-  api: DecisionApi,
   baseMatch: FirewallBaseUrlMatch,
 ): FirewallRequestDecision {
   return {
     kind: "block",
     firewallName: firewall.name,
-    base: api.rawBase,
+    base: baseMatch.displayBase,
     relativePath: baseMatch.relativePath,
     reason: "unsafe_path",
     permissions: [],
@@ -1384,7 +1428,7 @@ function evaluateDecisionRule({
   readonly rule: DecisionRule;
   readonly policy: CompiledNetworkPolicy | undefined;
   readonly blockMatch: DecisionBlockMatch;
-  readonly baseMatch: FirewallBaseUrlMatch;
+  readonly baseMatch: DecisionBaseMatch;
   readonly upperMethod: string;
 }): void {
   if (rule.method !== "ANY" && rule.method !== upperMethod) return;
@@ -1401,9 +1445,9 @@ function evaluateDecisionRule({
   }
 
   state.allowedMatch ??= {
-    firewallName: blockMatch.firewallName,
-    base: blockMatch.base,
-    relativePath: blockMatch.relativePath,
+    firewallName: baseMatch.firewallName,
+    base: baseMatch.allowBase,
+    relativePath: baseMatch.relativePath,
     permission: rule.permission,
     rule: rule.raw,
   };
@@ -1421,7 +1465,7 @@ function evaluateDecisionRules({
   readonly api: DecisionApi;
   readonly policy: CompiledNetworkPolicy | undefined;
   readonly blockMatch: DecisionBlockMatch;
-  readonly baseMatch: FirewallBaseUrlMatch;
+  readonly baseMatch: DecisionBaseMatch;
   readonly upperMethod: string;
 }): void {
   for (const rule of api.rules) {
@@ -1456,14 +1500,20 @@ function evaluateDecisionApi({
   const policy = networkPolicies.policies.get(firewall.name);
   const baseMatch = matchFirewallBaseUrlForDecision(url, api.rawBase);
   if (baseMatch === null) return null;
-  if (unsafePath) return unsafePathBlockDecision(firewall, api, baseMatch);
+  if (unsafePath) return unsafePathBlockDecision(firewall, baseMatch);
 
-  const blockMatch: DecisionBlockMatch = {
+  const decisionBaseMatch: DecisionBaseMatch = {
     firewallName: firewall.name,
-    base: api.rawBase,
+    base: baseMatch.displayBase,
+    allowBase: api.rawBase,
     relativePath: baseMatch.relativePath,
   };
-  if (!acceptDecisionBaseMatch(state, blockMatch, baseMatch.score)) {
+  const blockMatch: DecisionBlockMatch = {
+    firewallName: decisionBaseMatch.firewallName,
+    base: decisionBaseMatch.base,
+    relativePath: decisionBaseMatch.relativePath,
+  };
+  if (!acceptDecisionBaseMatch(state, decisionBaseMatch, baseMatch.score)) {
     return null;
   }
 
@@ -1479,7 +1529,7 @@ function evaluateDecisionApi({
     api,
     policy,
     blockMatch,
-    baseMatch,
+    baseMatch: decisionBaseMatch,
     upperMethod,
   });
   return null;
