@@ -9,7 +9,10 @@ import {
 import { buildGenerationTemplatePrompt } from "../generation-template-prompt";
 
 describe("buildGenerationTemplatePrompt", () => {
-  it("builds presentation template guidance", () => {
+  it("returns invalid for a presentation template without a runbook package", () => {
+    // Presentations are runbook-only. Legacy `template:html-ppt-*` /
+    // `design-system:*` entries are retired, so a demo-catalog template id no
+    // longer resolves to a generation prompt.
     const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
 
     const result = buildGenerationTemplatePrompt({
@@ -21,35 +24,7 @@ describe("buildGenerationTemplatePrompt", () => {
       },
     });
 
-    expect(result.status).toBe("resolved");
-    if (result.status !== "resolved") {
-      return;
-    }
-    expect(result.prompt).toContain("# Artifact Template Context");
-    expect(result.prompt).toContain(
-      "The user deliberately selected this artifact template",
-    );
-    expect(result.prompt).toContain(
-      "It does not force you to generate: the user's prompt decides the task",
-    );
-    expect(result.prompt).toContain(`(${item.designSystemId})`);
-    expect(result.prompt).toContain(`(${item.templateId})`);
-    expect(result.prompt).toContain(`Template preview URL: ${item.embedUrl}`);
-    expect(result.prompt).toContain(
-      "Use selected template references only for structure, layout devices, spacing, and visual language",
-    );
-    expect(result.prompt).toContain(
-      "Derive every presentation image/media choice from the user's requested topic",
-    );
-    expect(result.prompt).toContain(
-      `zero generate presentation --design-system ${item.designSystemId} --template ${item.templateId}`,
-    );
-    expect(result.prompt).toContain(
-      "After generating the final HTML deck, from the workspace root run",
-    );
-    expect(result.prompt).toContain(
-      "npm install --no-save --no-package-lock playwright && node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs <output-dir>/index.html",
-    );
+    expect(result.status).toBe("invalid");
   });
 
   it("builds runbook presentation guidance for a template that ships a runbook package", () => {
@@ -103,29 +78,6 @@ describe("buildGenerationTemplatePrompt", () => {
     }
     // playful-launch default color token.
     expect(result.prompt).toContain('"colorSystem": "carnival"');
-  });
-
-  it("uses the legacy multi-resource flow for a template without a runbook package", () => {
-    // PRESENTATION_TEMPLATE_ITEMS[0] ships no runbook package, so it resolves
-    // through the legacy design-system + `zero generate presentation` flow.
-    const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
-
-    const result = buildGenerationTemplatePrompt({
-      type: "presentation",
-      selection: {
-        designSystemId: item.designSystemId,
-        templateId: item.templateId,
-      },
-    });
-
-    expect(result.status).toBe("resolved");
-    if (result.status !== "resolved") {
-      return;
-    }
-    expect(result.prompt).toContain(
-      `zero generate presentation --design-system ${item.designSystemId} --template ${item.templateId}`,
-    );
-    expect(result.prompt).not.toContain("zero resource pull");
   });
 
   it("builds illustration template guidance", () => {
