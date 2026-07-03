@@ -115,7 +115,7 @@ export const setupPromptPage$ = command(
     const agentId = await get(defaultAgentId$);
     signal.throwIfAborted();
     if (!agentId) {
-      set(redirectToConfiguredOnboarding$, params);
+      await set(redirectToConfiguredOnboarding$, params, signal);
       return;
     }
 

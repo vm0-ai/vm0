@@ -231,6 +231,11 @@ export const mockedClerk = {
     };
   },
   redirectToSignIn: vi.fn(),
+  // Production-instance behavior: the URL passes through unchanged. Dev
+  // instances append the __clerk_db_jwt session handoff parameter.
+  buildUrlWithAuth: (to: string) => {
+    return to;
+  },
   setActive: vi.fn(
     (params: {
       organization?: string;
