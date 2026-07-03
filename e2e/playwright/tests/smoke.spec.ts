@@ -4,7 +4,6 @@ import {
   setupClerkTestingToken,
 } from "@clerk/testing/playwright";
 import { expect, test, type APIResponse, type Page } from "@playwright/test";
-import { fillStripeCheckout } from "../lib/stripe-checkout";
 import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 
 const ONBOARDING_STATUS_PATH = "**/api/zero/onboarding/status";
@@ -49,14 +48,12 @@ test("sign in through onboarding handoff to chat page", async ({ page }) => {
 
   // Follow the external onboarding auth handoff if needed. Since Clerk org
   // creation bootstraps limited-free workspaces (#20029), fresh users usually
-  // skip the handoff entirely, so the Pro trial checkout below must run
-  // unconditionally: the feature tests (billing spec) assert a Pro
-  // subscription, and limited-free -> pro is an upgrade, never a tier
-  // conflict.
+  // skip the handoff (and the Pro trial checkout with it): the trial checkout
+  // API is onboarding-only, so post-bootstrap workspaces stay limited-free
+  // and the billing spec asserts that default.
   if (page.url().includes("/onboarding")) {
     await completeOnboardingSetupThroughApi(page, appUrl);
   }
-  await completeProTrialCheckout(page, appUrl);
 
   // Verify: landed on chat page
   await page.waitForURL("**/agents/*/chat", {
@@ -88,81 +85,6 @@ async function completeOnboardingSetupThroughApi(
     },
   );
   await expectStatus(setupResponse, [200, 409], "onboarding setup");
-}
-
-async function completeProTrialCheckout(
-  page: Page,
-  appUrl: string,
-): Promise<void> {
-  const apiUrl = deriveApiUrl(appUrl);
-  const headers = await authHeadersForApp(page, appUrl);
-
-  // Idempotent across playwright retries: a pro checkout for an org that is
-  // already pro is a tier conflict, so skip when the trial is already active.
-  const statusResponse = await page.request.get(
-    `${apiUrl}/api/zero/billing/status`,
-    { headers },
-  );
-  if (statusResponse.ok()) {
-    const status: unknown = await statusResponse.json();
-    if (
-      typeof status === "object" &&
-      status !== null &&
-      "tier" in status &&
-      (status as { tier?: unknown }).tier === "pro"
-    ) {
-      return;
-    }
-  }
-
-  const checkoutUrl = await createOnboardingTrialCheckout(
-    page,
-    appUrl,
-    apiUrl,
-    headers,
-  );
-  await page.goto(checkoutUrl, { waitUntil: "domcontentloaded" });
-  await fillStripeCheckout(page);
-}
-
-async function createOnboardingTrialCheckout(
-  page: Page,
-  appUrl: string,
-  apiUrl: string,
-  headers: Readonly<Record<"Authorization", string>>,
-): Promise<string> {
-  const successUrl = new URL("/", appUrl);
-  successUrl.searchParams.set("billing", "pro");
-  successUrl.searchParams.set("billing_session_id", "{CHECKOUT_SESSION_ID}");
-  const stripeSuccessUrl = successUrl
-    .toString()
-    .replace(
-      "billing_session_id=%7BCHECKOUT_SESSION_ID%7D",
-      "billing_session_id={CHECKOUT_SESSION_ID}",
-    );
-
-  const cancelUrl = new URL("/", appUrl);
-  cancelUrl.searchParams.set("billing", "canceled");
-
-  const checkoutResponse = await page.request.post(
-    `${apiUrl}/api/zero/billing/checkout`,
-    {
-      headers,
-      data: {
-        tier: "pro",
-        trialDays: 7,
-        successUrl: stripeSuccessUrl,
-        cancelUrl: cancelUrl.toString(),
-      },
-    },
-  );
-  await expectStatus(checkoutResponse, [200], "onboarding trial checkout");
-
-  const body: unknown = await checkoutResponse.json();
-  if (!hasCheckoutUrl(body)) {
-    throw new Error(`Unexpected checkout response: ${JSON.stringify(body)}`);
-  }
-  return body.url;
 }
 
 async function authHeadersForApp(
@@ -222,15 +144,6 @@ async function expectStatus(
 
   throw new Error(
     `${action} failed with ${response.status()}: ${await response.text()}`,
-  );
-}
-
-function hasCheckoutUrl(value: unknown): value is { readonly url: string } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "url" in value &&
-    typeof value.url === "string"
   );
 }
 
