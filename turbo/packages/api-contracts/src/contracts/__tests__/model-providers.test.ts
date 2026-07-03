@@ -142,9 +142,9 @@ describe("model-first canonical catalog", () => {
     expect(
       isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-4.6"),
     ).toBe(true);
-    expect(isLimitedFree1RestrictedRunModel("glm-5.2")).toBe(true);
-    expect(isLimitedFree1RestrictedRunModel("z-ai/glm-5.2")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("gpt-5.4")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel("glm-5.2")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel("z-ai/glm-5.2")).toBe(false);
     expect(isLimitedFree1RestrictedRunModel("MiniMax-M3")).toBe(false);
     expect(isLimitedFree1RestrictedRunModel(null)).toBe(false);
   });

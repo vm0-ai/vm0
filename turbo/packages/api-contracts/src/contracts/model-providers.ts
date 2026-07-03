@@ -358,9 +358,7 @@ export function isLimitedFree1RestrictedRunModel(
     normalized === "anthropic/claude-sonnet-5" ||
     normalized === "claude-sonnet-4-6" ||
     normalized === "claude-sonnet-4.6" ||
-    normalized === "anthropic/claude-sonnet-4.6" ||
-    normalized === "glm-5.2" ||
-    normalized === "z-ai/glm-5.2"
+    normalized === "anthropic/claude-sonnet-4.6"
   );
 }
 
