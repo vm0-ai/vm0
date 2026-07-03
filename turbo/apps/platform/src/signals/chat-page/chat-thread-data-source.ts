@@ -1,5 +1,7 @@
 import type { Command, Computed } from "ccstate";
 import type {
+  ChatRunOptionsRequest,
+  CodexServiceTier,
   ModelSelectionRequest,
   GenerationTemplateRequest,
   PagedChatMessage,
@@ -33,7 +35,9 @@ export interface PatchDraftArgs {
 
 export interface PatchModelSelectionArgs {
   threadId: string;
-  modelSelection: ModelSelectionRequest | null;
+  modelSelection:
+    | (ModelSelectionRequest & { codexServiceTier?: CodexServiceTier })
+    | null;
 }
 
 export interface PatchComputerUseHostArgs {
@@ -49,6 +53,7 @@ export interface AppendQueuedMessageArgs {
   clientMessageId: string;
   hasTextContent: boolean;
   modelSelection: ModelSelectionRequest | null;
+  runOptions?: ChatRunOptionsRequest;
   generationTemplate: GenerationTemplateRequest | undefined;
   computerUseHostId?: string | null;
 }

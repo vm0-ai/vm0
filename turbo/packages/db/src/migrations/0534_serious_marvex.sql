@@ -1,0 +1,1 @@
+ALTER TABLE "chat_threads" ADD COLUMN "codex_service_tier" varchar(20);
