@@ -2306,12 +2306,13 @@ type TriggerCreateCategory = {
 
 // Each category owns a single hue that colours only the card icon chip on the
 // right; the category rail stays neutral and mirrors the app sidebar.
-const TRIGGER_CATEGORY_CHIP: Record<TriggerCategoryKey, string> = {
-  schedule: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-  email: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-  calendar: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-  integrations: "bg-amber-500/10 text-amber-600 dark:text-amber-500",
-};
+const TRIGGER_CATEGORY_CHIP: Readonly<Record<TriggerCategoryKey, string>> =
+  Object.freeze({
+    schedule: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+    email: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+    calendar: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    integrations: "bg-amber-500/10 text-amber-600 dark:text-amber-500",
+  });
 
 function buildTriggerCreateCategories({
   githubLabelTriggersEnabled,
@@ -2433,7 +2434,9 @@ function buildTriggerCreateCategories({
     },
   ];
 
-  return categories.filter((category) => category.options.length > 0);
+  return categories.filter((category) => {
+    return category.options.length > 0;
+  });
 }
 
 function TriggerCreateCategoryButton({
@@ -2524,7 +2527,9 @@ function TriggerCreateMenu({
     webhookTriggersEnabled,
   });
   const activeCategory =
-    categories.find((category) => category.key === activeKey) ?? categories[0];
+    categories.find((category) => {
+      return category.key === activeKey;
+    }) ?? categories[0];
   const activeChip = activeCategory
     ? TRIGGER_CATEGORY_CHIP[activeCategory.key]
     : "";
@@ -2549,29 +2554,33 @@ function TriggerCreateMenu({
         </DialogHeader>
         <div className="flex flex-col gap-5 sm:flex-row sm:gap-7">
           <nav className="-ml-2 flex gap-1 overflow-x-auto pb-1 sm:w-44 sm:shrink-0 sm:flex-col sm:gap-1 sm:overflow-visible sm:border-r sm:border-border/60 sm:pb-0 sm:pr-4">
-            {categories.map((category) => (
-              <TriggerCreateCategoryButton
-                key={category.key}
-                category={category}
-                active={category.key === activeCategory?.key}
-                onSelect={() => {
-                  setActiveKey(category.key);
-                }}
-              />
-            ))}
+            {categories.map((category) => {
+              return (
+                <TriggerCreateCategoryButton
+                  key={category.key}
+                  category={category}
+                  active={category.key === activeCategory?.key}
+                  onSelect={() => {
+                    setActiveKey(category.key);
+                  }}
+                />
+              );
+            })}
           </nav>
           <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 sm:grid-cols-2">
-            {activeCategory?.options.map((option) => (
-              <TriggerCreateOptionCard
-                key={option.kind}
-                option={option}
-                accentChip={activeChip}
-                onSelect={() => {
-                  onSelect(option.kind);
-                  setOpen(false);
-                }}
-              />
-            ))}
+            {activeCategory?.options.map((option) => {
+              return (
+                <TriggerCreateOptionCard
+                  key={option.kind}
+                  option={option}
+                  accentChip={activeChip}
+                  onSelect={() => {
+                    onSelect(option.kind);
+                    setOpen(false);
+                  }}
+                />
+              );
+            })}
           </div>
         </div>
       </DialogContent>
