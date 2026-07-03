@@ -210,7 +210,7 @@ const eventDrivenFilteredChatThreads$ = computed(
   },
 );
 
-const activeRunChatThreadIds$ = computed(
+export const activeRunChatThreadIds$ = computed(
   async (get): Promise<ReadonlySet<string>> => {
     if (!get(chatThreadEventSourcingEnabled$)) {
       return new Set();
@@ -227,7 +227,6 @@ const eventDrivenVisibleChatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
     const threads = await get(eventDrivenFilteredChatThreads$);
     const maxItems = get(chatThreadMaxItem$);
-    const activeRunThreadIds = await get(activeRunChatThreadIds$);
     const pendingRunningByThreadId = new Map(
       get(allPendingChatThreads$).map((thread) => {
         return [thread.threadId, thread.running] as const;
@@ -244,9 +243,7 @@ const eventDrivenVisibleChatThreads$ = computed(
         },
         createdAt: thread.createdAt,
         updatedAt: thread.updatedAt,
-        running:
-          activeRunThreadIds.has(thread.id) ||
-          (pendingRunningByThreadId.get(thread.id) ?? false),
+        running: pendingRunningByThreadId.get(thread.id) ?? false,
         pinnedAt: thread.pinnedAt,
         renamedAt: thread.renamedAt,
       };
