@@ -809,7 +809,8 @@ export function WorkflowsPage() {
               Workflows
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Reusable instructions your team can run, edit, or automate.
+              A reusable SOP for a task. Write one from scratch or distill it
+              from your daily work, then run, edit, or automate it.
             </p>
           </div>
           <Button
