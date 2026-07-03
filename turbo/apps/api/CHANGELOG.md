@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.217.0](https://github.com/vm0-ai/vm0/compare/api-v1.216.0...api-v1.217.0) (2026-07-03)
+
+
+### Features
+
+* scope chat thread event sourcing overrides to orgs ([#20069](https://github.com/vm0-ai/vm0/issues/20069)) ([ace2951](https://github.com/vm0-ai/vm0/commit/ace29512a64ac76fbb82f2ca4fecc766c9e41c22))
+
+
+### Refactoring
+
+* retire legacy html-ppt presentation registry entries (presentations runbook-only) ([#20064](https://github.com/vm0-ai/vm0/issues/20064)) ([b92a71c](https://github.com/vm0-ai/vm0/commit/b92a71c98a4c48b1fec6a610dd179a09f4d86c62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.394.1
+    * @vm0/db bumped to 1.88.1
+
 ## [1.216.0](https://github.com/vm0-ai/vm0/compare/api-v1.215.0...api-v1.216.0) (2026-07-03)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.543.1](https://github.com/vm0-ai/vm0/compare/app-v0.543.0...app-v0.543.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* preserve presentation pptx layout ([#20068](https://github.com/vm0-ai/vm0/issues/20068)) ([5e72e49](https://github.com/vm0-ai/vm0/commit/5e72e49321928735a2b5f5f6532bb4d9bababc89))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.394.1
+
 ## [0.543.0](https://github.com/vm0-ai/vm0/compare/app-v0.542.0...app-v0.543.0) (2026-07-03)
 
 
