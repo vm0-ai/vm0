@@ -131,6 +131,7 @@ async function enableWebhookWorkflowTriggers(
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
     [FeatureSwitchKey.WorkflowAutomation]: true,
+    [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
   });
 }
 
@@ -651,6 +652,29 @@ describe("zero workflow triggers", () => {
     const { fixture, workflowId } = await setupFixture();
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.WorkflowAutomation]: false,
+    });
+
+    const rejected = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "webhook-received",
+        },
+      }),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "Workflow webhook triggers are not enabled",
+    );
+  });
+
+  it("rejects webhook event triggers when only workflow automation is enabled", async () => {
+    const { fixture, workflowId } = await setupFixture();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.WorkflowAutomation]: true,
     });
 
     const rejected = await accept(

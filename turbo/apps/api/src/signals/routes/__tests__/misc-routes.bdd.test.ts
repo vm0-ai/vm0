@@ -89,18 +89,25 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
       sendMode: "enter",
     });
 
+    const firstPinnedAgentId = "00000000-0000-0000-0000-000000000001";
+    const secondPinnedAgentId = "00000000-0000-0000-0000-000000000002";
     const updatedPreferences = await api.updatePreferences(
       admin,
       {
         timezone: "UTC",
         sendMode: "cmd-enter",
-        pinnedAgentIds: [randomUUID()],
+        pinnedAgentIds: [
+          secondPinnedAgentId,
+          firstPinnedAgentId,
+          secondPinnedAgentId,
+        ],
         captureNetworkBodiesRemaining: 3,
       },
       [200],
     );
     expect(updatedPreferences.body).toMatchObject({
       timezone: "UTC",
+      pinnedAgentIds: [firstPinnedAgentId, secondPinnedAgentId],
       sendMode: "cmd-enter",
       captureNetworkBodiesRemaining: 3,
     });
