@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.213.0](https://github.com/vm0-ai/vm0/compare/api-v1.212.2...api-v1.213.0) (2026-07-03)
+
+
+### Features
+
+* bootstrap clerk orgs into limited-free workspaces ([#20029](https://github.com/vm0-ai/vm0/issues/20029)) ([d5ba8c4](https://github.com/vm0-ai/vm0/commit/d5ba8c4359c45fb82032eba9a927d4ffbac72a88))
+
 ## [1.212.2](https://github.com/vm0-ai/vm0/compare/api-v1.212.1...api-v1.212.2) (2026-07-03)
 
 
