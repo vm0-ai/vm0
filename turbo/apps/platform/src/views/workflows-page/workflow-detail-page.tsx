@@ -2662,10 +2662,7 @@ function TriggersSection({
 
   return (
     <section className="mx-auto flex max-w-[900px] flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className="min-w-0 text-sm text-muted-foreground">
-          Automations run this workflow whenever their trigger fires
-        </p>
+      <div className="flex items-center justify-end gap-3">
         <TriggerCreateMenu
           onSelect={setCreateDialog}
           githubLabelTriggersEnabled={workflowAutomationEnabled}
