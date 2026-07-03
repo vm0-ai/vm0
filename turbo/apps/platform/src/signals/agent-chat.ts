@@ -5,12 +5,7 @@ import {
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  agentById,
-  agents$,
-  currentAgentId$,
-  defaultAgentId$,
-} from "./agent.ts";
+import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
@@ -186,22 +181,8 @@ const eventDrivenFilteredChatThreads$ = computed(
 
 const eventDrivenVisibleChatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
-    const [threads, allAgents, legacyThreads] = await Promise.all([
-      get(eventDrivenFilteredChatThreads$),
-      get(agents$),
-      get(legacyChatThreads$),
-    ]);
+    const threads = await get(eventDrivenFilteredChatThreads$);
     const maxItems = get(chatThreadMaxItem$);
-    const avatarByAgentId = new Map(
-      allAgents.map((agent) => {
-        return [agent.id, agent.avatarUrl ?? null] as const;
-      }),
-    );
-    const runningByThreadId = new Map(
-      legacyThreads.map((thread) => {
-        return [thread.id, thread.running] as const;
-      }),
-    );
     const pendingRunningByThreadId = new Map(
       get(allPendingChatThreads$).map((thread) => {
         return [thread.threadId, thread.running] as const;
@@ -214,14 +195,11 @@ const eventDrivenVisibleChatThreads$ = computed(
         title: thread.title,
         agent: {
           id: thread.agentId,
-          avatarUrl: avatarByAgentId.get(thread.agentId) ?? null,
+          avatarUrl: null,
         },
         createdAt: thread.createdAt,
         updatedAt: thread.updatedAt,
-        running:
-          pendingRunningByThreadId.get(thread.id) ??
-          runningByThreadId.get(thread.id) ??
-          false,
+        running: pendingRunningByThreadId.get(thread.id) ?? false,
         pinnedAt: thread.pinnedAt,
         renamedAt: thread.renamedAt,
       };
