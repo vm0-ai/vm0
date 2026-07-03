@@ -1,8 +1,9 @@
 //! Secret value masking for event payloads and CLI diagnostics.
 //!
-//! Reads `VM0_SECRET_VALUES` (comma-separated base64 values), pre-computes
-//! plain / base64 / URL-encoded variants for normal payload masking, and derives
-//! diagnostic-only multiline variants for bounded CLI stderr tails.
+//! Consumes the guest config's comma-separated base64 secret values,
+//! pre-computes plain / base64 / URL-encoded variants for normal payload
+//! masking, and derives diagnostic-only multiline variants for bounded CLI
+//! stderr tails.
 
 use crate::env;
 use aho_corasick::{AhoCorasick, MatchKind};
