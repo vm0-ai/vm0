@@ -182,43 +182,6 @@ describe("zero generate presentation command", () => {
     );
   });
 
-  it("should accept the switched picker presentation template from the registry", async () => {
-    await generateCommand.parseAsync([
-      "node",
-      "cli",
-      "presentation",
-      "--prompt",
-      "product launch",
-      "--design-system",
-      "playful-editorial",
-      "--template",
-      "html-ppt-playful-launch",
-      "--title",
-      "Launch",
-    ]);
-
-    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain(
-      "Selected design system: design-system:playful-editorial (Playful Launch)",
-    );
-    expect(stdout).toContain(
-      "Selected template: template:html-ppt-playful-launch (Playful Launch Presentation)",
-    );
-    expect(stdout).toContain(
-      "zero resource pull <resource-id> --dir ./generated/resources",
-    );
-    expect(stdout).toContain('"tool:presentation-deck-tools"');
-    expect(stdout).toContain('"id": "template:html-ppt-playful-launch"');
-    expect(stdout).toContain('"path": "presentation-template/aplocoto"');
-    expect(stdout).toContain('"archive"');
-    expect(stdout).toContain('"type": "tar.gz"');
-    expect(stdout).toContain('"sha256"');
-    expect(stdout).toContain('"id": "design-system:playful-editorial"');
-    expect(stdout).toContain(
-      '"path": "presentation-design-system/playful-editorial"',
-    );
-  });
-
   it("should reject a template that does not target presentation", async () => {
     await expect(async () => {
       await generateCommand.parseAsync([

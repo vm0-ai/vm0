@@ -113,6 +113,20 @@ function buildWorkflowGenerationTemplatePrompt(
 function buildPresentationGenerationTemplatePrompt(
   generationTemplate: PresentationGenerationTemplateInput,
 ): GenerationTemplatePromptResult {
+  // Presentation templates that ship a self-contained runbook package use the
+  // runbook flow (pull one resource, follow AGENT_RUNBOOK.md, pick the color
+  // system at runtime). These are resolved from the package alone — their
+  // legacy `template:html-ppt-*` / `design-system:*` registry entries have been
+  // retired — so this must run before the legacy `findTemplate` lookup below.
+  const runbookPackage = findPresentationRunbookPackage(
+    generationTemplate.selection.templateId,
+  );
+  if (runbookPackage) {
+    return buildPresentationRunbookPrompt(generationTemplate, runbookPackage);
+  }
+
+  // Templates without a runbook package fall back to the legacy multi-resource
+  // flow (design system + `zero generate presentation`).
   const template = findTemplate(generationTemplate.selection.templateId);
   if (!template) {
     return { status: "invalid", message: "Unknown generation template" };
@@ -122,21 +136,6 @@ function buildPresentationGenerationTemplatePrompt(
       status: "invalid",
       message: "Generation template does not support the requested type",
     };
-  }
-
-  // Presentation templates that ship a self-contained runbook package use the
-  // runbook flow (pull one resource, follow AGENT_RUNBOOK.md, pick the color
-  // system at runtime). Templates without a package fall back to the legacy
-  // multi-resource flow below.
-  const runbookPackage = findPresentationRunbookPackage(
-    generationTemplate.selection.templateId,
-  );
-  if (runbookPackage) {
-    return buildPresentationRunbookPrompt(
-      generationTemplate,
-      template,
-      runbookPackage,
-    );
   }
 
   const designSystem = findDesignSystem(
@@ -199,11 +198,6 @@ function buildPresentationGenerationTemplatePrompt(
 
 function buildPresentationRunbookPrompt(
   generationTemplate: PresentationGenerationTemplateInput,
-  template: {
-    readonly name: string;
-    readonly id: string;
-    readonly description: string;
-  },
   runbookPackage: PresentationRunbookPackage,
 ): GenerationTemplatePromptResult {
   const { colorSystemId } = generationTemplate.selection;
@@ -222,7 +216,7 @@ function buildPresentationRunbookPrompt(
     status: "resolved",
     prompt: [
       ...templateFraming("a presentation"),
-      `Selected presentation template: ${template.name} (${template.id})`,
+      `Selected presentation template: ${runbookPackage.name} (${runbookPackage.templateId})`,
       `Color system token: ${colorSystemToken}`,
       "",
       "To produce the presentation:",
