@@ -77,5 +77,7 @@ describe("buildPresentationHtmlPptxExportHtml", () => {
     expect(styleText).toContain("--fb:'Quicksand'");
     expect(scriptText).not.toContain("var MONO");
     expect(scriptText).toContain("vm0-presentation-pptx-export");
+    expect(scriptText).toContain("preserveBrowserTextLineBreaks(nodes)");
+    expect(scriptText).not.toContain("resolveEmbeddableFonts");
   });
 });
