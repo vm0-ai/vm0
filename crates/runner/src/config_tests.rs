@@ -825,6 +825,23 @@ async fn lock_and_validate_runner_image_artifacts_releases_locks_on_validation_e
 }
 
 #[tokio::test]
+async fn lock_and_validate_runner_image_artifacts_rejects_empty_profiles() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+    let profiles = BTreeMap::new();
+
+    let err = match lock_and_validate_runner_image_artifacts(&profiles, &home).await {
+        Ok(_) => panic!("expected empty profiles error"),
+        Err(err) => err,
+    };
+
+    assert!(
+        err.to_string().contains("profiles must not be empty"),
+        "got: {err}"
+    );
+}
+
+#[tokio::test]
 async fn lock_and_validate_runner_image_artifacts_holds_all_resource_locks() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home_with_artifacts(

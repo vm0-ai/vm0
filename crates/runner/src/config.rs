@@ -456,6 +456,10 @@ pub(crate) async fn lock_and_validate_runner_image_artifacts(
     profiles: &BTreeMap<String, ProfileConfig>,
     home: &HomePaths,
 ) -> RunnerResult<LockedRunnerImageArtifacts> {
+    if profiles.is_empty() {
+        return Err(RunnerError::Config("profiles must not be empty".into()));
+    }
+
     // Acquire all rootfs locks before any snapshot lock. A runner can use
     // multiple profiles, while builders and GC operate on one rootfs plus its
     // snapshots. Keeping a global rootfs-then-snapshot order prevents a runner
