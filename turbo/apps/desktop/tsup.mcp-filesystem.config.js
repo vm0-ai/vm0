@@ -8,6 +8,7 @@ module.exports = defineConfig({
   outDir: "dist/mcp",
   sourcemap: true,
   clean: false,
+  noExternal: [/^@modelcontextprotocol\/sdk(\/.*)?$/],
   outExtension() {
     return { js: ".mjs" };
   },

@@ -21,21 +21,37 @@ function onboardingUrl(searchParams: URLSearchParams): string {
 }
 
 const redirectToOnboarding$ = command(
-  ({ get }, searchParams?: URLSearchParams) => {
-    window.location.href = onboardingUrl(searchParams ?? get(searchParams$));
+  async (
+    { get },
+    searchParams: URLSearchParams | undefined,
+    signal: AbortSignal,
+  ) => {
+    const url = onboardingUrl(searchParams ?? get(searchParams$));
+    // buildUrlWithAuth carries the session across origins: on Clerk
+    // development instances the session lives in a per-origin dev browser
+    // JWT, so a bare cross-origin navigation to the www onboarding surface
+    // would land signed-out and bounce back to /sign-in. On production
+    // instances it returns the URL unchanged.
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    window.location.href = clerk.buildUrlWithAuth(url);
   },
 );
 
 export const redirectToConfiguredOnboarding$ = command(
-  ({ set }, searchParams?: URLSearchParams) => {
-    set(redirectToOnboarding$, searchParams);
+  async (
+    { set },
+    searchParams: URLSearchParams | undefined,
+    signal: AbortSignal,
+  ) => {
+    await set(redirectToOnboarding$, searchParams, signal);
   },
 );
 
 export const setupOnboardingRedirectPage$ = command(
-  ({ set }, signal: AbortSignal) => {
+  async ({ set }, signal: AbortSignal) => {
     signal.throwIfAborted();
-    set(redirectToConfiguredOnboarding$);
+    await set(redirectToConfiguredOnboarding$, undefined, signal);
   },
 );
 
@@ -74,7 +90,7 @@ export const onboardGuard$ = command(
       }
     }
 
-    set(redirectToConfiguredOnboarding$);
+    await set(redirectToConfiguredOnboarding$, undefined, signal);
     return true;
   },
 );
