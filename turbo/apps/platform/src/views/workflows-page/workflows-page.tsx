@@ -346,7 +346,17 @@ function WorkflowRow({
               </span>
             </Link>
           </TooltipTrigger>
-          <TooltipContent side="bottom" align="start" className="p-3">
+          <TooltipContent
+            side="bottom"
+            align="start"
+            className="rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] p-3"
+            style={{
+              backgroundColor: "hsl(var(--card))",
+              color: "hsl(var(--card-foreground))",
+              boxShadow:
+                "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+            }}
+          >
             <WorkflowHoverContent workflow={workflow} />
           </TooltipContent>
         </Tooltip>
