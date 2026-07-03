@@ -299,7 +299,7 @@ function WorkflowHoverContent({
       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
         {workflow.description ?? workflow.name}
       </p>
-      <div className="mt-2.5 flex flex-col gap-1.5 border-t border-border/60 pt-2.5 text-xs text-foreground/80">
+      <div className="mt-2.5 flex flex-col gap-3 border-t border-border/60 pt-2.5 text-xs text-foreground/80">
         <div className="flex items-center gap-2">
           <span className="w-16 shrink-0 text-muted-foreground">
             Created by
