@@ -97,6 +97,10 @@ const ASCII_PUNCTUATION_PATTERN =
 const HEX_DIGIT_PATTERN = /^[0-9a-fA-F]$/;
 const UNICODE_MARK_PATTERN = /^\p{Mark}$/u;
 const UNICODE_OTHER_PATTERN = /^\p{Other}$/u;
+const GREEK_CAPITAL_SIGMA = "\u03a3";
+const GREEK_COMBINING_YPOGEGRAMMENI = "\u0345";
+const GREEK_SMALL_IOTA = "\u03b9";
+const GREEK_SMALL_SIGMA = "\u03c3";
 const PERCENT_DECODED_FORBIDDEN_HOST_CHARS = new Set([
   "#",
   "%",
@@ -157,6 +161,24 @@ const FORBIDDEN_RUNTIME_NORMALIZED_HOST_LABEL_CHARS = new Set([
   "\u3002",
   "\uff0e",
   "\uff61",
+]);
+const GREEK_MATHEMATICAL_FINAL_SIGMA_CODEPOINTS = new Set([
+  0x1d6d3, 0x1d70d, 0x1d747, 0x1d781, 0x1d7bb,
+]);
+const CHEROKEE_CASEFOLD_RANGES = [
+  [0x13a0, 0x13ff],
+  [0xab70, 0xabbf],
+] as const;
+const CYRILLIC_EXTENDED_C_CASEFOLD_CODEPOINTS = new Map([
+  [0x1c80, "\u0432"],
+  [0x1c81, "\u0434"],
+  [0x1c82, "\u043e"],
+  [0x1c83, "\u0441"],
+  [0x1c84, "\u0442"],
+  [0x1c85, "\u0442"],
+  [0x1c86, "\u044a"],
+  [0x1c87, "\u0463"],
+  [0x1c88, "\ua64b"],
 ]);
 // Fallback JSON string literals can double quotes and backslashes.
 const MAX_JSON_PART_SOURCE_CHARS = Math.floor(
@@ -594,11 +616,55 @@ function hasForbiddenRuntimeHostLabelChars(value: string): boolean {
   return false;
 }
 
+function remapRuntimeLabelChar(char: string): string {
+  const codepoint = char.codePointAt(0);
+  if (codepoint === undefined) {
+    return char;
+  }
+  if (GREEK_MATHEMATICAL_FINAL_SIGMA_CODEPOINTS.has(codepoint)) {
+    return GREEK_SMALL_SIGMA;
+  }
+  if (
+    (codepoint === 0x037a || (codepoint >= 0x1f00 && codepoint < 0x2000)) &&
+    char.normalize("NFKD").includes(GREEK_COMBINING_YPOGEGRAMMENI)
+  ) {
+    return char
+      .normalize("NFKD")
+      .replaceAll(GREEK_COMBINING_YPOGEGRAMMENI, GREEK_SMALL_IOTA);
+  }
+  return char;
+}
+
+function runtimeCasefoldLabelChar(char: string): string {
+  const codepoint = char.codePointAt(0);
+  if (codepoint === undefined) {
+    return char;
+  }
+  if (isCodepointInRanges(codepoint, CHEROKEE_CASEFOLD_RANGES)) {
+    return char.toUpperCase();
+  }
+
+  const cyrillicCasefold =
+    CYRILLIC_EXTENDED_C_CASEFOLD_CODEPOINTS.get(codepoint);
+  if (cyrillicCasefold !== undefined) {
+    return cyrillicCasefold;
+  }
+  if (char === GREEK_CAPITAL_SIGMA) {
+    return GREEK_SMALL_SIGMA;
+  }
+  return char.toLowerCase();
+}
+
 function runtimeLowerNormalizedLabel(value: string): string {
-  // Match Python's normalize-then-per-codepoint-lower order.
-  return [...value.normalize("NFKD").normalize("NFC")]
+  // Match Python's remap, normalize, then per-codepoint casefold order.
+  const remapped = [...value]
+    .map(remapRuntimeLabelChar)
+    .join("")
+    .replaceAll(GREEK_COMBINING_YPOGEGRAMMENI, GREEK_SMALL_IOTA);
+
+  return [...remapped.normalize("NFKD").normalize("NFC")]
     .map((char) => {
-      return char === "\u03a3" ? "\u03c3" : char.toLowerCase();
+      return runtimeCasefoldLabelChar(char);
     })
     .join("");
 }

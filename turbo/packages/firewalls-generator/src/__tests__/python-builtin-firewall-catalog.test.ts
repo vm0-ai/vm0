@@ -1344,6 +1344,26 @@ describe("Python builtin firewall catalog renderer", () => {
         ],
       }),
       connectorEntry({
+        name: "greek-prosgegrammeni-idna-host",
+        apis: [
+          {
+            base: "https://\u1fbc\u0301.example.com/api",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.GREEK_PROSGEGRAMMENI_IDNA_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "greek-prosgegrammeni-idna-host:read",
+                rules: ["GET /greek-prosgegrammeni-idna-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
         name: "punycode-idna-host",
         apis: [
           {
@@ -1416,6 +1436,17 @@ describe("Python builtin firewall catalog renderer", () => {
                 rules: ["GET /encoded-host/{id}"],
               },
             ],
+          },
+        ],
+      },
+      {
+        name: "greek-prosgegrammeni-idna-host",
+        apis: [
+          {
+            base: "https://\u1fbc\u0301.example.com/api",
+            envNames: ["GREEK_PROSGEGRAMMENI_IDNA_HOST_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
           },
         ],
       },
