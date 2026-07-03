@@ -854,6 +854,31 @@ function menuItemByText(text: RoleTextMatch): HTMLElement {
   return item;
 }
 
+// The "Add automation" trigger picker is a dialog split into category tabs on
+// the left and trigger cards on the right; a card only mounts once its category
+// is active. Select the category, then the card (matched by its leading title,
+// since cards also render a description line).
+function pickTrigger(category: string, title: RoleTextMatch): void {
+  const dialog = screen.getByRole("dialog");
+  const tab = queryAllByRoleFast("button", dialog).find((candidate) => {
+    return textFor(candidate) === category;
+  });
+  if (!tab) {
+    throw new Error(`${category} trigger category not found`);
+  }
+  click(tab);
+  const card = queryAllByRoleFast("button", dialog).find((candidate) => {
+    const text = textFor(candidate);
+    return typeof title === "string"
+      ? text.startsWith(title)
+      : title.test(text);
+  });
+  if (!card) {
+    throw new Error(`${matchLabel(title)} trigger card not found`);
+  }
+  click(card);
+}
+
 function articleByText(text: string): HTMLElement {
   const article = screen
     .getAllByText(text)
@@ -1591,24 +1616,12 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(buttonByText("Add automation")).toBeInTheDocument();
     });
-    const addTriggerButton = queryAllByRoleFast("button").find((button) => {
-      return button.textContent?.trim() === "Add automation";
-    });
-    expect(addTriggerButton).toBeDefined();
-    click(addTriggerButton!);
+    click(buttonByText("Add automation"));
 
     await waitFor(() => {
-      expect(
-        queryAllByRoleFast("menuitem").some((item) => {
-          return item.textContent?.includes("Gmail new message");
-        }),
-      ).toBeTruthy();
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    const gmailMenuItem = queryAllByRoleFast("menuitem").find((item) => {
-      return item.textContent?.includes("Gmail new message");
-    });
-    expect(gmailMenuItem).toBeDefined();
-    click(gmailMenuItem!);
+    pickTrigger("Email", /^Gmail new message/);
 
     const createTriggerForm = await screen.findByRole("form", {
       name: "Add Gmail automation",
@@ -1651,24 +1664,12 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(buttonByText("Add automation")).toBeInTheDocument();
     });
-    const addTriggerButton = queryAllByRoleFast("button").find((button) => {
-      return button.textContent?.trim() === "Add automation";
-    });
-    expect(addTriggerButton).toBeDefined();
-    click(addTriggerButton!);
+    click(buttonByText("Add automation"));
 
     await waitFor(() => {
-      expect(
-        queryAllByRoleFast("menuitem").some((item) => {
-          return item.textContent?.includes("Gmail label applied");
-        }),
-      ).toBeTruthy();
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    const gmailLabelMenuItem = queryAllByRoleFast("menuitem").find((item) => {
-      return item.textContent?.includes("Gmail label applied");
-    });
-    expect(gmailLabelMenuItem).toBeDefined();
-    click(gmailLabelMenuItem!);
+    pickTrigger("Email", /^Gmail label applied/);
 
     const createTriggerForm = await screen.findByRole("form", {
       name: "Add Gmail label automation",
@@ -1709,11 +1710,9 @@ describe("workflow detail page", () => {
     click(buttonByText("Add automation"));
 
     await waitFor(() => {
-      expect(
-        menuItemByText(/^Google Calendar event updated/),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    click(menuItemByText(/^Google Calendar event updated/));
+    pickTrigger("Calendar", /^Google Calendar event updated/);
 
     const createTriggerForm = await screen.findByRole("form", {
       name: "Add Google Calendar automation",
@@ -1754,11 +1753,9 @@ describe("workflow detail page", () => {
     click(buttonByText("Add automation"));
 
     await waitFor(() => {
-      expect(
-        menuItemByText(/^Google Calendar event cancelled/),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    click(menuItemByText(/^Google Calendar event cancelled/));
+    pickTrigger("Calendar", /^Google Calendar event cancelled/);
 
     const createTriggerForm = await screen.findByRole("form", {
       name: "Add Google Calendar automation",
@@ -1799,11 +1796,9 @@ describe("workflow detail page", () => {
     click(buttonByText("Add automation"));
 
     await waitFor(() => {
-      expect(
-        menuItemByText(/^Google Meet transcript ready/),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    click(menuItemByText(/^Google Meet transcript ready/));
+    pickTrigger("Calendar", /^Google Meet transcript ready/);
 
     const createTriggerForm = await screen.findByRole("form", {
       name: "Add Google Meet transcript automation",
@@ -1840,9 +1835,9 @@ describe("workflow detail page", () => {
     click(buttonByText("Add automation"));
 
     await waitFor(() => {
-      expect(menuItemByText(/^Webhook/)).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    click(menuItemByText(/^Webhook/));
+    pickTrigger("Integrations", /^Webhook/);
     await waitFor(() => {
       expect(buttonByText("Create webhook")).toBeInTheDocument();
     });
@@ -1889,7 +1884,10 @@ describe("workflow detail page", () => {
       expect(buttonByText("Add automation")).toBeInTheDocument();
     });
     click(buttonByText("Add automation"));
-    click(menuItemByText(/Scheduled time/u));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    pickTrigger("Schedule", /^Scheduled time/u);
 
     const createTriggerForm = await screen.findByRole("form", {
       name: "Add schedule automation",
@@ -1924,7 +1922,10 @@ describe("workflow detail page", () => {
       expect(buttonByText("Add automation")).toBeInTheDocument();
     });
     click(buttonByText("Add automation"));
-    click(menuItemByText(/^Interval/u));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    pickTrigger("Schedule", /^Interval/u);
 
     const createTriggerForm = await screen.findByRole("form", {
       name: "Add interval automation",
@@ -1955,7 +1956,10 @@ describe("workflow detail page", () => {
       expect(buttonByText("Add automation")).toBeInTheDocument();
     });
     click(buttonByText("Add automation"));
-    click(menuItemByText(/One-time run/u));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    pickTrigger("Schedule", /^One-time run/u);
 
     const createTriggerForm = await screen.findByRole("form", {
       name: "Add one-time automation",
