@@ -4176,6 +4176,37 @@ function CreateWebhookTriggerView({
   );
 }
 
+function TriggerRunStat({
+  icon,
+  label,
+  value,
+  emphasized,
+}: {
+  readonly icon: ReactNode;
+  readonly label: string;
+  readonly value: string;
+  readonly emphasized: boolean;
+}) {
+  return (
+    <div
+      className="flex min-w-0 items-center gap-1.5"
+      aria-label={`${label} run ${value}`}
+    >
+      <span className="shrink-0 text-muted-foreground">{icon}</span>
+      <span className="shrink-0 text-sm text-muted-foreground">{label}</span>
+      <span
+        className={cn(
+          "min-w-0 truncate text-sm",
+          emphasized ? "font-medium text-foreground" : "text-muted-foreground",
+        )}
+        title={value}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
 function TriggerRow({
   trigger,
   canManage,
@@ -4194,6 +4225,14 @@ function TriggerRow({
   const subtitle = workflowTriggerSubtitle(trigger);
   const hasLastRun = hasValidRunTimestamp(trigger.lastRunAt);
   const hasNextRun = hasValidRunTimestamp(trigger.nextRunAt);
+  const lastRunLabel = formatWorkflowTriggerRun(
+    trigger.lastRunAt,
+    displayTimezone,
+  );
+  const nextRunLabel = formatWorkflowTriggerNextRun(
+    trigger.nextRunAt,
+    displayTimezone,
+  );
 
   return (
     <>
@@ -4211,64 +4250,34 @@ function TriggerRow({
             <IconRepeat size={15} stroke={1.5} />
           </span>
           <div className="min-w-0">
-            <div className="truncate text-sm font-medium text-foreground">
+            <div
+              className="truncate text-sm font-medium text-foreground"
+              title={title}
+            >
               {title}
             </div>
             {subtitle ? (
-              <div className="mt-0.5 truncate text-xs text-muted-foreground">
+              <div
+                className="mt-0.5 truncate text-xs text-muted-foreground"
+                title={subtitle}
+              >
                 {subtitle}
               </div>
             ) : null}
           </div>
         </div>
-        <div
-          className="flex min-w-0 items-center gap-1.5"
-          aria-label={`Last run ${formatWorkflowTriggerRun(
-            trigger.lastRunAt,
-            displayTimezone,
-          )}`}
-        >
-          <IconHistory
-            size={14}
-            stroke={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
-          <span className="shrink-0 text-sm text-muted-foreground">Last</span>
-          <span
-            className={cn(
-              "min-w-0 truncate text-sm",
-              hasLastRun
-                ? "font-medium text-foreground"
-                : "text-muted-foreground",
-            )}
-          >
-            {formatWorkflowTriggerRun(trigger.lastRunAt, displayTimezone)}
-          </span>
-        </div>
-        <div
-          className="flex min-w-0 items-center gap-1.5"
-          aria-label={`Next run ${formatWorkflowTriggerNextRun(
-            trigger.nextRunAt,
-            displayTimezone,
-          )}`}
-        >
-          <IconClock
-            size={14}
-            stroke={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
-          <span className="shrink-0 text-sm text-muted-foreground">Next</span>
-          <span
-            className={cn(
-              "min-w-0 truncate text-sm",
-              hasNextRun
-                ? "font-medium text-foreground"
-                : "text-muted-foreground",
-            )}
-          >
-            {formatWorkflowTriggerNextRun(trigger.nextRunAt, displayTimezone)}
-          </span>
-        </div>
+        <TriggerRunStat
+          icon={<IconHistory size={14} stroke={1.5} />}
+          label="Last"
+          value={lastRunLabel}
+          emphasized={hasLastRun}
+        />
+        <TriggerRunStat
+          icon={<IconClock size={14} stroke={1.5} />}
+          label="Next"
+          value={nextRunLabel}
+          emphasized={hasNextRun}
+        />
         <TriggerStatusSwitch
           trigger={trigger}
           title={title}
