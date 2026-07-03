@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.222.11](https://github.com/vm0-ai/vm0/compare/cli-v9.222.10...cli-v9.222.11) (2026-07-03)
+
+
+### Refactoring
+
+* remove legacy automation poller, mutating routes, and the cli command ([#20103](https://github.com/vm0-ai/vm0/issues/20103)) ([2245f83](https://github.com/vm0-ai/vm0/commit/2245f83430aefa545077e5da1e8929d9c4968628))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.150.3
+    * @vm0/connectors bumped to 1.132.3
+    * @vm0/core bumped to 8.394.6
+
 ## [9.222.10](https://github.com/vm0-ai/vm0/compare/cli-v9.222.9...cli-v9.222.10) (2026-07-03)
 
 
