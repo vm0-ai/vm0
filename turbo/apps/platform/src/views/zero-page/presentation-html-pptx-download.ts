@@ -579,6 +579,116 @@ function createExportReadinessScript(): string {
 `;
 }
 
+function createExportLineBreakScript(): string {
+  return `
+  const lineBreakSkipTags = new Set([
+    "SCRIPT", "STYLE", "NOSCRIPT", "TEXTAREA", "SVG",
+  ]);
+
+  const shouldPreserveLineBreaksForTextNode = (node) => {
+    const parent = node.parentElement;
+    if (!parent || lineBreakSkipTags.has(parent.tagName)) return false;
+    if (!node.nodeValue || node.nodeValue.trim().length === 0) return false;
+    const style = window.getComputedStyle(parent);
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.fontSize === "0px" ||
+      style.whiteSpace === "nowrap" ||
+      style.whiteSpace === "pre"
+    ) {
+      return false;
+    }
+    return true;
+  };
+
+  const textNodesForLineBreakPreservation = (nodes) => {
+    const textNodes = [];
+    for (const node of nodes) {
+      const walker = document.createTreeWalker(
+        node,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: (textNode) => {
+            return shouldPreserveLineBreaksForTextNode(textNode)
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_REJECT;
+          },
+        },
+      );
+      let current = walker.nextNode();
+      while (current) {
+        textNodes.push(current);
+        current = walker.nextNode();
+      }
+    }
+    return textNodes;
+  };
+
+  const textOffsetTop = (node, offset) => {
+    const range = document.createRange();
+    range.setStart(node, offset);
+    range.setEnd(node, Math.min(offset + 1, node.nodeValue.length));
+    const rect = Array.from(range.getClientRects()).find((candidate) => {
+      return candidate.width > 0 && candidate.height > 0;
+    });
+    range.detach();
+    return rect ? rect.top : null;
+  };
+
+  const tokenRanges = (text) => {
+    const ranges = [];
+    const matcher = /\\S+\\s*/g;
+    let match = matcher.exec(text);
+    while (match) {
+      ranges.push({
+        start: match.index,
+        visibleStart: match.index,
+      });
+      match = matcher.exec(text);
+    }
+    return ranges;
+  };
+
+  const visualLineBreakOffsets = (node) => {
+    let previousTop = null;
+    const offsets = [];
+    for (const token of tokenRanges(node.nodeValue)) {
+      const top = textOffsetTop(node, token.visibleStart);
+      if (top === null) continue;
+      if (previousTop !== null && Math.abs(top - previousTop) > 1) {
+        offsets.push(token.start);
+      }
+      previousTop = top;
+    }
+    return offsets.filter((offset, index) => {
+      return offset > 0 && offset < node.nodeValue.length && offsets.indexOf(offset) === index;
+    });
+  };
+
+  const applyVisualLineBreakOffsets = (node, offsets) => {
+    const parent = node.parentNode;
+    if (!parent || offsets.length === 0) return;
+    const text = node.nodeValue;
+    const fragment = document.createDocumentFragment();
+    let start = 0;
+    for (const offset of offsets) {
+      fragment.append(document.createTextNode(text.slice(start, offset)));
+      fragment.append(document.createElement("br"));
+      start = offset;
+    }
+    fragment.append(document.createTextNode(text.slice(start)));
+    parent.replaceChild(fragment, node);
+  };
+
+  const preserveBrowserTextLineBreaks = (nodes) => {
+    for (const textNode of textNodesForLineBreakPreservation(nodes)) {
+      applyVisualLineBreakOffsets(textNode, visualLineBreakOffsets(textNode));
+    }
+  };
+`;
+}
+
 function createExportRunnerScript(): string {
   return `
   void (async () => {
@@ -593,6 +703,7 @@ function createExportRunnerScript(): string {
     revealSlideNodes(nodes);
     copyInheritedSlideBackgrounds(nodes);
     await waitForExportReadiness(nodes);
+    preserveBrowserTextLineBreaks(nodes);
     const blob = await window.domToPptx.exportToPptx(nodes, options);
     post({ status: "success", blob });
   })().catch((error) => {
@@ -610,6 +721,7 @@ function createExportScript(options: DomToPptxOptions): string {
     createExportBootstrapScript(options),
     createExportSlideScript(),
     createExportReadinessScript(),
+    createExportLineBreakScript(),
     createExportRunnerScript(),
   ].join("");
 }
