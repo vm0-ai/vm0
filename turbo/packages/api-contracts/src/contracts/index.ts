@@ -6,6 +6,14 @@
  */
 export { initContract } from "./base";
 export {
+  buildCommitShaSchema,
+  buildInfoContract,
+  buildInfoResponseSchema,
+  type BuildInfoContract,
+  type BuildInfoResponse,
+  type BuildInfoRouteResponse,
+} from "./build-info";
+export {
   healthAuthContract,
   healthContract,
   healthResponseSchema,

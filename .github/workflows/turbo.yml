@@ -1038,6 +1038,12 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
 
+      - name: Resolve App Build Commit SHA
+        id: build-commit
+        run: |
+          sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
       - name: Deploy App to Vercel
         id: deploy
         uses: ./.github/actions/vercel-deploy
@@ -1052,6 +1058,7 @@ jobs:
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             VITE_VERCEL_ENV=preview
             VITE_API_URL=${{ needs.prepare.outputs.api-preview-url }}
+            VITE_GIT_COMMIT_SHA=${{ steps.build-commit.outputs.sha }}
             VITE_ONBOARDING_URL=${{ vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
             VITE_ONBOARDING_DOMAIN=${{ startsWith(needs.prepare.outputs.job-ref, 'pr-') && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
             PUBLIC_ARTIFACTS_BASE_URL=${{ vars.PUBLIC_ARTIFACTS_BASE_URL_DEV || vars.PUBLIC_ARTIFACTS_BASE_URL }}
