@@ -22,6 +22,7 @@ import {
 } from "../services/google-drive-artifact-sync.service";
 import {
   zeroChatSearch,
+  zeroChatThreadActiveRunThreadIds,
   zeroChatThreadArtifacts,
   zeroChatThreadDetail,
   zeroChatThreadMessageById,
@@ -140,6 +141,18 @@ const listChatThreadEventsInner$ = computed(async (get) => {
       hasMore: result.hasMore,
     },
   };
+});
+
+const listChatThreadActiveIdsInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const threadIds = await get(
+    zeroChatThreadActiveRunThreadIds({
+      userId: auth.userId,
+      orgId: auth.orgId,
+    }),
+  );
+
+  return { status: 200 as const, body: { threadIds: [...threadIds] } };
 });
 
 const listChatThreadMessagesInner$ = computed(async (get) => {
@@ -376,6 +389,13 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       listChatThreadEventsInner$,
+    ),
+  },
+  {
+    route: chatThreadsContract.activeIds,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      listChatThreadActiveIdsInner$,
     ),
   },
   {

@@ -74,8 +74,8 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Fetch: static asset caching only — navigation requests are not intercepted
-// so the browser handles page loads natively without any offline fallback.
+// Fetch: cache static assets, keep API requests network-only, and serve
+// navigations network-first with a cached offline fallback.
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") {
     return;

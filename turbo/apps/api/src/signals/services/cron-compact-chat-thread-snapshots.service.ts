@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, asc, eq, gt, or, sql } from "drizzle-orm";
+import { and, asc, eq, sql, type SQL } from "drizzle-orm";
 import type {
   ChatThreadEvent,
   ChatThreadSnapshotProjection,
@@ -16,19 +16,16 @@ interface SnapshotScope extends Record<string, unknown> {
   readonly orgId: string;
 }
 
-interface EventCursor {
-  readonly id: string;
-  readonly createdAt: Date;
-}
-
 interface SnapshotCompactionStats {
   readonly scopes: number;
   readonly eventsApplied: number;
   readonly removedDeletedAgentThreads: number;
+  readonly eventsPruned: number;
 }
 
 type SnapshotReadWriteDb = Pick<Db, "select" | "insert" | "execute">;
 type SnapshotRootDb = SnapshotReadWriteDb & Pick<Db, "transaction">;
+const CHAT_THREAD_EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 function toApiEvent(row: {
   readonly id: string;
@@ -205,9 +202,9 @@ async function loadEventCursor(
   db: SnapshotReadWriteDb,
   scope: SnapshotScope,
   eventId: string | null,
-): Promise<EventCursor | null> {
+): Promise<boolean> {
   if (!eventId) {
-    return null;
+    return false;
   }
 
   const [row] = await db
@@ -225,7 +222,7 @@ async function loadEventCursor(
     )
     .limit(1);
 
-  return row ?? null;
+  return row !== undefined;
 }
 
 async function loadEventsAfterMarker(
@@ -233,20 +230,21 @@ async function loadEventsAfterMarker(
   scope: SnapshotScope,
   eventId: string | null,
 ): Promise<readonly ChatThreadEvent[]> {
-  const cursor = await loadEventCursor(db, scope, eventId);
-  const filters = [
+  const hasCursor = await loadEventCursor(db, scope, eventId);
+  const filters: SQL[] = [
     eq(chatThreadEvents.userId, scope.userId),
     eq(chatThreadEvents.orgId, scope.orgId),
   ];
-  if (cursor) {
+  if (hasCursor && eventId !== null) {
     filters.push(
-      or(
-        gt(chatThreadEvents.createdAt, cursor.createdAt),
-        and(
-          eq(chatThreadEvents.createdAt, cursor.createdAt),
-          gt(chatThreadEvents.id, cursor.id),
-        ),
-      )!,
+      sql`(${chatThreadEvents.createdAt}, ${chatThreadEvents.id}) > (
+        SELECT marker.created_at, marker.id
+        FROM ${chatThreadEvents} AS marker
+        WHERE marker.user_id = ${scope.userId}
+          AND marker.org_id = ${scope.orgId}
+          AND marker.id = ${eventId}
+        LIMIT 1
+      )`,
     );
   }
 
@@ -352,10 +350,28 @@ async function compactChatThreadSnapshotsForAllScopes(
     removedDeletedAgentThreads += result.removedDeletedAgentThreads;
   }
 
+  signal?.throwIfAborted();
+  const cutoff = new Date(nowDate().getTime() - CHAT_THREAD_EVENT_RETENTION_MS);
+  const pruned = await db.execute<{ readonly count: number }>(sql`
+    WITH pruned AS (
+      DELETE FROM ${chatThreadEvents}
+      WHERE ${chatThreadEvents.createdAt} < ${cutoff}
+        AND NOT EXISTS (
+          SELECT 1
+          FROM ${chatThreadSnapshots}
+          WHERE ${chatThreadSnapshots.latestEventId} = ${chatThreadEvents.id}
+        )
+      RETURNING 1
+    )
+    SELECT COUNT(*)::int AS "count"
+    FROM pruned
+  `);
+
   return {
     scopes: scopes.length,
     eventsApplied,
     removedDeletedAgentThreads,
+    eventsPruned: pruned.rows[0]?.count ?? 0,
   };
 }
 

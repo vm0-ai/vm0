@@ -13,6 +13,7 @@ import {
   type GithubLabelAppliedEventConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
+  type ZeroWorkflowWebhookSecretResponse,
   type ZeroWorkflowSummary,
   type ZeroWorkflowTriggerAutomationEntry,
   type ZeroWorkflowTriggerCreateRequest,
@@ -196,6 +197,7 @@ const internalCreatedWorkflowWebhookTrigger$ =
 const internalWorkflowTriggerPickerOpen$ = state(false);
 const internalWorkflowTriggerPickerCategory$ =
   state<WorkflowTriggerCategoryKey>("schedule");
+const internalRevealWebhookSecretTriggerId$ = state<string | null>(null);
 const internalCreateGithubLabelActor$ = state<WorkflowGithubLabelActor>("me");
 const internalEditingGithubLabelActors$ = state<
   Record<string, WorkflowGithubLabelActor>
@@ -393,6 +395,16 @@ export const createdWorkflowWebhookTrigger$ = computed((get) => {
 export const setCreatedWorkflowWebhookTrigger$ = command(
   ({ set }, trigger: WorkflowWebhookTriggerSummary | null) => {
     set(internalCreatedWorkflowWebhookTrigger$, trigger);
+  },
+);
+
+export const revealWebhookSecretTriggerId$ = computed((get) => {
+  return get(internalRevealWebhookSecretTriggerId$);
+});
+
+export const setRevealWebhookSecretTriggerId$ = command(
+  ({ set }, triggerId: string | null) => {
+    set(internalRevealWebhookSecretTriggerId$, triggerId);
   },
 );
 
@@ -968,6 +980,26 @@ export const createWorkflowWebhookTrigger$ = command(
     ) {
       throw new Error("Expected webhook workflow trigger summary");
     }
+    return result.body;
+  },
+);
+
+export const revealWorkflowWebhookSecret$ = command(
+  async (
+    { get },
+    input: { readonly triggerId: string },
+    signal: AbortSignal,
+  ): Promise<ZeroWorkflowWebhookSecretResponse> => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const result = await accept(
+      client.revealWebhookSecret({
+        params: { id: input.triggerId },
+        body: undefined,
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
     return result.body;
   },
 );

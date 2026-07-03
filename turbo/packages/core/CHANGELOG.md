@@ -1,5 +1,86 @@
 # Changelog
 
+## [8.394.4](https://github.com/vm0-ai/vm0/compare/core-v8.394.3...core-v8.394.4) (2026-07-03)
+
+
+### Refactoring
+
+* retire presentation-deck-tools server-side (phase 2) ([#20012](https://github.com/vm0-ai/vm0/issues/20012)) ([9626a84](https://github.com/vm0-ai/vm0/commit/9626a842ba1ad35502dc97d507acbd58f969e7aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.150.1
+    * @vm0/connectors bumped to 1.132.1
+
+## [8.394.3](https://github.com/vm0-ai/vm0/compare/core-v8.394.2...core-v8.394.3) (2026-07-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.150.0
+
+## [8.394.2](https://github.com/vm0-ai/vm0/compare/core-v8.394.1...core-v8.394.2) (2026-07-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.149.1
+
+## [8.394.1](https://github.com/vm0-ai/vm0/compare/core-v8.394.0...core-v8.394.1) (2026-07-03)
+
+
+### Refactoring
+
+* retire legacy html-ppt presentation registry entries (presentations runbook-only) ([#20064](https://github.com/vm0-ai/vm0/issues/20064)) ([b92a71c](https://github.com/vm0-ai/vm0/commit/b92a71c98a4c48b1fec6a610dd179a09f4d86c62))
+
+## [8.394.0](https://github.com/vm0-ai/vm0/compare/core-v8.393.0...core-v8.394.0) (2026-07-03)
+
+
+### Features
+
+* add onboarding completion marker ([#20055](https://github.com/vm0-ai/vm0/issues/20055)) ([6d5bf36](https://github.com/vm0-ai/vm0/commit/6d5bf3630093c7a9120ce91b2b746eedf299171d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.149.0
+
+## [8.393.0](https://github.com/vm0-ai/vm0/compare/core-v8.392.0...core-v8.393.0) (2026-07-03)
+
+
+### Features
+
+* **workflows:** gate webhook trigger creation with a separate switch ([#20041](https://github.com/vm0-ai/vm0/issues/20041)) ([9c0f0c2](https://github.com/vm0-ai/vm0/commit/9c0f0c21a0cf62d97d682d6f4de2831c17e1a832))
+
+
+### Bug Fixes
+
+* **platform:** anchor chat scroll to latest user message ([#20045](https://github.com/vm0-ai/vm0/issues/20045)) ([22742bb](https://github.com/vm0-ai/vm0/commit/22742bb21f10f8383de3e5ba7cd7aea779dad92c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.148.0
+    * @vm0/connectors bumped to 1.132.0
+
+## [8.392.0](https://github.com/vm0-ai/vm0/compare/core-v8.391.4...core-v8.392.0) (2026-07-03)
+
+
+### Features
+
+* migrate legacy automations to workflow schedule triggers globally ([#20033](https://github.com/vm0-ai/vm0/issues/20033)) ([eeb91c2](https://github.com/vm0-ai/vm0/commit/eeb91c258a50f67b05a341ebbbbb7e1b872d0030))
+
 ## [8.391.4](https://github.com/vm0-ai/vm0/compare/core-v8.391.3...core-v8.391.4) (2026-07-03)
 
 

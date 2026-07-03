@@ -131,6 +131,7 @@ async function enableWebhookWorkflowTriggers(
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
     [FeatureSwitchKey.WorkflowAutomation]: true,
+    [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
   });
 }
 
@@ -594,8 +595,13 @@ describe("zero workflow triggers", () => {
     expect(created.body.nextRunAt).toBeTruthy();
   });
 
-  it("rejects Gmail event triggers before the feature is enabled", async () => {
-    const { workflowId } = await setupFixture();
+  it("rejects Gmail event triggers when the feature is disabled by override", async () => {
+    // Globally enabled since the automation -> workflow cutover (#19959);
+    // the gate now only rejects when a user override turns it off.
+    const { fixture, workflowId } = await setupFixture();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.WorkflowAutomation]: false,
+    });
 
     const rejected = await accept(
       triggersClient().create({
@@ -615,8 +621,13 @@ describe("zero workflow triggers", () => {
     );
   });
 
-  it("rejects Google Calendar event triggers before the feature is enabled", async () => {
-    const { workflowId } = await setupFixture();
+  it("rejects Google Calendar event triggers when the feature is disabled by override", async () => {
+    // Globally enabled since the automation -> workflow cutover (#19959);
+    // the gate now only rejects when a user override turns it off.
+    const { fixture, workflowId } = await setupFixture();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.WorkflowAutomation]: false,
+    });
 
     const rejected = await accept(
       triggersClient().create({
@@ -635,8 +646,36 @@ describe("zero workflow triggers", () => {
     );
   });
 
-  it("rejects webhook event triggers before the feature is enabled", async () => {
-    const { workflowId } = await setupFixture();
+  it("rejects webhook event triggers when the feature is disabled by override", async () => {
+    // Globally enabled since the automation -> workflow cutover (#19959);
+    // the gate now only rejects when a user override turns it off.
+    const { fixture, workflowId } = await setupFixture();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.WorkflowAutomation]: false,
+    });
+
+    const rejected = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "webhook-received",
+        },
+      }),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "Workflow webhook triggers are not enabled",
+    );
+  });
+
+  it("rejects webhook event triggers when only workflow automation is enabled", async () => {
+    const { fixture, workflowId } = await setupFixture();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.WorkflowAutomation]: true,
+    });
 
     const rejected = await accept(
       triggersClient().create({
@@ -778,9 +817,22 @@ describe("zero workflow triggers", () => {
     ) {
       throw new Error("Expected created webhook trigger to be listed");
     }
-    expect(listedWebhook.webhookUrl).toBe(created.body.webhookUrl);
+    expect(listedWebhook.webhookUrl).toBeUndefined();
     expect(listedWebhook.secretLastFour).toBe(created.body.secretLastFour);
     expect(listedWebhook.webhookSecret).toBeUndefined();
+
+    const revealed = await accept(
+      triggersClient().revealWebhookSecret({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: undefined,
+      }),
+      [200],
+    );
+    expect(revealed.body).toStrictEqual({
+      webhookUrl: created.body.webhookUrl,
+      webhookSecret: created.body.webhookSecret,
+    });
   });
 
   it("requires a connected Gmail account for Gmail event triggers", async () => {

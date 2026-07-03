@@ -121,6 +121,7 @@ async function enableWebhookWorkflowTriggers(
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
     [FeatureSwitchKey.WorkflowAutomation]: true,
+    [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
   });
 }
 
@@ -175,6 +176,7 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     if (
       created.body.kind !== "event" ||
       created.body.eventType !== "webhook-received" ||
+      !created.body.webhookUrl ||
       !created.body.webhookSecret
     ) {
       throw new Error("Expected a webhook trigger with a one-time secret");
@@ -291,7 +293,8 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     );
     if (
       created.body.kind !== "event" ||
-      created.body.eventType !== "webhook-received"
+      created.body.eventType !== "webhook-received" ||
+      !created.body.webhookUrl
     ) {
       throw new Error("Expected a webhook trigger");
     }
@@ -317,6 +320,51 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     expect(response.status).toBe(401);
   });
 
+  it("continues dispatching existing webhook triggers when webhook creation is disabled", async () => {
+    const { fixture, workflowId } = await setupFixture();
+    await track(Promise.resolve(fixture));
+    await enableWebhookWorkflowTriggers(fixture);
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    if (
+      created.body.kind !== "event" ||
+      created.body.eventType !== "webhook-received" ||
+      !created.body.webhookUrl ||
+      !created.body.webhookSecret
+    ) {
+      throw new Error("Expected a webhook trigger with a one-time secret");
+    }
+
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.WorkflowAutomation]: true,
+      [FeatureSwitchKey.WorkflowWebhookTriggers]: false,
+    });
+
+    const token = new URL(created.body.webhookUrl).pathname.split("/").at(-1);
+    if (!token) {
+      throw new Error("Expected webhook URL token");
+    }
+    const response = await postWorkflowWebhook({
+      token,
+      rawBody: JSON.stringify({ event: "existing-trigger" }),
+      secret: created.body.webhookSecret,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      duplicate: false,
+      runId: expect.any(String),
+    });
+  });
+
   it("starts an event run when the trigger's previous run is still active", async () => {
     const { fixture, agentId, workflowId } = await setupFixture();
     await track(Promise.resolve(fixture));
@@ -333,6 +381,7 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     if (
       created.body.kind !== "event" ||
       created.body.eventType !== "webhook-received" ||
+      !created.body.webhookUrl ||
       !created.body.webhookSecret
     ) {
       throw new Error("Expected a webhook trigger with a one-time secret");

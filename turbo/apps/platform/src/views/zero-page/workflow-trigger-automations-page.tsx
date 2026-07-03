@@ -448,17 +448,12 @@ function AgentSelectionStep({
   const query = useGet(workflowAutomationAgentQuery$);
   const setQuery = useSet(setWorkflowAutomationAgentQuery$);
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const pinned = pinnedIds
-    .map((id) => {
-      return agents.find((agent) => {
-        return agent.id === id;
-      });
-    })
-    .filter((agent): agent is TeamComposeItem => {
-      return agent !== undefined;
-    });
+  const pinnedIdSet = new Set(pinnedIds);
+  const pinned = agents.filter((agent) => {
+    return pinnedIdSet.has(agent.id);
+  });
   const unpinned = agents.filter((agent) => {
-    return !pinnedIds.includes(agent.id);
+    return !pinnedIdSet.has(agent.id);
   });
   const trimmedQuery = query.trim().toLowerCase();
   const filteredPinned = trimmedQuery

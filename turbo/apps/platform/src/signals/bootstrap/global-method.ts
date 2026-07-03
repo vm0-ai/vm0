@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { getLoggers, Level, logger } from "../log";
 import type { DebugLoggers } from "../../types/global-method";
-import { getBuildCommitSha } from "../../lib/build-info";
+import { getBuildCommitSha, getBuildVersion } from "../../lib/build-info";
 import { inspectLogInput$ } from "./inspect-log-input";
 import { extendDebugLoggerLocalStorage } from "./loggers";
 
@@ -45,6 +45,7 @@ export const setupGlobalMethod$ = command(({ get }, signal: AbortSignal) => {
       get(inspectLogInput$)?.click();
     },
     getBuildCommitSha,
+    getBuildVersion,
   };
 
   signal.addEventListener("abort", () => {

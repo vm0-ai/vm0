@@ -1,5 +1,85 @@
 # Changelog
 
+## [9.222.9](https://github.com/vm0-ai/vm0/compare/cli-v9.222.8...cli-v9.222.9) (2026-07-03)
+
+
+### Refactoring
+
+* retire presentation-deck-tools server-side (phase 2) ([#20012](https://github.com/vm0-ai/vm0/issues/20012)) ([9626a84](https://github.com/vm0-ai/vm0/commit/9626a842ba1ad35502dc97d507acbd58f969e7aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.150.1
+    * @vm0/connectors bumped to 1.132.1
+    * @vm0/core bumped to 8.394.4
+
+## [9.222.8](https://github.com/vm0-ai/vm0/compare/cli-v9.222.7...cli-v9.222.8) (2026-07-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.150.0
+    * @vm0/core bumped to 8.394.3
+
+## [9.222.7](https://github.com/vm0-ai/vm0/compare/cli-v9.222.6...cli-v9.222.7) (2026-07-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.149.1
+    * @vm0/core bumped to 8.394.2
+
+## [9.222.6](https://github.com/vm0-ai/vm0/compare/cli-v9.222.5...cli-v9.222.6) (2026-07-03)
+
+
+### Refactoring
+
+* retire legacy html-ppt presentation registry entries (presentations runbook-only) ([#20064](https://github.com/vm0-ai/vm0/issues/20064)) ([b92a71c](https://github.com/vm0-ai/vm0/commit/b92a71c98a4c48b1fec6a610dd179a09f4d86c62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.394.1
+
+## [9.222.5](https://github.com/vm0-ai/vm0/compare/cli-v9.222.4...cli-v9.222.5) (2026-07-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.149.0
+    * @vm0/core bumped to 8.394.0
+
+## [9.222.4](https://github.com/vm0-ai/vm0/compare/cli-v9.222.3...cli-v9.222.4) (2026-07-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.148.0
+    * @vm0/connectors bumped to 1.132.0
+    * @vm0/core bumped to 8.393.0
+
+## [9.222.3](https://github.com/vm0-ai/vm0/compare/cli-v9.222.2...cli-v9.222.3) (2026-07-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.392.0
+
 ## [9.222.2](https://github.com/vm0-ai/vm0/compare/cli-v9.222.1...cli-v9.222.2) (2026-07-03)
 
 

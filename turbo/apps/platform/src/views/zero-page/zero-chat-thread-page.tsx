@@ -107,6 +107,7 @@ import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { emptyArtifactImg, emptyChatImg } from "./platform-assets.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
@@ -156,7 +157,10 @@ import type { PermissionActionBlock } from "../../signals/chat-page/permission-a
 import type { ComputerUseAuthorizationBlock } from "../../signals/chat-page/computer-use-authorization-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
-import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import {
+  ConnectorIcon,
+  isConnectorIconType,
+} from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
@@ -318,7 +322,6 @@ import {
   resolveUserPermissionGrantPolicy,
   userPermissionGrantsByAgent,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
-import type { FirewallPermissionDetailMetadata } from "@vm0/connectors/firewall-metadata";
 import { firewallPermissionMetadataByConnector } from "../../signals/firewall-permission-metadata.ts";
 import {
   billingStatusAsync$,
@@ -3586,7 +3589,7 @@ function resolveRunGroupFoldPlacements({
       };
       const embeddedGroupId = control.expanded
         ? undefined
-        : assistantGroupIdForCollapsedRunGroupFold(groups, index);
+        : inlineGroupIdForCollapsedRunGroupFold(groups, index);
       const target = embeddedGroupId
         ? embeddedRunGroupFolds
         : externalRunGroupFolds;
@@ -3601,6 +3604,23 @@ function resolveRunGroupFoldPlacements({
   }
 
   return { embeddedRunGroupFolds, externalRunGroupFolds };
+}
+
+function inlineGroupIdForCollapsedRunGroupFold(
+  groups: readonly GroupedChatMessageGroup[],
+  index: number,
+): string | undefined {
+  const group = groups[index];
+  if (!group || group.role !== "user") {
+    return undefined;
+  }
+  if (firstRunIdForMessages(group.messages) === undefined) {
+    return undefined;
+  }
+  return (
+    assistantGroupIdForCollapsedRunGroupFold(groups, index) ??
+    group.beginMessageId
+  );
 }
 
 function assistantGroupIdForCollapsedRunGroupFold(
@@ -5973,7 +5993,7 @@ function isPermissionActionAlreadyApplied(params: {
 
 function findPermissionActionPermission(
   block: PermissionActionBlock,
-  metadata: FirewallPermissionDetailMetadata | undefined,
+  metadata: PublicConnectorCatalogPermissionDetail | undefined,
 ) {
   return metadata
     ? (findPermissionInMetadata(metadata, block.permission) ?? undefined)
@@ -5983,7 +6003,7 @@ function findPermissionActionPermission(
 function permissionActionUserGrantPolicy(
   loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
   block: PermissionActionBlock,
-  metadata: FirewallPermissionDetailMetadata | undefined,
+  metadata: PublicConnectorCatalogPermissionDetail | undefined,
 ): FirewallPolicyValue | undefined {
   const grants = loadableData(loadable);
   if (!grants || !metadata) {
@@ -6050,7 +6070,7 @@ function createPermissionActionCardViewState(params: {
   block: PermissionActionBlock;
   hasAgent: boolean;
   agentLoadableState: string;
-  permissionMetadataLoadable: LoadableLike<FirewallPermissionDetailMetadata | null>;
+  permissionMetadataLoadable: LoadableLike<PublicConnectorCatalogPermissionDetail | null>;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
   grantLoadableState: string;
 }) {
@@ -6176,6 +6196,11 @@ function PermissionActionCardContent({
   expiresAt: string | null;
   onClick: () => void;
 }) {
+  const connectorIcon = isConnectorIconType(block.connectorRef) ? (
+    <ConnectorIcon type={block.connectorRef} size={22} />
+  ) : (
+    <IconPackage size={22} />
+  );
   const expiryText = expirationAvailable
     ? permissionGrantExpiryText(expiresAt)
     : null;
@@ -6191,7 +6216,7 @@ function PermissionActionCardContent({
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <ConnectorIcon type={block.connectorRef} size={22} />
+          {connectorIcon}
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
@@ -6236,7 +6261,6 @@ function PermissionActionCardForTarget({
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const config = CONNECTOR_TYPES[block.connectorRef];
   const expirationAvailable = block.action === "allow";
   const durationScope = `${block.id}\u0000${block.expiresIn ?? ""}`;
   const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
@@ -6247,7 +6271,7 @@ function PermissionActionCardForTarget({
     DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
   const permissionMetadataLoadable = useLoadable(
     firewallPermissionMetadataByConnector({
-      connectorType: block.connectorRef,
+      connectorRef: block.connectorRef,
     }),
   );
   const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
@@ -6260,6 +6284,10 @@ function PermissionActionCardForTarget({
     userGrantsLoadable,
     grantLoadableState: grantLoadable.state,
   });
+  const permissionMetadata =
+    permissionMetadataLoadable.state === "hasData"
+      ? permissionMetadataLoadable.data
+      : null;
   const grantExpiresAt =
     grantLoadable.state === "hasData"
       ? grantLoadable.data.expiresAt
@@ -6268,7 +6296,7 @@ function PermissionActionCardForTarget({
   return (
     <PermissionActionCardContent
       block={block}
-      connectorLabel={config.label}
+      connectorLabel={permissionMetadata?.label ?? block.connectorRef}
       actionLabel={actionState.actionLabel}
       permissionName={actionState.focusedPermission?.name ?? block.permission}
       status={actionState.status}
@@ -6741,7 +6769,13 @@ function PagedGroupRow({
   };
 }) {
   if (group.role === "user") {
-    return <PagedUserGroup group={group} thread={thread} />;
+    return (
+      <PagedUserGroup
+        group={group}
+        thread={thread}
+        runGroupFolds={runGroupFolds}
+      />
+    );
   }
   return (
     <PagedAssistantGroup
@@ -6756,14 +6790,19 @@ function PagedGroupRow({
 function PagedUserGroup({
   group,
   thread,
+  runGroupFolds,
 }: {
   group: GroupedChatMessageGroup;
   thread: ChatThreadSignals;
+  runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
   return (
     <>
       {group.messages.map((msg) => {
         return <PagedUserMessage key={msg.id} message={msg} thread={thread} />;
+      })}
+      {runGroupFolds?.map((fold) => {
+        return <RunGroupFoldRow key={fold.fold.key} control={fold} />;
       })}
     </>
   );

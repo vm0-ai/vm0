@@ -412,23 +412,36 @@ function runnerHeartbeatBody(
   args: {
     readonly runnerId?: string;
     readonly group?: string;
+    readonly profiles?: RunnerHeartbeatBody["profiles"];
+    readonly availableProfiles?: RunnerHeartbeatBody["availableProfiles"];
+    readonly omitAvailableProfiles?: boolean;
+    readonly maxConcurrent?: RunnerHeartbeatBody["maxConcurrent"];
+    readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
+    readonly allocatedMemoryMb?: RunnerHeartbeatBody["allocatedMemoryMb"];
+    readonly runningCount?: RunnerHeartbeatBody["runningCount"];
     readonly heldSessionStates?: RunnerHeartbeatBody["heldSessionStates"];
+    readonly mode?: RunnerHeartbeatBody["mode"];
   } = {},
 ): RunnerHeartbeatBody {
-  return {
+  const profiles = args.profiles ?? ["vm0/default"];
+  const body: RunnerHeartbeatBody = {
     runnerId: args.runnerId ?? randomUUID(),
     runnerName: "bdd-runner",
     group: args.group ?? "vm0/test",
-    profiles: ["vm0/default"],
+    profiles,
     totalVcpu: 8,
     totalMemoryMb: 16_384,
-    maxConcurrent: 2,
-    allocatedVcpu: 0,
-    allocatedMemoryMb: 0,
-    runningCount: 0,
+    maxConcurrent: args.maxConcurrent ?? 2,
+    allocatedVcpu: args.allocatedVcpu ?? 0,
+    allocatedMemoryMb: args.allocatedMemoryMb ?? 0,
+    runningCount: args.runningCount ?? 0,
     heldSessionStates: args.heldSessionStates ?? [],
-    mode: "running",
+    mode: args.mode ?? "running",
   };
+  if (!args.omitAvailableProfiles) {
+    body.availableProfiles = args.availableProfiles ?? profiles;
+  }
+  return body;
 }
 
 export function createRunsAutomationsApi(context: TestContext) {
@@ -1041,7 +1054,15 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 500)[],
       args: {
         readonly group?: string;
+        readonly profiles?: RunnerHeartbeatBody["profiles"];
+        readonly availableProfiles?: RunnerHeartbeatBody["availableProfiles"];
+        readonly omitAvailableProfiles?: boolean;
+        readonly maxConcurrent?: RunnerHeartbeatBody["maxConcurrent"];
+        readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
+        readonly allocatedMemoryMb?: RunnerHeartbeatBody["allocatedMemoryMb"];
+        readonly runningCount?: RunnerHeartbeatBody["runningCount"];
         readonly heldSessionStates?: RunnerHeartbeatBody["heldSessionStates"];
+        readonly mode?: RunnerHeartbeatBody["mode"];
       } = {},
     ) {
       return await accept(

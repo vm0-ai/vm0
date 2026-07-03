@@ -27,6 +27,7 @@ export const testOnboardingStatusStateActionBodySchema = z.discriminatedUnion(
       action: z.literal("seed-org"),
       default_agent: defaultAgentSeedSchema.optional(),
       onboarding_payment_pending: z.boolean().optional(),
+      onboarding_complete: z.boolean().optional(),
       tier: z.string().optional(),
     }),
     z.object({

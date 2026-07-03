@@ -1,15 +1,13 @@
 import { command } from "ccstate";
-import { onboardingCompleteLimitedFreeContract } from "@vm0/api-contracts/contracts/onboarding";
+import { onboardingCompleteContract } from "@vm0/api-contracts/contracts/onboarding";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { completeLimitedFreeOnboarding$ } from "../services/onboarding.service";
+import { completeOnboarding$ } from "../services/onboarding.service";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 
-const completeBody$ = bodyResultOf(
-  onboardingCompleteLimitedFreeContract.complete,
-);
+const completeBody$ = bodyResultOf(onboardingCompleteContract.complete);
 
 const forbidden = Object.freeze({
   status: 403 as const,
@@ -34,20 +32,12 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return body.response;
   }
 
-  return await set(
-    completeLimitedFreeOnboarding$,
-    {
-      orgId: auth.orgId,
-      credits: body.data.credits,
-      expiresAt: body.data.expiresAt,
-    },
-    signal,
-  );
+  return await set(completeOnboarding$, { orgId: auth.orgId }, signal);
 });
 
-export const zeroOnboardingCompleteLimitedFreeRoutes: readonly RouteEntry[] = [
+export const zeroOnboardingCompleteRoutes: readonly RouteEntry[] = [
   {
-    route: onboardingCompleteLimitedFreeContract.complete,
+    route: onboardingCompleteContract.complete,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       completeInner$,

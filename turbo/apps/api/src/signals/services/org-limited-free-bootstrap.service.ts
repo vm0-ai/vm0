@@ -13,14 +13,17 @@ import { serverSideZeroAgentCompose$ } from "./agent-compose.service";
 import {
   grantOnboardingCredits,
   LIMITED_FREE_ONBOARDING_CREDITS,
-  ONBOARDING_CREDITS_NEVER_EXPIRE_AT,
+  onboardingCreditsExpiresAt,
 } from "./onboarding-credit-grants.service";
 import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
+import {
+  DEFAULT_AGENT_AVATAR_URL,
+  DEFAULT_AGENT_DISPLAY_NAME,
+  DEFAULT_AGENT_NAME,
+  DEFAULT_AGENT_SOUND,
+} from "./default-agent-profile";
 
 const L = logger("org-limited-free-bootstrap.service");
-const DEFAULT_AGENT_NAME = "default-agent";
-const DEFAULT_AGENT_DISPLAY_NAME = "Zero";
-const DEFAULT_AGENT_SOUND = "professional";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -162,14 +165,14 @@ async function finalizeBootstrap(
       displayName: DEFAULT_AGENT_DISPLAY_NAME,
       description: null,
       sound: DEFAULT_AGENT_SOUND,
-      avatarUrl: null,
+      avatarUrl: DEFAULT_AGENT_AVATAR_URL,
     })
     .onConflictDoUpdate({
       target: [zeroAgents.orgId, zeroAgents.name],
       set: {
         displayName: DEFAULT_AGENT_DISPLAY_NAME,
         sound: DEFAULT_AGENT_SOUND,
-        avatarUrl: null,
+        avatarUrl: DEFAULT_AGENT_AVATAR_URL,
         updatedAt: nowDate(),
       },
     });
@@ -210,6 +213,7 @@ async function finalizeBootstrap(
       defaultAgentId: agentRow.id,
       tier: "limited-free-1",
       onboardingPaymentPending: false,
+      onboardingComplete: false,
       updatedAt: nowDate(),
     })
     .onConflictDoUpdate({
@@ -226,7 +230,7 @@ async function finalizeBootstrap(
     tx,
     args.orgId,
     LIMITED_FREE_ONBOARDING_CREDITS,
-    new Date(ONBOARDING_CREDITS_NEVER_EXPIRE_AT),
+    onboardingCreditsExpiresAt(nowDate()),
   );
 
   return { bootstrapped: true, agentId: agentRow.id };

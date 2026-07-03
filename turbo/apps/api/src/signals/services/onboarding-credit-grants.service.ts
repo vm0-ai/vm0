@@ -6,13 +6,17 @@ import type { Db } from "../external/db";
 
 const L = logger("onboarding-credit-grants.service");
 
-export const ONBOARDING_CREDITS_NEVER_EXPIRE_AT = "2999-12-31T00:00:00Z";
-export const LIMITED_FREE_ONBOARDING_CREDITS = 1000;
+export const LIMITED_FREE_ONBOARDING_CREDITS = 3000;
 
 const ONBOARDING_CREDIT_SOURCE = "onboarding";
 const ONBOARDING_CREDIT_IDEMPOTENCY_KEY = "limited-free-onboarding";
+const ONBOARDING_CREDIT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+export function onboardingCreditsExpiresAt(grantedAt: Date): Date {
+  return new Date(grantedAt.getTime() + ONBOARDING_CREDIT_TTL_MS);
+}
 
 async function grantOrgCredits(
   tx: DbTransaction,

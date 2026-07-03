@@ -53,6 +53,7 @@ interface DiagnosticConnectorApi {
   readonly envNames: readonly string[];
   readonly authHeaderNames: readonly string[];
   readonly authQueryParamNames: readonly string[];
+  readonly permissions?: readonly DiagnosticPermission[];
 }
 
 interface DiagnosticConnectorFirewall {
@@ -87,6 +88,98 @@ const PYTHON_MODULE_HASH_LENGTH = 12;
 const PYTHON_JSON_PART_ASSIGNMENT_PREFIX = "JSON_PART = ";
 const DIAGNOSTIC_JSON_ASSIGNMENT_PREFIX =
   "MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS = json.loads(";
+// Scripts that Node URL accepts directly but Python's bidi validation can reject.
+const RUNTIME_BIDI_RTL_SCRIPT_PATTERN =
+  /^(?:\p{Script=Arabic}|\p{Script=Old_Uyghur})$/u;
+const ASCII_LETTER_PATTERN = /^[A-Za-z]$/;
+const ASCII_PUNCTUATION_PATTERN =
+  /^[\u0021-\u002f\u003a-\u0040\u005b-\u0060\u007b-\u007e]$/;
+const HEX_DIGIT_PATTERN = /^[0-9a-fA-F]$/;
+const UNICODE_MARK_PATTERN = /^\p{Mark}$/u;
+const UNICODE_OTHER_PATTERN = /^\p{Other}$/u;
+const GREEK_CAPITAL_SIGMA = "\u03a3";
+const GREEK_COMBINING_YPOGEGRAMMENI = "\u0345";
+const GREEK_SMALL_IOTA = "\u03b9";
+const GREEK_SMALL_SIGMA = "\u03c3";
+const PERCENT_DECODED_FORBIDDEN_HOST_CHARS = new Set([
+  "#",
+  "%",
+  "/",
+  "<",
+  ">",
+  "?",
+  "@",
+  "[",
+  "\\",
+  "]",
+  "^",
+  "|",
+  "{",
+  "}",
+  "*",
+  ".",
+  ":",
+  "\u3002",
+  "\uff0e",
+  "\uff61",
+]);
+const FORBIDDEN_RUNTIME_HOST_LABEL_CHARS = new Set([
+  "#",
+  "%",
+  ",",
+  "/",
+  ":",
+  "<",
+  ">",
+  "?",
+  "@",
+  "[",
+  "\\",
+  "]",
+  "^",
+  "|",
+  "{",
+  "}",
+  "*",
+]);
+const FORBIDDEN_RUNTIME_NORMALIZED_HOST_LABEL_CHARS = new Set([
+  "#",
+  "%",
+  ",",
+  "/",
+  ":",
+  "<",
+  ">",
+  "?",
+  "@",
+  "[",
+  "\\",
+  "]",
+  "^",
+  "|",
+  ".",
+  "\u3002",
+  "\uff0e",
+  "\uff61",
+]);
+const GREEK_MATHEMATICAL_FINAL_SIGMA_CODEPOINTS = new Set([
+  0x1d6d3, 0x1d70d, 0x1d747, 0x1d781, 0x1d7bb,
+]);
+const CHEROKEE_CASEFOLD_RANGES = [
+  [0x13a0, 0x13ff],
+  [0xab70, 0xabbf],
+] as const;
+const CYRILLIC_EXTENDED_C_CASEFOLD_CODEPOINTS = new Map([
+  [0x1c80, "\u0432"],
+  [0x1c81, "\u0434"],
+  [0x1c82, "\u043e"],
+  [0x1c83, "\u0441"],
+  [0x1c84, "\u0442"],
+  [0x1c85, "\u0442"],
+  [0x1c86, "\u044a"],
+  [0x1c87, "\u0463"],
+  [0x1c88, "\ua64b"],
+]);
 // Fallback JSON string literals can double quotes and backslashes.
 const MAX_JSON_PART_SOURCE_CHARS = Math.floor(
   (MAX_GENERATED_PYTHON_LINE_LENGTH -
@@ -102,9 +195,28 @@ const MAX_DIAGNOSTIC_JSON_SOURCE_CHARS = Math.floor(
 );
 const DIAGNOSTIC_REFERENCE_NAME_PATTERN =
   /\b(?:secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)/g;
+const IDNA_DOT_VARIANT_PATTERN = /[\u3002\uff0e\uff61]/g;
+const IPV4_MAX_OCTET = 255;
+const UNSAFE_UTS46_COLLISION_CODEPOINTS = new Set([
+  0x03f2, 0x04c0, 0x1e9e, 0x1806, 0x2132, 0x2183, 0x3164, 0xffa0, 0xfffc,
+  0xfffd, 0x2f868, 0x2f874, 0x2f91f, 0x2f95f, 0x2f9bf,
+]);
+const UNSAFE_UTS46_COLLISION_RANGES = [
+  [0x10a0, 0x10c5],
+  [0x115f, 0x1160],
+  [0x17b4, 0x17b5],
+  [0x2ff0, 0x2ffb],
+] as const;
+const UNSAFE_UTS46_IGNORABLE_RANGES = [
+  [0x034f, 0x034f],
+  [0x180b, 0x180d],
+  [0x180f, 0x180f],
+  [0xfe00, 0xfe0f],
+  [0xe0100, 0xe01ef],
+] as const;
 
 function hasDynamicBaseMarker(base: string): boolean {
-  return base.includes("{") || base.includes("}");
+  return base.includes("{") && base.includes("}");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -245,10 +357,524 @@ function diagnosticAuthQueryParamNames(auth: unknown): readonly string[] {
     .sort();
 }
 
+function stripSingleHostnameTrailingDot(value: string): string {
+  if (!value.endsWith(".")) {
+    return value;
+  }
+
+  const stripped = value.slice(0, -1);
+  if (stripped.length === 0 || stripped.endsWith(".")) {
+    return value;
+  }
+
+  return stripped;
+}
+
+function stripHostnameTrailingDot(host: string): string {
+  const portStart = host.startsWith("[") ? -1 : host.lastIndexOf(":");
+  if (portStart === -1) {
+    return stripSingleHostnameTrailingDot(host);
+  }
+
+  const hostname = stripSingleHostnameTrailingDot(host.slice(0, portStart));
+  return `${hostname}${host.slice(portStart)}`;
+}
+
+function rawUrlAuthority(base: string): string | null {
+  const schemeMatch = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.exec(base);
+  if (schemeMatch === null) {
+    return null;
+  }
+
+  const authorityStart = schemeMatch[0].length;
+  const authoritySuffix = base.slice(authorityStart);
+  const authorityEnd = authoritySuffix.search(/[/?#]/);
+  const end = authorityEnd === -1 ? base.length : authorityStart + authorityEnd;
+  const authority = base.slice(authorityStart, end);
+  return authority.length > 0 ? authority : null;
+}
+
+function rawUrlPath(base: string): string | null {
+  const schemeMatch = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.exec(base);
+  if (schemeMatch === null) {
+    return null;
+  }
+
+  const authorityStart = schemeMatch[0].length;
+  const authoritySuffix = base.slice(authorityStart);
+  const authorityEnd = authoritySuffix.search(/[/?#]/);
+  if (authorityEnd === -1) {
+    return "";
+  }
+
+  const separatorIndex = authorityStart + authorityEnd;
+  if (base[separatorIndex] !== "/") {
+    return "";
+  }
+
+  const pathSuffix = base.slice(separatorIndex);
+  const queryOrFragmentStart = pathSuffix.search(/[?#]/);
+  return queryOrFragmentStart === -1
+    ? pathSuffix
+    : pathSuffix.slice(0, queryOrFragmentStart);
+}
+
+function rawAuthorityHostPort(authority: string): string {
+  const userInfoEnd = authority.lastIndexOf("@");
+  return userInfoEnd === -1 ? authority : authority.slice(userInfoEnd + 1);
+}
+
+function rawAuthorityHasEmptyPort(authority: string): boolean {
+  return rawAuthorityHostPort(authority).endsWith(":");
+}
+
+function rawAuthorityHostname(authority: string): string | null {
+  const hostPort = rawAuthorityHostPort(authority);
+  if (hostPort.length === 0) {
+    return null;
+  }
+
+  if (hostPort.startsWith("[")) {
+    const closeIndex = hostPort.indexOf("]");
+    if (closeIndex === -1) {
+      return null;
+    }
+    const rest = hostPort.slice(closeIndex + 1);
+    if (rest.length > 0 && !rest.startsWith(":")) {
+      return null;
+    }
+    return hostPort.slice(1, closeIndex);
+  }
+
+  if (hostPort.split(":").length === 2) {
+    return hostPort.slice(0, hostPort.lastIndexOf(":"));
+  }
+
+  return hostPort;
+}
+
+function hostnameHasEmptyLabel(hostname: string): boolean {
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    return false;
+  }
+
+  const normalizedHostname = stripSingleHostnameTrailingDot(hostname);
+  return normalizedHostname.split(".").some((label) => {
+    return label.length === 0;
+  });
+}
+
+function isSurrogateCodepoint(codepoint: number): boolean {
+  return codepoint >= 0xd800 && codepoint <= 0xdfff;
+}
+
+function isAsciiSpaceOrControl(value: string): boolean {
+  for (const char of value) {
+    const codepoint = char.codePointAt(0);
+    if (
+      codepoint !== undefined &&
+      (codepoint <= 0x20 ||
+        codepoint === 0x7f ||
+        isSurrogateCodepoint(codepoint))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isAuthoritySpaceOrControl(value: string): boolean {
+  for (const char of value) {
+    const codepoint = char.codePointAt(0);
+    if (
+      codepoint !== undefined &&
+      (/\s/u.test(char) || codepoint < 0x20 || codepoint === 0x7f)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function percentDecodeRuntimeSafeHostname(hostname: string): string | null {
+  let index = 0;
+  let decodedHostname = "";
+  while (index < hostname.length) {
+    if (hostname[index] !== "%") {
+      decodedHostname += hostname[index];
+      index += 1;
+      continue;
+    }
+
+    let encoded = "";
+    while (hostname[index] === "%") {
+      const first = hostname[index + 1];
+      const second = hostname[index + 2];
+      if (
+        first === undefined ||
+        second === undefined ||
+        !HEX_DIGIT_PATTERN.test(first) ||
+        !HEX_DIGIT_PATTERN.test(second)
+      ) {
+        return null;
+      }
+      encoded += `%${first}${second}`;
+      index += 3;
+    }
+
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(encoded);
+    } catch {
+      return null;
+    }
+    if (isAuthoritySpaceOrControl(decoded)) {
+      return null;
+    }
+    for (const char of decoded) {
+      if (PERCENT_DECODED_FORBIDDEN_HOST_CHARS.has(char)) {
+        return null;
+      }
+    }
+    decodedHostname += decoded;
+  }
+  return decodedHostname;
+}
+
+function isIpv4NumberComponent(value: string): boolean {
+  if (value.length === 0) {
+    return false;
+  }
+  if (value.toLowerCase().startsWith("0x")) {
+    return (
+      value.length > 2 &&
+      [...value.slice(2)].every((char) => {
+        return HEX_DIGIT_PATTERN.test(char);
+      })
+    );
+  }
+  return /^[0-9]+$/.test(value);
+}
+
+function isIpv4LiteralLike(hostname: string): boolean {
+  const parts = hostname.split(".");
+  return (
+    parts.length >= 1 &&
+    parts.length <= 4 &&
+    parts.every((part) => {
+      return isIpv4NumberComponent(part);
+    })
+  );
+}
+
+function isCanonicalIpv4Address(hostname: string): boolean {
+  const parts = hostname.split(".");
+  if (parts.length !== 4) {
+    return false;
+  }
+  return parts.every((part) => {
+    if (!/^[0-9]+$/.test(part)) {
+      return false;
+    }
+    if (part.length > 1 && part.startsWith("0")) {
+      return false;
+    }
+    return Number(part) <= IPV4_MAX_OCTET;
+  });
+}
+
+function isCodepointInRanges(
+  codepoint: number,
+  ranges: readonly (readonly [number, number])[],
+): boolean {
+  return ranges.some(([start, end]) => {
+    return codepoint >= start && codepoint <= end;
+  });
+}
+
+function hasUnsafeUts46MappingChars(value: string): boolean {
+  for (const char of value) {
+    const codepoint = char.codePointAt(0);
+    if (
+      codepoint !== undefined &&
+      (UNSAFE_UTS46_COLLISION_CODEPOINTS.has(codepoint) ||
+        isCodepointInRanges(codepoint, UNSAFE_UTS46_COLLISION_RANGES) ||
+        isCodepointInRanges(codepoint, UNSAFE_UTS46_IGNORABLE_RANGES))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasForbiddenRuntimeHostLabelChars(value: string): boolean {
+  for (const char of value) {
+    if (FORBIDDEN_RUNTIME_HOST_LABEL_CHARS.has(char)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function remapRuntimeLabelChar(char: string): string {
+  const codepoint = char.codePointAt(0);
+  if (codepoint === undefined) {
+    return char;
+  }
+  if (GREEK_MATHEMATICAL_FINAL_SIGMA_CODEPOINTS.has(codepoint)) {
+    return GREEK_SMALL_SIGMA;
+  }
+  if (
+    (codepoint === 0x037a || (codepoint >= 0x1f00 && codepoint < 0x2000)) &&
+    char.normalize("NFKD").includes(GREEK_COMBINING_YPOGEGRAMMENI)
+  ) {
+    return char
+      .normalize("NFKD")
+      .replaceAll(GREEK_COMBINING_YPOGEGRAMMENI, GREEK_SMALL_IOTA);
+  }
+  return char;
+}
+
+function runtimeCasefoldLabelChar(char: string): string {
+  const codepoint = char.codePointAt(0);
+  if (codepoint === undefined) {
+    return char;
+  }
+  if (isCodepointInRanges(codepoint, CHEROKEE_CASEFOLD_RANGES)) {
+    return char.toUpperCase();
+  }
+
+  const cyrillicCasefold =
+    CYRILLIC_EXTENDED_C_CASEFOLD_CODEPOINTS.get(codepoint);
+  if (cyrillicCasefold !== undefined) {
+    return cyrillicCasefold;
+  }
+  if (char === GREEK_CAPITAL_SIGMA) {
+    return GREEK_SMALL_SIGMA;
+  }
+  return char.toLowerCase();
+}
+
+function runtimeLowerNormalizedLabel(value: string): string {
+  // Match Python's remap, normalize, then per-codepoint casefold order.
+  const remapped = [...value]
+    .map(remapRuntimeLabelChar)
+    .join("")
+    .replaceAll(GREEK_COMBINING_YPOGEGRAMMENI, GREEK_SMALL_IOTA);
+
+  return [...remapped.normalize("NFKD").normalize("NFC")]
+    .map((char) => {
+      return runtimeCasefoldLabelChar(char);
+    })
+    .join("");
+}
+
+function hasRuntimeIncompatibleNormalizedLabelText(value: string): boolean {
+  const normalized = runtimeLowerNormalizedLabel(value);
+  if (normalized !== normalized.normalize("NFC")) {
+    return true;
+  }
+
+  const firstChar = [...normalized][0];
+  if (firstChar === undefined || UNICODE_MARK_PATTERN.test(firstChar)) {
+    return true;
+  }
+
+  for (const char of normalized) {
+    if (
+      FORBIDDEN_RUNTIME_NORMALIZED_HOST_LABEL_CHARS.has(char) ||
+      /\s/u.test(char) ||
+      UNICODE_OTHER_PATTERN.test(char)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasRuntimeIncompatibleBidiLabel(value: string): boolean {
+  const chars = [...value];
+  const firstRtlIndex = chars.findIndex((char) => {
+    return RUNTIME_BIDI_RTL_SCRIPT_PATTERN.test(char);
+  });
+  if (firstRtlIndex === -1) {
+    return false;
+  }
+
+  const prefix = chars.slice(0, firstRtlIndex);
+  const suffix = chars.slice(firstRtlIndex + 1);
+  const prefixHasAsciiLetter = prefix.some((char) => {
+    return ASCII_LETTER_PATTERN.test(char);
+  });
+  if (
+    prefixHasAsciiLetter &&
+    suffix.some((char) => {
+      return !UNICODE_MARK_PATTERN.test(char);
+    })
+  ) {
+    return true;
+  }
+  if (
+    suffix.some((char) => {
+      return ASCII_LETTER_PATTERN.test(char);
+    })
+  ) {
+    return true;
+  }
+
+  const lastSuffixChar = suffix.at(-1);
+  return (
+    lastSuffixChar !== undefined &&
+    ASCII_PUNCTUATION_PATTERN.test(lastSuffixChar)
+  );
+}
+
+function stripRuntimeHostnameTrailingDot(hostname: string): string | null {
+  if (!hostname.endsWith(".")) {
+    return hostname;
+  }
+  const stripped = hostname.slice(0, -1);
+  return stripped.length > 0 && !stripped.endsWith(".") ? stripped : null;
+}
+
+function runtimeCompatibleHostname(
+  rawHostname: string,
+  parsedHostname: string,
+): boolean {
+  const decodedHostname = percentDecodeRuntimeSafeHostname(rawHostname);
+  if (decodedHostname === null || decodedHostname.includes("*")) {
+    return false;
+  }
+  if (decodedHostname.includes(":")) {
+    return true;
+  }
+
+  const dottedHostname = decodedHostname.replace(IDNA_DOT_VARIANT_PATTERN, ".");
+  const normalizedHostname = stripRuntimeHostnameTrailingDot(dottedHostname);
+  if (normalizedHostname === null || normalizedHostname.length === 0) {
+    return false;
+  }
+  if (isIpv4LiteralLike(normalizedHostname)) {
+    return isCanonicalIpv4Address(normalizedHostname);
+  }
+
+  const parsedLabels = stripSingleHostnameTrailingDot(
+    parsedHostname.toLowerCase(),
+  ).split(".");
+  const rawLabels = normalizedHostname.split(".");
+  if (rawLabels.length !== parsedLabels.length) {
+    return false;
+  }
+
+  for (let index = 0; index < rawLabels.length; index += 1) {
+    const rawLabel = rawLabels[index];
+    const parsedLabel = parsedLabels[index];
+    if (rawLabel === undefined || parsedLabel === undefined) {
+      return false;
+    }
+    if (
+      hasForbiddenRuntimeHostLabelChars(rawLabel) ||
+      hasUnsafeUts46MappingChars(rawLabel) ||
+      hasRuntimeIncompatibleNormalizedLabelText(rawLabel) ||
+      hasRuntimeIncompatibleBidiLabel(rawLabel)
+    ) {
+      return false;
+    }
+    if (!/^[\x00-\x7f]*$/.test(rawLabel) && !parsedLabel.startsWith("xn--")) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function diagnosticStaticBaseKey(base: string): string | null {
+  if (
+    hasDynamicBaseMarker(base) ||
+    base.includes("\\") ||
+    isAsciiSpaceOrControl(base)
+  ) {
+    return null;
+  }
+
+  const rawAuthority = rawUrlAuthority(base);
+  const rawPath = rawUrlPath(base);
+  if (
+    rawAuthority === null ||
+    rawPath === null ||
+    rawAuthorityHasEmptyPort(rawAuthority)
+  ) {
+    return null;
+  }
+
+  const rawHostname = rawAuthorityHostname(rawAuthority);
+  if (rawHostname === null) {
+    return null;
+  }
+
+  try {
+    const url = new URL(base);
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      url.username !== "" ||
+      url.password !== "" ||
+      url.search !== "" ||
+      url.hash !== "" ||
+      hostnameHasEmptyLabel(url.hostname.toLowerCase())
+    ) {
+      return null;
+    }
+    if (!runtimeCompatibleHostname(rawHostname, url.hostname)) {
+      return null;
+    }
+
+    const host = stripHostnameTrailingDot(url.host.toLowerCase());
+    const pathname = rawPath.replace(/\/+$/, "");
+    return `${url.protocol}//${host}${pathname}`;
+  } catch {
+    return null;
+  }
+}
+
+function connectorDiagnosticSharedBaseKeys(
+  entries: readonly PythonBuiltinFirewallCatalogEntry[],
+): ReadonlySet<string> {
+  const connectorNamesByBase = new Map<string, Set<string>>();
+  for (const entry of entries) {
+    if (entry.diagnosticKind !== "connector") {
+      continue;
+    }
+    for (const api of entry.firewall.apis) {
+      const baseKey = diagnosticStaticBaseKey(api.base);
+      if (
+        baseKey === null ||
+        extractDiagnosticReferenceNames(api.auth).length === 0
+      ) {
+        continue;
+      }
+      const connectorNames =
+        connectorNamesByBase.get(baseKey) ?? new Set<string>();
+      connectorNames.add(entry.firewall.name);
+      connectorNamesByBase.set(baseKey, connectorNames);
+    }
+  }
+
+  return new Set(
+    [...connectorNamesByBase.entries()]
+      .filter(([, connectorNames]) => {
+        return connectorNames.size > 1;
+      })
+      .map(([base]) => {
+        return base;
+      }),
+  );
+}
+
 function diagnosticConnectorApi(
   api: BuiltinFirewallRuntimeApi,
+  sharedBaseKeys: ReadonlySet<string>,
 ): DiagnosticConnectorApi | null {
-  if (hasDynamicBaseMarker(api.base)) {
+  const baseKey = diagnosticStaticBaseKey(api.base);
+  if (baseKey === null) {
     return null;
   }
 
@@ -257,11 +883,16 @@ function diagnosticConnectorApi(
     return null;
   }
 
+  const permissions = sharedBaseKeys.has(baseKey)
+    ? diagnosticPermissions(api.permissions)
+    : [];
+
   return {
     base: api.base,
     envNames,
     authHeaderNames: diagnosticAuthHeaderNames(api.auth),
     authQueryParamNames: diagnosticAuthQueryParamNames(api.auth),
+    ...(permissions.length > 0 ? { permissions } : {}),
   };
 }
 
@@ -297,6 +928,7 @@ function buildBuiltinFirewallDiagnosticManifest(
 ): BuiltinFirewallDiagnosticManifest {
   const connectorFirewalls: DiagnosticConnectorFirewall[] = [];
   const modelProviderExclusions: DiagnosticModelProviderFirewall[] = [];
+  const sharedConnectorBaseKeys = connectorDiagnosticSharedBaseKeys(entries);
 
   for (const entry of entries) {
     const { firewall } = entry;
@@ -316,7 +948,9 @@ function buildBuiltinFirewallDiagnosticManifest(
     }
 
     const apis = firewall.apis
-      .map(diagnosticConnectorApi)
+      .map((api) => {
+        return diagnosticConnectorApi(api, sharedConnectorBaseKeys);
+      })
       .filter((api): api is DiagnosticConnectorApi => {
         return api !== null;
       });

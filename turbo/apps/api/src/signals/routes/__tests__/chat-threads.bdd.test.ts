@@ -35,10 +35,7 @@ import {
   mockGoogleDriveConnectorOAuth,
   mockGoogleDriveFilesList,
 } from "./helpers/api-bdd-connectors";
-import {
-  createRunsAutomationsApi,
-  uniqueAutomationName,
-} from "./helpers/api-bdd-runs-automations";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   emitRunUsageMessage$,
@@ -590,11 +587,16 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     chat.mockObjectStorageObjectsExist();
     await authOrg.deleteAgent(actor, deletedAgent.agentId);
 
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    mockNow(now() + 8 * 24 * 60 * 60 * 1000);
     const incrementalCompact = await compactChatThreadSnapshots();
     expect(incrementalCompact.eventsApplied).toBeGreaterThanOrEqual(1);
     expect(
       incrementalCompact.removedDeletedAgentThreads,
     ).toBeGreaterThanOrEqual(1);
+    expect(incrementalCompact.eventsPruned).toBeGreaterThanOrEqual(1);
 
     const compactedSnapshot = await chat.getThreadSnapshot(actor);
     expect(compactedSnapshot.latestEventId).toBe(renameEventId);
@@ -606,6 +608,31 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         renamedAt: expect.any(String),
       }),
     ]);
+
+    const prunedCursor = await chat.requestThreadEvents(
+      actor,
+      { sinceEventId: liveCreateEventId },
+      [410],
+    );
+    expect(prunedCursor.body).toStrictEqual({
+      error: {
+        message: "Chat thread events cursor has expired",
+        code: "CHAT_THREAD_EVENTS_EXPIRED",
+      },
+    });
+
+    const retainedAnchorCursor = await chat.requestThreadEvents(
+      actor,
+      { sinceEventId: renameEventId },
+      [200],
+    );
+    expect(retainedAnchorCursor.status).toBe(200);
+    if (retainedAnchorCursor.status !== 200) {
+      throw new Error(
+        "Expected retained snapshot anchor event to be queryable",
+      );
+    }
+    expect(retainedAnchorCursor.body.events).toStrictEqual([]);
   });
 
   it("falls back to the first run model on detail after the explicit pin is cleared", async () => {
@@ -670,32 +697,63 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       agentId,
       title: "limited free model pin",
     });
-    const restrictedSelection = await chat.requestUpdateThreadModelSelection(
+    for (const selectedModel of [
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+      "claude-sonnet-4-6",
+      "claude-sonnet-5",
+    ] as const) {
+      const restrictedSelection = await chat.requestUpdateThreadModelSelection(
+        actor,
+        thread.id,
+        {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel,
+        },
+        [402],
+      );
+      expectApiError(restrictedSelection.body);
+      expect(restrictedSelection.body.error).toStrictEqual({
+        message:
+          "Insufficient credits. Add credits or configure your own API key to continue.",
+        code: "INSUFFICIENT_CREDITS",
+      });
+
+      await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
+        selectedModel: null,
+      });
+    }
+
+    const { providerId: byokProviderId } = await api.createOrgModelProvider(
+      actor,
+      {
+        type: "anthropic-api-key",
+        secret: "sk-ant-limited-free-byok",
+      },
+    );
+    const byokSelection = await chat.requestUpdateThreadModelSelection(
       actor,
       thread.id,
       {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "gpt-5.5",
+        modelProviderId: byokProviderId,
+        selectedModel: "MiniMax-M3",
       },
       [402],
     );
-    expectApiError(restrictedSelection.body);
-    expect(restrictedSelection.body.error).toStrictEqual({
-      message:
-        "Insufficient credits. Add credits or configure your own API key to continue.",
-      code: "INSUFFICIENT_CREDITS",
-    });
-
+    expectApiError(byokSelection.body);
+    expect(byokSelection.body.error.code).toBe("INSUFFICIENT_CREDITS");
     await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
+      modelProviderId: null,
       selectedModel: null,
     });
 
     await chat.updateThreadModelSelection(actor, thread.id, {
       modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "MiniMax-M3",
     });
     const detail = await chat.readThread(actor, thread.id);
-    expect(detail.selectedModel).toBe("claude-sonnet-4-6");
+    expect(detail.selectedModel).toBe("MiniMax-M3");
   }, 90_000);
 
   it("updates the Computer Use host binding on a chat thread", async () => {
@@ -778,21 +836,15 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expectApiError(malformed.body);
     expect(malformed.body.error.message).toContain("id");
 
-    // Main thread: claimed (running) run plus a linked schedule.
+    // Main thread with a claimed (running) run. The linked-automation cascade
+    // leg was removed with the automation -> workflow cutover (#19959): the
+    // frozen legacy API can no longer create automations, and the
+    // chat-thread FK cascade on the frozen rows is schema-enforced.
     const main = await sendChatRun(actor, {
       agentId,
       prompt: "delete cascade anchor",
     });
     await claimChatRun(runnerGroup, main.runId);
-    const scheduleName = uniqueAutomationName("bdd-thread-linked");
-    await api.deployAutomation(actor, {
-      name: scheduleName,
-      cronExpression: "0 9 * * *",
-      timezone: "UTC",
-      prompt: "linked schedule prompt",
-      agentId,
-      chatThreadId: main.threadId,
-    });
 
     let list = await chat.listThreads(actor, { agentId });
     const mainListed = list.threads.find((thread) => {
@@ -835,13 +887,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       id: main.threadId,
     });
 
-    const schedulesBefore = await api.listAutomations(actor);
-    expect(
-      schedulesBefore.automations.some((schedule) => {
-        return schedule.name === scheduleName;
-      }),
-    ).toBeTruthy();
-
     const deleted = await chat.requestDeleteThread(actor, main.threadId, [204]);
     expect(deleted.body).toBeUndefined();
 
@@ -853,13 +898,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expectApiError(goneRead.body);
     list = await chat.listThreads(actor, { agentId });
     expect(listedThreadIds(list)).not.toContain(main.threadId);
-
-    const schedulesAfter = await api.listAutomations(actor);
-    expect(
-      schedulesAfter.automations.some((schedule) => {
-        return schedule.name === scheduleName;
-      }),
-    ).toBeFalsy();
 
     await cancelChatRun(actor, other.runId);
   }, 120_000);
@@ -1232,6 +1270,119 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
 
     await chat.markThreadRead(owner, threadB);
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
+  }, 60_000);
+
+  it("lists active chat thread ids for the current user and org", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const owner = bdd.user({ orgId });
+    const peer = bdd.user({ orgId });
+    const sameUserOtherOrg = bdd.user({ userId: owner.userId });
+    bdd.acceptAgentStorageWrites();
+
+    const ownerAgent = await bdd.createAgent(owner, {
+      displayName: "Active ids owner agent",
+    });
+    const peerAgent = await bdd.createAgent(peer, {
+      displayName: "Active ids peer agent",
+    });
+    const otherOrgAgent = await bdd.createAgent(sameUserOtherOrg, {
+      displayName: "Active ids other org agent",
+    });
+
+    const runningThread = await sendNoCreditMessage(owner, {
+      agentId: ownerAgent.agentId,
+      prompt: "active running thread",
+    });
+    const queuedThread = await sendNoCreditMessage(owner, {
+      agentId: ownerAgent.agentId,
+      prompt: "active queued thread",
+    });
+    const completedThread = await sendNoCreditMessage(owner, {
+      agentId: ownerAgent.agentId,
+      prompt: "terminal completed thread",
+    });
+    const peerThread = await sendNoCreditMessage(peer, {
+      agentId: peerAgent.agentId,
+      prompt: "peer running thread",
+    });
+    const otherOrgThread = await sendNoCreditMessage(sameUserOtherOrg, {
+      agentId: otherOrgAgent.agentId,
+      prompt: "other org running thread",
+    });
+
+    if (!owner.orgId || !peer.orgId || !sameUserOtherOrg.orgId) {
+      throw new Error("Expected test users to belong to orgs");
+    }
+
+    const runningRunId = await store.set(
+      seedZeroChatThreadRun$,
+      {
+        userId: owner.userId,
+        orgId: owner.orgId,
+        agentId: ownerAgent.agentId,
+        threadId: runningThread,
+        status: "running",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedZeroChatThreadRun$,
+      {
+        userId: owner.userId,
+        orgId: owner.orgId,
+        agentId: ownerAgent.agentId,
+        threadId: queuedThread,
+        status: "queued",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedZeroChatThreadRun$,
+      {
+        userId: owner.userId,
+        orgId: owner.orgId,
+        agentId: ownerAgent.agentId,
+        threadId: completedThread,
+        status: "completed",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedZeroChatThreadRun$,
+      {
+        userId: peer.userId,
+        orgId: peer.orgId,
+        agentId: peerAgent.agentId,
+        threadId: peerThread,
+        status: "running",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedZeroChatThreadRun$,
+      {
+        userId: sameUserOtherOrg.userId,
+        orgId: sameUserOtherOrg.orgId,
+        agentId: otherOrgAgent.agentId,
+        threadId: otherOrgThread,
+        status: "running",
+      },
+      context.signal,
+    );
+
+    expect(new Set(await chat.listActiveChatThreadIds(owner))).toStrictEqual(
+      new Set([runningThread, queuedThread]),
+    );
+
+    await store.set(
+      updateZeroChatThreadRunStatus$,
+      { runId: runningRunId, status: "completed" },
+      context.signal,
+    );
+
+    expect(new Set(await chat.listActiveChatThreadIds(owner))).toStrictEqual(
+      new Set([queuedThread]),
+    );
   }, 60_000);
 
   it("marks all unread chat threads for one agent behind the agent unread feature switch", async () => {

@@ -10,6 +10,7 @@ const c = initContract();
  */
 export const onboardingStatusResponseSchema = z.object({
   needsOnboarding: z.boolean(),
+  onboardingComplete: z.boolean(),
   isAdmin: z.boolean(),
   hasOrg: z.boolean(),
   hasDefaultAgent: z.boolean(),
@@ -19,6 +20,7 @@ export const onboardingStatusResponseSchema = z.object({
       displayName: z.string().optional(),
       description: z.string().optional(),
       sound: z.string().optional(),
+      avatarUrl: z.string().optional(),
     })
     .nullable(),
 });
@@ -68,33 +70,25 @@ export const onboardingSetupContract = c.router({
   },
 });
 
-export const onboardingCompleteLimitedFreeContract = c.router({
+export const onboardingCompleteContract = c.router({
   complete: {
     method: "POST",
-    path: "/api/zero/onboarding/complete-limited-free",
+    path: "/api/zero/onboarding/complete",
     headers: authHeadersSchema,
-    body: z
-      .object({
-        credits: z.number().int().positive().max(1000).default(1000),
-        expiresAt: z.string().datetime().nullable().default(null),
-      })
-      .strict(),
+    body: z.object({}).strict(),
     responses: {
       200: z.object({
-        agentId: z.string(),
-        tier: z.literal("limited-free-1"),
+        onboardingComplete: z.literal(true),
         needsOnboarding: z.literal(false),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
-      409: apiErrorSchema,
     },
-    summary: "Complete onboarding and enter the limited free tier",
+    summary: "Mark onboarding complete for the current org",
   },
 });
 
 export type OnboardingStatusContract = typeof onboardingStatusContract;
 export type OnboardingSetupContract = typeof onboardingSetupContract;
-export type OnboardingCompleteLimitedFreeContract =
-  typeof onboardingCompleteLimitedFreeContract;
+export type OnboardingCompleteContract = typeof onboardingCompleteContract;

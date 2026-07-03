@@ -1,11 +1,9 @@
 import {
-  findColorSystem,
-  findDesignSystem,
+  buildPresentationRunbookInstructionLines,
   findImageStyle,
   findPresentationRunbookPackage,
-  findTemplate,
   findVideoTemplate,
-  presentationColorSystemToken,
+  resolvePresentationRunbookColorToken,
   type PresentationRunbookPackage,
 } from "@vm0/core/resource-registry";
 import { findWorkflowTemplateItem } from "@vm0/core/workflow-template-items";
@@ -113,124 +111,43 @@ function buildWorkflowGenerationTemplatePrompt(
 function buildPresentationGenerationTemplatePrompt(
   generationTemplate: PresentationGenerationTemplateInput,
 ): GenerationTemplatePromptResult {
-  const template = findTemplate(generationTemplate.selection.templateId);
-  if (!template) {
-    return { status: "invalid", message: "Unknown generation template" };
-  }
-  if (!(template.targets?.includes(generationTemplate.type) ?? false)) {
-    return {
-      status: "invalid",
-      message: "Generation template does not support the requested type",
-    };
-  }
-
-  // Presentation templates that ship a self-contained runbook package use the
-  // runbook flow (pull one resource, follow AGENT_RUNBOOK.md, pick the color
-  // system at runtime). Templates without a package fall back to the legacy
-  // multi-resource flow below.
+  // Presentation generation templates are served exclusively from their
+  // self-contained runbook package. The legacy multi-resource flow and its
+  // `template:html-ppt-*` / `design-system:*` registry entries have been
+  // retired, so a template id without a runbook package is not a valid
+  // selection.
   const runbookPackage = findPresentationRunbookPackage(
     generationTemplate.selection.templateId,
   );
-  if (runbookPackage) {
-    return buildPresentationRunbookPrompt(
-      generationTemplate,
-      template,
-      runbookPackage,
-    );
+  if (!runbookPackage) {
+    return { status: "invalid", message: "Unknown generation template" };
   }
-
-  const designSystem = findDesignSystem(
-    generationTemplate.selection.designSystemId,
-  );
-  if (!designSystem) {
-    return {
-      status: "invalid",
-      message: "Unknown generation template design system",
-    };
-  }
-
-  const colorSystem = generationTemplate.selection.colorSystemId
-    ? findColorSystem(generationTemplate.selection.colorSystemId)
-    : undefined;
-  if (generationTemplate.selection.colorSystemId && !colorSystem) {
-    return {
-      status: "invalid",
-      message: "Unknown generation template color system",
-    };
-  }
-
-  return {
-    status: "resolved",
-    prompt: [
-      ...templateFraming("a presentation"),
-      "Selected presentation style:",
-      `- Artifact type: ${generationTemplate.type}`,
-      `- Design system: ${designSystem.name} (${designSystem.id})`,
-      `- Design system description: ${designSystem.description}`,
-      `- Template: ${template.name} (${template.id})`,
-      `- Template description: ${template.description}`,
-      ...(colorSystem
-        ? [
-            `- Color system: ${colorSystem.name} (${colorSystem.id})`,
-            `- Color system description: ${colorSystem.description}`,
-          ]
-        : []),
-      ...(generationTemplate.selection.previewUrl
-        ? [`- Template preview URL: ${generationTemplate.selection.previewUrl}`]
-        : []),
-      "",
-      "Hard rules for presentation template references and media:",
-      "- Use selected template references only for structure, layout devices, spacing, and visual language. Do not inherit or continue any reference deck's sample subject, sample story, sample copy, sample metrics, preview imagery, or media seed names.",
-      "- Derive every presentation image/media choice from the user's requested topic, story, source material, or cited facts.",
-      "",
-      "When you produce a presentation from the user's request:",
-      `- Run: zero generate presentation --design-system ${designSystem.id} --template ${template.id} --prompt "<user request>"`,
-      ...(colorSystem
-        ? [
-            `- Apply the selected color system (${colorSystem.id}) when authoring the deck.`,
-          ]
-        : []),
-      "- After generating the final HTML deck, from the workspace root run: `npm install --no-save --no-package-lock playwright && node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs <output-dir>/index.html`. Fix failures before hosting.",
-      "- Follow the returned authoring packet. For a static HTML presentation, publish it with `zero host <dir> --site <slug> --artifact-kind presentation-html`.",
-      "- If a flag above no longer applies, run `zero generate presentation -h` to discover the current options.",
-    ].join("\n"),
-  };
+  return buildPresentationRunbookPrompt(generationTemplate, runbookPackage);
 }
 
 function buildPresentationRunbookPrompt(
   generationTemplate: PresentationGenerationTemplateInput,
-  template: {
-    readonly name: string;
-    readonly id: string;
-    readonly description: string;
-  },
   runbookPackage: PresentationRunbookPackage,
 ): GenerationTemplatePromptResult {
-  const { colorSystemId } = generationTemplate.selection;
-  const colorSystemToken = colorSystemId
-    ? presentationColorSystemToken(colorSystemId)
-    : runbookPackage.defaultColorSystem;
-  if (colorSystemId && !colorSystemToken) {
+  const color = resolvePresentationRunbookColorToken(
+    runbookPackage,
+    generationTemplate.selection.colorSystemId,
+  );
+  if ("error" in color) {
     return {
       status: "invalid",
       message: "Unknown generation template color system",
     };
   }
 
-  const slug = runbookPackage.slug;
   return {
     status: "resolved",
     prompt: [
       ...templateFraming("a presentation"),
-      `Selected presentation template: ${template.name} (${template.id})`,
-      `Color system token: ${colorSystemToken}`,
-      "",
-      "To produce the presentation:",
-      `- Pull the package: zero resource pull ${runbookPackage.resourceId} --dir ./generated/resources`,
-      `- Follow ./generated/resources/${slug}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
-      "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
-      "- Host the finished deck: zero host <output-dir> --site <slug> --artifact-kind presentation-html",
-      "- Return only the generated HTML deck as the final deliverable.",
+      ...buildPresentationRunbookInstructionLines({
+        runbookPackage,
+        colorSystemToken: color.token,
+      }),
     ].join("\n"),
   };
 }

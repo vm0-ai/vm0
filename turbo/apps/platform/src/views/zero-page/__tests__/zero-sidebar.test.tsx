@@ -378,6 +378,60 @@ describe("zero sidebar", () => {
     createDeferred.resolve();
   });
 
+  it("renders event-sourced sidebar threads while active run ids are pending", async () => {
+    prepareDefaultAgent();
+    let activeIdsRequests = 0;
+
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      return respond(200, {
+        chatThreads: [
+          {
+            id: EXISTING_THREAD_ID,
+            agentId: AGENT_ID,
+            title: "Event-sourced conversation",
+            sortAt: "2026-03-10T00:00:00Z",
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+            pinnedAt: null,
+            renamedAt: null,
+          },
+        ],
+        latestEventId: null,
+      });
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
+    context.mocks.api(chatThreadsContract.activeIds, ({ never }) => {
+      activeIdsRequests += 1;
+      return never();
+    });
+    context.mocks.api(chatThreadsContract.list, ({ never }) => {
+      return never();
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEventSourcing]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Event-sourced conversation"),
+      ).toBeInTheDocument();
+      expect(
+        sidebar().querySelectorAll('[data-testid="sidebar-skeleton"]'),
+      ).toHaveLength(0);
+      expect(activeIdsRequests).toBe(1);
+    });
+    expect(
+      within(threadRowByTitle("Event-sourced conversation")).queryByLabelText(
+        "Running",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
   it("preserves server thread order while creating an optimistic new chat", async () => {
     prepareDefaultAgent();
     const createDeferred = context.mocks.deferred<void>();
@@ -990,7 +1044,13 @@ describe("zero sidebar", () => {
       }),
     ]);
 
-    detachedSetupPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      // The legacy automations delete-check only renders when the globally-on
+      // workflowAutomation switch is overridden off (#19959).
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
+    });
 
     await waitFor(() => {
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
@@ -1283,7 +1343,13 @@ describe("zero sidebar", () => {
       return respond(200, splitChatThreadListResponse([]));
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      // Pin the legacy composer (workflowAutomation overridden off) so the
+      // plain-textarea placeholder targeted below stays rendered.
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
+    });
 
     const composer = await screen.findByPlaceholderText(PLACEHOLDER);
     composer.focus();
@@ -1296,6 +1362,30 @@ describe("zero sidebar", () => {
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
     expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
+  });
+
+  it("toggles the sidebar with mod+b while the chat composer is focused", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([createThread(EXISTING_THREAD_ID, "Release plan")]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Collapse sidebar")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Expand sidebar")).not.toBeInTheDocument();
+    });
+
+    composer.focus();
+    expect(composer).toHaveFocus();
+    fireEvent.keyDown(composer, { key: "b", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Expand sidebar")).toBeInTheDocument();
+    });
   });
 
   it("ignores global shortcuts while a dialog is open", async () => {
@@ -1415,6 +1505,9 @@ describe("zero sidebar", () => {
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
     const researchDialogRow = agentRowByName(dialog, "Research Agent");
     const supportDialogRow = agentRowByName(dialog, "Support Agent");
+    expect(
+      within(researchDialogRow).queryByLabelText("Reorder Research Agent"),
+    ).not.toBeInTheDocument();
     const researchDialogUnread =
       within(researchDialogRow).getByLabelText("Unread");
     const supportDialogUnread =
@@ -1699,6 +1792,8 @@ describe("zero sidebar", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
+      // Globally enabled since #19959; disabling now requires a user override.
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
     });
 
     const nav = await waitFor(() => {

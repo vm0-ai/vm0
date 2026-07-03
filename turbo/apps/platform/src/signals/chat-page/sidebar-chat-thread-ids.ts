@@ -1,6 +1,10 @@
 import { computed } from "ccstate";
 
-import { chatThreads$, currentChatAgentId$ } from "../agent-chat.ts";
+import {
+  chatThreadEventSourcingEnabled$,
+  chatThreads$,
+  currentChatAgentId$,
+} from "../agent-chat.ts";
 import { allPendingChatThreads$ } from "./optimistic-chat-thread-state.ts";
 import { sidebarChatThreadsExtraThreads$ } from "./sidebar-chat-threads-pagination.ts";
 
@@ -13,6 +17,10 @@ export const sidebarChatThreadIds$ = computed(
         return thread.id;
       }),
     );
+
+    if (get(chatThreadEventSourcingEnabled$)) {
+      return [...ids];
+    }
 
     const currentAgentId = await get(currentChatAgentId$);
     if (currentAgentId) {

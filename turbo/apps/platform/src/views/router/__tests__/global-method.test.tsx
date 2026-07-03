@@ -6,6 +6,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 const TEST_SHA = "0123456789abcdef0123456789abcdef01234567";
+const TEST_VERSION = "0.540.0";
 
 describe("global method", () => {
   it("exposes the app build commit SHA after bootstrap", async () => {
@@ -13,6 +14,7 @@ describe("global method", () => {
 
     await waitFor(() => {
       expect(window._vm0?.getBuildCommitSha()).toBe(TEST_SHA);
+      expect(window._vm0?.getBuildVersion()).toBe(TEST_VERSION);
     });
   });
 });

@@ -1,6 +1,6 @@
 {
   "name": "@vm0/connectors",
-  "version": "1.131.1",
+  "version": "1.132.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -43,6 +43,10 @@
     "./firewall-metadata": {
       "import": "./src/firewall-metadata/index.ts",
       "types": "./src/firewall-metadata/index.ts"
+    },
+    "./firewall-metadata/policy": {
+      "import": "./src/firewall-metadata/policy.ts",
+      "types": "./src/firewall-metadata/policy.ts"
     },
     "./firewall-metadata/server": {
       "import": "./src/firewall-metadata/server.ts",

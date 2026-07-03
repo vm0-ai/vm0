@@ -64,6 +64,7 @@ const cronCompactChatThreadSnapshotsResponseSchema = z.object({
   scopes: z.number(),
   eventsApplied: z.number(),
   removedDeletedAgentThreads: z.number(),
+  eventsPruned: z.number(),
 });
 
 const cronReconcileBillingEntitlementsResponseSchema = z.object({

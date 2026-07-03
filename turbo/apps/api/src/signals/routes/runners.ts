@@ -48,7 +48,10 @@ import {
   SESSION_HISTORY_ENCODING_GZIP,
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
-import { affinityProtectedUntil } from "../services/runner-session-affinity";
+import {
+  runnerSessionAffinityLookupError,
+  runnerSessionAffinityProtection,
+} from "../services/runner-session-affinity";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
 
@@ -289,6 +292,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const heldSessionStates =
     canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
+  const availableProfiles = body.data.availableProfiles ?? body.data.profiles;
   const currentDate = nowDate();
   const db = set(writeDb$);
   await db
@@ -304,6 +308,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       allocatedVcpu: body.data.allocatedVcpu,
       allocatedMemoryMb: body.data.allocatedMemoryMb,
       runningCount: body.data.runningCount,
+      availableProfiles,
       heldSessionStates,
       mode: body.data.mode,
       lastSeenAt: currentDate,
@@ -320,6 +325,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         allocatedVcpu: body.data.allocatedVcpu,
         allocatedMemoryMb: body.data.allocatedMemoryMb,
         runningCount: body.data.runningCount,
+        availableProfiles,
         heldSessionStates,
         mode: body.data.mode,
         lastSeenAt: currentDate,
@@ -348,6 +354,7 @@ function recordPollTimingMetrics(args: {
   readonly profile: string;
   readonly authType: RunnerAuthContext["type"];
   readonly pollReason: string | undefined;
+  readonly sessionAffinity: string;
   readonly queueCreatedAtMs: number;
   readonly pollRequestStartedAtMs: number;
   readonly pendingJobLookupStartedAtMs: number;
@@ -358,6 +365,7 @@ function recordPollTimingMetrics(args: {
     runner_group: args.runnerGroup,
     profile: args.profile,
     auth_type: args.authType,
+    session_affinity: args.sessionAffinity,
   };
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
@@ -459,17 +467,37 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return { status: 200 as const, body: { job: null } };
   }
 
-  const pollResponseAtMs = now();
-  const protectedUntil = affinityProtectedUntil(
-    pendingJob.cliAgentSessionId,
-    pendingJob.createdAt,
+  const affinityResult = await settle(
+    runnerSessionAffinityProtection({
+      db,
+      runnerGroup: group,
+      profile: pendingJob.profile,
+      cliAgentSessionId: pendingJob.cliAgentSessionId,
+      createdAt: pendingJob.createdAt,
+      currentDate: nowDate(),
+    }),
+    signal,
   );
+  signal.throwIfAborted();
+  const affinity = affinityResult.ok
+    ? affinityResult.value
+    : runnerSessionAffinityLookupError();
+  if (!affinityResult.ok) {
+    L.warn("Failed to resolve runner session affinity for poll response", {
+      runId: pendingJob.runId,
+      runnerGroup: group,
+      profile: pendingJob.profile,
+      error: affinityResult.error,
+    });
+  }
+  const pollResponseAtMs = now();
   recordPollTimingMetrics({
     runId: pendingJob.runId,
     runnerGroup: group,
     profile: pendingJob.profile,
     authType: auth.type,
     pollReason: body.data.telemetry?.pollReason,
+    sessionAffinity: affinity.status,
     queueCreatedAtMs: pendingJob.createdAt.getTime(),
     pollRequestStartedAtMs,
     pendingJobLookupStartedAtMs,
@@ -489,7 +517,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         checkpointId: pendingJob.resumedFromCheckpointId ?? null,
         experimentalProfile: pendingJob.profile,
         cliAgentSessionId: pendingJob.cliAgentSessionId,
-        affinityProtectedUntil: protectedUntil?.toISOString() ?? null,
+        affinityProtectedUntil: affinity.protectedUntil?.toISOString() ?? null,
       },
     },
   };

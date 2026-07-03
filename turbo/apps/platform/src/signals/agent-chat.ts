@@ -11,16 +11,19 @@ import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
-import { reloadChatThreadsCounter$ } from "./chat-thread-list-reload.ts";
+import {
+  reloadChatThreadsCounter$,
+  reloadChatUnreadStateCounter$,
+} from "./chat-thread-list-reload.ts";
 import { clerk$ } from "./auth.ts";
 import { readThreadMeta$ } from "./external/idb-thread-meta-store.ts";
 import { chatThreadOnlyUnread$ } from "./chat-page/chat-thread-only-unread.ts";
 import { featureSwitch$ } from "./external/feature-switch.ts";
 import {
   chatThreadMaxItem$,
+  eventDrivenActiveRunChatThreadIds$,
   eventDrivenChatThreads$,
 } from "./chat-page/chat-thread-event-sourcing.ts";
-import { allPendingChatThreads$ } from "./chat-page/optimistic-chat-thread-state.ts";
 import type { EventDrivenChatThread } from "./chat-page/chat-thread-event-replay.ts";
 
 export { reloadChatThreads$ } from "./chat-thread-list-reload.ts";
@@ -169,14 +172,40 @@ const legacyChatThreads$ = computed(
   },
 );
 
+const filteredThreadIds$ = computed(
+  async (get): Promise<ReadonlySet<string> | null> => {
+    if (!get(chatThreadEventSourcingEnabled$) || !get(chatThreadOnlyUnread$)) {
+      return null;
+    }
+    get(reloadChatUnreadStateCounter$);
+
+    const agentId = await get(currentChatAgentId$);
+    if (!agentId) {
+      return new Set();
+    }
+
+    const client = get(zeroClient$)(chatThreadsContract);
+    const result = await accept(client.unreads({ query: { agentId } }), [200]);
+    return new Set(
+      result.body.unreads.map((unread) => {
+        return unread.threadId;
+      }),
+    );
+  },
+);
+
 const eventDrivenFilteredChatThreads$ = computed(
   async (get): Promise<EventDrivenChatThread[]> => {
     const agentId = await get(currentChatAgentId$);
     if (!agentId) {
       return [];
     }
+    const filteredThreadIds = await get(filteredThreadIds$);
     return (await get(eventDrivenChatThreads$)).filter((thread) => {
-      return thread.agentId === agentId;
+      return (
+        thread.agentId === agentId &&
+        (filteredThreadIds === null || filteredThreadIds.has(thread.id))
+      );
     });
   },
 );
@@ -185,11 +214,7 @@ const eventDrivenVisibleChatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
     const threads = await get(eventDrivenFilteredChatThreads$);
     const maxItems = get(chatThreadMaxItem$);
-    const pendingRunningByThreadId = new Map(
-      get(allPendingChatThreads$).map((thread) => {
-        return [thread.threadId, thread.running] as const;
-      }),
-    );
+    const activeRunThreadIds = get(eventDrivenActiveRunChatThreadIds$);
 
     return threads.slice(0, maxItems).map((thread) => {
       return {
@@ -201,7 +226,7 @@ const eventDrivenVisibleChatThreads$ = computed(
         },
         createdAt: thread.createdAt,
         updatedAt: thread.updatedAt,
-        running: pendingRunningByThreadId.get(thread.id) ?? false,
+        running: activeRunThreadIds.has(thread.id),
         pinnedAt: thread.pinnedAt,
         renamedAt: thread.renamedAt,
       };

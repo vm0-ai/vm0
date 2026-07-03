@@ -182,13 +182,13 @@ describe("zero generate presentation command", () => {
     );
   });
 
-  it("should accept the switched picker presentation template from the registry", async () => {
+  it("resolves a picker template to runbook instructions, ignoring --design-system", async () => {
     await generateCommand.parseAsync([
       "node",
       "cli",
       "presentation",
       "--prompt",
-      "product launch",
+      "create a 15-slide launch deck",
       "--design-system",
       "playful-editorial",
       "--template",
@@ -198,25 +198,23 @@ describe("zero generate presentation command", () => {
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain("# Presentation Generation (runbook)");
     expect(stdout).toContain(
-      "Selected design system: design-system:playful-editorial (Playful Launch)",
+      "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
     );
     expect(stdout).toContain(
-      "Selected template: template:html-ppt-playful-launch (Playful Launch Presentation)",
+      "zero resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
     );
     expect(stdout).toContain(
-      "zero resource pull <resource-id> --dir ./generated/resources",
+      "./generated/resources/playful-launch/AGENT_RUNBOOK.md",
     );
-    expect(stdout).toContain('"tool:presentation-deck-tools"');
-    expect(stdout).toContain('"id": "template:html-ppt-playful-launch"');
-    expect(stdout).toContain('"path": "presentation-template/aplocoto"');
-    expect(stdout).toContain('"archive"');
-    expect(stdout).toContain('"type": "tar.gz"');
-    expect(stdout).toContain('"sha256"');
-    expect(stdout).toContain('"id": "design-system:playful-editorial"');
-    expect(stdout).toContain(
-      '"path": "presentation-design-system/playful-editorial"',
-    );
+    expect(stdout).toContain('"colorSystem": "carnival"');
+    expect(stdout).toContain("User request: create a 15-slide launch deck");
+    // Runbook flow is self-contained: the design system is ignored and no
+    // legacy authoring packet (deck-tools) is emitted.
+    expect(stdout).not.toContain("Selected design system:");
+    expect(stdout).not.toContain("design-system:playful-editorial");
+    expect(stdout).not.toContain("tool:presentation-deck-tools");
   });
 
   it("should reject a template that does not target presentation", async () => {

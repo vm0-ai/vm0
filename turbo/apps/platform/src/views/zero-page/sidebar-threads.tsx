@@ -53,7 +53,7 @@ import {
   renameChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
 import {
-  openRenameChatThreadDialogFromThreadData$,
+  openRenameChatThreadDialogForThreadId$,
   reloadChatThreadDataForId$,
 } from "../../signals/chat-page/chat-thread-rename.ts";
 import {
@@ -67,7 +67,7 @@ import {
 import { focusChatThreadContainer$ } from "../../signals/chat-page/chat-keyboard.ts";
 import {
   createNewChatThreadOptimistically$,
-  optimisticChatThread$,
+  newChatThreadDisabled$,
   type OptimisticChatPane,
   sidebarChatThreads$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
@@ -76,6 +76,7 @@ import {
   chatThreadsNextCursor$,
   currentChatAgentId$,
 } from "../../signals/agent-chat.ts";
+import { eventDrivenActiveRunChatThreadIds$ } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
 import {
   loadMoreSidebarChatThreads$,
   sidebarChatThreadsExtraHasMore$,
@@ -99,9 +100,11 @@ import {
 } from "../../signals/chat-page/chat-thread-only-unread.ts";
 import {
   pendingDeleteThreadId$,
+  renameDialogAgentId$,
   setPendingDeleteThreadId$,
   renameDialogThreadId$,
   renameDialogInput$,
+  setRenameDialogAgentId$,
   setRenameDialogThreadId$,
   setRenameDialogInput$,
   sessionListCollapsed$,
@@ -180,6 +183,13 @@ function getIndicatorState({
   return hasDraft ? "draft" : null;
 }
 
+function isChatThreadRunning(
+  session: ChatThreadListItem,
+  activeRunThreadIds: ReadonlySet<string> | undefined,
+): boolean {
+  return session.running || (activeRunThreadIds?.has(session.id) ?? false);
+}
+
 function handleChatThreadClick(
   e: React.MouseEvent<HTMLAnchorElement>,
   {
@@ -250,6 +260,22 @@ function handleChatThreadClick(
   closeSidebarOnSelect();
 }
 
+function ChatThreadMenuTriggerContent({
+  usePinnedIndicatorTrigger,
+}: {
+  usePinnedIndicatorTrigger: boolean;
+}) {
+  if (!usePinnedIndicatorTrigger) {
+    return <IconDots size={16} stroke={2} />;
+  }
+  return (
+    <>
+      <IconPin size={16} stroke={2} className="md:hidden" />
+      <IconDots size={16} stroke={2} className="hidden md:block" />
+    </>
+  );
+}
+
 function ChatThreadMenu({
   threadId,
   isPinned,
@@ -268,7 +294,7 @@ function ChatThreadMenu({
   const pinChatThread = useSet(pinChatThread$);
   const unpinChatThread = useSet(unpinChatThread$);
   const openRenameChatThreadDialog = useSet(
-    openRenameChatThreadDialogFromThreadData$,
+    openRenameChatThreadDialogForThreadId$,
   );
   const features = useGet(featureSwitch$);
   const workflowAutomationEnabled =
@@ -325,18 +351,9 @@ function ChatThreadMenu({
                       : undefined
                   }
                 >
-                  {usePinnedIndicatorTrigger ? (
-                    <>
-                      <IconPin size={16} stroke={2} className="md:hidden" />
-                      <IconDots
-                        size={16}
-                        stroke={2}
-                        className="hidden md:block"
-                      />
-                    </>
-                  ) : (
-                    <IconDots size={16} stroke={2} />
-                  )}
+                  <ChatThreadMenuTriggerContent
+                    usePinnedIndicatorTrigger={usePinnedIndicatorTrigger}
+                  />
                 </span>
               </TooltipTrigger>
               <TooltipContent side="bottom">
@@ -462,6 +479,9 @@ function useChatThreadItemState(session: ChatThreadListItem) {
   const pageSignal = useGet(pageSignal$);
   const draftThreadIds = useLastResolved(sidebarDraftThreadIds$);
   const unreadThreadIds = useLastResolved(sidebarUnreadThreadIds$);
+  const activeRunThreadIds = useLastResolved(
+    eventDrivenActiveRunChatThreadIds$,
+  );
 
   const isPinned = session.pinnedAt !== null && session.pinnedAt !== undefined;
   const onChatPage = urlMainThreadId !== null;
@@ -481,7 +501,7 @@ function useChatThreadItemState(session: ChatThreadListItem) {
     (unreadThreadIds?.has(session.id) ?? false) && !isHighlighted;
   const indicatorState = getIndicatorState({
     hasDraft: (draftThreadIds?.has(session.id) ?? false) && !isHighlighted,
-    isRunning: session.running,
+    isRunning: isChatThreadRunning(session, activeRunThreadIds),
     isUnread,
   });
 
@@ -512,7 +532,7 @@ function ChatThreadItemLink({
   state: ReturnType<typeof useChatThreadItemState>;
 }) {
   const openRenameChatThreadDialog = useSet(
-    openRenameChatThreadDialogFromThreadData$,
+    openRenameChatThreadDialogForThreadId$,
   );
   const closeSidebarOnSelect = () => {
     state.setSidebarExpanded(false);
@@ -582,8 +602,10 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
 
 function ChatThreadRenameDialog() {
   const renameDialogThreadId = useGet(renameDialogThreadId$);
+  const renameDialogAgentId = useGet(renameDialogAgentId$);
   const renameDialogInput = useGet(renameDialogInput$);
   const setRenameDialogInput = useSet(setRenameDialogInput$);
+  const setRenameDialogAgentId = useSet(setRenameDialogAgentId$);
   const setRenameDialogThreadId = useSet(setRenameDialogThreadId$);
   const renameChatThread = useSet(renameChatThread$);
   const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
@@ -593,6 +615,7 @@ function ChatThreadRenameDialog() {
   function closeRenameDialog() {
     const threadId = renameDialogThreadId;
     setRenameDialogThreadId(null);
+    setRenameDialogAgentId(null);
     setRenameDialogInput("");
     if (threadId) {
       queueMicrotask(() => {
@@ -606,10 +629,11 @@ function ChatThreadRenameDialog() {
       return;
     }
     const threadId = renameDialogThreadId;
+    const agentId = renameDialogAgentId;
     const title = renameDialogInput.trim();
     detach(
       (async () => {
-        await renameChatThread({ threadId, title }, pageSignal);
+        await renameChatThread({ threadId, title, agentId }, pageSignal);
         reloadChatThreadDataForId(threadId);
       })(),
       Reason.DomCallback,
@@ -889,15 +913,11 @@ function ChatThreads() {
 
   if (chatThreads.length === 0) {
     return (
-      <>
-        <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
-          {unreadOnly
-            ? "No unread chats"
-            : "Start a conversation and it'll show up here"}
-        </p>
-        <ChatThreadRenameDialog />
-        <DeleteChatThreadDialog />
-      </>
+      <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
+        {unreadOnly
+          ? "No unread chats"
+          : "Start a conversation and it'll show up here"}
+      </p>
     );
   }
   return (
@@ -911,8 +931,6 @@ function ChatThreads() {
           onLoadMore={handleLoadMore}
         />
       )}
-      <ChatThreadRenameDialog />
-      <DeleteChatThreadDialog />
     </>
   );
 }
@@ -923,7 +941,7 @@ function ChatThreadsTitle() {
   const setExpanded = useSet(setSidebarExpanded$);
   const rootSignal = useGet(rootSignal$);
   const { titleLabel } = useChatThreadsTitleLabels();
-  const newChatDisabled = useGet(optimisticChatThread$) !== null;
+  const newChatDisabled = useGet(newChatThreadDisabled$);
   const onNewChat = (pane: OptimisticChatPane) => {
     if (!currentChatAgentId) {
       return;
@@ -1061,6 +1079,8 @@ export function ChatThreadsSection() {
     <div className="mt-4 flex flex-col">
       <ChatThreadsTitle />
       <ChatThreadsContent />
+      <ChatThreadRenameDialog />
+      <DeleteChatThreadDialog />
     </div>
   );
 }

@@ -77,6 +77,20 @@ function triggerSummary(
   };
 }
 
+function publicWorkflowTrigger(
+  trigger: ZeroWorkflowTriggerSummary,
+): ZeroWorkflowTriggerSummary {
+  if (trigger.kind !== "event" || trigger.eventType !== "webhook-received") {
+    return trigger;
+  }
+  const {
+    webhookUrl: _webhookUrl,
+    webhookSecret: _webhookSecret,
+    ...rest
+  } = trigger;
+  return rest;
+}
+
 export function resetMockWorkflows(): void {
   mockWorkflows = [...DEFAULT_WORKFLOWS];
 }
@@ -373,7 +387,10 @@ function workflowTriggerListHandlers() {
       const entries: ZeroWorkflowTriggerAutomationEntry[] =
         mockWorkflows.flatMap((workflow) => {
           return workflow.triggers.map((trigger) => {
-            return { workflow: summary(workflow), trigger };
+            return {
+              workflow: summary(workflow),
+              trigger: publicWorkflowTrigger(trigger),
+            };
           });
         });
       return respond(200, entries);
@@ -386,7 +403,7 @@ function workflowTriggerListHandlers() {
       if (!workflow) {
         return respond(404, notFound(params.workflowId));
       }
-      return respond(200, workflow.triggers);
+      return respond(200, workflow.triggers.map(publicWorkflowTrigger));
     }),
 
     mockApi(
@@ -552,6 +569,31 @@ function workflowTriggerEnabledHandlers() {
 
 function workflowTriggerRunHandlers() {
   return [
+    mockApi(
+      zeroWorkflowTriggersContract.revealWebhookSecret,
+      ({ params, respond }) => {
+        for (const workflow of mockWorkflows) {
+          const detailTrigger = workflow.triggers.find((item) => {
+            return item.id === params.id;
+          });
+          if (
+            detailTrigger &&
+            detailTrigger.kind === "event" &&
+            detailTrigger.eventType === "webhook-received"
+          ) {
+            return respond(200, {
+              webhookUrl:
+                detailTrigger.webhookUrl ??
+                "http://localhost:3000/api/webhooks/workflow-triggers/mock",
+              webhookSecret:
+                detailTrigger.webhookSecret ?? "mock-webhook-secret",
+            });
+          }
+        }
+
+        return respond(404, notFoundTrigger());
+      },
+    ),
     mockApi(zeroWorkflowTriggersContract.run, ({ params, respond }) => {
       if (!mockWorkflowTriggerExists(params.id)) {
         return respond(404, notFoundTrigger());

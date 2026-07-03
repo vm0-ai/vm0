@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.132.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.5...runner-rs-v0.132.6) (2026-07-03)
+
+
+### Documentation
+
+* clarify auth base forwarder test helpers ([#20052](https://github.com/vm0-ai/vm0/issues/20052)) ([1d48da3](https://github.com/vm0-ai/vm0/commit/1d48da3d204818fd11d4f23ba60c0dd960cd5bc9))
+
+## [0.132.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.4...runner-rs-v0.132.5) (2026-07-03)
+
+
+### Bug Fixes
+
+* diagnose shared-base connector ownership before auth ([#19964](https://github.com/vm0-ai/vm0/issues/19964)) ([d87b6ea](https://github.com/vm0-ai/vm0/commit/d87b6ea41b76b65960f0c9949d1e03bd85d9a1bb))
+
+## [0.132.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.3...runner-rs-v0.132.4) (2026-07-03)
+
+
+### Bug Fixes
+
+* move runner bootstrap payloads out of env ([#19989](https://github.com/vm0-ai/vm0/issues/19989)) ([847d8d2](https://github.com/vm0-ai/vm0/commit/847d8d24372d84568133007db87c44a0ebd72b95))
+
+## [0.132.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.2...runner-rs-v0.132.3) (2026-07-03)
+
 ## [0.132.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.1...runner-rs-v0.132.2) (2026-07-03)
 
 

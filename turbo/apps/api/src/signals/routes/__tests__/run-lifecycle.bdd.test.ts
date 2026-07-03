@@ -23,7 +23,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { v5 as uuidv5 } from "uuid";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { mockNow, now, nowDate } from "../../../lib/time";
+import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import {
@@ -1040,6 +1040,20 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_dropped_compose_count_bucket: "1",
         storage_manifest_planned_presign_count_bucket: "2_4",
         storage_manifest_duplicate_presign_candidate_count_bucket: "0",
+        storage_manifest_source_compose_volume_resolved_count_bucket: "1",
+        storage_manifest_source_compose_volume_planned_presign_count_bucket:
+          "0",
+        storage_manifest_source_compose_volume_non_system_presign_count_bucket:
+          "0",
+        storage_manifest_source_request_additional_volume_resolved_count_bucket:
+          "1",
+        storage_manifest_source_request_additional_volume_planned_presign_count_bucket:
+          "1",
+        storage_manifest_source_request_additional_volume_non_system_presign_count_bucket:
+          "1",
+        storage_manifest_source_artifact_resolved_count_bucket: "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
         storage_manifest_artifact_ensure_already_initialized_count_bucket: "0",
         storage_manifest_artifact_ensure_missing_storage_count_bucket: "1",
         storage_manifest_artifact_ensure_created_storage_count_bucket: "1",
@@ -1077,6 +1091,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_resolved_artifact_count_bucket: "1",
         storage_manifest_planned_presign_count_bucket: "2_4",
         storage_manifest_duplicate_presign_candidate_count_bucket: "0",
+        storage_manifest_source_compose_volume_resolved_count_bucket: "1",
+        storage_manifest_source_request_additional_volume_resolved_count_bucket:
+          "1",
+        storage_manifest_source_artifact_resolved_count_bucket: "1",
+        storage_manifest_source_request_additional_volume_planned_presign_count_bucket:
+          "1",
+        storage_manifest_source_request_additional_volume_non_system_presign_count_bucket:
+          "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
       }),
     );
     expect(
@@ -1087,6 +1111,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ).toStrictEqual(
       expect.objectContaining({
         storage_manifest_compose_planned_presign_count_bucket: "0",
+        storage_manifest_source_compose_volume_planned_presign_count_bucket:
+          "0",
+        storage_manifest_source_compose_volume_non_system_presign_count_bucket:
+          "0",
       }),
     );
     expect(
@@ -1097,6 +1125,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ).toStrictEqual(
       expect.objectContaining({
         storage_manifest_additional_planned_presign_count_bucket: "1",
+        storage_manifest_source_request_additional_volume_planned_presign_count_bucket:
+          "1",
+        storage_manifest_source_request_additional_volume_non_system_presign_count_bucket:
+          "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "0",
       }),
     );
     expect(
@@ -1107,6 +1140,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ).toStrictEqual(
       expect.objectContaining({
         storage_manifest_artifact_planned_presign_count_bucket: "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
+        storage_manifest_source_request_additional_volume_planned_presign_count_bucket:
+          "0",
       }),
     );
     expect(
@@ -1729,6 +1766,123 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       [200],
     );
 
+    async function heartbeatHolder(args: {
+      readonly profiles?: string[];
+      readonly availableProfiles?: string[];
+      readonly omitAvailableProfiles?: boolean;
+      readonly mode?: "running" | "draining" | "stopping";
+    }): Promise<void> {
+      await api.requestHeartbeatRunner(true, [200], {
+        group: runnerGroup,
+        profiles: args.profiles,
+        availableProfiles: args.availableProfiles,
+        omitAvailableProfiles: args.omitAvailableProfiles,
+        heldSessionStates: [
+          {
+            sessionId: cliAgentSessionId,
+            lastCompletedAt: nowDate().toISOString(),
+          },
+        ],
+        mode: args.mode,
+      });
+    }
+
+    async function pollFollowUp(prompt: string, cancelAfterPoll = true) {
+      const run = await api.createRun(actor, {
+        agentId,
+        sessionId: first.sessionId,
+        prompt,
+        modelProvider: "anthropic-api-key",
+      });
+      const poll = await api.requestPollRunner(
+        true,
+        { group: runnerGroup, profiles: ["vm0/default"] },
+        [200],
+      );
+      if (poll.status !== 200) {
+        throw new Error("Expected affinity poll to return 200");
+      }
+      expect(poll.body.job?.runId).toBe(run.runId);
+      if (cancelAfterPoll) {
+        await api.requestCancelRun(actor, run.runId, [200]);
+      }
+      return { run, job: poll.body.job };
+    }
+
+    await heartbeatHolder({ availableProfiles: [] });
+    const unavailableHolder = await pollFollowUp(
+      "continue when holder is full",
+      false,
+    );
+    expect(unavailableHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(unavailableHolder.job?.affinityProtectedUntil).toBeNull();
+    const unavailableClaim = await api.claimRunnerJob(
+      unavailableHolder.run.runId,
+    );
+    expect(unavailableClaim.prompt).toBe("continue when holder is full");
+    await api.requestCancelRun(actor, unavailableHolder.run.runId, [200]);
+
+    mockNow(now() - 60_000);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    await heartbeatHolder({ availableProfiles: ["vm0/default"] });
+    clearMockNow();
+    const staleHolder = await pollFollowUp(
+      "continue after holder heartbeat is stale",
+    );
+    expect(staleHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(staleHolder.job?.affinityProtectedUntil).toBeNull();
+
+    await heartbeatHolder({
+      profiles: ["vm0/default", "vm0/large"],
+      availableProfiles: ["vm0/large"],
+    });
+    const profileIncompatibleHolder = await pollFollowUp(
+      "continue when holder cannot run requested profile",
+    );
+    expect(profileIncompatibleHolder.job?.cliAgentSessionId).toBe(
+      cliAgentSessionId,
+    );
+    expect(profileIncompatibleHolder.job?.affinityProtectedUntil).toBeNull();
+
+    await heartbeatHolder({
+      availableProfiles: ["vm0/default"],
+      mode: "draining",
+    });
+    const drainingHolder = await pollFollowUp(
+      "continue while holder is draining",
+    );
+    expect(drainingHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(drainingHolder.job?.affinityProtectedUntil).toBeNull();
+
+    await heartbeatHolder({ omitAvailableProfiles: true });
+    const legacyHeartbeatFollowUp = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continue with legacy holder heartbeat",
+      modelProvider: "anthropic-api-key",
+    });
+    const legacyHeartbeatPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, profiles: ["vm0/default"] },
+      [200],
+    );
+    if (legacyHeartbeatPoll.status !== 200) {
+      throw new Error("Expected legacy heartbeat affinity poll to return 200");
+    }
+    expect(legacyHeartbeatPoll.body.job?.runId).toBe(
+      legacyHeartbeatFollowUp.runId,
+    );
+    expect(legacyHeartbeatPoll.body.job?.cliAgentSessionId).toBe(
+      cliAgentSessionId,
+    );
+    expect(legacyHeartbeatPoll.body.job?.affinityProtectedUntil).toStrictEqual(
+      expect.any(String),
+    );
+    await api.requestCancelRun(actor, legacyHeartbeatFollowUp.runId, [200]);
+
+    await heartbeatHolder({ availableProfiles: ["vm0/default"] });
     const protectedFollowUp = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
@@ -2691,6 +2845,40 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     if (sent.status !== 201 || sent.body.runId === null) {
       throw new Error("Expected the pinned chat send to create a run");
     }
+
+    const timingEvents = apiDispatchTimingEventsForRun(sent.body.runId);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_build_entries",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_source_workflow_skill_resolved_count_bucket: "1",
+        storage_manifest_source_workflow_skill_planned_presign_count_bucket:
+          "1",
+        storage_manifest_source_workflow_skill_non_system_presign_count_bucket:
+          "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_generate_additional_urls",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_source_workflow_skill_planned_presign_count_bucket:
+          "1",
+        storage_manifest_source_workflow_skill_non_system_presign_count_bucket:
+          "1",
+      }),
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      workflowName,
+      agent.agentId,
+      thread.id,
+    ]);
 
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(sent.body.runId);

@@ -295,6 +295,10 @@ function connectorIconSkipsDarkInvert(type: ConnectorType): boolean {
   return type in CONNECTOR_ICON_COLORFUL;
 }
 
+export function isConnectorIconType(type: string): type is ConnectorType {
+  return Object.prototype.hasOwnProperty.call(CONNECTOR_ICONS, type);
+}
+
 /**
  * Connector mark in a square slot. The asset scales with `object-contain` so the
  * drawable uses the full `size×size` box (e.g. a 20×28 logo fills height in a 28×28 slot).

@@ -115,21 +115,10 @@ async function makeLimitedFreeWorkspace(
   fixture: ModelPolicyFixture,
 ): Promise<void> {
   authOrgApi.acceptAgentStorageWrites();
-  const setup = await authOrgApi.setupOnboarding(fixture, {
-    displayName: "BDD Model Policy Agent",
-  });
-  if (setup.status !== 200 && setup.status !== 409) {
+  const status = await authOrgApi.readOnboardingStatus(fixture);
+  if (!status.defaultAgentId) {
     throw new Error(
-      `Expected onboarding setup to succeed, got ${setup.status}`,
-    );
-  }
-  const completed = await authOrgApi.completeLimitedFreeOnboarding(fixture, {
-    credits: 1000,
-    expiresAt: null,
-  });
-  if (completed.status !== 200) {
-    throw new Error(
-      `Expected limited-free onboarding to succeed, got ${completed.status}`,
+      "Expected limited-free bootstrap to create a default agent",
     );
   }
 }
@@ -468,6 +457,46 @@ describe("GET/PUT /api/zero/model-policies", () => {
           return policy.model;
         }),
     ).toStrictEqual([DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL]);
+  });
+
+  it("rejects BYOK policy writes for limited-free-1 workspaces", async () => {
+    const fixture = await seedFixture();
+    await makeLimitedFreeWorkspace(fixture);
+    useSession(fixture);
+    const openRouterProviderId = await createOrgProvider(
+      fixture,
+      "openrouter-api-key",
+    );
+    const client = apiClient();
+    const listResponse = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+    const updates = toUpdate(listResponse.body).map((policy) => {
+      if (policy.model !== "MiniMax-M3") {
+        return policy;
+      }
+      return {
+        ...policy,
+        defaultProviderType: "openrouter-api-key" as const,
+        credentialScope: "org" as const,
+        modelProviderId: openRouterProviderId,
+      };
+    });
+
+    const response = await client.update({
+      headers: authHeaders(),
+      body: { policies: updates },
+    });
+
+    expect(response.status).toBe(402);
+    expect(response.body).toStrictEqual({
+      error: {
+        message:
+          "Insufficient credits. Add credits or configure your own API key to continue.",
+        code: "INSUFFICIENT_CREDITS",
+      },
+    });
   });
 
   it("allows compatible GLM 5.2 org provider routes", async () => {

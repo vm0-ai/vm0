@@ -28,7 +28,7 @@ import type {
   UpdateOrgMemberRoleRequest,
 } from "@vm0/api-contracts/contracts/org-members";
 import {
-  onboardingCompleteLimitedFreeContract,
+  onboardingCompleteContract,
   onboardingSetupContract,
   onboardingStatusContract,
   type OnboardingStatusResponse,
@@ -123,7 +123,7 @@ import { zeroCustomConnectorsSecretSetRoutes } from "../../zero-custom-connector
 import { zeroCustomConnectorsUpdateRoutes } from "../../zero-custom-connectors-update";
 import { zeroCustomConnectorValuesRoutes } from "../../zero-custom-connectors-values";
 import { zeroDefaultAgentRoutes } from "../../zero-default-agent";
-import { zeroOnboardingCompleteLimitedFreeRoutes } from "../../zero-onboarding-complete-limited-free";
+import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
 import { zeroOnboardingSetupRoutes } from "../../zero-onboarding-setup";
 import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
 import { zeroOrgDeleteRoutes } from "../../zero-org-delete";
@@ -252,8 +252,8 @@ const authOrgRoutes = [
   ...zeroApiKeysRoutes,
   ...zeroApiKeysDeleteRoutes,
   ...zeroOnboardingStatusRoutes,
+  ...zeroOnboardingCompleteRoutes,
   ...zeroOnboardingSetupRoutes,
-  ...zeroOnboardingCompleteLimitedFreeRoutes,
   ...zeroSecretsRoutes,
   ...zeroUserPreferencesRoutes,
   ...zeroOrgReadRoutes,
@@ -869,21 +869,16 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    async completeLimitedFreeOnboarding(
-      actor: ApiTestUser,
-      body: z.input<
-        typeof onboardingCompleteLimitedFreeContract.complete.body
-      > = {},
-    ) {
+    async completeOnboarding(actor: ApiTestUser) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        onboardingCompleteLimitedFreeContract,
+        onboardingCompleteContract,
       );
       return await accept(
         client.complete({
           headers: authenticate(actor),
-          body,
+          body: {},
         }),
-        [200, 403, 409],
+        [200, 403],
       );
     },
 
