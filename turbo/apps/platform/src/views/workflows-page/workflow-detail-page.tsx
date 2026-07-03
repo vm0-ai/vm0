@@ -434,7 +434,7 @@ function DetailHeader({
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <WorkflowHeaderIcon trigger={detail.triggers[0]} />
-              <div className="min-w-0">
+              <div className="flex h-11 min-w-0 flex-col justify-center">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -457,9 +457,9 @@ function DetailHeader({
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-                <code className="mt-1.5 inline-block w-fit max-w-full truncate rounded-md border-[0.7px] border-[hsl(var(--gray-400))] bg-gray-50 px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                <p className="mt-0.5 max-w-full truncate text-sm text-muted-foreground">
                   /{detail.name}
-                </code>
+                </p>
               </div>
             </div>
             <WorkflowChatButton detail={detail} />
