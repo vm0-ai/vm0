@@ -491,7 +491,7 @@ describe("POST /api/zero/video-io/generate", () => {
     });
   });
 
-  it("returns 402 with the Pro upgrade message for limited-free-1 orgs", async () => {
+  it("returns 402 with the paid-plan upgrade message for limited-free-1 orgs", async () => {
     const fixture = await track(
       seedVideoFixture({
         credits: 10_000,
@@ -519,11 +519,44 @@ describe("POST /api/zero/video-io/generate", () => {
     await expect(response.json()).resolves.toStrictEqual({
       error: {
         message:
-          "Built-in video generation requires Pro. Return `pro_required` as the assistant error marker so the app can show the Pro upgrade card. Do not retry video generation until the workspace upgrades.",
+          "Built-in video generation requires Pro or Team. Return `pro_required` as the assistant error marker so the app can show the paid plan upgrade card. Do not retry video generation until the workspace upgrades.",
         code: "PRO_REQUIRED",
       },
     });
     expect(calledBytePlus).toBeFalsy();
+  });
+
+  it("allows Team orgs to submit paid video generation", async () => {
+    const fixture = await track(
+      seedVideoFixture({
+        credits: 10_000,
+        tier: "team",
+        withPricing: true,
+      }),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let calledBytePlus = false;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
+        calledBytePlus = true;
+        await request.json();
+        return HttpResponse.json({
+          id: "team-video-task",
+          status: "queued",
+        });
+      }),
+    );
+
+    const app = createVideoIoTestApp();
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ prompt: "a city" }),
+    });
+
+    expect(response.status).toBe(202);
+    readAcceptedGenerationId(await response.json(), "video", fixture.userId);
+    expect(calledBytePlus).toBeTruthy();
   });
 
   it("returns 503 when video pricing is not configured", async () => {

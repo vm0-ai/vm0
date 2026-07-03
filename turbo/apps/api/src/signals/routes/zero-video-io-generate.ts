@@ -29,7 +29,7 @@ import {
   videoPricing$,
   videoPricingCategoryForOptions,
   videoPricingKey,
-  videoRequiresPro,
+  videoRequiresPaidPlan,
   videoServiceUnavailable,
 } from "../services/zero-video-io-generate.service";
 import {
@@ -225,7 +225,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .limit(1);
   signal.throwIfAborted();
   if (org?.tier === "limited-free-1") {
-    return videoRequiresPro();
+    return videoRequiresPaidPlan();
   }
 
   const bodyResult = await get(videoBody$);
