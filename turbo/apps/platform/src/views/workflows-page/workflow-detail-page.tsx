@@ -441,7 +441,7 @@ function DetailHeader({
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <h1 className="w-fit max-w-full truncate text-lg font-semibold tracking-tight text-foreground underline decoration-foreground/40 decoration-dotted decoration-[1px] underline-offset-2 sm:text-xl">
+                      <h1 className="w-fit max-w-full cursor-help truncate text-lg font-semibold tracking-tight text-foreground underline decoration-foreground/40 decoration-dotted decoration-[1px] underline-offset-2 sm:text-xl">
                         {workflowTitle(detail)}
                       </h1>
                     </TooltipTrigger>
