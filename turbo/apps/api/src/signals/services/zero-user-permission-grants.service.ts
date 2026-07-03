@@ -329,16 +329,14 @@ export async function resolveActiveConnectorPolicyRefreshes(
 export function connectorPolicyRefreshesRecord(
   refreshes: readonly ActiveConnectorPolicyRefresh[],
 ): Record<string, { readonly nextRefreshAt: string }> | undefined {
-  const entries = refreshes
-    .filter((refresh) => {
-      return refresh.nextRefreshAt !== null;
-    })
-    .map((refresh) => {
-      return [
-        refresh.connectorRef,
-        { nextRefreshAt: refresh.nextRefreshAt as string },
-      ] as const;
-    });
+  const entries = refreshes.flatMap((refresh) => {
+    if (refresh.nextRefreshAt === null) {
+      return [];
+    }
+    return [
+      [refresh.connectorRef, { nextRefreshAt: refresh.nextRefreshAt }] as const,
+    ];
+  });
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 

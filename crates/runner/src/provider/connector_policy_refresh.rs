@@ -53,6 +53,7 @@ pub(crate) struct ConnectorPolicyRefreshRegistration<'a> {
     pub(crate) source_ip: &'a str,
     pub(crate) registry: ProxyRegistryHandle,
     pub(crate) connector_refs: HashSet<String>,
+    pub(crate) initial_refresh_connector_refs: HashSet<String>,
     pub(crate) refreshes: Option<&'a HashMap<String, ConnectorPolicyRefresh>>,
 }
 
@@ -135,8 +136,12 @@ impl ConnectorPolicyRefreshCore {
             self.unregister_run(registration.run_id).await;
             return;
         }
-        let initial_refresh_connector_refs: Vec<String> =
-            registration.connector_refs.iter().cloned().collect();
+        let initial_refresh_connector_refs: Vec<String> = registration
+            .initial_refresh_connector_refs
+            .iter()
+            .filter(|connector_ref| registration.connector_refs.contains(*connector_ref))
+            .cloned()
+            .collect();
 
         let mut old_tasks = Vec::new();
         {

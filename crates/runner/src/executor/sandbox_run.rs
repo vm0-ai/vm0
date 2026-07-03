@@ -753,12 +753,16 @@ pub(super) async fn register_proxy(
         .register_source_ip(source_ip, network_log_path)
         .await;
     if let Some(refresh) = config.connector_policy_refresh.as_ref() {
+        let connector_refs = active_connector_refs(context);
+        let initial_refresh_connector_refs =
+            initial_connector_policy_refresh_refs(context, &connector_refs);
         refresh
             .register_run(ConnectorPolicyRefreshRegistration {
                 run_id: context.run_id,
                 source_ip,
                 registry: config.registry.clone(),
-                connector_refs: active_connector_refs(context),
+                connector_refs,
+                initial_refresh_connector_refs,
                 refreshes: context.connector_policy_refreshes.as_ref(),
             })
             .await;
@@ -775,15 +779,45 @@ fn active_connector_refs(context: &ExecutionContext) -> HashSet<String> {
         .as_deref()
         .unwrap_or_default()
         .iter()
+        .map(|entry| match entry {
+            FirewallEntry::Builtin { name, .. } => name,
+            FirewallEntry::Inline { firewall } => &firewall.name,
+        })
+        .filter(|name| {
+            !name.starts_with("model-provider:") && network_policies.contains_key(name.as_str())
+        })
+        .map(|name| name.to_string())
+        .collect()
+}
+
+fn initial_connector_policy_refresh_refs(
+    context: &ExecutionContext,
+    active_refs: &HashSet<String>,
+) -> HashSet<String> {
+    let mut refs: HashSet<String> = context
+        .firewalls
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
         .filter_map(|entry| match entry {
-            FirewallEntry::Builtin { name, .. }
-                if !name.starts_with("model-provider:") && network_policies.contains_key(name) =>
-            {
-                Some(name.clone())
-            }
+            FirewallEntry::Builtin { name, .. } if active_refs.contains(name) => Some(name.clone()),
             _ => None,
         })
-        .collect()
+        .collect();
+
+    for connector_ref in context
+        .connector_policy_refreshes
+        .as_ref()
+        .map(|refreshes| refreshes.keys())
+        .into_iter()
+        .flatten()
+    {
+        if active_refs.contains(connector_ref) {
+            refs.insert(connector_ref.clone());
+        }
+    }
+
+    refs
 }
 
 pub(super) fn log_proxy_register_success(
@@ -875,4 +909,111 @@ pub(super) async fn post_job_cleanup(
     )
     .await;
     unregister_proxy_registry(config, source_ip, context.run_id).await
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+    use crate::types::{
+        ConnectorPolicyRefresh, Firewall, FirewallApi, FirewallAuth, FirewallPermission,
+        NetworkPolicy,
+    };
+
+    fn network_policy() -> NetworkPolicy {
+        NetworkPolicy {
+            allow: Vec::new(),
+            deny: Vec::new(),
+            ask: Vec::new(),
+            unknown_policy: "ask".to_string(),
+        }
+    }
+
+    #[test]
+    fn active_connector_refs_include_inline_firewalls_with_network_policy() {
+        let mut context = crate::test_fixtures::execution_context_for_test(RunId::nil());
+        context.firewalls = Some(vec![
+            FirewallEntry::Builtin {
+                name: "github".to_string(),
+                base_url_vars: None,
+            },
+            FirewallEntry::Inline {
+                firewall: Firewall {
+                    name: "custom-crm".to_string(),
+                    apis: vec![FirewallApi {
+                        id: "custom-crm-api".to_string(),
+                        base: "https://crm.example.com".to_string(),
+                        auth: FirewallAuth {
+                            headers: HashMap::new(),
+                            base: None,
+                            query: None,
+                        },
+                        permissions: Some(vec![FirewallPermission {
+                            name: "records.read".to_string(),
+                            description: None,
+                            rules: vec!["GET /records".to_string()],
+                        }]),
+                    }],
+                },
+            },
+            FirewallEntry::Builtin {
+                name: "model-provider:openai".to_string(),
+                base_url_vars: None,
+            },
+        ]);
+        context.network_policies = Some(HashMap::from([
+            ("github".to_string(), network_policy()),
+            ("custom-crm".to_string(), network_policy()),
+            ("model-provider:openai".to_string(), network_policy()),
+            ("not-active".to_string(), network_policy()),
+        ]));
+
+        let refs = active_connector_refs(&context);
+
+        assert_eq!(
+            refs,
+            HashSet::from(["custom-crm".to_string(), "github".to_string()])
+        );
+    }
+
+    #[test]
+    fn initial_connector_policy_refresh_refs_skip_inline_without_refresh_deadline() {
+        let mut context = crate::test_fixtures::execution_context_for_test(RunId::nil());
+        context.firewalls = Some(vec![
+            FirewallEntry::Builtin {
+                name: "github".to_string(),
+                base_url_vars: None,
+            },
+            FirewallEntry::Inline {
+                firewall: Firewall {
+                    name: "custom-crm".to_string(),
+                    apis: Vec::new(),
+                },
+            },
+        ]);
+        context.network_policies = Some(HashMap::from([
+            ("github".to_string(), network_policy()),
+            ("custom-crm".to_string(), network_policy()),
+        ]));
+
+        let active_refs = active_connector_refs(&context);
+
+        assert_eq!(
+            initial_connector_policy_refresh_refs(&context, &active_refs),
+            HashSet::from(["github".to_string()])
+        );
+
+        context.connector_policy_refreshes = Some(HashMap::from([(
+            "custom-crm".to_string(),
+            ConnectorPolicyRefresh {
+                next_refresh_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+        )]));
+
+        assert_eq!(
+            initial_connector_policy_refresh_refs(&context, &active_refs),
+            HashSet::from(["custom-crm".to_string(), "github".to_string()])
+        );
+    }
 }
