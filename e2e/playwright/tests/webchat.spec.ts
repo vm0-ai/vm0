@@ -8,13 +8,18 @@ test("send a chat message and receive a response", async ({ page }) => {
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
 
-  // Wait for composer to be ready
-  const textarea = page.getByPlaceholder(/Ask me to automate/);
-  await expect(textarea).toBeVisible({ timeout: 20_000 });
+  // Wait for composer to be ready. Since the workflow cutover
+  // (vm0-ai/vm0#19959) the composer is a tiptap contenteditable: the
+  // placeholder is an overlay div, not a textarea attribute.
+  await expect(page.getByText(/Ask me to automate/)).toBeVisible({
+    timeout: 20_000,
+  });
+  const composer = page.locator('[contenteditable="true"]').first();
+  await expect(composer).toBeVisible({ timeout: 20_000 });
 
   // Send a message — mock claude executes this as bash
   const marker = `e2e-${Date.now()}`;
-  await textarea.fill(`echo ${marker}`);
+  await composer.fill(`echo ${marker}`);
   await page.getByRole("button", { name: "Send", exact: true }).click();
 
   // Verify user message appears

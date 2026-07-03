@@ -66,10 +66,11 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(false);
     expect(
+      // Globally enabled since the automation -> workflow cutover (#19959).
       isFeatureEnabled(FeatureSwitchKey.WorkflowAutomation, {
         orgId: "org_nonexistent",
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.WorkflowWebhookTriggers, {
         orgId: "org_nonexistent",
@@ -150,7 +151,7 @@ describe("getAllFeatureStates", () => {
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.WorkflowAutomation]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.WorkflowAutomation]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(
       false,
     );
