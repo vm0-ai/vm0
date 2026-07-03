@@ -33,8 +33,8 @@ from mitmproxy.addonmanager import Loader
 
 # --- Sub-module imports ---
 #
-# auth_base_forwarder/body_capture/matching/registry/response_streaming/usage
-# are imported by module
+# auth_base_forwarder/body_capture/matching/registry/response_encoding_negotiation/
+# response_streaming/usage are imported by module
 # (not selective `from X import ...`)
 # so that:
 #   1. Cross-module calls read as ``auth_base_forwarder.X(...)`` /
@@ -54,6 +54,7 @@ import network_log_sanitization
 import public_destination
 import registry
 import request_streaming
+import response_encoding_negotiation
 import response_streaming
 import upstream_destination_binding
 import usage
@@ -2653,6 +2654,7 @@ async def _try_firewall_request_stream_capture_from_headers(
         _restore_request_headers_probe_metadata(flow, metadata_snapshot)
         return
 
+    _maybe_normalize_accept_encoding_for_body_inspection(flow, allow, vm_info)
     _start_request_timing(flow)
     try:
         result = await try_apply_stream_safe_firewall_auth_for_requestheaders(flow, allow, vm_info)
@@ -2869,6 +2871,7 @@ async def request(flow: http.HTTPFlow) -> None:
                     error=host_policy_error,
                 )
                 return
+            _maybe_normalize_accept_encoding_for_body_inspection(flow, allow, vm_info)
             _maybe_track_usage_flow(
                 flow,
                 is_billable_firewall(allow.name, vm_info),
@@ -2914,6 +2917,46 @@ def _is_model_provider_usage_observable(firewall_name: str, vm_info: dict) -> bo
         firewall_name.startswith("model-provider:")
         and isinstance(model_usage_provider, str)
         and bool(model_usage_provider)
+    )
+
+
+def _maybe_normalize_accept_encoding_for_body_inspection(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+    vm_info: dict,
+) -> None:
+    if _expects_http_response_body_usage_inspection(flow, allow, vm_info):
+        response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(
+            flow.request.headers
+        )
+
+
+def _expects_http_response_body_usage_inspection(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+    vm_info: dict,
+) -> bool:
+    if _is_websocket_upgrade_request(flow):
+        return False
+    if _is_model_provider_usage_observable(allow.name, vm_info):
+        return True
+    return is_billable_firewall(allow.name, vm_info) and usage.has_connector_response_parser(
+        allow.name
+    )
+
+
+def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
+    if flow.request.headers.get("Upgrade", "").strip().lower() != "websocket":
+        return False
+
+    connection_values = flow.request.headers.get_all("Connection")
+    if not connection_values:
+        return True
+
+    return any(
+        token.strip().lower() == "upgrade"
+        for value in connection_values
+        for token in value.split(",")
     )
 
 
