@@ -3,6 +3,7 @@ import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-co
 import { waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
@@ -28,6 +29,11 @@ function mockOnboardingNeeded(): void {
 describe("zero onboarding", () => {
   it("redirects admins who need onboarding to paid onboarding with query params", async () => {
     mockOnboardingNeeded();
+    mockedClerk.buildUrlWithAuth.mockImplementation((to) => {
+      const url = new URL(to);
+      url.searchParams.set("__clerk_db_jwt", "dvb_test_handoff");
+      return url.toString();
+    });
     setBrowserUrl("https://app.vm7.ai:8443/");
 
     detachedSetupPage({
@@ -42,6 +48,7 @@ describe("zero onboarding", () => {
       expect(url.searchParams.get("prompt")).toBe("hello world");
       expect(url.searchParams.get("connector")).toBe("github");
       expect(url.searchParams.get("vm0_source")).toBe("presentation");
+      expect(url.searchParams.get("__clerk_db_jwt")).toBe("dvb_test_handoff");
       expect(url.searchParams.has("domain")).toBeFalsy();
     });
   });
