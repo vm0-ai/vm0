@@ -5,7 +5,10 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{
+    Mutex, mpsc,
+    mpsc::error::{TrySendError, TrySendError::Closed, TrySendError::Full},
+};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -262,17 +265,19 @@ impl ConnectorPolicyRefreshCore {
         let Some(run_cancel) = self.active_connector_cancel(run_id, &connector_ref).await else {
             return;
         };
+        if self.inner.cancel.is_cancelled()
+            || run_cancel.is_cancelled()
+            || cancel.is_some_and(CancellationToken::is_cancelled)
+        {
+            return;
+        }
         let request = RefreshRequest {
             run_id,
             connector_ref,
             trigger: RefreshTrigger::Notification,
         };
-        if let Some(cancel) = cancel {
-            self.enqueue_refresh_until_either_cancelled(request, &run_cancel, cancel)
-                .await;
-        } else {
-            self.enqueue_refresh_until_cancelled(request, &run_cancel)
-                .await;
+        if let Err(error) = self.request_tx.try_send(request) {
+            self.handle_notification_enqueue_error(error).await;
         }
     }
 
@@ -306,21 +311,28 @@ impl ConnectorPolicyRefreshCore {
         }
     }
 
-    async fn enqueue_refresh_until_either_cancelled(
-        &self,
-        request: RefreshRequest,
-        cancel: &CancellationToken,
-        other_cancel: &CancellationToken,
-    ) {
-        tokio::select! {
-            biased;
-            () = self.inner.cancel.cancelled() => {}
-            () = cancel.cancelled() => {}
-            () = other_cancel.cancelled() => {}
-            result = self.request_tx.send(request) => {
-                if let Err(error) = result {
-                    warn!(error = %error, "connector policy refresh queue closed");
+    async fn handle_notification_enqueue_error(&self, error: TrySendError<RefreshRequest>) {
+        match error {
+            Full(request) => {
+                warn!(
+                    run_id = %request.run_id,
+                    connector_ref = %request.connector_ref,
+                    "connector policy refresh queue full; failing closed after permission refresh notification"
+                );
+                if let Some(snapshot) = self
+                    .active_snapshot(request.run_id, &request.connector_ref)
+                    .await
+                {
+                    fail_closed_connector_policy(request.run_id, &request.connector_ref, snapshot)
+                        .await;
                 }
+            }
+            Closed(error) => {
+                warn!(
+                    run_id = %error.run_id,
+                    connector_ref = %error.connector_ref,
+                    "connector policy refresh queue closed"
+                );
             }
         }
     }
@@ -457,17 +469,17 @@ impl ConnectorPolicyRefreshCore {
                 () = cancel.cancelled() => {}
                 () = tokio::time::sleep_until(deadline) => {
                     handle
-                        .clear_completed_schedule(run_id, &task_connector_ref, task_id)
-                        .await;
-                    handle
                         .enqueue_refresh_until_cancelled(
                             RefreshRequest {
                                 run_id,
-                                connector_ref: task_connector_ref,
+                                connector_ref: task_connector_ref.clone(),
                                 trigger: RefreshTrigger::Scheduled,
                             },
                             &enqueue_cancel,
                         )
+                        .await;
+                    handle
+                        .clear_completed_schedule(run_id, &task_connector_ref, task_id)
                         .await;
                 }
             }
@@ -813,6 +825,58 @@ mod tests {
         }
     }
 
+    async fn registered_slack_registry(
+        run_id: RunId,
+    ) -> (tempfile::TempDir, ProxyRegistryHandle, std::path::PathBuf) {
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let registry_path = dir.path().join("proxy-registry.json");
+        tokio::fs::write(&registry_path, br#"{"vms":{},"updatedAt":0}"#)
+            .await
+            .expect("empty registry should be written");
+        let registry =
+            ProxyRegistryHandle::new(registry_path.clone(), dir.path().join("registry.lock"));
+        let firewalls = vec![FirewallEntry::Builtin {
+            name: "slack".to_string(),
+            base_url_vars: None,
+        }];
+        let mut network_policies = HashMap::new();
+        network_policies.insert(
+            "slack".to_string(),
+            NetworkPolicy {
+                allow: vec!["chat:write".to_string()],
+                deny: vec!["files:write".to_string()],
+                ask: vec!["channels:read".to_string()],
+                unknown_policy: "allow".to_string(),
+            },
+        );
+        let run_id_string = run_id.to_string();
+        let network_log_path = dir.path().join("network.jsonl");
+        let proxy_log_path = dir.path().join("proxy.log");
+        registry
+            .register_vm(
+                "10.200.0.2",
+                &VmRegistration {
+                    run_id: &run_id_string,
+                    cli_agent_type: "codex",
+                    sandbox_token: "sandbox-token",
+                    network_log_path: &network_log_path,
+                    proxy_log_path: &proxy_log_path,
+                    firewalls: Some(&firewalls),
+                    network_policies: Some(&network_policies),
+                    encrypted_secrets: None,
+                    secret_connector_map: None,
+                    secret_connector_metadata_map: None,
+                    vars: None,
+                    capture_network_bodies: false,
+                    billable_firewalls: &[],
+                    model_usage_provider: None,
+                },
+            )
+            .await
+            .expect("vm should be registered");
+        (dir, registry, registry_path)
+    }
+
     #[tokio::test]
     async fn shutdown_awaits_refresh_worker_task() {
         let server = MockServer::start();
@@ -1040,15 +1104,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unregister_cancels_permission_notification_waiting_for_queue_capacity() {
+    async fn full_queue_permission_notification_fails_closed_without_waiting() {
         let server = MockServer::start();
         let (core, mut requests) = core_without_worker(&server);
         let run_id = RunId::nil();
-        let dir = tempfile::tempdir().expect("tempdir should be created");
-        let registry = ProxyRegistryHandle::new(
-            dir.path().join("proxy-registry.json"),
-            dir.path().join("proxy-registry.lock"),
-        );
+        let (_dir, registry, registry_path) = registered_slack_registry(run_id).await;
         core.inner
             .active_runs
             .lock()
@@ -1064,23 +1124,25 @@ mod tests {
                 .expect("refresh queue should accept request");
         }
 
-        let notify = core.notify_permission_refresh(run_id, "slack".to_string());
-        tokio::pin!(notify);
-        assert!(
-            matches!(poll_once(notify.as_mut()), Poll::Pending),
-            "notification should wait for refresh queue capacity before unregister"
-        );
-
-        core.unregister_run(run_id).await;
-        tokio::time::timeout(Duration::from_secs(1), notify.as_mut())
-            .await
-            .expect("unregister should cancel notification waiting for queue capacity");
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            core.notify_permission_refresh(run_id, "slack".to_string()),
+        )
+        .await
+        .expect("full queue notification should fail closed without waiting for capacity");
 
         let mut queued = 0;
         while requests.try_recv().is_ok() {
             queued += 1;
         }
         assert_eq!(queued, REFRESH_REQUEST_QUEUE_CAPACITY);
+        let registry_json: serde_json::Value = serde_json::from_str(
+            &tokio::fs::read_to_string(registry_path)
+                .await
+                .expect("registry should be readable"),
+        )
+        .expect("registry should be valid JSON");
+        assert_fail_closed_policy(&registry_json["vms"]["10.200.0.2"]["networkPolicies"]["slack"]);
     }
 
     #[tokio::test(start_paused = true)]
@@ -1110,6 +1172,7 @@ mod tests {
         assert_eq!(request.run_id, run_id);
         assert_eq!(request.connector_ref, "slack");
         assert!(matches!(request.trigger, RefreshTrigger::Scheduled));
+        wait_until_scheduled_refresh_task_clears(&core, run_id).await;
         let active_runs = core.inner.active_runs.lock().await;
         let active = active_runs
             .get(&run_id)
@@ -1148,15 +1211,14 @@ mod tests {
             Some("1970-01-01T00:00:00.000Z".to_string()),
         )
         .await;
-        wait_until_scheduled_refresh_task_clears(&core, run_id).await;
         assert!(
             core.inner
                 .active_runs
                 .lock()
                 .await
                 .get(&run_id)
-                .is_some_and(|active| active.refresh_tasks.is_empty()),
-            "scheduled task should be waiting on the full refresh queue"
+                .is_some_and(|active| active.refresh_tasks.len() == 1),
+            "scheduled task should remain tracked while waiting on the full refresh queue"
         );
 
         core.unregister_run(run_id).await;
