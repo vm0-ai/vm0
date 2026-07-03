@@ -4545,8 +4545,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         permission: "files:write",
         action: "deny",
       },
+      [500],
     );
-    expect(failedRefreshNotification.status as number).toBe(500);
+    expect(failedRefreshNotification.status).toBe(500);
 
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
     const drained = await api.readRunQueue(actor);

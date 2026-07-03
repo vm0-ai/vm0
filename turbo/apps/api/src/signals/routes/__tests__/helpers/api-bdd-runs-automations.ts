@@ -14,6 +14,7 @@ import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-bil
 import {
   zeroUserPermissionGrantsContract,
   type ApplyUserPermissionGrant,
+  type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
@@ -256,23 +257,23 @@ export function createRunsAutomationsApi(context: TestContext) {
       readonly agentId: string;
       readonly connectorRef: string;
     } & ApplyUserPermissionGrant,
-  ) => {
+  ): ApplyUserPermissionGrantsRequest => {
+    const grant: ApplyUserPermissionGrant =
+      body.action === "allow"
+        ? {
+            permission: body.permission,
+            action: "allow",
+            ...(body.expiresIn ? { expiresIn: body.expiresIn } : {}),
+          }
+        : {
+            permission: body.permission,
+            action: "deny",
+          };
     return {
       agentId: body.agentId,
       connectorRef: body.connectorRef,
-      mode: "patch" as const,
-      grants: [
-        body.action === "allow"
-          ? {
-              permission: body.permission,
-              action: "allow" as const,
-              ...(body.expiresIn ? { expiresIn: body.expiresIn } : {}),
-            }
-          : {
-              permission: body.permission,
-              action: "deny" as const,
-            },
-      ],
+      mode: "patch",
+      grants: [grant],
     };
   };
 
@@ -588,13 +589,15 @@ export function createRunsAutomationsApi(context: TestContext) {
         readonly agentId: string;
         readonly connectorRef: string;
       } & ApplyUserPermissionGrant,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
-      return await runsAutomationApp(context)(
-        zeroUserPermissionGrantsContract,
-      ).apply({
-        headers: authenticate(context, actor),
-        body: applyUserPermissionGrantRequestBody(body),
-      });
+      return await accept(
+        runsAutomationApp(context)(zeroUserPermissionGrantsContract).apply({
+          headers: authenticate(context, actor),
+          body: applyUserPermissionGrantRequestBody(body),
+        }),
+        statuses,
+      );
     },
 
     async listUserPermissionGrants(
