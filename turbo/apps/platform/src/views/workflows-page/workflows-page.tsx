@@ -181,7 +181,7 @@ function VisibilityIcon({
     <Icon
       size={15}
       stroke={1.7}
-      className={cn("shrink-0", isPublic ? "text-blue-500" : "text-violet-500")}
+      className={cn("shrink-0", isPublic ? "text-blue-500" : "text-[#45A7A8]")}
       aria-label={isPublic ? "Public" : "Private"}
     />
   );
