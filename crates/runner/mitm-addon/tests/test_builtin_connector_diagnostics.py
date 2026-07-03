@@ -4,6 +4,33 @@ import builtin_connector_diagnostics
 import generated.builtin_firewalls
 
 
+def _shared_base_firewall(
+    name,
+    token_name,
+    *,
+    permissions=None,
+    base="https://shared.example.com",
+):
+    return {
+        "name": name,
+        "apis": [
+            {
+                "base": base,
+                "envNames": [token_name],
+                "authHeaderNames": ["Authorization"],
+                "authQueryParamNames": [],
+                "permissions": permissions or [],
+            }
+        ],
+    }
+
+
+def _patch_connector_diagnostics(monkeypatch, firewalls):
+    monkeypatch.setattr(builtin_connector_diagnostics, "CONNECTOR_DIAGNOSTIC_FIREWALLS", firewalls)
+    monkeypatch.setattr(builtin_connector_diagnostics, "MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS", [])
+    builtin_connector_diagnostics.reset_cache_for_tests()
+
+
 def test_classifies_static_builtin_connector_url():
     candidate = builtin_connector_diagnostics.find_candidate(
         "https://fal.run/fal-ai/nano-banana-pro",
@@ -50,6 +77,50 @@ def test_skips_active_connector_name():
 def test_skips_dynamic_template_base_urls():
     candidate = builtin_connector_diagnostics.find_candidate(
         "https://acme.zendesk.com/api/v2/tickets",
+        "GET",
+        active_firewall_names=set(),
+    )
+
+    assert candidate is None
+
+
+def test_classifies_static_base_with_literal_unbalanced_brace(monkeypatch):
+    _patch_connector_diagnostics(
+        monkeypatch,
+        [
+            _shared_base_firewall(
+                "literal-brace",
+                "LITERAL_BRACE_TOKEN",
+                base="https://literal.example.com/{literal",
+            )
+        ],
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        "https://literal.example.com/{literal/item",
+        "GET",
+        active_firewall_names=set(),
+    )
+
+    assert candidate is not None
+    assert candidate.connector_type == "literal-brace"
+    assert candidate.env_names == ("LITERAL_BRACE_TOKEN",)
+
+
+def test_skips_parameterized_manifest_base_urls(monkeypatch):
+    _patch_connector_diagnostics(
+        monkeypatch,
+        [
+            _shared_base_firewall(
+                "parameterized",
+                "PARAMETERIZED_TOKEN",
+                base="https://parameterized.example.com/{tenant}",
+            )
+        ],
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        "https://parameterized.example.com/acme/item",
         "GET",
         active_firewall_names=set(),
     )
@@ -121,3 +192,162 @@ def test_classifies_connector_permission_path_on_model_provider_host():
     assert candidate is not None
     assert candidate.connector_type == "anthropic-managed-agents"
     assert candidate.env_names == ("ANTHROPIC_MANAGED_AGENTS_TOKEN",)
+
+
+def test_shared_base_ownership_selects_route_specific_inactive_sibling(monkeypatch):
+    _patch_connector_diagnostics(
+        monkeypatch,
+        [
+            _shared_base_firewall(
+                "active",
+                "ACTIVE_TOKEN",
+                permissions=[{"name": "active-read", "rules": ["GET /active/{id}"]}],
+            ),
+            _shared_base_firewall(
+                "inactive",
+                "INACTIVE_TOKEN",
+                permissions=[{"name": "inactive-read", "rules": ["GET /messages/{id}"]}],
+            ),
+        ],
+    )
+
+    resolution = builtin_connector_diagnostics.resolve_shared_base_ownership(
+        "https://shared.example.com/messages/123",
+        "GET",
+        active_firewall_names={"active"},
+        matched_firewall_name="active",
+    )
+
+    assert resolution is not None
+    assert resolution.reason == "route_owner"
+    assert resolution.hint_status == "absent"
+    assert resolution.candidate is not None
+    assert resolution.candidate.connector_type == "inactive"
+    assert resolution.candidate.env_names == ("INACTIVE_TOKEN",)
+
+
+def test_shared_base_ownership_suppresses_base_only_candidate(monkeypatch):
+    _patch_connector_diagnostics(
+        monkeypatch,
+        [
+            _shared_base_firewall("active", "ACTIVE_TOKEN"),
+            _shared_base_firewall("inactive", "INACTIVE_TOKEN"),
+        ],
+    )
+
+    resolution = builtin_connector_diagnostics.resolve_shared_base_ownership(
+        "https://shared.example.com/messages/123",
+        "GET",
+        active_firewall_names={"active"},
+        matched_firewall_name="active",
+    )
+
+    assert resolution is not None
+    assert resolution.candidate is None
+    assert resolution.reason == "base_only"
+
+
+def test_shared_base_ownership_uses_intent_inside_candidate_set(monkeypatch):
+    _patch_connector_diagnostics(
+        monkeypatch,
+        [
+            _shared_base_firewall("active", "ACTIVE_TOKEN"),
+            _shared_base_firewall("inactive", "INACTIVE_TOKEN"),
+        ],
+    )
+
+    resolution = builtin_connector_diagnostics.resolve_shared_base_ownership(
+        "https://shared.example.com/graphql/v2",
+        "POST",
+        active_firewall_names={"active"},
+        matched_firewall_name="active",
+        connector_intent="inactive",
+    )
+
+    assert resolution is not None
+    assert resolution.reason == "hint_owner"
+    assert resolution.hint_status == "used"
+    assert resolution.candidate is not None
+    assert resolution.candidate.connector_type == "inactive"
+
+
+def test_shared_base_ownership_ignores_intent_outside_candidate_set(monkeypatch):
+    _patch_connector_diagnostics(
+        monkeypatch,
+        [
+            _shared_base_firewall("active", "ACTIVE_TOKEN"),
+            _shared_base_firewall("inactive", "INACTIVE_TOKEN"),
+        ],
+    )
+
+    resolution = builtin_connector_diagnostics.resolve_shared_base_ownership(
+        "https://shared.example.com/graphql/v2",
+        "POST",
+        active_firewall_names={"active"},
+        matched_firewall_name="active",
+        connector_intent="other",
+    )
+
+    assert resolution is not None
+    assert resolution.candidate is None
+    assert resolution.reason == "base_only"
+    assert resolution.hint_status == "outside_candidate_set"
+
+
+def test_shared_base_ownership_route_specific_active_overrides_conflicting_intent(monkeypatch):
+    _patch_connector_diagnostics(
+        monkeypatch,
+        [
+            _shared_base_firewall(
+                "active",
+                "ACTIVE_TOKEN",
+                permissions=[{"name": "active-read", "rules": ["GET /active/{id}"]}],
+            ),
+            _shared_base_firewall("inactive", "INACTIVE_TOKEN"),
+        ],
+    )
+
+    resolution = builtin_connector_diagnostics.resolve_shared_base_ownership(
+        "https://shared.example.com/active/123",
+        "GET",
+        active_firewall_names={"active"},
+        matched_firewall_name="active",
+        connector_intent="inactive",
+    )
+
+    assert resolution is not None
+    assert resolution.candidate is None
+    assert resolution.reason == "active_route_owner"
+    assert resolution.hint_status == "ignored"
+
+
+def test_shared_base_ownership_normalizes_static_base_keys(monkeypatch):
+    _patch_connector_diagnostics(
+        monkeypatch,
+        [
+            _shared_base_firewall(
+                "active",
+                "ACTIVE_TOKEN",
+                base="https://Shared.Example.com.:443/api/",
+                permissions=[{"name": "active-read", "rules": ["GET /active/{id}"]}],
+            ),
+            _shared_base_firewall(
+                "inactive",
+                "INACTIVE_TOKEN",
+                base="https://shared.example.com/api",
+                permissions=[{"name": "inactive-read", "rules": ["GET /messages/{id}"]}],
+            ),
+        ],
+    )
+
+    resolution = builtin_connector_diagnostics.resolve_shared_base_ownership(
+        "https://shared.example.com/api/messages/123",
+        "GET",
+        active_firewall_names={"active"},
+        matched_firewall_name="active",
+    )
+
+    assert resolution is not None
+    assert resolution.reason == "route_owner"
+    assert resolution.candidate is not None
+    assert resolution.candidate.connector_type == "inactive"

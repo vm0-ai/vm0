@@ -2877,6 +2877,92 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
         "base": "https://graph.microsoft.com",
         "envNames": [
           "MICROSOFT_365_TOKEN"
+        ],
+        "permissions": [
+          {
+            "name": "User.Read",
+            "rules": [
+              "GET /v1.0/me",
+              "GET /beta/me"
+            ]
+          },
+          {
+            "name": "Files.ReadWrite.All",
+            "rules": [
+              "ANY /v1.0/me/drive/{path*}",
+              "ANY /v1.0/drives/{drive-id}/{path*}",
+              "ANY /v1.0/users/{user-id}/drive/{path*}",
+              "ANY /beta/me/drive/{path*}",
+              "ANY /beta/drives/{drive-id}/{path*}"
+            ]
+          },
+          {
+            "name": "Sites.ReadWrite.All",
+            "rules": [
+              "ANY /v1.0/sites/{path*}",
+              "ANY /v1.0/groups/{group-id}/sites/{path*}",
+              "ANY /beta/sites/{path*}",
+              "ANY /beta/groups/{group-id}/sites/{path*}"
+            ]
+          },
+          {
+            "name": "Team.ReadBasic.All",
+            "rules": [
+              "GET /v1.0/me/joinedTeams",
+              "GET /v1.0/teams",
+              "GET /v1.0/teams/{team-id}",
+              "GET /beta/me/joinedTeams",
+              "GET /beta/teams",
+              "GET /beta/teams/{team-id}"
+            ]
+          },
+          {
+            "name": "Channel.ReadBasic.All",
+            "rules": [
+              "GET /v1.0/teams/{team-id}/channels",
+              "GET /v1.0/teams/{team-id}/channels/{channel-id}",
+              "GET /beta/teams/{team-id}/channels",
+              "GET /beta/teams/{team-id}/channels/{channel-id}"
+            ]
+          },
+          {
+            "name": "ChannelMessage.Read.All",
+            "rules": [
+              "GET /v1.0/teams/{team-id}/channels/{channel-id}/messages",
+              "GET /v1.0/teams/{team-id}/channels/{channel-id}/messages/{message-id}",
+              "GET /v1.0/teams/{team-id}/channels/{channel-id}/messages/{message-id}/replies",
+              "GET /beta/teams/{team-id}/channels/{channel-id}/messages",
+              "GET /beta/teams/{team-id}/channels/{channel-id}/messages/{message-id}",
+              "GET /beta/teams/{team-id}/channels/{channel-id}/messages/{message-id}/replies"
+            ]
+          },
+          {
+            "name": "ChannelMessage.Send",
+            "rules": [
+              "POST /v1.0/teams/{team-id}/channels/{channel-id}/messages",
+              "POST /v1.0/teams/{team-id}/channels/{channel-id}/messages/{message-id}/replies",
+              "POST /beta/teams/{team-id}/channels/{channel-id}/messages",
+              "POST /beta/teams/{team-id}/channels/{channel-id}/messages/{message-id}/replies"
+            ]
+          },
+          {
+            "name": "Chat.ReadWrite",
+            "rules": [
+              "ANY /v1.0/chats",
+              "ANY /v1.0/chats/{chat-id}",
+              "ANY /v1.0/chats/{chat-id}/{path*}",
+              "ANY /beta/chats",
+              "ANY /beta/chats/{chat-id}",
+              "ANY /beta/chats/{chat-id}/{path*}"
+            ]
+          },
+          {
+            "name": "ChatMessage.Send",
+            "rules": [
+              "POST /v1.0/chats/{chat-id}/messages",
+              "POST /beta/chats/{chat-id}/messages"
+            ]
+          }
         ]
       }
     ],

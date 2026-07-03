@@ -405,6 +405,41 @@ def firewall_base_config_is_valid(raw_base: str) -> bool:
     )
 
 
+def static_firewall_base_config_key(raw_base: str) -> str | None:
+    """Return the normalized key used to compare valid static firewall bases."""
+    if _has_base_url_params(raw_base) or not firewall_base_config_is_valid(raw_base):
+        return None
+    parts = _split_base_match_url(
+        strip_optional_terminal_slash(raw_base),
+        allow_malformed_authority=True,
+        allow_unsafe_runtime_url_syntax=True,
+    )
+    if parts is None:
+        return None
+    return f"{parts.scheme.lower()}://{parts.authority}{parts.path.rstrip('/')}"
+
+
+def static_firewall_base_authority_key(raw_base: str) -> str | None:
+    """Return the normalized authority key used to prefilter static firewall bases."""
+    if _has_base_url_params(raw_base) or not firewall_base_config_is_valid(raw_base):
+        return None
+    parts = _split_base_match_url(
+        strip_optional_terminal_slash(raw_base),
+        allow_malformed_authority=True,
+        allow_unsafe_runtime_url_syntax=True,
+    )
+    return parts.authority.lower() if parts is not None else None
+
+
+def match_url_authority_key(url: str) -> str | None:
+    """Return the normalized request authority key used by base URL matching."""
+    parts = _split_base_match_url(
+        url,
+        allow_runtime_backslash_syntax="\\" in url,
+    )
+    return parts.authority.lower() if parts is not None else None
+
+
 def _compiled_base_is_invalid_for_match_base_url(base: _CompiledBase) -> bool:
     return (
         base.has_query_or_fragment
