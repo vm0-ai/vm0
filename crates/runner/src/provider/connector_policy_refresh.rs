@@ -323,8 +323,12 @@ impl ConnectorPolicyRefreshCore {
                     .active_snapshot(request.run_id, &request.connector_ref)
                     .await
                 {
-                    fail_closed_connector_policy(request.run_id, &request.connector_ref, snapshot)
-                        .await;
+                    try_fail_closed_connector_policy(
+                        request.run_id,
+                        &request.connector_ref,
+                        snapshot,
+                    )
+                    .await;
                 }
             }
             Closed(error) => {
@@ -551,6 +555,39 @@ async fn patch_connector_policy(
             policy,
         )
         .await
+}
+
+async fn try_fail_closed_connector_policy(
+    run_id: RunId,
+    connector_ref: &str,
+    snapshot: ActiveRunPolicySnapshot,
+) {
+    match snapshot
+        .registry
+        .try_fail_closed_network_policy_if_run_matches(
+            &snapshot.source_ip,
+            &run_id.to_string(),
+            connector_ref,
+        )
+        .await
+    {
+        Ok(true) => {
+            warn!(
+                run_id = %run_id,
+                connector_ref,
+                "failed closed connector policy after connector policy refresh queue overflow"
+            );
+        }
+        Ok(false) => {}
+        Err(error) => {
+            warn!(
+                run_id = %run_id,
+                connector_ref,
+                error = %error,
+                "failed to fail close connector policy after connector policy refresh queue overflow"
+            );
+        }
+    }
 }
 
 async fn fail_closed_connector_policy(
@@ -827,14 +864,19 @@ mod tests {
 
     async fn registered_slack_registry(
         run_id: RunId,
-    ) -> (tempfile::TempDir, ProxyRegistryHandle, std::path::PathBuf) {
+    ) -> (
+        tempfile::TempDir,
+        ProxyRegistryHandle,
+        std::path::PathBuf,
+        std::path::PathBuf,
+    ) {
         let dir = tempfile::tempdir().expect("tempdir should be created");
         let registry_path = dir.path().join("proxy-registry.json");
         tokio::fs::write(&registry_path, br#"{"vms":{},"updatedAt":0}"#)
             .await
             .expect("empty registry should be written");
-        let registry =
-            ProxyRegistryHandle::new(registry_path.clone(), dir.path().join("registry.lock"));
+        let lock_path = dir.path().join("registry.lock");
+        let registry = ProxyRegistryHandle::new(registry_path.clone(), lock_path.clone());
         let firewalls = vec![FirewallEntry::Builtin {
             name: "slack".to_string(),
             base_url_vars: None,
@@ -874,7 +916,40 @@ mod tests {
             )
             .await
             .expect("vm should be registered");
-        (dir, registry, registry_path)
+        (dir, registry, registry_path, lock_path)
+    }
+
+    async fn wait_until_slack_policy(
+        registry_path: &std::path::Path,
+        predicate: impl Fn(&serde_json::Value) -> bool,
+    ) -> serde_json::Value {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let registry_json: serde_json::Value = serde_json::from_str(
+                    &tokio::fs::read_to_string(registry_path)
+                        .await
+                        .expect("registry should be readable"),
+                )
+                .expect("registry should be valid JSON");
+                let policy = registry_json["vms"]["10.200.0.2"]["networkPolicies"]["slack"].clone();
+                if predicate(&policy) {
+                    return policy;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("slack policy should match before timeout")
+    }
+
+    async fn load_slack_policy(registry_path: &std::path::Path) -> serde_json::Value {
+        let registry_json: serde_json::Value = serde_json::from_str(
+            &tokio::fs::read_to_string(registry_path)
+                .await
+                .expect("registry should be readable"),
+        )
+        .expect("registry should be valid JSON");
+        registry_json["vms"]["10.200.0.2"]["networkPolicies"]["slack"].clone()
     }
 
     #[tokio::test]
@@ -1108,7 +1183,7 @@ mod tests {
         let server = MockServer::start();
         let (core, mut requests) = core_without_worker(&server);
         let run_id = RunId::nil();
-        let (_dir, registry, registry_path) = registered_slack_registry(run_id).await;
+        let (_dir, registry, registry_path, _lock_path) = registered_slack_registry(run_id).await;
         core.inner
             .active_runs
             .lock()
@@ -1136,13 +1211,59 @@ mod tests {
             queued += 1;
         }
         assert_eq!(queued, REFRESH_REQUEST_QUEUE_CAPACITY);
-        let registry_json: serde_json::Value = serde_json::from_str(
-            &tokio::fs::read_to_string(registry_path)
-                .await
-                .expect("registry should be readable"),
+        let policy = wait_until_slack_policy(&registry_path, |policy| {
+            policy["unknownPolicy"] == json!("deny")
+        })
+        .await;
+        assert_fail_closed_policy(&policy);
+    }
+
+    #[tokio::test]
+    async fn full_queue_notification_skips_busy_registry_lock_without_waiting() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let (_dir, registry, registry_path, lock_path) = registered_slack_registry(run_id).await;
+        core.inner
+            .active_runs
+            .lock()
+            .await
+            .insert(run_id, active_run_policy_state(registry));
+        for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
+            core.request_tx
+                .try_send(RefreshRequest {
+                    run_id,
+                    connector_ref: "slack".to_string(),
+                    trigger: RefreshTrigger::Scheduled,
+                })
+                .expect("refresh queue should accept request");
+        }
+        let lock_guard = crate::lock::acquire(lock_path)
+            .await
+            .expect("registry lock should be acquired");
+
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            core.notify_permission_refresh(run_id, "slack".to_string()),
         )
-        .expect("registry should be valid JSON");
-        assert_fail_closed_policy(&registry_json["vms"]["10.200.0.2"]["networkPolicies"]["slack"]);
+        .await
+        .expect("full queue notification should not wait for registry lock");
+
+        let mut queued = 0;
+        while requests.try_recv().is_ok() {
+            queued += 1;
+        }
+        assert_eq!(queued, REFRESH_REQUEST_QUEUE_CAPACITY);
+        let policy = wait_until_slack_policy(&registry_path, |policy| {
+            policy["unknownPolicy"] == json!("allow")
+        })
+        .await;
+        assert_original_policy(&policy);
+
+        drop(lock_guard);
+        tokio::task::yield_now().await;
+        let policy = load_slack_policy(&registry_path).await;
+        assert_original_policy(&policy);
     }
 
     #[tokio::test(start_paused = true)]
