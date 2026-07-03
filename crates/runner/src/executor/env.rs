@@ -131,6 +131,8 @@ pub(super) fn validate_execution_context_before_sandbox_with_host_env(
         build_env_json_with_host_env(context, api_url, sandbox_id, reuse_result, host_env)
             .map_err(|error| error.to_string())?;
     validate_bootstrap_environment_for_guest(&bootstrap_env)?;
+    let run_payload = build_run_payload_for_run(context).map_err(|error| error.to_string())?;
+    validate_run_payload_for_guest(&run_payload)?;
     Ok(())
 }
 
@@ -244,6 +246,13 @@ pub(super) fn guest_user_env_file_path(run_id: RunId) -> RunnerResult<String> {
     })
 }
 
+pub(super) fn guest_run_payload_file_path(run_id: RunId) -> RunnerResult<String> {
+    guest_runtime_path(run_id, |dir| {
+        dir.join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME)
+            .join(guest_contracts::env::RUN_PAYLOAD_FILENAME)
+    })
+}
+
 pub(super) async fn write_user_env_file(
     sandbox: &dyn Sandbox,
     run_id: RunId,
@@ -259,6 +268,19 @@ pub(super) async fn write_user_env_file(
     sandbox.write_private_file(&file_path, &payload).await?;
 
     Ok(Some(file_path))
+}
+
+pub(super) async fn write_run_payload_file(
+    sandbox: &dyn Sandbox,
+    run_id: RunId,
+    run_payload: &guest_contracts::env::RunPayload,
+) -> RunnerResult<String> {
+    let file_path = guest_run_payload_file_path(run_id)?;
+    let payload = serde_json::to_vec(run_payload)
+        .map_err(|e| RunnerError::Internal(format!("serialize run payload: {e}")))?;
+    sandbox.write_private_file(&file_path, &payload).await?;
+
+    Ok(file_path)
 }
 
 pub(super) fn build_env_json_with_host_env(
@@ -331,19 +353,7 @@ pub(super) fn build_env_json_with_host_env_for_run(
         guest_contracts::env::SANDBOX_REUSE_RESULT_ENV.into(),
         reuse_result.as_wire().into(),
     );
-    env.insert(
-        guest_contracts::env::PROMPT_ENV.into(),
-        context.prompt.clone(),
-    );
     insert_guest_agent_tuning_env(&mut env, context);
-    if let Some(asp) = &context.append_system_prompt
-        && !asp.is_empty()
-    {
-        env.insert(
-            guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV.into(),
-            asp.clone(),
-        );
-    }
     env.insert(
         guest_contracts::env::API_START_TIME_ENV.into(),
         context
@@ -365,48 +375,6 @@ pub(super) fn build_env_json_with_host_env_for_run(
         );
     }
 
-    // Artifacts config (multi-mount).
-    //
-    // Emit a single `VM0_ARTIFACTS` env var containing a JSON array of
-    // `{name, mountPath, storageId, versionId, missingRootPolicy?}` objects.
-    // Guest-agent parses this on startup and iterates the list when taking
-    // snapshots at run end. The required fields here must stay lockstep with
-    // guest-agent's `ArtifactEnv` — the two ship as one unit via
-    // `include_bytes!`, and required field drops will panic the VM at startup
-    // instead of silently producing empty strings.
-    //
-    // Empty-list case: do not set the env var at all (matches the prior
-    // "unset = no artifact" convention).
-    if let Some(manifest) = &context.storage_manifest
-        && !manifest.artifacts.is_empty()
-    {
-        let payload: Vec<serde_json::Value> = manifest
-            .artifacts
-            .iter()
-            .map(|a| {
-                let mut entry = serde_json::json!({
-                    "name": a.vas_storage_name,
-                    "mountPath": a.mount_path,
-                    "storageId": a.vas_storage_id,
-                    "versionId": a.vas_version_id,
-                });
-                if let Some(policy) = a.missing_root_policy
-                    && let Some(object) = entry.as_object_mut()
-                {
-                    object.insert("missingRootPolicy".to_string(), serde_json::json!(policy));
-                }
-                entry
-            })
-            .collect();
-        // Serialization cannot fail — payload is a Vec of String-only JSON
-        // objects. Use `.expect` to make the invariant explicit; falling
-        // back to an empty string would silently produce a broken env.
-        #[allow(clippy::expect_used)]
-        let serialized = serde_json::to_string(&payload)
-            .expect("VM0_ARTIFACTS payload must serialize (String-only Values)");
-        env.insert(guest_contracts::env::ARTIFACTS_ENV.into(), serialized);
-    }
-
     // Resume session ID
     if let Some(session) = &context.resume_session {
         let session_id =
@@ -425,42 +393,145 @@ pub(super) fn build_env_json_with_host_env_for_run(
     // Note: Connector placeholder env vars (e.g., GITHUB_TOKEN=gho_CoffeeSafeLocal...)
     // are injected by the web API into `context.environment` directly.
 
-    // Plain secret values (base64-encoded, comma-separated) for redaction.
-    // These are values, not names; base64 is only transport encoding.
-    // Always include the sandbox token so it gets redacted in logs.
-    {
-        use base64::Engine as _;
-        let mut encoded: Vec<String> =
-            vec![base64::engine::general_purpose::STANDARD.encode(&context.sandbox_token)];
-        if let Some(secret_values) = &context.secret_values {
-            encoded.extend(
-                secret_values
-                    .iter()
-                    .map(|s| base64::engine::general_purpose::STANDARD.encode(s)),
-            );
-        }
-        env.insert(
-            guest_contracts::env::SECRET_VALUES_ENV.into(),
-            encoded.join(","),
-        );
-    }
-
     match effective_cli_framework(&context.cli_agent_type) {
-        EffectiveCliFramework::ClaudeCode => insert_claude_code_env(&mut env, context, host_env)?,
+        EffectiveCliFramework::ClaudeCode => insert_claude_code_env(&mut env, context, host_env),
         EffectiveCliFramework::Codex => {
             insert_codex_env(&mut env, context, host_env, has_active_input_source);
         }
     }
 
-    // Feature flags (JSON-encoded map of flag name → enabled)
-    if let Some(flags) = &context.feature_flags
-        && !flags.is_empty()
-        && let Ok(json) = serde_json::to_string(flags)
-    {
-        env.insert(guest_contracts::env::FEATURE_FLAGS_ENV.into(), json);
+    Ok(env)
+}
+
+pub(super) fn build_run_payload_for_run(
+    context: &ExecutionContext,
+) -> RunnerResult<guest_contracts::env::RunPayload> {
+    let mut payload = guest_contracts::env::RunPayload {
+        prompt: context.prompt.clone(),
+        append_system_prompt: context.append_system_prompt.clone().unwrap_or_default(),
+        secret_values: serialize_secret_values(context),
+        artifacts: serialize_artifacts_payload(context)?,
+        feature_flags: serialize_feature_flags_payload(context)?,
+        ..guest_contracts::env::RunPayload::default()
+    };
+
+    if effective_cli_framework(&context.cli_agent_type) == EffectiveCliFramework::ClaudeCode {
+        if let Some(tools) = &context.disallowed_tools
+            && let Some(serialized) =
+                serialize_claude_tool_env(guest_contracts::env::DISALLOWED_TOOLS_ENV, tools)?
+        {
+            payload.disallowed_tools = serialized;
+        }
+        if let Some(tools) = &context.tools
+            && let Some(serialized) =
+                serialize_claude_tool_env(guest_contracts::env::TOOLS_ENV, tools)?
+        {
+            payload.tools = serialized;
+        }
+        if let Some(settings) = &context.settings
+            && !settings.is_empty()
+        {
+            payload.settings = settings.clone();
+        }
     }
 
-    Ok(env)
+    validate_run_payload_for_guest(&payload).map_err(RunnerError::Internal)?;
+    Ok(payload)
+}
+
+fn serialize_secret_values(context: &ExecutionContext) -> String {
+    use base64::Engine as _;
+    let mut encoded: Vec<String> =
+        vec![base64::engine::general_purpose::STANDARD.encode(&context.sandbox_token)];
+    if let Some(secret_values) = &context.secret_values {
+        encoded.extend(
+            secret_values
+                .iter()
+                .map(|s| base64::engine::general_purpose::STANDARD.encode(s)),
+        );
+    }
+    encoded.join(",")
+}
+
+fn serialize_artifacts_payload(context: &ExecutionContext) -> RunnerResult<String> {
+    let Some(manifest) = &context.storage_manifest else {
+        return Ok(String::new());
+    };
+    if manifest.artifacts.is_empty() {
+        return Ok(String::new());
+    }
+
+    let payload: Vec<serde_json::Value> = manifest
+        .artifacts
+        .iter()
+        .map(|a| {
+            let mut entry = serde_json::json!({
+                "name": a.vas_storage_name,
+                "mountPath": a.mount_path,
+                "storageId": a.vas_storage_id,
+                "versionId": a.vas_version_id,
+            });
+            if let Some(policy) = a.missing_root_policy
+                && let Some(object) = entry.as_object_mut()
+            {
+                object.insert("missingRootPolicy".to_string(), serde_json::json!(policy));
+            }
+            entry
+        })
+        .collect();
+
+    serde_json::to_string(&payload)
+        .map_err(|e| RunnerError::Internal(format!("serialize artifact payload: {e}")))
+}
+
+fn serialize_feature_flags_payload(context: &ExecutionContext) -> RunnerResult<String> {
+    let Some(flags) = &context.feature_flags else {
+        return Ok(String::new());
+    };
+    if flags.is_empty() {
+        return Ok(String::new());
+    }
+    serde_json::to_string(flags)
+        .map_err(|e| RunnerError::Internal(format!("serialize feature flags payload: {e}")))
+}
+
+fn validate_run_payload_for_guest(
+    payload: &guest_contracts::env::RunPayload,
+) -> Result<(), String> {
+    for (name, value) in [
+        (guest_contracts::env::PROMPT_ENV, payload.prompt.as_str()),
+        (
+            guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
+            payload.append_system_prompt.as_str(),
+        ),
+        (
+            guest_contracts::env::SECRET_VALUES_ENV,
+            payload.secret_values.as_str(),
+        ),
+        (
+            guest_contracts::env::DISALLOWED_TOOLS_ENV,
+            payload.disallowed_tools.as_str(),
+        ),
+        (guest_contracts::env::TOOLS_ENV, payload.tools.as_str()),
+        (
+            guest_contracts::env::SETTINGS_ENV,
+            payload.settings.as_str(),
+        ),
+        (
+            guest_contracts::env::ARTIFACTS_ENV,
+            payload.artifacts.as_str(),
+        ),
+        (
+            guest_contracts::env::FEATURE_FLAGS_ENV,
+            payload.feature_flags.as_str(),
+        ),
+    ] {
+        if value.contains('\0') {
+            return Err(format!("run payload contains NUL byte for {name}"));
+        }
+    }
+
+    Ok(())
 }
 
 pub(super) fn insert_guest_agent_tuning_env(
@@ -508,7 +579,7 @@ pub(super) fn insert_claude_code_env(
     env: &mut HashMap<String, String>,
     context: &ExecutionContext,
     host_env: &HostEnv,
-) -> RunnerResult<()> {
+) {
     // Pass USE_MOCK_CLAUDE from host environment for testing
     // (skip if debugNoMockClaude is set in execution context)
     if let Some(val) = &host_env.use_mock_claude
@@ -519,31 +590,6 @@ pub(super) fn insert_claude_code_env(
             val.clone(),
         );
     }
-
-    if let Some(tools) = &context.disallowed_tools
-        && let Some(serialized) =
-            serialize_claude_tool_env(guest_contracts::env::DISALLOWED_TOOLS_ENV, tools)?
-    {
-        env.insert(
-            guest_contracts::env::DISALLOWED_TOOLS_ENV.into(),
-            serialized,
-        );
-    }
-
-    if let Some(tools) = &context.tools
-        && let Some(serialized) = serialize_claude_tool_env(guest_contracts::env::TOOLS_ENV, tools)?
-    {
-        env.insert(guest_contracts::env::TOOLS_ENV.into(), serialized);
-    }
-
-    // Settings JSON (passed directly as single string)
-    if let Some(settings) = &context.settings
-        && !settings.is_empty()
-    {
-        env.insert(guest_contracts::env::SETTINGS_ENV.into(), settings.clone());
-    }
-
-    Ok(())
 }
 
 pub(super) fn serialize_claude_tool_env(

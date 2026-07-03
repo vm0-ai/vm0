@@ -17,7 +17,7 @@ use sandbox::{
 use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
 use super::super::agent_run::{RunControls, RunStart};
-use super::super::env::guest_user_env_file_path;
+use super::super::env::{guest_run_payload_file_path, guest_user_env_file_path};
 use super::super::sandbox_run::{
     NewSandboxHooks, PreparedSandboxRun, execute_new_sandbox,
     execute_new_sandbox_with_prepared_notifier, execute_prepared_sandbox_run,

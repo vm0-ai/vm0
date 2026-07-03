@@ -23,6 +23,13 @@ fn codex_auth_setup_failure_exits_before_cli_spawn() -> TestResult {
     let codex_home_path = tmp.path().join(".codex");
     std::fs::write(&codex_home_path, b"not a directory")?;
     write_fake_codex(&fake_codex, &invoked_marker)?;
+    let run_payload_path = common::write_run_payload_file_for_test(
+        &runtime_dir,
+        &guest_contracts::env::RunPayload {
+            prompt: "should not reach codex".to_string(),
+            ..guest_contracts::env::RunPayload::default()
+        },
+    )?;
 
     let guest_agent = env!("CARGO_BIN_EXE_guest-agent");
     let output = Command::new(guest_agent)
@@ -31,7 +38,7 @@ fn codex_auth_setup_failure_exits_before_cli_spawn() -> TestResult {
         .env("USE_MOCK_CODEX", "true")
         .env("VM0_MOCK_CODEX_PATH", &fake_codex)
         .env("VM0_RUN_ID", "codex-auth-setup-fail-closed")
-        .env("VM0_PROMPT", "should not reach codex")
+        .env(guest_contracts::env::RUN_PAYLOAD_FILE_ENV, run_payload_path)
         .env("VM0_API_URL", "http://127.0.0.1:1")
         .env("VM0_API_TOKEN", "")
         .env("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc")

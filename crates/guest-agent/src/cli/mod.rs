@@ -24,6 +24,7 @@ mod codex_setup;
 mod command;
 mod diagnostics;
 mod event_delivery;
+mod exec_boundary;
 mod framework;
 mod process_group;
 mod termination;
@@ -524,11 +525,8 @@ async fn execute_cli_inner(
         // If a future setup step fails after spawn, dropping `Child` must not
         // leave a CLI process running in the VM.
         .kill_on_drop(true);
-    child_env::apply_to_tokio_command_for_runtime(&mut cmd, runtime);
-    // Set the child cwd explicitly at spawn time so the CLI observes the
-    // current canonical workspace mount instead of relying on inherited cwd.
-    set_cli_current_dir(&mut cmd, paths::CANONICAL_WORKING_DIR)?;
 
+    let mut child_env_values = child_env::values_for_runtime(runtime);
     match runtime.framework {
         env::Framework::ClaudeCode => {
             // Suppress Claude CLI features that are unnecessary or harmful in a
@@ -536,34 +534,60 @@ async fn execute_cli_inner(
             // update check, GitHub) add ~2s latency, background tasks can keep
             // a one-shot run alive after its final result, telemetry has no
             // receiver, and the CLI version is baked into the rootfs image.
-            cmd.env("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1");
-            cmd.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
-            cmd.env("CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY", "1");
-            cmd.env("CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "1");
-            cmd.env("DISABLE_AUTOUPDATER", "1");
-            cmd.env("DISABLE_ERROR_REPORTING", "1");
-            cmd.env("DISABLE_INSTALLATION_CHECKS", "1");
-            cmd.env("DISABLE_TELEMETRY", "1");
+            child_env_values.extend([
+                (
+                    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS".to_string(),
+                    "1".to_string(),
+                ),
+                (
+                    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC".to_string(),
+                    "1".to_string(),
+                ),
+                (
+                    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY".to_string(),
+                    "1".to_string(),
+                ),
+                (
+                    "CLAUDE_CODE_DISABLE_TERMINAL_TITLE".to_string(),
+                    "1".to_string(),
+                ),
+                ("DISABLE_AUTOUPDATER".to_string(), "1".to_string()),
+                ("DISABLE_ERROR_REPORTING".to_string(), "1".to_string()),
+                ("DISABLE_INSTALLATION_CHECKS".to_string(), "1".to_string()),
+                ("DISABLE_TELEMETRY".to_string(), "1".to_string()),
+            ]);
         }
         env::Framework::Codex => {
             // Auth reconciliation and `codex exec` both honor CODEX_HOME;
             // pin it to $HOME/.codex so setup_codex state is visible to exec.
-            cmd.env("CODEX_HOME", runtime.codex_home());
+            child_env_values.push(("CODEX_HOME".to_string(), runtime.codex_home()));
             // Test-only mock fixture selector; keep it explicit instead of
             // reopening inherited env for Codex children.
             if runtime.use_mock_codex
                 && let Ok(fixture) = std::env::var("MOCK_CODEX_FIXTURE")
             {
-                cmd.env("MOCK_CODEX_FIXTURE", fixture);
+                child_env_values.push(("MOCK_CODEX_FIXTURE".to_string(), fixture));
             }
             if runtime.codex_oauth_mode {
-                cmd.env(
-                    "CODEX_REFRESH_TOKEN_URL_OVERRIDE",
-                    crate::codex_auth::REFRESH_TOKEN_NOOP_URL,
-                );
+                child_env_values.push((
+                    "CODEX_REFRESH_TOKEN_URL_OVERRIDE".to_string(),
+                    crate::codex_auth::REFRESH_TOKEN_NOOP_URL.to_string(),
+                ));
             }
         }
     }
+    let child_env_values = child_env::normalize_values(child_env_values);
+    exec_boundary::validate_process_argv_env(
+        "CLI child argv/env too large",
+        bin,
+        args.iter().map(String::as_str),
+        &child_env_values,
+    )
+    .map_err(AgentError::Execution)?;
+    child_env::apply_values_to_tokio_command(&mut cmd, &child_env_values);
+    // Set the child cwd explicitly at spawn time so the CLI observes the
+    // current canonical workspace mount instead of relying on inherited cwd.
+    set_cli_current_dir(&mut cmd, paths::CANONICAL_WORKING_DIR)?;
 
     // Open the run log before spawning the CLI. If the run-id-scoped path is
     // invalid or unavailable, fail without starting a child process.
@@ -1304,15 +1328,127 @@ fn with_carried_failure_reason(
 mod tests {
     use super::termination::{CliTerminationRuntime, PostResultCleanupPolicy};
     use super::{
-        CliExitObservation, CliFailureDiagnostic, claude_initial_prompt_frame,
-        codex_home_for_home_dir, record_cli_exit, select_failure_diagnostic, set_cli_current_dir,
+        CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
+        claude_initial_prompt_frame, codex_home_for_home_dir, command, exec_boundary,
+        record_cli_exit, select_failure_diagnostic, set_cli_current_dir,
         with_carried_failure_reason,
     };
     use crate::active_input::ActiveInputRuntime;
+    use crate::{constants, env};
     use guest_contracts::diagnostics::{FailureDetailSource, FailureReason};
+    use std::borrow::Cow;
+    use std::collections::HashMap;
     #[cfg(unix)]
     use std::os::unix::process::ExitStatusExt;
     use std::time::Duration;
+
+    fn runtime_for_exec_boundary_test<'a>(
+        framework: env::Framework,
+        prompt: &'a str,
+        append_system_prompt: &'a str,
+        use_codex_app_server_backend: bool,
+        user_env: &'a HashMap<String, String>,
+    ) -> CliRuntimeConfig<'a> {
+        CliRuntimeConfig {
+            framework,
+            run_id: Cow::Borrowed("run-exec-boundary-test"),
+            prompt: Cow::Borrowed(prompt),
+            resume_session_id: Cow::Borrowed(""),
+            append_system_prompt: Cow::Borrowed(append_system_prompt),
+            disallowed_tools: Cow::Borrowed(""),
+            tools: Cow::Borrowed(""),
+            settings: Cow::Borrowed(""),
+            use_mock_claude: false,
+            mock_claude_path: Cow::Borrowed(""),
+            use_mock_codex: false,
+            use_codex_app_server_backend,
+            mock_codex_path: Cow::Borrowed(""),
+            home_dir: Cow::Borrowed("/tmp/home"),
+            api_url: Cow::Borrowed(""),
+            api_start_time: Cow::Borrowed(""),
+            anthropic_model: Cow::Borrowed(""),
+            openai_model: Cow::Borrowed(""),
+            openai_base_url: Cow::Borrowed(""),
+            codex_oauth_mode: false,
+            codex_fast_mode: false,
+            stuck_tool_timeout_secs: constants::STUCK_TOOL_TIMEOUT_SECS,
+            post_result_cleanup_policy: PostResultCleanupPolicy::new(
+                Duration::from_secs(constants::POST_RESULT_SIGTERM_GRACE_SECS),
+                Duration::from_secs(constants::POST_RESULT_TOTAL_CAP_SECS),
+                Duration::from_secs(constants::POST_RESULT_SIGKILL_GRACE_SECS),
+            ),
+            agent_log_file: Cow::Borrowed("/tmp/agent.log"),
+            session_id_file: Cow::Borrowed("/tmp/session-id"),
+            session_history_path_file: Cow::Borrowed("/tmp/session-history-path"),
+            event_error_flag: Cow::Borrowed("/tmp/event-error"),
+            user_env,
+        }
+    }
+
+    #[test]
+    fn claude_large_prompt_is_not_rejected_by_process_argv_guard() {
+        let user_env = HashMap::new();
+        let prompt = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
+        let runtime = runtime_for_exec_boundary_test(
+            env::Framework::ClaudeCode,
+            &prompt,
+            "",
+            false,
+            &user_env,
+        );
+
+        let cmd = command::build_cli_command_for_runtime(&runtime, false).unwrap();
+        let (bin, args) = cmd.split_first().unwrap();
+        let env_values = child_env::values_for_runtime(&runtime);
+
+        exec_boundary::validate_process_argv_env(
+            "test cli child",
+            bin,
+            args.iter().map(String::as_str),
+            &env_values,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn legacy_codex_large_prompt_is_rejected_by_process_argv_guard() {
+        let user_env = HashMap::new();
+        let prompt = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
+        let runtime =
+            runtime_for_exec_boundary_test(env::Framework::Codex, &prompt, "", false, &user_env);
+
+        let cmd = command::build_cli_command_for_runtime(&runtime, false).unwrap();
+        let (bin, args) = cmd.split_first().unwrap();
+        let env_values = child_env::values_for_runtime(&runtime);
+        let error = exec_boundary::validate_process_argv_env(
+            "test cli child",
+            bin,
+            args.iter().map(String::as_str),
+            &env_values,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("argv value too large"));
+        assert!(!error.contains(&prompt));
+    }
+
+    #[test]
+    fn codex_app_server_large_prompt_is_not_part_of_process_argv_guard() {
+        let user_env = HashMap::new();
+        let prompt = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
+        let runtime =
+            runtime_for_exec_boundary_test(env::Framework::Codex, &prompt, "", true, &user_env);
+        let mut env_values = child_env::values_for_runtime(&runtime);
+        env_values.push(("CODEX_HOME".to_string(), runtime.codex_home()));
+
+        exec_boundary::validate_process_argv_env(
+            "test codex app-server",
+            "codex",
+            ["app-server", "--listen", "stdio://"],
+            &env_values,
+        )
+        .unwrap();
+    }
 
     #[test]
     fn claude_initial_prompt_frame_matches_stream_json_user_shape() {
