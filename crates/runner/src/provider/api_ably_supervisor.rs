@@ -590,6 +590,7 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
     }
 }
 
+#[cfg(test)]
 async fn handle_ably_message(
     msg: &ably_subscriber::Message,
     profiles: &[String],

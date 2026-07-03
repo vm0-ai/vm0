@@ -328,6 +328,7 @@ impl JobProvider for ApiProvider {
 
     async fn shutdown(&self) {
         self.ably_supervisor.shutdown().await;
+        self.connector_policy_refresh.shutdown().await;
     }
 
     async fn complete(
