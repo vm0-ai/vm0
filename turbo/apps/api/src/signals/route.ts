@@ -20,6 +20,7 @@ import { chatThreadsV1Routes } from "./routes/chat-threads-v1";
 import { connectorsTypeCallbackRoutes } from "./routes/connectors-type-callback";
 import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
 import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
+import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat-thread-snapshots";
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
 import { cronExecuteAutomationsRoutes } from "./routes/cron-execute-automations";
@@ -253,6 +254,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...connectorsTypeCallbackRoutes,
   ...cronAggregateInsightsRoutes,
   ...cronAggregateUsageRoutes,
+  ...cronCompactChatThreadSnapshotsRoutes,
   ...cronCleanupSandboxesRoutes,
   ...cronDrainEmailOutboxRoutes,
   ...cronExecuteAutomationsRoutes,
