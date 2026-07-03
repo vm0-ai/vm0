@@ -289,6 +289,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const heldSessionStates =
     canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
+  const availableProfiles = body.data.availableProfiles ?? body.data.profiles;
   const currentDate = nowDate();
   const db = set(writeDb$);
   await db
@@ -304,7 +305,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       allocatedVcpu: body.data.allocatedVcpu,
       allocatedMemoryMb: body.data.allocatedMemoryMb,
       runningCount: body.data.runningCount,
-      availableProfiles: body.data.availableProfiles,
+      availableProfiles,
       heldSessionStates,
       mode: body.data.mode,
       lastSeenAt: currentDate,
@@ -321,7 +322,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         allocatedVcpu: body.data.allocatedVcpu,
         allocatedMemoryMb: body.data.allocatedMemoryMb,
         runningCount: body.data.runningCount,
-        availableProfiles: body.data.availableProfiles,
+        availableProfiles,
         heldSessionStates,
         mode: body.data.mode,
         lastSeenAt: currentDate,

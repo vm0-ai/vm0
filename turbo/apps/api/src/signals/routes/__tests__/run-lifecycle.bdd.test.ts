@@ -1732,12 +1732,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     async function heartbeatHolder(args: {
       readonly profiles?: string[];
       readonly availableProfiles?: string[];
+      readonly omitAvailableProfiles?: boolean;
       readonly mode?: "running" | "draining" | "stopping";
     }): Promise<void> {
       await api.requestHeartbeatRunner(true, [200], {
         group: runnerGroup,
         profiles: args.profiles,
         availableProfiles: args.availableProfiles,
+        omitAvailableProfiles: args.omitAvailableProfiles,
         heldSessionStates: [
           {
             sessionId: cliAgentSessionId,
@@ -1816,6 +1818,32 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expect(drainingHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
     expect(drainingHolder.job?.affinityProtectedUntil).toBeNull();
+
+    await heartbeatHolder({ omitAvailableProfiles: true });
+    const legacyHeartbeatFollowUp = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continue with legacy holder heartbeat",
+      modelProvider: "anthropic-api-key",
+    });
+    const legacyHeartbeatPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, profiles: ["vm0/default"] },
+      [200],
+    );
+    if (legacyHeartbeatPoll.status !== 200) {
+      throw new Error("Expected legacy heartbeat affinity poll to return 200");
+    }
+    expect(legacyHeartbeatPoll.body.job?.runId).toBe(
+      legacyHeartbeatFollowUp.runId,
+    );
+    expect(legacyHeartbeatPoll.body.job?.cliAgentSessionId).toBe(
+      cliAgentSessionId,
+    );
+    expect(legacyHeartbeatPoll.body.job?.affinityProtectedUntil).toStrictEqual(
+      expect.any(String),
+    );
+    await api.requestCancelRun(actor, legacyHeartbeatFollowUp.runId, [200]);
 
     await heartbeatHolder({ availableProfiles: ["vm0/default"] });
     const protectedFollowUp = await api.createRun(actor, {

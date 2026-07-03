@@ -414,6 +414,7 @@ function runnerHeartbeatBody(
     readonly group?: string;
     readonly profiles?: RunnerHeartbeatBody["profiles"];
     readonly availableProfiles?: RunnerHeartbeatBody["availableProfiles"];
+    readonly omitAvailableProfiles?: boolean;
     readonly maxConcurrent?: RunnerHeartbeatBody["maxConcurrent"];
     readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
     readonly allocatedMemoryMb?: RunnerHeartbeatBody["allocatedMemoryMb"];
@@ -422,7 +423,7 @@ function runnerHeartbeatBody(
     readonly mode?: RunnerHeartbeatBody["mode"];
   } = {},
 ): RunnerHeartbeatBody {
-  return {
+  const body: RunnerHeartbeatBody = {
     runnerId: args.runnerId ?? randomUUID(),
     runnerName: "bdd-runner",
     group: args.group ?? "vm0/test",
@@ -433,10 +434,13 @@ function runnerHeartbeatBody(
     allocatedVcpu: args.allocatedVcpu ?? 0,
     allocatedMemoryMb: args.allocatedMemoryMb ?? 0,
     runningCount: args.runningCount ?? 0,
-    availableProfiles: args.availableProfiles ?? ["vm0/default"],
     heldSessionStates: args.heldSessionStates ?? [],
     mode: args.mode ?? "running",
   };
+  if (!args.omitAvailableProfiles) {
+    body.availableProfiles = args.availableProfiles ?? ["vm0/default"];
+  }
+  return body;
 }
 
 export function createRunsAutomationsApi(context: TestContext) {
@@ -1051,6 +1055,7 @@ export function createRunsAutomationsApi(context: TestContext) {
         readonly group?: string;
         readonly profiles?: RunnerHeartbeatBody["profiles"];
         readonly availableProfiles?: RunnerHeartbeatBody["availableProfiles"];
+        readonly omitAvailableProfiles?: boolean;
         readonly maxConcurrent?: RunnerHeartbeatBody["maxConcurrent"];
         readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
         readonly allocatedMemoryMb?: RunnerHeartbeatBody["allocatedMemoryMb"];
