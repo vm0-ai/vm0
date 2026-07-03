@@ -16,6 +16,8 @@ const READY_ONBOARDING_STATUS = JSON.stringify({
   defaultAgentId: null,
   defaultAgentMetadata: null,
 });
+const PRO_TRIAL_STATUS_TIMEOUT_MS = 120_000;
+const BILLING_STATUS_POLL_INTERVAL_MS = 1_000;
 
 test("sign in through onboarding handoff to chat page", async ({ page }) => {
   test.setTimeout(240_000);
@@ -47,12 +49,11 @@ test("sign in through onboarding handoff to chat page", async ({ page }) => {
     { timeout: 30_000 },
   );
 
-  // Follow the external onboarding auth handoff if needed
-  if (page.url().includes("/onboarding")) {
-    await completeOnboardingThroughApi(page, appUrl);
-  }
+  const requiresOnboardingSetup = page.url().includes("/onboarding");
+  await ensureProTrialThroughCheckout(page, appUrl, requiresOnboardingSetup);
 
   // Verify: landed on chat page
+  await page.goto(appUrl, { waitUntil: "domcontentloaded" });
   await page.waitForURL("**/agents/*/chat", {
     timeout: 120_000,
     waitUntil: "domcontentloaded",
@@ -63,12 +64,38 @@ test("sign in through onboarding handoff to chat page", async ({ page }) => {
   await page.context().storageState({ path: STORAGE_STATE });
 });
 
-async function completeOnboardingThroughApi(
+async function ensureProTrialThroughCheckout(
   page: Page,
   appUrl: string,
+  setupOnboarding: boolean,
 ): Promise<void> {
   const apiUrl = deriveApiUrl(appUrl);
   const headers = await authHeadersForApp(page, appUrl);
+  if (setupOnboarding) {
+    await setupOnboardingThroughApi(page, apiUrl, headers);
+  }
+
+  const checkoutUrl = await createOnboardingTrialCheckout(
+    page,
+    appUrl,
+    apiUrl,
+    headers,
+  );
+  await page.goto(checkoutUrl, { waitUntil: "domcontentloaded" });
+  await fillStripeCheckout(page);
+  const appOrigin = new URL(appUrl).origin;
+  await page.waitForURL((url) => url.origin === appOrigin, {
+    timeout: 120_000,
+    waitUntil: "domcontentloaded",
+  });
+  await waitForProTrialBillingStatus(page, apiUrl, headers);
+}
+
+async function setupOnboardingThroughApi(
+  page: Page,
+  apiUrl: string,
+  headers: Readonly<Record<"Authorization", string>>,
+): Promise<void> {
   const setupResponse = await page.request.post(
     `${apiUrl}/api/zero/onboarding/setup`,
     {
@@ -82,15 +109,6 @@ async function completeOnboardingThroughApi(
     },
   );
   await expectStatus(setupResponse, [200, 409], "onboarding setup");
-
-  const checkoutUrl = await createOnboardingTrialCheckout(
-    page,
-    appUrl,
-    apiUrl,
-    headers,
-  );
-  await page.goto(checkoutUrl, { waitUntil: "domcontentloaded" });
-  await fillStripeCheckout(page);
 }
 
 async function createOnboardingTrialCheckout(
@@ -131,6 +149,40 @@ async function createOnboardingTrialCheckout(
     throw new Error(`Unexpected checkout response: ${JSON.stringify(body)}`);
   }
   return body.url;
+}
+
+async function waitForProTrialBillingStatus(
+  page: Page,
+  apiUrl: string,
+  headers: Readonly<Record<"Authorization", string>>,
+): Promise<void> {
+  const deadline = Date.now() + PRO_TRIAL_STATUS_TIMEOUT_MS;
+  let lastBody: unknown = null;
+
+  while (Date.now() < deadline) {
+    lastBody = await readBillingStatus(page, apiUrl, headers);
+    if (isProTrialBillingStatus(lastBody)) {
+      return;
+    }
+    await page.waitForTimeout(BILLING_STATUS_POLL_INTERVAL_MS);
+  }
+
+  throw new Error(
+    `Billing status did not reflect Pro trial: ${JSON.stringify(lastBody)}`,
+  );
+}
+
+async function readBillingStatus(
+  page: Page,
+  apiUrl: string,
+  headers: Readonly<Record<"Authorization", string>>,
+): Promise<unknown> {
+  const response = await page.request.get(`${apiUrl}/api/zero/billing/status`, {
+    headers,
+  });
+  await expectStatus(response, [200], "billing status");
+  const body: unknown = await response.json();
+  return body;
 }
 
 async function authHeadersForApp(
@@ -200,6 +252,22 @@ function hasCheckoutUrl(value: unknown): value is { readonly url: string } {
     "url" in value &&
     typeof value.url === "string"
   );
+}
+
+function isProTrialBillingStatus(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    value.tier === "pro" &&
+    value.hasSubscription === true &&
+    typeof value.currentPeriodEnd === "string"
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function deriveApiUrl(appUrl: string): string {
