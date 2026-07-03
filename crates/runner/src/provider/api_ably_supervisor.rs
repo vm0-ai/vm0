@@ -15,7 +15,7 @@
 //! discover work through HTTP polling.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant as StdInstant};
 
 use tokio::sync::{Mutex, Notify};
@@ -415,7 +415,7 @@ pub(super) struct PollWakeupsSnapshot {
 
 pub(super) struct AblySupervisor {
     shutdown: CancellationToken,
-    task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    task: StdMutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 pub(super) struct AblySupervisorConfig {
@@ -461,13 +461,13 @@ impl AblySupervisor {
         });
         Self {
             shutdown,
-            task: Mutex::new(Some(task)),
+            task: StdMutex::new(Some(task)),
         }
     }
 
     pub(super) async fn shutdown(&self) {
         self.shutdown.cancel();
-        let task = self.task.lock().await.take();
+        let task = self.take_task();
         if let Some(task) = task
             && let Err(e) = task.await
         {
@@ -479,7 +479,7 @@ impl AblySupervisor {
     pub(super) fn disabled() -> Self {
         Self {
             shutdown: CancellationToken::new(),
-            task: Mutex::new(None),
+            task: StdMutex::new(None),
         }
     }
 
@@ -492,7 +492,23 @@ impl AblySupervisor {
         let task = tokio::spawn(build(shutdown.clone()));
         Self {
             shutdown,
-            task: Mutex::new(Some(task)),
+            task: StdMutex::new(Some(task)),
+        }
+    }
+
+    fn take_task(&self) -> Option<tokio::task::JoinHandle<()>> {
+        self.task
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .take()
+    }
+}
+
+impl Drop for AblySupervisor {
+    fn drop(&mut self) {
+        self.shutdown.cancel();
+        if let Some(task) = self.take_task() {
+            task.abort();
         }
     }
 }
@@ -1986,6 +2002,35 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(1), done_rx)
             .await
             .expect("supervisor shutdown should await task termination")
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn supervisor_drop_cancels_task() {
+        struct DropNotify(Option<tokio::sync::oneshot::Sender<()>>);
+
+        impl Drop for DropNotify {
+            fn drop(&mut self) {
+                if let Some(done) = self.0.take() {
+                    let _ = done.send(());
+                }
+            }
+        }
+
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+        let supervisor = AblySupervisor::spawn_test_task(|shutdown| async move {
+            let _notify = DropNotify(Some(done_tx));
+            let _ = started_tx.send(());
+            shutdown.cancelled().await;
+        });
+        started_rx.await.expect("supervisor test task should start");
+
+        drop(supervisor);
+
+        tokio::time::timeout(Duration::from_secs(1), done_rx)
+            .await
+            .expect("dropping supervisor should cancel the task")
             .unwrap();
     }
 

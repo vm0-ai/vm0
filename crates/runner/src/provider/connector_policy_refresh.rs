@@ -1,7 +1,7 @@
 //! Runtime connector policy refresh for active API-backed runs.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
@@ -19,7 +19,7 @@ const REFRESH_REQUEST_QUEUE_CAPACITY: usize = 256;
 #[derive(Clone)]
 pub(crate) struct ConnectorPolicyRefreshHandle {
     core: ConnectorPolicyRefreshCore,
-    worker_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    worker_task: Arc<StdMutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 #[derive(Clone)]
@@ -96,16 +96,13 @@ impl ConnectorPolicyRefreshHandle {
         let worker_task = tokio::spawn(run_refresh_worker(core.clone(), request_rx));
         Self {
             core,
-            worker_task: Arc::new(Mutex::new(Some(worker_task))),
+            worker_task: Arc::new(StdMutex::new(Some(worker_task))),
         }
     }
 
     pub(crate) async fn shutdown(&self) {
         self.core.shutdown_active_runs().await;
-        let worker_task = {
-            let mut worker_task = self.worker_task.lock().await;
-            worker_task.take()
-        };
+        let worker_task = self.take_worker_task();
         if let Some(worker_task) = worker_task
             && let Err(error) = worker_task.await
         {
@@ -136,6 +133,25 @@ impl ConnectorPolicyRefreshHandle {
         self.core
             .notify_permission_refresh_until_cancelled(run_id, connector_ref, cancel)
             .await;
+    }
+
+    fn take_worker_task(&self) -> Option<tokio::task::JoinHandle<()>> {
+        self.worker_task
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .take()
+    }
+}
+
+impl Drop for ConnectorPolicyRefreshHandle {
+    fn drop(&mut self) {
+        if Arc::strong_count(&self.worker_task) != 1 {
+            return;
+        }
+        self.core.inner.cancel.cancel();
+        if let Some(worker_task) = self.take_worker_task() {
+            worker_task.abort();
+        }
     }
 }
 
@@ -271,12 +287,13 @@ impl ConnectorPolicyRefreshCore {
 
     async fn enqueue_refresh(&self, request: RefreshRequest) {
         tokio::select! {
+            biased;
+            () = self.inner.cancel.cancelled() => {}
             result = self.request_tx.send(request) => {
                 if let Err(error) = result {
                     warn!(error = %error, "connector policy refresh queue closed");
                 }
             }
-            () = self.inner.cancel.cancelled() => {}
         }
     }
 
@@ -286,13 +303,14 @@ impl ConnectorPolicyRefreshCore {
         cancel: &CancellationToken,
     ) {
         tokio::select! {
+            biased;
+            () = self.inner.cancel.cancelled() => {}
+            () = cancel.cancelled() => {}
             result = self.request_tx.send(request) => {
                 if let Err(error) = result {
                     warn!(error = %error, "connector policy refresh queue closed");
                 }
             }
-            () = self.inner.cancel.cancelled() => {}
-            () = cancel.cancelled() => {}
         }
     }
 
@@ -303,14 +321,15 @@ impl ConnectorPolicyRefreshCore {
         other_cancel: &CancellationToken,
     ) {
         tokio::select! {
+            biased;
+            () = self.inner.cancel.cancelled() => {}
+            () = cancel.cancelled() => {}
+            () = other_cancel.cancelled() => {}
             result = self.request_tx.send(request) => {
                 if let Err(error) = result {
                     warn!(error = %error, "connector policy refresh queue closed");
                 }
             }
-            () = self.inner.cancel.cancelled() => {}
-            () = cancel.cancelled() => {}
-            () = other_cancel.cancelled() => {}
         }
     }
 
@@ -769,8 +788,73 @@ mod tests {
             .await
             .expect("connector policy refresh shutdown timed out");
 
-        let worker_task = handle.worker_task.lock().await;
+        let worker_task = handle
+            .worker_task
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
         assert!(worker_task.is_none());
+    }
+
+    #[tokio::test]
+    async fn drop_last_handle_cancels_refresh_worker_task() {
+        let server = MockServer::start();
+        let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
+        let worker_task = handle
+            .take_worker_task()
+            .expect("refresh worker task should be running");
+
+        drop(handle);
+
+        tokio::time::timeout(Duration::from_secs(1), worker_task)
+            .await
+            .expect("dropping the last handle should cancel the worker task")
+            .expect("worker task should not panic");
+    }
+
+    #[tokio::test]
+    async fn drop_last_handle_cancels_scheduled_refresh_task() {
+        let server = MockServer::start();
+        let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
+        let run_id = RunId::nil();
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let registry = ProxyRegistryHandle::new(
+            dir.path().join("proxy-registry.json"),
+            dir.path().join("proxy-registry.lock"),
+        );
+        let refreshes = HashMap::from([(
+            "slack".to_string(),
+            ConnectorPolicyRefresh {
+                next_refresh_at: "2999-01-01T00:00:00Z".to_string(),
+            },
+        )]);
+        handle
+            .core
+            .register_run(ConnectorPolicyRefreshRegistration {
+                run_id,
+                source_ip: "10.200.0.2",
+                registry,
+                connector_refs: HashSet::from(["slack".to_string()]),
+                initial_refresh_connector_refs: HashSet::new(),
+                refreshes: Some(&refreshes),
+            })
+            .await;
+        let scheduled_task = {
+            let mut active_runs = handle.core.inner.active_runs.lock().await;
+            active_runs
+                .get_mut(&run_id)
+                .expect("run should be registered")
+                .refresh_tasks
+                .remove("slack")
+                .expect("refresh should be scheduled")
+                .handle
+        };
+
+        drop(handle);
+
+        tokio::time::timeout(Duration::from_secs(1), scheduled_task)
+            .await
+            .expect("dropping the last handle should cancel scheduled refresh")
+            .expect("scheduled refresh task should not panic");
     }
 
     #[tokio::test]
