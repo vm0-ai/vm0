@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.534.2](https://github.com/vm0-ai/vm0/compare/app-v0.534.1...app-v0.534.2) (2026-07-03)
+
+
+### Bug Fixes
+
+* derive chat run status from messages ([#19899](https://github.com/vm0-ai/vm0/issues/19899)) ([7d821a1](https://github.com/vm0-ai/vm0/commit/7d821a1a0a69ebad54d510f5b605abfe94b5b507))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.144.1
+    * @vm0/core bumped to 8.390.1
+
 ## [0.534.1](https://github.com/vm0-ai/vm0/compare/app-v0.534.0...app-v0.534.1) (2026-07-02)
 
 
