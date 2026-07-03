@@ -997,8 +997,8 @@ describe("workflows routes", () => {
     expect(screen.queryByText("Launch Checklist")).not.toBeInTheDocument();
     expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
 
-    // "Without automation" keeps only the manual workflows.
-    click(tabByName("Without automation"));
+    // "Manual" keeps only the manual workflows.
+    click(tabByName("Manual"));
     await waitFor(() => {
       expect(search()).toBe("?filter=without");
     });
