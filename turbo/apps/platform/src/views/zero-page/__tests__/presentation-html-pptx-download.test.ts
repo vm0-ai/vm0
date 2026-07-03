@@ -116,9 +116,10 @@ describe("buildPresentationHtmlPptxExportHtml", () => {
     // is injected and its result is spread into the dom-to-pptx options.
     expect(scriptText).toContain("resolveEmbeddableFonts");
     expect(scriptText).toContain("collectUsedFontFamilies");
-    expect(scriptText).toContain(
-      "https://cdn.jsdelivr.net/fontsource/fonts/{slug}@latest/latin-{weight}-normal.woff",
-    );
+    // Universal URL resolution goes through the Fontsource metadata API so the
+    // family's real weights/styles/subsets are used instead of a guessed path.
+    expect(scriptText).toContain("https://api.fontsource.org/v1/fonts/");
+    expect(scriptText).toContain("https://cdn.jsdelivr.net/fontsource/fonts/");
     expect(scriptText).toContain(
       "const exportOptions = fonts.length > 0 ? { ...options, fonts } : options;",
     );

@@ -14,10 +14,11 @@ import { materializePresentationThemeSwitcherDefaults } from "./presentation-htm
 
 const EXPORT_FONT_READY_TIMEOUT_MS = 800;
 // dom-to-pptx embeds fonts from a fetchable ttf/otf/woff URL (never woff2). Deck
-// families are resolved from the live render and mapped to a Fontsource woff on
-// jsDelivr when the page itself only ships woff2 (e.g. Google Fonts <link>).
-const FONT_EMBED_CDN_TEMPLATE =
-  "https://cdn.jsdelivr.net/fontsource/fonts/{slug}@latest/latin-{weight}-normal.woff";
+// families are resolved from the live render; when the page itself only ships
+// woff2 (e.g. Google Fonts <link>), the Fontsource metadata API is queried for
+// the family's real weights/styles/subsets so the woff URL always exists.
+const FONT_METADATA_API_BASE = "https://api.fontsource.org/v1/fonts/";
+const FONT_FILE_CDN_BASE = "https://cdn.jsdelivr.net/fontsource/fonts/";
 const METADATA_SCRIPT_ID = "vm0-deck-metadata";
 const CONTENT_TYPES_PATH = "[Content_Types].xml";
 const PRESENTATION_PATH = "ppt/presentation.xml";
@@ -586,7 +587,8 @@ function createExportReadinessScript(): string {
 
 function createExportFontScript(): string {
   return `
-  const fontEmbedCdnTemplate = ${JSON.stringify(FONT_EMBED_CDN_TEMPLATE)};
+  const fontMetadataApiBase = ${JSON.stringify(FONT_METADATA_API_BASE)};
+  const fontFileCdnBase = ${JSON.stringify(FONT_FILE_CDN_BASE)};
   const genericFontFamilies = new Set([
     "serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui",
     "ui-sans-serif", "ui-serif", "ui-monospace", "ui-rounded", "math", "emoji",
@@ -625,9 +627,10 @@ function createExportFontScript(): string {
         if (primary && !genericFontFamilies.has(key)) {
           const size = Number.parseFloat(style.fontSize) || 0;
           const weight = normalizeFontWeight(style.fontWeight);
+          const fontStyle = style.fontStyle === "italic" ? "italic" : "normal";
           const current = byFamily.get(key);
           if (!current || size > current.size) {
-            byFamily.set(key, { name: primary, weight, size });
+            byFamily.set(key, { name: primary, weight, size, style: fontStyle });
           }
         }
       }
@@ -699,6 +702,14 @@ function createExportFontScript(): string {
     return index;
   };
 
+  const nearestNumber = (candidates, target) => {
+    return candidates.reduce((best, candidate) => {
+      return Math.abs(candidate - target) < Math.abs(best - target)
+        ? candidate
+        : best;
+    }, candidates[0]);
+  };
+
   const nearestByWeight = (candidates, target) => {
     return candidates.reduce((best, candidate) => {
       return Math.abs(candidate.weight - target) <
@@ -708,22 +719,51 @@ function createExportFontScript(): string {
     }, candidates[0]);
   };
 
-  const resolveEmbeddableFonts = (nodes) => {
+  // True-universal URL resolution: ask the Fontsource metadata API for the
+  // family's real weights/styles/subsets, so we never guess a 404 (missing
+  // weight, italic-only, or a non-latin subset like chinese-simplified). Any
+  // family not on Fontsource returns null and is left to the page @font-face
+  // path or skipped — no crash, no regression.
+  const fontsourceUrl = async (family, weight, style) => {
+    const slug = fontFamilySlug(family);
+    if (!slug) return null;
+    let meta;
+    try {
+      const response = await fetch(fontMetadataApiBase + slug);
+      if (!response.ok) return null;
+      meta = await response.json();
+    } catch {
+      return null;
+    }
+    const weights = Array.isArray(meta.weights) ? meta.weights : [];
+    const subsets = Array.isArray(meta.subsets) ? meta.subsets : [];
+    const styles = Array.isArray(meta.styles) ? meta.styles : [];
+    if (weights.length === 0 || subsets.length === 0) return null;
+    const resolvedWeight = nearestNumber(weights, weight);
+    const resolvedStyle = styles.includes(style) ? style : "normal";
+    const resolvedSubset = subsets.includes("latin") ? "latin" : subsets[0];
+    return (
+      fontFileCdnBase +
+      slug +
+      "@latest/" +
+      resolvedSubset +
+      "-" +
+      resolvedWeight +
+      "-" +
+      resolvedStyle +
+      ".woff"
+    );
+  };
+
+  const resolveEmbeddableFonts = async (nodes) => {
     const localIndex = indexLocalFontFaces();
     const fonts = [];
     for (const family of collectUsedFontFamilies(nodes)) {
       const local = localIndex.get(family.name.toLowerCase());
-      let url = null;
-      if (local && local.length > 0) {
-        url = nearestByWeight(local, family.weight).url;
-      } else {
-        const slug = fontFamilySlug(family.name);
-        if (slug) {
-          url = fontEmbedCdnTemplate
-            .replace("{slug}", slug)
-            .replace("{weight}", String(family.weight));
-        }
-      }
+      const url =
+        local && local.length > 0
+          ? nearestByWeight(local, family.weight).url
+          : await fontsourceUrl(family.name, family.weight, family.style);
       if (url) {
         fonts.push({ name: family.name, url });
       }
@@ -747,7 +787,7 @@ function createExportRunnerScript(): string {
     revealSlideNodes(nodes);
     copyInheritedSlideBackgrounds(nodes);
     await waitForExportReadiness(nodes);
-    const fonts = resolveEmbeddableFonts(nodes);
+    const fonts = await resolveEmbeddableFonts(nodes);
     const exportOptions = fonts.length > 0 ? { ...options, fonts } : options;
     const blob = await window.domToPptx.exportToPptx(nodes, exportOptions);
     post({ status: "success", blob });
