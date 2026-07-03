@@ -2690,14 +2690,14 @@ function TriggersSection({
             })}
           </div>
         ) : (
-          <div className="zero-card flex min-h-[16rem] flex-col items-center justify-center px-6 py-10 text-center">
+          <div className="zero-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
             <img
               src={emptyAutomationsImg}
               alt="No automations"
               className="h-24 w-24 object-contain opacity-80"
             />
             <p className="mt-3 text-sm font-medium text-foreground">
-              No automations yet
+              No automations
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
               Add an automation to run this workflow whenever its trigger fires.
