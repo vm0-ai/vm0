@@ -594,8 +594,13 @@ describe("zero workflow triggers", () => {
     expect(created.body.nextRunAt).toBeTruthy();
   });
 
-  it("rejects Gmail event triggers before the feature is enabled", async () => {
-    const { workflowId } = await setupFixture();
+  it("rejects Gmail event triggers when the feature is disabled by override", async () => {
+    // Globally enabled since the automation -> workflow cutover (#19959);
+    // the gate now only rejects when a user override turns it off.
+    const { fixture, workflowId } = await setupFixture();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.WorkflowAutomation]: false,
+    });
 
     const rejected = await accept(
       triggersClient().create({
@@ -615,8 +620,13 @@ describe("zero workflow triggers", () => {
     );
   });
 
-  it("rejects Google Calendar event triggers before the feature is enabled", async () => {
-    const { workflowId } = await setupFixture();
+  it("rejects Google Calendar event triggers when the feature is disabled by override", async () => {
+    // Globally enabled since the automation -> workflow cutover (#19959);
+    // the gate now only rejects when a user override turns it off.
+    const { fixture, workflowId } = await setupFixture();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.WorkflowAutomation]: false,
+    });
 
     const rejected = await accept(
       triggersClient().create({
@@ -635,8 +645,13 @@ describe("zero workflow triggers", () => {
     );
   });
 
-  it("rejects webhook event triggers before the feature is enabled", async () => {
-    const { workflowId } = await setupFixture();
+  it("rejects webhook event triggers when the feature is disabled by override", async () => {
+    // Globally enabled since the automation -> workflow cutover (#19959);
+    // the gate now only rejects when a user override turns it off.
+    const { fixture, workflowId } = await setupFixture();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.WorkflowAutomation]: false,
+    });
 
     const rejected = await accept(
       triggersClient().create({

@@ -145,40 +145,31 @@ describe("auth tokens", () => {
   });
 
   it("gates goal capabilities behind the workflow automation feature switch", () => {
+    // Globally enabled since the automation -> workflow cutover (#19959):
+    // goal capabilities are now granted by default and withheld only when a
+    // user override turns the switch off.
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
-    const staffOrgToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-    );
-    const enabledToken = generateZeroToken(
+    const overriddenOffToken = generateZeroToken(
       "user_zero",
       "run_zero",
       "org_zero",
-      { [FeatureSwitchKey.WorkflowAutomation]: true },
+      { [FeatureSwitchKey.WorkflowAutomation]: false },
     );
 
-    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+    expect(verifyZeroToken(defaultToken)?.capabilities).toContain("goal:read");
+    expect(verifyZeroToken(defaultToken)?.capabilities).toContain(
+      "goal:agent-result:write",
+    );
+    expect(verifyZeroToken(defaultToken)?.capabilities).toContain(
+      "goal:user-control:write",
+    );
+    expect(verifyZeroToken(overriddenOffToken)?.capabilities).not.toContain(
       "goal:read",
     );
-    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+    expect(verifyZeroToken(overriddenOffToken)?.capabilities).not.toContain(
       "goal:agent-result:write",
     );
-    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
-      "goal:user-control:write",
-    );
-    expect(verifyZeroToken(staffOrgToken)?.capabilities).toContain("goal:read");
-    expect(verifyZeroToken(staffOrgToken)?.capabilities).toContain(
-      "goal:agent-result:write",
-    );
-    expect(verifyZeroToken(staffOrgToken)?.capabilities).toContain(
-      "goal:user-control:write",
-    );
-    expect(verifyZeroToken(enabledToken)?.capabilities).toContain("goal:read");
-    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
-      "goal:agent-result:write",
-    );
-    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
+    expect(verifyZeroToken(overriddenOffToken)?.capabilities).not.toContain(
       "goal:user-control:write",
     );
   });

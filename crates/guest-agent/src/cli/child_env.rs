@@ -1,6 +1,6 @@
 //! Curated environment for CLI children.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use super::CliRuntimeConfig;
 
@@ -27,34 +27,48 @@ const OPTIONAL_BASE_ENV_KEYS: &[&str] = &[
     "CARGO_HTTP_CAINFO",
 ];
 
-pub(super) fn apply_to_tokio_command_for_runtime(
-    cmd: &mut tokio::process::Command,
-    runtime: &CliRuntimeConfig<'_>,
-) {
-    apply_to_tokio_command_with_values(
-        cmd,
+pub(super) fn values_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Vec<(String, String)> {
+    values_with_inputs(
         runtime.home_dir.as_ref(),
         runtime.user_env,
         runtime.api_url.as_ref(),
-    );
+    )
 }
 
-pub(super) fn apply_to_tokio_command_with_values(
-    cmd: &mut tokio::process::Command,
+pub(super) fn values_with_inputs(
     home_dir: &str,
     user_env: &HashMap<String, String>,
     api_url: &str,
-) {
-    cmd.env_clear();
+) -> Vec<(String, String)> {
+    let mut values = Vec::new();
     for (key, value) in base_child_env(home_dir) {
-        cmd.env(key, value);
+        values.push((key.to_string(), value));
     }
     for (key, value) in user_env {
-        cmd.env(key, value);
+        values.push((key.clone(), value.clone()));
     }
     apply_runner_visible_env(api_url, |key, value| {
-        cmd.env(key, value);
+        values.push((key.to_string(), value));
     });
+    normalize_values(values)
+}
+
+pub(super) fn normalize_values(values: Vec<(String, String)>) -> Vec<(String, String)> {
+    let mut final_values = BTreeMap::new();
+    for (key, value) in values {
+        final_values.insert(key, value);
+    }
+    final_values.into_iter().collect()
+}
+
+pub(super) fn apply_values_to_tokio_command(
+    cmd: &mut tokio::process::Command,
+    values: &[(String, String)],
+) {
+    cmd.env_clear();
+    for (key, value) in values {
+        cmd.env(key, value);
+    }
 }
 
 fn base_child_env(home_dir: &str) -> Vec<(&'static str, String)> {
@@ -106,5 +120,56 @@ mod tests {
         assert!(keys.contains(&"HOME"));
         assert!(keys.contains(&"PATH"));
         assert!(keys.contains(&"SHELL"));
+    }
+
+    #[test]
+    fn normalize_values_keeps_last_value_for_duplicate_keys() {
+        let values = normalize_values(vec![
+            ("VM0_API_URL".to_string(), "user-value".to_string()),
+            ("VM0_API_URL".to_string(), "runner-value".to_string()),
+        ]);
+
+        assert_eq!(
+            values
+                .iter()
+                .find(|(key, _)| key == "VM0_API_URL")
+                .map(|(_, value)| value.as_str()),
+            Some("runner-value")
+        );
+        assert_eq!(
+            values
+                .iter()
+                .filter(|(key, _)| key == "VM0_API_URL")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn values_with_inputs_counts_final_runner_visible_api_url() {
+        let mut user_env = HashMap::new();
+        let oversized_user_api_url =
+            "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
+        user_env.insert(
+            guest_contracts::env::API_URL_ENV.to_string(),
+            oversized_user_api_url,
+        );
+
+        let values = values_with_inputs("/tmp/home", &user_env, "https://runner.example");
+
+        assert_eq!(
+            values
+                .iter()
+                .find(|(key, _)| key == guest_contracts::env::API_URL_ENV)
+                .map(|(_, value)| value.as_str()),
+            Some("https://runner.example")
+        );
+        assert_eq!(
+            values
+                .iter()
+                .filter(|(key, _)| key == guest_contracts::env::API_URL_ENV)
+                .count(),
+            1
+        );
     }
 }

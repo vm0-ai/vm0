@@ -15,6 +15,7 @@ use guest_common::log_warn;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
+const RUN_PAYLOAD_FILE_ENV_KEY: &str = guest_contracts::env::RUN_PAYLOAD_FILE_ENV;
 const USER_ENV_PRIVATE_DIR_NAME: &str = "user-env";
 const USER_ENV_FILENAME: &str = "env.json";
 const POST_RESULT_CLEANUP_MAX_SECS: u64 = 60 * 60;
@@ -99,15 +100,14 @@ fn bounded_duration_secs_value_or(
 // ---------------------------------------------------------------------------
 // Artifacts (multi-mount)
 //
-// The runner emits a single `VM0_ARTIFACTS` env var containing a JSON array
-// of `{name, mountPath, storageId, versionId, missingRootPolicy?}` entries —
-// one per artifact mounted at boot. If the env var is unset or empty, there
-// are no artifacts.
+// The runner supplies a JSON array of
+// `{name, mountPath, storageId, versionId, missingRootPolicy?}` entries through
+// the run payload. If the value is unset or empty, there are no artifacts.
 // ---------------------------------------------------------------------------
 
-/// One artifact mount described by the runner-provided `VM0_ARTIFACTS` JSON array.
+/// One artifact mount described by the runner-provided artifact JSON array.
 ///
-/// The environment value is encoded as camelCase JSON, so this struct expects
+/// The wire value is encoded as camelCase JSON, so this struct expects
 /// `mountPath`, `storageId`, and `versionId` keys at the guest-agent boundary.
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -129,11 +129,11 @@ pub struct ArtifactEnv {
     pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
 }
 
-/// Raw startup values used to build an owned guest-agent run config.
+/// Raw runner bootstrap values used to build an owned guest-agent run config.
 ///
-/// Empty strings represent unset runner bootstrap values. Optional override
-/// fields preserve the difference between an unset variable and an explicitly
-/// empty variable.
+/// Empty strings represent unset bootstrap environment values. Variable-length
+/// run payload fields live in [`guest_contracts::env::RunPayload`] and are
+/// loaded through `run_payload_file`.
 #[derive(Clone, Default)]
 pub struct GuestConfigRaw {
     pub run_id: String,
@@ -141,26 +141,20 @@ pub struct GuestConfigRaw {
     pub api_token: String,
     pub sandbox_id: String,
     pub sandbox_reuse_result: String,
-    pub prompt: String,
-    pub append_system_prompt: String,
     pub vercel_bypass: String,
     pub resume_session_id: String,
     pub api_start_time: String,
-    pub secret_values: String,
-    pub disallowed_tools: String,
-    pub tools: String,
-    pub settings: String,
     pub use_mock_claude: String,
     pub mock_claude_path: Option<String>,
     pub cli_agent_type: String,
     pub user_env_file: String,
+    pub run_payload_file: String,
     pub use_mock_codex: String,
     pub use_codex_app_server_backend: String,
     pub mock_codex_path: Option<String>,
     pub home: Option<String>,
     pub runtime_home: Option<PathBuf>,
     pub guest_runtime_dir: Option<PathBuf>,
-    pub artifacts: String,
     pub stuck_tool_timeout_secs: String,
     pub post_result_sigterm_grace_secs: String,
     pub post_result_total_cap_secs: String,
@@ -181,19 +175,14 @@ impl GuestConfigRaw {
             api_token: env_or_empty(guest_contracts::env::API_TOKEN_ENV),
             sandbox_id: env_or_empty(guest_contracts::env::SANDBOX_ID_ENV),
             sandbox_reuse_result: env_or_empty(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV),
-            prompt: env_or_empty(guest_contracts::env::PROMPT_ENV),
-            append_system_prompt: env_or_empty(guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV),
             vercel_bypass: env_or_empty(guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV),
             resume_session_id: env_or_empty(guest_contracts::env::RESUME_SESSION_ID_ENV),
             api_start_time: env_or_empty(guest_contracts::env::API_START_TIME_ENV),
-            secret_values: env_or_empty(guest_contracts::env::SECRET_VALUES_ENV),
-            disallowed_tools: env_or_empty(guest_contracts::env::DISALLOWED_TOOLS_ENV),
-            tools: env_or_empty(guest_contracts::env::TOOLS_ENV),
-            settings: env_or_empty(guest_contracts::env::SETTINGS_ENV),
             use_mock_claude: env_or_empty(guest_contracts::env::USE_MOCK_CLAUDE_ENV),
             mock_claude_path: std::env::var(guest_contracts::env::MOCK_CLAUDE_PATH_ENV).ok(),
             cli_agent_type: env_or_empty(guest_contracts::env::CLI_AGENT_TYPE_ENV),
             user_env_file: env_or_empty(USER_ENV_FILE_ENV_KEY),
+            run_payload_file: env_or_empty(RUN_PAYLOAD_FILE_ENV_KEY),
             use_mock_codex: env_or_empty(guest_contracts::env::USE_MOCK_CODEX_ENV),
             use_codex_app_server_backend: env_or_empty(
                 guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV,
@@ -202,7 +191,6 @@ impl GuestConfigRaw {
             home: std::env::var("HOME").ok(),
             runtime_home: std::env::var_os("HOME").map(PathBuf::from),
             guest_runtime_dir,
-            artifacts: env_or_empty(guest_contracts::env::ARTIFACTS_ENV),
             stuck_tool_timeout_secs: env_or_empty(
                 guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
             ),
@@ -216,6 +204,13 @@ impl GuestConfigRaw {
                 guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             ),
         }
+    }
+
+    pub(crate) fn require_run_payload_file(&self) -> Result<(), String> {
+        if self.run_payload_file.is_empty() {
+            return Err(format!("{RUN_PAYLOAD_FILE_ENV_KEY} is required"));
+        }
+        Ok(())
     }
 }
 
@@ -246,6 +241,7 @@ pub struct GuestConfig {
     pub mock_codex_path: String,
     pub home_dir: String,
     pub artifacts: Vec<ArtifactEnv>,
+    pub feature_flags: String,
     pub stuck_tool_timeout_secs: u64,
     pub post_result_sigterm_grace: Duration,
     pub post_result_total_cap: Duration,
@@ -255,21 +251,25 @@ pub struct GuestConfig {
 impl GuestConfig {
     /// Build an owned config from the current process environment.
     pub fn from_process_env() -> Result<Self, String> {
-        Self::from_raw(GuestConfigRaw::from_process_env())
+        let raw = GuestConfigRaw::from_process_env();
+        raw.require_run_payload_file()?;
+        Self::from_raw(raw)
     }
 
     /// Build an owned config from explicit startup values.
     pub fn from_raw(raw: GuestConfigRaw) -> Result<Self, String> {
+        let payload = load_run_payload_from_raw(&raw)?;
         let user_env = load_user_env_from_raw(&raw)?;
-        Self::from_raw_with_user_env(raw, user_env)
+        Self::from_raw_with_user_env(raw, payload, user_env)
     }
 
     fn from_raw_with_user_env(
         raw: GuestConfigRaw,
+        payload: guest_contracts::env::RunPayload,
         user_env: HashMap<String, String>,
     ) -> Result<Self, String> {
         let home_dir = resolve_home_dir(&user_env, raw.home.as_deref())?;
-        let artifacts = parse_artifacts_value(&raw.artifacts)
+        let artifacts = parse_artifacts_value(&payload.artifacts)
             .map_err(|e| format!("parse {} JSON: {e}", guest_contracts::env::ARTIFACTS_ENV))?;
 
         Ok(Self {
@@ -278,15 +278,15 @@ impl GuestConfig {
             api_token: raw.api_token,
             sandbox_id: raw.sandbox_id,
             sandbox_reuse_result: raw.sandbox_reuse_result,
-            prompt: raw.prompt,
-            append_system_prompt: raw.append_system_prompt,
+            prompt: payload.prompt,
+            append_system_prompt: payload.append_system_prompt,
             vercel_bypass: raw.vercel_bypass,
             resume_session_id: raw.resume_session_id,
             api_start_time: raw.api_start_time,
-            secret_values: raw.secret_values,
-            disallowed_tools: raw.disallowed_tools,
-            tools: raw.tools,
-            settings: raw.settings,
+            secret_values: payload.secret_values,
+            disallowed_tools: payload.disallowed_tools,
+            tools: payload.tools,
+            settings: payload.settings,
             use_mock_claude: bool_true_value(Some(&raw.use_mock_claude)),
             mock_claude_path: default_mock_path(
                 raw.mock_claude_path.as_deref(),
@@ -305,6 +305,7 @@ impl GuestConfig {
             ),
             home_dir,
             artifacts,
+            feature_flags: payload.feature_flags,
             stuck_tool_timeout_secs: u64_value_or(
                 guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
                 non_empty(&raw.stuck_tool_timeout_secs),
@@ -369,13 +370,127 @@ fn parse_artifacts_value(raw: &str) -> Result<Vec<ArtifactEnv>, serde_json::Erro
     serde_json::from_str::<Vec<ArtifactEnv>>(raw)
 }
 
+fn load_run_payload_from_raw(
+    raw: &GuestConfigRaw,
+) -> Result<guest_contracts::env::RunPayload, String> {
+    raw.require_run_payload_file()?;
+
+    let path = Path::new(&raw.run_payload_file);
+    let runtime_dir = guest_runtime_dir_for_private_file_values(
+        RUN_PAYLOAD_FILE_ENV_KEY,
+        &raw.run_id,
+        raw.guest_runtime_dir.as_deref(),
+        raw.runtime_home
+            .as_deref()
+            .or_else(|| raw.home.as_deref().map(Path::new)),
+    )?;
+    validate_run_payload_file_path_for_runtime(path, &runtime_dir)?;
+    load_run_payload_from_path(path)
+}
+
+fn load_run_payload_from_path(path: &Path) -> Result<guest_contracts::env::RunPayload, String> {
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| format!("read {RUN_PAYLOAD_FILE_ENV_KEY} {}: {e}", path.display()))?;
+    remove_run_payload_file(path)?;
+
+    let payload: guest_contracts::env::RunPayload = serde_json::from_str(&raw)
+        .map_err(|e| format!("parse {RUN_PAYLOAD_FILE_ENV_KEY} JSON: {e}"))?;
+    validate_run_payload(&payload)?;
+
+    Ok(payload)
+}
+
+fn remove_run_payload_file(path: &Path) -> Result<(), String> {
+    std::fs::remove_file(path)
+        .map_err(|e| format!("remove {RUN_PAYLOAD_FILE_ENV_KEY} {}: {e}", path.display()))?;
+    if let Some(parent) = path.parent()
+        && is_run_payload_private_dir(parent)
+    {
+        std::fs::remove_dir(parent).map_err(|e| {
+            format!(
+                "remove {RUN_PAYLOAD_FILE_ENV_KEY} parent {}: {e}",
+                parent.display()
+            )
+        })?;
+    }
+
+    Ok(())
+}
+
+fn is_run_payload_private_dir(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME)
+}
+
+fn run_payload_file_path_for_runtime(runtime_dir: &Path) -> PathBuf {
+    runtime_dir
+        .join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME)
+        .join(guest_contracts::env::RUN_PAYLOAD_FILENAME)
+}
+
+fn validate_run_payload_file_path_for_runtime(
+    path: &Path,
+    runtime_dir: &Path,
+) -> Result<(), String> {
+    if path == run_payload_file_path_for_runtime(runtime_dir) {
+        return Ok(());
+    }
+
+    Err(format!(
+        "{RUN_PAYLOAD_FILE_ENV_KEY} must point to guest runtime {}/{}",
+        guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME,
+        guest_contracts::env::RUN_PAYLOAD_FILENAME
+    ))
+}
+
+fn validate_run_payload(payload: &guest_contracts::env::RunPayload) -> Result<(), String> {
+    for (name, value) in [
+        (guest_contracts::env::PROMPT_ENV, payload.prompt.as_str()),
+        (
+            guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
+            payload.append_system_prompt.as_str(),
+        ),
+        (
+            guest_contracts::env::SECRET_VALUES_ENV,
+            payload.secret_values.as_str(),
+        ),
+        (
+            guest_contracts::env::DISALLOWED_TOOLS_ENV,
+            payload.disallowed_tools.as_str(),
+        ),
+        (guest_contracts::env::TOOLS_ENV, payload.tools.as_str()),
+        (
+            guest_contracts::env::SETTINGS_ENV,
+            payload.settings.as_str(),
+        ),
+        (
+            guest_contracts::env::ARTIFACTS_ENV,
+            payload.artifacts.as_str(),
+        ),
+        (
+            guest_contracts::env::FEATURE_FLAGS_ENV,
+            payload.feature_flags.as_str(),
+        ),
+    ] {
+        if value.contains('\0') {
+            return Err(format!(
+                "{RUN_PAYLOAD_FILE_ENV_KEY} contains NUL byte for {name}"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 fn load_user_env_from_raw(raw: &GuestConfigRaw) -> Result<HashMap<String, String>, String> {
     if raw.user_env_file.is_empty() {
         return Ok(HashMap::new());
     }
 
     let path = Path::new(&raw.user_env_file);
-    let runtime_dir = guest_runtime_dir_for_user_env_values(
+    let runtime_dir = guest_runtime_dir_for_private_file_values(
+        USER_ENV_FILE_ENV_KEY,
         &raw.run_id,
         raw.guest_runtime_dir.as_deref(),
         raw.runtime_home
@@ -421,18 +536,19 @@ fn is_user_env_private_dir(path: &Path) -> bool {
         .is_some_and(|name| name == USER_ENV_PRIVATE_DIR_NAME)
 }
 
-fn guest_runtime_dir_for_user_env_values(
+fn guest_runtime_dir_for_private_file_values(
+    env_key: &str,
     run_id: &str,
     runtime_dir: Option<&Path>,
     home: Option<&Path>,
 ) -> Result<PathBuf, String> {
     guest_contracts::runtime_paths::validate_run_id(run_id)
-        .map_err(|e| format!("resolve guest runtime dir for {USER_ENV_FILE_ENV_KEY}: {e}"))?;
+        .map_err(|e| format!("resolve guest runtime dir for {env_key}: {e}"))?;
 
     if let Some(runtime_dir) = runtime_dir {
         if !runtime_dir.is_absolute() {
             return Err(format!(
-                "resolve guest runtime dir for {USER_ENV_FILE_ENV_KEY}: {}",
+                "resolve guest runtime dir for {env_key}: {}",
                 guest_contracts::runtime_paths::RuntimePathError::InvalidRuntimeDir
             ));
         }
@@ -441,13 +557,13 @@ fn guest_runtime_dir_for_user_env_values(
 
     let Some(home) = home.filter(|value| !value.as_os_str().is_empty()) else {
         return Err(format!(
-            "resolve guest runtime dir for {USER_ENV_FILE_ENV_KEY}: {}",
+            "resolve guest runtime dir for {env_key}: {}",
             guest_contracts::runtime_paths::RuntimePathError::MissingHome
         ));
     };
 
     guest_contracts::runtime_paths::run_dir_for_home(home, run_id)
-        .map_err(|e| format!("resolve guest runtime dir for {USER_ENV_FILE_ENV_KEY}: {e}"))
+        .map_err(|e| format!("resolve guest runtime dir for {env_key}: {e}"))
 }
 
 fn user_env_file_path_for_runtime(runtime_dir: &Path) -> PathBuf {
@@ -522,6 +638,35 @@ mod tests {
         let path = dir.join(USER_ENV_FILENAME);
         std::fs::write(&path, json).unwrap();
         (tmp, path)
+    }
+
+    fn write_run_payload_fixture(
+        runtime_dir: &Path,
+        payload: &guest_contracts::env::RunPayload,
+    ) -> std::path::PathBuf {
+        let dir = runtime_dir.join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
+        std::fs::write(&path, serde_json::to_vec(payload).unwrap()).unwrap();
+        path
+    }
+
+    fn raw_config_fixture_with_run_payload(
+        payload: &guest_contracts::env::RunPayload,
+    ) -> (tempfile::TempDir, GuestConfigRaw) {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_dir = tmp.path().join("runtime");
+        let run_payload_file = write_run_payload_fixture(&runtime_dir, payload);
+        let raw = GuestConfigRaw {
+            run_payload_file: run_payload_file.to_string_lossy().into_owned(),
+            guest_runtime_dir: Some(runtime_dir),
+            ..raw_config_fixture()
+        };
+        (tmp, raw)
+    }
+
+    fn raw_config_fixture_with_default_run_payload() -> (tempfile::TempDir, GuestConfigRaw) {
+        raw_config_fixture_with_run_payload(&guest_contracts::env::RunPayload::default())
     }
 
     #[test]
@@ -600,32 +745,36 @@ mod tests {
 
     #[test]
     fn guest_config_from_raw_builds_owned_config_without_process_env_mutation() {
+        let payload = guest_contracts::env::RunPayload {
+            prompt: "hello".to_string(),
+            append_system_prompt: "extra system".to_string(),
+            secret_values: "encoded-secret".to_string(),
+            disallowed_tools: "WebFetch".to_string(),
+            tools: "Bash".to_string(),
+            settings: "{}".to_string(),
+            artifacts:
+                r#"[{"name":"artifact","mountPath":"/mnt/a","storageId":"storage","versionId":"v1"}]"#
+                    .to_string(),
+            ..guest_contracts::env::RunPayload::default()
+        };
+        let (_tmp, raw) = raw_config_fixture_with_run_payload(&payload);
         let raw = GuestConfigRaw {
             api_url: "https://api.example.test".to_string(),
             api_token: String::new(),
             sandbox_id: "sandbox-1".to_string(),
             sandbox_reuse_result: "reused".to_string(),
-            prompt: "hello".to_string(),
-            append_system_prompt: "extra system".to_string(),
             vercel_bypass: "bypass".to_string(),
             resume_session_id: "session-1".to_string(),
             api_start_time: "123".to_string(),
-            secret_values: "encoded-secret".to_string(),
-            disallowed_tools: "WebFetch".to_string(),
-            tools: "Bash".to_string(),
-            settings: "{}".to_string(),
             use_mock_claude: "true".to_string(),
             cli_agent_type: "codex".to_string(),
             use_mock_codex: "1".to_string(),
             use_codex_app_server_backend: "true".to_string(),
-            artifacts:
-                r#"[{"name":"artifact","mountPath":"/mnt/a","storageId":"storage","versionId":"v1"}]"#
-                    .to_string(),
             stuck_tool_timeout_secs: "7".to_string(),
             post_result_sigterm_grace_secs: "8".to_string(),
             post_result_total_cap_secs: "9".to_string(),
             post_result_sigkill_grace_secs: "10".to_string(),
-            ..raw_config_fixture()
+            ..raw
         };
 
         let config = GuestConfig::from_raw(raw).unwrap();
@@ -675,9 +824,12 @@ mod tests {
             r#"{"HOME":"/home/from-user-env","OPENAI_MODEL":"gpt-test"}"#,
         )
         .unwrap();
+        let run_payload_file =
+            write_run_payload_fixture(&runtime_dir, &guest_contracts::env::RunPayload::default());
 
         let raw = GuestConfigRaw {
             user_env_file: user_env_path.to_string_lossy().into_owned(),
+            run_payload_file: run_payload_file.to_string_lossy().into_owned(),
             guest_runtime_dir: Some(runtime_dir),
             home: Some("/home/from-process".to_string()),
             ..raw_config_fixture()
@@ -695,6 +847,104 @@ mod tests {
     }
 
     #[test]
+    fn guest_config_from_raw_loads_run_payload_and_removes_private_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_dir = tmp.path().join("runtime");
+        let payload = guest_contracts::env::RunPayload {
+            prompt: "payload prompt".to_string(),
+            append_system_prompt: "payload system".to_string(),
+            secret_values: "payload-secret".to_string(),
+            disallowed_tools: "WebFetch".to_string(),
+            tools: "Bash".to_string(),
+            settings: "{}".to_string(),
+            artifacts:
+                r#"[{"name":"artifact","mountPath":"/mnt/a","storageId":"storage","versionId":"v1"}]"#
+                    .to_string(),
+            feature_flags: r#"{"flag":true}"#.to_string(),
+        };
+        let path = write_run_payload_fixture(&runtime_dir, &payload);
+        let parent = path.parent().unwrap().to_path_buf();
+
+        let raw = GuestConfigRaw {
+            run_payload_file: path.to_string_lossy().into_owned(),
+            guest_runtime_dir: Some(runtime_dir),
+            ..raw_config_fixture()
+        };
+
+        let config = GuestConfig::from_raw(raw).unwrap();
+
+        assert_eq!(config.prompt, "payload prompt");
+        assert_eq!(config.append_system_prompt, "payload system");
+        assert_eq!(config.secret_values, "payload-secret");
+        assert_eq!(config.disallowed_tools, "WebFetch");
+        assert_eq!(config.tools, "Bash");
+        assert_eq!(config.settings, "{}");
+        assert_eq!(config.artifacts.len(), 1);
+        assert_eq!(config.feature_flags, r#"{"flag":true}"#);
+        assert!(!path.exists());
+        assert!(!parent.exists());
+    }
+
+    #[test]
+    fn guest_config_from_raw_rejects_run_payload_outside_runtime_dir_without_path_leak() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_dir = tmp.path().join("runtime");
+        let unexpected = tmp
+            .path()
+            .join("other")
+            .join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME)
+            .join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
+
+        let raw = GuestConfigRaw {
+            run_payload_file: unexpected.to_string_lossy().into_owned(),
+            guest_runtime_dir: Some(runtime_dir),
+            ..raw_config_fixture()
+        };
+
+        let err = GuestConfig::from_raw(raw).err().unwrap();
+
+        assert!(err.contains("run-payload/payload.json"));
+        assert!(!err.contains(unexpected.to_string_lossy().as_ref()));
+    }
+
+    #[test]
+    fn load_run_payload_from_path_rejects_nul_without_value_leak() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_dir = tmp.path().join("runtime");
+        let payload = guest_contracts::env::RunPayload {
+            prompt: "secret\0prompt".to_string(),
+            ..guest_contracts::env::RunPayload::default()
+        };
+        let path = write_run_payload_fixture(&runtime_dir, &payload);
+        let parent = path.parent().unwrap().to_path_buf();
+
+        let err = load_run_payload_from_path(&path).unwrap_err();
+
+        assert!(err.contains(guest_contracts::env::PROMPT_ENV));
+        assert!(!err.contains("secret"));
+        assert!(!err.contains("prompt"));
+        assert!(!path.exists());
+        assert!(!parent.exists());
+    }
+
+    #[test]
+    fn load_run_payload_from_path_removes_file_before_parse_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_dir = tmp.path().join("runtime");
+        let dir = runtime_dir.join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
+        std::fs::write(&path, r#"{"prompt":"secret""#).unwrap();
+
+        let err = load_run_payload_from_path(&path).unwrap_err();
+
+        assert!(err.contains("parse"));
+        assert!(!err.contains("secret"));
+        assert!(!path.exists());
+        assert!(!dir.exists());
+    }
+
+    #[test]
     fn guest_config_from_raw_validates_user_env_with_runtime_home_when_home_string_missing() {
         let tmp = tempfile::tempdir().unwrap();
         let runtime_home = tmp.path().join("home");
@@ -708,9 +958,12 @@ mod tests {
             r#"{"HOME":"/home/from-user-env","OPENAI_MODEL":"gpt-runtime-home"}"#,
         )
         .unwrap();
+        let run_payload_file =
+            write_run_payload_fixture(&runtime_dir, &guest_contracts::env::RunPayload::default());
 
         let raw = GuestConfigRaw {
             user_env_file: user_env_path.to_string_lossy().into_owned(),
+            run_payload_file: run_payload_file.to_string_lossy().into_owned(),
             home: None,
             runtime_home: Some(runtime_home),
             ..raw_config_fixture()
@@ -729,8 +982,14 @@ mod tests {
 
     #[test]
     fn guest_config_from_raw_preserves_empty_process_home() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_dir = tmp.path().join("runtime");
+        let run_payload_file =
+            write_run_payload_fixture(&runtime_dir, &guest_contracts::env::RunPayload::default());
         let raw = GuestConfigRaw {
             home: Some(String::new()),
+            run_payload_file: run_payload_file.to_string_lossy().into_owned(),
+            guest_runtime_dir: Some(runtime_dir),
             ..raw_config_fixture()
         };
 
@@ -741,10 +1000,11 @@ mod tests {
 
     #[test]
     fn guest_config_from_raw_preserves_explicit_empty_mock_paths() {
+        let (_tmp, raw) = raw_config_fixture_with_default_run_payload();
         let raw = GuestConfigRaw {
             mock_claude_path: Some(String::new()),
             mock_codex_path: Some(String::new()),
-            ..raw_config_fixture()
+            ..raw
         };
 
         let config = GuestConfig::from_raw(raw).unwrap();
@@ -755,10 +1015,11 @@ mod tests {
 
     #[test]
     fn guest_config_from_raw_reports_invalid_artifacts() {
-        let raw = GuestConfigRaw {
+        let payload = guest_contracts::env::RunPayload {
             artifacts: "{not-json".to_string(),
-            ..raw_config_fixture()
+            ..guest_contracts::env::RunPayload::default()
         };
+        let (_tmp, raw) = raw_config_fixture_with_run_payload(&payload);
 
         let err = GuestConfig::from_raw(raw).err().unwrap();
 
@@ -770,9 +1031,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let runtime_dir = tmp.path().join("runtime");
         let unexpected = tmp.path().join("other").join("user-env").join("env.json");
+        let run_payload_file =
+            write_run_payload_fixture(&runtime_dir, &guest_contracts::env::RunPayload::default());
 
         let raw = GuestConfigRaw {
             user_env_file: unexpected.to_string_lossy().into_owned(),
+            run_payload_file: run_payload_file.to_string_lossy().into_owned(),
             guest_runtime_dir: Some(runtime_dir),
             ..raw_config_fixture()
         };
@@ -863,8 +1127,13 @@ mod tests {
 
     #[test]
     fn guest_runtime_dir_for_user_env_returns_error_when_run_id_missing() {
-        let err = guest_runtime_dir_for_user_env_values("", None, Some(Path::new("/home/vm0")))
-            .unwrap_err();
+        let err = guest_runtime_dir_for_private_file_values(
+            USER_ENV_FILE_ENV_KEY,
+            "",
+            None,
+            Some(Path::new("/home/vm0")),
+        )
+        .unwrap_err();
 
         assert!(err.contains("VM0_RUN_ID is required"));
     }
