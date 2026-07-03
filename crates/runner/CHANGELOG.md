@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.132.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.20...runner-rs-v0.132.0) (2026-07-03)
+
+
+### Features
+
+* add Google Meet transcript-generated workflow trigger ([#19789](https://github.com/vm0-ai/vm0/issues/19789)) ([91aef71](https://github.com/vm0-ai/vm0/commit/91aef711953cb2107c62ae7d2d3a7f9da38a071f))
+
 ## [0.131.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.19...runner-rs-v0.131.20) (2026-07-02)
 
 

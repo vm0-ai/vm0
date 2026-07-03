@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.22.7](https://github.com/vm0-ai/vm0/compare/desktop-v0.22.6...desktop-v0.22.7) (2026-07-03)
+
+
+### Bug Fixes
+
+* hide filesystem plugin behind developer tools ([#19957](https://github.com/vm0-ai/vm0/issues/19957)) ([557f830](https://github.com/vm0-ai/vm0/commit/557f830dde44ceb9c0cfe5eee675eea63176df1b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.146.0
+
 ## [0.22.6](https://github.com/vm0-ai/vm0/compare/desktop-v0.22.5...desktop-v0.22.6) (2026-07-03)
 
 

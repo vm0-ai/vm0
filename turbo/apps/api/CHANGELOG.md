@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.211.0](https://github.com/vm0-ai/vm0/compare/api-v1.210.1...api-v1.211.0) (2026-07-03)
+
+
+### Features
+
+* add Google Meet transcript-generated workflow trigger ([#19789](https://github.com/vm0-ai/vm0/issues/19789)) ([91aef71](https://github.com/vm0-ai/vm0/commit/91aef711953cb2107c62ae7d2d3a7f9da38a071f))
+
+
+### Performance Improvements
+
+* add custom connector runtime timing ([#19949](https://github.com/vm0-ai/vm0/issues/19949)) ([e2d7a85](https://github.com/vm0-ai/vm0/commit/e2d7a857caf510b76004a708f68fdbb6094718d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.146.0
+    * @vm0/connectors bumped to 1.131.0
+    * @vm0/core bumped to 8.391.2
+    * @vm0/db bumped to 1.86.0
+
 ## [1.210.1](https://github.com/vm0-ai/vm0/compare/api-v1.210.0...api-v1.210.1) (2026-07-03)
 
 
