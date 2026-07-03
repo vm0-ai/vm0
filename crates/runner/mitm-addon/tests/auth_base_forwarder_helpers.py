@@ -1,4 +1,4 @@
-"""Shared fake upstream helpers for auth.base forwarder tests."""
+"""Shared fake upstream helpers for auth.base forwarding tests."""
 
 import contextlib
 import http.client as http_client
@@ -7,6 +7,8 @@ from collections.abc import Callable, Iterator
 from unittest.mock import patch
 
 import auth_base_forwarder as forwarder
+
+__all__ = ["FakeSocket", "fake_forwarder_upstream", "http_response"]
 
 
 def _addrinfo(address: str, port: int):
@@ -33,6 +35,7 @@ def http_response(
     body: bytes = b"ok",
     headers: list[tuple[str, str]] | None = None,
 ) -> bytes:
+    """Build raw HTTP/1.1 response bytes for a fake upstream socket."""
     reason = http_client.responses.get(status, "OK")
     header_bytes = b"".join(f"{name}: {value}\r\n".encode() for name, value in (headers or []))
     return f"HTTP/1.1 {status} {reason}\r\n".encode("ascii") + header_bytes + b"\r\n" + body
@@ -66,6 +69,17 @@ class _FakeResponseFile(io.BytesIO):
 
 
 class FakeSocket:
+    """Socket-like test double that records forwarded auth.base requests.
+
+    The forwarder writes to ``sent``, calls ``setsockopt``/``makefile``/``close``,
+    and reads the provided response bytes from the file object returned by
+    ``makefile``. Side-effect arguments raise at the matching boundary so tests
+    can exercise send, read, response setup, and TCP option failures.
+
+    Use ``request_text``, ``request_lines``, and ``request_header_values`` for
+    assertions about the HTTP request that the real forwarder serialized.
+    """
+
     def __init__(
         self,
         response: bytes,
@@ -137,6 +151,9 @@ class FakeSocket:
         return values
 
 
+_CreateConnection = Callable[[tuple[str, int], object, object], FakeSocket]
+
+
 class _FakeTLSContext:
     def __init__(
         self,
@@ -163,6 +180,14 @@ class _FakeTLSContext:
 
 
 class _FakeForwarderUpstream:
+    """Assertion handle yielded by ``fake_forwarder_upstream``.
+
+    Tests normally obtain this from the context manager because direct
+    construction does not patch ``auth_base_forwarder``. Stable assertion state
+    includes DNS calls, connection calls, created sockets, TLS contexts, and the
+    most recent socket via ``socket``.
+    """
+
     def __init__(
         self,
         *,
@@ -176,7 +201,7 @@ class _FakeForwarderUpstream:
         setsockopt_side_effect: Exception | None = None,
         wrap_side_effect: Exception | None = None,
         on_action: Callable[[], None] | None = None,
-        create_connection: Callable[[tuple[str, int], object, object], FakeSocket] | None = None,
+        create_connection: _CreateConnection | None = None,
     ) -> None:
         self._addresses = addresses
         self._response = http_response(status=status, body=body, headers=headers)
@@ -230,8 +255,45 @@ class _FakeForwarderUpstream:
 
 
 @contextlib.contextmanager
-def fake_forwarder_upstream(**kwargs) -> Iterator[_FakeForwarderUpstream]:
-    upstream = _FakeForwarderUpstream(**kwargs)
+def fake_forwarder_upstream(
+    *,
+    status: int = 200,
+    body: bytes = b"ok",
+    headers: list[tuple[str, str]] | None = None,
+    addresses: tuple[str, ...] = ("93.184.216.34",),
+    read_side_effect: Exception | None = None,
+    send_side_effect: Exception | None = None,
+    makefile_side_effect: Exception | None = None,
+    setsockopt_side_effect: Exception | None = None,
+    wrap_side_effect: Exception | None = None,
+    on_action: Callable[[], None] | None = None,
+    create_connection: _CreateConnection | None = None,
+) -> Iterator[_FakeForwarderUpstream]:
+    """Patch auth.base DNS/connect/TLS boundaries and yield an upstream handle.
+
+    The context manager patches only ``auth_base_forwarder.socket.getaddrinfo``,
+    ``auth_base_forwarder.socket.create_connection``, and
+    ``auth_base_forwarder.ssl.create_default_context``. ``addresses`` controls
+    the DNS answers returned to the real forwarder before any socket is opened.
+    Socket and TLS side effects raise at their matching fake boundary.
+
+    The yielded handle exposes stable assertion state: ``getaddrinfo_calls``,
+    ``create_connection_calls``, ``sockets``, ``contexts``, and ``socket`` for
+    the most recent connection.
+    """
+    upstream = _FakeForwarderUpstream(
+        status=status,
+        body=body,
+        headers=headers,
+        addresses=addresses,
+        read_side_effect=read_side_effect,
+        send_side_effect=send_side_effect,
+        makefile_side_effect=makefile_side_effect,
+        setsockopt_side_effect=setsockopt_side_effect,
+        wrap_side_effect=wrap_side_effect,
+        on_action=on_action,
+        create_connection=create_connection,
+    )
     with (
         patch.object(forwarder.socket, "getaddrinfo", side_effect=upstream.getaddrinfo),
         patch.object(
