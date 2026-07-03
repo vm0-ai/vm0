@@ -559,9 +559,15 @@ pub async fn populate_cache_with_options(
     }
     let target_groups = group_targets(targets);
 
-    let http = Client::builder()
-        .build()
-        .map_err(|e| RunnerError::Internal(format!("build http client: {e}")))?;
+    let http = if options.miss_passthrough {
+        None
+    } else {
+        Some(
+            Client::builder()
+                .build()
+                .map_err(|e| RunnerError::Internal(format!("build http client: {e}")))?,
+        )
+    };
     let guest_writes = GuestWriteLocks::default();
     let mut stage_metrics = StorageCacheStageMetrics::start();
 
@@ -595,12 +601,15 @@ pub async fn populate_cache_with_options(
                 .await?;
             }
 
-            let http = http.clone();
             let home = home.clone();
+            let http = http.clone();
             groups.spawn(async move {
                 let mut metrics = CacheProcessMetrics::default();
                 let started_at = Instant::now();
-                let processed = process_group(&group, &http, &home, &mut metrics, options).await;
+                let processed = match http.as_ref() {
+                    Some(http) => process_group(&group, http, &home, &mut metrics).await,
+                    None => process_group_hit_or_passthrough(&group, &home, &mut metrics).await,
+                };
                 let success = processed.is_ok();
                 metrics.record(
                     STORAGE_CACHE_PROCESS_GROUP,
@@ -729,7 +738,6 @@ async fn process_group(
     http: &Client,
     home: &HomePaths,
     metrics: &mut CacheProcessMetrics,
-    options: StorageCacheOptions,
 ) -> RunnerResult<ProcessedGroup> {
     // Same-key targets are expected to refer to the same archive content, so a
     // definitive cache outcome can be shared across the group. Probe and full
@@ -740,7 +748,7 @@ async fn process_group(
         let ProcessedTarget {
             outcome,
             stage_write,
-        } = process_one(target, http, home, metrics, options).await?;
+        } = process_one(target, http, home, metrics).await?;
         match outcome {
             TargetOutcome::SkippedHeadFailed { .. }
             | TargetOutcome::SkippedInvalidDownload { .. } => {
@@ -770,21 +778,38 @@ async fn process_group(
     })
 }
 
+async fn process_group_hit_or_passthrough(
+    group: &CacheTargetGroup,
+    home: &HomePaths,
+    metrics: &mut CacheProcessMetrics,
+) -> RunnerResult<ProcessedGroup> {
+    let target = group
+        .targets
+        .first()
+        .ok_or_else(|| RunnerError::Internal("empty storage cache target group".into()))?;
+    let ProcessedTarget {
+        outcome,
+        stage_write,
+    } = process_one_hit_or_passthrough(target, home, metrics).await?;
+
+    Ok(ProcessedGroup {
+        outcome: GroupOutcome::Shared {
+            outcome_target_index: 0,
+            outcome,
+        },
+        stage_write,
+    })
+}
+
 async fn process_one(
     target: &CacheTarget,
     http: &Client,
     home: &HomePaths,
     metrics: &mut CacheProcessMetrics,
-    options: StorageCacheOptions,
 ) -> RunnerResult<ProcessedTarget> {
     let lock_path = home.storage_lock(&target.name, &target.version);
     let cache_dir = home.storage_cache_dir(&target.name, &target.version);
     let archive_path = cache_dir.join("archive.tar.gz");
-
-    if options.miss_passthrough {
-        return process_one_hit_or_passthrough(target, lock_path, cache_dir, archive_path, metrics)
-            .await;
-    }
 
     // Fast path: a cache hit only needs reader ownership. Once bytes are in
     // memory, the guest copy no longer depends on the on-disk cache entry.
@@ -978,11 +1003,12 @@ async fn process_one(
 
 async fn process_one_hit_or_passthrough(
     target: &CacheTarget,
-    lock_path: PathBuf,
-    cache_dir: PathBuf,
-    archive_path: PathBuf,
+    home: &HomePaths,
     metrics: &mut CacheProcessMetrics,
 ) -> RunnerResult<ProcessedTarget> {
+    let lock_path = home.storage_lock(&target.name, &target.version);
+    let cache_dir = home.storage_cache_dir(&target.name, &target.version);
+    let archive_path = cache_dir.join("archive.tar.gz");
     let started_at = Instant::now();
     let reader_result = lock::try_acquire_shared_or_busy(lock_path).await;
     let success = reader_result.is_ok();
