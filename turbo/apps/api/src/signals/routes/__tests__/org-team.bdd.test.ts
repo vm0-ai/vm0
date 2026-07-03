@@ -36,6 +36,7 @@ zero-team, zero-default-agent, and zero-onboarding-setup route tests:
 
 const context = testContext();
 const api = createAuthOrgAgentsBddApi(context);
+const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
 
 function shortId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 10);
@@ -981,7 +982,7 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
       displayName: "BDD Team Default",
       description: null,
       sound: "calm",
-      avatarUrl: null,
+      avatarUrl: DEFAULT_AGENT_AVATAR_URL,
       visibility: "public",
     });
     expect(defaultEntry?.headVersionId).toMatch(/^[a-f0-9]{64}$/);

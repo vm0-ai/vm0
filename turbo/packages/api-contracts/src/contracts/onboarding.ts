@@ -19,6 +19,7 @@ export const onboardingStatusResponseSchema = z.object({
       displayName: z.string().optional(),
       description: z.string().optional(),
       sound: z.string().optional(),
+      avatarUrl: z.string().optional(),
     })
     .nullable(),
 });

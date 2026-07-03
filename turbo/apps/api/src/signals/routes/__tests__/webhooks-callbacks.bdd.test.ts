@@ -35,6 +35,7 @@ import {
 
 const context = testContext();
 const api = createWebhookCallbackApi(context);
+const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
 
 function orgOf(actor: ApiTestUser): string {
   if (!actor.orgId) {
@@ -483,6 +484,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       defaultAgentMetadata: {
         displayName: "Zero",
         sound: "professional",
+        avatarUrl: DEFAULT_AGENT_AVATAR_URL,
       },
     });
     expect(status.defaultAgentId).toBeTruthy();
