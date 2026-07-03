@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.215.0](https://github.com/vm0-ai/vm0/compare/api-v1.214.0...api-v1.215.0) (2026-07-03)
+
+
+### Features
+
+* **workflows:** gate webhook trigger creation with a separate switch ([#20041](https://github.com/vm0-ai/vm0/issues/20041)) ([9c0f0c2](https://github.com/vm0-ai/vm0/commit/9c0f0c21a0cf62d97d682d6f4de2831c17e1a832))
+
+
+### Refactoring
+
+* **platform:** remove pinned agent sorting ([#20051](https://github.com/vm0-ai/vm0/issues/20051)) ([e3e7436](https://github.com/vm0-ai/vm0/commit/e3e7436aeee8170a54e846a86bf7dd4a36449f0a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.148.0
+    * @vm0/connectors bumped to 1.132.0
+    * @vm0/core bumped to 8.393.0
+    * @vm0/db bumped to 1.87.1
+
 ## [1.214.0](https://github.com/vm0-ai/vm0/compare/api-v1.213.0...api-v1.214.0) (2026-07-03)
 
 
