@@ -7,10 +7,36 @@
  * common PWA case where `session.getToken()` returned a cached token that
  * expired between fetch and server-side validation (see issue #8883).
  */
+import { command, computed, state } from "ccstate";
 import type { Clerk } from "@clerk/clerk-js";
+import { now } from "../lib/time.ts";
 import { detach, Reason } from "./utils";
 
 export type ClerkLike = Pick<Clerk, "session" | "redirectToSignIn">;
+
+const AUTH_TRANSITION_REDIRECT_SUPPRESSION_MS = 30_000;
+
+const unauthorizedRedirectSuppressionUntilState$ = state(0);
+
+export const unauthorizedRedirectSuppressionUntil$ = computed((get) => {
+  return get(unauthorizedRedirectSuppressionUntilState$);
+});
+
+export const suppressUnauthorizedRedirectForAuthTransition$ = command(
+  ({ get, set }) => {
+    set(
+      unauthorizedRedirectSuppressionUntilState$,
+      Math.max(
+        get(unauthorizedRedirectSuppressionUntilState$),
+        now() + AUTH_TRANSITION_REDIRECT_SUPPRESSION_MS,
+      ),
+    );
+  },
+);
+
+function isUnauthorizedRedirectSuppressed(suppressionUntil: number): boolean {
+  return now() < suppressionUntil;
+}
 
 /**
  * Force-refresh the Clerk session token. Returns the new token only if it
@@ -35,7 +61,13 @@ export async function fetchFreshToken(
   return freshToken;
 }
 
-export function handleUnauthorizedRedirect(clerk: ClerkLike) {
+export function handleUnauthorizedRedirect(
+  clerk: ClerkLike,
+  suppressionUntil: number,
+) {
+  if (isUnauthorizedRedirectSuppressed(suppressionUntil)) {
+    return;
+  }
   // confirmed by ethan@vm0.ai
   // eslint-disable-next-line ccstate/no-detach-in-signals
   detach(clerk.redirectToSignIn(), Reason.Entrance);

@@ -6,6 +6,7 @@ import { clerk$ } from "../auth";
 import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForTarget } from "../api-base.ts";
 import { createAuthedContractClient } from "../api-client-base.ts";
+import { unauthorizedRedirectSuppressionUntil$ } from "../auth-retry.ts";
 import { localStorageSignals } from "./local-storage.ts";
 
 export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v1";
@@ -20,6 +21,9 @@ const apiFeatureSwitchClient$ = computed((get) => {
     baseUrl: resolveApiBaseForTarget("api"),
     getClerk: () => {
       return get(clerk$);
+    },
+    getUnauthorizedRedirectSuppressionUntil: () => {
+      return get(unauthorizedRedirectSuppressionUntil$);
     },
   });
 });

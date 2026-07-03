@@ -18,6 +18,7 @@ import {
 interface AuthedClientOptions {
   readonly baseUrl: string;
   readonly getClerk: () => Promise<ClerkLike>;
+  readonly getUnauthorizedRedirectSuppressionUntil?: () => number;
   readonly resolvePath?: (
     path: string,
     ctx: { method: string },
@@ -56,7 +57,10 @@ export function createAuthedContractClient<T extends AppRouter>(
           response = await requestWithToken(freshToken);
         }
         if (response.status === 401) {
-          handleUnauthorizedRedirect(clerk);
+          handleUnauthorizedRedirect(
+            clerk,
+            options.getUnauthorizedRedirectSuppressionUntil?.() ?? 0,
+          );
         }
       }
 

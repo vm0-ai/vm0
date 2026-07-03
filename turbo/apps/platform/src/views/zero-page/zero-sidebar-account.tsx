@@ -34,6 +34,7 @@ import {
   currentUserInfo$,
   resolveAppAuthUrl,
 } from "../../signals/auth.ts";
+import { suppressUnauthorizedRedirectForAuthTransition$ } from "../../signals/auth-retry.ts";
 import {
   reloadAccountMenuSubscriptionUsageRows$,
   type AccountMenuSubscriptionUsageRowsCacheKey,
@@ -562,6 +563,9 @@ export function AccountDropdown({
   const openSettings = useSet(openSettingsDialogAt$);
   const reloadSubscriptions = useSet(reloadAccountMenuSubscriptionUsageRows$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
+  const suppressUnauthorizedRedirectForAuthTransition = useSet(
+    suppressUnauthorizedRedirectForAuthTransition$,
+  );
   const pageSignal = useGet(pageSignal$);
 
   const current = accounts.find((a) => {
@@ -592,6 +596,7 @@ export function AccountDropdown({
   };
 
   const handleSwitchSession = (sessionId: string) => {
+    suppressUnauthorizedRedirectForAuthTransition();
     detach(
       clerk?.setActive({
         session: sessionId,
@@ -607,7 +612,14 @@ export function AccountDropdown({
   };
 
   const handleAddAccount = () => {
-    detach(clerk?.openSignIn(), Reason.DomCallback);
+    suppressUnauthorizedRedirectForAuthTransition();
+    detach(
+      clerk?.openSignIn({
+        fallbackRedirectUrl: "/",
+        forceRedirectUrl: "/",
+      }),
+      Reason.DomCallback,
+    );
   };
 
   const handleOpenMemory = () => {
