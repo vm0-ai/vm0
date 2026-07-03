@@ -33,6 +33,10 @@ pub(crate) fn path(base_dir: &Path) -> PathBuf {
     base_dir.join(STATUS_FILE_NAME)
 }
 
+/// Read and deserialize `status.json` into the caller-selected wire shape.
+///
+/// Callers intentionally use different shapes below so fields irrelevant to one
+/// command cannot make that command reject an otherwise usable status file.
 pub(crate) async fn read_as<T>(base_dir: &Path) -> Result<Option<T>, StatusFileReadError>
 where
     T: DeserializeOwned,
@@ -58,6 +62,8 @@ where
 #[derive(Debug, Deserialize)]
 pub(crate) struct StatusForGate {
     pub(crate) mode: String,
+    // Gate intentionally requires this field so malformed active-job status
+    // never looks like an empty runner.
     pub(crate) active_runs: Vec<StatusGateActiveRun>,
     pub(crate) started_at: String,
 }
@@ -70,6 +76,8 @@ pub(crate) struct StatusGateActiveRun {
 #[derive(Debug, Deserialize)]
 pub(crate) struct StatusForDoctor {
     pub(crate) mode: String,
+    // Defaulting collections preserves doctor reports across rolling schema
+    // skew while keeping required per-entry identifiers strict.
     #[serde(default)]
     pub(crate) active_runs: Vec<StatusActiveRun>,
     pub(crate) started_at: String,
@@ -83,6 +91,8 @@ pub(crate) struct StatusForDoctor {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct StatusActiveRunsOnly {
+    // Run resolution only needs mappings. Missing active_runs has historically
+    // meant "no active runs", but malformed entries still invalidate the file.
     #[serde(default)]
     pub(crate) active_runs: Vec<StatusActiveRunMapping>,
 }
