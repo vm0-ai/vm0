@@ -118,10 +118,10 @@ function connectorPillClassName({
   readonly muted?: boolean;
 }) {
   return cn(
-    "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-background px-2 text-[11px] font-normal leading-none",
+    "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-white px-2 text-[11px] font-normal leading-none",
     muted ? "text-muted-foreground" : "text-foreground/70",
     interactive &&
-      "transition-colors hover:border-border hover:bg-gray-50 hover:text-foreground",
+      "transition-colors hover:border-border hover:text-foreground",
   );
 }
 
