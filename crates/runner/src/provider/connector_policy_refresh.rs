@@ -59,6 +59,7 @@ pub(crate) struct ConnectorPolicyRefreshRegistration<'a> {
 
 #[derive(Clone, Copy)]
 enum RefreshTrigger {
+    Initial,
     Notification,
     Scheduled,
 }
@@ -71,7 +72,7 @@ struct RefreshRequest {
 
 impl RefreshTrigger {
     fn fail_closed_on_error(self) -> bool {
-        matches!(self, Self::Scheduled)
+        matches!(self, Self::Notification | Self::Scheduled)
     }
 }
 
@@ -176,10 +177,10 @@ impl ConnectorPolicyRefreshCore {
         }
 
         for connector_ref in initial_refresh_connector_refs {
-            self.try_enqueue_refresh(RefreshRequest {
+            self.try_enqueue_initial_refresh(RefreshRequest {
                 run_id: registration.run_id,
                 connector_ref,
-                trigger: RefreshTrigger::Notification,
+                trigger: RefreshTrigger::Initial,
             });
         }
     }
@@ -212,9 +213,9 @@ impl ConnectorPolicyRefreshCore {
         }
     }
 
-    fn try_enqueue_refresh(&self, request: RefreshRequest) {
+    fn try_enqueue_initial_refresh(&self, request: RefreshRequest) {
         if let Err(error) = self.request_tx.try_send(request) {
-            warn!(error = %error, "connector policy refresh queue unavailable");
+            warn!(error = %error, "initial connector policy refresh queue unavailable");
         }
     }
 
@@ -421,7 +422,7 @@ async fn fail_closed_connector_policy(
             warn!(
                 run_id = %run_id,
                 connector_ref,
-                "failed closed connector policy after scheduled refresh failure"
+                "failed closed connector policy after connector policy refresh failure"
             );
         }
         Ok(false) => {}
@@ -497,6 +498,23 @@ mod tests {
 
     #[tokio::test]
     async fn scheduled_mismatched_connector_refresh_fails_closed() {
+        assert_mismatched_connector_refresh_fail_closed(RefreshTrigger::Scheduled, true).await;
+    }
+
+    #[tokio::test]
+    async fn notification_mismatched_connector_refresh_fails_closed() {
+        assert_mismatched_connector_refresh_fail_closed(RefreshTrigger::Notification, true).await;
+    }
+
+    #[tokio::test]
+    async fn initial_mismatched_connector_refresh_keeps_claim_policy() {
+        assert_mismatched_connector_refresh_fail_closed(RefreshTrigger::Initial, false).await;
+    }
+
+    async fn assert_mismatched_connector_refresh_fail_closed(
+        trigger: RefreshTrigger,
+        expect_fail_closed: bool,
+    ) {
         let server = MockServer::start();
         let run_id = RunId::nil();
         server.mock(|when, then| {
@@ -581,7 +599,7 @@ mod tests {
 
         handle
             .core
-            .refresh_connector_now(run_id, "slack".to_string(), RefreshTrigger::Scheduled)
+            .refresh_connector_now(run_id, "slack".to_string(), trigger)
             .await;
 
         let registry_json: serde_json::Value = serde_json::from_str(
@@ -591,13 +609,20 @@ mod tests {
         )
         .expect("registry should be valid JSON");
         let policy = &registry_json["vms"][source_ip]["networkPolicies"]["slack"];
-        assert_eq!(policy["allow"], json!([]));
-        assert_eq!(
-            policy["deny"],
-            json!(["channels:read", "chat:write", "files:write"])
-        );
-        assert_eq!(policy["ask"], json!([]));
-        assert_eq!(policy["unknownPolicy"], json!("deny"));
+        if expect_fail_closed {
+            assert_eq!(policy["allow"], json!([]));
+            assert_eq!(
+                policy["deny"],
+                json!(["channels:read", "chat:write", "files:write"])
+            );
+            assert_eq!(policy["ask"], json!([]));
+            assert_eq!(policy["unknownPolicy"], json!("deny"));
+        } else {
+            assert_eq!(policy["allow"], json!(["chat:write"]));
+            assert_eq!(policy["deny"], json!(["files:write"]));
+            assert_eq!(policy["ask"], json!(["channels:read"]));
+            assert_eq!(policy["unknownPolicy"], json!("allow"));
+        }
 
         handle.shutdown().await;
     }
