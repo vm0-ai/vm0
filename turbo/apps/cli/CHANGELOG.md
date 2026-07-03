@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.222.9](https://github.com/vm0-ai/vm0/compare/cli-v9.222.8...cli-v9.222.9) (2026-07-03)
+
+
+### Refactoring
+
+* retire presentation-deck-tools server-side (phase 2) ([#20012](https://github.com/vm0-ai/vm0/issues/20012)) ([9626a84](https://github.com/vm0-ai/vm0/commit/9626a842ba1ad35502dc97d507acbd58f969e7aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.150.1
+    * @vm0/connectors bumped to 1.132.1
+    * @vm0/core bumped to 8.394.4
+
 ## [9.222.8](https://github.com/vm0-ai/vm0/compare/cli-v9.222.7...cli-v9.222.8) (2026-07-03)
 
 
