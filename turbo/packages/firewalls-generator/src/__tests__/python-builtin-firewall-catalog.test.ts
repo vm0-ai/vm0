@@ -245,6 +245,12 @@ describe("Python builtin firewall catalog renderer", () => {
                 Authorization: "Bearer ${{ secrets.CONNECTOR_TOKEN }}",
               },
             },
+            permissions: [
+              {
+                name: "connector-read",
+                rules: ["GET /items/{id}"],
+              },
+            ],
           },
         ],
       }),
@@ -345,6 +351,119 @@ describe("Python builtin firewall catalog renderer", () => {
     ]);
     expect(diagnostics.content).not.toContain("DYNAMIC_TOKEN");
     expect(diagnostics.content).not.toContain("JSON_PART");
+  });
+
+  it("keeps connector diagnostic permissions only for shared static bases", () => {
+    const files = renderEntries([
+      connectorEntry({
+        name: "shared-one",
+        apis: [
+          {
+            base: "https://shared.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.SHARED_ONE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "items:read",
+                rules: ["GET /items/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "shared-two",
+        apis: [
+          {
+            base: "https://shared.example.com/api/",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.SHARED_TWO_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "messages:read",
+                rules: ["GET /messages/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "unique",
+        apis: [
+          {
+            base: "https://unique.example.com",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.UNIQUE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "unique:read",
+                rules: ["GET /unique/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+    const diagnostics = findGeneratedFile(files, "diagnostics.py");
+
+    expect(
+      jsonAssignmentFromModule(diagnostics, "CONNECTOR_DIAGNOSTIC_FIREWALLS"),
+    ).toStrictEqual([
+      {
+        name: "shared-one",
+        apis: [
+          {
+            base: "https://shared.example.com/api",
+            envNames: ["SHARED_ONE_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "items:read",
+                rules: ["GET /items/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "shared-two",
+        apis: [
+          {
+            base: "https://shared.example.com/api/",
+            envNames: ["SHARED_TWO_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "messages:read",
+                rules: ["GET /messages/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "unique",
+        apis: [
+          {
+            base: "https://unique.example.com",
+            envNames: ["UNIQUE_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+    ]);
   });
 
   it("preserves runtime API host policies in catalog JSON", () => {

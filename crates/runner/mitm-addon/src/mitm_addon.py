@@ -127,6 +127,9 @@ _CONNECTOR_DIAGNOSTIC_RESPONSE_BODY = "_connector_diagnostic_response_body"
 _CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT = "_connector_diagnostic_response_stream_body_sent"
 _CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_CALLBACK = "_connector_diagnostic_response_stream_callback"
 _CONNECTOR_DIAGNOSTIC_PROXY_ENTRY_LOGGED = "_connector_diagnostic_proxy_entry_logged"
+_CONNECTOR_INTENT_HEADER: Final = "X-VM0-Connector-Intent"
+_CONNECTOR_INTENT_VALUE = "_connector_intent_value"
+_CONNECTOR_INTENT_STATUS = "_connector_intent_status"
 _EMPTY_RESPONSE_STREAM_CHUNKS: tuple[bytes, ...] = ()
 _GENERIC_AUTH_HEADER_NAMES = frozenset(
     (
@@ -212,6 +215,8 @@ _REQUEST_HEADERS_PROBE_METADATA_KEYS = (
     metadata_keys.TRUSTED_AUTHORITY_HOST,
     metadata_keys.NETWORK_LOG_TARGET,
     metadata_keys.HTTP_REQUEST_START_MONOTONIC,
+    _CONNECTOR_INTENT_VALUE,
+    _CONNECTOR_INTENT_STATUS,
 )
 
 
@@ -564,6 +569,30 @@ def _is_browser_passthrough_heuristic(flow: http.HTTPFlow) -> bool:
     # header. The spoofable User-Agent heuristic is currently accepted as a
     # known tradeoff until runner-owned browser provenance is prioritized again.
     return _is_browser_user_agent(flow.request.headers.get("User-Agent"))
+
+
+def _capture_and_strip_connector_intent_header(flow: http.HTTPFlow) -> None:
+    if _CONNECTOR_INTENT_STATUS not in flow.metadata:
+        values = flow.request.headers.get_all(_CONNECTOR_INTENT_HEADER)
+        if not values:
+            flow.metadata[_CONNECTOR_INTENT_STATUS] = "absent"
+        elif len(values) != 1:
+            flow.metadata[_CONNECTOR_INTENT_STATUS] = "malformed"
+        else:
+            value = values[0].strip()
+            if value == "" or "," in value:
+                flow.metadata[_CONNECTOR_INTENT_STATUS] = "malformed"
+            else:
+                flow.metadata[_CONNECTOR_INTENT_STATUS] = "present"
+                flow.metadata[_CONNECTOR_INTENT_VALUE] = value
+
+    if _CONNECTOR_INTENT_HEADER in flow.request.headers:
+        del flow.request.headers[_CONNECTOR_INTENT_HEADER]
+
+
+def _connector_intent_from_flow(flow: http.HTTPFlow) -> str | None:
+    value = flow.metadata.get(_CONNECTOR_INTENT_VALUE)
+    return value if isinstance(value, str) else None
 
 
 def _active_firewall_names(vm_info: dict) -> set[str]:
@@ -1509,6 +1538,60 @@ def _maybe_make_connector_diagnostic_local_response(
     candidate = _resolve_connector_diagnostic_candidate(flow, original_url=original_url)
     if candidate is None:
         return False
+    if _request_has_connector_auth_material(flow, candidate, original_url):
+        return False
+
+    _start_request_timing(flow)
+    _set_connector_diagnostic_failure_metadata(flow, candidate)
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow.response = http.Response.make(
+        _HTTP_STATUS_FAILED_DEPENDENCY,
+        _connector_diagnostic_response_body(candidate, upstream_status=0),
+        {"Content-Type": "application/json"},
+    )
+    _log_connector_diagnostic_proxy_entry(
+        flow,
+        original_url=original_url,
+        upstream_status=0,
+    )
+    return True
+
+
+def _firewall_allow_is_unknown_endpoint(allow: matching.FirewallAllow) -> bool:
+    return allow.permission is None and allow.rule is None
+
+
+def _maybe_make_firewall_allow_connector_diagnostic_local_response(
+    flow: http.HTTPFlow,
+    classification: _RequestClassification,
+) -> bool:
+    if classification.kind != "firewall_allow":
+        return False
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_passthrough_heuristic(
+        flow
+    ):
+        return False
+
+    allow = classification.firewall_allow
+    vm_info = classification.vm_info
+    if allow is None or vm_info is None or not _firewall_allow_is_unknown_endpoint(allow):
+        return False
+
+    original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+    if not isinstance(original_url, str) or not original_url:
+        return False
+
+    resolution = builtin_connector_diagnostics.resolve_shared_base_ownership(
+        original_url,
+        flow.request.method,
+        active_firewall_names=_active_firewall_names(vm_info),
+        matched_firewall_name=allow.name,
+        connector_intent=_connector_intent_from_flow(flow),
+    )
+    if resolution is None or resolution.candidate is None:
+        return False
+
+    candidate = resolution.candidate
     if _request_has_connector_auth_material(flow, candidate, original_url):
         return False
 
@@ -2511,6 +2594,8 @@ def client_disconnected(client: connection.Client) -> None:
 
 def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     """Handle request-header-only decisions before mitmproxy buffers bodies."""
+    _capture_and_strip_connector_intent_header(flow)
+
     body_check = _auth_base_body_header_check(flow)
     body_fits_stream_buffer = body_check.kind == "ok" and _request_body_fits_stream_buffer(flow)
     if body_fits_stream_buffer:
@@ -2541,6 +2626,11 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
             flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
             upstream_destination_binding.forget_server_binding(flow.server_conn)
             flow.kill()
+        return None
+
+    if _maybe_make_firewall_allow_connector_diagnostic_local_response(flow, classification):
+        flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+        upstream_destination_binding.forget_server_binding(flow.server_conn)
         return None
 
     _prebind_requestheaders_upstream_destination(flow, classification)
@@ -2778,6 +2868,8 @@ async def request(flow: http.HTTPFlow) -> None:
     2. VM0 API auto-allow (agent must always reach the platform)
     3. Firewall match (inject auth headers for allowed requests)
     """
+    _capture_and_strip_connector_intent_header(flow)
+
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         upstream_destination_binding.forget_server_binding(flow.server_conn)
@@ -2857,6 +2949,13 @@ async def request(flow: http.HTTPFlow) -> None:
                 _block_public_destination_denied(flow, public_destination_denial)
                 return
             if flow.metadata.get(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS):
+                return
+            if _maybe_make_firewall_allow_connector_diagnostic_local_response(
+                flow,
+                classification,
+            ):
+                auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+                _release_tracked_usage_flow(flow)
                 return
             if _firewall_allow_injects_ordinary_upstream_credentials(
                 allow

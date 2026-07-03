@@ -53,6 +53,7 @@ interface DiagnosticConnectorApi {
   readonly envNames: readonly string[];
   readonly authHeaderNames: readonly string[];
   readonly authQueryParamNames: readonly string[];
+  readonly permissions?: readonly DiagnosticPermission[];
 }
 
 interface DiagnosticConnectorFirewall {
@@ -245,10 +246,57 @@ function diagnosticAuthQueryParamNames(auth: unknown): readonly string[] {
     .sort();
 }
 
+function diagnosticStaticBaseKey(base: string): string | null {
+  if (hasDynamicBaseMarker(base)) {
+    return null;
+  }
+
+  try {
+    const url = new URL(base);
+    const pathname = url.pathname.replace(/\/+$/, "");
+    return `${url.protocol}//${url.host}${pathname}`;
+  } catch {
+    return base;
+  }
+}
+
+function connectorDiagnosticSharedBaseKeys(
+  entries: readonly PythonBuiltinFirewallCatalogEntry[],
+): ReadonlySet<string> {
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    if (entry.diagnosticKind !== "connector") {
+      continue;
+    }
+    for (const api of entry.firewall.apis) {
+      const baseKey = diagnosticStaticBaseKey(api.base);
+      if (
+        baseKey === null ||
+        extractDiagnosticReferenceNames(api.auth).length === 0
+      ) {
+        continue;
+      }
+      counts.set(baseKey, (counts.get(baseKey) ?? 0) + 1);
+    }
+  }
+
+  return new Set(
+    [...counts.entries()]
+      .filter(([, count]) => {
+        return count > 1;
+      })
+      .map(([base]) => {
+        return base;
+      }),
+  );
+}
+
 function diagnosticConnectorApi(
   api: BuiltinFirewallRuntimeApi,
+  sharedBaseKeys: ReadonlySet<string>,
 ): DiagnosticConnectorApi | null {
-  if (hasDynamicBaseMarker(api.base)) {
+  const baseKey = diagnosticStaticBaseKey(api.base);
+  if (baseKey === null) {
     return null;
   }
 
@@ -257,11 +305,16 @@ function diagnosticConnectorApi(
     return null;
   }
 
+  const permissions = sharedBaseKeys.has(baseKey)
+    ? diagnosticPermissions(api.permissions)
+    : [];
+
   return {
     base: api.base,
     envNames,
     authHeaderNames: diagnosticAuthHeaderNames(api.auth),
     authQueryParamNames: diagnosticAuthQueryParamNames(api.auth),
+    ...(permissions.length > 0 ? { permissions } : {}),
   };
 }
 
@@ -297,6 +350,7 @@ function buildBuiltinFirewallDiagnosticManifest(
 ): BuiltinFirewallDiagnosticManifest {
   const connectorFirewalls: DiagnosticConnectorFirewall[] = [];
   const modelProviderExclusions: DiagnosticModelProviderFirewall[] = [];
+  const sharedConnectorBaseKeys = connectorDiagnosticSharedBaseKeys(entries);
 
   for (const entry of entries) {
     const { firewall } = entry;
@@ -316,7 +370,9 @@ function buildBuiltinFirewallDiagnosticManifest(
     }
 
     const apis = firewall.apis
-      .map(diagnosticConnectorApi)
+      .map((api) => {
+        return diagnosticConnectorApi(api, sharedConnectorBaseKeys);
+      })
       .filter((api): api is DiagnosticConnectorApi => {
         return api !== null;
       });

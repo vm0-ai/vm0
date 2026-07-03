@@ -10,6 +10,7 @@ from mitmproxy.flow import Error
 
 import auth
 import auth_base_forwarder
+import builtin_connector_diagnostics
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_streaming
@@ -118,6 +119,78 @@ def _write_public_destination_firewall_registry(
             vm_fields=vm_fields,
         ),
     )
+
+
+def _write_shared_base_active_firewall_registry(
+    tmp_path,
+    *,
+    vm_fields: dict[str, object] | None = None,
+):
+    return _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="active-shared",
+            api_entry={
+                "base": "https://shared.example.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.ACTIVE_TOKEN }}"}},
+                "permissions": [{"name": "active-read", "rules": ["GET /active"]}],
+            },
+            network_policy={
+                "allow": ["active-read"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+            vm_fields=vm_fields,
+        ),
+    )
+
+
+def _shared_base_inactive_candidate():
+    return builtin_connector_diagnostics.ConnectorDiagnosticCandidate(
+        connector_type="inactive-shared",
+        reason="not_configured_for_run",
+        env_names=("INACTIVE_TOKEN",),
+        base="https://shared.example.com",
+        auth_header_names=("Authorization",),
+        auth_query_param_names=("api_key",),
+    )
+
+
+def _shared_base_resolution(
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate | None = None,
+):
+    return builtin_connector_diagnostics.SharedBaseOwnershipResolution(
+        candidate=_shared_base_inactive_candidate() if candidate is None else candidate,
+        reason="route_owner",
+        candidate_connector_types=("active-shared", "inactive-shared"),
+        hint_status="absent",
+    )
+
+
+def _assert_shared_base_inactive_diagnostic(flow):
+    assert flow.response is not None
+    assert flow.response.status_code == 424
+    body = json.loads(flow.response.content)
+    assert body == {
+        "error": "connector_not_configured_for_run",
+        "connector": "inactive-shared",
+        "reason": "not_configured_for_run",
+        "message": (
+            "inactive-shared is not configured for this run. INACTIVE_TOKEN is "
+            "unavailable, so credentials cannot be injected."
+        ),
+        "envNames": ["INACTIVE_TOKEN"],
+        "base": "https://shared.example.com",
+        "upstreamStatus": 0,
+    }
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://shared.example.com"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "inactive-shared"
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == ""
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "connector_not_configured_for_run"
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] == "inactive-shared"
 
 
 def _public_destination_flow(
@@ -1282,6 +1355,201 @@ async def test_public_destination_requestheaders_kills_unknown_length_before_ear
     assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
     [proxy_log_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
     assert proxy_log_entry["type"] == "public_destination"
+
+
+async def test_shared_base_unknown_endpoint_diagnoses_inactive_sibling_before_auth(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_shared_base_active_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        path="/inactive",
+        request_headers=headers(
+            ("Host", "shared.example.com"),
+            ("X-VM0-Connector-Intent", "inactive-shared"),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
+        patch.object(
+            builtin_connector_diagnostics,
+            "resolve_shared_base_ownership",
+            return_value=_shared_base_resolution(),
+        ) as resolve_ownership,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    resolve_ownership.assert_called_once_with(
+        "https://shared.example.com/inactive",
+        "GET",
+        active_firewall_names={"active-shared"},
+        matched_firewall_name="active-shared",
+        connector_intent="inactive-shared",
+    )
+    _assert_shared_base_inactive_diagnostic(flow)
+    assert "Authorization" not in flow.request.headers
+    assert "X-VM0-Connector-Intent" not in flow.request.headers
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
+async def test_shared_base_unknown_endpoint_with_user_auth_keeps_active_auth_path(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_shared_base_active_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        path="/inactive",
+        request_headers=headers(
+            ("Host", "shared.example.com"),
+            ("X-VM0-Connector-Intent", "inactive-shared"),
+            ("Authorization", "Bearer user-provided"),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
+        patch.object(
+            builtin_connector_diagnostics,
+            "resolve_shared_base_ownership",
+            return_value=_shared_base_resolution(),
+        ) as resolve_ownership,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    resolve_ownership.assert_called_once()
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer active"
+    assert "X-VM0-Connector-Intent" not in flow.request.headers
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+
+
+async def test_shared_base_malformed_connector_intent_is_ignored_and_stripped(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_shared_base_active_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        path="/inactive",
+        request_headers=headers(
+            ("Host", "shared.example.com"),
+            ("X-VM0-Connector-Intent", "inactive-shared"),
+            ("X-VM0-Connector-Intent", "other"),
+        ),
+    )
+    resolution = builtin_connector_diagnostics.SharedBaseOwnershipResolution(
+        candidate=None,
+        reason="base_only",
+        candidate_connector_types=("active-shared", "inactive-shared"),
+        hint_status="absent",
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
+        patch.object(
+            builtin_connector_diagnostics,
+            "resolve_shared_base_ownership",
+            return_value=resolution,
+        ) as resolve_ownership,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    resolve_ownership.assert_called_once_with(
+        "https://shared.example.com/inactive",
+        "GET",
+        active_firewall_names={"active-shared"},
+        matched_firewall_name="active-shared",
+        connector_intent=None,
+    )
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer active"
+    assert "X-VM0-Connector-Intent" not in flow.request.headers
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+
+
+async def test_shared_base_known_permission_skips_pre_auth_diagnostic(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers
+):
+    reg_path = _write_shared_base_active_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        path="/active",
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
+        patch.object(
+            builtin_connector_diagnostics,
+            "resolve_shared_base_ownership",
+            side_effect=AssertionError("known permission must not resolve shared-base ownership"),
+        ),
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer active"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "active-shared"
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "active-read"
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+
+
+async def test_shared_base_requestheaders_diagnoses_before_stream_safe_auth(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_shared_base_active_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        method="POST",
+        path="/inactive",
+        request_headers=headers(
+            ("Host", "shared.example.com"),
+            ("X-VM0-Connector-Intent", "inactive-shared"),
+            ("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
+        patch.object(
+            builtin_connector_diagnostics,
+            "resolve_shared_base_ownership",
+            return_value=_shared_base_resolution(),
+        ) as resolve_ownership,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        assert requestheaders_result is None
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    resolve_ownership.assert_called_once()
+    _assert_shared_base_inactive_diagnostic(flow)
+    assert flow.request.stream is False
+    assert "Authorization" not in flow.request.headers
+    assert "X-VM0-Connector-Intent" not in flow.request.headers
+    assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
 
 
 async def test_inactive_builtin_connector_url_without_auth_gets_local_diagnostic(
