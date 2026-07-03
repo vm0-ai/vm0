@@ -48,7 +48,10 @@ import {
 import { ensureGoogleCalendarWatchForUser } from "./google-calendar-workflow-event.service";
 import { ensureGoogleMeetTranscriptGeneratedSubscriptionForUser } from "./google-meet-workflow-event.service";
 import { prepareGithubLabelEventConfigForPersist } from "./github-workflow-event.service";
-import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
+import {
+  workflowAutomationEnabledForOwner,
+  workflowWebhookTriggerCreationEnabledForOwner,
+} from "./workflow-automation-feature-switch.service";
 import {
   buildWorkflowWebhookSummaryFields,
   defaultWebhookReceivedEventConfig,
@@ -1339,7 +1342,10 @@ const createEventTriggerForWorkflow$ = command(
     const { input } = args;
     if (input.eventType === "webhook-received") {
       const featureEnabled = await get(
-        workflowAutomationEnabledForOwner(input.orgId, input.member.userId),
+        workflowWebhookTriggerCreationEnabledForOwner(
+          input.orgId,
+          input.member.userId,
+        ),
       );
       signal.throwIfAborted();
       if (!featureEnabled) {

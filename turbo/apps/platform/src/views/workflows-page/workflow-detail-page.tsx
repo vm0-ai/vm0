@@ -547,6 +547,8 @@ function TriggerCreateAction() {
   const features = useGet(featureSwitch$);
   const workflowAutomationEnabled =
     features[FeatureSwitchKey.WorkflowAutomation] ?? false;
+  const workflowWebhookTriggersEnabled =
+    features[FeatureSwitchKey.WorkflowWebhookTriggers] ?? false;
 
   return (
     <TriggerCreateMenu
@@ -554,7 +556,9 @@ function TriggerCreateAction() {
       githubLabelTriggersEnabled={workflowAutomationEnabled}
       googleCalendarTriggersEnabled={workflowAutomationEnabled}
       googleMeetTriggersEnabled={workflowAutomationEnabled}
-      webhookTriggersEnabled={workflowAutomationEnabled}
+      webhookTriggersEnabled={
+        workflowAutomationEnabled && workflowWebhookTriggersEnabled
+      }
     />
   );
 }

@@ -8,6 +8,7 @@ import {
   type ZeroWorkflowCreateRequest,
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import {
@@ -18,6 +19,7 @@ import {
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -635,6 +637,29 @@ describe("zero workflows", () => {
       }),
       [201],
     );
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.WorkflowAutomation]: true,
+      [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
+    });
+    const webhookTrigger = await accept(
+      triggersClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "event",
+          eventType: "webhook-received",
+        },
+      }),
+      [201],
+    );
+    expect(webhookTrigger.body).toMatchObject({
+      kind: "event",
+      eventType: "webhook-received",
+    });
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.WorkflowAutomation]: true,
+      [FeatureSwitchKey.WorkflowWebhookTriggers]: false,
+    });
 
     const copied = await accept(
       detailClient().copy({
@@ -665,6 +690,14 @@ describe("zero workflows", () => {
         enabled: trigger.body.enabled,
       }),
     );
+    expect(
+      copiedTriggers.body.some((copiedTrigger) => {
+        return (
+          copiedTrigger.kind === "event" &&
+          copiedTrigger.eventType === "webhook-received"
+        );
+      }),
+    ).toBe(false);
   });
 
   it("reads and updates workflow content, audit metadata, and deletion through API responses", async () => {
