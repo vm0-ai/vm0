@@ -1,24 +1,32 @@
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogAuthMethodSummary,
+  PublicConnectorCatalogCategoryMetadata,
   PublicConnectorCatalogConnection,
   PublicConnectorCatalogConnectionStatus,
   PublicConnectorCatalogDetail,
   PublicConnectorCatalogItem,
+  PublicConnectorCatalogListResponse,
   PublicConnectorCatalogManualField,
   PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogPermissionSummary,
   PublicConnectorCatalogStartOption,
   PublicConnectorCatalogStatusItem,
+  PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";
 import { isGoogleOAuthConnector } from "@vm0/connectors/auth-providers/oauth/google-connectors";
 import {
+  CONNECTOR_DISPLAY_CATEGORY_GROUPS,
+  CONNECTOR_DISPLAY_CATEGORY_META,
+  CONNECTOR_DISPLAY_CATEGORY_ORDER,
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
+  type ConnectorDisplayCategory,
+  type ConnectorDisplayCategoryGroup,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -56,8 +64,86 @@ interface ConnectorCatalogConnectorReadArgs extends ConnectorCatalogReadArgs {
   readonly connectorRef: string;
 }
 
+interface ConnectorCatalogCategorizedItem {
+  readonly category: string;
+}
+
 function isConnectorType(connectorRef: string): connectorRef is ConnectorType {
   return Object.prototype.hasOwnProperty.call(CONNECTOR_TYPES, connectorRef);
+}
+
+function isConnectorDisplayCategory(
+  category: string,
+): category is ConnectorDisplayCategory {
+  return Object.prototype.hasOwnProperty.call(
+    CONNECTOR_DISPLAY_CATEGORY_META,
+    category,
+  );
+}
+
+function fallbackCategoryLabel(category: string): string {
+  const label = category
+    .split(/[-_\s]+/)
+    .filter((part) => {
+      return part.length > 0;
+    })
+    .map((part) => {
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join(" ");
+  return label || "Other";
+}
+
+function categoryMetadataForCatalog(
+  items: readonly ConnectorCatalogCategorizedItem[],
+): PublicConnectorCatalogCategoryMetadata {
+  const visibleCategories = new Set(
+    items.flatMap((item) => {
+      return item.category ? [item.category] : [];
+    }),
+  );
+  const orderedCategories = [
+    ...CONNECTOR_DISPLAY_CATEGORY_ORDER.filter((category) => {
+      return visibleCategories.has(category);
+    }),
+    ...[...visibleCategories].filter((category) => {
+      return !isConnectorDisplayCategory(category);
+    }),
+  ];
+  const visibleGroups = new Set<ConnectorDisplayCategoryGroup>();
+  const categories = orderedCategories.map((category) => {
+    if (!isConnectorDisplayCategory(category)) {
+      const label = fallbackCategoryLabel(category);
+      return {
+        id: category,
+        label,
+        menuLabel: label,
+        groupId: null,
+      };
+    }
+    const metadata = CONNECTOR_DISPLAY_CATEGORY_META[category];
+    if (metadata.group) {
+      visibleGroups.add(metadata.group);
+    }
+    return {
+      id: category,
+      label: metadata.label,
+      menuLabel: metadata.menuLabel,
+      groupId: metadata.group ?? null,
+    };
+  });
+
+  return {
+    categories,
+    groups: [...visibleGroups].map((group) => {
+      const metadata = CONNECTOR_DISPLAY_CATEGORY_GROUPS[group];
+      return {
+        id: group,
+        label: metadata.label,
+        menuLabel: metadata.menuLabel,
+      };
+    }),
+  };
 }
 
 function availableAuthMethodsForCatalog(
@@ -356,7 +442,7 @@ export function searchConnectorCatalog(
 
 export function listPublicConnectorCatalog(
   args: ConnectorCatalogReadArgs,
-): Promise<PublicConnectorCatalogItem[]> {
+): Promise<PublicConnectorCatalogListResponse> {
   const connectors = CONNECTOR_TYPE_KEYS.flatMap((type) => {
     const authMethods = availableAuthMethodsForCatalog(type, args);
     if (authMethods.length === 0) {
@@ -365,14 +451,17 @@ export function listPublicConnectorCatalog(
     return [connectorCatalogItem(type, authMethods)];
   });
 
-  return Promise.resolve(connectors);
+  return Promise.resolve({
+    connectors,
+    categoryMetadata: categoryMetadataForCatalog(connectors),
+  });
 }
 
 export function listPublicConnectorCatalogStatus(
   args: ConnectorCatalogReadArgs & {
     readonly connectors: readonly ConnectorResponse[];
   },
-): Promise<PublicConnectorCatalogStatusItem[]> {
+): Promise<PublicConnectorCatalogStatusResponse> {
   const connectorsByType = new Map(
     args.connectors.map((connector) => {
       return [connector.type, connector];
@@ -392,7 +481,10 @@ export function listPublicConnectorCatalogStatus(
     ];
   });
 
-  return Promise.resolve(connectors);
+  return Promise.resolve({
+    connectors,
+    categoryMetadata: categoryMetadataForCatalog(connectors),
+  });
 }
 
 export function getPublicConnectorCatalogDetail(

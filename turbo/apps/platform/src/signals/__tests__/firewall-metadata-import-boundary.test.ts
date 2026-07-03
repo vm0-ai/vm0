@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 const SERVER_FIREWALL_METADATA_SPECIFIER =
   "@vm0/connectors/firewall-metadata/server";
 const ROOT_FIREWALL_METADATA_SPECIFIER = "@vm0/connectors/firewall-metadata";
+const CONNECTORS_SPECIFIER = "@vm0/connectors/connectors";
 const IMPORT_SPECIFIER_PATTERN =
   /\bfrom\s+["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)|\bimport\s+["']([^"']+)["']|\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;
 
@@ -85,6 +86,26 @@ describe("firewall metadata import boundary", () => {
         return (
           isProductionSourcePath(path) &&
           importsExactSpecifier(source, ROOT_FIREWALL_METADATA_SPECIFIER)
+        );
+      });
+
+    expect(
+      offenders.map((offender) => {
+        return offender.path;
+      }),
+    ).toStrictEqual([]);
+  });
+
+  it("keeps static connector category metadata out of platform production source", () => {
+    const offenders = Object.entries(productionSourceModules)
+      .map(([path, source]) => {
+        return { path: sourcePathFromGlobKey(path), source };
+      })
+      .filter(({ path, source }) => {
+        return (
+          isProductionSourcePath(path) &&
+          importsExactSpecifier(source, CONNECTORS_SPECIFIER) &&
+          source.includes("CONNECTOR_DISPLAY_CATEGORY_")
         );
       });
 

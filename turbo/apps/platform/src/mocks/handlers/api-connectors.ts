@@ -1,7 +1,12 @@
 import {
+  CONNECTOR_DISPLAY_CATEGORY_GROUPS,
+  CONNECTOR_DISPLAY_CATEGORY_META,
+  CONNECTOR_DISPLAY_CATEGORY_ORDER,
   CONNECTOR_TYPE_KEYS,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
+  type ConnectorDisplayCategory,
+  type ConnectorDisplayCategoryGroup,
   type ConnectorType,
   CONNECTOR_TYPES,
 } from "@vm0/connectors/connectors";
@@ -14,6 +19,7 @@ import type {
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogAuthMethodDetail,
+  type PublicConnectorCatalogCategoryMetadata,
   type PublicConnectorCatalogConnection,
   type PublicConnectorCatalogConnectionStatus,
   type PublicConnectorCatalogPermissionDetail,
@@ -189,6 +195,79 @@ function mockFeatureStates(): ConnectorFeatureStates {
 
 function isMockConnectorType(type: string): type is ConnectorType {
   return MOCK_CONNECTOR_TYPE_SET.has(type);
+}
+
+function isConnectorDisplayCategory(
+  category: string,
+): category is ConnectorDisplayCategory {
+  return Object.prototype.hasOwnProperty.call(
+    CONNECTOR_DISPLAY_CATEGORY_META,
+    category,
+  );
+}
+
+function fallbackCategoryLabel(category: string): string {
+  const label = category
+    .split(/[-_\s]+/)
+    .filter((part) => {
+      return part.length > 0;
+    })
+    .map((part) => {
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join(" ");
+  return label || "Other";
+}
+
+function mockCategoryMetadata(
+  items: readonly { readonly category: string }[],
+): PublicConnectorCatalogCategoryMetadata {
+  const visibleCategories = new Set(
+    items.flatMap((item) => {
+      return item.category ? [item.category] : [];
+    }),
+  );
+  const orderedCategories = [
+    ...CONNECTOR_DISPLAY_CATEGORY_ORDER.filter((category) => {
+      return visibleCategories.has(category);
+    }),
+    ...[...visibleCategories].filter((category) => {
+      return !isConnectorDisplayCategory(category);
+    }),
+  ];
+  const visibleGroups = new Set<ConnectorDisplayCategoryGroup>();
+  const categories = orderedCategories.map((category) => {
+    if (!isConnectorDisplayCategory(category)) {
+      const label = fallbackCategoryLabel(category);
+      return {
+        id: category,
+        label,
+        menuLabel: label,
+        groupId: null,
+      };
+    }
+    const metadata = CONNECTOR_DISPLAY_CATEGORY_META[category];
+    if (metadata.group) {
+      visibleGroups.add(metadata.group);
+    }
+    return {
+      id: category,
+      label: metadata.label,
+      menuLabel: metadata.menuLabel,
+      groupId: metadata.group ?? null,
+    };
+  });
+  return {
+    categories,
+    groups: [...visibleGroups].map((group) => {
+      const metadata = CONNECTOR_DISPLAY_CATEGORY_GROUPS[group];
+      return {
+        id: group,
+        label: metadata.label,
+        menuLabel: metadata.menuLabel,
+      };
+    }),
+  };
 }
 
 function mockPermissionSummary(
@@ -435,7 +514,11 @@ export const apiConnectorsHandlers = [
   }),
 
   mockApi(zeroConnectorCatalogContract.status, ({ respond }) => {
-    return respond(200, { connectors: mockConnectorCatalogStatus() });
+    const connectors = mockConnectorCatalogStatus();
+    return respond(200, {
+      connectors,
+      categoryMetadata: mockCategoryMetadata(connectors),
+    });
   }),
 
   mockApi(

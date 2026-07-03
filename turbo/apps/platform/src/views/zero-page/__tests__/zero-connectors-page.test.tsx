@@ -12,6 +12,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroConnectorCatalogContract,
+  type PublicConnectorCatalogCategoryMetadata,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
@@ -270,9 +271,13 @@ function publicStatusItem(args: {
 
 function mockPublicConnectorStatus(
   connectors: readonly PublicConnectorCatalogStatusItem[],
+  categoryMetadata?: PublicConnectorCatalogCategoryMetadata,
 ): void {
   context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
-    return respond(200, { connectors: [...connectors] });
+    return respond(200, {
+      connectors: [...connectors],
+      ...(categoryMetadata ? { categoryMetadata } : {}),
+    });
   });
 }
 
@@ -416,6 +421,105 @@ describe("connectors page", () => {
       aiGroup.compareDocumentPosition(engineeringGroup) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("renders server-authored connector categories unknown to the browser", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus(
+      [
+        publicStatusItem({
+          connectorRef: "github",
+          label: "Public GitHub",
+          category: "partner-apps",
+          authMethods: [
+            {
+              id: "oauth",
+              label: "OAuth",
+              description: null,
+              grantKind: "auth-code",
+              manualFields: [],
+              startOptions: [],
+            },
+          ],
+        }),
+        publicStatusItem({
+          connectorRef: "stripe",
+          label: "Public Stripe",
+          category: "billing-apps",
+          authMethods: [
+            {
+              id: "api-token",
+              label: "API token",
+              description: null,
+              grantKind: "manual",
+              manualFields: [],
+              startOptions: [],
+            },
+          ],
+        }),
+      ],
+      {
+        categories: [
+          {
+            id: "partner-apps",
+            label: "Partner Apps",
+            menuLabel: "Partners",
+            groupId: null,
+          },
+          {
+            id: "billing-apps",
+            label: "Billing Apps",
+            menuLabel: "Billing",
+            groupId: null,
+          },
+        ],
+        groups: [],
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    const partnerSection = await screen.findByTestId(
+      "connector-category-partner-apps",
+    );
+    expect(
+      within(partnerSection).getByText("Partner Apps"),
+    ).toBeInTheDocument();
+    expect(queryConnectorCardByLabel("Public GitHub")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("connector-category-menu-partner-apps"),
+    ).toHaveTextContent("Partners");
+  });
+
+  it("keeps connectors visible when category metadata is missing during rollout", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "github",
+        label: "Fallback GitHub",
+        category: "legacy-category",
+        authMethods: [
+          {
+            id: "oauth",
+            label: "OAuth",
+            description: null,
+            grantKind: "auth-code",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    const fallbackSection = await screen.findByTestId(
+      "connector-category-legacy-category",
+    );
+    expect(
+      within(fallbackSection).getByText("Legacy Category"),
+    ).toBeInTheDocument();
+    expect(queryConnectorCardByLabel("Fallback GitHub")).toBeInTheDocument();
   });
 
   it("does not show reconnect reason help on the connection expired badge", async () => {

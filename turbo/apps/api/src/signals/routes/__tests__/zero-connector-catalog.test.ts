@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogListResponse,
+  type PublicConnectorCatalogStatusResponse,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createStore } from "ccstate";
 import { afterEach } from "vitest";
@@ -60,6 +64,51 @@ async function deleteFeatureSwitches(
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
+}
+
+function assertCategoryMetadataMatchesVisibleConnectors(
+  body:
+    | PublicConnectorCatalogListResponse
+    | PublicConnectorCatalogStatusResponse,
+): void {
+  const metadata = body.categoryMetadata;
+  expect(metadata).toBeDefined();
+  if (!metadata) {
+    return;
+  }
+  const connectorCategories = new Set(
+    body.connectors.map((connector) => {
+      return connector.category;
+    }),
+  );
+  expect(
+    new Set(
+      metadata.categories.map((category) => {
+        return category.id;
+      }),
+    ),
+  ).toStrictEqual(connectorCategories);
+
+  const aiCategoryIndex = metadata.categories.findIndex((category) => {
+    return category.id === "ai-general-models";
+  });
+  const engineeringCategoryIndex = metadata.categories.findIndex((category) => {
+    return category.id === "engineering-team-execution";
+  });
+  expect(aiCategoryIndex).toBeGreaterThanOrEqual(0);
+  expect(engineeringCategoryIndex).toBeGreaterThanOrEqual(0);
+  expect(aiCategoryIndex).toBeLessThan(engineeringCategoryIndex);
+  expect(metadata.categories[aiCategoryIndex]).toMatchObject({
+    id: "ai-general-models",
+    label: "General Models and Reasoning",
+    menuLabel: "General Models",
+    groupId: "ai",
+  });
+  expect(metadata.groups).toContainEqual({
+    id: "ai",
+    label: "AI",
+    menuLabel: "AI",
+  });
 }
 
 function stateFromAuthorizationUrl(authorizationUrl: string): string {
@@ -130,6 +179,7 @@ describe("GET /api/zero/connector-catalog", () => {
     );
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    assertCategoryMetadataMatchesVisibleConnectors(response.body);
     expect(response.body.connectors.length).toBeGreaterThan(0);
   });
 
@@ -297,6 +347,7 @@ describe("GET /api/zero/connector-catalog", () => {
     );
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    assertCategoryMetadataMatchesVisibleConnectors(response.body);
     const openai = response.body.connectors.find((connector) => {
       return connector.connectorRef === "openai";
     });
