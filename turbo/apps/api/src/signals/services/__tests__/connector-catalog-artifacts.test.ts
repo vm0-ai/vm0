@@ -136,7 +136,7 @@ function recordsWithActive(
 
 function recordsWithPublicArtifact(
   records: ReadonlyMap<string, Uint8Array>,
-  publicArtifact: ConnectorCatalogPublicArtifact,
+  publicArtifact: unknown,
 ): Map<string, Uint8Array> {
   const nextRecords = cloneRecords(records);
   const publicBytes = jsonBytes(publicArtifact);
@@ -207,7 +207,7 @@ function fixtureDeviceAuthMethod(
     return item.connectorRef === "fixture-device";
   });
   const authMethod = connector?.authMethods.find((item) => {
-    return item.id === "device";
+    return item.id === "api";
   });
   if (!authMethod) {
     throw new Error("Missing fixture device auth method");
@@ -281,7 +281,7 @@ describe("connector catalog artifacts", () => {
         tags: ["fixture", "device"],
         authMethods: [
           {
-            id: "device",
+            id: "api",
             label: "Device Code",
             description: "Connect with a device code.",
             grantKind: "device-auth",
@@ -528,6 +528,36 @@ describe("connector catalog artifacts", () => {
       "Duplicate connector catalog required capabilities: catalog.public-connectors@1",
     );
   });
+
+  it.each([
+    "catalog.public-connectors@1",
+    "catalog.private-field-mapping@1",
+    "grant.device-auth@1",
+    "firewall.permission-metadata@1",
+  ])(
+    "rejects manifests that omit artifact capability %s",
+    async (capability) => {
+      const records = await fixtureRecords();
+      const manifest = manifestFromRecords(records);
+
+      await expect(
+        loadConnectorCatalogArtifacts({
+          reader: readerFromRecords(
+            recordsWithManifest(records, {
+              ...manifest,
+              requiredCapabilities: manifest.requiredCapabilities.filter(
+                (item) => {
+                  return item !== capability;
+                },
+              ),
+            }),
+          ),
+        }),
+      ).rejects.toThrow(
+        `Connector catalog manifest requiredCapabilities missing artifact capabilities: ${capability}`,
+      );
+    },
+  );
 
   it("rejects public artifacts that leak private runtime names", async () => {
     const records = await fixtureRecords();
@@ -806,8 +836,22 @@ describe("connector catalog artifacts", () => {
 
   it("rejects invalid auth method ids", async () => {
     const records = await fixtureRecords();
-    const publicArtifact = publicArtifactFromRecords(records);
-    fixtureManualAuthMethod(publicArtifact).id = "api/token";
+    const publicArtifact = parseJson(
+      requiredBytes(records, PUBLIC_ARTIFACT_KEY),
+    ) as {
+      connectors: {
+        connectorRef: string;
+        authMethods: { id: string }[];
+      }[];
+    };
+    const connector = publicArtifact.connectors.find((item) => {
+      return item.connectorRef === "fixture-manual";
+    });
+    const authMethod = connector?.authMethods[0];
+    if (!authMethod) {
+      throw new Error("Missing fixture manual auth method");
+    }
+    authMethod.id = "api/token";
 
     await expect(
       loadConnectorCatalogArtifacts({
@@ -859,7 +903,7 @@ describe("connector catalog artifacts", () => {
         ),
       }),
     ).rejects.toThrow(
-      "Duplicate connector catalog fixture-device/device/mode start option values: test",
+      "Duplicate connector catalog fixture-device/api/mode start option values: test",
     );
 
     const invalidDefaultArtifact = publicArtifactFromRecords(records);
@@ -879,7 +923,7 @@ describe("connector catalog artifacts", () => {
         ),
       }),
     ).rejects.toThrow(
-      "Connector catalog auth method fixture-device/device start option mode defaultValue is not an option",
+      "Connector catalog auth method fixture-device/api start option mode defaultValue is not an option",
     );
   });
 

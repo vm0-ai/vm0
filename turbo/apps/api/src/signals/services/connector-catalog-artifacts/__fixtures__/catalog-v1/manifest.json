@@ -12,11 +12,11 @@
   "artifacts": {
     "public": {
       "key": "public/catalog.json",
-      "digest": "sha256:ff578d3c42af1bc8b4708f18611e6ad91d8848b7f2e1767e7762cf553c500a27"
+      "digest": "sha256:1f14f81e4f62679dd5d2c6a86c702a4e86a9deeb8169e92a4e542d1719ccfd35"
     },
     "private": {
       "key": "private/runtime.json",
-      "digest": "sha256:bedc6e4dea50cb5af3f1b44e05bcc2f73f9d0c2d1f18013ac0fdec05caeb4070"
+      "digest": "sha256:8d4667590c114faa835e516aa6e37ebf26033c4eff3638145e6dd65371295524"
     }
   }
 }

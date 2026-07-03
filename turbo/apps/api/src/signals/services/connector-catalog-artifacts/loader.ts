@@ -111,6 +111,44 @@ function assertRequiredCapabilities(
   }
 }
 
+function authMethodGrantCapability(
+  authMethod: ConnectorCatalogPublicArtifact["connectors"][number]["authMethods"][number],
+): string {
+  return `grant.${authMethod.grantKind}@1`;
+}
+
+function assertRequiredCapabilitiesCoverArtifacts(args: {
+  readonly manifest: ConnectorCatalogManifest;
+  readonly publicArtifact: ConnectorCatalogPublicArtifact;
+}): void {
+  const declaredCapabilities = new Set(args.manifest.requiredCapabilities);
+  const artifactCapabilities = new Set<string>([
+    "catalog.public-connectors@1",
+    "catalog.private-field-mapping@1",
+  ]);
+
+  for (const connector of args.publicArtifact.connectors) {
+    for (const authMethod of connector.authMethods) {
+      artifactCapabilities.add(authMethodGrantCapability(authMethod));
+    }
+  }
+
+  if (args.publicArtifact.permissions.length > 0) {
+    artifactCapabilities.add("firewall.permission-metadata@1");
+  }
+
+  const missingCapabilities = [...artifactCapabilities].filter((capability) => {
+    return !declaredCapabilities.has(capability);
+  });
+  if (missingCapabilities.length > 0) {
+    throw new Error(
+      `Connector catalog manifest requiredCapabilities missing artifact capabilities: ${sorted(
+        missingCapabilities,
+      )}`,
+    );
+  }
+}
+
 function assertCatalogVersionMatches(args: {
   readonly source: string;
   readonly expected: string;
@@ -619,6 +657,7 @@ export async function loadConnectorCatalogArtifacts(args: {
     expected: manifest.catalogVersion,
     actual: privateArtifact.catalogVersion,
   });
+  assertRequiredCapabilitiesCoverArtifacts({ manifest, publicArtifact });
   assertPublicArtifactConsistency(publicArtifact);
   assertPrivateArtifactConsistency({ publicArtifact, privateArtifact });
   assertPublicCatalogArtifactHasNoPrivateFields(

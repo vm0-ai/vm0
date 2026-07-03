@@ -67,7 +67,7 @@
       "tags": ["fixture", "device"],
       "authMethods": [
         {
-          "id": "device",
+          "id": "api",
           "label": "Device Code",
           "description": "Connect with a device code.",
           "grantKind": "device-auth",
