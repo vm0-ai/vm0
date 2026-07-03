@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.395.0](https://github.com/vm0-ai/vm0/compare/core-v8.394.6...core-v8.395.0) (2026-07-03)
+
+
+### Features
+
+* enable chat thread event sourcing globally ([#20082](https://github.com/vm0-ai/vm0/issues/20082)) ([548a68e](https://github.com/vm0-ai/vm0/commit/548a68eca8f4b700d639d83470b16e026444b851))
+
 ## [8.394.6](https://github.com/vm0-ai/vm0/compare/core-v8.394.5...core-v8.394.6) (2026-07-03)
 
 
