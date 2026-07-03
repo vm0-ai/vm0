@@ -1733,6 +1733,18 @@ function additionalVolumeSourceAt(
   return sources?.[index] ?? "unknown";
 }
 
+function normalizeAdditionalVolumeSources(args: {
+  readonly volumes: readonly AdditionalVolume[] | undefined;
+  readonly sources: readonly StorageManifestSource[] | undefined;
+}): readonly StorageManifestSource[] | undefined {
+  if (!args.sources) {
+    return undefined;
+  }
+  return args.sources.length === (args.volumes?.length ?? 0)
+    ? args.sources
+    : undefined;
+}
+
 async function resolveStorageManifestInputs(
   args: PrepareAgentRunStorageManifestArgs,
 ): Promise<StorageManifestInputs> {
@@ -1867,6 +1879,10 @@ async function resolveStorageManifestEntryPlans(args: {
   readonly phaseTimings: StorageManifestEntryPhaseTimings;
 }): Promise<ResolvedStorageManifestEntryPlans> {
   const input = args.input;
+  const additionalVolumeSources = normalizeAdditionalVolumeSources({
+    volumes: input.additionalVolumes,
+    sources: input.additionalVolumeSources,
+  });
   const [composePlans, additionalPlans, artifactInputs] = await Promise.all([
     measureApiDispatchTiming(
       input.timing,
@@ -1899,10 +1915,7 @@ async function resolveStorageManifestEntryPlans(args: {
               index: input.storageIndex,
               runtimeOrgId: input.runtimeOrgId,
               volume,
-              source: additionalVolumeSourceAt(
-                input.additionalVolumeSources,
-                index,
-              ),
+              source: additionalVolumeSourceAt(additionalVolumeSources, index),
               phaseTiming: args.phaseTimings.additional,
               stats: input.stats,
             });
