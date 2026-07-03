@@ -25,8 +25,7 @@ import {
   currentChatAgentDisplayName$,
 } from "../../signals/agent-chat.ts";
 import {
-  pinnedAgentIds$,
-  updatePinnedAgentIds$,
+  setAgentPinned$,
   currentChatAgentPinned$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 
@@ -192,16 +191,20 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
 function PinPill() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const pinnedStatus = useLastResolved(currentChatAgentPinned$);
-  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
+  const [pinLoadable, saveAgentPinned] = useLoadableSet(setAgentPinned$);
   const pinSaving = pinLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
   if (pinnedStatus !== false || !currentChatAgentId) {
     return null;
   }
   const handlePin = () => {
-    const newPinnedIds = [...pinnedIds, currentChatAgentId];
-    detach(savePinnedIds(newPinnedIds, pageSignal), Reason.DomCallback);
+    detach(
+      saveAgentPinned(
+        { agentId: currentChatAgentId, pinned: true },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
   };
   return (
     <TooltipProvider delayDuration={200}>
