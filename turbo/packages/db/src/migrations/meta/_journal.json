@@ -3725,6 +3725,13 @@
       "when": 1783044460779,
       "tag": "0531_bitter_moon_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 532,
+      "version": "7",
+      "when": 1783051940722,
+      "tag": "0532_automation_migrated_to_workflow",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "automations" ADD COLUMN "migrated_to_workflow_id" uuid;
