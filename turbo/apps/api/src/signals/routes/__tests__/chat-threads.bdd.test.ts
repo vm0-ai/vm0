@@ -669,6 +669,8 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
     for (const selectedModel of [
       "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
       "claude-sonnet-4-6",
       "claude-sonnet-5",
     ] as const) {

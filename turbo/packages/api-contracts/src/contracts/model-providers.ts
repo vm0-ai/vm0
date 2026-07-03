@@ -346,19 +346,18 @@ export function isLimitedFree1RestrictedRunModel(
     return false;
   }
   const normalized = model.trim().toLowerCase();
+  const canonicalModel = normalizeVm0ModelId(normalized);
+  const vendor = VM0_MODEL_TO_PROVIDER[canonicalModel]?.vendor;
+
   return (
-    normalized === "gpt-5.5" ||
-    normalized === "openai/gpt-5.5" ||
-    normalized === "claude-fable-5" ||
-    normalized === "anthropic/claude-fable-5" ||
+    vendor === "anthropic" ||
+    vendor === "openai" ||
+    normalized.startsWith("anthropic/") ||
+    normalized.startsWith("openai/") ||
+    normalized.startsWith("claude-") ||
+    normalized.startsWith("gpt-") ||
     normalized === "fable" ||
-    normalized.startsWith("claude-opus-") ||
-    normalized.startsWith("anthropic/claude-opus-") ||
-    normalized === "claude-sonnet-5" ||
-    normalized === "anthropic/claude-sonnet-5" ||
-    normalized === "claude-sonnet-4-6" ||
-    normalized === "claude-sonnet-4.6" ||
-    normalized === "anthropic/claude-sonnet-4.6"
+    normalized === "anthropic/fable"
   );
 }
 
