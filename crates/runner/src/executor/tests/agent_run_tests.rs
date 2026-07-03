@@ -162,15 +162,57 @@ fn assert_failed_action_error_once(
     );
 }
 
-fn assert_successful_action_with_encoding(
-    ops: &[(String, bool, Option<String>, Option<String>)],
+type SessionHistoryTelemetrySnapshot = (
+    String,
+    bool,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+fn assert_successful_action_with_session_history_metadata(
+    ops: &[SessionHistoryTelemetrySnapshot],
     action: &str,
     encoding: &str,
+    raw_size_bucket: &str,
+    encoded_size_bucket: &str,
+    compression_ratio_bucket: &str,
 ) {
     assert!(
-        ops.iter()
-            .any(|op| op.0 == action && op.1 && op.3.as_deref() == Some(encoding)),
-        "expected {action} telemetry with {encoding} encoding, got: {ops:?}"
+        ops.iter().any(|op| {
+            op.0 == action
+                && op.1
+                && op.3.as_deref() == Some(encoding)
+                && op.4.as_deref() == Some(raw_size_bucket)
+                && op.5.as_deref() == Some(encoded_size_bucket)
+                && op.6.as_deref() == Some(compression_ratio_bucket)
+        }),
+        "expected {action} telemetry with session history metadata, got: {ops:?}"
+    );
+}
+
+fn assert_failed_action_with_session_history_metadata(
+    ops: &[SessionHistoryTelemetrySnapshot],
+    action: &str,
+    error: &str,
+    encoding: &str,
+    raw_size_bucket: &str,
+    encoded_size_bucket: &str,
+    compression_ratio_bucket: &str,
+) {
+    assert!(
+        ops.iter().any(|op| {
+            op.0 == action
+                && !op.1
+                && op.2.as_deref() == Some(error)
+                && op.3.as_deref() == Some(encoding)
+                && op.4.as_deref() == Some(raw_size_bucket)
+                && op.5.as_deref() == Some(encoded_size_bucket)
+                && op.6.as_deref() == Some(compression_ratio_bucket)
+        }),
+        "expected failed {action} telemetry with session history metadata, got: {ops:?}"
     );
 }
 
@@ -672,15 +714,46 @@ async fn run_in_sandbox_records_gzip_session_history_download_encoding() {
         "/home/user/.claude/projects/-home-user-workspace/sess-gzip-ref-123.jsonl"
     );
     assert_eq!(writes[0].content, history);
-    let ops = telemetry.pending_ops_with_encoding_snapshot();
-    assert_successful_action_with_encoding(&ops, "session_history_download", "gzip");
-    assert_successful_action_with_encoding(&ops, "session_history_download_request_status", "gzip");
-    assert_successful_action_with_encoding(&ops, "session_history_download_body_read", "gzip");
-    assert_successful_action_with_encoding(&ops, "session_history_download_validation", "gzip");
-    assert_successful_action_with_encoding(
+    let ops = telemetry.pending_ops_with_session_history_metadata_snapshot();
+    assert_successful_action_with_session_history_metadata(
+        &ops,
+        "session_history_download",
+        "gzip",
+        "lt_64_kib",
+        "lt_64_kib",
+        "ge_1",
+    );
+    assert_successful_action_with_session_history_metadata(
+        &ops,
+        "session_history_download_request_status",
+        "gzip",
+        "lt_64_kib",
+        "lt_64_kib",
+        "ge_1",
+    );
+    assert_successful_action_with_session_history_metadata(
+        &ops,
+        "session_history_download_body_read",
+        "gzip",
+        "lt_64_kib",
+        "lt_64_kib",
+        "ge_1",
+    );
+    assert_successful_action_with_session_history_metadata(
+        &ops,
+        "session_history_download_validation",
+        "gzip",
+        "lt_64_kib",
+        "lt_64_kib",
+        "ge_1",
+    );
+    assert_successful_action_with_session_history_metadata(
         &ops,
         "session_history_download_hash_verification",
         "gzip",
+        "lt_64_kib",
+        "lt_64_kib",
+        "ge_1",
     );
 }
 
@@ -758,17 +831,63 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
         "/home/user/.claude/projects/-home-user-workspace/sess-prestarted-123.jsonl"
     );
     assert_eq!(writes[0].content, history);
-    let ops = telemetry.pending_ops_snapshot();
-    assert_successful_action(
+    let ops = telemetry.pending_ops_with_session_history_metadata_snapshot();
+    assert_successful_action_with_session_history_metadata(
         &ops,
         "session_history_materializer_completed_before_restore",
+        "identity",
+        "lt_64_kib",
+        "lt_64_kib",
+        "identity",
     );
-    assert_successful_action(&ops, "session_history_materialization_wait");
-    assert_successful_action(&ops, "session_history_download");
-    assert_successful_action(&ops, "session_history_download_request_status");
-    assert_successful_action(&ops, "session_history_download_body_read");
-    assert_successful_action(&ops, "session_history_download_validation");
-    assert_successful_action(&ops, "session_history_download_hash_verification");
+    assert_successful_action_with_session_history_metadata(
+        &ops,
+        "session_history_materialization_wait",
+        "identity",
+        "lt_64_kib",
+        "lt_64_kib",
+        "identity",
+    );
+    assert_successful_action_with_session_history_metadata(
+        &ops,
+        "session_history_download",
+        "identity",
+        "lt_64_kib",
+        "lt_64_kib",
+        "identity",
+    );
+    assert_successful_action_with_session_history_metadata(
+        &ops,
+        "session_history_download_request_status",
+        "identity",
+        "lt_64_kib",
+        "lt_64_kib",
+        "identity",
+    );
+    assert_successful_action_with_session_history_metadata(
+        &ops,
+        "session_history_download_body_read",
+        "identity",
+        "lt_64_kib",
+        "lt_64_kib",
+        "identity",
+    );
+    assert_successful_action_with_session_history_metadata(
+        &ops,
+        "session_history_download_validation",
+        "identity",
+        "lt_64_kib",
+        "lt_64_kib",
+        "identity",
+    );
+    assert_successful_action_with_session_history_metadata(
+        &ops,
+        "session_history_download_hash_verification",
+        "identity",
+        "lt_64_kib",
+        "lt_64_kib",
+        "identity",
+    );
 }
 
 #[tokio::test]
@@ -1764,6 +1883,34 @@ async fn run_in_sandbox_redacts_session_history_download_details_from_telemetry(
         &ops,
         "session_history_download_hash_verification",
         "session history download phase failed",
+    );
+    let metadata_ops = telemetry.pending_ops_with_session_history_metadata_snapshot();
+    assert_failed_action_with_session_history_metadata(
+        &metadata_ops,
+        "session_history_materializer_waited_at_restore",
+        "session history materialization failed",
+        "identity",
+        "lt_64_kib",
+        "lt_64_kib",
+        "identity",
+    );
+    assert_failed_action_with_session_history_metadata(
+        &metadata_ops,
+        "session_history_download",
+        "session history download failed",
+        "identity",
+        "lt_64_kib",
+        "lt_64_kib",
+        "identity",
+    );
+    assert_failed_action_with_session_history_metadata(
+        &metadata_ops,
+        "session_history_download_hash_verification",
+        "session history download phase failed",
+        "identity",
+        "lt_64_kib",
+        "lt_64_kib",
+        "identity",
     );
     let telemetry_debug = format!("{ops:?}");
     assert!(!telemetry_debug.contains(&expected_hash));

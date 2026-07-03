@@ -1114,13 +1114,13 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(mismatchedUsageEvent.body);
     expect(mismatchedUsageEvent.body.error.code).toBe("UNAUTHORIZED");
 
-    const malformedTelemetry = await api.requestAgentTelemetryUnchecked(
+    const malformedTelemetryBody = await api.requestAgentTelemetryUnchecked(
       {},
       headers,
       [400],
     );
-    expectApiError(malformedTelemetry.body);
-    expect(malformedTelemetry.body.error.code).toBe("BAD_REQUEST");
+    expectApiError(malformedTelemetryBody.body);
+    expect(malformedTelemetryBody.body.error.code).toBe("BAD_REQUEST");
 
     const malformedUsageEvent = await api.requestAgentUsageEventUnchecked(
       {
@@ -1188,6 +1188,25 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     );
     expectApiError(missingModelUsageRun.body);
     expect(missingModelUsageRun.body.error.code).toBe("NOT_FOUND");
+
+    const malformedTelemetryBucket = await api.requestAgentTelemetryUnchecked(
+      {
+        runId,
+        sandboxOperations: [
+          {
+            ts: nowDate().toISOString(),
+            action_type: "session_history_download",
+            duration_ms: 3,
+            success: true,
+            session_history_raw_size_bucket: "exact_123_bytes",
+          },
+        ],
+      },
+      headers,
+      [400],
+    );
+    expectApiError(malformedTelemetryBucket.body);
+    expect(malformedTelemetryBucket.body.error.code).toBe("BAD_REQUEST");
 
     const missingTelemetryRun = await api.requestAgentTelemetry(
       {
