@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type ComputerUseHostRuntimeStatus,
   type ComputerUsePermissionState,
+  type DesktopComputerUsePluginsState,
   type DesktopComputerUseState,
   type DesktopKeepAwakeState,
 } from "../computer-use-types";
@@ -49,15 +50,31 @@ const defaultDeveloperToolsState: DesktopDeveloperToolsState = {
   enabled: false,
 };
 
+function createComputerUsePluginsState(): DesktopComputerUsePluginsState {
+  return {
+    filesystem: {
+      featureEnabled: true,
+      enabled: false,
+      allowedDirectories: [],
+      status: "disabled",
+      lastError: null,
+      version: "2026.1.14",
+      capabilities: [],
+    },
+  };
+}
+
 function createComputerUseState({
   deviceName = "lisa",
   keepAwake = { active: false, enabled: false },
   permissions = { accessibility: true, screenRecording: true },
+  plugins,
   status = "offline",
 }: {
   readonly deviceName?: string | null;
   readonly keepAwake?: DesktopKeepAwakeState;
   readonly permissions?: ComputerUsePermissionState;
+  readonly plugins?: DesktopComputerUsePluginsState;
   readonly status?: ComputerUseHostRuntimeStatus;
 } = {}): DesktopComputerUseState {
   return {
@@ -76,6 +93,7 @@ function createComputerUseState({
       localCommandLog: [],
     },
     keepAwake,
+    plugins,
   };
 }
 
@@ -514,16 +532,21 @@ describe("Desktop renderer bridge integration", () => {
 
   it("shows runtime details only after developer tools are enabled", async () => {
     const { developerTools } = installDesktopBridges({
-      computerUseState: createComputerUseState({ status: "online" }),
+      computerUseState: createComputerUseState({
+        plugins: createComputerUsePluginsState(),
+        status: "online",
+      }),
     });
     renderDesktopApp();
 
     expect(await screen.findByText("Online")).toBeTruthy();
+    expect(screen.queryByText("Filesystem plugin")).toBeNull();
     expect(screen.queryByText("Runtime")).toBeNull();
     expect(screen.queryByText("Command Log")).toBeNull();
 
     developerTools.emitState({ available: true, enabled: true });
 
+    expect(await screen.findByText("Filesystem plugin")).toBeTruthy();
     expect(await screen.findByText("Runtime")).toBeTruthy();
     expect(await screen.findByText("Command Log")).toBeTruthy();
     expect(developerTools.subscribe).toHaveBeenCalled();

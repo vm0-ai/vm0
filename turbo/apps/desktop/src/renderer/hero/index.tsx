@@ -433,9 +433,9 @@ export function ReadyExperience({
         <OfflineHero authState={authState} state={state} />
       )}
       {!running && <PermissionAutoRefresh />}
-      <FilesystemPluginPanel state={state} />
       {developerToolsEnabled && (
         <>
+          <FilesystemPluginPanel state={state} />
           <RuntimePanel state={state} />
           <CommandLogPanel state={state} />
         </>
