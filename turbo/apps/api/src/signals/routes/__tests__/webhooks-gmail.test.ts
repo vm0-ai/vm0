@@ -41,7 +41,7 @@ const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
 const GMAIL_AUDIENCE = "https://api.vm0.ai/api/webhooks/gmail";
 const GMAIL_PUSH_SERVICE_ACCOUNT =
   "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
-const GMAIL_WORKSPACE_MODEL = "claude-sonnet-5";
+const GMAIL_WORKSPACE_MODEL = "MiniMax-M3";
 const GOOGLE_OIDC_CERT_KID = "gmail-pubsub-test-key";
 const googleOidcKeyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const googleOidcPublicKeyPem = googleOidcKeyPair.publicKey.export({
@@ -340,25 +340,11 @@ async function enableGmailWorkflowTriggers(
 async function configureWorkspaceModelProvider(
   actor: ApiTestUser,
 ): Promise<void> {
-  const provider = await miscApi.upsertOrgModelProvider(
-    actor,
-    {
-      type: "anthropic-api-key",
-      secret: "sk-ant-gmail-webhook-bdd",
-    },
-    [200, 201],
-  );
-  if (provider.status !== 200 && provider.status !== 201) {
-    throw new Error(
-      `Expected model provider setup to succeed, got ${provider.status}`,
-    );
-  }
-  const providerId = provider.body.provider.id;
   const policies = await miscApi.listModelPolicies(actor);
-  const sonnetPolicy = policies.policies.find((policy) => {
+  const workspacePolicy = policies.policies.find((policy) => {
     return policy.model === GMAIL_WORKSPACE_MODEL;
   });
-  if (!sonnetPolicy) {
+  if (!workspacePolicy) {
     throw new Error(
       `Expected ${GMAIL_WORKSPACE_MODEL} model policy to be available`,
     );
@@ -367,11 +353,11 @@ async function configureWorkspaceModelProvider(
     actor,
     [
       {
-        ...sonnetPolicy,
+        ...workspacePolicy,
         isDefault: true,
-        defaultProviderType: "anthropic-api-key",
+        defaultProviderType: "vm0",
         credentialScope: "org",
-        modelProviderId: providerId,
+        modelProviderId: null,
       },
     ],
     [200],
@@ -382,8 +368,8 @@ async function configureWorkspaceModelProvider(
       return policy.model === GMAIL_WORKSPACE_MODEL;
     }),
   ).toMatchObject({
-    defaultProviderType: "anthropic-api-key",
-    modelProviderId: providerId,
+    defaultProviderType: "vm0",
+    modelProviderId: null,
   });
 }
 
