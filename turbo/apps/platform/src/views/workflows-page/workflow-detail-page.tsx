@@ -170,6 +170,8 @@ import {
   triggerKindLabel,
   workflowTitle,
 } from "./workflow-shared.tsx";
+import { WorkflowHoverContent } from "./workflows-page.tsx";
+import { TriggerListIcon } from "../zero-page/workflow-trigger-automations-page.tsx";
 
 const FIELD_CLASS =
   "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none focus:border-primary";
@@ -401,6 +403,21 @@ function BreadcrumbLink({
   );
 }
 
+function WorkflowHeaderIcon({
+  trigger,
+}: {
+  readonly trigger: ZeroWorkflowTriggerSummary | undefined;
+}) {
+  if (trigger) {
+    return <TriggerListIcon trigger={trigger} size="md" />;
+  }
+  return (
+    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-muted-foreground">
+      <IconRoute size={20} stroke={1.7} />
+    </span>
+  );
+}
+
 function DetailHeader({
   detail,
   activeTab,
@@ -414,19 +431,36 @@ function DetailHeader({
     <DetailPageHeader>
       {detail ? (
         <>
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <h1 className="truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
-                  {workflowTitle(detail)}
-                </h1>
-                <span className="inline-flex max-w-full shrink-0 items-center rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <WorkflowHeaderIcon trigger={detail.triggers[0]} />
+              <div className="min-w-0">
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <h1 className="w-fit max-w-full truncate text-lg font-semibold tracking-tight text-foreground underline decoration-foreground/40 decoration-dotted decoration-[1px] underline-offset-2 sm:text-xl">
+                        {workflowTitle(detail)}
+                      </h1>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="bottom"
+                      align="start"
+                      className="rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] p-3"
+                      style={{
+                        backgroundColor: "hsl(var(--card))",
+                        color: "hsl(var(--card-foreground))",
+                        boxShadow:
+                          "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+                      }}
+                    >
+                      <WorkflowHoverContent workflow={detail} />
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <code className="mt-1.5 inline-block w-fit max-w-full truncate rounded-md border-[0.7px] border-[hsl(var(--gray-400))] bg-gray-50 px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
                   /{detail.name}
-                </span>
+                </code>
               </div>
-              <p className="mt-1.5 line-clamp-2 text-sm leading-tight text-muted-foreground">
-                {detail.description || "No description yet"}
-              </p>
             </div>
             <WorkflowChatButton detail={detail} />
           </div>
