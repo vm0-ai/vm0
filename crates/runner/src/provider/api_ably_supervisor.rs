@@ -507,9 +507,6 @@ impl AblySupervisor {
 impl Drop for AblySupervisor {
     fn drop(&mut self) {
         self.shutdown.cancel();
-        if let Some(task) = self.take_task() {
-            task.abort();
-        }
     }
 }
 
@@ -2007,22 +2004,12 @@ mod tests {
 
     #[tokio::test]
     async fn supervisor_drop_cancels_task() {
-        struct DropNotify(Option<tokio::sync::oneshot::Sender<()>>);
-
-        impl Drop for DropNotify {
-            fn drop(&mut self) {
-                if let Some(done) = self.0.take() {
-                    let _ = done.send(());
-                }
-            }
-        }
-
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
         let (done_tx, done_rx) = tokio::sync::oneshot::channel();
         let supervisor = AblySupervisor::spawn_test_task(|shutdown| async move {
-            let _notify = DropNotify(Some(done_tx));
             let _ = started_tx.send(());
             shutdown.cancelled().await;
+            let _ = done_tx.send(());
         });
         started_rx.await.expect("supervisor test task should start");
 
