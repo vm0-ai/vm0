@@ -1461,6 +1461,22 @@ mod tests {
         assert!(read_status(dir.path()).await.is_none());
     }
 
+    #[tokio::test]
+    async fn read_status_missing_idle_vm_identifier_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("status.json"),
+            r#"{
+                "mode":"running",
+                "started_at":"2026-01-01T00:00:00.000Z",
+                "idle_vms":[{"session_id":"session-a"}]
+            }"#,
+        )
+        .unwrap();
+
+        assert!(read_status(dir.path()).await.is_none());
+    }
+
     #[test]
     fn active_run_unknown_phase_defaults_running() {
         let active = ActiveRun {

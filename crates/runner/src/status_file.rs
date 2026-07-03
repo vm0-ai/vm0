@@ -230,6 +230,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn active_runs_only_ignores_unneeded_malformed_top_level_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        tokio::fs::write(
+            dir.path().join("status.json"),
+            r#"{
+                "mode": {},
+                "active_runs": [
+                    {"run_id":"run-a","sandbox_id":"sandbox-a"}
+                ],
+                "started_at": [],
+                "idle_vms": null
+            }"#,
+        )
+        .await
+        .unwrap();
+
+        let status = read_as::<StatusActiveRunsOnly>(dir.path())
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(status.active_runs.len(), 1);
+        assert_eq!(status.active_runs[0].run_id, "run-a");
+        assert_eq!(status.active_runs[0].sandbox_id, "sandbox-a");
+    }
+
+    #[tokio::test]
     async fn active_runs_only_rejects_null_active_runs() {
         let dir = tempfile::tempdir().unwrap();
         tokio::fs::write(

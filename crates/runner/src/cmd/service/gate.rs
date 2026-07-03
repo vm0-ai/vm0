@@ -279,6 +279,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_runner_status_invalid_run_id_is_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = r#"{
+            "mode":"running",
+            "active_runs":[{"run_id":"not-a-uuid"}],
+            "started_at":"2026-04-13T00:00:00.000Z"
+        }"#;
+        tokio::fs::write(dir.path().join("status.json"), s)
+            .await
+            .unwrap();
+
+        assert!(read_runner_status(dir.path()).await.is_err());
+    }
+
+    #[tokio::test]
     async fn read_runner_status_malformed_started_at() {
         let dir = tempfile::tempdir().unwrap();
         let s = r#"{"mode":"running","active_runs":[],"started_at":"not-a-date"}"#;
