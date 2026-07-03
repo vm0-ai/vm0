@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.535.0](https://github.com/vm0-ai/vm0/compare/app-v0.534.3...app-v0.535.0) (2026-07-03)
+
+
+### Features
+
+* render chat threads from event sourcing ([#19929](https://github.com/vm0-ai/vm0/issues/19929)) ([577d15e](https://github.com/vm0-ai/vm0/commit/577d15e5316e45102698c2e33eb0d71a02420228))
+* signal the workflow trigger pill is clickable ([#19939](https://github.com/vm0-ai/vm0/issues/19939)) ([6b6f30f](https://github.com/vm0-ai/vm0/commit/6b6f30fa45016f9ae288249ba2a95d14ffb713cd))
+
+
+### Bug Fixes
+
+* add tooltips and visible hover to workflow automation row actions ([#19943](https://github.com/vm0-ai/vm0/issues/19943)) ([c04952a](https://github.com/vm0-ai/vm0/commit/c04952a144f3bac85aa4ccdeb587663cfc058146))
+* align automation row title underline with standard tooltip style ([#19941](https://github.com/vm0-ai/vm0/issues/19941)) ([01b0946](https://github.com/vm0-ai/vm0/commit/01b094673a7760c4429a6dcdc06123ea912d4786))
+* show full automation name in connector popover, truncate with tooltip when narrow ([#19938](https://github.com/vm0-ai/vm0/issues/19938)) ([d29a28b](https://github.com/vm0-ai/vm0/commit/d29a28b37cbf804a5991725201433ce6db51bb35))
+* unify typography and simplify trigger icon in workflow automations list ([#19944](https://github.com/vm0-ai/vm0/issues/19944)) ([2132b49](https://github.com/vm0-ai/vm0/commit/2132b49539752261060d74ca270a534e1a7da10c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.145.0
+    * @vm0/connectors bumped to 1.130.0
+    * @vm0/core bumped to 8.391.0
+
 ## [0.534.3](https://github.com/vm0-ai/vm0/compare/app-v0.534.2...app-v0.534.3) (2026-07-03)
 
 
