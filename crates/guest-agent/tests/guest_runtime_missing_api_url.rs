@@ -8,6 +8,7 @@ mod common;
 #[test]
 fn runtime_bootstrap_requires_api_url_when_api_token_is_set() {
     let tmp = tempfile::tempdir().unwrap();
+    let runtime_dir = tmp.path().join("runtime");
 
     unsafe {
         common::clear_guest_agent_bootstrap_env_for_test();
@@ -18,8 +19,16 @@ fn runtime_bootstrap_requires_api_url_when_api_token_is_set() {
         std::env::set_var("HOME", tmp.path().join("home"));
         std::env::set_var(
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-            tmp.path().join("runtime"),
+            &runtime_dir,
         );
+        common::set_run_payload_file_env_for_test(
+            &runtime_dir,
+            &guest_contracts::env::RunPayload {
+                prompt: "missing api url prompt".to_string(),
+                ..guest_contracts::env::RunPayload::default()
+            },
+        )
+        .unwrap();
         std::env::set_var(guest_contracts::env::API_TOKEN_ENV, "test-token");
         std::env::set_var(guest_contracts::env::API_URL_ENV, "");
         std::env::remove_var(guest_contracts::env::USER_ENV_FILE_ENV);

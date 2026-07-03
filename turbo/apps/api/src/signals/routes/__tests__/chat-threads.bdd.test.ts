@@ -35,10 +35,7 @@ import {
   mockGoogleDriveConnectorOAuth,
   mockGoogleDriveFilesList,
 } from "./helpers/api-bdd-connectors";
-import {
-  createRunsAutomationsApi,
-  uniqueAutomationName,
-} from "./helpers/api-bdd-runs-automations";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   emitRunUsageMessage$,
@@ -778,21 +775,15 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expectApiError(malformed.body);
     expect(malformed.body.error.message).toContain("id");
 
-    // Main thread: claimed (running) run plus a linked schedule.
+    // Main thread with a claimed (running) run. The linked-automation cascade
+    // leg was removed with the automation -> workflow cutover (#19959): the
+    // frozen legacy API can no longer create automations, and the
+    // chat-thread FK cascade on the frozen rows is schema-enforced.
     const main = await sendChatRun(actor, {
       agentId,
       prompt: "delete cascade anchor",
     });
     await claimChatRun(runnerGroup, main.runId);
-    const scheduleName = uniqueAutomationName("bdd-thread-linked");
-    await api.deployAutomation(actor, {
-      name: scheduleName,
-      cronExpression: "0 9 * * *",
-      timezone: "UTC",
-      prompt: "linked schedule prompt",
-      agentId,
-      chatThreadId: main.threadId,
-    });
 
     let list = await chat.listThreads(actor, { agentId });
     const mainListed = list.threads.find((thread) => {
@@ -835,13 +826,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       id: main.threadId,
     });
 
-    const schedulesBefore = await api.listAutomations(actor);
-    expect(
-      schedulesBefore.automations.some((schedule) => {
-        return schedule.name === scheduleName;
-      }),
-    ).toBeTruthy();
-
     const deleted = await chat.requestDeleteThread(actor, main.threadId, [204]);
     expect(deleted.body).toBeUndefined();
 
@@ -853,13 +837,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expectApiError(goneRead.body);
     list = await chat.listThreads(actor, { agentId });
     expect(listedThreadIds(list)).not.toContain(main.threadId);
-
-    const schedulesAfter = await api.listAutomations(actor);
-    expect(
-      schedulesAfter.automations.some((schedule) => {
-        return schedule.name === scheduleName;
-      }),
-    ).toBeFalsy();
 
     await cancelChatRun(actor, other.runId);
   }, 120_000);
