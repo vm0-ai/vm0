@@ -26,7 +26,7 @@ function mockOnboardingNeeded(): void {
 }
 
 describe("zero onboarding", () => {
-  it("redirects admins who need onboarding to paid onboarding with query params", async () => {
+  it("redirects admins who need onboarding to external onboarding with query params", async () => {
     mockOnboardingNeeded();
     setBrowserUrl("https://app.vm7.ai:8443/");
 
@@ -38,7 +38,7 @@ describe("zero onboarding", () => {
     await waitFor(() => {
       const url = new URL(window.location.href);
       expect(url.origin).toBe("https://www.vm7.ai:8443");
-      expect(url.pathname).toBe("/onboarding/2afcf6");
+      expect(url.pathname).toBe("/onboarding/491858");
       expect(url.searchParams.get("prompt")).toBe("hello world");
       expect(url.searchParams.get("connector")).toBe("github");
       expect(url.searchParams.get("vm0_source")).toBe("presentation");
@@ -46,17 +46,17 @@ describe("zero onboarding", () => {
     });
   });
 
-  it("redirects direct onboarding visits to paid onboarding", async () => {
+  it("redirects direct onboarding visits to external onboarding", async () => {
     setBrowserUrl("https://app.vm7.ai:8443/");
     detachedSetupPage({
       context,
-      path: "/onboarding?prompt=hello%20world&connector=github&vm0_source=presentation",
+      path: "/onboarding/491858?prompt=hello%20world&connector=github&vm0_source=presentation",
     });
 
     await waitFor(() => {
       const url = new URL(window.location.href);
       expect(url.origin).toBe("https://www.vm7.ai:8443");
-      expect(url.pathname).toBe("/onboarding/2afcf6");
+      expect(url.pathname).toBe("/onboarding/491858");
       expect(url.searchParams.get("prompt")).toBe("hello world");
       expect(url.searchParams.get("connector")).toBe("github");
       expect(url.searchParams.get("vm0_source")).toBe("presentation");
@@ -64,7 +64,7 @@ describe("zero onboarding", () => {
     });
   });
 
-  it("redirects direct paid onboarding without loading connectors first", async () => {
+  it("redirects direct external onboarding without loading connectors first", async () => {
     context.mocks.api(zeroConnectorsMainContract.list, ({ respond }) => {
       return respond(500, {
         error: {
@@ -77,13 +77,13 @@ describe("zero onboarding", () => {
 
     detachedSetupPage({
       context,
-      path: "/onboarding?prompt=hello%20world&connector=github&vm0_source=presentation",
+      path: "/onboarding/491858?prompt=hello%20world&connector=github&vm0_source=presentation",
     });
 
     await waitFor(() => {
       const url = new URL(window.location.href);
       expect(url.origin).toBe("https://www.vm7.ai:8443");
-      expect(url.pathname).toBe("/onboarding/2afcf6");
+      expect(url.pathname).toBe("/onboarding/491858");
       expect(url.searchParams.get("prompt")).toBe("hello world");
       expect(url.searchParams.get("connector")).toBe("github");
       expect(url.searchParams.get("vm0_source")).toBe("presentation");

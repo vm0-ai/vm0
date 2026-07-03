@@ -41,6 +41,10 @@ export default defineConfig({
       testMatch: "smoke.spec.ts",
     },
     {
+      name: "paid-onboarding",
+      testMatch: "paid-onboarding.spec.ts",
+    },
+    {
       name: "features",
       testMatch: [
         "agents.spec.ts",

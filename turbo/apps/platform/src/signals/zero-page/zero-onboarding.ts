@@ -22,7 +22,7 @@ export const zeroOnboardingStatus$ = computed(async (get) => {
 /**
  * Whether the current user needs onboarding. Onboarding is purely admin
  * workspace setup — the backend keeps `needsOnboarding: true` for admins
- * until the default agent exists and the Pro trial checkout has completed.
+ * until the default agent exists and onboarding has been completed.
  */
 export const zeroNeedsOnboarding$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
