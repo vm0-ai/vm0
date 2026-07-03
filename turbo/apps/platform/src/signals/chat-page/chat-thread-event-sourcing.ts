@@ -5,6 +5,7 @@ import {
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   InitClientArgs,
   InitClientReturn,
@@ -15,6 +16,9 @@ import { clerk$ } from "../auth.ts";
 import { createIdbChatThreadEventStores } from "../external/idb-chat-thread-event-store.ts";
 import { logger } from "../log.ts";
 import { reloadChatThreadsCounter$ } from "../chat-thread-list-reload.ts";
+import { setAblyLoop$ } from "../realtime.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import { settle, withCleanup } from "../utils.ts";
 import { replayChatThreadEvents } from "./chat-thread-event-replay.ts";
 
 const L = logger("ChatThreadEventSourcing");
@@ -28,8 +32,21 @@ interface ChatThreadEventData {
   readonly events: readonly ChatThreadEvent[];
 }
 
+interface ChatThreadSnapshotData {
+  readonly chatThreads: readonly ChatThreadSnapshotProjection[];
+  readonly latestEventId: string | null;
+}
+
+export interface ThreadMeta {
+  readonly threadId: string;
+  readonly agentId: string;
+  readonly title: string | null;
+}
+
 const optimisticChatThreadEventsState$ = state<readonly ChatThreadEvent[]>([]);
 const chatThreadMaxItemState$ = state(CHAT_THREAD_VISIBLE_PAGE_SIZE);
+const chatThreadEventSyncVersionState$ = state(0);
+const chatThreadEventSyncInFlightState$ = state(false);
 
 export const chatThreadMaxItem$ = computed((get) => {
   return get(chatThreadMaxItemState$);
@@ -50,7 +67,7 @@ async function replaceFromRemoteSnapshot(
   store: Stores["writeStore"],
   client: ChatThreadsClient,
   signal?: AbortSignal,
-): Promise<string | null> {
+): Promise<ChatThreadSnapshotData> {
   const result = await accept(
     client.snapshot({ fetchOptions: { signal } }),
     [200],
@@ -58,18 +75,24 @@ async function replaceFromRemoteSnapshot(
   );
   signal?.throwIfAborted();
   await store.replaceFromSnapshot(result.body, signal);
-  return result.body.latestEventId;
+  return result.body;
 }
 
 async function syncChatThreadEvents(
   store: Stores,
   client: ChatThreadsClient,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<ChatThreadSnapshotData | null> {
   const existingSnapshot = await store.readStore.readSnapshot(signal);
+  let activeSnapshot = existingSnapshot;
   let cursor = await store.readStore.readLatestEventId(signal);
-  if (!existingSnapshot) {
-    cursor = await replaceFromRemoteSnapshot(store.writeStore, client, signal);
+  if (!activeSnapshot) {
+    activeSnapshot = await replaceFromRemoteSnapshot(
+      store.writeStore,
+      client,
+      signal,
+    );
+    cursor = activeSnapshot.latestEventId;
   }
 
   for (let page = 0; page < 20; page++) {
@@ -85,11 +108,12 @@ async function syncChatThreadEvents(
 
     if (result.status === 410) {
       L.debug("events cursor expired, reloading snapshot");
-      cursor = await replaceFromRemoteSnapshot(
+      activeSnapshot = await replaceFromRemoteSnapshot(
         store.writeStore,
         client,
         signal,
       );
+      cursor = activeSnapshot.latestEventId;
       continue;
     }
 
@@ -99,30 +123,91 @@ async function syncChatThreadEvents(
     }
 
     if (!result.body.hasMore || result.body.events.length === 0) {
-      return;
+      return activeSnapshot;
     }
   }
+  return activeSnapshot;
 }
 
 const chatThreadEventData$ = computed(
   async (get): Promise<ChatThreadEventData> => {
     get(reloadChatThreadsCounter$);
+    get(chatThreadEventSyncVersionState$);
     const store = await get(chatThreadEventStores$);
     if (!store) {
       return { snapshot: [], events: [] };
     }
 
-    const client = get(zeroClient$)(chatThreadsContract);
-    await syncChatThreadEvents(store, client);
+    const cachedSnapshot = await store.readStore.readSnapshot();
+    let syncedSnapshot: ChatThreadSnapshotData | null = null;
+    if (!cachedSnapshot) {
+      const client = get(zeroClient$)(chatThreadsContract);
+      syncedSnapshot = await syncChatThreadEvents(store, client);
+    }
 
     const [snapshot, events] = await Promise.all([
       store.readStore.readSnapshot(),
       store.readStore.readEvents(),
     ]);
     return {
-      snapshot: snapshot?.chatThreads ?? [],
+      snapshot: (snapshot ?? syncedSnapshot)?.chatThreads ?? [],
       events,
     };
+  },
+);
+
+export const syncEventDrivenChatThreads$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const store = await get(chatThreadEventStores$);
+    signal.throwIfAborted();
+    if (!store || get(chatThreadEventSyncInFlightState$)) {
+      return;
+    }
+
+    set(chatThreadEventSyncInFlightState$, true);
+    await withCleanup(
+      (async () => {
+        const client = get(zeroClient$)(chatThreadsContract);
+        const synced = await settle(
+          syncChatThreadEvents(store, client, signal),
+          signal,
+        );
+        if (!synced.ok) {
+          L.debug("event sync failed", { error: synced.error });
+          return;
+        }
+        signal.throwIfAborted();
+        set(chatThreadEventSyncVersionState$, (version) => {
+          return version + 1;
+        });
+      })(),
+      () => {
+        set(chatThreadEventSyncInFlightState$, false);
+      },
+    );
+  },
+);
+
+export const subscribeEventDrivenChatThreads$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    if (!get(featureSwitch$)[FeatureSwitchKey.ChatThreadEventSourcing]) {
+      return;
+    }
+
+    const syncOnThreadListChanged$ = command(
+      async ({ set }, signal: AbortSignal): Promise<boolean> => {
+        await set(syncEventDrivenChatThreads$, signal);
+        return false;
+      },
+    );
+
+    await set(syncEventDrivenChatThreads$, signal);
+    signal.throwIfAborted();
+    await set(
+      setAblyLoop$,
+      { topic: "threadListChanged", loopCommand$: syncOnThreadListChanged$ },
+      signal,
+    );
   },
 );
 
@@ -155,6 +240,27 @@ export const eventDrivenChatThreads$ = computed(async (get) => {
     await get(allChatThreadsEvents$),
   );
 });
+
+export const eventDrivenChatThreadMetaMap$ = computed(async (get) => {
+  return new Map<string, ThreadMeta>(
+    (await get(eventDrivenChatThreads$)).map((thread) => {
+      return [
+        thread.id,
+        {
+          threadId: thread.id,
+          agentId: thread.agentId,
+          title: thread.title,
+        },
+      ];
+    }),
+  );
+});
+
+export function eventDrivenChatThreadMeta(threadId: string) {
+  return computed(async (get): Promise<ThreadMeta | null> => {
+    return (await get(eventDrivenChatThreadMetaMap$)).get(threadId) ?? null;
+  });
+}
 
 export const registerOptimisticChatThreadEvent$ = command(
   ({ set }, event: ChatThreadEvent) => {
