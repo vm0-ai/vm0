@@ -3,30 +3,8 @@
 import type { ReactNode, SyntheticEvent } from "react";
 import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import {
-  IconSearch,
-  IconX,
-  IconArrowsMove,
-  IconPin,
-  IconPinnedOff,
-} from "@tabler/icons-react";
+import { IconSearch, IconX, IconPin, IconPinnedOff } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import {
   CommandDialog,
   CommandGroup,
@@ -49,7 +27,7 @@ import {
 } from "../../signals/agent.ts";
 import {
   pinnedAgentIds$,
-  updatePinnedAgentIds$,
+  setAgentPinned$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { unreadAgentIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
@@ -278,7 +256,7 @@ function AgentCommandSideActions({
   );
 }
 
-function SortablePinnedAgent({
+function PinnedAgentCommandItem({
   agent,
   onUnpin,
   onChat,
@@ -293,37 +271,14 @@ function SortablePinnedAgent({
   unreadIndicatorsEnabled: boolean;
   hasUnread: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({ id: agent.id });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
   return (
     <CommandItem
-      ref={setNodeRef}
       value={agent.id}
       onSelect={onChat}
-      style={style}
       className="group w-full gap-2 px-1 py-2"
     >
       <AgentCommandAgentContent agent={agent} />
       <div className="flex shrink-0 items-center gap-0.5">
-        <button
-          type="button"
-          className="flex h-8 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-colors duration-150 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-muted-foreground/18"
-          aria-label={`Reorder ${agent.displayName ?? agent.id}`}
-          disabled={disabled}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          {...attributes}
-          {...listeners}
-        >
-          <IconArrowsMove size={16} stroke={2} />
-        </button>
         <AgentCommandSideActions>
           <AgentRowSideActions
             hasUnread={unreadIndicatorsEnabled && hasUnread}
@@ -363,28 +318,16 @@ export function AgentListDialog({
     features[FeatureSwitchKey.AgentUnreadIndicators] ?? false;
   const unreadAgentIds = useLastResolved(unreadAgentIds$);
   const pageSignal = useGet(pageSignal$);
-  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
+  const [pinLoadable, saveAgentPinned] = useLoadableSet(setAgentPinned$);
   const saving = pinLoadable.state === "loading";
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
-
-  const pinned = pinnedIds
-    .map((id) => {
-      return subagents.find((a) => {
-        return a.id === id;
-      });
-    })
-    .filter((a): a is SubagentInfo => {
-      return a !== undefined;
-    });
+  const pinnedIdSet = new Set(pinnedIds);
+  const pinned = subagents.filter((a) => {
+    return pinnedIdSet.has(a.id);
+  });
 
   const unpinned = subagents.filter((a) => {
-    return !pinnedIds.includes(a.id);
+    return !pinnedIdSet.has(a.id);
   });
 
   const trimmedQuery = query.trim().toLowerCase();
@@ -402,28 +345,13 @@ export function AgentListDialog({
     !trimmedQuery || displayName.toLowerCase().includes(trimmedQuery);
 
   const togglePin = (agentId: string) => {
-    const next = pinnedIds.includes(agentId)
-      ? pinnedIds.filter((id) => {
-          return id !== agentId;
-        })
-      : [...pinnedIds, agentId];
-    detach(savePinnedIds(next, pageSignal), Reason.DomCallback);
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) {
-      return;
-    }
-    const oldIndex = pinnedIds.indexOf(String(active.id));
-    const newIndex = pinnedIds.indexOf(String(over.id));
-    if (oldIndex === -1 || newIndex === -1) {
-      return;
-    }
-    const next = [...pinnedIds];
-    next.splice(oldIndex, 1);
-    next.splice(newIndex, 0, pinnedIds[oldIndex]!);
-    detach(savePinnedIds(next, pageSignal), Reason.DomCallback);
+    detach(
+      saveAgentPinned(
+        { agentId, pinned: !pinnedIdSet.has(agentId) },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
   };
 
   const handleChat = (agentId: string | null) => {
@@ -488,38 +416,23 @@ export function AgentListDialog({
         {/* Pinned agents */}
         {filteredPinned.length > 0 && (
           <AgentCommandSection label="Pinned">
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={filteredPinned.map((a) => {
-                  return a.id;
-                })}
-                strategy={verticalListSortingStrategy}
-              >
-                <>
-                  {filteredPinned.map((agent) => {
-                    return (
-                      <SortablePinnedAgent
-                        key={agent.id}
-                        agent={agent}
-                        onUnpin={() => {
-                          return togglePin(agent.id);
-                        }}
-                        onChat={() => {
-                          return handleChat(agent.id);
-                        }}
-                        disabled={saving}
-                        unreadIndicatorsEnabled={unreadIndicatorsEnabled}
-                        hasUnread={unreadAgentIds?.has(agent.id) ?? false}
-                      />
-                    );
-                  })}
-                </>
-              </SortableContext>
-            </DndContext>
+            {filteredPinned.map((agent) => {
+              return (
+                <PinnedAgentCommandItem
+                  key={agent.id}
+                  agent={agent}
+                  onUnpin={() => {
+                    return togglePin(agent.id);
+                  }}
+                  onChat={() => {
+                    return handleChat(agent.id);
+                  }}
+                  disabled={saving}
+                  unreadIndicatorsEnabled={unreadIndicatorsEnabled}
+                  hasUnread={unreadAgentIds?.has(agent.id) ?? false}
+                />
+              );
+            })}
           </AgentCommandSection>
         )}
 

@@ -15,12 +15,18 @@ import {
   clearChatThreadEmojiFromThreadData$,
   openRenameChatThreadDialogFromThreadData$,
   setChatThreadEmojiFromThreadData$,
+  type RenameChatThreadDialogRequest,
 } from "./chat-thread-rename.ts";
+import {
+  eventDrivenChatThreadMeta,
+  type ThreadMeta,
+} from "./chat-thread-event-sourcing.ts";
 import { CHAT_THREAD_EMOJI_OPTIONS } from "./chat-thread-title.ts";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onRef } from "../utils.ts";
 import { openChatThreadEmojiMenu$ } from "../zero-page/zero-sidebar-state.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
+import { currentChatThreadId$ } from "../agent-chat.ts";
 import {
   setupGlobalShortcut,
   type GlobalShortcutBindings,
@@ -190,6 +196,16 @@ interface ChatPageShortcutActions {
   setEmoji: (emoji: string) => void | Promise<void>;
 }
 
+interface ChatPageShortcutSetup {
+  doc: Document;
+  focusedThread: () => ChatThreadSignals | null;
+  navigateFocusedThread: (direction: "prev" | "next") => void;
+  root: HTMLElement;
+  sidebarTitleForThread: (
+    thread: ChatThreadSignals,
+  ) => string | null | undefined;
+}
+
 function setupChatPageGlobalShortcutListener({
   actions,
   doc,
@@ -234,6 +250,93 @@ const setFocusedThreadEmoji$ = command(
   },
 );
 
+const setupChatPageShortcutActions$ = command(
+  (
+    { get, set },
+    {
+      doc,
+      focusedThread,
+      navigateFocusedThread,
+      root,
+      sidebarTitleForThread,
+    }: ChatPageShortcutSetup,
+    signal: AbortSignal,
+  ) => {
+    setupChatPageGlobalShortcutListener({
+      actions: {
+        clearEmoji: async () => {
+          const thread = focusedThread();
+          if (thread) {
+            await set(
+              clearFocusedThreadEmoji$,
+              { thread, title: sidebarTitleForThread(thread) },
+              signal,
+            );
+          }
+        },
+        openEmojiMenu: async () => {
+          const thread = focusedThread();
+          if (thread) {
+            await set(
+              openFocusedThreadEmojiMenu$,
+              { thread, title: sidebarTitleForThread(thread) },
+              signal,
+            );
+          }
+        },
+        renameThread: async () => {
+          const thread = focusedThread();
+          const threadId = thread?.threadId ?? get(currentChatThreadId$);
+          if (threadId) {
+            const request = await set(
+              renameDialogRequestForThread$,
+              thread,
+              threadId,
+              signal,
+            );
+            await set(
+              openRenameChatThreadDialogFromThreadData$,
+              request,
+              signal,
+            );
+          }
+        },
+        navigateNext: () => {
+          navigateFocusedThread("next");
+        },
+        navigatePrev: () => {
+          navigateFocusedThread("prev");
+        },
+        scrollBottom: () => {
+          const thread = focusedThread();
+          if (thread) {
+            set(scrollCurrentThread$, thread, "bottom");
+          }
+        },
+        scrollTop: () => {
+          const thread = focusedThread();
+          if (thread) {
+            set(scrollCurrentThread$, thread, "top");
+          }
+        },
+        setEmoji: async (emoji) => {
+          const thread = focusedThread();
+          if (thread) {
+            await set(
+              setFocusedThreadEmoji$,
+              { thread, emoji, title: sidebarTitleForThread(thread) },
+              signal,
+            );
+          }
+        },
+      },
+      doc,
+      root,
+      signal,
+    });
+  },
+);
+
 const clearFocusedThreadEmoji$ = command(
   async (
     { get, set },
@@ -267,6 +370,30 @@ const openFocusedThreadEmojiMenu$ = command(
     signal.throwIfAborted();
     const title = args.title !== undefined ? args.title : threadMeta?.title;
     set(openChatThreadEmojiMenu$, { threadId: args.thread.threadId, title });
+  },
+);
+
+const renameDialogRequestForThread$ = command(
+  async (
+    { get },
+    thread: ChatThreadSignals | null,
+    threadId: string,
+    signal: AbortSignal,
+  ): Promise<RenameChatThreadDialogRequest> => {
+    let threadMeta: ThreadMeta | null = null;
+    if (get(featureSwitch$)[FeatureSwitchKey.ChatThreadEventSourcing]) {
+      threadMeta = thread
+        ? await get(thread.threadMeta$)
+        : await get(eventDrivenChatThreadMeta(threadId));
+    } else if (thread) {
+      threadMeta = await get(thread.threadMeta$);
+    }
+    signal.throwIfAborted();
+    return {
+      threadId,
+      title: threadMeta?.title,
+      agentId: threadMeta?.agentId,
+    };
   },
 );
 
@@ -423,71 +550,17 @@ export const setChatKeyboardScrollRoot$ = onRef(
     el.addEventListener("focusin", markActiveThread, { signal });
     el.addEventListener("pointerdown", markActiveThread, { signal });
     el.addEventListener("pointerover", markActiveThread, { signal });
-    setupChatPageGlobalShortcutListener({
-      actions: {
-        clearEmoji: async () => {
-          const thread = focusedThread();
-          if (thread) {
-            await set(
-              clearFocusedThreadEmoji$,
-              { thread, title: sidebarTitleForThread(thread) },
-              signal,
-            );
-          }
-        },
-        openEmojiMenu: async () => {
-          const thread = focusedThread();
-          if (thread) {
-            await set(
-              openFocusedThreadEmojiMenu$,
-              { thread, title: sidebarTitleForThread(thread) },
-              signal,
-            );
-          }
-        },
-        renameThread: async () => {
-          const thread = focusedThread();
-          if (thread) {
-            await set(
-              openRenameChatThreadDialogFromThreadData$,
-              thread.threadId,
-              signal,
-            );
-          }
-        },
-        navigateNext: () => {
-          navigateFocusedThread("next");
-        },
-        navigatePrev: () => {
-          navigateFocusedThread("prev");
-        },
-        scrollBottom: () => {
-          const thread = focusedThread();
-          if (thread) {
-            set(scrollCurrentThread$, thread, "bottom");
-          }
-        },
-        scrollTop: () => {
-          const thread = focusedThread();
-          if (thread) {
-            set(scrollCurrentThread$, thread, "top");
-          }
-        },
-        setEmoji: async (emoji) => {
-          const thread = focusedThread();
-          if (thread) {
-            await set(
-              setFocusedThreadEmoji$,
-              { thread, emoji, title: sidebarTitleForThread(thread) },
-              signal,
-            );
-          }
-        },
+    set(
+      setupChatPageShortcutActions$,
+      {
+        doc,
+        focusedThread,
+        navigateFocusedThread,
+        root: el,
+        sidebarTitleForThread,
       },
-      doc,
-      root: el,
       signal,
-    });
+    );
     setupKeyboardScrollPrepareListener({
       containingThread,
       doc,

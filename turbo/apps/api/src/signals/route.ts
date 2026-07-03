@@ -112,6 +112,7 @@ import { zeroLogsRoutes } from "./routes/zero-logs";
 import { zeroMapsRoutes } from "./routes/zero-maps";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
+import { zeroOnboardingCompleteRoutes } from "./routes/zero-onboarding-complete";
 import { zeroOnboardingCompleteLimitedFreeRoutes } from "./routes/zero-onboarding-complete-limited-free";
 import { zeroOnboardingSetupRoutes } from "./routes/zero-onboarding-setup";
 import { zeroOnboardingStatusRoutes } from "./routes/zero-onboarding-status";
@@ -332,6 +333,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
+  ...zeroOnboardingCompleteRoutes,
   ...zeroOnboardingCompleteLimitedFreeRoutes,
   ...zeroOnboardingSetupRoutes,
   ...zeroOnboardingStatusRoutes,

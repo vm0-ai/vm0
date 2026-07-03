@@ -1224,7 +1224,7 @@ describe("workflow detail page", () => {
       ).toBeInTheDocument();
     });
 
-    click(buttonByText("Chat with Research Bot"));
+    click(buttonByText("Refine with Research Bot"));
 
     await waitFor(() => {
       expect(openedWorkflowIds).toStrictEqual([SALES_WORKFLOW_ID]);
@@ -1832,6 +1832,7 @@ describe("workflow detail page", () => {
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
       [FeatureSwitchKey.WorkflowAutomation]: true,
+      [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
     });
 
     await waitFor(() => {
@@ -1873,6 +1874,29 @@ describe("workflow detail page", () => {
       .closest("pre");
     expect(signedCurlExample).toBeInTheDocument();
     expect(signedCurlExample).toHaveClass("whitespace-pre-wrap", "break-all");
+  });
+
+  it("hides webhook creation when the webhook trigger switch is disabled", async () => {
+    mockWorkflowApis([salesResearch()]);
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.WorkflowAutomation]: true,
+      [FeatureSwitchKey.WorkflowWebhookTriggers]: false,
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+
+    await waitFor(() => {
+      expect(menuItemByText(/^Gmail new message/)).toBeInTheDocument();
+    });
+    expect(
+      queryAllByRoleFast("menuitem").some((item) => {
+        return item.textContent?.startsWith("Webhook");
+      }),
+    ).toBeFalsy();
   });
 
   it("creates a cron schedule trigger from the preferred time zone", async () => {

@@ -2,10 +2,13 @@ import { Command, InvalidArgumentError } from "commander";
 import { withErrorHandler } from "../../../lib/command";
 import { createHtmlArtifactAuthoringPacket } from "./html-artifact-authoring";
 import {
+  buildPresentationRunbookInstructionLines,
   findDesignSystem,
+  findPresentationRunbookPackage,
   findTemplate,
   listDesignSystems,
   listTemplates,
+  resolvePresentationRunbookColorToken,
 } from "./resource-registry";
 import {
   canonicalizeRegistryId,
@@ -128,6 +131,41 @@ ${formatRegistryListing(templates, "presentation templates")}`;
         });
         if (dispatch.outcome === "handled") return;
         const prompt = dispatch.prompt;
+
+        // Runbook-first: a picker template (`html-ppt-<slug>`) is served by its
+        // self-contained runbook package. Resolve it before the legacy
+        // design-system/template path and emit runbook instructions — the
+        // design system is not part of the runbook flow, so it is ignored here.
+        if (options.template !== undefined) {
+          const canonical = canonicalizeRegistryId(
+            "template",
+            options.template,
+          );
+          const runbookPackage = findPresentationRunbookPackage(canonical);
+          if (runbookPackage) {
+            const color = resolvePresentationRunbookColorToken(
+              runbookPackage,
+              undefined,
+            );
+            const colorSystemToken =
+              "error" in color
+                ? runbookPackage.defaultColorSystem
+                : color.token;
+            console.log(
+              [
+                "# Presentation Generation (runbook)",
+                "",
+                ...buildPresentationRunbookInstructionLines({
+                  runbookPackage,
+                  colorSystemToken,
+                }),
+                "",
+                `User request: ${prompt}`,
+              ].join("\n"),
+            );
+            return;
+          }
+        }
 
         let resolvedDesignSystem;
         if (options.designSystem !== undefined) {

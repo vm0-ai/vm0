@@ -34,7 +34,7 @@ export const ROUTES = {
   agentphoneConnect: "/agentphone/connect",
   settingsApiKeys: "/settings/api-keys",
   deviceBb0: "/device/bb0",
-  onboarding: "/onboarding",
+  onboarding: "/onboarding/491858",
   signIn: "/sign-in",
   signInCatchAll: "/sign-in{/*path}",
   signUp: "/sign-up",

@@ -114,7 +114,7 @@ describe("app auth pages", () => {
   });
 
   it("keeps sign-up redirects to sibling origins of the current host", async () => {
-    const redirectUrl = "https://www.vm0.ai/onboarding/2afcf6?vm0_theme=light";
+    const redirectUrl = "https://www.vm0.ai/onboarding/491858?vm0_theme=light";
     const path = `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
     setBrowserUrl(`https://app.vm0.ai${path}`);
 
@@ -130,7 +130,7 @@ describe("app auth pages", () => {
   });
 
   it("drops sign-up redirects to other environments", async () => {
-    const redirectUrl = "https://staging-www.vm6.ai/onboarding/2afcf6";
+    const redirectUrl = "https://staging-www.vm6.ai/onboarding/491858";
     const path = `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
     setBrowserUrl(`https://app.vm0.ai${path}`);
 

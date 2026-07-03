@@ -1427,6 +1427,9 @@ describe("zero sidebar", () => {
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
     const researchDialogRow = agentRowByName(dialog, "Research Agent");
     const supportDialogRow = agentRowByName(dialog, "Support Agent");
+    expect(
+      within(researchDialogRow).queryByLabelText("Reorder Research Agent"),
+    ).not.toBeInTheDocument();
     const researchDialogUnread =
       within(researchDialogRow).getByLabelText("Unread");
     const supportDialogUnread =

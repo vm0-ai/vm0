@@ -181,7 +181,7 @@ function VisibilityIcon({
     <Icon
       size={15}
       stroke={1.7}
-      className={cn("shrink-0", isPublic ? "text-blue-500" : "text-violet-500")}
+      className={cn("shrink-0", isPublic ? "text-blue-500" : "text-[#45A7A8]")}
       aria-label={isPublic ? "Public" : "Private"}
     />
   );
@@ -443,7 +443,7 @@ const NEXT_RUN_SECTIONS: readonly {
   { key: "today", label: "Runs today" },
   { key: "week", label: "This week" },
   { key: "later", label: "Later" },
-  { key: "event", label: "On event" },
+  { key: "event", label: "On automation" },
   { key: "manual", label: "Manual" },
 ];
 

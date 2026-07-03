@@ -4363,6 +4363,11 @@ export interface PresentationRunbookPackage {
   readonly slug: string;
   /** Default color-system token applied when the user selects no color system. */
   readonly defaultColorSystem: string;
+  /** Display name (relocated onto the package so runbook resolution no longer
+   * needs the legacy `template:html-ppt-*` registry entry). */
+  readonly name: string;
+  /** Template description (relocated from the legacy template entry). */
+  readonly description: string;
   readonly source: ResourceSourceRef;
 }
 
@@ -4424,121 +4429,192 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
   readonly templateId: string;
   readonly slug: string;
   readonly defaultColorSystem: string;
+  readonly name: string;
+  readonly description: string;
 }[] = [
   {
     templateId: "template:html-ppt-playful-launch",
     slug: "playful-launch",
     defaultColorSystem: "carnival",
+    name: "Playful Launch Presentation",
+    description:
+      "15-slot HTML presentation structure for product and service launches with oversized headlines, color-field rhythm, recurring motifs, and required media slots.",
   },
   {
     templateId: "template:html-ppt-bloom-pitch",
     slug: "bloom",
     defaultColorSystem: "carnival",
+    name: "Bloom Pitch Presentation",
+    description:
+      "15-slot playful investor-pitch presentation structure with oversized headlines, colour-field dividers, organic visuals, stat stacks, quote cards, and pricing cards.",
   },
   {
     templateId: "template:html-ppt-blueprint-academy",
     slug: "blueprint-academy",
     defaultColorSystem: "forest_editorial",
+    name: "Blueprint Academy Presentation",
+    description:
+      "15-slot academic education presentation structure with blueprint grids, wire diagrams, matted photos, goal cards, process spines, stats, testimonials, and contact slides.",
   },
   {
     templateId: "template:html-ppt-botane-organic",
     slug: "botane-organic",
     defaultColorSystem: "mauve_dusk",
+    name: "Botane Organic Presentation",
+    description:
+      "15-slot organic wellness deck with colour-block panels, circular media, side titles, icon cycles, and donut stats.",
   },
   {
     templateId: "template:html-ppt-business-data",
     slug: "business-data",
     defaultColorSystem: "berry_pop",
+    name: "Business Data Presentation",
+    description:
+      "15-slot HTML presentation structure for metric-led business reports with big numbers, stat strips, bars, rings, photo squares, and dark/accent proof slides.",
   },
   {
     templateId: "template:html-ppt-crayon",
     slug: "crayon",
     defaultColorSystem: "prism",
+    name: "Crayon Presentation",
+    description:
+      "Light 15-slot playful education deck with peripheral blobs, multi-colour marker titles, doodle sparks, colour-block cards, burst stats, quote cards, and rounded pricing cards.",
   },
   {
     templateId: "template:html-ppt-creative-agency",
     slug: "creative-agency",
     defaultColorSystem: "coral_studio",
+    name: "Creative Agency Presentation",
+    description:
+      "Minimal modern 15-slot agency deck with generous whitespace, foliage sprigs, B&W photo blocks, sharp rectangles, team grids, icon services, process spine, and a big-stat impact band.",
   },
   {
     templateId: "template:html-ppt-data-report",
     slug: "data-report",
     defaultColorSystem: "prism",
+    name: "Data Report Presentation",
+    description:
+      "Chart-led 15-page data report variant with saturated colour grounds, sharp outlines, frameless numbers, stacked/combo/area/line/doughnut/pie/bar/bubble charts, and data-first summary pages.",
   },
   {
     templateId: "template:html-ppt-editorial-magazine",
     slug: "editorial-magazine",
     defaultColorSystem: "warm_sand",
+    name: "Editorial Magazine Presentation",
+    description:
+      "Restrained 15-slot magazine deck with masthead cover, dotted TOC, colour-block dividers, two-column editorial pages, roman/italic titles, running footer, stat boxes, quote rows, and editorial table.",
   },
   {
     templateId: "template:html-ppt-landing-consulting",
     slug: "landing-consulting",
     defaultColorSystem: "pop_art",
+    name: "Landing Consulting Presentation",
+    description:
+      "Consulting deck dressed like a landing page, with persistent nav chrome, two-tone display titles, dashed circuit wires, marker emphasis, speech-bubble callouts, square photo blocks, frameless stats, and CTA rhythm.",
   },
   {
     templateId: "template:html-ppt-lumina",
     slug: "lumina",
     defaultColorSystem: "prism",
+    name: "Lumina Presentation",
+    description:
+      "Sticker-tag creative studio deck with brush-letter title accents, asterisk punctuation, frame-edge chrome, sharp colour cells, photo blocks, stat bands, and agency-style 15-slot rhythm.",
   },
   {
     templateId: "template:html-ppt-meridian",
     slug: "meridian",
     defaultColorSystem: "slate_corporate",
+    name: "Meridian Presentation",
+    description:
+      "15-slot professional data-agency presentation structure with flat nav chrome, sharp blocks, index numbers, stat matrices, bar charts, service blocks, and executive close.",
   },
   {
     templateId: "template:html-ppt-mosaic-geometric",
     slug: "mosaic-geometric",
     defaultColorSystem: "carnival",
+    name: "Mosaic Geometric Presentation",
+    description:
+      "Bold modular geometric 15-slot pitch deck with Bauhaus mosaic tile clusters, dotted TOC, chapter dividers, framed icon services, process spine, gallery grid, segmented pie, burst stats, quote rows, and price cards.",
   },
   {
     templateId: "template:html-ppt-neo-brutalism",
     slug: "neo-brutalism",
     defaultColorSystem: "mono_ink",
+    name: "Neo Brutalism Presentation",
+    description:
+      "Bold 15-slot brutalist business-plan deck with persistent nav chrome, CTA pairs, numbered circles, arch cards, and heavy framed content blocks.",
   },
   {
     templateId: "template:html-ppt-nocturne",
     slug: "nocturne",
     defaultColorSystem: "midnight_mono",
+    name: "Nocturne Presentation",
+    description:
+      "Dark 15-slot data-keynote deck with rounded chart devices, frameless hero numbers, bento metrics, and clear text/data alternation.",
   },
   {
     templateId: "template:html-ppt-pixel-glitch",
     slug: "pixel-glitch",
     defaultColorSystem: "bauhaus_primary",
+    name: "Pixel Glitch Presentation",
+    description:
+      "15-slot Y2K creative-studio presentation structure with pixel trails, glitch titles, sharp dividers, image blocks, ring charts, process spines, and bold proof pages.",
   },
   {
     templateId: "template:html-ppt-playful-pop",
     slug: "playful-pop",
     defaultColorSystem: "pop_art",
+    name: "Playful Pop Presentation",
+    description:
+      "Loud 15-slot playful brand deck with neon-on-dark Pop Art colour, overlapping offset-shadow cards, organic blobs, corner dot grids, burst rosettes, pill chips, icon quads, process spine, photo gallery, quotes, and pricing.",
   },
   {
     templateId: "template:html-ppt-prospectus",
     slug: "prospectus",
     defaultColorSystem: "slate_corporate",
+    name: "Prospectus Presentation",
+    description:
+      "15-slot corporate landing-page business-plan structure with persistent nav, colour-field stages, diagonal arrows, CTA clusters, flat charts, gantt timelines, and pricing tiers.",
   },
   {
     templateId: "template:html-ppt-schoolhouse",
     slug: "schoolhouse",
     defaultColorSystem: "bauhaus_primary",
+    name: "Schoolhouse Presentation",
+    description:
+      "15-slot retro school-poster presentation structure with paper stages, stamp badges, index cards, ruled rows, stat bands, quote cards, and membership tiers.",
   },
   {
     templateId: "template:html-ppt-sticker-scrapbook",
     slug: "sticker-scrapbook",
     defaultColorSystem: "prism",
+    name: "Sticker Scrapbook Presentation",
+    description:
+      "15-slot vibrant scrapbook presentation structure with sticker seals, spiral pads, agenda cards, doodle dividers, photo grids, stat stickers, quote cards, and pricing cards.",
   },
   {
     templateId: "template:html-ppt-strata",
     slug: "strata",
     defaultColorSystem: "mono_ink",
+    name: "Strata Presentation",
+    description:
+      "15-slot Swiss-minimal agency presentation structure with giant caps, asterisk dividers, tile ramps, mono photo grids, frameless stats, quote cards, and pricing cards.",
   },
   {
     templateId: "template:html-ppt-taped-consulting",
     slug: "taped-consulting",
     defaultColorSystem: "slate_corporate",
+    name: "Taped Consulting Presentation",
+    description:
+      "15-slot consulting presentation structure with taped photo clusters, inset frames, feature rows, process spines, big-number proof, quote cards, and pricing cards.",
   },
   {
     templateId: "template:html-ppt-vantage",
     slug: "vantage",
     defaultColorSystem: "slate_corporate",
+    name: "Vantage Presentation",
+    description:
+      "15-slot business-proposal presentation structure with two-tone headings, corner indexes, square-pair motifs, split panels, frameless numbers, donut charts, and milestone lines.",
   },
 ];
 
@@ -4549,6 +4625,8 @@ const PRESENTATION_RUNBOOK_PACKAGES: readonly PresentationRunbookPackage[] =
       resourceId: `${def.templateId}-runbook`,
       slug: def.slug,
       defaultColorSystem: def.defaultColorSystem,
+      name: def.name,
+      description: def.description,
       source: privateR2ArchiveSource(
         def.slug,
         presentationRunbookArchiveSha256(def.slug),
@@ -4579,17 +4657,14 @@ export function findPresentationRunbookResource(
   if (!pkg) {
     return undefined;
   }
-  // Reuse the legacy template's display name and description — the runbook
-  // package renders the same template, so they describe it accurately and stay
-  // in sync without a second copy. Only id and source diverge.
-  const template = findTemplate(pkg.templateId);
+  // Name/description live on the package itself (relocated from the legacy
+  // `template:html-ppt-*` registry entry) so this no longer depends on that
+  // entry surviving. Only id and source diverge.
   return {
     id: pkg.resourceId,
     kind: "template",
-    name: template?.name ?? pkg.slug,
-    description:
-      template?.description ??
-      "Self-contained presentation runbook package pulled as a single private R2 archive.",
+    name: pkg.name,
+    description: pkg.description,
     source: pkg.source,
     targets: ["presentation"],
   };
@@ -4611,6 +4686,48 @@ export function presentationColorSystemToken(
   return colorSystemId
     .slice(COLOR_SYSTEM_ID_PREFIX.length)
     .replaceAll("-", "_");
+}
+
+/**
+ * Resolve the color-system token for a presentation runbook: an explicit color
+ * system id must resolve to a known token; with none, the package's default
+ * token is used. Returns `{ token }` or `{ error }`.
+ */
+export function resolvePresentationRunbookColorToken(
+  runbookPackage: PresentationRunbookPackage,
+  colorSystemId: string | undefined,
+): { readonly token: string } | { readonly error: "unknown-color-system" } {
+  if (!colorSystemId) {
+    return { token: runbookPackage.defaultColorSystem };
+  }
+  const token = presentationColorSystemToken(colorSystemId);
+  if (!token) {
+    return { error: "unknown-color-system" };
+  }
+  return { token };
+}
+
+/**
+ * Shared runbook authoring instructions for a selected presentation template.
+ * Used by both the chat generation-template prompt (API) and
+ * `zero generate presentation --template` (CLI) so the two never drift.
+ */
+export function buildPresentationRunbookInstructionLines(args: {
+  readonly runbookPackage: PresentationRunbookPackage;
+  readonly colorSystemToken: string;
+}): readonly string[] {
+  const { runbookPackage: pkg, colorSystemToken } = args;
+  return [
+    `Selected presentation template: ${pkg.name} (${pkg.templateId})`,
+    `Color system token: ${colorSystemToken}`,
+    "",
+    "To produce the presentation:",
+    `- Pull the package: zero resource pull ${pkg.resourceId} --dir ./generated/resources`,
+    `- Follow ./generated/resources/${pkg.slug}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
+    "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
+    "- Host the finished deck: zero host <output-dir> --site <slug> --artifact-kind presentation-html",
+    "- Return only the generated HTML deck as the final deliverable.",
+  ];
 }
 
 function filterByKind(kind: ResourceKind): readonly RegistryEntry[] {

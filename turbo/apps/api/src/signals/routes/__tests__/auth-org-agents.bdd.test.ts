@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
+import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import {
   createAuthOrgAgentsBddApi,
@@ -27,6 +28,7 @@ const context = testContext();
 const api = createAuthOrgAgentsBddApi(context);
 const bdd = createBddApi(context);
 const runsApi = createRunsAutomationsApi(context);
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
 
 function shortId(): string {
@@ -39,6 +41,17 @@ function slug(prefix: string): string {
 
 function upperName(prefix: string): string {
   return `${prefix}_${shortId().toUpperCase()}`;
+}
+
+function expectExpiresAboutThirtyDaysFromNow(value: unknown): void {
+  expect(typeof value).toBe("string");
+  if (typeof value !== "string") {
+    throw new Error("Expected a string credit expiration");
+  }
+
+  const expiresInMs = Date.parse(value) - now();
+  expect(expiresInMs).toBeGreaterThan(THIRTY_DAYS_MS - 60_000);
+  expect(expiresInMs).toBeLessThanOrEqual(THIRTY_DAYS_MS + 5000);
 }
 
 async function onboardAdmin(
@@ -114,6 +127,7 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
 
     const after = await api.readOnboardingStatus(admin);
     expect(after.hasDefaultAgent).toBeTruthy();
+    expect(after.onboardingComplete).toBeTruthy();
     expect(after.defaultAgentId).toBe(defaultAgentId);
     expect(after.defaultAgentMetadata).toMatchObject({
       displayName: "BDD Default Agent",
@@ -164,11 +178,12 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
 
     const afterLimitedFree = await api.readOnboardingStatus(admin);
     expect(afterLimitedFree.needsOnboarding).toBeFalsy();
+    expect(afterLimitedFree.onboardingComplete).toBeTruthy();
     expect(afterLimitedFree.defaultAgentId).toBe(defaultAgentId);
 
     const limitedFreeBilling = await runsApi.readBillingStatus(admin);
     expect(limitedFreeBilling).toMatchObject({
-      credits: 1000,
+      credits: 3000,
       tier: "limited-free-1",
       onboardingPaymentPending: false,
     });
@@ -179,10 +194,10 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     );
     expect(onboardingCreditGrant).toMatchObject({
       source: "onboarding",
-      amount: 1000,
-      remaining: 1000,
-      expiresAt: "2999-12-31T00:00:00.000Z",
+      amount: 3000,
+      remaining: 3000,
     });
+    expectExpiresAboutThirtyDaysFromNow(onboardingCreditGrant?.expiresAt);
 
     const afterRepeatedSetup = await api.listAgents(admin);
     expect(
@@ -591,7 +606,8 @@ describe("ORG-03 onboarding status mapping", () => {
 
     const noOrgStatus = await api.readOnboardingStatus(noOrg);
     expect(noOrgStatus).toStrictEqual({
-      needsOnboarding: true,
+      needsOnboarding: false,
+      onboardingComplete: false,
       isAdmin: false,
       hasOrg: false,
       hasDefaultAgent: false,
@@ -602,6 +618,7 @@ describe("ORG-03 onboarding status mapping", () => {
     const memberStatus = await api.readOnboardingStatus(member);
     expect(memberStatus).toStrictEqual({
       needsOnboarding: false,
+      onboardingComplete: false,
       isAdmin: false,
       hasOrg: true,
       hasDefaultAgent: false,
@@ -612,7 +629,8 @@ describe("ORG-03 onboarding status mapping", () => {
     api.acceptAgentStorageWrites();
     const adminBeforeSetup = await api.readOnboardingStatus(admin);
     expect(adminBeforeSetup).toMatchObject({
-      needsOnboarding: false,
+      needsOnboarding: true,
+      onboardingComplete: false,
       isAdmin: true,
       hasOrg: true,
       hasDefaultAgent: true,
@@ -632,9 +650,29 @@ describe("ORG-03 onboarding status mapping", () => {
 
     const bootstrappedBilling = await runsApi.readBillingStatus(admin);
     expect(bootstrappedBilling).toMatchObject({
-      credits: 1000,
+      credits: 3000,
       tier: "limited-free-1",
       onboardingPaymentPending: false,
+    });
+
+    const memberComplete = await api.completeOnboarding(member);
+    expect(memberComplete.status).toBe(403);
+    expectApiError(memberComplete.body);
+    expect(memberComplete.body.error.code).toBe("FORBIDDEN");
+
+    const completed = await api.completeOnboarding(admin);
+    expect(completed.status).toBe(200);
+    expect(completed.body).toStrictEqual({
+      onboardingComplete: true,
+      needsOnboarding: false,
+    });
+    const adminAfterComplete = await api.readOnboardingStatus(admin);
+    expect(adminAfterComplete).toMatchObject({
+      needsOnboarding: false,
+      onboardingComplete: true,
+      isAdmin: true,
+      hasOrg: true,
+      hasDefaultAgent: true,
     });
 
     const setup = await api.setupOnboarding(admin, {
@@ -652,6 +690,7 @@ describe("ORG-03 onboarding status mapping", () => {
     const paymentPending = await api.readOnboardingStatus(admin);
     expect(paymentPending).toStrictEqual({
       needsOnboarding: false,
+      onboardingComplete: true,
       isAdmin: true,
       hasOrg: true,
       hasDefaultAgent: true,
@@ -667,6 +706,7 @@ describe("ORG-03 onboarding status mapping", () => {
     const entitled = await api.readOnboardingStatus(admin);
     expect(entitled).toStrictEqual({
       needsOnboarding: false,
+      onboardingComplete: true,
       isAdmin: true,
       hasOrg: true,
       hasDefaultAgent: true,
@@ -682,6 +722,7 @@ describe("ORG-03 onboarding status mapping", () => {
     const orphaned = await api.readOnboardingStatus(admin);
     expect(orphaned).toMatchObject({
       needsOnboarding: false,
+      onboardingComplete: true,
       isAdmin: true,
       hasOrg: true,
       hasDefaultAgent: true,

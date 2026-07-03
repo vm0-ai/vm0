@@ -1,3 +1,4 @@
+import { state } from "ccstate";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createScrollSignals } from "../auto-scroll.ts";
@@ -19,6 +20,43 @@ function createScrollContainer(): HTMLElement {
   container.appendChild(content);
   document.body.appendChild(container);
   return container;
+}
+
+function rectWithTop(top: number, height = 0): DOMRect {
+  return {
+    bottom: top + height,
+    height,
+    left: 0,
+    right: 0,
+    top,
+    width: 0,
+    x: 0,
+    y: top,
+    toJSON: () => {
+      return {};
+    },
+  } as DOMRect;
+}
+
+function setViewportTop(element: HTMLElement, top: number): void {
+  element.getBoundingClientRect = () => {
+    return rectWithTop(top);
+  };
+}
+
+function appendUserAnchor(
+  scrollContainer: HTMLElement,
+  contentTop: number,
+  height = 0,
+): HTMLElement {
+  const anchor = document.createElement("article");
+  anchor.dataset.role = "user";
+  scrollContainer.firstElementChild?.appendChild(anchor);
+  setViewportTop(scrollContainer, 0);
+  anchor.getBoundingClientRect = () => {
+    return rectWithTop(contentTop - scrollContainer.scrollTop, height);
+  };
+  return anchor;
 }
 
 function mockResizeObserver(): { restore: () => void; triggerAll: () => void } {
@@ -96,7 +134,7 @@ function mockResizeObserver(): { restore: () => void; triggerAll: () => void } {
   };
 }
 
-describe("auto-scroll prepend compensation", () => {
+describe("auto-scroll", () => {
   const ctx = testContext();
   const resizeObserverCleanups: (() => void)[] = [];
   const scrollRefCleanups: (() => void)[] = [];
@@ -210,5 +248,130 @@ describe("auto-scroll prepend compensation", () => {
     resizeObserver.triggerAll();
 
     expect(scrollContainer.scrollTop).toBe(480);
+  });
+
+  it("uses the bottom target when latest user message anchoring is disabled", () => {
+    const anchorEnabled$ = state(false);
+    const scroll = createScrollSignals("anchor-disabled", {
+      scrollToBottomAnchor: {
+        selector: '[data-role="user"]',
+        enabled$: anchorEnabled$,
+      },
+    });
+    const scrollContainer = createScrollContainer();
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1000,
+      clientHeight: 300,
+    });
+    appendUserAnchor(scrollContainer, 500);
+
+    bindScrollContainer(scroll, scrollContainer);
+    ctx.store.set(scroll.scrollToBottom$);
+
+    expect(scrollContainer.scrollTop).toBe(1000);
+  });
+
+  it("stays at the bottom while the latest user message cannot reach the top", () => {
+    const anchorEnabled$ = state(true);
+    const scroll = createScrollSignals("anchor-before-enough-content", {
+      scrollToBottomAnchor: {
+        selector: '[data-role="user"]',
+        enabled$: anchorEnabled$,
+      },
+    });
+    const scrollContainer = createScrollContainer();
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1000,
+      clientHeight: 300,
+    });
+    appendUserAnchor(scrollContainer, 900);
+
+    bindScrollContainer(scroll, scrollContainer);
+    ctx.store.set(scroll.scrollToBottom$);
+
+    expect(scrollContainer.scrollTop).toBe(700);
+  });
+
+  it("continues to the latest user message top once enough content renders", () => {
+    const resizeObserver = installResizeObserver();
+    const anchorEnabled$ = state(true);
+    const scroll = createScrollSignals("anchor-after-content-growth", {
+      scrollToBottomAnchor: {
+        selector: '[data-role="user"]',
+        enabled$: anchorEnabled$,
+      },
+    });
+    const scrollContainer = createScrollContainer();
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1000,
+      clientHeight: 300,
+    });
+    appendUserAnchor(scrollContainer, 900);
+
+    bindScrollContainer(scroll, scrollContainer);
+    ctx.store.set(scroll.scrollToBottom$);
+    expect(scrollContainer.scrollTop).toBe(700);
+
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1500,
+      clientHeight: 300,
+    });
+    resizeObserver.triggerAll();
+
+    expect(scrollContainer.scrollTop).toBe(900);
+  });
+
+  it("uses the bottom target when the latest user message does not fit in the viewport", () => {
+    const anchorEnabled$ = state(true);
+    const scroll = createScrollSignals("anchor-taller-than-viewport", {
+      scrollToBottomAnchor: {
+        selector: '[data-role="user"]',
+        enabled$: anchorEnabled$,
+      },
+    });
+    const scrollContainer = createScrollContainer();
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1800,
+      clientHeight: 300,
+    });
+    appendUserAnchor(scrollContainer, 900, 360);
+
+    bindScrollContainer(scroll, scrollContainer);
+    ctx.store.set(scroll.scrollToBottom$);
+
+    expect(scrollContainer.scrollTop).toBe(1800);
+  });
+
+  it("does not restore the latest user message anchor after user scrolling", () => {
+    const resizeObserver = installResizeObserver();
+    const anchorEnabled$ = state(true);
+    const scroll = createScrollSignals("anchor-user-scroll-cancel", {
+      scrollToBottomAnchor: {
+        selector: '[data-role="user"]',
+        enabled$: anchorEnabled$,
+      },
+    });
+    const scrollContainer = createScrollContainer();
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1500,
+      clientHeight: 300,
+    });
+    appendUserAnchor(scrollContainer, 900);
+
+    bindScrollContainer(scroll, scrollContainer);
+    ctx.store.set(scroll.scrollToBottom$);
+    scrollContainer.dispatchEvent(new Event("scroll"));
+    expect(scrollContainer.scrollTop).toBe(900);
+
+    scrollContainer.dispatchEvent(new Event("wheel"));
+    scrollContainer.scrollTop = 1000;
+    scrollContainer.dispatchEvent(new Event("scroll"));
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1800,
+      clientHeight: 300,
+    });
+    resizeObserver.triggerAll();
+
+    expect(scrollContainer.scrollTop).toBe(1800);
   });
 });

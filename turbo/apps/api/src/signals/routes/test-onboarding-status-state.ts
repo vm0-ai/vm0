@@ -63,6 +63,7 @@ async function seedOrgForAction(
     orgId,
     defaultAgentId: composeId,
     onboardingPaymentPending: body.onboarding_payment_pending ?? false,
+    onboardingComplete: body.onboarding_complete ?? true,
     ...(body.tier === undefined ? {} : { tier: body.tier }),
   });
   signal.throwIfAborted();
