@@ -516,6 +516,77 @@ describe("Python builtin firewall catalog renderer", () => {
     ]);
   });
 
+  it("does not collapse malformed host trailing dots into shared static bases", () => {
+    const files = renderEntries([
+      connectorEntry({
+        name: "malformed-dot",
+        apis: [
+          {
+            base: "https://shared-dot.example.com../api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.MALFORMED_DOT_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "malformed:read",
+                rules: ["GET /malformed/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "valid-dot",
+        apis: [
+          {
+            base: "https://shared-dot.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.VALID_DOT_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "valid:read",
+                rules: ["GET /valid/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+    const diagnostics = findGeneratedFile(files, "diagnostics.py");
+
+    expect(
+      jsonAssignmentFromModule(diagnostics, "CONNECTOR_DIAGNOSTIC_FIREWALLS"),
+    ).toStrictEqual([
+      {
+        name: "malformed-dot",
+        apis: [
+          {
+            base: "https://shared-dot.example.com../api",
+            envNames: ["MALFORMED_DOT_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "valid-dot",
+        apis: [
+          {
+            base: "https://shared-dot.example.com/api",
+            envNames: ["VALID_DOT_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+    ]);
+  });
+
   it("preserves runtime API host policies in catalog JSON", () => {
     const files = renderEntries([
       connectorEntry({

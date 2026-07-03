@@ -246,21 +246,26 @@ function diagnosticAuthQueryParamNames(auth: unknown): readonly string[] {
     .sort();
 }
 
-function trimTrailingDots(value: string): string {
-  let end = value.length;
-  while (end > 0 && value.charCodeAt(end - 1) === 46) {
-    end -= 1;
+function stripSingleHostnameTrailingDot(value: string): string {
+  if (!value.endsWith(".")) {
+    return value;
   }
-  return end === value.length ? value : value.slice(0, end);
+
+  const stripped = value.slice(0, -1);
+  if (stripped.length === 0 || stripped.endsWith(".")) {
+    return value;
+  }
+
+  return stripped;
 }
 
 function stripHostnameTrailingDot(host: string): string {
   const portStart = host.startsWith("[") ? -1 : host.lastIndexOf(":");
   if (portStart === -1) {
-    return trimTrailingDots(host);
+    return stripSingleHostnameTrailingDot(host);
   }
 
-  const hostname = trimTrailingDots(host.slice(0, portStart));
+  const hostname = stripSingleHostnameTrailingDot(host.slice(0, portStart));
   return `${hostname}${host.slice(portStart)}`;
 }
 
