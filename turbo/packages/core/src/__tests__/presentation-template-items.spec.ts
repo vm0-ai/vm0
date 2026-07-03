@@ -435,8 +435,12 @@ describe("presentation template items", () => {
     }
   });
 
-  it("keeps prompt references aligned with structured ids", () => {
-    for (const item of allPresentationItems) {
+  it("keeps legacy-catalog prompt references aligned with structured ids", () => {
+    // Only the legacy demo catalog embeds `design system X / template Y` in its
+    // prompt. Picker prompts intentionally omit them — those templates generate
+    // through the runbook flow driven by the structured selection, and the
+    // legacy `template:html-ppt-*` / `design-system:*` ids have been retired.
+    for (const item of PRESENTATION_TEMPLATE_ITEMS) {
       const promptDesignSystem = stripRegistryPrefix(
         item.designSystemId,
         "design-system:",
@@ -445,6 +449,10 @@ describe("presentation template items", () => {
 
       expect(item.prompt).toContain(`design system \`${promptDesignSystem}\``);
       expect(item.prompt).toContain(`template \`${promptTemplate}\``);
+    }
+
+    for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
+      expect(item.prompt).not.toContain("design system `");
     }
   });
 
