@@ -10,16 +10,14 @@ async function openBillingSettings(page: Page): Promise<void> {
   await expect(page.getByRole("dialog")).toBeVisible({ timeout: 30_000 });
 }
 
-test("billing settings reflects the smoke Pro checkout", async ({ page }) => {
+test("billing settings reflects limited free onboarding", async ({ page }) => {
   await openBillingSettings(page);
 
-  await expect(page.getByText(/^Pro plan$/)).toBeVisible({
+  await expect(page.getByText(/^Limited free plan$/)).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByText(/^Renews /)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Downgrade" })).toBeVisible();
-  await expect(page.getByText("No active subscription")).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Upgrade to Pro" }),
-  ).toHaveCount(0);
+  await expect(page.getByText("No active subscription")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Upgrade" })).toBeVisible();
+  await expect(page.getByText(/^Pro plan$/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Downgrade" })).toHaveCount(0);
 });
