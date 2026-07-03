@@ -610,6 +610,10 @@ fn abort_tasks(tasks: impl IntoIterator<Item = tokio::task::JoinHandle<()>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
     use httpmock::{Method::POST, MockServer};
     use serde_json::json;
 
@@ -646,6 +650,44 @@ mod tests {
             },
             request_rx,
         )
+    }
+
+    fn poll_once<F: Future>(future: Pin<&mut F>) -> Poll<F::Output> {
+        let waker = std::task::Waker::noop();
+        let mut context = Context::from_waker(waker);
+        future.poll(&mut context)
+    }
+
+    async fn recv_refresh_request(
+        requests: &mut tokio::sync::mpsc::Receiver<RefreshRequest>,
+    ) -> RefreshRequest {
+        tokio::time::timeout(Duration::from_secs(1), requests.recv())
+            .await
+            .expect("refresh request should arrive before timeout")
+            .expect("refresh queue should stay open")
+    }
+
+    async fn wait_until_scheduled_refresh_task_clears(
+        core: &ConnectorPolicyRefreshCore,
+        run_id: RunId,
+    ) {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if core
+                    .inner
+                    .active_runs
+                    .lock()
+                    .await
+                    .get(&run_id)
+                    .is_some_and(|active| active.refresh_tasks.is_empty())
+                {
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("scheduled refresh task should clear itself before timeout");
     }
 
     struct RefreshPolicyHarness {
@@ -984,19 +1026,17 @@ mod tests {
                 .expect("refresh queue should accept request");
         }
 
-        let notify_core = core.clone();
-        let notify_task = tokio::spawn(async move {
-            notify_core
-                .notify_permission_refresh(run_id, "slack".to_string())
-                .await;
-        });
-        tokio::task::yield_now().await;
+        let notify = core.notify_permission_refresh(run_id, "slack".to_string());
+        tokio::pin!(notify);
+        assert!(
+            matches!(poll_once(notify.as_mut()), Poll::Pending),
+            "notification should wait for refresh queue capacity before unregister"
+        );
 
         core.unregister_run(run_id).await;
-        tokio::time::timeout(Duration::from_secs(1), notify_task)
+        tokio::time::timeout(Duration::from_secs(1), notify.as_mut())
             .await
-            .expect("unregister should cancel notification waiting for queue capacity")
-            .expect("notification task should not panic");
+            .expect("unregister should cancel notification waiting for queue capacity");
 
         let mut queued = 0;
         while requests.try_recv().is_ok() {
@@ -1027,11 +1067,8 @@ mod tests {
             Some("1970-01-01T00:00:00.000Z".to_string()),
         )
         .await;
-        tokio::task::yield_now().await;
 
-        let request = requests
-            .try_recv()
-            .expect("scheduled refresh should enqueue request");
+        let request = recv_refresh_request(&mut requests).await;
         assert_eq!(request.run_id, run_id);
         assert_eq!(request.connector_ref, "slack");
         assert!(matches!(request.trigger, RefreshTrigger::Scheduled));
@@ -1073,19 +1110,7 @@ mod tests {
             Some("1970-01-01T00:00:00.000Z".to_string()),
         )
         .await;
-        for _ in 0..10 {
-            if core
-                .inner
-                .active_runs
-                .lock()
-                .await
-                .get(&run_id)
-                .is_some_and(|active| active.refresh_tasks.is_empty())
-            {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
+        wait_until_scheduled_refresh_task_clears(&core, run_id).await;
         assert!(
             core.inner
                 .active_runs
@@ -1102,7 +1127,6 @@ mod tests {
             queued += 1;
         }
         assert_eq!(queued, REFRESH_REQUEST_QUEUE_CAPACITY);
-        tokio::task::yield_now().await;
         assert!(matches!(
             requests.try_recv(),
             Err(tokio::sync::mpsc::error::TryRecvError::Empty)
