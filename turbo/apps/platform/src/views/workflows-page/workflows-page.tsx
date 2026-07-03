@@ -37,16 +37,13 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import {
   allVisibleWorkflows$,
   allWorkflowTriggerEntries$,
-  setWorkflowAutomationFilter$,
+  setWorkflowFilter$,
   setWorkflowSortMode$,
-  setWorkflowVisibilityFilter$,
-  workflowAutomationFilter$,
+  workflowFilter$,
   workflowSortMode$,
-  workflowVisibilityFilter$,
-  type WorkflowAutomationFilter,
+  type WorkflowFilter,
   type WorkflowSortMode,
   type WorkflowTriggerAutomationEntry,
-  type WorkflowVisibilityFilter,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
@@ -378,22 +375,48 @@ function hasTriggers(
 function applyWorkflowFilters(
   workflows: readonly ZeroWorkflowSummary[],
   entriesByWorkflowId: WorkflowTriggerEntryMap,
-  automation: WorkflowAutomationFilter,
-  visibility: WorkflowVisibilityFilter,
+  filter: WorkflowFilter,
 ): readonly ZeroWorkflowSummary[] {
   return workflows.filter((workflow) => {
     const automated = hasTriggers(workflow.id, entriesByWorkflowId);
-    if (automation === "automated" && !automated) {
-      return false;
+    switch (filter) {
+      case "automated": {
+        return automated;
+      }
+      case "without": {
+        return !automated;
+      }
+      case "private": {
+        return workflow.visibility === "private";
+      }
+      case "public": {
+        return workflow.visibility === "public";
+      }
+      default: {
+        return true;
+      }
     }
-    if (automation === "without" && automated) {
-      return false;
-    }
-    if (visibility !== "all" && workflow.visibility !== visibility) {
-      return false;
-    }
-    return true;
   });
+}
+
+function emptyDescriptionForFilter(filter: WorkflowFilter): string {
+  switch (filter) {
+    case "without": {
+      return "Every workflow here runs on a schedule or event.";
+    }
+    case "automated": {
+      return "Add a schedule or trigger to a workflow and it shows up here.";
+    }
+    case "private": {
+      return "No private workflows yet.";
+    }
+    case "public": {
+      return "No public workflows yet.";
+    }
+    default: {
+      return "Create a workflow from chat or save one from a useful run.";
+    }
+  }
 }
 
 type NextRunBucket = "today" | "week" | "later" | "event" | "manual";
@@ -597,7 +620,6 @@ function FilterPills<T extends string>({
   value,
   options,
   onChange,
-  deselectValue,
 }: {
   readonly value: T;
   readonly options: readonly {
@@ -605,8 +627,6 @@ function FilterPills<T extends string>({
     readonly label: ReactNode;
   }[];
   readonly onChange: (value: T) => void;
-  /** When set, clicking the active pill toggles back to this value. */
-  readonly deselectValue?: T;
 }) {
   return (
     <>
@@ -617,11 +637,7 @@ function FilterPills<T extends string>({
             key={option.value}
             type="button"
             onClick={() => {
-              onChange(
-                active && deselectValue !== undefined
-                  ? deselectValue
-                  : option.value,
-              );
+              onChange(option.value);
             }}
             className={cn(
               "inline-flex h-7 shrink-0 cursor-pointer items-center rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors",
@@ -711,34 +727,24 @@ function sortWorkflows(
 }
 
 function WorkflowFilterBar({
-  automation,
-  visibility,
+  filter,
   sortMode,
 }: {
-  readonly automation: WorkflowAutomationFilter;
-  readonly visibility: WorkflowVisibilityFilter;
+  readonly filter: WorkflowFilter;
   readonly sortMode: WorkflowSortMode;
 }) {
-  const setAutomation = useSet(setWorkflowAutomationFilter$);
-  const setVisibility = useSet(setWorkflowVisibilityFilter$);
+  const setFilter = useSet(setWorkflowFilter$);
   const setSortMode = useSet(setWorkflowSortMode$);
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <FilterPills
-        value={automation}
-        onChange={setAutomation}
+        value={filter}
+        onChange={setFilter}
         options={[
           { value: "all", label: "All" },
           { value: "automated", label: "Automated" },
           { value: "without", label: "Without automation" },
-        ]}
-      />
-      <FilterPills
-        value={visibility}
-        onChange={setVisibility}
-        deselectValue="all"
-        options={[
           { value: "private", label: "Private" },
           { value: "public", label: "Public" },
         ]}
@@ -751,8 +757,7 @@ function WorkflowFilterBar({
 }
 
 export function WorkflowsPage() {
-  const automation = useGet(workflowAutomationFilter$);
-  const visibility = useGet(workflowVisibilityFilter$);
+  const filter = useGet(workflowFilter$);
   const sortMode = useGet(workflowSortMode$);
   const workflowsLoadable = useLastLoadable(allVisibleWorkflows$);
   const triggerEntriesLoadable = useLastLoadable(allWorkflowTriggerEntries$);
@@ -773,12 +778,7 @@ export function WorkflowsPage() {
     new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const filteredWorkflows = workflows
     ? sortWorkflows(
-        applyWorkflowFilters(
-          workflows,
-          triggerEntriesByWorkflowId,
-          automation,
-          visibility,
-        ),
+        applyWorkflowFilters(workflows, triggerEntriesByWorkflowId, filter),
         sortMode,
       )
     : null;
@@ -812,22 +812,12 @@ export function WorkflowsPage() {
 
       <main className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6">
         <div className="mx-auto flex max-w-[900px] flex-col gap-4">
-          <WorkflowFilterBar
-            automation={automation}
-            visibility={visibility}
-            sortMode={sortMode}
-          />
+          <WorkflowFilterBar filter={filter} sortMode={sortMode} />
           <WorkflowListPanel
             workflows={filteredWorkflows}
             loading={loading}
             sortMode={sortMode}
-            emptyDescription={
-              automation === "without"
-                ? "Every workflow here runs on a schedule or event."
-                : automation === "automated"
-                  ? "Add a schedule or trigger to a workflow and it shows up here."
-                  : "Create a workflow from chat or save one from a useful run."
-            }
+            emptyDescription={emptyDescriptionForFilter(filter)}
             triggerEntriesByWorkflowId={triggerEntriesByWorkflowId}
             displayTimezone={displayTimezone}
           />

@@ -39,8 +39,12 @@ import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
 export type WorkflowDetailTab = "automations" | "instructions" | "info";
-export type WorkflowAutomationFilter = "all" | "automated" | "without";
-export type WorkflowVisibilityFilter = "all" | "private" | "public";
+export type WorkflowFilter =
+  | "all"
+  | "automated"
+  | "without"
+  | "private"
+  | "public";
 export type WorkflowSortMode = "next-run" | "alphabetical" | "created";
 export type WorkflowCopyDialogAgent = {
   readonly id: string;
@@ -204,8 +208,7 @@ export const workflowCopyDialogState$ = computed((get) => {
   return get(internalWorkflowCopyDialogState$);
 });
 
-const AUTOMATION_FILTER_PARAM = "automation";
-const VISIBILITY_FILTER_PARAM = "visibility";
+const FILTER_PARAM = "filter";
 const SORT_MODE_PARAM = "sort";
 
 function readSearchParam<T extends string>(
@@ -220,27 +223,14 @@ function readSearchParam<T extends string>(
     : fallback;
 }
 
-export const workflowAutomationFilter$ = computed(
-  (get): WorkflowAutomationFilter => {
-    return readSearchParam(
-      get(searchParams$),
-      AUTOMATION_FILTER_PARAM,
-      ["all", "automated", "without"],
-      "all",
-    );
-  },
-);
-
-export const workflowVisibilityFilter$ = computed(
-  (get): WorkflowVisibilityFilter => {
-    return readSearchParam(
-      get(searchParams$),
-      VISIBILITY_FILTER_PARAM,
-      ["all", "private", "public"],
-      "all",
-    );
-  },
-);
+export const workflowFilter$ = computed((get): WorkflowFilter => {
+  return readSearchParam(
+    get(searchParams$),
+    FILTER_PARAM,
+    ["all", "automated", "without", "private", "public"],
+    "all",
+  );
+});
 
 export const workflowSortMode$ = computed((get): WorkflowSortMode => {
   return readSearchParam(
@@ -266,30 +256,11 @@ function nextSearchParams(
   return params;
 }
 
-export const setWorkflowAutomationFilter$ = command(
-  ({ get, set }, value: WorkflowAutomationFilter) => {
+export const setWorkflowFilter$ = command(
+  ({ get, set }, value: WorkflowFilter) => {
     set(
       replaceSearchParams$,
-      nextSearchParams(
-        get(searchParams$),
-        AUTOMATION_FILTER_PARAM,
-        value,
-        "all",
-      ),
-    );
-  },
-);
-
-export const setWorkflowVisibilityFilter$ = command(
-  ({ get, set }, value: WorkflowVisibilityFilter) => {
-    set(
-      replaceSearchParams$,
-      nextSearchParams(
-        get(searchParams$),
-        VISIBILITY_FILTER_PARAM,
-        value,
-        "all",
-      ),
+      nextSearchParams(get(searchParams$), FILTER_PARAM, value, "all"),
     );
   },
 );

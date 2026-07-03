@@ -909,7 +909,7 @@ describe("workflows routes", () => {
     expect(screen.queryByText("Workflow not found.")).not.toBeInTheDocument();
   });
 
-  it("filters the workspace workflows by automation", async () => {
+  it("filters the workspace workflows by automation and visibility", async () => {
     context.mocks.data.userPreferences({ timezone: "UTC" });
     mockAgentPageApis();
     mockChatLifecycle(context);
@@ -949,7 +949,7 @@ describe("workflows routes", () => {
     // "Automated" keeps only workflows that have at least one automation.
     click(tabByName("Automated"));
     await waitFor(() => {
-      expect(search()).toBe("?automation=automated");
+      expect(search()).toBe("?filter=automated");
     });
     expect(linkByAriaLabel("Open Sales Research")).toBeInTheDocument();
     expect(screen.queryByText("Ops Playbook")).not.toBeInTheDocument();
@@ -959,11 +959,32 @@ describe("workflows routes", () => {
     // "Without automation" keeps only the manual workflows.
     click(tabByName("Without automation"));
     await waitFor(() => {
-      expect(search()).toBe("?automation=without");
+      expect(search()).toBe("?filter=without");
     });
     expect(screen.queryByText("Sales Research")).not.toBeInTheDocument();
     expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
     expect(linkByAriaLabel("Open Launch Checklist")).toBeInTheDocument();
+
+    // The pills are a single mutually-exclusive group: selecting "Private"
+    // replaces the automation selection rather than combining with it.
+    click(tabByName("Private"));
+    await waitFor(() => {
+      expect(search()).toBe("?filter=private");
+    });
+    expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
+    expect(linkByAriaLabel("Open Launch Checklist")).toBeInTheDocument();
+    expect(screen.queryByText("Sales Research")).not.toBeInTheDocument();
+    expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
+
+    // "Public" keeps only the public workflows.
+    click(tabByName("Public"));
+    await waitFor(() => {
+      expect(search()).toBe("?filter=public");
+    });
+    expect(linkByAriaLabel("Open Sales Research")).toBeInTheDocument();
+    expect(linkByAriaLabel("Open Support Intake")).toBeInTheDocument();
+    expect(screen.queryByText("Ops Playbook")).not.toBeInTheDocument();
+    expect(screen.queryByText("Launch Checklist")).not.toBeInTheDocument();
 
     // Clearing the filter returns to the full list.
     click(tabByName("All"));
