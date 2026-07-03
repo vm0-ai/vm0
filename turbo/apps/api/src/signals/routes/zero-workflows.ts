@@ -42,6 +42,7 @@ import {
   mintWorkflowWebhookSecret,
   mintWorkflowWebhookToken,
 } from "../services/workflow-webhook-trigger.service";
+import { workflowWebhookTriggerCreationEnabledForOwner } from "../services/workflow-automation-feature-switch.service";
 import {
   loadVisibleWorkflowById,
   requireWorkflowPermission,
@@ -565,6 +566,7 @@ interface CopyWorkflowRuntimeArgs {
   readonly userId: string;
   readonly sourceWorkflow: WorkflowRow;
   readonly targetAgentId: string;
+  readonly webhookTriggersEnabled: boolean;
   readonly currentTime: Date;
 }
 
@@ -579,6 +581,7 @@ interface CopyWorkflowScopedRowsArgs {
 interface CopyWorkflowTriggerRowsArgs extends CopyWorkflowScopedRowsArgs {
   readonly targetAgentId: string;
   readonly workflowTitle: string;
+  readonly webhookTriggersEnabled: boolean;
 }
 
 async function insertCopiedWorkflowRow(
@@ -703,16 +706,24 @@ async function copyWorkflowUserTriggers(
   tx: WorkflowCopyTransaction,
   args: CopyWorkflowTriggerRowsArgs,
 ): Promise<void> {
-  const rows = await tx
-    .select()
-    .from(zeroWorkflowTriggers)
-    .where(
-      and(
-        eq(zeroWorkflowTriggers.orgId, args.orgId),
-        eq(zeroWorkflowTriggers.ownerUserId, args.userId),
-        eq(zeroWorkflowTriggers.workflowId, args.sourceWorkflowId),
-      ),
+  const rows = (
+    await tx
+      .select()
+      .from(zeroWorkflowTriggers)
+      .where(
+        and(
+          eq(zeroWorkflowTriggers.orgId, args.orgId),
+          eq(zeroWorkflowTriggers.ownerUserId, args.userId),
+          eq(zeroWorkflowTriggers.workflowId, args.sourceWorkflowId),
+        ),
+      )
+  ).filter((trigger) => {
+    return (
+      args.webhookTriggersEnabled ||
+      trigger.kind !== "event" ||
+      trigger.eventType !== "webhook-received"
     );
+  });
   if (rows.length === 0) {
     return;
   }
@@ -750,6 +761,7 @@ async function copyWorkflowRuntimeConfiguration(
     ...scopedRowsArgs,
     targetAgentId: args.targetAgentId,
     workflowTitle: args.sourceWorkflow.displayName ?? args.sourceWorkflow.name,
+    webhookTriggersEnabled: args.webhookTriggersEnabled,
   });
   return workflow;
 }
@@ -766,6 +778,10 @@ const copyWorkflowInner$ = command(
     }
 
     const writeDb = set(writeDb$);
+    const webhookTriggersEnabled = await get(
+      workflowWebhookTriggerCreationEnabledForOwner(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
     const source = await loadVisibleWorkflowById(writeDb, {
       orgId: auth.orgId,
       member,
@@ -815,6 +831,7 @@ const copyWorkflowInner$ = command(
         userId: auth.userId,
         sourceWorkflow: source.workflow,
         targetAgentId: targetAgent.id,
+        webhookTriggersEnabled,
         currentTime,
       });
     });

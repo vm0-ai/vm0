@@ -36,6 +36,7 @@ export enum FeatureSwitchKey {
   Banking = "banking",
   Lab = "lab",
   WorkflowAutomation = "workflowAutomation",
+  WorkflowWebhookTriggers = "workflowWebhookTriggers",
   TestOauthConnector = "testOauthConnector",
   FreshdeskConnector = "freshdeskConnector",
   StabilityAiConnector = "stabilityAiConnector",

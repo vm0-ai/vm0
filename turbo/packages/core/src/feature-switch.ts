@@ -197,10 +197,17 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.WorkflowAutomation]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Enable workflow automation surfaces, slash workflow commands, event triggers, automation-to-workflow routing, persistent goals, and workflow-driven ZERO_TOKEN capabilities.",
+      "Enable workflow automation surfaces, slash workflow commands, non-webhook event triggers, automation-to-workflow routing, persistent goals, and workflow-driven ZERO_TOKEN capabilities.",
     // Globally enabled since the automation -> workflow cutover (#19959):
     // migration 0535 moved every legacy automation onto workflow triggers.
     enabled: true,
+  },
+  [FeatureSwitchKey.WorkflowWebhookTriggers]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable creation of inbound webhook workflow triggers. Existing webhook triggers remain visible and dispatch under the workflow automation gate.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
