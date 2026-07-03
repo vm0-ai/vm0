@@ -5297,6 +5297,85 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
+  it("keeps archived goal history below a running goal without assistant text", async () => {
+    const threadId = "thread-goal-run-group-folding-active";
+    const runGroupId = "f0000001-0000-4000-a000-00000000082b";
+    const goalBrief = "Migrate legacy automations";
+    const goalPrompt = `${goalBrief}
+
+Full autonomous goal prompt that should stay out of the compact chat UI`;
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Active goal run group folding",
+      chatMessages: [
+        {
+          id: "msg-goal-run-group-active-user-1",
+          role: "user",
+          content: goalPrompt,
+          goalSnapshot: { objectiveBrief: goalBrief },
+          runId: "f0000001-0000-4000-a000-00000000082c",
+          runGroupId,
+          isGoalRun: true,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-goal-run-group-active-assistant-1",
+          role: "assistant",
+          content: "First goal result",
+          runId: "f0000001-0000-4000-a000-00000000082c",
+          runGroupId,
+          isGoalRun: true,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:30Z",
+        },
+        {
+          id: "msg-goal-run-group-active-user-2",
+          role: "user",
+          content: goalPrompt,
+          goalSnapshot: { objectiveBrief: goalBrief },
+          runId: "f0000001-0000-4000-a000-00000000082d",
+          runGroupId,
+          isGoalRun: true,
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Goal")).toBeInTheDocument();
+      expect(screen.getByText(goalBrief)).toBeInTheDocument();
+      expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
+        `2 mins for ${goalBrief}`,
+      );
+      expect(screen.queryByText("First goal result")).not.toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+
+    const goalMessage = screen.getByText(goalBrief);
+    const foldButton = buttonByLabel("Expand grouped run history");
+    const thinkingIndicator = document.querySelector(
+      "[data-thinking-indicator]",
+    );
+
+    expect(thinkingIndicator).not.toBeNull();
+    expect(
+      goalMessage.compareDocumentPosition(foldButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      foldButton.compareDocumentPosition(thinkingIndicator!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("does not treat workflow run groups as goals", async () => {
     const threadId = "thread-workflow-run-group-folding";
     const runGroupId = "f0000001-0000-4000-a000-00000000073b";
