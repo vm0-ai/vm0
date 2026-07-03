@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.538.0](https://github.com/vm0-ai/vm0/compare/app-v0.537.0...app-v0.538.0) (2026-07-03)
+
+
+### Features
+
+* expose build commit sha ([#19954](https://github.com/vm0-ai/vm0/issues/19954)) ([50733bd](https://github.com/vm0-ai/vm0/commit/50733bd6e0ed5e57dd476f5139072b18d56018fb))
+* **platform:** add empty-state illustration to workflows list ([#19970](https://github.com/vm0-ai/vm0/issues/19970)) ([2a1aeaf](https://github.com/vm0-ai/vm0/commit/2a1aeafa1e39c991fc4ae63c0a981f9c24bef437))
+* show Create workflow button in home page chat composer ([#19973](https://github.com/vm0-ai/vm0/issues/19973)) ([157b20c](https://github.com/vm0-ai/vm0/commit/157b20c1d4aee430113cd2dfe9f95b20b2812f15))
+* show workflow owner Clerk avatar and widen hover card row spacing ([#19960](https://github.com/vm0-ai/vm0/issues/19960)) ([9ee4853](https://github.com/vm0-ai/vm0/commit/9ee48530988d3e8fa4c2a4637b930ca191f48031))
+
+
+### Documentation
+
+* **platform:** clarify workflows page subtitle as a reusable SOP ([#19978](https://github.com/vm0-ai/vm0/issues/19978)) ([2ed8016](https://github.com/vm0-ai/vm0/commit/2ed8016339e8d81aac74013feb00d5e3eb8b6ac9))
+
+
+### Refactoring
+
+* remove computer use delegated authorization switch ([#19971](https://github.com/vm0-ai/vm0/issues/19971)) ([682219b](https://github.com/vm0-ai/vm0/commit/682219bb52c9519cf96d6cfe39e50385718dad71))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.147.0
+    * @vm0/connectors bumped to 1.131.1
+    * @vm0/core bumped to 8.391.3
+
 ## [0.537.0](https://github.com/vm0-ai/vm0/compare/app-v0.536.0...app-v0.537.0) (2026-07-03)
 
 
