@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.218.0](https://github.com/vm0-ai/vm0/compare/api-v1.217.1...api-v1.218.0) (2026-07-03)
+
+
+### Features
+
+* add build versions to debug build info ([#20056](https://github.com/vm0-ai/vm0/issues/20056)) ([41d2921](https://github.com/vm0-ai/vm0/commit/41d2921df0beb8f56f12abf3c6c98bd14cdd4cea))
+
+
+### Documentation
+
+* add deployment compatibility guidance ([#20037](https://github.com/vm0-ai/vm0/issues/20037)) ([0d0d145](https://github.com/vm0-ai/vm0/commit/0d0d145b8a7ad4bb792b8a5d9dd0ece70741f2ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.150.0
+    * @vm0/core bumped to 8.394.3
+    * @vm0/db bumped to 1.88.3
+
 ## [1.217.1](https://github.com/vm0-ai/vm0/compare/api-v1.217.0...api-v1.217.1) (2026-07-03)
 
 

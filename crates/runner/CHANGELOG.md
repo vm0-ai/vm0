@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.132.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.5...runner-rs-v0.132.6) (2026-07-03)
+
+
+### Documentation
+
+* clarify auth base forwarder test helpers ([#20052](https://github.com/vm0-ai/vm0/issues/20052)) ([1d48da3](https://github.com/vm0-ai/vm0/commit/1d48da3d204818fd11d4f23ba60c0dd960cd5bc9))
+
 ## [0.132.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.4...runner-rs-v0.132.5) (2026-07-03)
 
 
