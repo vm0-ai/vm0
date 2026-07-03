@@ -67,7 +67,7 @@ import {
 import { focusChatThreadContainer$ } from "../../signals/chat-page/chat-keyboard.ts";
 import {
   createNewChatThreadOptimistically$,
-  optimisticChatThread$,
+  newChatThreadDisabled$,
   type OptimisticChatPane,
   sidebarChatThreads$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
@@ -939,7 +939,7 @@ function ChatThreadsTitle() {
   const setExpanded = useSet(setSidebarExpanded$);
   const rootSignal = useGet(rootSignal$);
   const { titleLabel } = useChatThreadsTitleLabels();
-  const newChatDisabled = useGet(optimisticChatThread$) !== null;
+  const newChatDisabled = useGet(newChatThreadDisabled$);
   const onNewChat = (pane: OptimisticChatPane) => {
     if (!currentChatAgentId) {
       return;
