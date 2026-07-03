@@ -221,6 +221,13 @@ impl GuestConfigRaw {
             ),
         }
     }
+
+    pub(crate) fn require_run_payload_file(&self) -> Result<(), String> {
+        if self.run_payload_file.is_empty() {
+            return Err(format!("{RUN_PAYLOAD_FILE_ENV_KEY} is required"));
+        }
+        Ok(())
+    }
 }
 
 /// Immutable guest-agent startup configuration for a single run.
@@ -261,9 +268,7 @@ impl GuestConfig {
     /// Build an owned config from the current process environment.
     pub fn from_process_env() -> Result<Self, String> {
         let raw = GuestConfigRaw::from_process_env();
-        if raw.run_payload_file.is_empty() {
-            return Err(format!("{RUN_PAYLOAD_FILE_ENV_KEY} is required"));
-        }
+        raw.require_run_payload_file()?;
         Self::from_raw(raw)
     }
 
