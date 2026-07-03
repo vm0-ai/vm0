@@ -203,11 +203,12 @@ runs:
             add_env VM0_MACHINE_SECRET_KEY "$machine_secret_key"
           fi
         fi
-        # Inject the workflow head commit explicitly so OTel / Sentry can tag
-        # service.version and release on every deploy. Vercel CLI prebuilt
+        # Inject the checked-out build commit explicitly so OTel / Sentry can
+        # tag service.version and release on every deploy. Vercel CLI prebuilt
         # deploys do not reliably populate Vercel's own VERCEL_GIT_* system
         # vars, and we don't want runtime to depend on Vercel auto-injection.
-        add_env GIT_COMMIT_SHA "${GITHUB_SHA:-}"
+        build_commit_sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
+        add_env GIT_COMMIT_SHA "$build_commit_sha"
         add_env BLOG_BASE_URL "$web_url"
         add_env STRAPI_URL "$strapi_url"
         add_var CLERK_PUBLISHABLE_KEY CLERK_PUBLISHABLE_KEY

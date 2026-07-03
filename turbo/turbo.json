@@ -268,6 +268,29 @@
         ".source/**"
       ]
     },
+    "@vm0/app#build": {
+      "dependsOn": ["^build"],
+      "env": ["VITE_GIT_COMMIT_SHA"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*",
+        "!**/__tests__/**",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/*.spec.tsx",
+        "!**/vitest.config.ts",
+        "!**/src/test/**"
+      ],
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        ".vercel/output/**",
+        "dist/**",
+        "src/dist/**",
+        ".source/**"
+      ]
+    },
     "lint": {
       "dependsOn": ["^lint"]
     },

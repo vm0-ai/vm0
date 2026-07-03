@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { buildInfoContract } from "@vm0/api-contracts/contracts/build-info";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroReportErrorContract } from "@vm0/api-contracts/contracts/zero-report-error";
@@ -7,6 +8,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockEnv } from "../../../lib/env";
 import { healthAuthProbeContract } from "../health-auth-probe";
 import {
   createBddApi,
@@ -28,6 +30,10 @@ const routeMocks = createZeroRouteMocks(context);
 
 function healthClient() {
   return setupApp({ context })(healthContract);
+}
+
+function buildInfoClient() {
+  return setupApp({ context })(buildInfoContract);
 }
 
 function healthAuthClient() {
@@ -65,6 +71,25 @@ function expectRecord(
 }
 
 describe("OPS-02: API health and auth boundary", () => {
+  it("returns public build info with a configured commit SHA", async () => {
+    const commitSha = "0123456789abcdef0123456789abcdef01234567";
+    mockEnv("GIT_COMMIT_SHA", commitSha);
+
+    const response = await accept(buildInfoClient().get(), [200]);
+
+    expect(response.body).toStrictEqual({ commitSha });
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("returns null build info for local commit placeholders", async () => {
+    mockEnv("GIT_COMMIT_SHA", "local-dev");
+
+    const response = await accept(buildInfoClient().get(), [200]);
+
+    expect(response.body).toStrictEqual({ commitSha: null });
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
   it("checks public health and authenticated health probe through HTTP routes", async () => {
     const admin = api.user();
 

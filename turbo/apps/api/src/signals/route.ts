@@ -1,3 +1,4 @@
+import { buildInfoContract } from "@vm0/api-contracts/contracts/build-info";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
 
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
@@ -37,6 +38,7 @@ import { desktopAuthRoutes } from "./routes/desktop-auth";
 import { desktopUpdateRoutes } from "./routes/desktop-updates";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { apiHealth$ } from "./routes/health";
+import { apiBuildInfo$ } from "./routes/build-info";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { legacyFileRoutes } from "./routes/legacy-file";
@@ -205,6 +207,10 @@ export const ROUTES: readonly RouteEntry[] = [
   {
     route: healthContract.check,
     handler: apiHealth$,
+  },
+  {
+    route: buildInfoContract.get,
+    handler: apiBuildInfo$,
   },
   ...authMeRoutes,
   // The unified Automation resource: one automation, N schedule triggers.
