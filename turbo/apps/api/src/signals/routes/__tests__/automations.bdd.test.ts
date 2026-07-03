@@ -11,7 +11,7 @@ import {
 
 /**
  * AUTOMATIONS-03: the legacy automations surface is FROZEN after the
- * automation -> workflow cutover (#19959, migration 0534). Every mutating
+ * automation -> workflow cutover (#19959, migration 0535). Every mutating
  * route answers 403 with the workflow-trigger guidance — unconditionally, so
  * not even a feature-switch override can reopen the legacy write path — while
  * list stays readable for provenance. The run-now dispatch chain this scenario

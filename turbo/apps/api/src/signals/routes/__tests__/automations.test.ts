@@ -29,7 +29,7 @@ import { deleteFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /**
  * The legacy automations surface is FROZEN after the automation -> workflow
- * cutover (#19959, migration 0534): every mutating route returns 403
+ * cutover (#19959, migration 0535): every mutating route returns 403
  * unconditionally, while list/show stay readable so users can inspect their
  * migrated provenance rows. The poller and cron route remain live for any
  * unmigrated stragglers until the legacy removal lands, so their regression

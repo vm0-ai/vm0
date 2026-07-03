@@ -199,7 +199,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable workflow automation surfaces, slash workflow commands, event triggers, automation-to-workflow routing, persistent goals, and workflow-driven ZERO_TOKEN capabilities.",
     // Globally enabled since the automation -> workflow cutover (#19959):
-    // migration 0534 moved every legacy automation onto workflow triggers.
+    // migration 0535 moved every legacy automation onto workflow triggers.
     enabled: true,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
