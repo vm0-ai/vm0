@@ -2293,29 +2293,13 @@ type TriggerCreateCategory = {
   readonly options: readonly TriggerCreateOption[];
 };
 
-// Each category owns a single hue, so the selected category reads as one
-// system: the rail icon, the active row, and every card chip share it. Colour
-// stays on the icon only — cards keep a white surface with a neutral hairline.
-const TRIGGER_CATEGORY_ACCENT: Record<
-  TriggerCategoryKey,
-  { readonly chip: string; readonly activeRow: string }
-> = {
-  schedule: {
-    chip: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-    activeRow: "bg-blue-500/10",
-  },
-  email: {
-    chip: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-    activeRow: "bg-violet-500/10",
-  },
-  calendar: {
-    chip: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-    activeRow: "bg-emerald-500/10",
-  },
-  integrations: {
-    chip: "bg-amber-500/10 text-amber-600 dark:text-amber-500",
-    activeRow: "bg-amber-500/10",
-  },
+// Each category owns a single hue that colours only the card icon chip on the
+// right; the category rail stays neutral and mirrors the app sidebar.
+const TRIGGER_CATEGORY_CHIP: Record<TriggerCategoryKey, string> = {
+  schedule: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  email: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+  calendar: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  integrations: "bg-amber-500/10 text-amber-600 dark:text-amber-500",
 };
 
 function buildTriggerCreateCategories({
@@ -2451,27 +2435,22 @@ function TriggerCreateCategoryButton({
   readonly onSelect: () => void;
 }) {
   const Icon = category.icon;
-  const accent = TRIGGER_CATEGORY_ACCENT[category.key];
+  // Mirror the app sidebar nav row: neutral gray active state, plain icon,
+  // h-8 rounded-lg row — no category colour on the rail.
   return (
     <button
       type="button"
       onClick={onSelect}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm transition-colors",
+        "flex h-8 w-full shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 transition-colors duration-200",
         active
-          ? cn("font-semibold text-foreground", accent.activeRow)
-          : "font-medium text-muted-foreground hover:bg-gray-50",
+          ? "bg-gray-200 font-medium text-gray-900"
+          : "text-sidebar-foreground hover:bg-sidebar-accent",
       )}
     >
-      <span
-        className={cn(
-          "flex size-6 items-center justify-center rounded-lg",
-          active ? accent.chip : "text-muted-foreground",
-        )}
-      >
-        <Icon size={15} stroke={1.5} />
-      </span>
-      {category.label}
+      <Icon size={16} className="shrink-0" />
+      <span className="truncate">{category.label}</span>
     </button>
   );
 }
@@ -2543,7 +2522,7 @@ function TriggerCreateMenu({
   const activeCategory =
     categories.find((category) => category.key === activeKey) ?? categories[0];
   const activeChip = activeCategory
-    ? TRIGGER_CATEGORY_ACCENT[activeCategory.key].chip
+    ? TRIGGER_CATEGORY_CHIP[activeCategory.key]
     : "";
 
   return (
@@ -2573,7 +2552,7 @@ function TriggerCreateMenu({
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-5 sm:flex-row sm:gap-7">
-          <nav className="flex gap-1 overflow-x-auto border-border/60 pb-1 sm:w-44 sm:shrink-0 sm:flex-col sm:gap-0.5 sm:overflow-visible sm:border-r sm:pb-0 sm:pr-6">
+          <nav className="-ml-2 flex gap-1 overflow-x-auto pb-1 sm:w-44 sm:shrink-0 sm:flex-col sm:gap-1 sm:overflow-visible sm:border-r sm:border-border/60 sm:pb-0 sm:pr-4">
             {categories.map((category) => (
               <TriggerCreateCategoryButton
                 key={category.key}
