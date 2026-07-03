@@ -24,6 +24,7 @@ import {
   chatThreadMaxItem$,
   eventDrivenChatThreads$,
 } from "./chat-page/chat-thread-event-sourcing.ts";
+import { allPendingChatThreads$ } from "./chat-page/optimistic-chat-thread-state.ts";
 import type { EventDrivenChatThread } from "./chat-page/chat-thread-event-replay.ts";
 
 export { reloadChatThreads$ } from "./chat-thread-list-reload.ts";
@@ -201,6 +202,11 @@ const eventDrivenVisibleChatThreads$ = computed(
         return [thread.id, thread.running] as const;
       }),
     );
+    const pendingRunningByThreadId = new Map(
+      get(allPendingChatThreads$).map((thread) => {
+        return [thread.threadId, thread.running] as const;
+      }),
+    );
 
     return threads.slice(0, maxItems).map((thread) => {
       return {
@@ -212,7 +218,10 @@ const eventDrivenVisibleChatThreads$ = computed(
         },
         createdAt: thread.createdAt,
         updatedAt: thread.updatedAt,
-        running: runningByThreadId.get(thread.id) ?? false,
+        running:
+          pendingRunningByThreadId.get(thread.id) ??
+          runningByThreadId.get(thread.id) ??
+          false,
         pinnedAt: thread.pinnedAt,
         renamedAt: thread.renamedAt,
       };
