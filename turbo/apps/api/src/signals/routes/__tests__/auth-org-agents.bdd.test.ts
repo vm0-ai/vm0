@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
+import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import {
   createAuthOrgAgentsBddApi,
@@ -27,6 +28,7 @@ const context = testContext();
 const api = createAuthOrgAgentsBddApi(context);
 const bdd = createBddApi(context);
 const runsApi = createRunsAutomationsApi(context);
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
 
 function shortId(): string {
@@ -39,6 +41,17 @@ function slug(prefix: string): string {
 
 function upperName(prefix: string): string {
   return `${prefix}_${shortId().toUpperCase()}`;
+}
+
+function expectExpiresAboutThirtyDaysFromNow(value: unknown): void {
+  expect(typeof value).toBe("string");
+  if (typeof value !== "string") {
+    throw new Error("Expected a string credit expiration");
+  }
+
+  const expiresInMs = Date.parse(value) - now();
+  expect(expiresInMs).toBeGreaterThan(THIRTY_DAYS_MS - 60_000);
+  expect(expiresInMs).toBeLessThanOrEqual(THIRTY_DAYS_MS + 5000);
 }
 
 async function onboardAdmin(
@@ -170,7 +183,7 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
 
     const limitedFreeBilling = await runsApi.readBillingStatus(admin);
     expect(limitedFreeBilling).toMatchObject({
-      credits: 1000,
+      credits: 3000,
       tier: "limited-free-1",
       onboardingPaymentPending: false,
     });
@@ -181,10 +194,10 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     );
     expect(onboardingCreditGrant).toMatchObject({
       source: "onboarding",
-      amount: 1000,
-      remaining: 1000,
-      expiresAt: "2999-12-31T00:00:00.000Z",
+      amount: 3000,
+      remaining: 3000,
     });
+    expectExpiresAboutThirtyDaysFromNow(onboardingCreditGrant?.expiresAt);
 
     const afterRepeatedSetup = await api.listAgents(admin);
     expect(
@@ -637,7 +650,7 @@ describe("ORG-03 onboarding status mapping", () => {
 
     const bootstrappedBilling = await runsApi.readBillingStatus(admin);
     expect(bootstrappedBilling).toMatchObject({
-      credits: 1000,
+      credits: 3000,
       tier: "limited-free-1",
       onboardingPaymentPending: false,
     });
