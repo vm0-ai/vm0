@@ -219,7 +219,7 @@ const CONNECTOR_VAR_REF_PREFIX = "$vars.";
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
   "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
 const EAGER_STORED_CONNECTOR_SECRET_DECRYPT_CONCURRENCY = 4;
-const STORED_CONNECTOR_COUNT_BUCKET_DIMENSIONS = [
+const COUNT_BUCKET_DIMENSIONS = [
   "0",
   "1",
   "2_4",
@@ -4963,9 +4963,7 @@ function billableFirewallsForPermissions(args: {
   return [...modelFirewalls, ...connectorFirewalls];
 }
 
-function countBucket(
-  count: number,
-): (typeof STORED_CONNECTOR_COUNT_BUCKET_DIMENSIONS)[number] {
+function countBucket(count: number): (typeof COUNT_BUCKET_DIMENSIONS)[number] {
   if (count <= 0) {
     return "0";
   }
