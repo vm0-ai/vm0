@@ -34,6 +34,7 @@ import type {
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogConnection,
+  PublicConnectorCatalogPermissionSummary,
   PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
@@ -110,6 +111,8 @@ export interface ConnectorTypeWithStatus {
   tokenExpiresAt: string | null;
   /** True when the selected auth method can refresh runtime access. */
   authMethodSupportsRefresh: boolean;
+  /** Public permission summary returned by the catalog status API. */
+  permissionSummary: PublicConnectorCatalogPermissionSummary;
 }
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -371,6 +374,7 @@ function connectorCatalogStatusItemToConnectorType(
     connectionStatus: item.connectionStatus,
     tokenExpiresAt: item.tokenExpiresAt,
     authMethodSupportsRefresh: item.authMethodSupportsRefresh,
+    permissionSummary: item.permissionSummary,
   };
 }
 

@@ -93,7 +93,6 @@ import type { PermissionDraftIntent } from "../../signals/zero-page/settings/per
 import { savePermissionDraftPolicies } from "../../signals/zero-page/settings/permission-grant-save.ts";
 import { noConnectorImg } from "../zero-page/platform-assets.ts";
 import { JobCustomConnectorsSection } from "./job-custom-connectors-section.tsx";
-import { hasConnectorPermissions } from "../../signals/zero-page/settings/permissions.ts";
 import {
   applyUserPermissionGrants$,
   userPermissionGrantsByAgent,
@@ -115,10 +114,8 @@ import {
   setPermSavingType$,
 } from "../../signals/zero-page/zero-job-detail-page.ts";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
-import {
-  permissionGrantsToFirewallPolicies,
-  type FirewallPermissionDetailMetadata,
-} from "@vm0/connectors/firewall-metadata";
+import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
+import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { agentVisibleWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
 import { WorkflowListPanel } from "../workflows-page/workflows-page.tsx";
@@ -604,7 +601,7 @@ export function ConnectedConnectorPermissions({
                 })}
                 loading={savingType === c.type}
                 showManage={
-                  canManagePermissions && hasConnectorPermissions(c.type)
+                  canManagePermissions && c.permissionSummary.hasPermissions
                 }
                 onManage={() => {
                   return onManage(c.type);
@@ -656,7 +653,7 @@ export function AgentPermissionsDrawer({
   onApply: (
     intent: PermissionDraftIntent,
     options: {
-      readonly metadata: FirewallPermissionDetailMetadata;
+      readonly metadata: PublicConnectorCatalogPermissionDetail;
     },
   ) => Promise<void>;
   onClose: () => void;
@@ -811,7 +808,7 @@ function JobPermissionsTab({
               }
               await savePermissionDraftPolicies({
                 scope: { agentId },
-                connectorType,
+                connectorRef: connectorType,
                 metadata,
                 initialPolicies: drawerInitialPolicies,
                 initialGrants: userGrants,

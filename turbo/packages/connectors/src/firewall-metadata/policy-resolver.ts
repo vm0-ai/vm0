@@ -1,5 +1,14 @@
 import type { FirewallPolicyValue } from "../firewall-types";
-import type { FirewallPermissionDetailMetadata } from "./types";
+
+interface FirewallMetadataPolicyResolverMetadata {
+  readonly defaultPolicy: {
+    readonly permissionDefault: FirewallPolicyValue;
+    readonly permissionOverrides?: Readonly<
+      Partial<Record<FirewallPolicyValue, readonly string[]>>
+    >;
+    readonly unknownPolicy: FirewallPolicyValue;
+  };
+}
 
 export interface FirewallMetadataPolicyOverlay {
   readonly permissionDefault?: FirewallPolicyValue;
@@ -22,7 +31,7 @@ export interface FirewallMetadataPolicyResolver {
 }
 
 function buildMetadataOverrideLookup(
-  metadata: FirewallPermissionDetailMetadata,
+  metadata: FirewallMetadataPolicyResolverMetadata,
 ): ReadonlyMap<string, FirewallPolicyValue> {
   const overrides = metadata.defaultPolicy.permissionOverrides;
   const lookup = new Map<string, FirewallPolicyValue>();
@@ -54,7 +63,7 @@ function getOwnPermissionOverride(
 }
 
 export function createFirewallMetadataPolicyResolver(
-  metadata: FirewallPermissionDetailMetadata,
+  metadata: FirewallMetadataPolicyResolverMetadata,
   overlay?: FirewallMetadataPolicyOverlay,
 ): FirewallMetadataPolicyResolver {
   const metadataOverrides = buildMetadataOverrideLookup(metadata);

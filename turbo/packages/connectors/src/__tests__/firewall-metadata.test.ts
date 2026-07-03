@@ -383,15 +383,31 @@ describe("firewall metadata", () => {
     const source = fs.readFileSync(entrypoint, "utf-8");
 
     expect(staticImportSpecifiers(source).sort(compareStrings)).toStrictEqual([
-      "../firewall-types",
       "./permission-detail-loader.generated",
       "./permission-summaries.generated",
-      "./policy-resolver",
       "./types",
     ]);
     expect(exportFromSpecifiers(source).sort(compareStrings)).toStrictEqual([
-      "./policy-resolver",
+      "./policy",
+      "./policy",
       "./types",
+    ]);
+    expect(dynamicImportSpecifiers(source)).toStrictEqual([]);
+  });
+
+  it("keeps the policy helper entrypoint generated-data-free", () => {
+    const entrypoint = path.resolve(
+      import.meta.dirname,
+      "../firewall-metadata/policy.ts",
+    );
+    const source = fs.readFileSync(entrypoint, "utf-8");
+
+    expect(staticImportSpecifiers(source).sort(compareStrings)).toStrictEqual([
+      "../firewall-types",
+      "./policy-resolver",
+    ]);
+    expect(exportFromSpecifiers(source).sort(compareStrings)).toStrictEqual([
+      "./policy-resolver",
     ]);
     expect(dynamicImportSpecifiers(source)).toStrictEqual([]);
   });

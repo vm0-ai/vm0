@@ -1,4 +1,8 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogPermissionDetail,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
   zeroUserPermissionGrantsContract,
@@ -21,6 +25,28 @@ const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "thread-action-cards";
+
+function catalogPermissionDetail(
+  overrides: Partial<PublicConnectorCatalogPermissionDetail> &
+    Pick<
+      PublicConnectorCatalogPermissionDetail,
+      "connectorRef" | "label" | "permissions"
+    >,
+): PublicConnectorCatalogPermissionDetail {
+  const { connectorRef, label, permissions, ...rest } = overrides;
+  return {
+    connectorRef,
+    label,
+    permissionCount: permissions.length,
+    permissions,
+    categories: null,
+    defaultPolicy: {
+      permissionDefault: "ask",
+      unknownPolicy: "ask",
+    },
+    ...rest,
+  };
+}
 
 function applyUserConnectorUpdate(
   current: readonly string[],
@@ -124,7 +150,8 @@ describe("chat message action cards", () => {
   it("lets users authorize connectors and confirm permissions from assistant messages", async () => {
     const user = userEvent.setup({ delay: null });
     const connectorAuthorizeUrl = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}`;
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h`;
+    let capturedPermissionGrantBody: unknown = null;
 
     context.mocks.data.connectors([
       connectedConnector({
@@ -134,6 +161,45 @@ describe("chat message action cards", () => {
       }),
     ]);
     mockAgentConnectorAuthorizations([]);
+    context.mocks.api(
+      zeroConnectorCatalogContract.permissions,
+      ({ params, respond }) => {
+        expect(params.connectorRef).toBe("slack");
+        return respond(200, {
+          permissions: catalogPermissionDetail({
+            connectorRef: "slack",
+            label: "Catalog Slack",
+            permissions: [
+              {
+                name: "catalog.analytics:read",
+                description: "Catalog analytics access",
+              },
+            ],
+          }),
+        });
+      },
+    );
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.apply,
+      ({ body, respond }) => {
+        capturedPermissionGrantBody = body;
+        const grant = body.grants[0];
+        if (!grant) {
+          throw new Error("Expected a permission grant");
+        }
+        return respond(200, [
+          {
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: grant.permission,
+            action: grant.action,
+            expiresAt: isoFromNowMs(24 * 60 * 60 * 1000),
+            createdAt: "2026-06-09T11:00:00Z",
+            updatedAt: "2026-06-09T11:01:00Z",
+          },
+        ]);
+      },
+    );
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       threadTitle: "Action cards",
@@ -169,12 +235,14 @@ describe("chat message action cards", () => {
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
-    expect(
-      within(permissionCard).getByText("Slack permissions"),
-    ).toBeInTheDocument();
-    expect(
-      within(permissionCard).getByText("Allow admin.analytics:read"),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        within(permissionCard).getByText("Catalog Slack permissions"),
+      ).toBeInTheDocument();
+      expect(
+        within(permissionCard).getByText("Allow catalog.analytics:read"),
+      ).toBeInTheDocument();
+    });
     expect(within(permissionCard).getByText("24 hours")).toBeInTheDocument();
 
     await confirmPermissionAction(user, permissionCard);
@@ -183,7 +251,67 @@ describe("chat message action cards", () => {
       expect(
         within(permissionCard).getByText("Permissions updated"),
       ).toBeInTheDocument();
+      expect(capturedPermissionGrantBody).toMatchObject({
+        agentId: AGENT_ID,
+        connectorRef: "slack",
+        mode: "patch",
+        grants: [
+          {
+            permission: "catalog.analytics:read",
+            action: "allow",
+            expiresIn: "24h",
+          },
+        ],
+      });
     });
+  });
+
+  it("fails closed when permission action metadata is hidden", async () => {
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=hidden-connector&permission=hidden.permission&action=allow&expiresIn=1h`;
+    context.mocks.api(
+      zeroConnectorCatalogContract.permissions,
+      ({ respond }) => {
+        return respond(404, {
+          error: { message: "Connector not found", code: "NOT_FOUND" },
+        });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-hidden-permission-metadata`,
+      threadTitle: "Hidden permission metadata",
+      chatMessages: [
+        {
+          id: "msg-user-hidden-permission",
+          role: "user",
+          content: "Allow a hidden connector permission",
+          runId: "run-hidden-permission",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-hidden-permission-card",
+          role: "assistant",
+          content: permissionAuthorizeUrl,
+          runId: "run-hidden-permission",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-hidden-permission-metadata`,
+    });
+
+    const permissionCard = await screen.findByTestId("permission-action-card");
+    await waitFor(() => {
+      expect(
+        within(permissionCard).getByText("hidden-connector permissions"),
+      ).toBeInTheDocument();
+      expect(
+        within(permissionCard).getByText("Unknown permission"),
+      ).toBeInTheDocument();
+    });
+    expect(queryButtonByText("Confirm", permissionCard)).toBeNull();
   });
 
   it("shows already allowed permission action cards as read-only after refresh", async () => {
