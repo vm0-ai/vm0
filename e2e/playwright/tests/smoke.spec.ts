@@ -16,7 +16,7 @@ const READY_ONBOARDING_STATUS = JSON.stringify({
   defaultAgentId: null,
   defaultAgentMetadata: null,
 });
-const PRO_TRIAL_STATUS_TIMEOUT_MS = 120_000;
+const PRO_BILLING_STATUS_TIMEOUT_MS = 120_000;
 const BILLING_STATUS_POLL_INTERVAL_MS = 1_000;
 
 test("sign in through onboarding handoff to chat page", async ({ page }) => {
@@ -50,7 +50,9 @@ test("sign in through onboarding handoff to chat page", async ({ page }) => {
   );
 
   const requiresOnboardingSetup = page.url().includes("/onboarding");
-  await ensureProTrialThroughCheckout(page, appUrl, requiresOnboardingSetup);
+  await ensureProCheckout(page, appUrl, {
+    useOnboardingTrial: requiresOnboardingSetup,
+  });
 
   // Verify: landed on chat page
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
@@ -64,23 +66,20 @@ test("sign in through onboarding handoff to chat page", async ({ page }) => {
   await page.context().storageState({ path: STORAGE_STATE });
 });
 
-async function ensureProTrialThroughCheckout(
+async function ensureProCheckout(
   page: Page,
   appUrl: string,
-  setupOnboarding: boolean,
+  options: { readonly useOnboardingTrial: boolean },
 ): Promise<void> {
   const apiUrl = deriveApiUrl(appUrl);
   const headers = await authHeadersForApp(page, appUrl);
-  if (setupOnboarding) {
+  if (options.useOnboardingTrial) {
     await setupOnboardingThroughApi(page, apiUrl, headers);
   }
 
-  const checkoutUrl = await createOnboardingTrialCheckout(
-    page,
-    appUrl,
-    apiUrl,
-    headers,
-  );
+  const checkoutUrl = await createProCheckout(page, appUrl, apiUrl, headers, {
+    useTrial: options.useOnboardingTrial,
+  });
   await page.goto(checkoutUrl, { waitUntil: "domcontentloaded" });
   await fillStripeCheckout(page);
   const appOrigin = new URL(appUrl).origin;
@@ -88,7 +87,7 @@ async function ensureProTrialThroughCheckout(
     timeout: 120_000,
     waitUntil: "domcontentloaded",
   });
-  await waitForProTrialBillingStatus(page, apiUrl, headers);
+  await waitForProBillingStatus(page, apiUrl, headers);
 }
 
 async function setupOnboardingThroughApi(
@@ -111,11 +110,12 @@ async function setupOnboardingThroughApi(
   await expectStatus(setupResponse, [200, 409], "onboarding setup");
 }
 
-async function createOnboardingTrialCheckout(
+async function createProCheckout(
   page: Page,
   appUrl: string,
   apiUrl: string,
   headers: Readonly<Record<"Authorization", string>>,
+  options: { readonly useTrial: boolean },
 ): Promise<string> {
   const successUrl = new URL("/", appUrl);
   successUrl.searchParams.set("billing", "pro");
@@ -130,19 +130,32 @@ async function createOnboardingTrialCheckout(
   const cancelUrl = new URL("/", appUrl);
   cancelUrl.searchParams.set("billing", "canceled");
 
+  const checkoutData: {
+    tier: "pro";
+    successUrl: string;
+    cancelUrl: string;
+    trialDays?: number;
+  } = {
+    tier: "pro",
+    successUrl: stripeSuccessUrl,
+    cancelUrl: cancelUrl.toString(),
+  };
+  if (options.useTrial) {
+    checkoutData.trialDays = 7;
+  }
+
   const checkoutResponse = await page.request.post(
     `${apiUrl}/api/zero/billing/checkout`,
     {
       headers,
-      data: {
-        tier: "pro",
-        trialDays: 7,
-        successUrl: stripeSuccessUrl,
-        cancelUrl: cancelUrl.toString(),
-      },
+      data: checkoutData,
     },
   );
-  await expectStatus(checkoutResponse, [200], "onboarding trial checkout");
+  await expectStatus(
+    checkoutResponse,
+    [200],
+    options.useTrial ? "onboarding trial checkout" : "Pro checkout",
+  );
 
   const body: unknown = await checkoutResponse.json();
   if (!hasCheckoutUrl(body)) {
@@ -151,24 +164,24 @@ async function createOnboardingTrialCheckout(
   return body.url;
 }
 
-async function waitForProTrialBillingStatus(
+async function waitForProBillingStatus(
   page: Page,
   apiUrl: string,
   headers: Readonly<Record<"Authorization", string>>,
 ): Promise<void> {
-  const deadline = Date.now() + PRO_TRIAL_STATUS_TIMEOUT_MS;
+  const deadline = Date.now() + PRO_BILLING_STATUS_TIMEOUT_MS;
   let lastBody: unknown = null;
 
   while (Date.now() < deadline) {
     lastBody = await readBillingStatus(page, apiUrl, headers);
-    if (isProTrialBillingStatus(lastBody)) {
+    if (isProBillingStatus(lastBody)) {
       return;
     }
     await page.waitForTimeout(BILLING_STATUS_POLL_INTERVAL_MS);
   }
 
   throw new Error(
-    `Billing status did not reflect Pro trial: ${JSON.stringify(lastBody)}`,
+    `Billing status did not reflect Pro checkout: ${JSON.stringify(lastBody)}`,
   );
 }
 
@@ -254,7 +267,7 @@ function hasCheckoutUrl(value: unknown): value is { readonly url: string } {
   );
 }
 
-function isProTrialBillingStatus(value: unknown): boolean {
+function isProBillingStatus(value: unknown): boolean {
   if (!isRecord(value)) {
     return false;
   }

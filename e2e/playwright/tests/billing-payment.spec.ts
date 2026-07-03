@@ -10,7 +10,7 @@ async function openBillingSettings(page: Page): Promise<void> {
   await expect(page.getByRole("dialog")).toBeVisible({ timeout: 30_000 });
 }
 
-test("billing settings reflects the onboarding Pro trial", async ({ page }) => {
+test("billing settings reflects the smoke Pro checkout", async ({ page }) => {
   await openBillingSettings(page);
 
   await expect(page.getByText(/^Pro plan$/)).toBeVisible({
