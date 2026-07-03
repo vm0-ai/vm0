@@ -215,7 +215,7 @@ export const chatThreadsSnapshot$ = computed(async (get) => {
   return (await get(chatThreadEventData$)).snapshot;
 });
 
-export const allChatThreadsEvents$ = computed(async (get) => {
+const allChatThreadsEvents$ = computed(async (get) => {
   const persisted = (await get(chatThreadEventData$)).events;
   const optimistic = get(optimisticChatThreadEventsState$);
   const byId = new Map<string, ChatThreadEvent>();
@@ -277,26 +277,8 @@ export const registerOptimisticChatThreadEvent$ = command(
   },
 );
 
-export const clearOptimisticChatThreadEvents$ = command(
-  ({ set }, eventIds: readonly string[]) => {
-    if (eventIds.length === 0) {
-      return;
-    }
-    const confirmed = new Set(eventIds);
-    set(optimisticChatThreadEventsState$, (events) => {
-      return events.filter((event) => {
-        return !confirmed.has(event.id);
-      });
-    });
-  },
-);
-
 export const loadMoreEventDrivenChatThreads$ = command(({ set }) => {
   set(chatThreadMaxItemState$, (count) => {
     return count + CHAT_THREAD_VISIBLE_PAGE_SIZE;
   });
-});
-
-export const resetEventDrivenChatThreadLimit$ = command(({ set }) => {
-  set(chatThreadMaxItemState$, CHAT_THREAD_VISIBLE_PAGE_SIZE);
 });
