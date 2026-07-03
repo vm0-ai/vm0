@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.540.0](https://github.com/vm0-ai/vm0/compare/app-v0.539.0...app-v0.540.0) (2026-07-03)
+
+
+### Features
+
+* color private workflow visibility icon violet ([#20009](https://github.com/vm0-ai/vm0/issues/20009)) ([ca14d35](https://github.com/vm0-ai/vm0/commit/ca14d35005126e2a562dd737d4e7e6ee9fd13d03))
+* move workflow file picker onto detail tab row, right-aligned ([#20011](https://github.com/vm0-ai/vm0/issues/20011)) ([eb7d5cb](https://github.com/vm0-ai/vm0/commit/eb7d5cb0642361b21c679b33a58da3b34bf274d8))
+* show build commit shas in settings debug ([#20020](https://github.com/vm0-ai/vm0/issues/20020)) ([ffd5d00](https://github.com/vm0-ai/vm0/commit/ffd5d00c5ccf30b8fecba9f8e4c5122c5b5a7555))
+
+
+### Bug Fixes
+
+* carry clerk session across origins on onboarding redirect ([#20010](https://github.com/vm0-ai/vm0/issues/20010)) ([3e54880](https://github.com/vm0-ai/vm0/commit/3e54880a6f7e23d4a5b2a17515b1b57d577bc157))
+* remove redundant automations helper text on workflow detail page ([#20006](https://github.com/vm0-ai/vm0/issues/20006)) ([f58c4b5](https://github.com/vm0-ai/vm0/commit/f58c4b52523d2cb48347e84572c7664e9c46c417))
+
 ## [0.539.0](https://github.com/vm0-ai/vm0/compare/app-v0.538.0...app-v0.539.0) (2026-07-03)
 
 
