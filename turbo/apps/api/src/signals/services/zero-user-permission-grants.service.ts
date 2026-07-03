@@ -289,9 +289,17 @@ export async function resolveActiveConnectorPolicyRefreshes(
   const policies = resolvedConnectorFirewallPolicies(grants);
   const uniqueConnectorRefs = [...new Set(connectorRefs)];
 
+  const indexes = await Promise.all(
+    uniqueConnectorRefs.map(async (connectorRef) => {
+      return {
+        connectorRef,
+        index: await loadFirewallPermissionIndex(connectorRef),
+      };
+    }),
+  );
+
   const refreshes: ActiveConnectorPolicyRefresh[] = [];
-  for (const connectorRef of uniqueConnectorRefs) {
-    const index = await loadFirewallPermissionIndex(connectorRef);
+  for (const { connectorRef, index } of indexes) {
     if (!index) {
       continue;
     }

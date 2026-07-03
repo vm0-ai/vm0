@@ -4514,12 +4514,24 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(snapshotClaim.networkPolicies?.slack?.allow).not.toContain(
       "chat:write",
     );
+    context.mocks.ably.publish.mockClear();
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "files:write",
+      action: "allow",
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "permission-refresh",
+      { runId: snapshotRun.runId, connectorRef: "slack" },
+    );
     const refreshedPolicy = await api.refreshRunnerConnectorPolicy(
       snapshotRun.runId,
       "slack",
     );
     expect(refreshedPolicy.networkPolicy.deny).toContain("chat:write");
     expect(refreshedPolicy.networkPolicy.allow).not.toContain("chat:write");
+    expect(refreshedPolicy.networkPolicy.allow).toContain("files:write");
     expect(refreshedPolicy.nextRefreshAt).toStrictEqual(expect.any(String));
 
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
