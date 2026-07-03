@@ -17,7 +17,9 @@ const READY_ONBOARDING_STATUS = JSON.stringify({
   defaultAgentMetadata: null,
 });
 
-test("sign in through onboarding handoff to chat page", async ({ page }) => {
+test("sign in and seed onboarding Pro trial before chat page", async ({
+  page,
+}) => {
   test.setTimeout(240_000);
 
   const email = process.env.E2E_CLERK_USER_EMAIL!;
@@ -47,10 +49,7 @@ test("sign in through onboarding handoff to chat page", async ({ page }) => {
     { timeout: 30_000 },
   );
 
-  // Follow the external onboarding auth handoff if needed
-  if (page.url().includes("/onboarding")) {
-    await completeOnboardingThroughApi(page, appUrl);
-  }
+  await completeOnboardingThroughApi(page, appUrl);
 
   // Verify: landed on chat page
   await page.waitForURL("**/agents/*/chat", {
