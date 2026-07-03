@@ -15,7 +15,7 @@ import { openChatIdb } from "./chat-idb-store.ts";
 
 const SINGLETON_ID = "current";
 
-export interface ChatThreadSnapshotRecord {
+interface ChatThreadSnapshotRecord {
   readonly chatThreads: readonly ChatThreadSnapshotProjection[];
   readonly latestEventId: string | null;
 }

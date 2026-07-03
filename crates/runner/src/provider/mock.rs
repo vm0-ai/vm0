@@ -14,7 +14,7 @@
 //! - **#8898**: `shutdown()` deadlocking because `discover_fut` still holds
 //!   the Mutex when `provider.shutdown()` is called.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
@@ -53,6 +53,7 @@ pub struct MockJobProvider {
     /// pinned), this delay restarts from scratch — jobs pushed during the
     /// delay won't be discovered until it completes.
     poll_delay: Option<Duration>,
+    ready_discovery: Arc<StdMutex<VecDeque<JobCandidate>>>,
     claim_results: StdMutex<HashMap<RunId, Option<ExecutionContext>>>,
     claim_candidates: Arc<StdMutex<Vec<JobCandidate>>>,
     completions: Arc<StdMutex<Vec<Completion>>>,
@@ -87,6 +88,7 @@ pub struct MockJobProvider {
 /// Test-side handle for driving the mock provider.
 pub struct MockProviderHandle {
     pub discover_tx: mpsc::UnboundedSender<JobCandidate>,
+    ready_discovery: Arc<StdMutex<VecDeque<JobCandidate>>>,
     claim_candidates: Arc<StdMutex<Vec<JobCandidate>>>,
     pub completions: Arc<StdMutex<Vec<Completion>>>,
     pub heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
@@ -121,6 +123,7 @@ impl MockJobProvider {
         poll_delay: Option<Duration>,
     ) -> (Arc<Self>, MockProviderHandle) {
         let (tx, rx) = mpsc::unbounded_channel();
+        let ready_discovery = Arc::new(StdMutex::new(VecDeque::new()));
         let claim_candidates = Arc::new(StdMutex::new(Vec::new()));
         let completions = Arc::new(StdMutex::new(Vec::new()));
         let heartbeats = Arc::new(StdMutex::new(Vec::new()));
@@ -132,6 +135,7 @@ impl MockJobProvider {
         let provider = Arc::new(Self {
             discovery: Mutex::new(rx),
             poll_delay,
+            ready_discovery: Arc::clone(&ready_discovery),
             claim_results: StdMutex::new(HashMap::new()),
             claim_candidates: Arc::clone(&claim_candidates),
             completions: Arc::clone(&completions),
@@ -145,6 +149,7 @@ impl MockJobProvider {
         });
         let handle = MockProviderHandle {
             discover_tx: tx,
+            ready_discovery,
             claim_candidates,
             completions,
             heartbeats,
@@ -236,6 +241,13 @@ impl MockProviderHandle {
             .clone()
     }
 
+    pub fn push_ready_candidate(&self, candidate: JobCandidate) {
+        self.ready_discovery
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push_back(candidate);
+    }
+
     /// Wait until `heartbeat_count()` exceeds `baseline`, or return false on
     /// timeout. Uses the same subscribe-then-check pattern as
     /// [`wait_completion`](Self::wait_completion) — a heartbeat that lands
@@ -316,6 +328,13 @@ impl JobProvider for MockJobProvider {
                 None
             }
         }
+    }
+
+    async fn try_discover_ready(&self) -> Option<JobCandidate> {
+        self.ready_discovery
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .pop_front()
     }
 
     async fn complete(

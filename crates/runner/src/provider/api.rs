@@ -3,7 +3,6 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
@@ -12,9 +11,9 @@ use reqwest::{RequestBuilder, Response, StatusCode};
 use serde::{Serialize, de::DeserializeOwned};
 
 use super::api_ably_supervisor::{
-    AblySupervisor, AblySupervisorConfig, DirectCandidateSenders, DirectJobCandidate, PollDue,
-    PollOutcome, PollReason, PollWakeups,
+    AblySupervisor, AblySupervisorConfig, PollDue, PollOutcome, PollReason, PollWakeups,
 };
+use super::api_direct_candidates::{DirectCandidateInbox, DirectJobCandidate};
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
 };
@@ -68,7 +67,7 @@ const POLL_SLOW: Duration = Duration::from_secs(30);
 const POLL_FAST: Duration = Duration::from_secs(5);
 /// Retry delay after a job-notification wakeup reaches poll but poll fails.
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
-const DIRECT_CANDIDATE_QUEUE_CAPACITY: usize = 128;
+const DIRECT_CANDIDATE_INBOX_CAPACITY: usize = 128;
 
 enum DiscoveryWakeup {
     Direct(DirectJobCandidate),
@@ -96,8 +95,7 @@ pub struct ApiProvider {
     /// Coalesced poll wakeup state updated by the Ably supervisor.
     poll_wakeups: Arc<PollWakeups>,
     /// Supported direct job candidates delivered by Ably notifications.
-    _direct_candidate_tx: mpsc::Sender<DirectJobCandidate>,
-    direct_candidate_rx: tokio::sync::Mutex<mpsc::Receiver<DirectJobCandidate>>,
+    direct_candidates: Arc<DirectCandidateInbox>,
     /// Background Ably control-plane task.
     ably_supervisor: AblySupervisor,
     /// Shutdown signal.
@@ -116,14 +114,13 @@ impl ApiProvider {
     ) -> Arc<Self> {
         let api = ApiClient::new(http, token);
         let poll_wakeups = Arc::new(PollWakeups::new(false));
-        let (direct_candidate_tx, direct_candidate_rx) =
-            mpsc::channel(DIRECT_CANDIDATE_QUEUE_CAPACITY);
+        let direct_candidates = DirectCandidateInbox::new(DIRECT_CANDIDATE_INBOX_CAPACITY);
         let ably_supervisor = AblySupervisor::spawn(AblySupervisorConfig {
             api: api.clone(),
             group: group.clone(),
             profiles: profiles.clone(),
             poll_wakeups: Arc::clone(&poll_wakeups),
-            direct_candidate_senders: DirectCandidateSenders::new(direct_candidate_tx.clone()),
+            direct_candidates: Arc::clone(&direct_candidates),
             cancel_tokens,
             provider_cancel: cancel.clone(),
         });
@@ -133,42 +130,18 @@ impl ApiProvider {
             group,
             profiles,
             poll_wakeups,
-            _direct_candidate_tx: direct_candidate_tx,
-            direct_candidate_rx: tokio::sync::Mutex::new(direct_candidate_rx),
+            direct_candidates,
             ably_supervisor,
             cancel,
         })
     }
 
     async fn try_recv_direct_candidate(&self) -> Option<DirectJobCandidate> {
-        let mut direct_candidate_rx = self.direct_candidate_rx.lock().await;
-        match direct_candidate_rx.try_recv() {
-            Ok(candidate) => Some(candidate),
-            Err(mpsc::error::TryRecvError::Empty) => None,
-            Err(mpsc::error::TryRecvError::Disconnected) => None,
-        }
+        self.direct_candidates.try_pop().await
     }
 
     async fn wait_for_direct_candidate(&self) -> Option<DirectJobCandidate> {
-        loop {
-            if let Some(candidate) = self.try_recv_direct_candidate().await {
-                return Some(candidate);
-            }
-
-            let mut direct_candidate_rx = self.direct_candidate_rx.lock().await;
-
-            tokio::select! {
-                biased;
-                () = self.cancel.cancelled() => {
-                    return None;
-                }
-                candidate = direct_candidate_rx.recv() => {
-                    if let Some(candidate) = candidate {
-                        return Some(candidate);
-                    }
-                }
-            }
-        }
+        self.direct_candidates.wait_pop(&self.cancel).await
     }
 
     async fn wait_for_discovery_wakeup(&self) -> Option<DiscoveryWakeup> {
@@ -289,6 +262,18 @@ impl JobProvider for ApiProvider {
                 }
             }
         }
+    }
+
+    async fn try_discover_ready(&self) -> Option<JobCandidate> {
+        let direct = self.try_recv_direct_candidate().await?;
+        let run_id = direct.run_id();
+        let profile = direct.profile_name().to_owned();
+        info!(
+            run_id = %run_id,
+            profile = %profile,
+            "ably: ready direct job candidate drained"
+        );
+        Some(direct.into_job_candidate())
     }
 
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
@@ -876,8 +861,6 @@ mod tests {
         cancel: CancellationToken,
         poll_wakeups: Arc<PollWakeups>,
     ) -> Arc<ApiProvider> {
-        let (direct_candidate_tx, direct_candidate_rx) =
-            mpsc::channel(DIRECT_CANDIDATE_QUEUE_CAPACITY);
         Arc::new(ApiProvider {
             api: ApiClient::new(
                 HttpClient::new(HttpClientConfig {
@@ -890,11 +873,14 @@ mod tests {
             group: "default".to_string(),
             profiles: Vec::new(),
             poll_wakeups,
-            _direct_candidate_tx: direct_candidate_tx,
-            direct_candidate_rx: tokio::sync::Mutex::new(direct_candidate_rx),
+            direct_candidates: DirectCandidateInbox::new(DIRECT_CANDIDATE_INBOX_CAPACITY),
             ably_supervisor: AblySupervisor::disabled(),
             cancel,
         })
+    }
+
+    async fn push_direct_candidate_for_test(provider: &ApiProvider, candidate: DirectJobCandidate) {
+        provider.direct_candidates.push(candidate).await;
     }
 
     async fn read_http_request(socket: &mut tokio::net::TcpStream) {
@@ -1211,14 +1197,15 @@ mod tests {
         let discovered_at = Instant::now()
             .checked_sub(Duration::from_millis(25))
             .unwrap();
-        provider
-            ._direct_candidate_tx
-            .try_send(DirectJobCandidate::new_with_discovered_at(
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new_with_discovered_at(
                 run_id,
                 crate::profile::DEFAULT_PROFILE.to_string(),
                 discovered_at,
-            ))
-            .unwrap();
+            ),
+        )
+        .await;
 
         let discovered = tokio::time::timeout(Duration::from_secs(1), provider.discover())
             .await
@@ -1234,6 +1221,43 @@ mod tests {
         assert!(discovered.job_discovered_elapsed() >= Duration::from_millis(25));
         assert!(discovered.poll_due_to_job_discovered_elapsed().is_none());
         assert!(discovered.poll_http_request_elapsed().is_none());
+        poll_mock.assert_calls_async(0).await;
+    }
+
+    #[tokio::test]
+    async fn try_discover_ready_returns_buffered_direct_candidate_without_polling() {
+        let server = MockServer::start_async().await;
+        let run_id: RunId = "00000000-0000-0000-0000-000000000016".parse().unwrap();
+        let poll_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(routes::runners::poll::POLL.path);
+                then.status(200)
+                    .json_body(serde_json::json!({ "job": null }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+
+        let discovered = provider
+            .try_discover_ready()
+            .await
+            .expect("ready candidate should be available");
+
+        assert_eq!(discovered.run_id(), run_id);
+        assert_eq!(discovered.profile_name(), crate::profile::DEFAULT_PROFILE);
+        assert_eq!(
+            discovered.discovery_source(),
+            Some(JobDiscoverySource::Ably)
+        );
+        assert!(provider.try_discover_ready().await.is_none());
         poll_mock.assert_calls_async(0).await;
     }
 
@@ -1280,13 +1304,11 @@ mod tests {
             CancellationToken::new(),
             Arc::clone(&wakeups),
         );
-        provider
-            ._direct_candidate_tx
-            .try_send(DirectJobCandidate::new(
-                run_id,
-                crate::profile::DEFAULT_PROFILE.to_string(),
-            ))
-            .unwrap();
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
 
         let direct = tokio::time::timeout(Duration::from_secs(1), provider.discover())
             .await
@@ -1339,13 +1361,11 @@ mod tests {
             .await
             .expect("poll should reach the server")
             .unwrap();
-        provider
-            ._direct_candidate_tx
-            .try_send(DirectJobCandidate::new(
-                direct_run_id,
-                crate::profile::DEFAULT_PROFILE.to_string(),
-            ))
-            .unwrap();
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(direct_run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
 
         let discovered = tokio::time::timeout(Duration::from_secs(1), discover_task)
             .await
