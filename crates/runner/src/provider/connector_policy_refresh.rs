@@ -409,6 +409,7 @@ impl ConnectorPolicyRefreshCore {
         let task_id = active.next_refresh_task_id;
         active.next_refresh_task_id += 1;
         let cancel = active.cancel.clone();
+        let enqueue_cancel = cancel.clone();
         let global_cancel = self.inner.cancel.clone();
         let connector_ref = connector_ref.to_string();
         let handle = self.clone();
@@ -422,11 +423,14 @@ impl ConnectorPolicyRefreshCore {
                         .clear_completed_schedule(run_id, &task_connector_ref, task_id)
                         .await;
                     handle
-                        .enqueue_refresh(RefreshRequest {
-                            run_id,
-                            connector_ref: task_connector_ref,
-                            trigger: RefreshTrigger::Scheduled,
-                        })
+                        .enqueue_refresh_until_cancelled(
+                            RefreshRequest {
+                                run_id,
+                                connector_ref: task_connector_ref,
+                                trigger: RefreshTrigger::Scheduled,
+                            },
+                            &enqueue_cancel,
+                        )
                         .await;
                 }
             }
@@ -886,6 +890,73 @@ mod tests {
             .get(&run_id)
             .expect("run should remain active after scheduled refresh fires");
         assert!(active.refresh_tasks.is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn unregister_cancels_scheduled_refresh_waiting_for_queue_capacity() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let registry = ProxyRegistryHandle::new(
+            dir.path().join("proxy-registry.json"),
+            dir.path().join("proxy-registry.lock"),
+        );
+        core.inner
+            .active_runs
+            .lock()
+            .await
+            .insert(run_id, active_run_policy_state(registry));
+        for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
+            core.request_tx
+                .try_send(RefreshRequest {
+                    run_id,
+                    connector_ref: "slack".to_string(),
+                    trigger: RefreshTrigger::Notification,
+                })
+                .expect("refresh queue should accept request");
+        }
+
+        core.replace_schedule(
+            run_id,
+            "slack",
+            Some("1970-01-01T00:00:00.000Z".to_string()),
+        )
+        .await;
+        for _ in 0..10 {
+            if core
+                .inner
+                .active_runs
+                .lock()
+                .await
+                .get(&run_id)
+                .is_some_and(|active| active.refresh_tasks.is_empty())
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert!(
+            core.inner
+                .active_runs
+                .lock()
+                .await
+                .get(&run_id)
+                .is_some_and(|active| active.refresh_tasks.is_empty()),
+            "scheduled task should be waiting on the full refresh queue"
+        );
+
+        core.unregister_run(run_id).await;
+        let mut queued = 0;
+        while requests.try_recv().is_ok() {
+            queued += 1;
+        }
+        assert_eq!(queued, REFRESH_REQUEST_QUEUE_CAPACITY);
+        tokio::task::yield_now().await;
+        assert!(matches!(
+            requests.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ));
     }
 
     #[tokio::test]
