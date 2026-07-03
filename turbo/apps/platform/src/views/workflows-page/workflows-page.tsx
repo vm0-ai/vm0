@@ -338,7 +338,7 @@ function WorkflowRow({
               className="flex min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
             >
               <WorkflowRowIcon entries={entries} />
-              <span className="min-w-0 truncate text-sm font-medium underline decoration-muted-foreground/40 decoration-dashed underline-offset-4">
+              <span className="min-w-0 truncate text-sm font-medium underline decoration-dotted decoration-foreground/40 decoration-[1px] underline-offset-2">
                 {title}
               </span>
             </Link>
