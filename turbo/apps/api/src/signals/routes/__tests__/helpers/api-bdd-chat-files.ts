@@ -20,6 +20,7 @@ import {
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
   type ChatThreadListItem,
+  type ChatThreadSnapshotProjection,
   type ChatRunOptionsRequest,
   type GenerationTemplateRequest,
   type ModelSelectionRequest,
@@ -434,6 +435,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly agentId: string;
         readonly title?: string;
         readonly clientThreadId?: string;
+        readonly eventId?: string;
       },
     ): Promise<{ readonly id: string; readonly title: string | null }> {
       const response = await accept(
@@ -452,6 +454,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly agentId: string;
         readonly title?: string;
         readonly clientThreadId?: string;
+        readonly eventId?: string;
       },
       statuses: readonly (201 | 401 | 404)[],
     ) {
@@ -485,6 +488,33 @@ export function createChatFilesBddApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async getThreadSnapshot(actor: ApiTestUser): Promise<{
+      readonly chatThreads: readonly ChatThreadSnapshotProjection[];
+      readonly latestEventId: string | null;
+    }> {
+      const response = await accept(
+        threadsClient().snapshot({
+          headers: authenticate(context, actor),
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestThreadEvents(
+      actor: ApiTestUser,
+      query: { readonly sinceEventId?: string },
+      statuses: readonly (200 | 410)[],
+    ) {
+      return await accept(
+        threadsClient().events({
+          headers: authenticate(context, actor),
+          query,
+        }),
+        statuses,
+      );
     },
 
     async requestListThreads(
@@ -675,12 +705,13 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       title: string,
+      eventId?: string,
     ): Promise<void> {
       await accept(
         threadRenameClient().rename({
           headers: authenticate(context, actor),
           params: { id: threadId },
-          body: { title },
+          body: { title, ...(eventId === undefined ? {} : { eventId }) },
         }),
         [204],
       );

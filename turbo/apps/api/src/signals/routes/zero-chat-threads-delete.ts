@@ -3,7 +3,7 @@ import { chatThreadByIdContract } from "@vm0/api-contracts/contracts/chat-thread
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { pathParamsOf } from "../context/request";
+import { pathParamsOf, queryOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
@@ -22,10 +22,16 @@ function chatThreadNotFound() {
 const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadByIdContract.delete));
+  const query = get(queryOf(chatThreadByIdContract.delete));
 
   const result = await set(
     deleteChatThread$,
-    { threadId: params.id, userId: auth.userId, orgId: auth.orgId },
+    {
+      threadId: params.id,
+      userId: auth.userId,
+      orgId: auth.orgId,
+      eventId: query?.eventId,
+    },
     signal,
   );
   signal.throwIfAborted();

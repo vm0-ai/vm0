@@ -1447,6 +1447,7 @@ export const createChatThread$ = command(
       readonly agentComposeId: string;
       readonly title: string | undefined;
       readonly clientThreadId: string | undefined;
+      readonly eventId: string | undefined;
     },
     signal: AbortSignal,
   ): Promise<{ id: string; createdAt: Date }> => {
@@ -1473,6 +1474,7 @@ export const createChatThread$ = command(
         orgId: args.orgId,
         chatThreadId: createdThread.id,
         agentComposeId: args.agentComposeId,
+        eventId: args.eventId,
         title: args.title ?? null,
         createdAt: createdThread.createdAt,
       });
@@ -1541,6 +1543,7 @@ export const deleteChatThread$ = command(
       readonly threadId: string;
       readonly userId: string;
       readonly orgId?: string | null;
+      readonly eventId?: string;
     },
     signal: AbortSignal,
   ): Promise<{
@@ -1576,6 +1579,7 @@ export const deleteChatThread$ = command(
         orgId: args.orgId,
         chatThreadId: ownedThread.id,
         agentComposeId: ownedThread.agentComposeId,
+        eventId: args.eventId,
       });
 
       // Stop related automations first so none of them can spawn a fresh run

@@ -452,6 +452,83 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(listedThreadIds(outsiderList)).toStrictEqual([]);
   });
 
+  it("returns chat thread snapshot and lifecycle events with cursor expiry", async () => {
+    const actor = bdd.user();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Thread event sourcing agent",
+    });
+    const createEventId = randomUUID();
+    const renameEventId = randomUUID();
+
+    const emptySnapshot = await chat.getThreadSnapshot(actor);
+    expect(emptySnapshot).toStrictEqual({
+      chatThreads: [],
+      latestEventId: null,
+    });
+
+    const thread = await chat.createThread(actor, {
+      agentId: agent.agentId,
+      title: "Initial event title",
+      eventId: createEventId,
+    });
+    await chat.renameThread(
+      actor,
+      thread.id,
+      "Renamed event title",
+      renameEventId,
+    );
+
+    const allEvents = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(allEvents.status).toBe(200);
+    if (allEvents.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(allEvents.body.hasMore).toBeFalsy();
+    expect(allEvents.body.events).toStrictEqual([
+      expect.objectContaining({
+        id: createEventId,
+        kind: "created",
+        chatThreadId: thread.id,
+        agentId: agent.agentId,
+        title: "Initial event title",
+        createdAt: expect.any(String),
+      }),
+      expect.objectContaining({
+        id: renameEventId,
+        kind: "renamed",
+        chatThreadId: thread.id,
+        agentId: agent.agentId,
+        title: "Renamed event title",
+        createdAt: expect.any(String),
+      }),
+    ]);
+
+    const afterCreate = await chat.requestThreadEvents(
+      actor,
+      { sinceEventId: createEventId },
+      [200],
+    );
+    expect(afterCreate.status).toBe(200);
+    if (afterCreate.status !== 200) {
+      throw new Error("Expected chat thread events after cursor to load");
+    }
+    expect(afterCreate.body.events).toStrictEqual([
+      expect.objectContaining({ id: renameEventId }),
+    ]);
+
+    const expired = await chat.requestThreadEvents(
+      actor,
+      { sinceEventId: randomUUID() },
+      [410],
+    );
+    expect(expired.body).toStrictEqual({
+      error: {
+        message: "Chat thread events cursor has expired",
+        code: "CHAT_THREAD_EVENTS_EXPIRED",
+      },
+    });
+  });
+
   it("falls back to the first run model on detail after the explicit pin is cleared", async () => {
     const { actor, agentId } = await entitledChatActor(
       "Thread detail model pin agent",

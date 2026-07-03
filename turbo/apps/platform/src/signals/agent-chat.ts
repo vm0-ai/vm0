@@ -4,7 +4,13 @@ import {
   type ChatThreadListItem,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import {
+  agentById,
+  agents$,
+  currentAgentId$,
+  defaultAgentId$,
+} from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
@@ -13,6 +19,13 @@ import { reloadChatThreadsCounter$ } from "./chat-thread-list-reload.ts";
 import { clerk$ } from "./auth.ts";
 import { readThreadMeta$ } from "./external/idb-thread-meta-store.ts";
 import { chatThreadOnlyUnread$ } from "./chat-page/chat-thread-only-unread.ts";
+import { featureSwitch$ } from "./external/feature-switch.ts";
+import {
+  chatThreadMaxItem$,
+  eventDrivenChatThreads$,
+} from "./chat-page/chat-thread-event-sourcing.ts";
+import { allPendingChatThreads$ } from "./chat-page/optimistic-chat-thread-state.ts";
+import type { EventDrivenChatThread } from "./chat-page/chat-thread-event-replay.ts";
 
 export { reloadChatThreads$ } from "./chat-thread-list-reload.ts";
 
@@ -121,14 +134,20 @@ export interface ChatThread {
  * raw page so derived signals (chatThreads$, hasMore, nextCursor) can share a
  * single network round-trip.
  */
-const chatThreadsFirstPage$ = computed(async (get) => {
+export const chatThreadEventSourcingEnabled$ = computed((get) => {
+  return get(featureSwitch$)[FeatureSwitchKey.ChatThreadEventSourcing] ?? false;
+});
+
+const legacyChatThreadsFirstPage$ = computed(async (get) => {
   get(reloadChatThreadsCounter$);
 
   const agentId = await get(currentChatAgentId$);
   if (!agentId) {
     return null;
   }
-  const onlyUnread = get(chatThreadOnlyUnread$);
+  const onlyUnread = get(chatThreadEventSourcingEnabled$)
+    ? false
+    : get(chatThreadOnlyUnread$);
 
   const client = get(zeroClient$)(chatThreadsContract);
   const result = await accept(
@@ -143,13 +162,79 @@ const chatThreadsFirstPage$ = computed(async (get) => {
   return result.body;
 });
 
-export const chatThreads$ = computed(
+const legacyChatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
-    const page = await get(chatThreadsFirstPage$);
+    const page = await get(legacyChatThreadsFirstPage$);
     if (!page) {
       return [];
     }
     return [...page.pinned, ...page.threads];
+  },
+);
+
+const eventDrivenFilteredChatThreads$ = computed(
+  async (get): Promise<EventDrivenChatThread[]> => {
+    const agentId = await get(currentChatAgentId$);
+    if (!agentId) {
+      return [];
+    }
+    return (await get(eventDrivenChatThreads$)).filter((thread) => {
+      return thread.agentId === agentId;
+    });
+  },
+);
+
+const eventDrivenVisibleChatThreads$ = computed(
+  async (get): Promise<ChatThreadListItem[]> => {
+    const [threads, allAgents, legacyThreads] = await Promise.all([
+      get(eventDrivenFilteredChatThreads$),
+      get(agents$),
+      get(legacyChatThreads$),
+    ]);
+    const maxItems = get(chatThreadMaxItem$);
+    const avatarByAgentId = new Map(
+      allAgents.map((agent) => {
+        return [agent.id, agent.avatarUrl ?? null] as const;
+      }),
+    );
+    const runningByThreadId = new Map(
+      legacyThreads.map((thread) => {
+        return [thread.id, thread.running] as const;
+      }),
+    );
+    const pendingRunningByThreadId = new Map(
+      get(allPendingChatThreads$).map((thread) => {
+        return [thread.threadId, thread.running] as const;
+      }),
+    );
+
+    return threads.slice(0, maxItems).map((thread) => {
+      return {
+        id: thread.id,
+        title: thread.title,
+        agent: {
+          id: thread.agentId,
+          avatarUrl: avatarByAgentId.get(thread.agentId) ?? null,
+        },
+        createdAt: thread.createdAt,
+        updatedAt: thread.updatedAt,
+        running:
+          pendingRunningByThreadId.get(thread.id) ??
+          runningByThreadId.get(thread.id) ??
+          false,
+        pinnedAt: thread.pinnedAt,
+        renamedAt: thread.renamedAt,
+      };
+    });
+  },
+);
+
+export const chatThreads$ = computed(
+  async (get): Promise<ChatThreadListItem[]> => {
+    if (get(chatThreadEventSourcingEnabled$)) {
+      return await get(eventDrivenVisibleChatThreads$);
+    }
+    return await get(legacyChatThreads$);
   },
 );
 
@@ -158,11 +243,19 @@ export const chatThreads$ = computed(
  * Drives the "Load more" button rendered at the bottom of the sidebar list.
  */
 export const chatThreadsHasMore$ = computed(async (get) => {
-  const page = await get(chatThreadsFirstPage$);
+  if (get(chatThreadEventSourcingEnabled$)) {
+    const threads = await get(eventDrivenFilteredChatThreads$);
+    return threads.length > get(chatThreadMaxItem$);
+  }
+  const page = await get(legacyChatThreadsFirstPage$);
   return page?.hasMore ?? false;
 });
 
 export const chatThreadsNextCursor$ = computed(async (get) => {
-  const page = await get(chatThreadsFirstPage$);
+  if (get(chatThreadEventSourcingEnabled$)) {
+    const threads = await get(eventDrivenFilteredChatThreads$);
+    return threads.length > get(chatThreadMaxItem$) ? "event-driven" : null;
+  }
+  const page = await get(legacyChatThreadsFirstPage$);
   return page?.nextCursor ?? null;
 });

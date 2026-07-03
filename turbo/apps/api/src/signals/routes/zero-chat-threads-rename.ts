@@ -46,6 +46,7 @@ const renameInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       orgId: auth.orgId,
       chatThreadId: thread.id,
       agentComposeId: thread.agentComposeId,
+      eventId: body.data.eventId,
       title: body.data.title,
     });
     return true;
