@@ -118,7 +118,7 @@ function connectorPillClassName({
     "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-white px-2 text-[11px] font-normal leading-none",
     muted ? "text-muted-foreground" : "text-foreground/70",
     interactive &&
-      "transition-colors hover:border-border hover:text-foreground",
+      "cursor-pointer transition-colors hover:border-border hover:bg-gray-50 hover:text-foreground",
   );
 }
 
@@ -246,20 +246,27 @@ function ConnectorCell({
   const remaining = entries.length - 2;
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className={connectorPillClassName({ interactive: true })}
-        >
-          {lead ? (
-            <ConnectorPillMarker dotClassName={triggerDotClass(lead)} />
-          ) : null}
-          <span>{connectorNames(entries)}</span>
-          {remaining > 0 ? (
-            <span className="text-muted-foreground">+{remaining}</span>
-          ) : null}
-        </button>
-      </PopoverTrigger>
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className={connectorPillClassName({ interactive: true })}
+              >
+                {lead ? (
+                  <ConnectorPillMarker dotClassName={triggerDotClass(lead)} />
+                ) : null}
+                <span>{connectorNames(entries)}</span>
+                {remaining > 0 ? (
+                  <span className="text-muted-foreground">+{remaining}</span>
+                ) : null}
+              </button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">View automations</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <PopoverContent align="end" className="w-80 p-1">
         <ConnectorPopoverList
           entries={entries}
