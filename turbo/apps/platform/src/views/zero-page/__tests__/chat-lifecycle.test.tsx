@@ -67,6 +67,7 @@ const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000701";
 const GITHUB_PR_THREAD_ID = "b0000000-0000-4000-a000-000000000702";
 const FOLLOWUP_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
 const HISTORY_THREAD_ID = "b0000000-0000-4000-a000-000000000705";
+const EVENT_SOURCED_RENAME_THREAD_ID = "b0000000-0000-4000-a000-000000000706";
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
 function replaceNavigatorProperty(property: string, value: unknown): void {
@@ -3666,6 +3667,91 @@ describe("chat lifecycle", () => {
     expect(
       within(reopenedDialog).getByPlaceholderText("Chat title"),
     ).toHaveValue("Current keyboard thread");
+  });
+
+  it("renames the event-sourced current chat while thread detail is pending", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockResizeObserver();
+    const originalTitle = "Original event-sourced thread";
+    const renamedTitle = "Renamed event-sourced thread";
+    const thread = {
+      id: EVENT_SOURCED_RENAME_THREAD_ID,
+      title: originalTitle,
+      agent: { id: AGENT_ID, avatarUrl: null },
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:00:00.000Z",
+      running: false,
+      pinnedAt: null,
+    };
+    const lifecycle = mockChatLifecycle(context, {
+      threadId: EVENT_SOURCED_RENAME_THREAD_ID,
+      threadTitle: "Thread detail should stay pending",
+    });
+    lifecycle.setThreadList([thread]);
+    const renameRequest = vi.fn();
+
+    context.mocks.api(chatThreadByIdContract.get, ({ never }) => {
+      return never();
+    });
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      return respond(200, {
+        chatThreads: [
+          {
+            id: EVENT_SOURCED_RENAME_THREAD_ID,
+            agentId: AGENT_ID,
+            title: originalTitle,
+            sortAt: "2026-06-01T00:00:00.000Z",
+            createdAt: "2026-06-01T00:00:00.000Z",
+            updatedAt: "2026-06-01T00:00:00.000Z",
+            pinnedAt: null,
+            renamedAt: null,
+          },
+        ],
+        latestEventId: null,
+      });
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${EVENT_SOURCED_RENAME_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEventSourcing]: true },
+    });
+
+    const threadRegion = await screen.findByLabelText("Chat thread");
+    await waitFor(() => {
+      expect(within(threadRegion).getByText(originalTitle)).toBeInTheDocument();
+    });
+    expect(
+      within(threadRegion).queryByText("Thread detail should stay pending"),
+    ).not.toBeInTheDocument();
+
+    threadRegion.focus();
+    await user.keyboard("{F2}");
+
+    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
+      originalTitle,
+    );
+    await fill(within(dialog).getByPlaceholderText("Chat title"), renamedTitle);
+    click(buttonByText("Rename", dialog));
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        EVENT_SOURCED_RENAME_THREAD_ID,
+        renamedTitle,
+      );
+      expect(within(threadRegion).getByText(renamedTitle)).toBeInTheDocument();
+    });
   });
 
   it("keeps F2 rename available after creating a chat from the agent composer", async () => {
