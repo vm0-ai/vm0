@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.132.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.12...runner-rs-v0.132.13) (2026-07-04)
+
+
+### Bug Fixes
+
+* **mitm-addon:** suppress ambiguous shared-base diagnostics ([#20169](https://github.com/vm0-ai/vm0/issues/20169)) ([ff9177d](https://github.com/vm0-ai/vm0/commit/ff9177d0abf6896ad49ba871f7287c8139a26e50))
+
 ## [0.132.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.11...runner-rs-v0.132.12) (2026-07-04)
 
 
