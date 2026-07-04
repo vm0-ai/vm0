@@ -140,6 +140,51 @@ apply_slack_chat_write_permission() {
         >/dev/null
 }
 
+slack_test_endpoint_headers() {
+    local -n out="$1"
+    out=()
+    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+        out+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+        out+=(-H "x-vm0-test-endpoint-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+    fi
+}
+
+slack_mock_state() {
+    local team_id="$1"
+    local -a headers
+    slack_test_endpoint_headers headers
+    curl -fsS "${headers[@]}" \
+        "$(zero_api_url)/api/test/slack-state?team_id=$team_id"
+}
+
+wait_for_slack_mock_marker() {
+    local team_id="$1"
+    local expected_text="$2"
+    local timeout="${3:-60}"
+    local start=$SECONDS
+    local state=""
+    local match=""
+
+    while ((SECONDS - start < timeout)); do
+        state=$(slack_mock_state "$team_id" 2>&1 || true)
+        match=$(printf '%s' "$state" \
+            | jq -er --arg expected "$expected_text" '
+                [.mock_calls[]
+                 | select(.method == "chat.postMessage")
+                 | select(.bodyJson.text == $expected)]
+                | length
+            ' 2>/dev/null || true)
+        if [[ "$match" =~ ^[0-9]+$ ]] && ((match > 0)); then
+            return 0
+        fi
+        sleep 2
+    done
+
+    echo "# Timed out (${timeout}s) waiting for Slack mock marker $expected_text" >&2
+    echo "# Last slack mock state: $state" >&2
+    return 1
+}
+
 @test "firewall: placeholder env vars" {
     # Connectors are set up in setup_file() to avoid parallel write races.
     # No firewalls needed — connector auto-add provides firewalls.
@@ -217,8 +262,18 @@ EOF
     echo "$output"
     assert_success
 
+    local marker_team_id="T_FIREWALL_REFRESH_${UNIQUE_ID//-/_}"
+    local marker_text="first-deny-${UNIQUE_ID}"
+    local slack_mock_url
+    slack_mock_url="$(zero_api_url)/api/test/slack-mock/chat.postMessage"
+
     local prompt
     prompt=$(cat <<'EOF'
+SLACK_MOCK_URL="__SLACK_MOCK_URL__"
+MARKER_TEAM_ID="__MARKER_TEAM_ID__"
+MARKER_TEXT="__MARKER_TEXT__"
+BYPASS_SECRET="__BYPASS_SECRET__"
+
 post_slack() {
     local text="$1"
     local body_file status
@@ -234,11 +289,33 @@ is_firewall_denied() {
     printf '%s' "$1" | grep -q '"permission_denied"'
 }
 
+post_marker() {
+    local body status
+    body="{\"team_id\":\"${MARKER_TEAM_ID}\",\"channel\":\"C0000000000\",\"text\":\"${MARKER_TEXT}\"}"
+    if [ -n "$BYPASS_SECRET" ]; then
+        status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$SLACK_MOCK_URL" \
+            -H "x-vercel-protection-bypass: $BYPASS_SECRET" \
+            -H "x-vm0-test-endpoint-bypass: $BYPASS_SECRET" \
+            -H 'Content-Type: application/json' \
+            --data "$body" || true)
+    else
+        status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$SLACK_MOCK_URL" \
+            -H 'Content-Type: application/json' \
+            --data "$body" || true)
+    fi
+    [ -n "$status" ] || status=000
+    printf '%s\n' "$status"
+}
+
 FIRST_OUTPUT=$(post_slack e2e-before-refresh)
 FIRST_STATUS=$(printf '%s\n' "$FIRST_OUTPUT" | head -n1)
 FIRST_BODY=$(printf '%s\n' "$FIRST_OUTPUT" | tail -n +2)
 echo "FIRST_SLACK_STATUS=$FIRST_STATUS"
 echo "FIRST_SLACK_BODY=$FIRST_BODY"
+if [ "$FIRST_STATUS" = "403" ] && is_firewall_denied "$FIRST_BODY"; then
+    MARKER_STATUS=$(post_marker)
+    echo "MARKER_STATUS=$MARKER_STATUS"
+fi
 
 SECOND_STATUS=000
 SECOND_BODY=
@@ -270,6 +347,10 @@ if [ "$FIRST_STATUS" != "403" ] || ! is_firewall_denied "$FIRST_BODY" || [ "$SEC
 fi
 EOF
 )
+    prompt=${prompt//__SLACK_MOCK_URL__/$slack_mock_url}
+    prompt=${prompt//__MARKER_TEAM_ID__/$marker_team_id}
+    prompt=${prompt//__MARKER_TEXT__/$marker_text}
+    prompt=${prompt//__BYPASS_SECRET__/${VERCEL_AUTOMATION_BYPASS_SECRET:-}}
 
     zero_chat_run_with_model_selection \
         "$AGENT_ID" \
@@ -280,9 +361,7 @@ EOF
         false
     THREAD_ID="$LAST_THREAD_ID"
 
-    WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$LAST_RUN_ID" -- \
-        "FIRST_SLACK_STATUS=403" \
-        'FIRST_SLACK_BODY={"error": "permission_denied"'
+    wait_for_slack_mock_marker "$marker_team_id" "$marker_text" 60
 
     run apply_slack_chat_write_permission "$AGENT_ID" allow
     echo "$output"
