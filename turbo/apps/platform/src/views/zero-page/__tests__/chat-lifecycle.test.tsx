@@ -3190,8 +3190,9 @@ describe("chat lifecycle", () => {
 
   it("keeps chat scroll controls responsive to buttons and keyboard", async () => {
     mockResizeObserver();
+    const threadId = "b0000000-0000-4000-a000-000000000722";
     mockChatLifecycle(context, {
-      threadId: "scroll-history-thread",
+      threadId,
       threadTitle: "Scroll history",
       chatMessages: Array.from({ length: 8 }, (_, index) => {
         return makeMessage(
@@ -3201,7 +3202,7 @@ describe("chat lifecycle", () => {
       }),
     });
 
-    detachedSetupPage({ context, path: "/chats/scroll-history-thread" });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
     let scrollContainer: HTMLElement | undefined;
     await waitFor(() => {
@@ -4820,7 +4821,7 @@ describe("chat lifecycle", () => {
 
   it("folds goal-state markers into the goal row beneath the queued messages", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "thread-goal-fold";
+    const threadId = "b0000000-0000-4000-a000-000000000723";
     mockChatLifecycle(context, {
       threadId,
       chatMessages: [

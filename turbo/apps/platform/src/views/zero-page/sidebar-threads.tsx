@@ -772,7 +772,6 @@ function getFixedVirtualRange({
 }
 
 function queueChatThreadVirtualTargetScroll({
-  chatThreadCount,
   scrollMargin,
   scrollTargetThreadId,
   scrollViewport,
@@ -780,7 +779,6 @@ function queueChatThreadVirtualTargetScroll({
   targetIndex,
   viewportHeight,
 }: {
-  chatThreadCount: number;
   scrollMargin: number;
   scrollTargetThreadId: string | null;
   scrollViewport: HTMLElement | null;
@@ -793,31 +791,6 @@ function queueChatThreadVirtualTargetScroll({
   }
 
   if (targetIndex === -1) {
-    if (chatThreadCount === 0) {
-      return;
-    }
-    const key = `missing:${scrollTargetThreadId}:${chatThreadCount}`;
-    if (
-      document.documentElement.dataset[
-        CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY
-      ] === key
-    ) {
-      return;
-    }
-    document.documentElement.dataset[CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY] =
-      key;
-    queueMicrotask(() => {
-      if (
-        document.documentElement.dataset[
-          CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY
-        ] === key
-      ) {
-        delete document.documentElement.dataset[
-          CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY
-        ];
-      }
-      setScrollTargetThreadId(null);
-    });
     return;
   }
 
@@ -897,7 +870,6 @@ function VirtualizedChatThreads({
   const visibleChatThreads = chatThreads.slice(startIndex, endIndex);
 
   queueChatThreadVirtualTargetScroll({
-    chatThreadCount: chatThreads.length,
     scrollMargin,
     scrollTargetThreadId,
     scrollViewport,
