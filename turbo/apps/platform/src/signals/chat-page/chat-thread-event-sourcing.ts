@@ -48,6 +48,14 @@ const chatThreadEventSyncInFlightState$ = state(false);
 const activeRunChatThreadIdsState$ = state<ReadonlySet<string>>(new Set());
 const activeRunChatThreadIdsRefreshInFlightState$ = state(false);
 
+const optimisticChatThreadCreateIds$ = computed((get): ReadonlySet<string> => {
+  return new Set(
+    get(optimisticChatThreadEventsState$).flatMap((event) => {
+      return event.kind === "created" ? [event.chatThreadId] : [];
+    }),
+  );
+});
+
 function filterUnsettledOptimisticChatThreadEvents(
   optimistic: readonly ChatThreadEvent[],
   persisted: ChatThreadEventData,
@@ -318,6 +326,26 @@ export const eventDrivenChatThreads$ = computed(async (get) => {
     await get(allChatThreadsEvents$),
   );
 });
+
+const eventDrivenChatThreadMap$ = computed(async (get) => {
+  return new Map(
+    (await get(eventDrivenChatThreads$)).map((thread) => {
+      return [thread.id, thread] as const;
+    }),
+  );
+});
+
+export function eventDrivenChatThread(threadId: string) {
+  return computed(async (get) => {
+    return (await get(eventDrivenChatThreadMap$)).get(threadId) ?? null;
+  });
+}
+
+export function optimisticChatThreadCreateUnsettled(threadId: string) {
+  return computed((get): boolean => {
+    return get(optimisticChatThreadCreateIds$).has(threadId);
+  });
+}
 
 const eventDrivenChatThreadMetaMap$ = computed(async (get) => {
   return new Map<string, ThreadMeta>(

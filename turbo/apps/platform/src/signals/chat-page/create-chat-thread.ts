@@ -90,6 +90,7 @@ import {
 import { getChatThreadTitleParts } from "./chat-thread-title.ts";
 import {
   eventDrivenChatThreadMeta,
+  optimisticChatThreadCreateUnsettled,
   type ThreadMeta,
 } from "./chat-thread-event-sourcing.ts";
 import {
@@ -561,6 +562,8 @@ function createModelSelection(
   threadData$: Computed<Promise<ChatThread | null>>,
   dataSource: ChatThreadDataSource,
 ) {
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
   // Discriminated union so we can tell "user hasn't picked anything yet" from
   // "user explicitly picked inherit (null)". Without the flag, clearing the
   // selection would be indistinguishable from the initial unset state and we'd
@@ -593,11 +596,17 @@ function createModelSelection(
 
   const setModelSelection$ = command(
     async (
-      { set },
+      { get, set },
       value: ModelProviderSelection | null,
       signal: AbortSignal,
     ) => {
       set(internalUserOverride$, { kind: "set", value });
+      if (get(optimisticCreateUnsettled$)) {
+        L.debug("setModelSelection$ optimistic thread create unsettled, skip", {
+          threadId,
+        });
+        return;
+      }
 
       await set(
         dataSource.patchModelSelection$,
@@ -625,6 +634,8 @@ function createComputerUseHostSelection(
   threadData$: Computed<Promise<ChatThread | null>>,
   dataSource: ChatThreadDataSource,
 ) {
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
   const internalUserOverride$ = state<
     { kind: "unset" } | { kind: "set"; value: string | null; dirty: boolean }
   >({ kind: "unset" });
@@ -644,12 +655,23 @@ function createComputerUseHostSelection(
   });
 
   const setComputerUseHostId$ = command(
-    async ({ set }, computerUseHostId: string | null, signal: AbortSignal) => {
+    async (
+      { get, set },
+      computerUseHostId: string | null,
+      signal: AbortSignal,
+    ) => {
       set(internalUserOverride$, {
         kind: "set",
         value: computerUseHostId,
         dirty: true,
       });
+      if (get(optimisticCreateUnsettled$)) {
+        L.debug(
+          "setComputerUseHostId$ optimistic thread create unsettled, skip",
+          { threadId },
+        );
+        return;
+      }
 
       await onRejection(
         set(
@@ -853,6 +875,8 @@ function createDraftSync(
   draft: DraftSignals,
   dataSource: ChatThreadDataSource,
 ) {
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
   // A reset signal is used to abort any in-flight debounced sync when a new
   // change comes in or when the draft is cleared on send.
   const draftSyncReset$ = resetSignal();
@@ -861,6 +885,12 @@ function createDraftSync(
     async ({ get, set }, signal: AbortSignal) => {
       await delay(DRAFT_SYNC_DEBOUNCE_MS, { signal });
       signal.throwIfAborted();
+      if (get(optimisticCreateUnsettled$)) {
+        L.debug("draft sync skipped for unsettled optimistic thread create", {
+          threadId,
+        });
+        return;
+      }
 
       const input = get(draft.input$);
       const content = input.trim() || null;
@@ -906,14 +936,23 @@ function createDraftSync(
     set(draftSyncReset$);
   });
 
-  const flushDraftClear$ = command(async ({ set }, signal: AbortSignal) => {
-    set(draftSyncReset$);
-    await set(
-      dataSource.patchDraft$,
-      { threadId, content: null, attachments: null },
-      signal,
-    );
-  });
+  const flushDraftClear$ = command(
+    async ({ get, set }, signal: AbortSignal) => {
+      set(draftSyncReset$);
+      if (get(optimisticCreateUnsettled$)) {
+        L.debug(
+          "draft clear sync skipped for unsettled optimistic thread create",
+          { threadId },
+        );
+        return;
+      }
+      await set(
+        dataSource.patchDraft$,
+        { threadId, content: null, attachments: null },
+        signal,
+      );
+    },
+  );
 
   return { queueDraftSync$, cancelDraftSync$, flushDraftClear$ };
 }
@@ -2267,10 +2306,19 @@ function createMarkThreadReadIfNeeded({
   locallyMarkedReadMessageId$,
   dataSource,
 }: MarkThreadReadDeps) {
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
   return command(async ({ get, set }, sig: AbortSignal) => {
     const latestMessageId = await get(latestChatMessageId$);
     sig.throwIfAborted();
     if (!latestMessageId) {
+      return;
+    }
+    if (get(optimisticCreateUnsettled$)) {
+      L.debug("markRead$ optimistic thread create unsettled, skip", {
+        threadId,
+        latestMessageId,
+      });
       return;
     }
 
@@ -2564,6 +2612,8 @@ function createSendMessage(deps: SendMessageDeps) {
     fetchNextPage$,
     refreshGroupedChatMessagesCache$,
   } = deps;
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
   return command(
     async (
       { get, set },
@@ -2573,6 +2623,12 @@ function createSendMessage(deps: SendMessageDeps) {
       signal: AbortSignal,
     ) => {
       L.debug("sendMessage$ start", { threadId, promptLen: prompt.length });
+      if (get(optimisticCreateUnsettled$)) {
+        L.debug("sendMessage$ optimistic thread create unsettled, abort", {
+          threadId,
+        });
+        return;
+      }
       const thread = await get(threadData$);
       signal.throwIfAborted();
       const agentId = thread?.agentId;
@@ -2707,6 +2763,8 @@ function createQueueMessage(deps: QueueMessageDeps) {
     refreshGroupedChatMessagesCache$,
     dataSource,
   } = deps;
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
 
   return command(
     async (
@@ -2716,6 +2774,12 @@ function createQueueMessage(deps: QueueMessageDeps) {
       signal: AbortSignal,
     ) => {
       L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
+      if (get(optimisticCreateUnsettled$)) {
+        L.debug("queueMessage$ optimistic thread create unsettled, abort", {
+          threadId,
+        });
+        return;
+      }
       const thread = await get(threadData$);
       signal.throwIfAborted();
       if (!thread) {
@@ -2907,7 +2971,15 @@ function createCancelRunWithQueuedRecall({
   refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
   dataSource: ChatThreadDataSource;
 }) {
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    if (get(optimisticCreateUnsettled$)) {
+      L.debug("cancelRun$ optimistic thread create unsettled, skip", {
+        threadId,
+      });
+      return;
+    }
     const thread = await get(threadData$);
     signal.throwIfAborted();
     if (!thread) {

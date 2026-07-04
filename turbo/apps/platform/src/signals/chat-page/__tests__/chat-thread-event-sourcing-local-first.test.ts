@@ -17,17 +17,11 @@ import {
   setChatAgentId$,
 } from "../../agent-chat.ts";
 import { renameDialogInput$ } from "../../zero-page/zero-sidebar-state.ts";
-import {
-  createChatThreadSignals,
-  ensureDraft$,
-} from "../create-chat-thread.ts";
-import { createLocalChatThreadDataSource } from "../local-chat-thread-data-source.ts";
-import { registerOptimisticChatThread$ } from "../optimistic-chat-thread-state.ts";
-import { createPendingChatThread } from "../pending-chat-thread.ts";
 import { sidebarChatThreadIds$ } from "../sidebar-chat-thread-ids.ts";
 import { setChatThreadOnlyUnread$ } from "../chat-thread-only-unread.ts";
 import { openRenameChatThreadDialogFromThreadData$ } from "../chat-thread-rename.ts";
 import { registerOptimisticChatThreadEvent$ } from "../chat-thread-event-sourcing.ts";
+import { createIdbCachedDataSource } from "../idb-cached-chat-thread-data-source.ts";
 
 const idbThreadEventStoreMock = vi.hoisted(() => {
   let snapshot: {
@@ -120,7 +114,6 @@ const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000001";
 const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000002";
 const OPTIMISTIC_THREAD_ID = "b0000000-0000-4000-a000-000000000003";
-const LEGACY_PENDING_THREAD_ID = "b0000000-0000-4000-a000-000000000004";
 const EVENT_ID = "d0000000-0000-4000-a000-000000000001";
 const OPTIMISTIC_EVENT_ID = "d0000000-0000-4000-a000-000000000002";
 
@@ -326,7 +319,7 @@ describe("chat thread event sourcing local-first list", () => {
     expect(unreadsRequests).toBe(1);
   });
 
-  it("uses optimistic create events instead of pending thread ids for event-sourced sidebar ids", async () => {
+  it("uses optimistic create events for event-sourced sidebar ids", async () => {
     context.store.set(setChatAgentId$, AGENT_ID);
 
     idbThreadEventStoreMock.setData({
@@ -355,33 +348,6 @@ describe("chat thread event sourcing local-first list", () => {
       },
     });
 
-    const { draft } = context.store.set(ensureDraft$, LEGACY_PENDING_THREAD_ID);
-    const pendingThread = createChatThreadSignals(
-      LEGACY_PENDING_THREAD_ID,
-      draft,
-      createLocalChatThreadDataSource({
-        threadData: createPendingChatThread({
-          threadId: LEGACY_PENDING_THREAD_ID,
-          agentId: AGENT_ID,
-          pendingRunId: `pending-${LEGACY_PENDING_THREAD_ID}`,
-        }),
-        messages: [],
-      }),
-    );
-    context.store.set(registerOptimisticChatThread$, {
-      pane: "main",
-      threadId: LEGACY_PENDING_THREAD_ID,
-      agentId: AGENT_ID,
-      createdAt: "2026-07-03T04:00:00.000Z",
-      running: true,
-      pendingThread,
-      settleResult: Promise.resolve(),
-    });
-
-    await expect(
-      context.store.get(sidebarChatThreadIds$),
-    ).resolves.toStrictEqual([]);
-
     context.store.set(registerOptimisticChatThreadEvent$, {
       id: OPTIMISTIC_EVENT_ID,
       kind: "created",
@@ -406,6 +372,34 @@ describe("chat thread event sourcing local-first list", () => {
         renamedAt: null,
       },
     ]);
+
+    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+      expect(params.id).toBe(OPTIMISTIC_THREAD_ID);
+      return respond(404, {
+        error: { message: "Thread not found", code: "NOT_FOUND" },
+      });
+    });
+
+    const dataSource = createIdbCachedDataSource(OPTIMISTIC_THREAD_ID);
+    await expect(context.store.get(dataSource.getThread$)).resolves.toEqual({
+      id: OPTIMISTIC_THREAD_ID,
+      title: null,
+      agentId: AGENT_ID,
+      createdAt: "2026-07-03T05:00:00.000Z",
+      updatedAt: "2026-07-03T05:00:00.000Z",
+      lastReadMessageId: null,
+      lastReadAt: null,
+      lastMessageAt: "2026-07-03T05:00:00.000Z",
+      pinnedAt: null,
+      activeRunIds: [],
+      isLegacySession: false,
+      draftContent: null,
+      draftAttachments: null,
+      modelProviderId: null,
+      selectedModel: null,
+      codexServiceTier: null,
+      computerUseHostId: null,
+    });
   });
 
   it("settles optimistic create events once the matching persisted event arrives", async () => {
