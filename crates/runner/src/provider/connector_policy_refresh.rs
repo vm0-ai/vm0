@@ -261,27 +261,6 @@ impl ConnectorPolicyRefreshCore {
             .then(|| active.cancel.clone())
     }
 
-    async fn enqueue_refresh_until_cancelled(
-        &self,
-        request: RefreshRequest,
-        cancel: &CancellationToken,
-    ) -> bool {
-        let sent = tokio::select! {
-            biased;
-            () = self.inner.cancel.cancelled() => false,
-            () = cancel.cancelled() => false,
-            result = self.request_tx.send(request) => {
-                if let Err(error) = result {
-                    warn!(error = %error, "connector policy refresh queue closed");
-                    false
-                } else {
-                    true
-                }
-            }
-        };
-        sent
-    }
-
     async fn handle_notification_enqueue_error(&self, error: TrySendError<RefreshRequest>) {
         match error {
             Full(request) => {
@@ -300,6 +279,42 @@ impl ConnectorPolicyRefreshCore {
                         snapshot,
                     )
                     .await;
+                }
+            }
+            Closed(error) => {
+                warn!(
+                    run_id = %error.run_id,
+                    connector_ref = %error.connector_ref,
+                    "connector policy refresh queue closed"
+                );
+            }
+        }
+    }
+
+    async fn enqueue_scheduled_refresh(&self, request: RefreshRequest, cancel: &CancellationToken) {
+        if self.inner.cancel.is_cancelled() || cancel.is_cancelled() {
+            return;
+        }
+
+        if let Err(error) = self.request_tx.try_send(request) {
+            self.handle_scheduled_enqueue_error(error).await;
+        }
+    }
+
+    async fn handle_scheduled_enqueue_error(&self, error: TrySendError<RefreshRequest>) {
+        match error {
+            Full(request) => {
+                warn!(
+                    run_id = %request.run_id,
+                    connector_ref = %request.connector_ref,
+                    "connector policy refresh queue full; failing closed after scheduled refresh deadline"
+                );
+                if let Some(snapshot) = self
+                    .active_snapshot(request.run_id, &request.connector_ref)
+                    .await
+                {
+                    fail_closed_connector_policy(request.run_id, &request.connector_ref, snapshot)
+                        .await;
                 }
             }
             Closed(error) => {
@@ -433,7 +448,7 @@ impl ConnectorPolicyRefreshCore {
                 () = cancel.cancelled() => {}
                 () = tokio::time::sleep_until(deadline) => {
                     handle
-                        .enqueue_refresh_until_cancelled(
+                        .enqueue_scheduled_refresh(
                             RefreshRequest {
                                 run_id,
                                 connector_ref: task_connector_ref.clone(),
@@ -1211,7 +1226,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn unregister_cancels_scheduled_refresh_waiting_for_queue_capacity() {
+    async fn unregister_cancels_scheduled_refresh_before_deadline() {
         let server = MockServer::start();
         let (core, mut requests) = core_without_worker(&server);
         let run_id = RunId::nil();
@@ -1260,6 +1275,44 @@ mod tests {
             requests.try_recv(),
             Err(tokio::sync::mpsc::error::TryRecvError::Empty)
         ));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn scheduled_refresh_full_queue_fails_closed_without_waiting_for_capacity() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let (_dir, registry, registry_path, _lock_path) = registered_slack_registry(run_id).await;
+        core.inner
+            .active_runs
+            .lock()
+            .await
+            .insert(run_id, active_run_policy_state(registry));
+        for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
+            core.request_tx
+                .try_send(RefreshRequest {
+                    run_id,
+                    connector_ref: "slack".to_string(),
+                })
+                .expect("refresh queue should accept request");
+        }
+
+        core.replace_schedule(
+            run_id,
+            "slack",
+            Some("1970-01-01T00:00:00.000Z".to_string()),
+        )
+        .await;
+        tokio::time::advance(EXPIRED_REFRESH_DEADLINE_RETRY_DELAY).await;
+
+        wait_until_scheduled_refresh_task_clears(&core, run_id).await;
+        let mut queued = 0;
+        while requests.try_recv().is_ok() {
+            queued += 1;
+        }
+        assert_eq!(queued, REFRESH_REQUEST_QUEUE_CAPACITY);
+        let policy = load_slack_policy(&registry_path).await;
+        assert_fail_closed_policy(&policy);
     }
 
     #[tokio::test]
