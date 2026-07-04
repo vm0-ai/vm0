@@ -251,7 +251,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
       outsiderRead.body.effectiveSwitches[
         FeatureSwitchKey.ChatThreadEventSourcing
       ],
-    ).toBeFalsy();
+    ).toBeTruthy();
 
     const peerUpdate = await accept(
       featureSwitchesClient().update({

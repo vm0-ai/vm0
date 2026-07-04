@@ -5,8 +5,9 @@ import {
   chatThreadMessagesContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage as baseDetachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
@@ -66,6 +67,18 @@ const THREAD_ID = "b0000000-0000-4000-a000-000000000001";
 const THREAD_TITLE = "GEO pricing research";
 const USER_MESSAGE = "Summarize the launch plan";
 const ASSISTANT_MESSAGE = "Here is the result";
+
+function detachedSetupPage(
+  options: Parameters<typeof baseDetachedSetupPage>[0],
+): void {
+  baseDetachedSetupPage({
+    ...options,
+    featureSwitches: {
+      [FeatureSwitchKey.ChatThreadEventSourcing]: false,
+      ...options.featureSwitches,
+    },
+  });
+}
 
 function prepareDefaultAgent(): void {
   context.mocks.data.team([
