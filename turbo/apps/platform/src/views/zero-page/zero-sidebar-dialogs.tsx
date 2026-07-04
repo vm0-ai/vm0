@@ -5,6 +5,7 @@ import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { IconSearch, IconX, IconPin, IconPinnedOff } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   CommandDialog,
   CommandGroup,
@@ -15,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
+  RunningIndicator,
 } from "@vm0/ui";
 import {
   chatListQuery$,
@@ -25,16 +27,22 @@ import {
   leadAgentAvatarUrl$,
   type SubagentInfo,
 } from "../../signals/agent.ts";
+import { allChatThreadListItems$ } from "../../signals/agent-chat.ts";
 import {
   pinnedAgentIds$,
   setAgentPinned$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
-import { unreadAgentIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
+import {
+  sidebarUnreadThreadIds$,
+  unreadAgentIds$,
+} from "../../signals/chat-page/sidebar-unread-threads.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AgentAvatarImg, AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { AgentRowSideActions } from "./zero-sidebar-agent-row-actions.tsx";
+
+const MAX_VISIBLE_CHAT_THREAD_RESULTS = 25;
 
 export interface AgentDialogItem {
   readonly id: string;
@@ -155,9 +163,11 @@ export function AgentDialogAgentButton({
 function AgentCommandSearch({
   query,
   setQuery,
+  placeholder,
 }: {
   readonly query: string;
   readonly setQuery: (query: string) => void;
+  readonly placeholder: string;
 }) {
   return (
     <div className="px-5 pb-3">
@@ -165,7 +175,7 @@ function AgentCommandSearch({
         <CommandInput
           value={query}
           onValueChange={setQuery}
-          placeholder="Search agents..."
+          placeholder={placeholder}
           className={query ? "pr-7" : ""}
         />
         {query && (
@@ -235,6 +245,131 @@ function AgentCommandAgentContent({
   );
 }
 
+function chatThreadDialogTitle(thread: ChatThreadListItem): string {
+  return thread.title ?? "New chat";
+}
+
+function chatThreadDialogMatchesQuery(
+  thread: ChatThreadListItem,
+  trimmedQuery: string,
+): boolean {
+  return chatThreadDialogTitle(thread).toLowerCase().includes(trimmedQuery);
+}
+
+function filterAgentDialogItems<T extends AgentDialogItem>(
+  agents: readonly T[],
+  trimmedQuery: string,
+): T[] {
+  if (!trimmedQuery) {
+    return [...agents];
+  }
+  return agents.filter((agent) => {
+    return agentDialogMatchesQuery(agent, trimmedQuery);
+  });
+}
+
+function filterChatThreadDialogItems({
+  enabled,
+  threads,
+  trimmedQuery,
+}: {
+  readonly enabled: boolean;
+  readonly threads: readonly ChatThreadListItem[];
+  readonly trimmedQuery: string;
+}): ChatThreadListItem[] {
+  if (!enabled) {
+    return [];
+  }
+  const matchingThreads = trimmedQuery
+    ? threads.filter((thread) => {
+        return chatThreadDialogMatchesQuery(thread, trimmedQuery);
+      })
+    : threads;
+  return matchingThreads.slice(0, MAX_VISIBLE_CHAT_THREAD_RESULTS);
+}
+
+function setHasId(
+  set: ReadonlySet<string> | undefined,
+  id: string | null | undefined,
+): boolean {
+  return id ? (set?.has(id) ?? false) : false;
+}
+
+function agentListDialogDescription(unifiedSearchEnabled: boolean): string {
+  if (unifiedSearchEnabled) {
+    return "Pick an agent or jump to a chat.";
+  }
+  return "Pick an agent to start a conversation.";
+}
+
+function agentListDialogSearchPlaceholder(
+  unifiedSearchEnabled: boolean,
+): string {
+  if (unifiedSearchEnabled) {
+    return "Search agents and chats...";
+  }
+  return "Search agents...";
+}
+
+function ChatThreadCommandIndicator({
+  running,
+  unread,
+}: {
+  readonly running: boolean;
+  readonly unread: boolean;
+}) {
+  if (running) {
+    return <RunningIndicator />;
+  }
+  if (unread) {
+    return (
+      <span aria-label="Unread" className="h-2 w-2 rounded-full bg-sky-600" />
+    );
+  }
+  return null;
+}
+
+function ChatThreadCommandItem({
+  thread,
+  hasUnread,
+  onSelect,
+}: {
+  readonly thread: ChatThreadListItem;
+  readonly hasUnread: boolean;
+  readonly onSelect: () => void;
+}) {
+  const title = chatThreadDialogTitle(thread);
+  const hasIndicator = thread.running || hasUnread;
+  return (
+    <CommandItem
+      value={`thread-${thread.id}`}
+      onSelect={onSelect}
+      className="group w-full gap-2 px-1 py-2"
+    >
+      <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+        <AgentAvatarImg
+          name={thread.agent.id}
+          alt=""
+          className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm text-foreground">
+            {title}
+          </span>
+        </span>
+      </span>
+      {hasIndicator ? (
+        <span className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center">
+          <ChatThreadCommandIndicator
+            running={thread.running}
+            unread={hasUnread}
+          />
+        </span>
+      ) : null}
+    </CommandItem>
+  );
+}
+
 function stopCommandItemEvent(e: SyntheticEvent) {
   e.stopPropagation();
 }
@@ -295,18 +430,234 @@ function PinnedAgentCommandItem({
   );
 }
 
+function LeadAgentCommandSection({
+  displayName,
+  show,
+  zeroAvatarUrl,
+  unreadIndicatorsEnabled,
+  defaultAgentId,
+  unreadAgentIds,
+  onChat,
+}: {
+  readonly displayName: string;
+  readonly show: boolean;
+  readonly zeroAvatarUrl: string | null;
+  readonly unreadIndicatorsEnabled: boolean;
+  readonly defaultAgentId: string | null | undefined;
+  readonly unreadAgentIds: ReadonlySet<string> | undefined;
+  readonly onChat: () => void;
+}) {
+  if (!show) {
+    return null;
+  }
+  return (
+    <AgentCommandSection label="Lead">
+      <CommandItem
+        value="lead"
+        onSelect={onChat}
+        className="group w-full gap-2 px-1 py-2"
+      >
+        <AgentCommandAgentContent
+          agent={{ id: "lead", displayName }}
+          avatar={
+            <AvatarFromUrl
+              avatarUrl={zeroAvatarUrl}
+              alt={displayName}
+              className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
+            />
+          }
+          subtitle="Your lead assistant, always here for you"
+        />
+        {unreadIndicatorsEnabled && (
+          <AgentCommandSideActions>
+            <AgentRowSideActions
+              hasUnread={setHasId(unreadAgentIds, defaultAgentId)}
+            />
+          </AgentCommandSideActions>
+        )}
+      </CommandItem>
+    </AgentCommandSection>
+  );
+}
+
+function PinnedAgentsCommandSection({
+  agents,
+  disabled,
+  unreadIndicatorsEnabled,
+  unreadAgentIds,
+  onChat,
+  onTogglePin,
+}: {
+  readonly agents: readonly SubagentInfo[];
+  readonly disabled: boolean;
+  readonly unreadIndicatorsEnabled: boolean;
+  readonly unreadAgentIds: ReadonlySet<string> | undefined;
+  readonly onChat: (agentId: string) => void;
+  readonly onTogglePin: (agentId: string) => void;
+}) {
+  if (agents.length === 0) {
+    return null;
+  }
+  return (
+    <AgentCommandSection label="Pinned">
+      {agents.map((agent) => {
+        return (
+          <PinnedAgentCommandItem
+            key={agent.id}
+            agent={agent}
+            onUnpin={() => {
+              return onTogglePin(agent.id);
+            }}
+            onChat={() => {
+              return onChat(agent.id);
+            }}
+            disabled={disabled}
+            unreadIndicatorsEnabled={unreadIndicatorsEnabled}
+            hasUnread={setHasId(unreadAgentIds, agent.id)}
+          />
+        );
+      })}
+    </AgentCommandSection>
+  );
+}
+
+function UnpinnedAgentsCommandSection({
+  agents,
+  disabled,
+  unreadIndicatorsEnabled,
+  unreadAgentIds,
+  onChat,
+  onTogglePin,
+}: {
+  readonly agents: readonly SubagentInfo[];
+  readonly disabled: boolean;
+  readonly unreadIndicatorsEnabled: boolean;
+  readonly unreadAgentIds: ReadonlySet<string> | undefined;
+  readonly onChat: (agentId: string) => void;
+  readonly onTogglePin: (agentId: string) => void;
+}) {
+  if (agents.length === 0) {
+    return null;
+  }
+  return (
+    <AgentCommandSection label="Others" className="pb-3">
+      {agents.map((agent) => {
+        return (
+          <CommandItem
+            key={agent.id}
+            value={agent.id}
+            onSelect={() => {
+              return onChat(agent.id);
+            }}
+            className="group w-full gap-2 px-1 py-2"
+          >
+            <AgentCommandAgentContent agent={agent} />
+            <AgentCommandSideActions>
+              <AgentRowSideActions
+                hasUnread={
+                  unreadIndicatorsEnabled && setHasId(unreadAgentIds, agent.id)
+                }
+                action={{
+                  label: "Pin to sidebar",
+                  disabled,
+                  icon: <IconPin size={16} stroke={2} />,
+                  onSelect: () => {
+                    return onTogglePin(agent.id);
+                  },
+                }}
+              />
+            </AgentCommandSideActions>
+          </CommandItem>
+        );
+      })}
+    </AgentCommandSection>
+  );
+}
+
+function ChatThreadCommandSection({
+  threads,
+  unreadIndicatorsEnabled,
+  unreadThreadIds,
+  onSelect,
+}: {
+  readonly threads: readonly ChatThreadListItem[];
+  readonly unreadIndicatorsEnabled: boolean;
+  readonly unreadThreadIds: ReadonlySet<string> | undefined;
+  readonly onSelect: (threadId: string) => void;
+}) {
+  if (threads.length === 0) {
+    return null;
+  }
+  return (
+    <AgentCommandSection label="Chats" className="pb-3">
+      {threads.map((thread) => {
+        return (
+          <ChatThreadCommandItem
+            key={thread.id}
+            thread={thread}
+            hasUnread={
+              unreadIndicatorsEnabled && setHasId(unreadThreadIds, thread.id)
+            }
+            onSelect={() => {
+              return onSelect(thread.id);
+            }}
+          />
+        );
+      })}
+    </AgentCommandSection>
+  );
+}
+
+function AgentDialogEmptyStates({
+  subagents,
+  showAgentEmpty,
+  showCombinedEmpty,
+}: {
+  readonly subagents: readonly SubagentInfo[];
+  readonly showAgentEmpty: boolean;
+  readonly showCombinedEmpty: boolean;
+}) {
+  return (
+    <>
+      {subagents.length === 0 && (
+        <div className="px-5 pb-5">
+          <p className="text-xs text-muted-foreground px-1 py-2">
+            No sub-agents available yet.
+          </p>
+        </div>
+      )}
+      {showAgentEmpty && (
+        <div className="px-5 pb-5">
+          <p className="text-xs text-muted-foreground px-1 py-2">
+            No agents found
+          </p>
+        </div>
+      )}
+      {showCombinedEmpty && (
+        <div className="px-5 pb-5">
+          <p className="text-xs text-muted-foreground px-1 py-2">
+            No results found
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function AgentListDialog({
   open,
   onOpenChange,
   displayName,
   subagents,
   onSelectChatAgent,
+  onSelectChatThread,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   displayName: string;
   subagents: SubagentInfo[];
   onSelectChatAgent?: (agentId: string | null) => void;
+  onSelectChatThread?: (threadId: string) => void;
 }) {
   const zeroAvatarUrl = useLastResolved(leadAgentAvatarUrl$) ?? null;
   const defaultAgentId = useLastResolved(defaultAgentId$);
@@ -316,7 +667,11 @@ export function AgentListDialog({
   const features = useGet(featureSwitch$);
   const unreadIndicatorsEnabled =
     features[FeatureSwitchKey.AgentUnreadIndicators] ?? false;
+  const chatThreadUnifiedSearchEnabled =
+    features[FeatureSwitchKey.ChatThreadUnifiedSearch] ?? false;
   const unreadAgentIds = useLastResolved(unreadAgentIds$);
+  const unreadThreadIds = useLastResolved(sidebarUnreadThreadIds$);
+  const allChatThreads = useLastResolved(allChatThreadListItems$) ?? [];
   const pageSignal = useGet(pageSignal$);
   const [pinLoadable, saveAgentPinned] = useLoadableSet(setAgentPinned$);
   const saving = pinLoadable.state === "loading";
@@ -331,18 +686,15 @@ export function AgentListDialog({
   });
 
   const trimmedQuery = query.trim().toLowerCase();
-  const filteredPinned = trimmedQuery
-    ? pinned.filter((a) => {
-        return agentDialogMatchesQuery(a, trimmedQuery);
-      })
-    : pinned;
-  const filteredUnpinned = trimmedQuery
-    ? unpinned.filter((a) => {
-        return agentDialogMatchesQuery(a, trimmedQuery);
-      })
-    : unpinned;
+  const filteredPinned = filterAgentDialogItems(pinned, trimmedQuery);
+  const filteredUnpinned = filterAgentDialogItems(unpinned, trimmedQuery);
   const showLead =
     !trimmedQuery || displayName.toLowerCase().includes(trimmedQuery);
+  const matchingChatThreads = filterChatThreadDialogItems({
+    enabled: chatThreadUnifiedSearchEnabled,
+    threads: allChatThreads,
+    trimmedQuery,
+  });
 
   const togglePin = (agentId: string) => {
     detach(
@@ -359,6 +711,22 @@ export function AgentListDialog({
     onSelectChatAgent?.(agentId);
   };
 
+  const handleChatThread = (threadId: string) => {
+    onOpenChange(false);
+    onSelectChatThread?.(threadId);
+  };
+
+  const hasAgentMatches =
+    showLead || filteredPinned.length > 0 || filteredUnpinned.length > 0;
+  const hasChatThreadMatches = matchingChatThreads.length > 0;
+  const showAgentEmpty =
+    trimmedQuery && !hasAgentMatches && !chatThreadUnifiedSearchEnabled;
+  const showCombinedEmpty =
+    chatThreadUnifiedSearchEnabled &&
+    trimmedQuery &&
+    !hasAgentMatches &&
+    !hasChatThreadMatches;
+
   return (
     <CommandDialog
       open={open}
@@ -370,127 +738,57 @@ export function AgentListDialog({
       <DialogHeader className="px-5 pt-5 pb-3">
         <DialogTitle className="text-base font-semibold">Talk to</DialogTitle>
         <DialogDescription className="text-sm text-muted-foreground mt-1">
-          Pick an agent to start a conversation.
+          {agentListDialogDescription(chatThreadUnifiedSearchEnabled)}
         </DialogDescription>
       </DialogHeader>
 
-      <AgentCommandSearch query={query} setQuery={setQuery} />
+      <AgentCommandSearch
+        query={query}
+        setQuery={setQuery}
+        placeholder={agentListDialogSearchPlaceholder(
+          chatThreadUnifiedSearchEnabled,
+        )}
+      />
 
       <CommandList>
-        {/* Lead agent */}
-        {showLead && (
-          <AgentCommandSection label="Lead">
-            <CommandItem
-              value="lead"
-              onSelect={() => {
-                return handleChat(null);
-              }}
-              className="group w-full gap-2 px-1 py-2"
-            >
-              <AgentCommandAgentContent
-                agent={{ id: "lead", displayName }}
-                avatar={
-                  <AvatarFromUrl
-                    avatarUrl={zeroAvatarUrl}
-                    alt={displayName}
-                    className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
-                  />
-                }
-                subtitle="Your lead assistant, always here for you"
-              />
-              {unreadIndicatorsEnabled && (
-                <AgentCommandSideActions>
-                  <AgentRowSideActions
-                    hasUnread={
-                      defaultAgentId
-                        ? (unreadAgentIds?.has(defaultAgentId) ?? false)
-                        : false
-                    }
-                  />
-                </AgentCommandSideActions>
-              )}
-            </CommandItem>
-          </AgentCommandSection>
-        )}
-
-        {/* Pinned agents */}
-        {filteredPinned.length > 0 && (
-          <AgentCommandSection label="Pinned">
-            {filteredPinned.map((agent) => {
-              return (
-                <PinnedAgentCommandItem
-                  key={agent.id}
-                  agent={agent}
-                  onUnpin={() => {
-                    return togglePin(agent.id);
-                  }}
-                  onChat={() => {
-                    return handleChat(agent.id);
-                  }}
-                  disabled={saving}
-                  unreadIndicatorsEnabled={unreadIndicatorsEnabled}
-                  hasUnread={unreadAgentIds?.has(agent.id) ?? false}
-                />
-              );
-            })}
-          </AgentCommandSection>
-        )}
-
-        {/* Unpinned agents */}
-        {filteredUnpinned.length > 0 && (
-          <AgentCommandSection label="Others" className="pb-3">
-            {filteredUnpinned.map((agent) => {
-              return (
-                <CommandItem
-                  key={agent.id}
-                  value={agent.id}
-                  onSelect={() => {
-                    return handleChat(agent.id);
-                  }}
-                  className="group w-full gap-2 px-1 py-2"
-                >
-                  <AgentCommandAgentContent agent={agent} />
-                  <AgentCommandSideActions>
-                    <AgentRowSideActions
-                      hasUnread={
-                        unreadIndicatorsEnabled
-                          ? (unreadAgentIds?.has(agent.id) ?? false)
-                          : false
-                      }
-                      action={{
-                        label: "Pin to sidebar",
-                        disabled: saving,
-                        icon: <IconPin size={16} stroke={2} />,
-                        onSelect: () => {
-                          return togglePin(agent.id);
-                        },
-                      }}
-                    />
-                  </AgentCommandSideActions>
-                </CommandItem>
-              );
-            })}
-          </AgentCommandSection>
-        )}
-
-        {subagents.length === 0 && (
-          <div className="px-5 pb-5">
-            <p className="text-xs text-muted-foreground px-1 py-2">
-              No sub-agents available yet.
-            </p>
-          </div>
-        )}
-
-        {trimmedQuery &&
-          !showLead &&
-          filteredPinned.length === 0 &&
-          filteredUnpinned.length === 0 && (
-            <div className="px-5 pb-5">
-              <p className="text-xs text-muted-foreground px-1 py-2">
-                No agents found
-              </p>
-            </div>
-          )}
+        <LeadAgentCommandSection
+          displayName={displayName}
+          show={showLead}
+          zeroAvatarUrl={zeroAvatarUrl}
+          unreadIndicatorsEnabled={unreadIndicatorsEnabled}
+          defaultAgentId={defaultAgentId}
+          unreadAgentIds={unreadAgentIds}
+          onChat={() => {
+            return handleChat(null);
+          }}
+        />
+        <PinnedAgentsCommandSection
+          agents={filteredPinned}
+          disabled={saving}
+          unreadIndicatorsEnabled={unreadIndicatorsEnabled}
+          unreadAgentIds={unreadAgentIds}
+          onChat={handleChat}
+          onTogglePin={togglePin}
+        />
+        <UnpinnedAgentsCommandSection
+          agents={filteredUnpinned}
+          disabled={saving}
+          unreadIndicatorsEnabled={unreadIndicatorsEnabled}
+          unreadAgentIds={unreadAgentIds}
+          onChat={handleChat}
+          onTogglePin={togglePin}
+        />
+        <ChatThreadCommandSection
+          threads={matchingChatThreads}
+          unreadIndicatorsEnabled={unreadIndicatorsEnabled}
+          unreadThreadIds={unreadThreadIds}
+          onSelect={handleChatThread}
+        />
+        <AgentDialogEmptyStates
+          subagents={subagents}
+          showAgentEmpty={Boolean(showAgentEmpty)}
+          showCombinedEmpty={Boolean(showCombinedEmpty)}
+        />
       </CommandList>
     </CommandDialog>
   );

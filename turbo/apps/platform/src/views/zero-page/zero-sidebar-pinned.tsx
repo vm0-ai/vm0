@@ -144,6 +144,12 @@ function AgentListDialogContainer() {
     });
     setExpanded(false);
   };
+  const openChatThread = (threadId: string) => {
+    navigate("/chats/:threadId", {
+      pathParams: { threadId },
+    });
+    setExpanded(false);
+  };
   return (
     <AgentListDialog
       open={open}
@@ -151,6 +157,7 @@ function AgentListDialogContainer() {
       displayName={displayName}
       subagents={subagents}
       onSelectChatAgent={openAgentChat}
+      onSelectChatThread={openChatThread}
     />
   );
 }

@@ -313,6 +313,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
     enabled: false,
   },
+  [FeatureSwitchKey.ChatThreadUnifiedSearch]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show chat thread title results from the local event-driven thread cache in the command-shift-a conversation picker.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: {
     maintainer: "bingjie@vm0.ai",
     description:
