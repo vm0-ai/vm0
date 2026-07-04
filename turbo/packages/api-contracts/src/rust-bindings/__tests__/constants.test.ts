@@ -16,7 +16,7 @@ import {
 import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
-  CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX,
+  NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   SESSION_HISTORY_ENCODING_GZIP,
   SESSION_HISTORY_ENCODING_IDENTITY,
@@ -75,8 +75,8 @@ function placeholderRustDoc(name: string): readonly string[] {
 const expectedBindings = [
   {
     rustModulePath: ["runners"],
-    rustConstName: "CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX",
-    value: rustU64(CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
+    rustConstName: "NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX",
+    value: rustU64(NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
     rustDoc: networkPolicyRefreshConnectorRefsMaxDoc,
   },
   {
@@ -276,7 +276,7 @@ describe("Rust constant bindings", () => {
       `pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = ${RESUME_SESSION_HISTORY_MAX_BYTES};`,
     );
     expect(firstRender).toContain(
-      `pub const CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX: u64 = ${CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX};`,
+      `pub const NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX: u64 = ${NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX};`,
     );
     expect(firstRender).toContain(
       `pub const SESSION_HISTORY_ENCODING_GZIP: &str = "${SESSION_HISTORY_ENCODING_GZIP}";`,

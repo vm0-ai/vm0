@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import {
   elapsedSinceApiStartMs,
   RESUME_SESSION_HISTORY_MAX_BYTES,
-  runnersConnectorNetworkPolicyContract,
+  runnersNetworkPolicyRefreshContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
@@ -544,7 +544,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const claimBody$ = bodyResultOf(runnersJobClaimContract.claim);
 const networkPolicyRefreshBody$ = bodyResultOf(
-  runnersConnectorNetworkPolicyContract.refresh,
+  runnersNetworkPolicyRefreshContract.refresh,
 );
 
 interface ClaimableJob {
@@ -935,7 +935,7 @@ async function agentIdForRun(
   return version?.agentId ?? undefined;
 }
 
-async function refreshClaimConnectorPolicies(args: {
+async function refreshClaimNetworkPolicies(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
   readonly storedContext: StoredExecutionContext;
@@ -1327,7 +1327,7 @@ async function buildClaimResponseBody(args: {
         args.run.id,
         args.run.orgId,
       );
-      const refreshedPolicies = await refreshClaimConnectorPolicies({
+      const refreshedPolicies = await refreshClaimNetworkPolicies({
         db: args.db,
         run: args.run,
         storedContext: args.storedContext,
@@ -1854,7 +1854,7 @@ const networkPolicyRefreshInner$ = command(
     }
 
     const runId = get(
-      pathParamsOf(runnersConnectorNetworkPolicyContract.refresh),
+      pathParamsOf(runnersNetworkPolicyRefreshContract.refresh),
     ).runId;
     const db = set(writeDb$);
     const run = await getActiveRunPolicyScope(db, runId, signal);
@@ -1941,7 +1941,7 @@ export const runnersRoutes: readonly RouteEntry[] = [
     handler: claimInner$,
   },
   {
-    route: runnersConnectorNetworkPolicyContract.refresh,
+    route: runnersNetworkPolicyRefreshContract.refresh,
     handler: networkPolicyRefreshInner$,
   },
   {

@@ -16,13 +16,8 @@ const expectedBindings = [
   },
   {
     method: "POST",
-    path: "/api/runners/runs/:runId/connector-network-policies",
-    rustModulePath: [
-      "runners",
-      "runs",
-      "by_run_id",
-      "connector_network_policies",
-    ],
+    path: "/api/runners/runs/:runId/network-policy-refresh",
+    rustModulePath: ["runners", "runs", "by_run_id", "network_policy_refresh"],
     rustConstName: "REFRESH",
   },
   {

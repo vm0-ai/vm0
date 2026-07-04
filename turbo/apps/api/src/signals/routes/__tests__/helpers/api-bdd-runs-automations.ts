@@ -30,7 +30,7 @@ import {
   cronTelegramCleanupContract,
 } from "@vm0/api-contracts/contracts/cron";
 import {
-  runnersConnectorNetworkPolicyContract,
+  runnersNetworkPolicyRefreshContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
@@ -417,13 +417,13 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async refreshRunnerNetworkPolicy(runId: string, connectorRef: string) {
       const response = await accept(
-        runsAutomationApp(context)(
-          runnersConnectorNetworkPolicyContract,
-        ).refresh({
-          headers: runnerHeaders(true),
-          params: { runId },
-          body: { connectorRefs: [connectorRef] },
-        }),
+        runsAutomationApp(context)(runnersNetworkPolicyRefreshContract).refresh(
+          {
+            headers: runnerHeaders(true),
+            params: { runId },
+            body: { connectorRefs: [connectorRef] },
+          },
+        ),
         [200],
       );
       const [refresh] = response.body.refreshes;
@@ -442,13 +442,13 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(
-          runnersConnectorNetworkPolicyContract,
-        ).refresh({
-          headers: authorization === undefined ? {} : { authorization },
-          params: { runId },
-          body: { connectorRefs: [connectorRef] },
-        }),
+        runsAutomationApp(context)(runnersNetworkPolicyRefreshContract).refresh(
+          {
+            headers: authorization === undefined ? {} : { authorization },
+            params: { runId },
+            body: { connectorRefs: [connectorRef] },
+          },
+        ),
         statuses,
       );
     },

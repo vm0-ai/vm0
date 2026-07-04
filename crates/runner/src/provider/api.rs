@@ -551,8 +551,8 @@ impl ApiClient {
     ) -> RequestBuilder {
         self.http
             .request_resolved_route(
-                routes::runners::runs::by_run_id::connector_network_policies::route(
-                    routes::runners::runs::by_run_id::connector_network_policies::Params { run_id },
+                routes::runners::runs::by_run_id::network_policy_refresh::route(
+                    routes::runners::runs::by_run_id::network_policy_refresh::Params { run_id },
                 ),
                 &self.token,
             )
@@ -914,7 +914,7 @@ mod tests {
         assert_eq!(request.timeout(), Some(&NETWORK_POLICY_REFRESH_TIMEOUT));
         assert_eq!(
             request.url().path(),
-            "/api/runners/runs/00000000-0000-0000-0000-000000000001/connector-network-policies"
+            "/api/runners/runs/00000000-0000-0000-0000-000000000001/network-policy-refresh"
         );
         assert_eq!(
             request

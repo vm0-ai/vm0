@@ -26,7 +26,7 @@ export const RESUME_SESSION_HISTORY_MAX_BYTES = 128 * 1024 * 1024;
 export const SESSION_HISTORY_ENCODING_IDENTITY = "identity";
 export const SESSION_HISTORY_ENCODING_GZIP = "gzip";
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
-export const CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX = 256;
+export const NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX = 256;
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_GZIP,
@@ -447,10 +447,10 @@ export const runnersJobClaimContract = c.router({
   },
 });
 
-export const runnersConnectorNetworkPolicyContract = c.router({
+export const runnersNetworkPolicyRefreshContract = c.router({
   refresh: {
     method: "POST",
-    path: "/api/runners/runs/:runId/connector-network-policies",
+    path: "/api/runners/runs/:runId/network-policy-refresh",
     headers: authHeadersSchema,
     pathParams: z.object({
       runId: z.uuid(),
@@ -459,7 +459,7 @@ export const runnersConnectorNetworkPolicyContract = c.router({
       connectorRefs: z
         .array(z.string().min(1).max(64))
         .min(1)
-        .max(CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
+        .max(NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
     }),
     responses: {
       200: z.object({
@@ -477,7 +477,7 @@ export const runnersConnectorNetworkPolicyContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Refresh active run connector network policies",
+    summary: "Refresh active run network policies",
   },
 });
 
@@ -539,8 +539,8 @@ export const runnersHeartbeatContract = c.router({
 
 export type RunnersPollContract = typeof runnersPollContract;
 export type RunnersJobClaimContract = typeof runnersJobClaimContract;
-export type RunnersConnectorNetworkPolicyContract =
-  typeof runnersConnectorNetworkPolicyContract;
+export type RunnersNetworkPolicyRefreshContract =
+  typeof runnersNetworkPolicyRefreshContract;
 export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;
 export type Job = z.infer<typeof jobSchema>;
 export type HeldSessionState = z.infer<typeof heldSessionStateSchema>;

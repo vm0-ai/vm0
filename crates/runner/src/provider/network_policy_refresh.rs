@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
-use api_contracts::generated::constants::runners::CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX;
+use api_contracts::generated::constants::runners::NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX;
 use chrono::{DateTime, Utc};
 use tokio::sync::{
     Mutex, mpsc,
@@ -19,8 +19,7 @@ use crate::proxy::ProxyRegistryHandle;
 use crate::types::{NetworkPolicy, NetworkPolicyRefresh};
 
 const REFRESH_REQUEST_QUEUE_CAPACITY: usize = 256;
-const NETWORK_POLICY_REFRESH_BATCH_MAX: usize =
-    CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX as usize;
+const NETWORK_POLICY_REFRESH_BATCH_MAX: usize = NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX as usize;
 const EXPIRED_REFRESH_DEADLINE_RETRY_DELAY: Duration = Duration::from_millis(250);
 const SCHEDULED_REFRESH_COALESCE_WINDOW: Duration = Duration::from_millis(100);
 
@@ -1567,9 +1566,7 @@ mod tests {
         let second_batch = connector_refs[NETWORK_POLICY_REFRESH_BATCH_MAX..].to_vec();
         let first_mock = server.mock(|when, then| {
             when.method(POST)
-                .path(format!(
-                    "/api/runners/runs/{run_id}/connector-network-policies"
-                ))
+                .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"))
                 .json_body(json!({ "connectorRefs": first_batch }));
             then.status(500)
                 .header("content-type", "application/json")
@@ -1582,9 +1579,7 @@ mod tests {
         });
         let second_mock = server.mock(|when, then| {
             when.method(POST)
-                .path(format!(
-                    "/api/runners/runs/{run_id}/connector-network-policies"
-                ))
+                .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"))
                 .json_body(json!({ "connectorRefs": second_batch }));
             then.status(500)
                 .header("content-type", "application/json")
@@ -1618,9 +1613,8 @@ mod tests {
         let server = MockServer::start();
         let run_id = RunId::nil();
         server.mock(|when, then| {
-            when.method(POST).path(format!(
-                "/api/runners/runs/{run_id}/connector-network-policies"
-            ));
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"));
             then.status(500)
                 .header("content-type", "application/json")
                 .json_body(json!({
@@ -1643,9 +1637,8 @@ mod tests {
         let server = MockServer::start();
         let run_id = RunId::nil();
         server.mock(|when, then| {
-            when.method(POST).path(format!(
-                "/api/runners/runs/{run_id}/connector-network-policies"
-            ));
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"));
             then.status(200)
                 .header("content-type", "application/json")
                 .json_body(json!({
