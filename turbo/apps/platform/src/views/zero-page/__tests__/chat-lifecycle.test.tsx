@@ -346,12 +346,13 @@ function mockKeyboardNavigationThreads({
     }),
   );
   const threadList = threadFixtures.map((thread, index) => {
+    const sortMinute = threadFixtures.length - index - 1;
     return {
       id: thread.id,
       title: thread.title,
       agent: { id: AGENT_ID, avatarUrl: null },
       createdAt: "2026-06-01T00:00:00Z",
-      updatedAt: `2026-06-01T00:0${index}:00Z`,
+      updatedAt: `2026-06-01T00:0${sortMinute}:00Z`,
       running: false,
       pinnedAt: null,
     };
@@ -365,6 +366,12 @@ function mockKeyboardNavigationThreads({
       chatThreads: threadListSnapshot(threadList),
       latestEventId: null,
     });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+    return respond(200, { threadIds: [] });
   });
   context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
     const thread = byId.get(params.id);
@@ -3690,7 +3697,7 @@ describe("chat lifecycle", () => {
     });
     expect(
       within(reopenedDialog).getByPlaceholderText("Chat title"),
-    ).toHaveValue("Current keyboard thread");
+    ).toHaveValue("Renamed keyboard thread");
   });
 
   it("renames the event-sourced current chat while thread detail is pending", async () => {
