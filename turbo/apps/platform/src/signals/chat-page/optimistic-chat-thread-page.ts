@@ -1,7 +1,5 @@
 import { command, computed } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { clerk$ } from "../auth.ts";
-import { patchThreadMeta$ } from "../external/idb-thread-meta-store.ts";
 import {
   chatMessagesContract,
   chatThreadsContract,
@@ -68,30 +66,6 @@ const L = logger("OptimisticChat");
 export const newChatThreadDisabled$ = computed(() => {
   return false;
 });
-
-/**
- * Persist the (threadId, agentId) pairing into the IDB cache the moment the
- * client mints a new threadId. Lets `agentId$` resolve from cache on the
- * very first render of the new thread page, before chat-threads/:id returns.
- */
-const writeThreadAgentToCache$ = command(
-  async (
-    { get },
-    threadId: string,
-    agentId: string,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    signal.throwIfAborted();
-    const clerk = await get(clerk$);
-    signal.throwIfAborted();
-    const userId = clerk.user?.id;
-    const orgId = clerk.organization?.id;
-    if (!userId || !orgId) {
-      return;
-    }
-    await patchThreadMeta$(userId, orgId, threadId, { agentId }, signal);
-  },
-);
 
 interface SendNewThreadMessageRequest {
   agentId: string;
@@ -271,7 +245,7 @@ const routeOptimisticChatThread$ = command(
 );
 
 const mintOptimisticThreadWithEvent$ = command(
-  async (
+  (
     { set },
     args: {
       readonly threadId: string;
@@ -279,12 +253,12 @@ const mintOptimisticThreadWithEvent$ = command(
       readonly agentId: string;
     },
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): void => {
     L.debug("optimistic thread minted", {
       threadId: args.threadId,
       agentId: args.agentId,
     });
-    await set(writeThreadAgentToCache$, args.threadId, args.agentId, signal);
+    signal.throwIfAborted();
     const createdAt = nowDate().toISOString();
     set(registerOptimisticChatThreadEvent$, {
       id: args.eventId,
