@@ -97,11 +97,6 @@ import {
   previousRunGroupVisualWindowStartIndex,
   runGroupVisualWindowStartIndex,
 } from "./run-group-folding.ts";
-import { clerk$ } from "../auth.ts";
-import {
-  patchThreadMeta$,
-  readThreadMeta$,
-} from "../external/idb-thread-meta-store.ts";
 import { reloadBillingStatus$ } from "../zero-page/billing.ts";
 import { subscribeComputerUseHostsChanged$ } from "../zero-page/computer-use-hosts.ts";
 import type {
@@ -721,31 +716,15 @@ function createComposerFileInput() {
 // ---------------------------------------------------------------------------
 
 function createAgentInfoSignals(
-  threadId: string,
   threadMeta$: Computed<Promise<ThreadMeta | null>>,
 ) {
   // agentId$ is read by avatar and pinned UI on first paint.
   // Resolving it via threadMeta$ avoids blocking the avatar render on the
   // chat-threads/:id round-trip, even though the agentId rarely changes
-  // for a given thread. Consult the IDB cache first; on miss, fall back to
-  // event-sourced metadata and backfill so the next visit hits the cache.
+  // for a given thread.
   const agentId$ = computed(async (get): Promise<string | null> => {
-    const clerk = await get(clerk$);
-    const userId = clerk?.user?.id ?? null;
-    const orgId = clerk?.organization?.id ?? null;
-
-    if (userId !== null && orgId !== null) {
-      const meta = await readThreadMeta$(userId, orgId, threadId);
-      if (meta?.agentId) {
-        return meta.agentId;
-      }
-    }
     const meta = await get(threadMeta$);
-    const agentId = meta?.agentId ?? null;
-    if (agentId && userId !== null && orgId !== null) {
-      await patchThreadMeta$(userId, orgId, threadId, { agentId });
-    }
-    return agentId;
+    return meta?.agentId ?? null;
   });
 
   const agentDisplayName$ = computed(async (get): Promise<string | null> => {
@@ -3565,7 +3544,7 @@ export function createChatThreadSignals(
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
   const { agentId$, agentDisplayName$, defaultModelSelection$, agentPinned$ } =
-    createAgentInfoSignals(threadId, threadMeta$);
+    createAgentInfoSignals(threadMeta$);
   const threadUi = createThreadUIState();
   const messages = createChatThreadMessagePipeline({
     threadId,

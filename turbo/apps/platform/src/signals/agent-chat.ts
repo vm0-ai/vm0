@@ -14,8 +14,6 @@ import {
   reloadChatThreadsCounter$,
   reloadChatUnreadStateCounter$,
 } from "./chat-thread-list-reload.ts";
-import { clerk$ } from "./auth.ts";
-import { readThreadMeta$ } from "./external/idb-thread-meta-store.ts";
 import { chatThreadOnlyUnread$ } from "./chat-page/chat-thread-only-unread.ts";
 import {
   eventDrivenActiveRunChatThreadIds$,
@@ -48,20 +46,7 @@ const currentChatThreadAgentId$ = computed(
     if (!threadId) {
       return null;
     }
-
-    const clerk = await get(clerk$);
-    const userId = clerk.user?.id;
-    const orgId = clerk.organization?.id;
-    if (!userId || !orgId) {
-      return null;
-    }
-
-    const meta = await readThreadMeta$(userId, orgId, threadId);
-    return (
-      meta?.agentId ??
-      (await get(chatThreadMetaMap$)).get(threadId)?.agentId ??
-      null
-    );
+    return (await get(chatThreadMetaMap$)).get(threadId)?.agentId ?? null;
   },
 );
 
@@ -169,6 +154,15 @@ export const chatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
     get(reloadChatThreadsCounter$);
     return await get(eventDrivenVisibleChatThreads$);
+  },
+);
+
+export const currentChatThreadListIds$ = computed(
+  async (get): Promise<readonly string[]> => {
+    const threads = await get(eventDrivenFilteredChatThreads$);
+    return threads.map((thread) => {
+      return thread.id;
+    });
   },
 );
 

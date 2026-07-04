@@ -2,11 +2,11 @@ import type { IDBPDatabase } from "idb";
 
 const CHAT_IDB_FULL_CACHE_RESET_VERSION = 4;
 const CHAT_IDB_MESSAGES_ORDER_RESET_VERSION = 6;
-const CHAT_IDB_SCHEMA_VERSION = 8;
+const CHAT_IDB_SCHEMA_VERSION = 9;
+const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 
 export const CHAT_IDB_VERSION = CHAT_IDB_SCHEMA_VERSION;
 export const CHAT_MESSAGES_STORE = "chat_messages";
-export const CHAT_THREAD_META_STORE = "chat_thread_agents";
 export const CHAT_THREAD_SNAPSHOT_STORE = "chat_thread_snapshot";
 export const CHAT_THREAD_EVENTS_STORE = "chat_thread_events";
 export const CHAT_THREAD_EVENT_SYNC_STORE = "chat_thread_event_sync";
@@ -22,10 +22,6 @@ function createChatMessagesStore(db: IDBPDatabase): void {
     "orderSequence",
     "id",
   ]);
-}
-
-function createThreadMetaStore(db: IDBPDatabase): void {
-  db.createObjectStore(CHAT_THREAD_META_STORE, { keyPath: "threadId" });
 }
 
 function createChatThreadSnapshotStore(db: IDBPDatabase): void {
@@ -48,20 +44,21 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
     if (db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {
       db.deleteObjectStore(CHAT_MESSAGES_STORE);
     }
-    if (db.objectStoreNames.contains(CHAT_THREAD_META_STORE)) {
-      db.deleteObjectStore(CHAT_THREAD_META_STORE);
-    }
   } else if (oldVersion < CHAT_IDB_MESSAGES_ORDER_RESET_VERSION) {
     if (db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {
       db.deleteObjectStore(CHAT_MESSAGES_STORE);
     }
   }
 
+  if (
+    oldVersion < CHAT_IDB_SCHEMA_VERSION &&
+    db.objectStoreNames.contains(LEGACY_CHAT_THREAD_META_STORE)
+  ) {
+    db.deleteObjectStore(LEGACY_CHAT_THREAD_META_STORE);
+  }
+
   if (!db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {
     createChatMessagesStore(db);
-  }
-  if (!db.objectStoreNames.contains(CHAT_THREAD_META_STORE)) {
-    createThreadMetaStore(db);
   }
   if (!db.objectStoreNames.contains(CHAT_THREAD_SNAPSHOT_STORE)) {
     createChatThreadSnapshotStore(db);

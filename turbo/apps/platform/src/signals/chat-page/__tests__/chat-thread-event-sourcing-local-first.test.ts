@@ -13,6 +13,7 @@ import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import {
   chatThreads$,
+  currentChatThreadListIds$,
   reloadChatThreads$,
   setChatAgentId$,
 } from "../../agent-chat.ts";
@@ -320,6 +321,61 @@ describe("chat thread event sourcing local-first list", () => {
       }),
     ).toStrictEqual([THREAD_ID]);
     expect(unreadsRequests).toBe(1);
+  });
+
+  it("keeps sidebar threads and navigation ids untruncated", async () => {
+    context.store.set(setChatAgentId$, AGENT_ID);
+    const baseTime = Date.parse("2026-07-03T00:00:00.000Z");
+    const snapshotThreads = Array.from({ length: 26 }, (_, index) => {
+      const timestamp = new Date(baseTime + (26 - index) * 1000).toISOString();
+      return {
+        id: `b1000000-0000-4000-a000-${String(index + 1).padStart(12, "0")}`,
+        agentId: AGENT_ID,
+        title: `Cached thread ${index + 1}`,
+        sortAt: timestamp,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        pinnedAt: null,
+        renamedAt: null,
+      } satisfies ChatThreadSnapshotProjection;
+    });
+
+    idbThreadEventStoreMock.setData({
+      snapshot: {
+        latestEventId: EVENT_ID,
+        chatThreads: snapshotThreads,
+      },
+      events: [],
+    });
+
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
+    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+      return respond(200, { threadIds: [] });
+    });
+    await setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+      user: { id: "user_1", fullName: "Test User" },
+      session: { token: "token" },
+      org: {
+        activeOrg: { id: "org_1", name: "Test Org" },
+        memberships: [{ id: "org_1" }],
+      },
+    });
+
+    const visibleThreads = await context.store.get(chatThreads$);
+
+    expect(visibleThreads).toHaveLength(snapshotThreads.length);
+    await expect(
+      context.store.get(currentChatThreadListIds$),
+    ).resolves.toStrictEqual(
+      snapshotThreads.map((thread) => {
+        return thread.id;
+      }),
+    );
   });
 
   it("uses optimistic create events for event-sourced sidebar ids", async () => {
