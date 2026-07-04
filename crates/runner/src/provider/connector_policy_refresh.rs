@@ -18,6 +18,7 @@ use crate::proxy::ProxyRegistryHandle;
 use crate::types::{ConnectorPolicyRefresh, NetworkPolicy};
 
 const REFRESH_REQUEST_QUEUE_CAPACITY: usize = 256;
+const EXPIRED_REFRESH_DEADLINE_RETRY_DELAY: Duration = Duration::from_millis(250);
 
 #[derive(Clone)]
 pub(crate) struct ConnectorPolicyRefreshHandle {
@@ -604,7 +605,7 @@ fn parse_refresh_deadline(value: &str) -> Option<tokio::time::Instant> {
     let delay = deadline
         .signed_duration_since(Utc::now())
         .to_std()
-        .unwrap_or(Duration::ZERO);
+        .unwrap_or(EXPIRED_REFRESH_DEADLINE_RETRY_DELAY);
     Some(tokio::time::Instant::now() + delay)
 }
 
@@ -1192,7 +1193,12 @@ mod tests {
             Some("1970-01-01T00:00:00.000Z".to_string()),
         )
         .await;
+        assert!(matches!(
+            requests.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ));
 
+        tokio::time::advance(EXPIRED_REFRESH_DEADLINE_RETRY_DELAY).await;
         let request = recv_refresh_request(&mut requests).await;
         assert_eq!(request.run_id, run_id);
         assert_eq!(request.connector_ref, "slack");
