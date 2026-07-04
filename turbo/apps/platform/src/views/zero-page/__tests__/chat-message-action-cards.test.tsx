@@ -326,9 +326,16 @@ describe("chat message action cards", () => {
     });
   });
 
-  it("does not render connector action cards when catalog metadata is hidden", async () => {
-    const connectorAuthorizeUrl = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}`;
-    mockConnectorCatalogStatus([]);
+  it("omits connector action cards when catalog metadata is hidden", async () => {
+    const hiddenConnectorAuthorizeUrl = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}`;
+    const visibleConnectorAuthorizeUrl = `https://app.vm0.ai/connectors/slack/authorize?agentId=${AGENT_ID}`;
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({
+        connectorRef: "slack",
+        label: "Catalog Slack",
+        description: "Catalog Slack server help text",
+      }),
+    ]);
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-hidden-connector-metadata`,
       threadTitle: "Hidden connector metadata",
@@ -343,7 +350,7 @@ describe("chat message action cards", () => {
         {
           id: "msg-assistant-hidden-connector-card",
           role: "assistant",
-          content: connectorAuthorizeUrl,
+          content: `${hiddenConnectorAuthorizeUrl}\n\n${visibleConnectorAuthorizeUrl}`,
           runId: "run-hidden-connector",
           createdAt: "2026-06-09T10:01:00Z",
         },
@@ -359,11 +366,16 @@ describe("chat message action cards", () => {
       "Connect hidden catalog connector",
     );
     expect(userMessage).toBeInTheDocument();
-    await waitFor(() => {
-      expect(
-        screen.queryByTestId("connector-action-card"),
-      ).not.toBeInTheDocument();
-    });
+    const connectorCards = await screen.findAllByTestId(
+      "connector-action-card",
+    );
+    expect(connectorCards).toHaveLength(1);
+    expect(
+      within(connectorCards[0]!).getByText("Catalog Slack"),
+    ).toBeInTheDocument();
+    expect(
+      within(connectorCards[0]!).getByText("Catalog Slack server help text"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
