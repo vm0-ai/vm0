@@ -1342,6 +1342,61 @@ describe("zero artifact sidebar", () => {
     });
   });
 
+  it("shows download progress while downloading an HTML artifact", async () => {
+    const user = userEvent.setup({ delay: null });
+    const siteUrl = "https://launch.sites.vm7.io/launch-plan.html";
+    const downloads = captureDownloads(context.signal);
+    const downloadReady = context.mocks.deferred<Response>();
+    context.mocks.data.connectors([]);
+    context.mocks.http.get(siteUrl, () => {
+      return downloadReady.promise;
+    });
+    setupChatThread({
+      artifactFiles: [
+        artifactFile(siteUrl, {
+          id: "artifact-launch-plan",
+          filename: "launch-plan.html",
+          contentType: "text/html",
+          artifactKind: "hosted-site",
+          size: 1024,
+        }),
+      ],
+      content: `[Launch plan](${siteUrl})`,
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(siteUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Download")).toBeInTheDocument();
+    });
+    click(menuItemByText("Download"));
+
+    const downloadButton = screen.getByLabelText("Download artifact");
+    await waitFor(() => {
+      expect(downloadButton).toHaveAttribute("aria-busy", "true");
+      expect(downloadButton).toBeDisabled();
+      expect(downloadButton.querySelector(".animate-spin")).not.toBeNull();
+    });
+
+    downloadReady.resolve(
+      new Response("<!doctype html><html><body>Launch plan</body></html>", {
+        headers: { "Content-Type": "text/html" },
+      }),
+    );
+
+    await waitFor(() => {
+      expect(downloads).toContain("launch-plan.html");
+      expect(downloadButton).not.toHaveAttribute("aria-busy");
+      expect(downloadButton).not.toBeDisabled();
+      expect(downloadButton.querySelector(".animate-spin")).toBeNull();
+    });
+  });
+
   it("uploads an artifact to connected Google Drive from the sidebar", async () => {
     const user = userEvent.setup({ delay: null });
     const markdownUrl =
@@ -1467,6 +1522,13 @@ describe("zero artifact sidebar", () => {
       expect(menuItemByText("Download (.pptx)")).toBeInTheDocument();
     });
     click(menuItemByText("Download (.pptx)"));
+    const downloadButton = screen.getByLabelText("Download artifact");
+
+    await waitFor(() => {
+      expect(downloadButton).toHaveAttribute("aria-busy", "true");
+      expect(downloadButton).toBeDisabled();
+      expect(downloadButton.querySelector(".animate-spin")).not.toBeNull();
+    });
 
     const exportFrame = await waitFor(() => {
       const frame = document.querySelector(
@@ -1482,6 +1544,9 @@ describe("zero artifact sidebar", () => {
       expect(
         document.querySelector('iframe[title="Presentation PPTX export"]'),
       ).not.toBeInTheDocument();
+      expect(downloadButton).not.toHaveAttribute("aria-busy");
+      expect(downloadButton).not.toBeDisabled();
+      expect(downloadButton.querySelector(".animate-spin")).toBeNull();
     });
   });
 

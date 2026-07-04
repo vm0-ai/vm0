@@ -2,6 +2,7 @@ import type { ComponentPropsWithoutRef, MouseEvent, ReactNode } from "react";
 import {
   IconBrandGoogleDrive,
   IconDownload,
+  IconLoader2,
   IconShare,
 } from "@tabler/icons-react";
 import {
@@ -28,11 +29,14 @@ import {
 } from "../../signals/api-client.ts";
 import { connectors$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { detach, Reason, tapError } from "../../signals/utils.ts";
+import { detach, Reason, tapError, withCleanup } from "../../signals/utils.ts";
 import {
   artifactDownloadMenuOpenKey$,
+  artifactDownloadPendingKey$,
   closeArtifactDownloadMenu$,
+  finishArtifactDownload$,
   openArtifactDownloadMenu$,
+  startArtifactDownload$,
 } from "../../signals/zero-page/zero-artifact-actions.ts";
 import {
   type ArtifactGoogleDriveSyncFile,
@@ -197,20 +201,16 @@ function syncArtifactToGoogleDriveAndRefresh(params: {
   );
 }
 
-function downloadPresentationPptx(params: {
+async function downloadPresentationPptx(params: {
   filename: string;
   signal: AbortSignal;
   url: string;
-}): void {
-  detach(
-    tapError(downloadPresentationHtmlPptx(params), (error) => {
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
-        toast.error("PPTX download failed");
-      }
-    }),
-    Reason.DomCallback,
-    "presentation html pptx download",
-  );
+}): Promise<void> {
+  await tapError(downloadPresentationHtmlPptx(params), (error) => {
+    if (!(error instanceof DOMException && error.name === "AbortError")) {
+      toast.error("PPTX download failed");
+    }
+  });
 }
 
 function iconButtonClassName(className?: string): string {
@@ -419,6 +419,44 @@ type ArtifactDownloadMenuProps = {
   url: string;
 };
 
+function ArtifactDownloadTrigger({
+  ariaLabel,
+  className,
+  downloadPending,
+  iconSize,
+  open,
+  ...props
+}: ComponentPropsWithoutRef<"button"> & {
+  ariaLabel: string;
+  downloadPending: boolean;
+  iconSize: number;
+  open: boolean;
+}) {
+  return (
+    <button
+      {...props}
+      type="button"
+      aria-label={ariaLabel}
+      aria-busy={downloadPending ? "true" : undefined}
+      aria-haspopup="menu"
+      aria-expanded={open}
+      disabled={downloadPending}
+      className={iconButtonClassName(
+        cn(
+          "data-[state=open]:bg-muted/60 data-[state=open]:text-foreground disabled:pointer-events-none disabled:opacity-70",
+          className,
+        ),
+      )}
+    >
+      {downloadPending ? (
+        <IconLoader2 size={iconSize} stroke={1.5} className="animate-spin" />
+      ) : (
+        <IconDownload size={iconSize} stroke={1.5} />
+      )}
+    </button>
+  );
+}
+
 export function ArtifactDownloadMenu({
   align = "end",
   ariaLabel = "Download options",
@@ -431,10 +469,14 @@ export function ArtifactDownloadMenu({
 }: ArtifactDownloadMenuProps) {
   const menuKey = `${url}:${filename}`;
   const openKey = useGet(artifactDownloadMenuOpenKey$);
+  const pendingKey = useGet(artifactDownloadPendingKey$);
   const openMenu = useSet(openArtifactDownloadMenu$);
   const closeMenu = useSet(closeArtifactDownloadMenu$);
+  const startArtifactDownload = useSet(startArtifactDownload$);
+  const finishArtifactDownload = useSet(finishArtifactDownload$);
   const pageSignal = useGet(pageSignal$);
   const open = openKey === menuKey;
+  const downloadPending = pendingKey === menuKey;
   const showPresentationPptxDownload = artifactKind === "presentation-html";
   const downloadFilename = artifactDownloadFilename(
     artifactKind,
@@ -443,6 +485,17 @@ export function ArtifactDownloadMenu({
   );
   const closeNow = () => {
     closeMenu();
+  };
+  const startDownload = (download: Promise<void>, description: string) => {
+    closeNow();
+    startArtifactDownload(menuKey);
+    detach(
+      withCleanup(download, () => {
+        finishArtifactDownload(menuKey);
+      }),
+      Reason.DomCallback,
+      description,
+    );
   };
 
   return (
@@ -459,20 +512,13 @@ export function ArtifactDownloadMenu({
     >
       <ArtifactActionTooltip label={ariaLabel}>
         <PopoverTrigger asChild>
-          <button
-            type="button"
-            aria-label={ariaLabel}
-            aria-haspopup="menu"
-            aria-expanded={open}
-            className={iconButtonClassName(
-              cn(
-                "data-[state=open]:bg-muted/60 data-[state=open]:text-foreground",
-                className,
-              ),
-            )}
-          >
-            <IconDownload size={iconSize} stroke={1.5} />
-          </button>
+          <ArtifactDownloadTrigger
+            ariaLabel={ariaLabel}
+            className={className}
+            downloadPending={downloadPending}
+            iconSize={iconSize}
+            open={open}
+          />
         </PopoverTrigger>
       </ArtifactActionTooltip>
       {open && (
@@ -500,10 +546,8 @@ export function ArtifactDownloadMenu({
       >
         <ArtifactDownloadMenuItem
           onClick={() => {
-            closeNow();
-            detach(
+            startDownload(
               downloadAttachmentUrl(url, pageSignal, downloadFilename),
-              Reason.DomCallback,
               "artifact download",
             );
           }}
@@ -514,12 +558,14 @@ export function ArtifactDownloadMenu({
         {showPresentationPptxDownload && (
           <ArtifactDownloadMenuItem
             onClick={() => {
-              closeNow();
-              downloadPresentationPptx({
-                filename: downloadFilename,
-                signal: pageSignal,
-                url,
-              });
+              startDownload(
+                downloadPresentationPptx({
+                  filename: downloadFilename,
+                  signal: pageSignal,
+                  url,
+                }),
+                "presentation html pptx download",
+              );
             }}
           >
             <IconDownload size={14} stroke={1.5} />
