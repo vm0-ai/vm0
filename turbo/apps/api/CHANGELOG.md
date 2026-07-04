@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.221.0](https://github.com/vm0-ai/vm0/compare/api-v1.220.1...api-v1.221.0) (2026-07-04)
+
+
+### Features
+
+* add codex reset controls ([#20119](https://github.com/vm0-ai/vm0/issues/20119)) ([c1f9d22](https://github.com/vm0-ai/vm0/commit/c1f9d22b253bdeb60e4436e13a90793553865230))
+* enable gmail relationship backfill from memory ([#20114](https://github.com/vm0-ai/vm0/issues/20114)) ([fd84afd](https://github.com/vm0-ai/vm0/commit/fd84afd077a35a750f4fa01abb6bba87b207f02b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.152.0
+    * @vm0/core bumped to 8.396.2
+    * @vm0/db bumped to 1.90.0
+
+## [1.220.1](https://github.com/vm0-ai/vm0/compare/api-v1.220.0...api-v1.220.1) (2026-07-04)
+
+
+### Refactoring
+
+* **api:** remove zero chat thread list route ([#20113](https://github.com/vm0-ai/vm0/issues/20113)) ([71550af](https://github.com/vm0-ai/vm0/commit/71550af196199bffdc23d231a2bc1ad6c54155fb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.151.1
+    * @vm0/core bumped to 8.396.1
+    * @vm0/db bumped to 1.89.1
+
 ## [1.220.0](https://github.com/vm0-ai/vm0/compare/api-v1.219.1...api-v1.220.0) (2026-07-04)
 
 

@@ -145,6 +145,7 @@ export async function handleCodexAuthJsonPaste(args: CodexAuthJsonPasteArgs) {
         fetchCodexUsageMetadata({
           accessToken: parsed.accessToken,
           accountId: parsed.accountId,
+          idToken: parsed.idToken,
           signal: args.signal,
         }),
       );

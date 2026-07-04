@@ -49,6 +49,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/drain-relationship-memory",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/sync-skills",
       "schedule": "* * * * *"
     },

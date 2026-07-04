@@ -3781,6 +3781,13 @@
       "when": 1783132566423,
       "tag": "0539_chunky_scourge",
       "breakpoints": true
+    },
+    {
+      "idx": 540,
+      "version": "7",
+      "when": 1783139086628,
+      "tag": "0540_puzzling_captain_cross",
+      "breakpoints": true
     }
   ]
 }

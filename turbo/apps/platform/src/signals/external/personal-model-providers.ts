@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   zeroPersonalModelProvidersMainContract,
   zeroPersonalModelProvidersByTypeContract,
+  type ResetPersonalModelProviderSubscriptionUsageResponse,
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroClient$ } from "../api-client.ts";
@@ -42,6 +43,34 @@ export const deletePersonalModelProvider$ = command(
     set(internalReloadPersonalModelProviders$, (x) => {
       return x + 1;
     });
+  },
+);
+
+export const resetPersonalCodexSubscriptionUsage$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly idempotencyKey: string;
+    },
+    signal: AbortSignal,
+  ): Promise<ResetPersonalModelProviderSubscriptionUsageResponse> => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroPersonalModelProvidersByTypeContract);
+    const result = await accept(
+      client.resetSubscriptionUsage({
+        params: { type: "codex-oauth-token" },
+        body: { idempotencyKey: args.idempotencyKey },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+
+    set(internalReloadPersonalModelProviders$, (x) => {
+      return x + 1;
+    });
+
+    return result.body;
   },
 );
 

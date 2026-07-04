@@ -1,4 +1,4 @@
-import { computed } from "ccstate";
+import { command, computed } from "ccstate";
 import { zeroRelationshipsContract } from "@vm0/api-contracts/contracts/zero-relationships";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -6,18 +6,28 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import { db$, type ReadonlyDb } from "../external/db";
+import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   zeroRelationshipResolve,
   zeroRelationshipSearch,
 } from "../services/zero-relationships.service";
+import {
+  enableGmailRelationshipMemory,
+  getGmailRelationshipStatus,
+} from "../services/relationship-memory-gmail-backfill.service";
 
 const relationshipReadAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "relationship:read",
+} as const;
+
+const relationshipSessionAuth = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+  accept: ["session"],
 } as const;
 
 const relationshipMemoryDisabled = Object.freeze({
@@ -41,6 +51,47 @@ async function isRelationshipMemoryEnabled(
 
 const resolveQuery$ = queryOf(zeroRelationshipsContract.resolve);
 const searchQuery$ = queryOf(zeroRelationshipsContract.search);
+
+const gmailStatusInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  if (!(await isRelationshipMemoryEnabled(get(db$), auth.orgId, auth.userId))) {
+    return relationshipMemoryDisabled;
+  }
+
+  const result = await getGmailRelationshipStatus(get(db$), {
+    orgId: auth.orgId,
+    userId: auth.userId,
+  });
+  return { status: 200 as const, body: result };
+});
+
+const gmailEnableInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  if (!(await isRelationshipMemoryEnabled(get(db$), auth.orgId, auth.userId))) {
+    return relationshipMemoryDisabled;
+  }
+
+  const result = await enableGmailRelationshipMemory({
+    db: set(writeDb$),
+    orgId: auth.orgId,
+    userId: auth.userId,
+    signal,
+  });
+  signal.throwIfAborted();
+  if (result.kind !== "ok") {
+    return {
+      status: 400 as const,
+      body: {
+        error: {
+          message: result.message,
+          code: "BAD_REQUEST",
+        },
+      },
+    };
+  }
+
+  return { status: 200 as const, body: result.status };
+});
 
 const resolveInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -80,6 +131,14 @@ const searchInner$ = computed(async (get) => {
 });
 
 export const zeroRelationshipsRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroRelationshipsContract.gmailStatus,
+    handler: authRoute(relationshipSessionAuth, gmailStatusInner$),
+  },
+  {
+    route: zeroRelationshipsContract.gmailEnable,
+    handler: authRoute(relationshipSessionAuth, gmailEnableInner$),
+  },
   {
     route: zeroRelationshipsContract.resolve,
     handler: authRoute(relationshipReadAuth, resolveInner$),

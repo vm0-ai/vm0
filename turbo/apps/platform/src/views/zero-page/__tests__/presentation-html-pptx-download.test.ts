@@ -80,4 +80,69 @@ describe("buildPresentationHtmlPptxExportHtml", () => {
     expect(scriptText).toContain("preserveBrowserTextLineBreaks(nodes)");
     expect(scriptText).not.toContain("resolveEmbeddableFonts");
   });
+
+  it("prepares staged slides with complex backgrounds before exporting", async () => {
+    const exportHtml = await buildPresentationHtmlPptxExportHtml({
+      baseUrl: "https://presentation.example.test/index.html",
+      html: `
+        <!doctype html>
+        <html>
+          <head>
+            <style>
+              :root { --bg: #f3f6fb; }
+              body { margin: 0; background: #0f172a; }
+              .slide {
+                position: absolute;
+                inset: 0;
+                display: none;
+                background: #0f172a;
+              }
+              .slide.active { display: flex; }
+              .stage {
+                position: relative;
+                width: min(100vw, 177.7778vh);
+                height: min(56.25vw, 100vh);
+                background:
+                  linear-gradient(rgba(21, 35, 58, 0.035) 1px, transparent 1px),
+                  linear-gradient(90deg, rgba(21, 35, 58, 0.035) 1px, transparent 1px),
+                  radial-gradient(circle at 68% 42%, rgba(37, 99, 235, 0.08), transparent 34%),
+                  var(--bg);
+              }
+            </style>
+          </head>
+          <body>
+            <section class="slide active">
+              <div class="stage">
+                <h1>Slide</h1>
+              </div>
+            </section>
+          </body>
+        </html>
+      `,
+      options: {
+        fileName: "deck.pptx",
+        layout: "LAYOUT_WIDE",
+        skipDownload: true,
+        svgAsVector: true,
+      },
+      signal: AbortSignal.any([]),
+    });
+    const doc = new DOMParser().parseFromString(exportHtml, "text/html");
+    const scriptText = Array.from(doc.querySelectorAll("script"))
+      .map((script) => {
+        return script.textContent ?? "";
+      })
+      .join("\n");
+
+    expect(scriptText).toContain("normalizeSlideStages(nodes)");
+    expect(scriptText).toContain(
+      "await materializeComplexSlideBackgrounds(nodes)",
+    );
+    expect(scriptText.indexOf("normalizeSlideStages(nodes)")).toBeLessThan(
+      scriptText.indexOf("window.domToPptx.exportToPptx"),
+    );
+    expect(
+      scriptText.indexOf("await materializeComplexSlideBackgrounds(nodes)"),
+    ).toBeLessThan(scriptText.indexOf("window.domToPptx.exportToPptx"));
+  });
 });

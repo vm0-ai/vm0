@@ -1,25 +1,36 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconBuilding,
   IconClock,
+  IconLoader2,
   IconMail,
+  IconRefresh,
   IconSearch,
   IconTrash,
   IconUser,
 } from "@tabler/icons-react";
-import type { RelationshipRecord } from "@vm0/api-contracts/contracts/zero-relationships";
+import type {
+  GmailRelationshipStatusResponse,
+  RelationshipRecord,
+} from "@vm0/api-contracts/contracts/zero-relationships";
 import { Button, cn, Input } from "@vm0/ui";
 
 import {
+  enableGmailRelationships$,
+  gmailRelationshipStatus$,
   memoryRelationshipFilter$,
   memoryRelationshipSearch$,
   memoryRelationships$,
+  reloadGmailRelationshipStatus$,
   selectedMemoryRelationshipId$,
   setMemoryRelationshipFilter$,
   setMemoryRelationshipSearch$,
   setSelectedMemoryRelationshipId$,
   type MemoryRelationshipFilter,
 } from "../../signals/memory-page/memory-signals.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 
 type RelationshipItemKind = RelationshipRecord["items"][number]["kind"];
 
@@ -346,6 +357,152 @@ function MemoryRelationshipsError() {
   );
 }
 
+function backfillProgressText(
+  backfill: GmailRelationshipStatusResponse["backfill"],
+): string {
+  if (backfill.status === "failed") {
+    return "Backfill failed";
+  }
+  if (backfill.status === "done") {
+    return `Backfill complete - ${backfill.scannedCount} scanned`;
+  }
+  if (backfill.status === "idle") {
+    return "Backfill not started";
+  }
+  const scanned = backfill.scannedCount;
+  if (backfill.estimatedTotal !== null && backfill.estimatedTotal > 0) {
+    return `Backfilling Gmail - ${scanned} / ~${backfill.estimatedTotal} scanned`;
+  }
+  return `Backfilling Gmail - ${scanned} scanned`;
+}
+
+function gmailRelationshipStatusText(
+  status: GmailRelationshipStatusResponse,
+): string {
+  if (!status.connectorConnected) {
+    return "Connect Gmail to start relationship memory.";
+  }
+  if (!status.enabled) {
+    return "Enable Gmail watch and historical backfill.";
+  }
+  const watchText = status.watchEnabled ? "Watch active" : "Watch pending";
+  const syncText =
+    status.backfill.pendingSyncJobs > 0
+      ? ` - ${status.backfill.pendingSyncJobs} sync jobs pending`
+      : "";
+  return `${watchText} - ${backfillProgressText(status.backfill)}${syncText}`;
+}
+
+function GmailRelationshipStatusPanel() {
+  const statusLoadable = useLoadable(gmailRelationshipStatus$);
+  const [enableLoadable, enable] = useLoadableSet(enableGmailRelationships$);
+  const reloadStatus = useSet(reloadGmailRelationshipStatus$);
+  const pageSignal = useGet(pageSignal$);
+  const enabling = enableLoadable.state === "loading";
+
+  if (statusLoadable.state === "loading") {
+    return (
+      <div className="flex min-h-14 items-center gap-3 border-b border-border/70 bg-muted/20 px-3 py-3">
+        <IconLoader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        <span className="text-sm text-muted-foreground">
+          Checking Gmail relationships
+        </span>
+      </div>
+    );
+  }
+
+  if (statusLoadable.state === "hasError") {
+    return (
+      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-border/70 bg-muted/20 px-3 py-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">
+            Gmail relationships unavailable
+          </p>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Relationship memory is still available below.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const status = statusLoadable.data;
+  const backfillFailed = status.backfill.status === "failed";
+
+  return (
+    <div className="flex min-h-16 flex-col gap-3 border-b border-border/70 bg-muted/20 px-3 py-3 md:flex-row md:items-center md:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
+        <span
+          className={cn(
+            "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border",
+            status.enabled
+              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+              : "border-border bg-background text-muted-foreground",
+          )}
+          aria-hidden="true"
+        >
+          <IconMail className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">
+            Gmail relationships
+          </p>
+          <p
+            className={cn(
+              "mt-0.5 text-sm leading-5 text-muted-foreground",
+              backfillFailed ? "text-destructive" : null,
+            )}
+          >
+            {gmailRelationshipStatusText(status)}
+          </p>
+          {backfillFailed && status.backfill.lastError ? (
+            <p className="mt-1 text-xs leading-4 text-destructive">
+              {status.backfill.lastError}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {!status.connectorConnected ? (
+          <Button asChild variant="outline" size="sm" className="h-8 text-xs">
+            <a href="/connectors">Connect Gmail</a>
+          </Button>
+        ) : !status.enabled ? (
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 gap-1.5 px-2.5 text-xs"
+            disabled={enabling}
+            onClick={() => {
+              detach(enable(pageSignal), Reason.DomCallback);
+            }}
+          >
+            {enabling ? (
+              <IconLoader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <IconMail className="h-3.5 w-3.5" />
+            )}
+            <span>{enabling ? "Enabling" : "Enable Gmail"}</span>
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 px-2.5 text-xs"
+            onClick={() => {
+              reloadStatus();
+            }}
+          >
+            <IconRefresh className="h-3.5 w-3.5" />
+            <span>Refresh</span>
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RelationshipsToolbar({
   search,
   filter,
@@ -510,6 +667,8 @@ export function MemoryRelationships() {
 
   return (
     <section className="zero-card min-w-0 overflow-hidden">
+      <GmailRelationshipStatusPanel />
+
       <RelationshipsToolbar
         search={search}
         filter={filter}

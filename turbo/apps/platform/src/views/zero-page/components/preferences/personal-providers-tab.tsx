@@ -5,6 +5,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@vm0/ui";
 import type {
@@ -15,6 +16,9 @@ import {
   disconnectPersonalOAuthCredential$,
   personalActionPromise$,
   personalConfiguredProviders$,
+  resetPersonalCodexSubscriptionUsage$,
+  setSettingsCodexResetDialog$,
+  settingsCodexResetDialog$,
 } from "../../../../signals/zero-page/settings/personal-model-providers.ts";
 import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
 import { setCodexDeviceAuthDialogStatePersonal$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
@@ -24,6 +28,10 @@ import { ProviderIcon } from "../settings/provider-icons.tsx";
 import { PersonalClaudeCodeDeviceAuthDialog } from "../settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "../settings/codex-device-auth-dialog.tsx";
 import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
+import {
+  CodexResetUsageDialog,
+  formatCodexResetCredits,
+} from "./codex-reset-usage-dialog.tsx";
 
 type OAuthStatus = "connected" | "stale" | "missing";
 type SubscriptionUsage = NonNullable<
@@ -50,6 +58,11 @@ function OAuthCredentialsSection() {
     setCodexDeviceAuthDialogStatePersonal$,
   );
   const disconnectCredential = useSet(disconnectPersonalOAuthCredential$);
+  const resetCodexSubscriptionUsage = useSet(
+    resetPersonalCodexSubscriptionUsage$,
+  );
+  const resetDialog = useGet(settingsCodexResetDialog$);
+  const setResetDialog = useSet(setSettingsCodexResetDialog$);
   const actionLoadable = useLoadable(personalActionPromise$);
   const pageSignal = useGet(pageSignal$);
 
@@ -59,7 +72,8 @@ function OAuthCredentialsSection() {
   const claudeCode = findProvider(providers, "claude-code-oauth-token");
   const openAI = findProvider(providers, "codex-oauth-token");
   const openAIStatus = getOpenAIStatus(openAI);
-  const disconnecting = actionLoadable.state === "loading";
+  const actionPending = actionLoadable.state === "loading";
+  const codexResetCredits = openAI?.subscriptionResetCredits ?? null;
 
   const connectClaudeCode = () => {
     const next = {
@@ -74,6 +88,23 @@ function OAuthCredentialsSection() {
       mode: openAI?.needsReconnect ? "reconnect" : "connect",
     } as const;
     openCodexDeviceAuthDialog(next);
+  };
+
+  const confirmCodexReset = () => {
+    detach(
+      (async () => {
+        await resetCodexSubscriptionUsage(pageSignal);
+        setResetDialog({ open: false, resetCredits: null });
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  const setCodexResetOpen = (open: boolean) => {
+    setResetDialog({
+      open,
+      resetCredits: open ? resetDialog.resetCredits : null,
+    });
   };
 
   return (
@@ -93,74 +124,144 @@ function OAuthCredentialsSection() {
           </>
         ) : (
           <>
-            <OAuthCredentialRow
-              type="claude-code-oauth-token"
-              title="Claude Code OAuth"
-              description="Connect with Claude Code login for Claude-backed model routes."
+            <ClaudeOAuthCredentialRow
+              actionPending={actionPending}
               provider={claudeCode}
               status={getOpenAIStatus(claudeCode)}
-              menuItems={
-                claudeCode
-                  ? [
-                      {
-                        label: "Replace",
-                        onSelect: connectClaudeCode,
-                      },
-                      {
-                        label: "Disconnect",
-                        disabled: disconnecting,
-                        onSelect: () => {
-                          detach(
-                            disconnectCredential(
-                              "claude-code-oauth-token",
-                              pageSignal,
-                            ),
-                            Reason.DomCallback,
-                          );
-                        },
-                      },
-                    ]
-                  : []
-              }
               onAction={connectClaudeCode}
-              testId="oauth-card-claude-code-oauth-token"
+              onDisconnect={() => {
+                detach(
+                  disconnectCredential("claude-code-oauth-token", pageSignal),
+                  Reason.DomCallback,
+                );
+              }}
             />
-            <OAuthCredentialRow
-              type="codex-oauth-token"
-              title="ChatGPT (Codex)"
-              description="Connect with Codex device login for Codex-backed model routes."
+            <CodexOAuthCredentialRow
+              actionPending={actionPending}
               provider={openAI}
+              resetCredits={codexResetCredits}
               status={openAIStatus}
-              menuItems={
-                openAI
-                  ? [
-                      {
-                        label: "Replace",
-                        onSelect: connectOpenAI,
-                      },
-                      {
-                        label: "Disconnect",
-                        disabled: disconnecting,
-                        onSelect: () => {
-                          detach(
-                            disconnectCredential(
-                              "codex-oauth-token",
-                              pageSignal,
-                            ),
-                            Reason.DomCallback,
-                          );
-                        },
-                      },
-                    ]
-                  : []
-              }
               onAction={connectOpenAI}
-              testId="oauth-card-codex-oauth-token"
+              onDisconnect={() => {
+                detach(
+                  disconnectCredential("codex-oauth-token", pageSignal),
+                  Reason.DomCallback,
+                );
+              }}
+              onOpenReset={() => {
+                setResetDialog({ open: true, resetCredits: codexResetCredits });
+              }}
+            />
+            <CodexResetUsageDialog
+              open={resetDialog.open}
+              resetCredits={resetDialog.resetCredits}
+              resetting={actionPending}
+              onOpenChange={setCodexResetOpen}
+              onConfirm={confirmCodexReset}
             />
           </>
         )}
       </div>
     </section>
+  );
+}
+
+function ClaudeOAuthCredentialRow({
+  actionPending,
+  provider,
+  status,
+  onAction,
+  onDisconnect,
+}: {
+  actionPending: boolean;
+  provider: ModelProviderResponse | undefined;
+  status: OAuthStatus;
+  onAction: () => void;
+  onDisconnect: () => void;
+}) {
+  return (
+    <OAuthCredentialRow
+      type="claude-code-oauth-token"
+      title="Claude Code OAuth"
+      description="Connect with Claude Code login for Claude-backed model routes."
+      provider={provider}
+      status={status}
+      menuItems={
+        provider
+          ? [
+              {
+                label: "Replace",
+                onSelect: onAction,
+              },
+              {
+                label: "Disconnect",
+                disabled: actionPending,
+                onSelect: onDisconnect,
+              },
+            ]
+          : []
+      }
+      onAction={onAction}
+      testId="oauth-card-claude-code-oauth-token"
+    />
+  );
+}
+
+function CodexOAuthCredentialRow({
+  actionPending,
+  provider,
+  resetCredits,
+  status,
+  onAction,
+  onDisconnect,
+  onOpenReset,
+}: {
+  actionPending: boolean;
+  provider: ModelProviderResponse | undefined;
+  resetCredits: number | null;
+  status: OAuthStatus;
+  onAction: () => void;
+  onDisconnect: () => void;
+  onOpenReset: () => void;
+}) {
+  return (
+    <OAuthCredentialRow
+      type="codex-oauth-token"
+      title="ChatGPT (Codex)"
+      description="Connect with Codex device login for Codex-backed model routes."
+      provider={provider}
+      status={status}
+      menuItems={
+        provider
+          ? [
+              {
+                kind: "status",
+                label: formatCodexResetCredits(resetCredits),
+              },
+              {
+                kind: "separator",
+                label: "codex-reset-separator",
+              },
+              {
+                label: "Reset usage",
+                disabled: actionPending || resetCredits === 0,
+                onSelect: onOpenReset,
+              },
+              {
+                label: "Replace",
+                onSelect: onAction,
+              },
+              {
+                label: "Disconnect",
+                disabled: actionPending,
+                onSelect: onDisconnect,
+              },
+            ]
+          : []
+      }
+      onAction={onAction}
+      testId="oauth-card-codex-oauth-token"
+    />
   );
 }
 
@@ -374,8 +475,9 @@ function SubscriptionUsageMeter({
 
 interface OAuthMenuItem {
   label: string;
+  kind?: "item" | "status" | "separator";
   disabled?: boolean;
-  onSelect: () => void;
+  onSelect?: () => void;
 }
 
 function OAuthCredentialRow({
@@ -458,6 +560,20 @@ function OAuthCredentialRow({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
                   {menuItems.map((item) => {
+                    if (item.kind === "separator") {
+                      return <DropdownMenuSeparator key={item.label} />;
+                    }
+                    if (item.kind === "status") {
+                      return (
+                        <DropdownMenuItem
+                          key={item.label}
+                          disabled
+                          className="text-xs text-muted-foreground data-[disabled]:opacity-100"
+                        >
+                          {item.label}
+                        </DropdownMenuItem>
+                      );
+                    }
                     return (
                       <DropdownMenuItem
                         key={item.label}

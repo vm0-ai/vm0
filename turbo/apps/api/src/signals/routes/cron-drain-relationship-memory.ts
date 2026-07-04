@@ -3,6 +3,7 @@ import { command } from "ccstate";
 
 import type { RouteEntry } from "../route-entry";
 import { drainRelationshipSyncJobs$ } from "../services/relationship-memory-gmail.service";
+import { advanceGmailRelationshipBackfillJobs$ } from "../services/relationship-memory-gmail-backfill.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const drainRelationshipMemoryRoute$ = command(
@@ -11,9 +12,17 @@ const drainRelationshipMemoryRoute$ = command(
       return cronUnauthorized();
     }
 
-    const body = await set(drainRelationshipSyncJobs$, signal);
+    const backfill = await set(advanceGmailRelationshipBackfillJobs$, signal);
     signal.throwIfAborted();
-    return { status: 200 as const, body };
+    const drain = await set(drainRelationshipSyncJobs$, signal);
+    signal.throwIfAborted();
+    return {
+      status: 200 as const,
+      body: {
+        ...drain,
+        backfill,
+      },
+    };
   },
 );
 
