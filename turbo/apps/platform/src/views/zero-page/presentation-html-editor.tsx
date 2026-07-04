@@ -19,7 +19,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { refreshPresentationHtmlPreviews$ } from "../../signals/zero-page/presentation-html-cache-bust.ts";
 import { createPresentationDraftByUrlFactory } from "../../signals/zero-page/presentation-html-editor-draft.ts";
 import { detach, Reason, tapError } from "../../signals/utils.ts";
-import { downloadPresentationHtmlStringPptx } from "./presentation-html-pptx-download.ts";
 import {
   applyPresentationSpeakerNotesPatch,
   parsePresentationEditDraft,
@@ -625,11 +624,21 @@ function downloadEditedPptx(params: {
   signal: AbortSignal;
 }) {
   detach(
-    tapError(downloadPresentationHtmlStringPptx(params), (error) => {
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
-        toast.error("PPTX download failed");
-      }
-    }),
+    tapError(
+      (async () => {
+        // Dynamic import optimizes loading performance: PPTX export is only
+        // needed after the user explicitly downloads the edited deck.
+        const { downloadPresentationHtmlStringPptx } = await import(
+          "./presentation-html-pptx-download.ts"
+        );
+        await downloadPresentationHtmlStringPptx(params);
+      })(),
+      (error) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          toast.error("PPTX download failed");
+        }
+      },
+    ),
     Reason.DomCallback,
     "presentation html editor pptx download",
   );

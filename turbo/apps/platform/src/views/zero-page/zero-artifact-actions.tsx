@@ -44,7 +44,6 @@ import {
   downloadAttachmentUrl,
   publicAttachmentUrl,
 } from "./zero-attachment-url.ts";
-import { downloadPresentationHtmlPptx } from "./presentation-html-pptx-download.ts";
 
 const CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP =
   "Connect Google Drive to upload artifacts";
@@ -203,11 +202,21 @@ function downloadPresentationPptx(params: {
   url: string;
 }): void {
   detach(
-    tapError(downloadPresentationHtmlPptx(params), (error) => {
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
-        toast.error("PPTX download failed");
-      }
-    }),
+    tapError(
+      (async () => {
+        // Dynamic import optimizes loading performance: PPTX export is only
+        // needed after the user explicitly chooses the PPTX download action.
+        const { downloadPresentationHtmlPptx } = await import(
+          "./presentation-html-pptx-download.ts"
+        );
+        await downloadPresentationHtmlPptx(params);
+      })(),
+      (error) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          toast.error("PPTX download failed");
+        }
+      },
+    ),
     Reason.DomCallback,
     "presentation html pptx download",
   );
