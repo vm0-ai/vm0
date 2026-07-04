@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.132.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.10...runner-rs-v0.132.11) (2026-07-04)
+
+
+### Performance Improvements
+
+* add guarded storage cache miss passthrough ([#20094](https://github.com/vm0-ai/vm0/issues/20094)) ([7d14271](https://github.com/vm0-ai/vm0/commit/7d14271aa51f9d47ead4e2ac4f289ca326cbea20))
+
 ## [0.132.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.9...runner-rs-v0.132.10) (2026-07-03)
 
 
