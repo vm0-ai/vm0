@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.221.2](https://github.com/vm0-ai/vm0/compare/api-v1.221.1...api-v1.221.2) (2026-07-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.152.1
+    * @vm0/connectors bumped to 1.134.0
+    * @vm0/core bumped to 8.397.0
+    * @vm0/db bumped to 1.90.2
+
 ## [1.221.1](https://github.com/vm0-ai/vm0/compare/api-v1.221.0...api-v1.221.1) (2026-07-04)
 
 

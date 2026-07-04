@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.550.0](https://github.com/vm0-ai/vm0/compare/app-v0.549.1...app-v0.550.0) (2026-07-04)
+
+
+### Features
+
+* add chat thread results to conversation picker ([#20133](https://github.com/vm0-ai/vm0/issues/20133)) ([0028157](https://github.com/vm0-ai/vm0/commit/0028157e98bbe24c560ec13a53913712e1dcb168))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.152.1
+    * @vm0/connectors bumped to 1.134.0
+    * @vm0/core bumped to 8.397.0
+
 ## [0.549.1](https://github.com/vm0-ai/vm0/compare/app-v0.549.0...app-v0.549.1) (2026-07-04)
 
 
