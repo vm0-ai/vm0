@@ -261,17 +261,17 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
     }
     expect(heartbeat.body.ok).toBeTruthy();
 
-    const emptyWithoutProfiles = await api.requestPollRunner(
+    const emptyPoll = await api.requestPollRunner(
       true,
-      { group: runnerGroup },
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
       [200],
     );
-    if (emptyWithoutProfiles.status !== 200) {
+    if (emptyPoll.status !== 200) {
       throw new Error(
-        `Expected empty poll to succeed, got ${emptyWithoutProfiles.status}`,
+        `Expected empty poll to succeed, got ${emptyPoll.status}`,
       );
     }
-    expect(emptyWithoutProfiles.body.job).toBeNull();
+    expect(emptyPoll.body.job).toBeNull();
   });
 
   it("keeps missing run detail and context hidden for another organization", async () => {

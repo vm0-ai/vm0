@@ -292,6 +292,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const heldSessionStates =
     canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
+  // Stage 1 wire compatibility: accept legacy heartbeat fields until #20162.
   const admittableProfiles =
     body.data.admittableProfiles ??
     body.data.availableProfiles ??
@@ -428,6 +429,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const { group } = body.data;
+  // Stage 1 wire compatibility: accept legacy poll profiles until #20162.
   const supportedProfiles = body.data.supportedProfiles ?? body.data.profiles;
   if (supportedProfiles === undefined || supportedProfiles.length === 0) {
     return badRequestMessage("supportedProfiles is required");
