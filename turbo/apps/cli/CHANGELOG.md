@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.223.1](https://github.com/vm0-ai/vm0/compare/cli-v9.223.0...cli-v9.223.1) (2026-07-04)
+
+
+### Refactoring
+
+* retire open design presentation templates ([#20097](https://github.com/vm0-ai/vm0/issues/20097)) ([1151041](https://github.com/vm0-ai/vm0/commit/11510410ef166d838ccb5264e1cf5007904b6150))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.151.1
+    * @vm0/core bumped to 8.396.1
+
 ## [9.223.0](https://github.com/vm0-ai/vm0/compare/cli-v9.222.12...cli-v9.223.0) (2026-07-04)
 
 
