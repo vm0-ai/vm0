@@ -59,6 +59,7 @@ export enum FeatureSwitchKey {
   AgentsPageRedesign = "agentsPageRedesign",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   ChatThreadLatestUserMessageScrollAnchor = "chatThreadLatestUserMessageScrollAnchor",
+  ChatThreadSidebarVirtualList = "chatThreadSidebarVirtualList",
   TeamsIntegration = "teamsIntegration",
   BytePlusVoiceInputStt = "bytePlusVoiceInputStt",
   ImageEditing = "imageEditing",

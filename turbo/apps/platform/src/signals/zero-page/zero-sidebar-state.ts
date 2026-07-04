@@ -212,6 +212,68 @@ export const setHovering$ = command(({ set }, hovering: boolean) => {
 });
 
 // ---------------------------------------------------------------------------
+// Overlay scroll viewport (OverlayScrollArea)
+// ---------------------------------------------------------------------------
+const internalOverlayScrollViewport$ = state<HTMLElement | null>(null);
+interface OverlayScrollMetrics {
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+}
+
+const internalOverlayScrollMetrics$ = state<OverlayScrollMetrics>(
+  emptyOverlayScrollMetrics(),
+);
+
+function emptyOverlayScrollMetrics(): OverlayScrollMetrics {
+  return {
+    scrollTop: 0,
+    scrollHeight: 0,
+    clientHeight: 0,
+  };
+}
+
+export const overlayScrollViewport$ = computed((get) => {
+  return get(internalOverlayScrollViewport$);
+});
+export const overlayScrollMetrics$ = computed((get) => {
+  return get(internalOverlayScrollMetrics$);
+});
+export const setOverlayScrollViewport$ = command(
+  ({ set }, viewport: HTMLElement | null) => {
+    set(internalOverlayScrollViewport$, viewport);
+    set(
+      internalOverlayScrollMetrics$,
+      viewport
+        ? {
+            scrollTop: viewport.scrollTop,
+            scrollHeight: viewport.scrollHeight,
+            clientHeight: viewport.clientHeight,
+          }
+        : emptyOverlayScrollMetrics(),
+    );
+  },
+);
+export const setOverlayScrollMetrics$ = command(
+  ({ set }, metrics: OverlayScrollMetrics) => {
+    set(internalOverlayScrollMetrics$, metrics);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Chat thread virtual list DOM state (RecentChatSection)
+// ---------------------------------------------------------------------------
+const internalChatThreadVirtualListElement$ = state<HTMLElement | null>(null);
+export const chatThreadVirtualListElement$ = computed((get) => {
+  return get(internalChatThreadVirtualListElement$);
+});
+export const setChatThreadVirtualListElement$ = command(
+  ({ set }, element: HTMLElement | null) => {
+    set(internalChatThreadVirtualListElement$, element);
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Main sidebar scroll tracking (ZeroSidebar)
 // ---------------------------------------------------------------------------
 const internalIsScrolled$ = state(false);
