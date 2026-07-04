@@ -403,6 +403,18 @@ function mockTeamAPIs({
       nextCursor: null,
     });
   });
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: [],
+      latestEventId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+    return respond(200, { threadIds: [] });
+  });
   context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
     const agent = params.id === zeroAgentId ? "Zero" : "Research Agent";
     return respond(200, {
@@ -658,35 +670,59 @@ describe("team page navigation", () => {
 
   it("opens the first chat thread from an agent chat page shortcut", async () => {
     mockTeamAPIs();
-    const firstThreadId = "agent-chat-shortcut-first-thread";
-    const secondThreadId = "agent-chat-shortcut-second-thread";
+    const firstThreadId = "b0000000-0000-4000-a000-000000000601";
+    const secondThreadId = "b0000000-0000-4000-a000-000000000602";
     const firstMessageId = "b0000000-0000-4000-a000-000000000501";
+    const shortcutThreads = [
+      {
+        id: firstThreadId,
+        title: "First shortcut thread",
+        agent: { id: researchAgentId, avatarUrl: null },
+        createdAt: "2026-06-01T00:00:00Z",
+        updatedAt: "2026-06-01T00:02:00Z",
+        running: false,
+        pinnedAt: null,
+      },
+      {
+        id: secondThreadId,
+        title: "Second shortcut thread",
+        agent: { id: researchAgentId, avatarUrl: null },
+        createdAt: "2026-06-01T00:00:00Z",
+        updatedAt: "2026-06-01T00:01:00Z",
+        running: false,
+        pinnedAt: null,
+      },
+    ];
     context.mocks.api(chatThreadsContract.list, ({ respond }) => {
       return respond(200, {
         pinned: [],
-        threads: [
-          {
-            id: firstThreadId,
-            title: "First shortcut thread",
-            agent: { id: researchAgentId, avatarUrl: null },
-            createdAt: "2026-06-01T00:00:00Z",
-            updatedAt: "2026-06-01T00:02:00Z",
-            running: false,
-            pinnedAt: null,
-          },
-          {
-            id: secondThreadId,
-            title: "Second shortcut thread",
-            agent: { id: researchAgentId, avatarUrl: null },
-            createdAt: "2026-06-01T00:00:00Z",
-            updatedAt: "2026-06-01T00:01:00Z",
-            running: false,
-            pinnedAt: null,
-          },
-        ],
+        threads: shortcutThreads,
         hasMore: false,
         nextCursor: null,
       });
+    });
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      return respond(200, {
+        chatThreads: shortcutThreads.map((thread) => {
+          return {
+            id: thread.id,
+            agentId: thread.agent.id,
+            title: thread.title,
+            sortAt: thread.updatedAt,
+            createdAt: thread.createdAt,
+            updatedAt: thread.updatedAt,
+            pinnedAt: thread.pinnedAt,
+            renamedAt: null,
+          };
+        }),
+        latestEventId: null,
+      });
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
+    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+      return respond(200, { threadIds: [] });
     });
     context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
       return respond(200, {
