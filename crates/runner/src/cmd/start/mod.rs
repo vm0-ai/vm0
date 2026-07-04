@@ -299,6 +299,7 @@ async fn run_start_with_home(
             "using host environment override for concurrency_factor"
         );
     }
+
     crate::private_fs::ensure_private_dir(&runner_config.base_dir).await?;
 
     // Exclusive lock — prevents two runner processes from sharing the same base_dir.
