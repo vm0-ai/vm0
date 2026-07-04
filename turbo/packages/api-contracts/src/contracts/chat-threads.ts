@@ -502,25 +502,19 @@ export const chatThreadsContract = c.router({
     // collide with the /chat-threads/:id route pattern.
     path: "/api/zero/chat-thread-drafts",
     headers: authHeadersSchema,
-    query: z.object({
-      /**
-       * Comma-separated chat thread ids to check. Ids the caller does not
-       * own (or that don't exist) are silently absent from the response.
-       */
-      threadIds: z.string().min(1),
-    }),
+    query: z.object({}),
     responses: {
       200: z.object({
         /**
-         * Subset of the requested thread ids that currently hold an unsent
-         * draft (non-empty `draftContent` or one+ `draftAttachments`).
+         * Thread ids owned by the caller that currently hold an unsent draft
+         * (non-empty `draftContent` or one+ `draftAttachments`).
          */
         draftThreadIds: z.array(z.string()),
       }),
       401: apiErrorSchema,
     },
     summary:
-      "Report which of the given chat threads hold an unsent composer draft. Fetched separately from the thread list so the sidebar draft dots don't gate the list query.",
+      "Report which of the caller's chat threads hold an unsent composer draft. Fetched separately from the thread list so the sidebar draft dots don't gate the list query.",
   },
   unreads: {
     method: "GET",

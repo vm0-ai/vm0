@@ -201,12 +201,8 @@ const getChatThreadMessageInner$ = computed(async (get) => {
 
 const listChatThreadDraftsInner$ = computed(async (get) => {
   const auth = get(authContext$);
-  const query = get(queryOf(chatThreadsContract.drafts));
 
-  const threadIds = query.threadIds.split(",").filter(isValidChatThreadId);
-  const draftThreadIds = await get(
-    zeroChatThreadDraftIds({ userId: auth.userId, threadIds }),
-  );
+  const draftThreadIds = await get(zeroChatThreadDraftIds(auth.userId));
 
   return {
     status: 200 as const,

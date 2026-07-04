@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.553.0](https://github.com/vm0-ai/vm0/compare/app-v0.552.1...app-v0.553.0) (2026-07-04)
+
+
+### Features
+
+* add pinned agent keyboard shortcuts ([#20148](https://github.com/vm0-ai/vm0/issues/20148)) ([87074d7](https://github.com/vm0-ai/vm0/commit/87074d762dc130099b3ddb7a1d976c34f1e16c28))
+
+
+### Bug Fixes
+
+* fetch all draft chat thread ids ([#20149](https://github.com/vm0-ai/vm0/issues/20149)) ([7b02fa2](https://github.com/vm0-ai/vm0/commit/7b02fa272811f75f9b897f92ab82da618d818110))
+* navigate chat threads from event-driven list ([#20147](https://github.com/vm0-ai/vm0/issues/20147)) ([3932652](https://github.com/vm0-ai/vm0/commit/39326522ce6004319c7525d5969dc8e465710c54))
+
+
+### Refactoring
+
+* remove persisted chat thread agent metadata ([#20146](https://github.com/vm0-ai/vm0/issues/20146)) ([514e7a7](https://github.com/vm0-ai/vm0/commit/514e7a7884b8f0ee4b1a5fd5e288b95a910e43f0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.2
+    * @vm0/core bumped to 8.398.1
+
 ## [0.552.1](https://github.com/vm0-ai/vm0/compare/app-v0.552.0...app-v0.552.1) (2026-07-04)
 
 
