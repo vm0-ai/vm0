@@ -48,6 +48,45 @@ const chatThreadEventSyncInFlightState$ = state(false);
 const activeRunChatThreadIdsState$ = state<ReadonlySet<string>>(new Set());
 const activeRunChatThreadIdsRefreshInFlightState$ = state(false);
 
+const optimisticChatThreadCreateIds$ = computed((get): ReadonlySet<string> => {
+  return new Set(
+    get(optimisticChatThreadEventsState$).flatMap((event) => {
+      return event.kind === "created" ? [event.chatThreadId] : [];
+    }),
+  );
+});
+
+function filterUnsettledOptimisticChatThreadEvents(
+  optimistic: readonly ChatThreadEvent[],
+  persisted: ChatThreadEventData,
+): ChatThreadEvent[] {
+  if (optimistic.length === 0) {
+    return [];
+  }
+  const persistedEventIds = new Set(
+    persisted.events.map((event) => {
+      return event.id;
+    }),
+  );
+  return optimistic.filter((event) => {
+    return !persistedEventIds.has(event.id);
+  });
+}
+
+async function readChatThreadEventData(
+  store: Stores,
+  fallbackSnapshot: ChatThreadSnapshotData | null = null,
+): Promise<ChatThreadEventData> {
+  const [snapshot, events] = await Promise.all([
+    store.readStore.readSnapshot(),
+    store.readStore.readEvents(),
+  ]);
+  return {
+    snapshot: (snapshot ?? fallbackSnapshot)?.chatThreads ?? [],
+    events,
+  };
+}
+
 export const chatThreadMaxItem$ = computed((get) => {
   return get(chatThreadMaxItemState$);
 });
@@ -152,14 +191,7 @@ const chatThreadEventData$ = computed(
       syncedSnapshot = await syncChatThreadEvents(store, client);
     }
 
-    const [snapshot, events] = await Promise.all([
-      store.readStore.readSnapshot(),
-      store.readStore.readEvents(),
-    ]);
-    return {
-      snapshot: (snapshot ?? syncedSnapshot)?.chatThreads ?? [],
-      events,
-    };
+    return await readChatThreadEventData(store, syncedSnapshot);
   },
 );
 
@@ -184,6 +216,9 @@ const syncEventDrivenChatThreads$ = command(
           return;
         }
         signal.throwIfAborted();
+        const data = await readChatThreadEventData(store, synced.value);
+        signal.throwIfAborted();
+        set(reconcileOptimisticChatThreadEvents$, data);
         set(chatThreadEventSyncVersionState$, (version) => {
           return version + 1;
         });
@@ -263,8 +298,12 @@ const chatThreadsSnapshot$ = computed(async (get) => {
 });
 
 const allChatThreadsEvents$ = computed(async (get) => {
-  const persisted = (await get(chatThreadEventData$)).events;
-  const optimistic = get(optimisticChatThreadEventsState$);
+  const persistedData = await get(chatThreadEventData$);
+  const persisted = persistedData.events;
+  const optimistic = filterUnsettledOptimisticChatThreadEvents(
+    get(optimisticChatThreadEventsState$),
+    persistedData,
+  );
   const byId = new Map<string, ChatThreadEvent>();
   for (const event of optimistic) {
     byId.set(event.id, event);
@@ -287,6 +326,26 @@ export const eventDrivenChatThreads$ = computed(async (get) => {
     await get(allChatThreadsEvents$),
   );
 });
+
+const eventDrivenChatThreadMap$ = computed(async (get) => {
+  return new Map(
+    (await get(eventDrivenChatThreads$)).map((thread) => {
+      return [thread.id, thread] as const;
+    }),
+  );
+});
+
+export function eventDrivenChatThread(threadId: string) {
+  return computed(async (get) => {
+    return (await get(eventDrivenChatThreadMap$)).get(threadId) ?? null;
+  });
+}
+
+export function optimisticChatThreadCreateUnsettled(threadId: string) {
+  return computed((get): boolean => {
+    return get(optimisticChatThreadCreateIds$).has(threadId);
+  });
+}
 
 const eventDrivenChatThreadMetaMap$ = computed(async (get) => {
   return new Map<string, ThreadMeta>(
@@ -320,6 +379,14 @@ export const registerOptimisticChatThreadEvent$ = command(
         return events;
       }
       return [...events, event];
+    });
+  },
+);
+
+export const reconcileOptimisticChatThreadEvents$ = command(
+  ({ set }, persisted: ChatThreadEventData) => {
+    set(optimisticChatThreadEventsState$, (events) => {
+      return filterUnsettledOptimisticChatThreadEvents(events, persisted);
     });
   },
 );
