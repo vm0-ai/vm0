@@ -185,7 +185,12 @@ function isZodSchema(schema: unknown): schema is z.ZodType {
 }
 
 function normalizeJsonValue(value: unknown, label: string): JsonObject {
-  const parsed = jsonObjectSchema.safeParse(value);
+  const rendered = JSON.stringify(value);
+  if (!rendered) {
+    throw new Error(`${label} JSON Schema must be an object`);
+  }
+
+  const parsed = jsonObjectSchema.safeParse(JSON.parse(rendered));
   if (!parsed.success) {
     throw new Error(`${label} JSON Schema must be an object`);
   }
