@@ -18,6 +18,7 @@ use crate::proxy::ProxyRegistryHandle;
 use crate::types::{ConnectorPolicyRefresh, NetworkPolicy};
 
 const REFRESH_REQUEST_QUEUE_CAPACITY: usize = 256;
+const CONNECTOR_POLICY_REFRESH_BATCH_MAX: usize = 256;
 const EXPIRED_REFRESH_DEADLINE_RETRY_DELAY: Duration = Duration::from_millis(250);
 const SCHEDULED_REFRESH_COALESCE_WINDOW: Duration = Duration::from_millis(100);
 
@@ -327,10 +328,25 @@ impl ConnectorPolicyRefreshCore {
             return;
         }
 
+        for connector_refs in active_connector_refs.chunks(CONNECTOR_POLICY_REFRESH_BATCH_MAX) {
+            if !self
+                .refresh_connector_batch_now(run_id, connector_refs)
+                .await
+            {
+                return;
+            }
+        }
+    }
+
+    async fn refresh_connector_batch_now(
+        &self,
+        run_id: RunId,
+        active_connector_refs: &[String],
+    ) -> bool {
         let response = match self
             .inner
             .api
-            .refresh_connector_policies(run_id, &active_connector_refs)
+            .refresh_connector_policies(run_id, active_connector_refs)
             .await
         {
             Ok(response) => response,
@@ -342,9 +358,9 @@ impl ConnectorPolicyRefreshCore {
                     error = %error,
                     "connector policy refresh failed"
                 );
-                self.fail_closed_active_connectors(run_id, &active_connector_refs)
+                self.fail_closed_active_connectors(run_id, active_connector_refs)
                     .await;
-                return;
+                return true;
             }
         };
 
@@ -377,28 +393,29 @@ impl ConnectorPolicyRefreshCore {
         }
 
         for connector_ref in active_connector_refs {
-            if duplicate_connector_refs.contains(&connector_ref) {
-                if let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await {
-                    fail_closed_connector_policy(run_id, &connector_ref, snapshot).await;
+            let connector_ref = connector_ref.as_str();
+            if duplicate_connector_refs.contains(connector_ref) {
+                if let Some(snapshot) = self.active_snapshot(run_id, connector_ref).await {
+                    fail_closed_connector_policy(run_id, connector_ref, snapshot).await;
                 }
                 continue;
             }
-            let Some(response) = responses_by_connector.remove(&connector_ref) else {
+            let Some(response) = responses_by_connector.remove(connector_ref) else {
                 warn!(
                     run_id = %run_id,
                     connector_ref,
                     "connector policy refresh response omitted requested connector"
                 );
-                if let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await {
-                    fail_closed_connector_policy(run_id, &connector_ref, snapshot).await;
+                if let Some(snapshot) = self.active_snapshot(run_id, connector_ref).await {
+                    fail_closed_connector_policy(run_id, connector_ref, snapshot).await;
                 }
                 continue;
             };
 
-            let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await else {
+            let Some(snapshot) = self.active_snapshot(run_id, connector_ref).await else {
                 continue;
             };
-            match patch_connector_policy(run_id, &connector_ref, snapshot, response.network_policy)
+            match patch_connector_policy(run_id, connector_ref, snapshot, response.network_policy)
                 .await
             {
                 Ok(true) => {
@@ -407,12 +424,12 @@ impl ConnectorPolicyRefreshCore {
                         connector_ref,
                         "refreshed connector policy"
                     );
-                    self.replace_schedule(run_id, &connector_ref, response.next_refresh_at)
+                    self.replace_schedule(run_id, connector_ref, response.next_refresh_at)
                         .await;
                 }
                 Ok(false) => {
                     self.unregister_run(run_id).await;
-                    return;
+                    return false;
                 }
                 Err(error) => {
                     warn!(
@@ -421,12 +438,13 @@ impl ConnectorPolicyRefreshCore {
                         error = %error,
                         "failed to patch refreshed connector policy"
                     );
-                    if let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await {
-                        fail_closed_connector_policy(run_id, &connector_ref, snapshot).await;
+                    if let Some(snapshot) = self.active_snapshot(run_id, connector_ref).await {
+                        fail_closed_connector_policy(run_id, connector_ref, snapshot).await;
                     }
                 }
             }
         }
+        true
     }
 
     async fn active_connector_refs(
@@ -934,17 +952,18 @@ mod tests {
         active_run_policy_state_with_connectors(registry, ["slack"])
     }
 
-    fn active_run_policy_state_with_connectors(
+    fn active_run_policy_state_with_connectors<I, S>(
         registry: ProxyRegistryHandle,
-        connector_refs: impl IntoIterator<Item = &'static str>,
-    ) -> ActiveRunPolicyState {
+        connector_refs: I,
+    ) -> ActiveRunPolicyState
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
         ActiveRunPolicyState {
             source_ip: "10.200.0.2".to_string(),
             registry,
-            connector_refs: connector_refs
-                .into_iter()
-                .map(|connector_ref| connector_ref.to_string())
-                .collect(),
+            connector_refs: connector_refs.into_iter().map(Into::into).collect(),
             cancel: CancellationToken::new(),
             refresh_tasks: HashMap::new(),
             next_refresh_task_id: 0,
@@ -1478,6 +1497,63 @@ mod tests {
     #[tokio::test]
     async fn failed_connector_refresh_fails_closed() {
         assert_failed_connector_refresh_fail_closed().await;
+    }
+
+    #[tokio::test]
+    async fn connector_refresh_splits_batches_to_match_api_contract() {
+        let server = MockServer::start();
+        let run_id = RunId::nil();
+        let connector_refs = (0..=CONNECTOR_POLICY_REFRESH_BATCH_MAX)
+            .map(|index| format!("connector-{index}"))
+            .collect::<Vec<_>>();
+        let first_batch = connector_refs[..CONNECTOR_POLICY_REFRESH_BATCH_MAX].to_vec();
+        let second_batch = connector_refs[CONNECTOR_POLICY_REFRESH_BATCH_MAX..].to_vec();
+        let first_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path(format!(
+                    "/api/runners/runs/{run_id}/connector-network-policies"
+                ))
+                .json_body(json!({ "connectorRefs": first_batch }));
+            then.status(500)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "error": {
+                        "code": "INTERNAL_SERVER_ERROR",
+                        "message": "refresh failed",
+                    },
+                }));
+        });
+        let second_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path(format!(
+                    "/api/runners/runs/{run_id}/connector-network-policies"
+                ))
+                .json_body(json!({ "connectorRefs": second_batch }));
+            then.status(500)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "error": {
+                        "code": "INTERNAL_SERVER_ERROR",
+                        "message": "refresh failed",
+                    },
+                }));
+        });
+        let (core, _requests) = core_without_worker(&server);
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let registry_path = dir.path().join("proxy-registry.json");
+        tokio::fs::write(&registry_path, br#"{"vms":{},"updatedAt":0}"#)
+            .await
+            .expect("empty registry should be written");
+        let registry = ProxyRegistryHandle::new(registry_path, dir.path().join("registry.lock"));
+        core.inner.active_runs.lock().await.insert(
+            run_id,
+            active_run_policy_state_with_connectors(registry, connector_refs.clone()),
+        );
+
+        core.refresh_connectors_now(run_id, connector_refs).await;
+
+        first_mock.assert_calls(1);
+        second_mock.assert_calls(1);
     }
 
     async fn assert_failed_connector_refresh_fail_closed() {
