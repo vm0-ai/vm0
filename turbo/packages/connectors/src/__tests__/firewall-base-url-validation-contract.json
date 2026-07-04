@@ -32,6 +32,12 @@
     },
     {
       "category": "valid",
+      "name": "leftmost plus-greedy host parameter",
+      "base": "https://{sub+}.example.com",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
       "name": "parameterized path base",
       "base": "https://api.example.com/v1/{org}",
       "expectedValid": true
@@ -134,8 +140,20 @@
     },
     {
       "category": "parameters",
+      "name": "non-leftmost star-greedy host parameter is invalid",
+      "base": "https://api.{sub*}.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
       "name": "greedy path parameter is invalid",
       "base": "https://api.example.com/{path+}",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "star-greedy path parameter is invalid",
+      "base": "https://api.example.com/{path*}",
       "expectedValid": false
     },
     {
