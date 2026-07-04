@@ -1178,6 +1178,33 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("scrolls the current chat into the virtualized sidebar on page setup", async () => {
+    prepareDefaultAgent();
+    const leadingThreads = Array.from({ length: 24 }, (_, index) => {
+      return createThread(
+        `b3000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Leading chat ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory([
+      ...leadingThreads,
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+      ).toBeInTheDocument();
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    });
+  });
+
   it("cancels and confirms deleting a regular chat from the sidebar", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([
