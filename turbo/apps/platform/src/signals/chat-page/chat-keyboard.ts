@@ -7,11 +7,6 @@ import {
   loadLeftThread$,
   loadRightThread$,
 } from "./chat-thread-panes.ts";
-import {
-  clickAdjacentSidebarThread,
-  sidebarThreadTitleForPane,
-  type SidebarThreadPane,
-} from "./chat-sidebar-dom.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import {
   clearChatThreadEmojiFromThreadData$,
@@ -25,12 +20,17 @@ import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onRef } from "../utils.ts";
 import { openChatThreadEmojiMenu$ } from "../zero-page/zero-sidebar-state.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
-import { currentChatThreadId$ } from "../agent-chat.ts";
-import { sidebarChatThreadIds$ } from "./sidebar-chat-thread-ids.ts";
+import {
+  currentChatThreadId$,
+  currentChatThreadListIds$,
+} from "../agent-chat.ts";
 import {
   setupGlobalShortcut,
   type GlobalShortcutBindings,
 } from "../../lib/setup-global-shortcut.ts";
+
+type ChatThreadPane = "main" | "side";
+
 function plainArrowScrollDirection(
   event: KeyboardEvent,
 ): ScrollStepDirection | null {
@@ -130,7 +130,7 @@ function paneForThread(
   leftThread: ChatThreadSignals | null,
   rightThread: ChatThreadSignals | null,
   thread: ChatThreadSignals | null,
-): SidebarThreadPane | null {
+): ChatThreadPane | null {
   if (!thread) {
     return null;
   }
@@ -201,9 +201,6 @@ interface ChatPageShortcutSetup {
   focusedThread: () => ChatThreadSignals | null;
   navigateFocusedThread: (direction: "prev" | "next") => void | Promise<void>;
   root: HTMLElement;
-  sidebarTitleForThread: (
-    thread: ChatThreadSignals,
-  ) => string | null | undefined;
 }
 
 function setupChatPageGlobalShortcutListener({
@@ -231,7 +228,6 @@ const setFocusedThreadEmoji$ = command(
     args: {
       thread: ChatThreadSignals;
       emoji: string;
-      title?: string | null;
     },
     signal: AbortSignal,
   ) => {
@@ -243,7 +239,6 @@ const setFocusedThreadEmoji$ = command(
       {
         threadId: args.thread.threadId,
         emoji: args.emoji,
-        title: args.title,
       },
       signal,
     );
@@ -253,13 +248,7 @@ const setFocusedThreadEmoji$ = command(
 const setupChatPageShortcutActions$ = command(
   (
     { get, set },
-    {
-      doc,
-      focusedThread,
-      navigateFocusedThread,
-      root,
-      sidebarTitleForThread,
-    }: ChatPageShortcutSetup,
+    { doc, focusedThread, navigateFocusedThread, root }: ChatPageShortcutSetup,
     signal: AbortSignal,
   ) => {
     setupChatPageGlobalShortcutListener({
@@ -267,21 +256,13 @@ const setupChatPageShortcutActions$ = command(
         clearEmoji: async () => {
           const thread = focusedThread();
           if (thread) {
-            await set(
-              clearFocusedThreadEmoji$,
-              { thread, title: sidebarTitleForThread(thread) },
-              signal,
-            );
+            await set(clearFocusedThreadEmoji$, { thread }, signal);
           }
         },
         openEmojiMenu: async () => {
           const thread = focusedThread();
           if (thread) {
-            await set(
-              openFocusedThreadEmojiMenu$,
-              { thread, title: sidebarTitleForThread(thread) },
-              signal,
-            );
+            await set(openFocusedThreadEmojiMenu$, { thread }, signal);
           }
         },
         renameThread: async () => {
@@ -322,11 +303,7 @@ const setupChatPageShortcutActions$ = command(
         setEmoji: async (emoji) => {
           const thread = focusedThread();
           if (thread) {
-            await set(
-              setFocusedThreadEmoji$,
-              { thread, emoji, title: sidebarTitleForThread(thread) },
-              signal,
-            );
+            await set(setFocusedThreadEmoji$, { thread, emoji }, signal);
           }
         },
       },
@@ -340,7 +317,7 @@ const setupChatPageShortcutActions$ = command(
 const clearFocusedThreadEmoji$ = command(
   async (
     { get, set },
-    args: { thread: ChatThreadSignals; title?: string | null },
+    args: { thread: ChatThreadSignals },
     signal: AbortSignal,
   ) => {
     if (!(get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false)) {
@@ -350,7 +327,6 @@ const clearFocusedThreadEmoji$ = command(
       clearChatThreadEmojiFromThreadData$,
       {
         threadId: args.thread.threadId,
-        title: args.title,
       },
       signal,
     );
@@ -360,7 +336,7 @@ const clearFocusedThreadEmoji$ = command(
 const openFocusedThreadEmojiMenu$ = command(
   async (
     { get, set },
-    args: { thread: ChatThreadSignals; title?: string | null },
+    args: { thread: ChatThreadSignals },
     signal: AbortSignal,
   ) => {
     if (!(get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false)) {
@@ -368,8 +344,10 @@ const openFocusedThreadEmojiMenu$ = command(
     }
     const threadMeta = await get(args.thread.threadMeta$);
     signal.throwIfAborted();
-    const title = args.title !== undefined ? args.title : threadMeta?.title;
-    set(openChatThreadEmojiMenu$, { threadId: args.thread.threadId, title });
+    set(openChatThreadEmojiMenu$, {
+      threadId: args.thread.threadId,
+      title: threadMeta?.title,
+    });
   },
 );
 
@@ -520,38 +498,8 @@ export const setChatKeyboardScrollRoot$ = onRef(
     const focusedThread = () => {
       return containingThread(doc.activeElement) ?? get(currentLeftThread$);
     };
-    const sidebarTitleForThread = (thread: ChatThreadSignals) => {
-      return sidebarThreadTitleForPane(
-        el,
-        paneForThread(
-          get(currentLeftThread$),
-          get(currentRightThread$),
-          thread,
-        ),
-        thread.threadId,
-      );
-    };
-    const navigateFocusedThread = (direction: "prev" | "next") => {
-      const pane = paneForThread(
-        get(currentLeftThread$),
-        get(currentRightThread$),
-        focusedThread(),
-      );
-      if (!pane) {
-        return;
-      }
-      if (
-        get(featureSwitch$)[FeatureSwitchKey.ChatThreadSidebarVirtualList] ??
-        false
-      ) {
-        return navigateAdjacentSidebarThreadFromSignals(pane, direction);
-      }
-      clickAdjacentSidebarThread(el, pane, direction);
-      return;
-    };
-
-    const navigateAdjacentSidebarThreadFromSignals = async (
-      pane: SidebarThreadPane,
+    const navigateAdjacentChatThread = async (
+      pane: ChatThreadPane,
       direction: "prev" | "next",
     ) => {
       const leftThread = get(currentLeftThread$);
@@ -563,7 +511,7 @@ export const setChatKeyboardScrollRoot$ = onRef(
       }
       const otherPaneThreadId =
         pane === "main" ? rightThread?.threadId : leftThread?.threadId;
-      const ids = (await get(sidebarChatThreadIds$)).filter((id) => {
+      const ids = (await get(currentChatThreadListIds$)).filter((id) => {
         return id !== otherPaneThreadId;
       });
       const currentIndex = ids.indexOf(currentId);
@@ -582,6 +530,17 @@ export const setChatKeyboardScrollRoot$ = onRef(
           : set(loadRightThread$, targetId, signal);
       await promise;
     };
+    const navigateFocusedThread = (direction: "prev" | "next") => {
+      const pane = paneForThread(
+        get(currentLeftThread$),
+        get(currentRightThread$),
+        focusedThread(),
+      );
+      if (!pane) {
+        return;
+      }
+      return navigateAdjacentChatThread(pane, direction);
+    };
 
     el.addEventListener("focusin", markActiveThread, { signal });
     el.addEventListener("pointerdown", markActiveThread, { signal });
@@ -593,7 +552,6 @@ export const setChatKeyboardScrollRoot$ = onRef(
         focusedThread,
         navigateFocusedThread,
         root: el,
-        sidebarTitleForThread,
       },
       signal,
     );

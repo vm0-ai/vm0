@@ -184,6 +184,15 @@ export const chatThreads$ = computed(
   },
 );
 
+export const currentChatThreadListIds$ = computed(
+  async (get): Promise<readonly string[]> => {
+    const threads = await get(eventDrivenFilteredChatThreads$);
+    return threads.map((thread) => {
+      return thread.id;
+    });
+  },
+);
+
 function eventDrivenThreadToListItem(
   thread: EventDrivenChatThread,
   activeRunThreadIds: ReadonlySet<string>,
