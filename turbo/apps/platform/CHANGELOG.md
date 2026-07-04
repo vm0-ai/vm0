@@ -1,5 +1,70 @@
 # Changelog
 
+## [0.547.1](https://github.com/vm0-ai/vm0/compare/app-v0.547.0...app-v0.547.1) (2026-07-04)
+
+
+### Bug Fixes
+
+* keep sidebar thread list rendered during thread switch ([#20111](https://github.com/vm0-ai/vm0/issues/20111)) ([cc762d6](https://github.com/vm0-ai/vm0/commit/cc762d64fa36f669afd168568cffd7d24187489d))
+
+## [0.547.0](https://github.com/vm0-ai/vm0/compare/app-v0.546.0...app-v0.547.0) (2026-07-04)
+
+
+### Features
+
+* add relationship memory foundation ([#20077](https://github.com/vm0-ai/vm0/issues/20077)) ([805a79e](https://github.com/vm0-ai/vm0/commit/805a79ed91fc55a6261bf6f7180fa4b3c663af7d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.151.0
+    * @vm0/connectors bumped to 1.133.0
+    * @vm0/core bumped to 8.396.0
+
+## [0.546.0](https://github.com/vm0-ai/vm0/compare/app-v0.545.1...app-v0.546.0) (2026-07-03)
+
+
+### Features
+
+* enable chat thread event sourcing globally ([#20082](https://github.com/vm0-ai/vm0/issues/20082)) ([548a68e](https://github.com/vm0-ai/vm0/commit/548a68eca8f4b700d639d83470b16e026444b851))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.395.0
+
+## [0.545.1](https://github.com/vm0-ai/vm0/compare/app-v0.545.0...app-v0.545.1) (2026-07-03)
+
+
+### Refactoring
+
+* serve connector category metadata from catalog api ([#20089](https://github.com/vm0-ai/vm0/issues/20089)) ([99bafd7](https://github.com/vm0-ai/vm0/commit/99bafd7d276f1ae151c4cd7b409e8268a8487848))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.150.3
+    * @vm0/connectors bumped to 1.132.3
+    * @vm0/core bumped to 8.394.6
+
+## [0.545.0](https://github.com/vm0-ai/vm0/compare/app-v0.544.2...app-v0.545.0) (2026-07-03)
+
+
+### Features
+
+* redesign automation trigger picker as a categorized modal ([#20065](https://github.com/vm0-ai/vm0/issues/20065)) ([938c44b](https://github.com/vm0-ai/vm0/commit/938c44be0ea5d4b94f687d1ada5b5c955496574d))
+
+
+### Bug Fixes
+
+* show shortcut help across sidebar pages ([#20091](https://github.com/vm0-ai/vm0/issues/20091)) ([68d2c41](https://github.com/vm0-ai/vm0/commit/68d2c41b814d75a308306e2fd919e3d6a2cf5e42))
+
 ## [0.544.2](https://github.com/vm0-ai/vm0/compare/app-v0.544.1...app-v0.544.2) (2026-07-03)
 
 

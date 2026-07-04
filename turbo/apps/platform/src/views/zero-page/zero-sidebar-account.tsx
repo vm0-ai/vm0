@@ -501,10 +501,7 @@ function AccountManagementGroup({
   );
 }
 
-function ExtraAccountActions({ showExportData }: { showExportData: boolean }) {
-  if (!showExportData) {
-    return null;
-  }
+function ExtraAccountActions() {
   return (
     <DropdownMenuItem
       onClick={() => {
@@ -554,7 +551,6 @@ export function AccountDropdown({
   const user =
     userInfoLoadable.state === "hasData" ? userInfoLoadable.data : undefined;
   const features = useLastResolved(featureSwitch$);
-  const showExportData = features?.[FeatureSwitchKey.DataExport] ?? false;
   const memoryEnabled = features?.[FeatureSwitchKey.MemoryViewer] ?? false;
   const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
   const subscriptionsEnabled =
@@ -686,7 +682,7 @@ export function AccountDropdown({
           onSwitchSession={handleSwitchSession}
           onAddAccount={handleAddAccount}
         />
-        <ExtraAccountActions showExportData={showExportData} />
+        <ExtraAccountActions />
         <DropdownMenuSeparator />
         <SignOutItem onAccountAction={handleAccountAction} />
       </DropdownMenuContent>

@@ -1,35 +1,15 @@
 import { computed } from "ccstate";
 
-import {
-  chatThreadEventSourcingEnabled$,
-  chatThreads$,
-  currentChatAgentId$,
-} from "../agent-chat.ts";
-import { allPendingChatThreads$ } from "./optimistic-chat-thread-state.ts";
-import { sidebarChatThreadsExtraThreads$ } from "./sidebar-chat-threads-pagination.ts";
+import { chatThreads$ } from "../agent-chat.ts";
 
 export const sidebarChatThreadIds$ = computed(
   async (get): Promise<readonly string[]> => {
     const persisted = await get(chatThreads$);
-    const extraPersisted = await get(sidebarChatThreadsExtraThreads$);
     const ids = new Set(
-      [...persisted, ...extraPersisted].map((thread) => {
+      persisted.map((thread) => {
         return thread.id;
       }),
     );
-
-    if (get(chatThreadEventSourcingEnabled$)) {
-      return [...ids];
-    }
-
-    const currentAgentId = await get(currentChatAgentId$);
-    if (currentAgentId) {
-      for (const thread of get(allPendingChatThreads$)) {
-        if (thread.agentId === currentAgentId) {
-          ids.add(thread.threadId);
-        }
-      }
-    }
 
     return [...ids];
   },

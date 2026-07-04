@@ -152,7 +152,7 @@ Evaluation has two layers (lowest to highest priority):
 2. **DB overrides** — most switches are per-user rows in
    `user_feature_switches` keyed by `(orgId, userId)`. Some switches are
    org-scoped and stored under the org sentinel user id (`__org__`); currently
-   `DataExport` and `AgentUnreadIndicators` are org-scoped. Written via the Lab
+   `AgentUnreadIndicators` is org-scoped. Written via the Lab
    page toggles or `window._vm0.featureSwitches.myFeature = true` (both call
    `POST /api/zero/feature-switches`). Cleared via the Lab page "Reset all"
    button (`DELETE /api/zero/feature-switches`).

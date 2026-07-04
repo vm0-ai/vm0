@@ -1,5 +1,37 @@
 # Changelog
 
+## [8.396.0](https://github.com/vm0-ai/vm0/compare/core-v8.395.0...core-v8.396.0) (2026-07-04)
+
+
+### Features
+
+* add relationship memory foundation ([#20077](https://github.com/vm0-ai/vm0/issues/20077)) ([805a79e](https://github.com/vm0-ai/vm0/commit/805a79ed91fc55a6261bf6f7180fa4b3c663af7d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.151.0
+    * @vm0/connectors bumped to 1.133.0
+
+## [8.395.0](https://github.com/vm0-ai/vm0/compare/core-v8.394.6...core-v8.395.0) (2026-07-03)
+
+
+### Features
+
+* enable chat thread event sourcing globally ([#20082](https://github.com/vm0-ai/vm0/issues/20082)) ([548a68e](https://github.com/vm0-ai/vm0/commit/548a68eca8f4b700d639d83470b16e026444b851))
+
+## [8.394.6](https://github.com/vm0-ai/vm0/compare/core-v8.394.5...core-v8.394.6) (2026-07-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.150.3
+    * @vm0/connectors bumped to 1.132.3
+
 ## [8.394.5](https://github.com/vm0-ai/vm0/compare/core-v8.394.4...core-v8.394.5) (2026-07-03)
 
 

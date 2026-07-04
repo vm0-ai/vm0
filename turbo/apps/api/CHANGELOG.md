@@ -1,5 +1,62 @@
 # Changelog
 
+## [1.220.0](https://github.com/vm0-ai/vm0/compare/api-v1.219.1...api-v1.220.0) (2026-07-04)
+
+
+### Features
+
+* add relationship memory foundation ([#20077](https://github.com/vm0-ai/vm0/issues/20077)) ([805a79e](https://github.com/vm0-ai/vm0/commit/805a79ed91fc55a6261bf6f7180fa4b3c663af7d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.151.0
+    * @vm0/connectors bumped to 1.133.0
+    * @vm0/core bumped to 8.396.0
+    * @vm0/db bumped to 1.89.0
+
+## [1.219.1](https://github.com/vm0-ai/vm0/compare/api-v1.219.0...api-v1.219.1) (2026-07-04)
+
+
+### Refactoring
+
+* tighten google meet event schema ([#20105](https://github.com/vm0-ai/vm0/issues/20105)) ([c0f810c](https://github.com/vm0-ai/vm0/commit/c0f810c40ef6d139f1739f5b19b14ec07363793a))
+
+## [1.219.0](https://github.com/vm0-ai/vm0/compare/api-v1.218.3...api-v1.219.0) (2026-07-03)
+
+
+### Features
+
+* enable chat thread event sourcing globally ([#20082](https://github.com/vm0-ai/vm0/issues/20082)) ([548a68e](https://github.com/vm0-ai/vm0/commit/548a68eca8f4b700d639d83470b16e026444b851))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.395.0
+    * @vm0/db bumped to 1.88.7
+
+## [1.218.3](https://github.com/vm0-ai/vm0/compare/api-v1.218.2...api-v1.218.3) (2026-07-03)
+
+
+### Refactoring
+
+* remove legacy automation poller, mutating routes, and the cli command ([#20103](https://github.com/vm0-ai/vm0/issues/20103)) ([2245f83](https://github.com/vm0-ai/vm0/commit/2245f83430aefa545077e5da1e8929d9c4968628))
+* serve connector category metadata from catalog api ([#20089](https://github.com/vm0-ai/vm0/issues/20089)) ([99bafd7](https://github.com/vm0-ai/vm0/commit/99bafd7d276f1ae151c4cd7b409e8268a8487848))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.150.3
+    * @vm0/connectors bumped to 1.132.3
+    * @vm0/core bumped to 8.394.6
+    * @vm0/db bumped to 1.88.6
+
 ## [1.218.2](https://github.com/vm0-ai/vm0/compare/api-v1.218.1...api-v1.218.2) (2026-07-03)
 
 

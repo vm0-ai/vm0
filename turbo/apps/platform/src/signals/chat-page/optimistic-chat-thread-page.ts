@@ -18,7 +18,6 @@ import { nowDate } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import {
   type ChatThread,
-  chatThreadEventSourcingEnabled$,
   chatThreads$,
   currentChatAgentId$,
   currentChatThreadId$,
@@ -56,10 +55,8 @@ import {
   type OptimisticChatMessageEntry,
 } from "./optimistic-chat-messages.ts";
 import {
-  allPendingChatThreads$,
   clearMatchingOptimisticChatThread$,
   optimisticChatThread$,
-  optimisticChatThreadByPane$,
   registerOptimisticChatThread$,
   type OptimisticChatPane,
   type PendingChatThread,
@@ -85,11 +82,8 @@ const SIDEBAR_PARAM = "sidebar";
 
 const L = logger("OptimisticChat");
 
-export const newChatThreadDisabled$ = computed((get) => {
-  if (get(chatThreadEventSourcingEnabled$)) {
-    return false;
-  }
-  return get(optimisticChatThread$) !== null;
+export const newChatThreadDisabled$ = computed(() => {
+  return false;
 });
 
 /**
@@ -416,25 +410,6 @@ const routeSidebarOptimisticChatThread$ = command(
   },
 );
 
-const showExistingOptimisticChatThread$ = command(
-  async (
-    { get, set },
-    pending: PendingChatThread,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    if (pending.pane === "main") {
-      if (get(currentChatThreadId$) !== pending.threadId) {
-        set(routeMainOptimisticChatThread$, pending);
-      }
-      return;
-    }
-
-    if (get(searchParams$).get(SIDEBAR_PARAM) !== pending.threadId) {
-      await set(routeSidebarOptimisticChatThread$, pending, signal);
-    }
-  },
-);
-
 const routeOptimisticChatThread$ = command(
   async ({ get, set }, pending: PendingChatThread, signal: AbortSignal) => {
     signal.throwIfAborted();
@@ -619,14 +594,6 @@ export const createNewChatThreadOptimistically$ = command(
   ) => {
     const targetPane =
       pane === "sidebar" && get(currentChatThreadId$) ? "sidebar" : "main";
-    const optimisticThread = get(chatThreadEventSourcingEnabled$)
-      ? null
-      : get(optimisticChatThreadByPane$)(targetPane);
-    if (optimisticThread) {
-      await set(showExistingOptimisticChatThread$, optimisticThread, signal);
-      return;
-    }
-
     const result = await set(createNewChatThread$, agentId, targetPane, signal);
 
     await set(routeOptimisticChatThread$, result, signal);
@@ -694,13 +661,7 @@ function mergeMissingSidebarThreads(
 
 /**
  * Unified sidebar list: server-ordered persisted threads merged with the
- * optimistic-only pending threads for the current agent, deduped by id.
- *
- * Returning a single signal — instead of letting the sidebar read persisted
- * and optimistic separately — guarantees that the optimistic→persisted
- * handoff happens in one ccstate compute. That removes the React render
- * window where two `useLastResolved` subscribers update one after the other
- * and briefly emit two `<ChatThreadItem>` siblings sharing the same `key`.
+ * active pane threads for the current agent, deduped by id.
  *
  * The server orders each pinned/non-pinned segment by lastMessageAt desc and
  * id desc, but the list item contract does not expose lastMessageAt. Preserve
@@ -711,44 +672,14 @@ export const sidebarChatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
     const persisted = await get(chatThreads$);
     const extraPersisted = await get(sidebarChatThreadsExtraThreads$);
-    const pending = get(chatThreadEventSourcingEnabled$)
-      ? []
-      : get(allPendingChatThreads$);
     const currentAgentId = await get(currentChatAgentId$);
     if (!currentAgentId) {
       return [...persisted, ...extraPersisted];
     }
 
-    const persistedIds = new Set(
-      [...persisted, ...extraPersisted].map((thread) => {
-        return thread.id;
-      }),
-    );
-    const optimisticItems: ChatThreadListItem[] = pending
-      .filter((thread) => {
-        return (
-          thread.agentId === currentAgentId &&
-          !persistedIds.has(thread.threadId)
-        );
-      })
-      .map((thread) => {
-        return {
-          id: thread.threadId,
-          title: null,
-          agent: { id: thread.agentId, avatarUrl: null },
-          createdAt: thread.createdAt,
-          updatedAt: thread.createdAt,
-          running: thread.running,
-        };
-      });
-
-    const mergedThreads = mergeMissingSidebarThreads(
-      [...persisted, ...extraPersisted],
-      optimisticItems,
-    );
-
+    const mergedThreads = [...persisted, ...extraPersisted];
     const mergedThreadIds = new Set(
-      mergedThreads.map((thread) => {
+      [...persisted, ...extraPersisted].map((thread) => {
         return thread.id;
       }),
     );

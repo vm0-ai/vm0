@@ -6,7 +6,7 @@ import {
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage as baseDetachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
@@ -67,6 +67,12 @@ const THREAD_TITLE = "GEO pricing research";
 const USER_MESSAGE = "Summarize the launch plan";
 const ASSISTANT_MESSAGE = "Here is the result";
 
+function detachedSetupPage(
+  options: Parameters<typeof baseDetachedSetupPage>[0],
+): void {
+  baseDetachedSetupPage(options);
+}
+
 function prepareDefaultAgent(): void {
   context.mocks.data.team([
     {
@@ -101,23 +107,42 @@ function mockCurrentThreadDetail(): void {
 }
 
 function mockSidebarThread(): void {
+  const thread = {
+    id: THREAD_ID,
+    title: THREAD_TITLE,
+    agent: { id: AGENT_ID, avatarUrl: null },
+    createdAt: "2026-03-10T00:00:00Z",
+    updatedAt: "2026-03-10T00:00:02Z",
+    running: false,
+    pinnedAt: null,
+  };
   context.mocks.api(chatThreadsContract.list, ({ respond }) => {
     return respond(200, {
       pinned: [],
-      threads: [
-        {
-          id: THREAD_ID,
-          title: THREAD_TITLE,
-          agent: { id: AGENT_ID, avatarUrl: null },
-          createdAt: "2026-03-10T00:00:00Z",
-          updatedAt: "2026-03-10T00:00:02Z",
-          running: false,
-          pinnedAt: null,
-        },
-      ],
+      threads: [thread],
       hasMore: false,
       nextCursor: null,
     });
+  });
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: [
+        {
+          id: thread.id,
+          agentId: thread.agent.id,
+          title: thread.title,
+          sortAt: thread.updatedAt,
+          createdAt: thread.createdAt,
+          updatedAt: thread.updatedAt,
+          pinnedAt: thread.pinnedAt,
+          renamedAt: null,
+        },
+      ],
+      latestEventId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
   });
 }
 

@@ -1,14 +1,9 @@
 import { command } from "ccstate";
-import {
-  chatThreadEventSourcingEnabled$,
-  currentChatAgentId$,
-  setChatAgentId$,
-} from "../agent-chat.ts";
+import { currentChatAgentId$, setChatAgentId$ } from "../agent-chat.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { resetSignal } from "../utils.ts";
 import { createIdbCachedDataSource } from "./idb-cached-chat-thread-data-source.ts";
-import { optimisticChatThread$ } from "./optimistic-chat-thread-state.ts";
 
 const resetSyncPrimarySignal$ = resetSignal();
 
@@ -38,11 +33,7 @@ export const syncPrimaryThread$ = command(
 
     // Initial title, set synchronously so the document tab updates on the
     // very first frame after the pane switch.
-    const optimistic = get(chatThreadEventSourcingEnabled$)
-      ? null
-      : get(optimisticChatThread$);
-    const isOptimistic = optimistic?.threadId === threadId;
-    set(updateDocumentTitle$, isOptimistic ? "New chat" : "Chat");
+    set(updateDocumentTitle$, "Chat");
 
     const dataSource = createIdbCachedDataSource(threadId);
 

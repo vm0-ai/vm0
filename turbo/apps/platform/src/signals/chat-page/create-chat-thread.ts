@@ -527,13 +527,10 @@ function createThreadMeta(
 ) {
   const eventDrivenThreadMeta$ = eventDrivenChatThreadMeta(threadId);
   return computed(async (get): Promise<ThreadMeta | null> => {
-    if (
-      get(featureSwitch$)[FeatureSwitchKey.ChatThreadEventSourcing] ??
-      false
-    ) {
-      return await get(eventDrivenThreadMeta$);
+    const eventMeta = await get(eventDrivenThreadMeta$);
+    if (eventMeta) {
+      return eventMeta;
     }
-
     const threadData = await get(threadData$);
     return threadData ? threadMetaFromThreadData(threadData) : null;
   });

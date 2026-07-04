@@ -4,6 +4,7 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorType,
   CONNECTOR_TYPES,
+  connectorDisplayCategoryMetadataForItems,
 } from "@vm0/connectors/connectors";
 import type {
   ConnectorExternalCodeSessionStartResponse,
@@ -435,7 +436,11 @@ export const apiConnectorsHandlers = [
   }),
 
   mockApi(zeroConnectorCatalogContract.status, ({ respond }) => {
-    return respond(200, { connectors: mockConnectorCatalogStatus() });
+    const connectors = mockConnectorCatalogStatus();
+    return respond(200, {
+      connectors,
+      categoryMetadata: connectorDisplayCategoryMetadataForItems(connectors),
+    });
   }),
 
   mockApi(

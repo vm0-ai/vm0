@@ -4,7 +4,7 @@ import type {
   ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { formatRelativeTime } from "../../../../lib/domain/schedule-utils";
-import { formatDurationSeconds } from "../../automation/duration";
+import { formatDurationSeconds } from "../../shared/duration";
 
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;

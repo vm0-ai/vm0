@@ -1,35 +1,60 @@
 import { command, computed, state } from "ccstate";
-import {
-  CONNECTOR_DISPLAY_CATEGORY_GROUPS,
-  CONNECTOR_DISPLAY_CATEGORY_META,
-  CONNECTOR_DISPLAY_CATEGORY_ORDER,
-  type ConnectorDisplayCategory,
-  type ConnectorDisplayCategoryGroup,
-} from "@vm0/connectors/connectors";
+import type { PublicConnectorCatalogCategoryMetadata } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 
 export interface ConnectorCategorySection<T> {
-  category: ConnectorDisplayCategory;
+  category: string;
   label: string;
   menuLabel: string;
+  groupId: string | null;
   connectors: T[];
 }
 
 export interface ConnectorCategoryGroup<T> {
-  id: ConnectorDisplayCategory | ConnectorDisplayCategoryGroup;
+  id: string;
   kind: "category" | "group";
   label: string;
   menuLabel: string;
   sections: [ConnectorCategorySection<T>, ...ConnectorCategorySection<T>[]];
 }
 
-export function groupConnectorsByCategory<
+function fallbackCategoryLabel(category: string): string {
+  const label = category
+    .split(/[-_\s]+/)
+    .filter((part) => {
+      return part.length > 0;
+    })
+    .map((part) => {
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join(" ");
+  return label || "Other";
+}
+
+function sortedCategoryConnectors<
   T extends {
-    category: ConnectorDisplayCategory;
     connected: boolean;
     label: string;
   },
->(connectors: readonly T[]): ConnectorCategoryGroup<T>[] {
-  const grouped = new Map<ConnectorDisplayCategory, T[]>();
+>(items: readonly T[]): T[] {
+  return [...items].sort((a, b) => {
+    if (a.connected !== b.connected) {
+      return a.connected ? -1 : 1;
+    }
+    return a.label.localeCompare(b.label);
+  });
+}
+
+export function groupConnectorsByCategory<
+  T extends {
+    category: string;
+    connected: boolean;
+    label: string;
+  },
+>(
+  connectors: readonly T[],
+  categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined,
+): ConnectorCategoryGroup<T>[] {
+  const grouped = new Map<string, T[]>();
 
   for (const connector of connectors) {
     const items = grouped.get(connector.category);
@@ -40,34 +65,56 @@ export function groupConnectorsByCategory<
     }
   }
 
-  const categorySections = CONNECTOR_DISPLAY_CATEGORY_ORDER.flatMap(
-    (category) => {
-      const items = grouped.get(category);
+  const groupedCategoryIds = new Set<string>();
+  const categorySections: ConnectorCategorySection<T>[] =
+    categoryMetadata?.categories.flatMap((category) => {
+      if (groupedCategoryIds.has(category.id)) {
+        return [];
+      }
+      const items = grouped.get(category.id);
       if (!items || items.length === 0) {
         return [];
       }
-      const sorted = [...items].sort((a, b) => {
-        if (a.connected !== b.connected) {
-          return a.connected ? -1 : 1;
-        }
-        return a.label.localeCompare(b.label);
-      });
+      groupedCategoryIds.add(category.id);
       return [
         {
-          category,
-          label: CONNECTOR_DISPLAY_CATEGORY_META[category].label,
-          menuLabel: CONNECTOR_DISPLAY_CATEGORY_META[category].menuLabel,
-          connectors: sorted,
+          category: category.id,
+          label: category.label,
+          menuLabel: category.menuLabel,
+          groupId: category.groupId,
+          connectors: sortedCategoryConnectors(items),
         },
       ];
-    },
-  );
+    }) ?? [];
+
+  for (const [category, items] of grouped) {
+    if (groupedCategoryIds.has(category)) {
+      continue;
+    }
+    const label = fallbackCategoryLabel(category);
+    categorySections.push({
+      category,
+      label,
+      menuLabel: label,
+      groupId: null,
+      connectors: sortedCategoryConnectors(items),
+    });
+  }
 
   const groups: ConnectorCategoryGroup<T>[] = [];
+  const groupMetadata = new Map(
+    categoryMetadata?.groups.map((group) => {
+      return [group.id, group];
+    }) ?? [],
+  );
+  const categorySectionIds = new Set(
+    categorySections.map((section) => {
+      return section.category;
+    }),
+  );
 
   for (const section of categorySections) {
-    const meta = CONNECTOR_DISPLAY_CATEGORY_META[section.category];
-    if (!meta.group) {
+    if (!section.groupId || categorySectionIds.has(section.groupId)) {
       groups.push({
         id: section.category,
         kind: "category",
@@ -79,18 +126,22 @@ export function groupConnectorsByCategory<
     }
 
     const existingGroup = groups.find((group) => {
-      return group.kind === "group" && group.id === meta.group;
+      return group.kind === "group" && group.id === section.groupId;
     });
     if (existingGroup) {
       existingGroup.sections.push(section);
       continue;
     }
 
+    const metadata = groupMetadata.get(section.groupId);
+    const label = metadata?.label ?? fallbackCategoryLabel(section.groupId);
+    const menuLabel =
+      metadata?.menuLabel ?? fallbackCategoryLabel(section.groupId);
     groups.push({
-      id: meta.group,
+      id: section.groupId,
       kind: "group",
-      label: CONNECTOR_DISPLAY_CATEGORY_GROUPS[meta.group].label,
-      menuLabel: CONNECTOR_DISPLAY_CATEGORY_GROUPS[meta.group].menuLabel,
+      label,
+      menuLabel,
       sections: [section],
     });
   }

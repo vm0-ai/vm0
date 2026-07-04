@@ -556,8 +556,6 @@ export {
   cronCleanupSandboxesContract,
   cronDrainEmailOutboxContract,
   cronDrainEmailOutboxResponseSchema,
-  cronExecuteAutomationsContract,
-  cronExecuteAutomationsResponseSchema,
   cronExecuteWorkflowTriggersContract,
   cronRenewGmailWatchesContract,
   cronRenewGmailWatchesResponseSchema,
@@ -581,7 +579,6 @@ export {
   type CronCompactChatThreadSnapshotsContract,
   type CronCleanupSandboxesContract,
   type CronDrainEmailOutboxContract,
-  type CronExecuteAutomationsContract,
   type CronProcessUsageEventsContract,
   type CronReconcileBillingEntitlementsContract,
   type CronRenewGmailWatchesContract,
@@ -1267,6 +1264,16 @@ export {
   type ZeroFeatureSwitchesContract,
 } from "./zero-feature-switches";
 export { zeroMemoryContract, type ZeroMemoryContract } from "./zero-memory";
+export {
+  zeroRelationshipsContract,
+  relationshipRecordSchema,
+  relationshipResolveResponseSchema,
+  relationshipSearchResponseSchema,
+  type RelationshipRecord,
+  type RelationshipResolveResponse,
+  type RelationshipSearchResponse,
+  type ZeroRelationshipsContract,
+} from "./zero-relationships";
 export {
   zeroMemoryDevRefreshContract,
   type MemoryDevRefreshResponse,

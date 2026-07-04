@@ -45,7 +45,7 @@ import {
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
-  detachedSetupPage,
+  detachedSetupPage as baseDetachedSetupPage,
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
@@ -57,10 +57,17 @@ import {
   sendQueuedMessage,
   sendMessageInUI,
   splitChatThreadListResponse,
+  threadListSnapshot,
 } from "./chat-test-helpers.ts";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../workflow-chat-prompts.ts";
 
 const context = testContext();
+
+function detachedSetupPage(
+  options: Parameters<typeof baseDetachedSetupPage>[0],
+): void {
+  baseDetachedSetupPage(options);
+}
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000701";
@@ -68,6 +75,19 @@ const GITHUB_PR_THREAD_ID = "b0000000-0000-4000-a000-000000000702";
 const FOLLOWUP_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
 const HISTORY_THREAD_ID = "b0000000-0000-4000-a000-000000000705";
 const EVENT_SOURCED_RENAME_THREAD_ID = "b0000000-0000-4000-a000-000000000706";
+const KEYBOARD_PREV_THREAD_ID = "b0000000-0000-4000-a000-000000000707";
+const KEYBOARD_CURRENT_THREAD_ID = "b0000000-0000-4000-a000-000000000708";
+const KEYBOARD_NEXT_THREAD_ID = "b0000000-0000-4000-a000-000000000709";
+const SERVER_QUEUED_VISIBLE_THREAD_ID = "b0000000-0000-4000-a000-000000000710";
+const SERVER_QUEUED_RESOLVED_THREAD_ID = "b0000000-0000-4000-a000-000000000711";
+const SERVER_QUEUED_RUN_THREAD_ID = "b0000000-0000-4000-a000-000000000712";
+const RUNNING_THREAD_ID = "b0000000-0000-4000-a000-000000000713";
+const COMPLETED_THREAD_ID = "b0000000-0000-4000-a000-000000000714";
+const COMPLETED_MARKER_ONLY_THREAD_ID = "b0000000-0000-4000-a000-000000000715";
+const COMPUTER_USE_SELECTION_THREAD_ID = "b0000000-0000-4000-a000-000000000716";
+const COMPUTER_USE_SEND_THREAD_ID = "b0000000-0000-4000-a000-000000000717";
+const COMPUTER_USE_SAVED_SELECTION_THREAD_ID =
+  "b0000000-0000-4000-a000-000000000718";
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
 function replaceNavigatorProperty(property: string, value: unknown): void {
@@ -302,19 +322,19 @@ function mockKeyboardNavigationThreads({
 } = {}): void {
   const threadFixtures = [
     {
-      id: "keyboard-prev-thread",
+      id: KEYBOARD_PREV_THREAD_ID,
       title: "Previous keyboard thread",
       detailTitle: "Previous keyboard thread",
       message: "Previous thread launch note",
     },
     {
-      id: "keyboard-current-thread",
+      id: KEYBOARD_CURRENT_THREAD_ID,
       title: currentTitle,
       detailTitle: currentDetailTitle,
       message: "Current thread launch note",
     },
     {
-      id: "keyboard-next-thread",
+      id: KEYBOARD_NEXT_THREAD_ID,
       title: "Next keyboard thread",
       detailTitle: "Next keyboard thread",
       message: "Next thread launch note",
@@ -325,24 +345,33 @@ function mockKeyboardNavigationThreads({
       return [thread.id, thread];
     }),
   );
+  const threadList = threadFixtures.map((thread, index) => {
+    const sortMinute = threadFixtures.length - index - 1;
+    return {
+      id: thread.id,
+      title: thread.title,
+      agent: { id: AGENT_ID, avatarUrl: null },
+      createdAt: "2026-06-01T00:00:00Z",
+      updatedAt: `2026-06-01T00:0${sortMinute}:00Z`,
+      running: false,
+      pinnedAt: null,
+    };
+  });
 
   context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(
-      200,
-      splitChatThreadListResponse(
-        threadFixtures.map((thread, index) => {
-          return {
-            id: thread.id,
-            title: thread.title,
-            agent: { id: AGENT_ID, avatarUrl: null },
-            createdAt: "2026-06-01T00:00:00Z",
-            updatedAt: `2026-06-01T00:0${index}:00Z`,
-            running: false,
-            pinnedAt: null,
-          };
-        }),
-      ),
-    );
+    return respond(200, splitChatThreadListResponse(threadList));
+  });
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: threadListSnapshot(threadList),
+      latestEventId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+    return respond(200, { threadIds: [] });
   });
   context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
     const thread = byId.get(params.id);
@@ -482,7 +511,7 @@ function mockWorkflowTriggerUpdate(
 function mockServerQueuedThreadStories(): void {
   const threads = [
     {
-      id: "thread-server-queued-visible",
+      id: SERVER_QUEUED_VISIBLE_THREAD_ID,
       title: "Server queued run",
       messages: [
         {
@@ -504,7 +533,7 @@ function mockServerQueuedThreadStories(): void {
       activeRunIds: ["run-server-queued-visible"],
     },
     {
-      id: "thread-server-queued-resolved",
+      id: SERVER_QUEUED_RESOLVED_THREAD_ID,
       title: "Resolved server queue",
       messages: [
         {
@@ -546,6 +575,17 @@ function mockServerQueuedThreadStories(): void {
       return [thread.id, thread];
     }),
   );
+  const threadList = threads.map((thread, index) => {
+    return {
+      id: thread.id,
+      title: thread.title,
+      agent: { id: AGENT_ID, avatarUrl: null },
+      createdAt: "2026-06-09T10:00:00Z",
+      updatedAt: `2026-06-09T10:0${index}:00Z`,
+      running: thread.activeRunIds.length > 0,
+      pinnedAt: null,
+    };
+  });
 
   context.mocks.data.team([
     {
@@ -559,22 +599,13 @@ function mockServerQueuedThreadStories(): void {
     },
   ]);
   context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(
-      200,
-      splitChatThreadListResponse(
-        threads.map((thread, index) => {
-          return {
-            id: thread.id,
-            title: thread.title,
-            agent: { id: AGENT_ID, avatarUrl: null },
-            createdAt: "2026-06-09T10:00:00Z",
-            updatedAt: `2026-06-09T10:0${index}:00Z`,
-            running: thread.activeRunIds.length > 0,
-            pinnedAt: null,
-          };
-        }),
-      ),
-    );
+    return respond(200, splitChatThreadListResponse(threadList));
+  });
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: threadListSnapshot(threadList),
+      latestEventId: null,
+    });
   });
   context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
     const thread = byId.get(params.id);
@@ -1648,7 +1679,7 @@ describe("chat lifecycle", () => {
 
   it("clears thinking when only the latest completed marker is loaded after an older unterminated run", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-completed-marker-only-after-stale-run",
+      threadId: COMPLETED_MARKER_ONLY_THREAD_ID,
       activeRunIds: [],
       chatMessages: [
         {
@@ -1687,7 +1718,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-completed-marker-only-after-stale-run",
+      path: `/chats/${COMPLETED_MARKER_ONLY_THREAD_ID}`,
     });
 
     await waitFor(() => {
@@ -2430,7 +2461,7 @@ describe("chat lifecycle", () => {
     const interrupts: string[] = [];
     const recalls: string[] = [];
     mockChatLifecycle(context, {
-      threadId: "thread-server-queued-run",
+      threadId: SERVER_QUEUED_RUN_THREAD_ID,
       chatMessages: [
         {
           id: "msg-server-queued-user",
@@ -2466,7 +2497,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-server-queued-run",
+      path: `/chats/${SERVER_QUEUED_RUN_THREAD_ID}`,
     });
 
     await waitFor(() => {
@@ -2495,7 +2526,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-server-queued-visible",
+      path: "/chats/b0000000-0000-4000-a000-000000000710",
     });
 
     await waitFor(() => {
@@ -3396,7 +3427,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
       featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
@@ -3480,7 +3511,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
     await waitFor(() => {
@@ -3502,7 +3533,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
     await waitFor(() => {
@@ -3548,7 +3579,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
     await waitFor(() => {
@@ -3577,7 +3608,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
       featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
@@ -3628,7 +3659,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
     await waitFor(() => {
@@ -3666,7 +3697,7 @@ describe("chat lifecycle", () => {
     });
     expect(
       within(reopenedDialog).getByPlaceholderText("Chat title"),
-    ).toHaveValue("Current keyboard thread");
+    ).toHaveValue("Renamed keyboard thread");
   });
 
   it("renames the event-sourced current chat while thread detail is pending", async () => {
@@ -3724,7 +3755,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${EVENT_SOURCED_RENAME_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEventSourcing]: true },
     });
 
     const threadRegion = await screen.findByLabelText("Chat thread");
@@ -3786,7 +3816,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread?sidebar=keyboard-next-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708?sidebar=b0000000-0000-4000-a000-000000000709",
     });
 
     await waitFor(() => {
@@ -3814,7 +3844,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread?sidebar=keyboard-next-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708?sidebar=b0000000-0000-4000-a000-000000000709",
     });
 
     await waitFor(() => {
@@ -3861,7 +3891,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread?sidebar=keyboard-next-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708?sidebar=b0000000-0000-4000-a000-000000000709",
       featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
@@ -3888,7 +3918,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
-        "keyboard-next-thread",
+        "b0000000-0000-4000-a000-000000000709",
         "✅ Next keyboard thread",
       );
     });
@@ -3908,7 +3938,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
       featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
@@ -3937,7 +3967,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
-        "keyboard-current-thread",
+        "b0000000-0000-4000-a000-000000000708",
         "✅ Current keyboard thread",
       );
     });
@@ -3957,7 +3987,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
       featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
@@ -3978,7 +4008,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
-        "keyboard-current-thread",
+        "b0000000-0000-4000-a000-000000000708",
         "✅ Current keyboard thread",
       );
     });
@@ -3999,7 +4029,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
       featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
@@ -4020,7 +4050,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
-        "keyboard-current-thread",
+        "b0000000-0000-4000-a000-000000000708",
         "✅ Current keyboard thread",
       );
     });
@@ -4042,7 +4072,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
       featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
@@ -4069,7 +4099,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
       featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
@@ -4129,7 +4159,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
       featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
@@ -4162,7 +4192,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
-        "keyboard-current-thread",
+        "b0000000-0000-4000-a000-000000000708",
         "✅ Current keyboard thread",
       );
     });
@@ -4184,7 +4214,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
       featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
@@ -4203,7 +4233,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
-        "keyboard-current-thread",
+        "b0000000-0000-4000-a000-000000000708",
         "Current keyboard thread",
       );
     });
@@ -4223,7 +4253,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/keyboard-current-thread",
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
       featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
@@ -6275,7 +6305,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
   it("shows online computers in the chat composer", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-selection";
+    const threadId = COMPUTER_USE_SELECTION_THREAD_ID;
     const lifecycle = mockChatLifecycle(context, {
       threadId,
       computerUseHostId: "22222222-2222-4222-8222-222222222222",
@@ -6567,7 +6597,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
   it("persists the selected Computer Use host before sending", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-send";
+    const threadId = COMPUTER_USE_SEND_THREAD_ID;
     const hostId = "33333333-3333-4333-8333-333333333333";
     let sendCount = 0;
     let sentComputerUseHostId: string | null | undefined;
@@ -6645,7 +6675,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
   it("shows and clears a saved Computer Use host selection", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-saved-selection";
+    const threadId = COMPUTER_USE_SAVED_SELECTION_THREAD_ID;
     const hostId = "11111111-1111-4111-8111-111111111111";
     let sentComputerUseHostId: string | null | undefined;
     let updatedComputerUseHostId: string | null | undefined;
@@ -7308,29 +7338,36 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
   });
 
   it("switches sessions without stale running or completed messages", async () => {
+    const threads = [
+      {
+        id: RUNNING_THREAD_ID,
+        title: "Running thread",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        running: true,
+      },
+      {
+        id: COMPLETED_THREAD_ID,
+        title: "Completed thread",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:01:00Z",
+        updatedAt: "2026-03-10T00:01:00Z",
+        running: false,
+      },
+    ];
     context.mocks.api(chatThreadsContract.list, ({ respond }) => {
       return respond(200, {
         pinned: [],
-        threads: [
-          {
-            id: "thread-running",
-            title: "Running thread",
-            agent: { id: AGENT_ID, avatarUrl: null },
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-            running: true,
-          },
-          {
-            id: "thread-completed",
-            title: "Completed thread",
-            agent: { id: AGENT_ID, avatarUrl: null },
-            createdAt: "2026-03-10T00:01:00Z",
-            updatedAt: "2026-03-10T00:01:00Z",
-            running: false,
-          },
-        ],
+        threads,
         hasMore: false,
         nextCursor: null,
+      });
+    });
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      return respond(200, {
+        chatThreads: threadListSnapshot(threads),
+        latestEventId: null,
       });
     });
     context.mocks.api(
@@ -7339,7 +7376,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         if (query.sinceId) {
           return respond(200, { messages: [] });
         }
-        if (params.threadId === "thread-running") {
+        if (params.threadId === RUNNING_THREAD_ID) {
           return respond(200, {
             messages: [
               {
@@ -7378,7 +7415,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       },
     );
     context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      const running = params.id === "thread-running";
+      const running = params.id === RUNNING_THREAD_ID;
       return respond(200, {
         id: params.id,
         title: null,
@@ -7437,7 +7474,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       return respond(200, { position: 0, total: 0 });
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-running" });
+    detachedSetupPage({ context, path: `/chats/${RUNNING_THREAD_ID}` });
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
@@ -7445,7 +7482,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
     const completedThreadLink = await waitFor(() => {
       return queryAllByRoleFast("link").find((element) => {
-        return element.getAttribute("href") === "/chats/thread-completed";
+        return element.getAttribute("href") === `/chats/${COMPLETED_THREAD_ID}`;
       });
     });
     if (!completedThreadLink) {
@@ -7527,9 +7564,6 @@ describe("initial thinking indicator", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
-      },
     });
 
     const label = await screen.findByLabelText("Reading the prompt");
@@ -7598,20 +7632,23 @@ describe("initial thinking indicator", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
-      },
     });
 
     const label = await screen.findByLabelText(thinking);
+    const sawFollowUpLine = () => {
+      if (label.textContent) {
+        displayedLabels.add(label.textContent);
+      }
+      return Array.from(displayedLabels).some((value) => {
+        return value === "D" || value === "DE" || value === "DEF";
+      });
+    };
+    await waitFor(() => {
+      expect(sawFollowUpLine()).toBeTruthy();
+    });
     await waitFor(() => {
       expect(label).toHaveTextContent(/^G$/);
     });
-    expect(
-      Array.from(displayedLabels).some((value) => {
-        return value === "D" || value === "DE" || value === "DEF";
-      }),
-    ).toBeTruthy();
     expect(displayedLabels.has("...EFG")).toBeFalsy();
     expect(label).not.toHaveTextContent(thinking);
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
@@ -7651,9 +7688,6 @@ describe("initial thinking indicator", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
-      },
     });
 
     const label = await screen.findByLabelText("Reviewing your request");
@@ -7699,9 +7733,6 @@ describe("initial thinking indicator", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
-      },
     });
 
     await screen.findByText("Here is the checklist.");

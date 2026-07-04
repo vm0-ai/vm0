@@ -170,11 +170,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
-  [FeatureSwitchKey.DataExport]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the data export option in account menu",
-    enabled: true,
-  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -279,6 +274,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.RelationshipMemory]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show the experimental relationship memory tab in the Memory page for org-user-scoped relationship context.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.HtmlArtifactCommentEditing]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -330,18 +332,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show Codex and Claude Code personal subscription usage in the Zero sidebar footer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatInitialThinkingIndicator]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show fast generated status text in the web chat thinking indicator.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.ChatThreadEventSourcing]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Render the chat sidebar from local chat thread snapshots plus lifecycle events instead of the paged thread list response.",
-    enabled: false,
   },
   [FeatureSwitchKey.ChatThreadLatestUserMessageScrollAnchor]: {
     maintainer: "ethan@vm0.ai",

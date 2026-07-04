@@ -185,19 +185,6 @@ export {
   completePhoneFileUpload,
 } from "./domains/integrations-phone";
 
-// Domain modules - Automations
-export {
-  createAutomation,
-  listAutomations,
-  showAutomation,
-  updateAutomation,
-  deleteAutomation,
-  enableAutomation,
-  disableAutomation,
-  runAutomation,
-  updateAutomationTrigger,
-} from "./domains/automations";
-
 // Domain modules - Zero Runs
 export { getZeroRunAgentEvents } from "./domains/zero-runs";
 
@@ -210,6 +197,12 @@ export {
   renameZeroChatThread,
   searchZeroChat,
 } from "./domains/zero-chat";
+
+// Domain modules - Zero Relationships
+export {
+  resolveZeroRelationship,
+  searchZeroRelationships,
+} from "./domains/zero-relationships";
 
 // Domain modules - Logs
 export {

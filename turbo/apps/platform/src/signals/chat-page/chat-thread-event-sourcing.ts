@@ -5,7 +5,6 @@ import {
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   InitClientArgs,
   InitClientReturn,
@@ -17,7 +16,6 @@ import { createIdbChatThreadEventStores } from "../external/idb-chat-thread-even
 import { logger } from "../log.ts";
 import { reloadChatThreadsCounter$ } from "../chat-thread-list-reload.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { settle, withCleanup } from "../utils.ts";
 import { replayChatThreadEvents } from "./chat-thread-event-replay.ts";
 
@@ -91,8 +89,11 @@ async function syncChatThreadEvents(
 ): Promise<ChatThreadSnapshotData | null> {
   const existingSnapshot = await store.readStore.readSnapshot(signal);
   let activeSnapshot = existingSnapshot;
-  let cursor = await store.readStore.readLatestEventId(signal);
-  if (!activeSnapshot) {
+  let cursor =
+    (await store.readStore.readLatestEventId(signal)) ??
+    activeSnapshot?.latestEventId ??
+    null;
+  if (!activeSnapshot || cursor === null) {
     activeSnapshot = await replaceFromRemoteSnapshot(
       store.writeStore,
       client,
@@ -146,7 +147,7 @@ const chatThreadEventData$ = computed(
 
     const cachedSnapshot = await store.readStore.readSnapshot();
     let syncedSnapshot: ChatThreadSnapshotData | null = null;
-    if (!cachedSnapshot) {
+    if (!cachedSnapshot || cachedSnapshot.latestEventId === null) {
       const client = get(zeroClient$)(chatThreadsContract);
       syncedSnapshot = await syncChatThreadEvents(store, client);
     }
@@ -196,10 +197,14 @@ const syncEventDrivenChatThreads$ = command(
 
 const refreshEventDrivenActiveRunChatThreadIds$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    if (
-      !get(featureSwitch$)[FeatureSwitchKey.ChatThreadEventSourcing] ||
-      get(activeRunChatThreadIdsRefreshInFlightState$)
-    ) {
+    if (get(activeRunChatThreadIdsRefreshInFlightState$)) {
+      return;
+    }
+
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    if (!clerk.user || !clerk.organization) {
+      set(activeRunChatThreadIdsState$, new Set());
       return;
     }
 
@@ -226,7 +231,10 @@ const refreshEventDrivenActiveRunChatThreadIds$ = command(
 
 export const subscribeEventDrivenChatThreads$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    if (!get(featureSwitch$)[FeatureSwitchKey.ChatThreadEventSourcing]) {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    if (!clerk.user || !clerk.organization) {
+      set(activeRunChatThreadIdsState$, new Set());
       return;
     }
 

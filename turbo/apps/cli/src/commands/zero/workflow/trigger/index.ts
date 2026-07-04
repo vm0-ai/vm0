@@ -17,7 +17,7 @@ import {
   updateWorkflowTrigger,
 } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
-import { parseDurationSeconds } from "../../automation/duration";
+import { parseDurationSeconds } from "../../shared/duration";
 import {
   resolveWorkflowRef,
   type WorkflowRefOptions,

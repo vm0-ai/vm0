@@ -9,6 +9,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 
 import { setupPage } from "../../../__tests__/page-helper.ts";
+import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { chatThreads$, setChatAgentId$ } from "../../agent-chat.ts";
 import { renameDialogInput$ } from "../../zero-page/zero-sidebar-state.ts";
@@ -117,6 +118,32 @@ describe("chat thread event sourcing local-first list", () => {
     idbThreadEventStoreMock.reset();
   });
 
+  it("does not start remote event sync on signed-out pages", async () => {
+    let activeIdsRequests = 0;
+    let eventsRequests = 0;
+    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+      activeIdsRequests += 1;
+      return respond(200, { threadIds: [] });
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      eventsRequests += 1;
+      return respond(200, { events: [], hasMore: false });
+    });
+
+    await setupPage({
+      context,
+      path: "/sign-in",
+      withoutRender: true,
+      user: null,
+      session: null,
+      org: { activeOrg: null, memberships: [] },
+    });
+
+    expect(activeIdsRequests).toBe(0);
+    expect(eventsRequests).toBe(0);
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+  });
+
   it("renders cached thread list data while event sync is blocked", async () => {
     context.store.set(setChatAgentId$, AGENT_ID);
 
@@ -183,7 +210,6 @@ describe("chat thread event sourcing local-first list", () => {
         activeOrg: { id: "org_1", name: "Test Org" },
         memberships: [{ id: "org_1" }],
       },
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEventSourcing]: true },
     });
 
     await vi.waitFor(() => {
@@ -279,7 +305,6 @@ describe("chat thread event sourcing local-first list", () => {
       },
       featureSwitches: {
         [FeatureSwitchKey.AgentUnreadIndicators]: true,
-        [FeatureSwitchKey.ChatThreadEventSourcing]: true,
       },
     });
 
@@ -327,7 +352,6 @@ describe("chat thread event sourcing local-first list", () => {
         activeOrg: { id: "org_1", name: "Test Org" },
         memberships: [{ id: "org_1" }],
       },
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEventSourcing]: true },
     });
 
     const { draft } = context.store.set(ensureDraft$, LEGACY_PENDING_THREAD_ID);
@@ -434,7 +458,6 @@ describe("chat thread event sourcing local-first list", () => {
         activeOrg: { id: "org_1", name: "Test Org" },
         memberships: [{ id: "org_1" }],
       },
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEventSourcing]: true },
     });
 
     detailRequests = 0;

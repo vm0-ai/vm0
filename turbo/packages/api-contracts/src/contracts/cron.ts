@@ -96,7 +96,7 @@ const cronSyncSkillsResponseSchema = z.object({
   total: z.number(),
 });
 
-const cronExecuteAutomationsResponseSchema = z.object({
+const cronExecuteWorkflowTriggersResponseSchema = z.object({
   success: z.literal(true),
   executed: z.number(),
   skipped: z.number(),
@@ -149,6 +149,13 @@ const cronSummarizeMemoryResponseSchema = z.union([
   cronSummarizeMemorySkippedResponseSchema,
   cronSummarizeMemorySummarizedResponseSchema,
 ]);
+
+const cronDrainRelationshipMemoryResponseSchema = z.object({
+  success: z.literal(true),
+  processed: z.number(),
+  failed: z.number(),
+  relationshipsUpdated: z.number(),
+});
 
 const cronRefreshSystemStoragePresignedUrlsResponseSchema = z.object({
   success: z.literal(true),
@@ -309,26 +316,13 @@ export const cronSyncSkillsContract = c.router({
   },
 });
 
-export const cronExecuteAutomationsContract = c.router({
-  execute: {
-    method: "GET",
-    path: "/api/cron/execute-automations",
-    headers: authHeadersSchema,
-    responses: {
-      200: cronExecuteAutomationsResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Execute due automation triggers",
-  },
-});
-
 export const cronExecuteWorkflowTriggersContract = c.router({
   execute: {
     method: "GET",
     path: "/api/cron/execute-workflow-triggers",
     headers: authHeadersSchema,
     responses: {
-      200: cronExecuteAutomationsResponseSchema,
+      200: cronExecuteWorkflowTriggersResponseSchema,
       401: apiErrorSchema,
     },
     summary: "Execute due workflow schedule triggers",
@@ -382,6 +376,19 @@ export const cronSummarizeMemoryContract = c.router({
   },
 });
 
+export const cronDrainRelationshipMemoryContract = c.router({
+  drain: {
+    method: "GET",
+    path: "/api/cron/drain-relationship-memory",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronDrainRelationshipMemoryResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Drain pending relationship memory sync jobs",
+  },
+});
+
 export const cronRefreshSystemStoragePresignedUrlsContract = c.router({
   refresh: {
     method: "GET",
@@ -407,6 +414,8 @@ export type CronAggregateInsightsContract =
 export type CronAggregateModelStatsContract =
   typeof cronAggregateModelStatsContract;
 export type CronSummarizeMemoryContract = typeof cronSummarizeMemoryContract;
+export type CronDrainRelationshipMemoryContract =
+  typeof cronDrainRelationshipMemoryContract;
 export type CronRefreshSystemStoragePresignedUrlsContract =
   typeof cronRefreshSystemStoragePresignedUrlsContract;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
@@ -414,8 +423,6 @@ export type CronComputerUseScreenshotCleanupContract =
   typeof cronComputerUseScreenshotCleanupContract;
 export type CronDrainEmailOutboxContract = typeof cronDrainEmailOutboxContract;
 export type CronSyncSkillsContract = typeof cronSyncSkillsContract;
-export type CronExecuteAutomationsContract =
-  typeof cronExecuteAutomationsContract;
 export type CronRenewGmailWatchesContract =
   typeof cronRenewGmailWatchesContract;
 export type CronRenewGoogleCalendarWatchesContract =
@@ -435,12 +442,13 @@ export {
   cronComputerUseScreenshotCleanupResponseSchema,
   cronDrainEmailOutboxResponseSchema,
   cronSyncSkillsResponseSchema,
-  cronExecuteAutomationsResponseSchema,
+  cronExecuteWorkflowTriggersResponseSchema,
   cronRenewGmailWatchesResponseSchema,
   cronRenewGoogleCalendarWatchesResponseSchema,
   cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema,
   cronAggregateInsightsResponseSchema,
   cronAggregateModelStatsResponseSchema,
   cronSummarizeMemoryResponseSchema,
+  cronDrainRelationshipMemoryResponseSchema,
   cronRefreshSystemStoragePresignedUrlsResponseSchema,
 };
