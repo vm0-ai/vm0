@@ -440,6 +440,9 @@ describe("team page navigation", () => {
     click(agentLink!);
 
     await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${researchAgentId}`);
+    });
+    await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Research Agent" }),
       ).toBeInTheDocument();
