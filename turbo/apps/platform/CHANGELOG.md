@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.554.0](https://github.com/vm0-ai/vm0/compare/app-v0.553.0...app-v0.554.0) (2026-07-04)
+
+
+### Features
+
+* roll out chat and memory switches to all orgs ([#20145](https://github.com/vm0-ai/vm0/issues/20145)) ([8cd0184](https://github.com/vm0-ai/vm0/commit/8cd0184b1227f36b76a3919f5a3574e96304d511))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.399.0
+
 ## [0.553.0](https://github.com/vm0-ai/vm0/compare/app-v0.552.1...app-v0.553.0) (2026-07-04)
 
 
