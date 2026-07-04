@@ -63,7 +63,7 @@ for (const root of checkedRoots) {
 }
 
 if (violations.length > 0) {
-  console.error(`Platform static asset lint failed.
+  process.stderr.write(`Platform static asset lint failed.
 
 These files look like UI illustrations, empty states, brand/logo images, connector/provider icons, or other build-stable png/webp/svg assets:
 
@@ -77,6 +77,7 @@ In platform code, reference the CDN asset with platformStaticAssetUrl("..."), or
 
   platformStaticAssetUrl("views/zero-page/assets/example-<hash>.webp")
 
-Only same-origin browser assets such as manifest or push-notification icons should be allowlisted here, with a narrow path-specific exception.`);
+Only same-origin browser assets such as manifest or push-notification icons should be allowlisted here, with a narrow path-specific exception.
+`);
   process.exit(1);
 }

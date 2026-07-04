@@ -391,11 +391,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
         {/* Logo Header */}
         <a href="/" className="absolute left-6 top-6 flex items-center gap-2">
           <img
-            src={
-              theme === "dark"
-                ? platformVm0LogoImg
-                : platformVm0LogoDarkImg
-            }
+            src={theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg}
             alt="VM0"
             width={82}
             height={20}

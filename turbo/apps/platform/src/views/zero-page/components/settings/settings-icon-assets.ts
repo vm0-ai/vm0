@@ -1,326 +1,463 @@
 import { platformStaticAssetUrl } from "../../../../lib/static-assets.ts";
 
 const SETTINGS_ICON_ASSET_PATHS = {
-  "adzuna": "views/zero-page/components/settings/icons/adzuna-dc78789bbbcd.svg",
-  "agentmail": "views/zero-page/components/settings/icons/agentmail-aabbd0730098.svg",
-  "agora": "views/zero-page/components/settings/icons/agora-e1ad121bb1d3.svg",
-  "ahrefs": "views/zero-page/components/settings/icons/ahrefs-f0a1878981ae.svg",
-  "airtable": "views/zero-page/components/settings/icons/airtable-eee466f3f35f.svg",
-  "alchemy": "views/zero-page/components/settings/icons/alchemy-52305d20dd90.svg",
-  "altium-365": "views/zero-page/components/settings/icons/altium-365-596dd870332f.svg",
-  "amadeus": "views/zero-page/components/settings/icons/amadeus-ae8f238ad1d3.svg",
-  "amplitude": "views/zero-page/components/settings/icons/amplitude-207cc9e7fc3d.svg",
-  "anthropic": "views/zero-page/components/settings/icons/anthropic-3fcfdf761a69.svg",
-  "anthropic-managed-agents": "views/zero-page/components/settings/icons/anthropic-managed-agents-3fcfdf761a69.svg",
-  "apify": "views/zero-page/components/settings/icons/apify-5c05851a5ece.svg",
-  "apollo": "views/zero-page/components/settings/icons/apollo-bf8302798dfb.svg",
-  "archer": "views/zero-page/components/settings/icons/archer-1f01e618583e.svg",
-  "ardent": "views/zero-page/components/settings/icons/ardent-ae05ebe263dc.svg",
-  "arga-labs": "views/zero-page/components/settings/icons/arga-labs-cbf8647380cd.png",
-  "armature": "views/zero-page/components/settings/icons/armature-1990741703fa.svg",
-  "asana": "views/zero-page/components/settings/icons/asana-693513c4245f.svg",
-  "ashby": "views/zero-page/components/settings/icons/ashby-93e690ec6d4c.svg",
-  "atlascloud": "views/zero-page/components/settings/icons/atlascloud-fc9fa3a12884.svg",
-  "atlassian": "views/zero-page/components/settings/icons/atlassian-316afc512581.svg",
-  "attio": "views/zero-page/components/settings/icons/attio-2ccc836df795.svg",
-  "aviationstack": "views/zero-page/components/settings/icons/aviationstack-e547c6f73453.svg",
-  "aws": "views/zero-page/components/settings/icons/aws-8ec381036030.svg",
-  "axiom": "views/zero-page/components/settings/icons/axiom-7657ffc69323.svg",
-  "azure": "views/zero-page/components/settings/icons/azure-a3fe212c8716.svg",
-  "base44": "views/zero-page/components/settings/icons/base44-8cc1e52c1775.svg",
-  "bedrock": "views/zero-page/components/settings/icons/bedrock-60e2c52cb4a2.svg",
-  "bentolabs-ai": "views/zero-page/components/settings/icons/bentolabs-ai-b3d6223fb7a9.png",
-  "bentoml": "views/zero-page/components/settings/icons/bentoml-2f0b56c3ad28.svg",
-  "bfl": "views/zero-page/components/settings/icons/bfl-c8dada65dc9e.svg",
-  "bitrefill": "views/zero-page/components/settings/icons/bitrefill-b8e5facc9514.svg",
-  "bitrix": "views/zero-page/components/settings/icons/bitrix-6bdd38c9a309.svg",
-  "bland": "views/zero-page/components/settings/icons/bland-8d7e921c413f.svg",
-  "bloom": "views/zero-page/components/settings/icons/bloom-4c6f7ac5f465.svg",
-  "box": "views/zero-page/components/settings/icons/box-5658678ffc4b.svg",
-  "brave-search": "views/zero-page/components/settings/icons/brave-search-66814699ff97.svg",
-  "brevo": "views/zero-page/components/settings/icons/brevo-e6864f00fca7.svg",
-  "brex": "views/zero-page/components/settings/icons/brex-072214bc1f9d.svg",
-  "bright-data": "views/zero-page/components/settings/icons/bright-data-3168ae4200e9.svg",
-  "browser-use": "views/zero-page/components/settings/icons/browser-use-4aa74d615f7c.svg",
-  "browserbase": "views/zero-page/components/settings/icons/browserbase-47febbf5088a.svg",
-  "browserless": "views/zero-page/components/settings/icons/browserless-ba6f9d5b55fa.svg",
-  "browserstack": "views/zero-page/components/settings/icons/browserstack-af1e6416e878.svg",
-  "bubblemaps": "views/zero-page/components/settings/icons/bubblemaps-229d049c9345.svg",
-  "buffer": "views/zero-page/components/settings/icons/buffer-c08c7f7a0ce3.svg",
-  "builtwith": "views/zero-page/components/settings/icons/builtwith-6f78c4278b1c.svg",
-  "cal-com": "views/zero-page/components/settings/icons/cal-com-a02b7c08ed70.svg",
-  "calendly": "views/zero-page/components/settings/icons/calendly-a74d2624c450.svg",
-  "canva": "views/zero-page/components/settings/icons/canva-0951b8855de4.svg",
-  "chatglm": "views/zero-page/components/settings/icons/chatglm-7e6a9cb772fa.svg",
-  "chatwoot": "views/zero-page/components/settings/icons/chatwoot-6d8e00d88204.svg",
-  "checkr": "views/zero-page/components/settings/icons/checkr-87a016320b17.svg",
-  "chert": "views/zero-page/components/settings/icons/chert-784986ecd9a9.png",
-  "clado": "views/zero-page/components/settings/icons/clado-4e5752a6bccf.svg",
-  "claude-code": "views/zero-page/components/settings/icons/claude-code-03a5132e24ca.svg",
-  "clearbit": "views/zero-page/components/settings/icons/clearbit-a81ec985a7e3.svg",
-  "clerk": "views/zero-page/components/settings/icons/clerk-4f05e7088819.svg",
-  "clickup": "views/zero-page/components/settings/icons/clickup-92a639a865ec.svg",
-  "close": "views/zero-page/components/settings/icons/close-50f27153d806.svg",
-  "cloudflare": "views/zero-page/components/settings/icons/cloudflare-c73ea33bdc10.svg",
-  "cloudinary": "views/zero-page/components/settings/icons/cloudinary-902003bb0153.svg",
-  "coda": "views/zero-page/components/settings/icons/coda-298689264957.svg",
-  "coingecko": "views/zero-page/components/settings/icons/coingecko-5267811161ec.svg",
-  "coresignal": "views/zero-page/components/settings/icons/coresignal-2b7ff39b9e1a.svg",
-  "cronlytic": "views/zero-page/components/settings/icons/cronlytic-76fb40c74299.svg",
-  "crustdata": "views/zero-page/components/settings/icons/crustdata-65c7407fca80.svg",
-  "cursor": "views/zero-page/components/settings/icons/cursor-0375fe0bba07.svg",
-  "customer-io": "views/zero-page/components/settings/icons/customer-io-3592b474801b.svg",
-  "daytona": "views/zero-page/components/settings/icons/daytona-aed50e967460.svg",
-  "db9": "views/zero-page/components/settings/icons/db9-0d3f5466120d.svg",
-  "deel": "views/zero-page/components/settings/icons/deel-3ab75a49a804.svg",
-  "deepseek": "views/zero-page/components/settings/icons/deepseek-a8663c0a81d9.svg",
-  "defillama": "views/zero-page/components/settings/icons/defillama-ca6e0436cc1e.svg",
-  "devto": "views/zero-page/components/settings/icons/devto-bba6ca399b94.svg",
-  "diffbot": "views/zero-page/components/settings/icons/diffbot-182ffd8a6c40.svg",
-  "dify": "views/zero-page/components/settings/icons/dify-7f2bef3c9440.svg",
-  "discord": "views/zero-page/components/settings/icons/discord-8039c495de67.svg",
-  "discord-webhook": "views/zero-page/components/settings/icons/discord-webhook-8039c495de67.svg",
-  "docusign": "views/zero-page/components/settings/icons/docusign-e93dd2ff5e07.svg",
-  "doppler": "views/zero-page/components/settings/icons/doppler-6edc501a4dd9.svg",
-  "doubao": "views/zero-page/components/settings/icons/doubao-4c8ef236fcf9.svg",
-  "drive9": "views/zero-page/components/settings/icons/drive9-4aa08c7836de.svg",
-  "dropbox": "views/zero-page/components/settings/icons/dropbox-5866286a0bf3.svg",
-  "dropbox-sign": "views/zero-page/components/settings/icons/dropbox-sign-61a8d3dd3649.svg",
-  "duffel": "views/zero-page/components/settings/icons/duffel-2dc83457b099.svg",
-  "e2b": "views/zero-page/components/settings/icons/e2b-4a490da5dc7c.svg",
-  "elevenlabs": "views/zero-page/components/settings/icons/elevenlabs-027d98a44abc.svg",
-  "etherscan": "views/zero-page/components/settings/icons/etherscan-0d8b09b0f756.svg",
-  "etsy": "views/zero-page/components/settings/icons/etsy-ac890f8bb332.svg",
-  "exa": "views/zero-page/components/settings/icons/exa-9a6e04de6b38.svg",
-  "explorium": "views/zero-page/components/settings/icons/explorium-356f27323ba2.svg",
-  "faire": "views/zero-page/components/settings/icons/faire-c16be6b57fa8.svg",
-  "fal": "views/zero-page/components/settings/icons/fal-01e8e07ab4a6.svg",
-  "figma": "views/zero-page/components/settings/icons/figma-2c2a32ced345.svg",
-  "firecrawl": "views/zero-page/components/settings/icons/firecrawl-33490f4a10bd.svg",
-  "fireflies": "views/zero-page/components/settings/icons/fireflies-ccfade904c3d.svg",
-  "flightaware": "views/zero-page/components/settings/icons/flightaware-c44e79efed07.svg",
-  "freshdesk": "views/zero-page/components/settings/icons/freshdesk-a5f20e344c7c.svg",
-  "gamma": "views/zero-page/components/settings/icons/gamma-b47fa2ead856.svg",
-  "garmin-connect": "views/zero-page/components/settings/icons/garmin-connect-a71a33da8219.svg",
-  "gemini": "views/zero-page/components/settings/icons/gemini-46bd52fb85d9.svg",
-  "github": "views/zero-page/components/settings/icons/github-4a739019d805.svg",
-  "gitlab": "views/zero-page/components/settings/icons/gitlab-3f258ed8cb9a.svg",
-  "gmail": "views/zero-page/components/settings/icons/gmail-18f42e2c6f80.svg",
-  "gong": "views/zero-page/components/settings/icons/gong-68520f07a7dc.svg",
-  "google-ads": "views/zero-page/components/settings/icons/google-ads-c1e9d7954aa5.svg",
-  "google-analytics": "views/zero-page/components/settings/icons/google-analytics-e867ed328724.svg",
-  "google-calendar": "views/zero-page/components/settings/icons/google-calendar-58ef860565d1.svg",
-  "google-cloud": "views/zero-page/components/settings/icons/google-cloud-0a48e1af4a43.svg",
-  "google-docs": "views/zero-page/components/settings/icons/google-docs-ce8a250ed67f.svg",
-  "google-drive": "views/zero-page/components/settings/icons/google-drive-aa75924aa727.svg",
-  "google-maps": "views/zero-page/components/settings/icons/google-maps-5b06e906e8fc.svg",
-  "google-meet": "views/zero-page/components/settings/icons/google-meet-5243598ff429.svg",
-  "google-search-console": "views/zero-page/components/settings/icons/google-search-console-f48ce6f21ebc.svg",
-  "google-sheets": "views/zero-page/components/settings/icons/google-sheets-dec60c57a097.svg",
-  "granola": "views/zero-page/components/settings/icons/granola-fe035645ea19.svg",
-  "greenhouse": "views/zero-page/components/settings/icons/greenhouse-714265097838.svg",
-  "groq": "views/zero-page/components/settings/icons/groq-62f86752be05.svg",
-  "gumroad": "views/zero-page/components/settings/icons/gumroad-2dde63e716df.svg",
-  "helicone": "views/zero-page/components/settings/icons/helicone-09ae8b5c924b.svg",
-  "heygen": "views/zero-page/components/settings/icons/heygen-a213e9f1b1b0.svg",
-  "hitem3d": "views/zero-page/components/settings/icons/hitem3d-1973c58d08a5.svg",
-  "honcho": "views/zero-page/components/settings/icons/honcho-36380d300244.svg",
-  "htmlcsstoimage": "views/zero-page/components/settings/icons/htmlcsstoimage-c0c45a50f597.svg",
-  "hubspot": "views/zero-page/components/settings/icons/hubspot-69b856e1dc1a.svg",
-  "hugging-face": "views/zero-page/components/settings/icons/hugging-face-b3da7fed90dd.svg",
-  "hume": "views/zero-page/components/settings/icons/hume-07c995294c6a.svg",
-  "hunter": "views/zero-page/components/settings/icons/hunter-c58056025e04.svg",
-  "imessage": "views/zero-page/components/settings/icons/imessage-5275a5a9cb9a.svg",
-  "imgur": "views/zero-page/components/settings/icons/imgur-e4b0fb24400e.svg",
-  "infisical": "views/zero-page/components/settings/icons/infisical-433116d4de23.svg",
-  "insforge": "views/zero-page/components/settings/icons/insforge-e831c2ea14f5.png",
-  "instagram": "views/zero-page/components/settings/icons/instagram-b4cfdf33b929.svg",
-  "instantly": "views/zero-page/components/settings/icons/instantly-61fa7572e06b.svg",
-  "intercom": "views/zero-page/components/settings/icons/intercom-773dd768e0d4.svg",
-  "interfaze": "views/zero-page/components/settings/icons/interfaze-f64eecea9b1d.svg",
-  "intervals-icu": "views/zero-page/components/settings/icons/intervals-icu-78d7a557a3a9.svg",
-  "inth": "views/zero-page/components/settings/icons/inth-e0c16be84129.png",
-  "ironclad": "views/zero-page/components/settings/icons/ironclad-27e516a89b5d.svg",
-  "jam": "views/zero-page/components/settings/icons/jam-97b070088e92.svg",
-  "jira": "views/zero-page/components/settings/icons/jira-f682013e1302.svg",
-  "jotform": "views/zero-page/components/settings/icons/jotform-523706a4c2fc.svg",
-  "keyframe-labs": "views/zero-page/components/settings/icons/keyframe-labs-f9ee16b4ba55.svg",
-  "kimi": "views/zero-page/components/settings/icons/kimi-bd6d8b8d5390.svg",
-  "klaviyo": "views/zero-page/components/settings/icons/klaviyo-e87a373fc59b.svg",
-  "kommo": "views/zero-page/components/settings/icons/kommo-739e724879a6.svg",
-  "kugelaudio": "views/zero-page/components/settings/icons/kugelaudio-6ce394d192cf.png",
-  "langfuse": "views/zero-page/components/settings/icons/langfuse-1ffd2ae0976b.svg",
-  "langsmith": "views/zero-page/components/settings/icons/langsmith-cddee9b4b113.svg",
-  "lark": "views/zero-page/components/settings/icons/lark-f5fdfb27067a.svg",
-  "limrun": "views/zero-page/components/settings/icons/limrun-181966484546.png",
-  "line": "views/zero-page/components/settings/icons/line-55235c2f3a58.svg",
-  "linear": "views/zero-page/components/settings/icons/linear-aff4bbe00efc.svg",
-  "local-agent": "views/zero-page/components/settings/icons/local-agent-57c613146fc9.svg",
-  "local-browser": "views/zero-page/components/settings/icons/local-browser-9a71e5c6fee7.svg",
-  "loops": "views/zero-page/components/settings/icons/loops-29d64256a064.svg",
-  "luma": "views/zero-page/components/settings/icons/luma-1e0311e88d0f.svg",
-  "luma-ai": "views/zero-page/components/settings/icons/luma-ai-a3776de7b705.svg",
-  "mailchimp": "views/zero-page/components/settings/icons/mailchimp-1c208f9c6576.svg",
-  "mailsac": "views/zero-page/components/settings/icons/mailsac-1b850a691eba.svg",
-  "make": "views/zero-page/components/settings/icons/make-2dac6beecd28.svg",
-  "manus": "views/zero-page/components/settings/icons/manus-ecf491ca9a0d.svg",
-  "mapbox": "views/zero-page/components/settings/icons/mapbox-34d6827e7949.svg",
-  "maskdb": "views/zero-page/components/settings/icons/maskdb-1376653c02a8.svg",
-  "massive": "views/zero-page/components/settings/icons/massive-5460a1758365.svg",
-  "mathpix": "views/zero-page/components/settings/icons/mathpix-87fd95ee2101.svg",
-  "mem0": "views/zero-page/components/settings/icons/mem0-50e7cc80e37a.svg",
-  "mercury": "views/zero-page/components/settings/icons/mercury-baf568144ac4.svg",
-  "meshy": "views/zero-page/components/settings/icons/meshy-02e71ea6eb0f.svg",
-  "meta-ads": "views/zero-page/components/settings/icons/meta-ads-bdbde15c3cd9.svg",
-  "metabase": "views/zero-page/components/settings/icons/metabase-2f00f22e1c88.svg",
-  "microsoft-365": "views/zero-page/components/settings/icons/microsoft-365-ea4d37dcf563.svg",
-  "minicor": "views/zero-page/components/settings/icons/minicor-446daaf992e2.png",
-  "minimax": "views/zero-page/components/settings/icons/minimax-ec3b12fc26ff.svg",
-  "minio": "views/zero-page/components/settings/icons/minio-ecd4eac71afa.svg",
-  "miro": "views/zero-page/components/settings/icons/miro-eefd0c4b5f78.svg",
-  "mixpanel": "views/zero-page/components/settings/icons/mixpanel-6c0f2e835e5a.svg",
-  "modal": "views/zero-page/components/settings/icons/modal-438525a3b676.svg",
-  "monday": "views/zero-page/components/settings/icons/monday-d196940958ef.svg",
-  "moss": "views/zero-page/components/settings/icons/moss-e756e788ba2d.svg",
-  "msg9": "views/zero-page/components/settings/icons/msg9-a65b9b18454c.svg",
-  "n8n": "views/zero-page/components/settings/icons/n8n-2355976a50d0.svg",
-  "neon": "views/zero-page/components/settings/icons/neon-2b1aaef0b2de.svg",
-  "netdata": "views/zero-page/components/settings/icons/netdata-df49d68a3ecd.svg",
-  "netter": "views/zero-page/components/settings/icons/netter-4c7de538303c.svg",
-  "notion": "views/zero-page/components/settings/icons/notion-beeb509915a9.svg",
-  "novita": "views/zero-page/components/settings/icons/novita-3aa7cdf6fd0b.svg",
-  "nyne": "views/zero-page/components/settings/icons/nyne-cb5e80de7d46.svg",
-  "oddpool": "views/zero-page/components/settings/icons/oddpool-b0416e7d9c21.svg",
-  "onyx": "views/zero-page/components/settings/icons/onyx-5db98d1eed15.svg",
-  "openai": "views/zero-page/components/settings/icons/openai-df8a3d9c4274.svg",
-  "openrouter": "views/zero-page/components/settings/icons/openrouter-82e9dead836b.svg",
-  "openweather": "views/zero-page/components/settings/icons/openweather-614f7acfed2b.svg",
-  "outlook-calendar": "views/zero-page/components/settings/icons/outlook-calendar-d67b8bb4bb8d.svg",
-  "outlook-mail": "views/zero-page/components/settings/icons/outlook-mail-d67b8bb4bb8d.svg",
-  "pandadoc": "views/zero-page/components/settings/icons/pandadoc-50d5db7dbe0d.svg",
-  "parallel": "views/zero-page/components/settings/icons/parallel-8999315ceac1.svg",
-  "pdf4me": "views/zero-page/components/settings/icons/pdf4me-72901b68f016.svg",
-  "pdfco": "views/zero-page/components/settings/icons/pdfco-3e7abac71518.svg",
-  "pdforge": "views/zero-page/components/settings/icons/pdforge-bdafb344440c.svg",
-  "people-data-labs": "views/zero-page/components/settings/icons/people-data-labs-3f5ade20d1f6.svg",
-  "perplexity": "views/zero-page/components/settings/icons/perplexity-7f1c9264c825.svg",
-  "pexels": "views/zero-page/components/settings/icons/pexels-066fd51404dc.png",
-  "pika": "views/zero-page/components/settings/icons/pika-83321d1aa81f.svg",
-  "pinecone": "views/zero-page/components/settings/icons/pinecone-5b72ed27b620.svg",
-  "pipedream": "views/zero-page/components/settings/icons/pipedream-42dda4b1effa.svg",
-  "pipedrive": "views/zero-page/components/settings/icons/pipedrive-4576bea235fe.svg",
-  "plain": "views/zero-page/components/settings/icons/plain-a9121ba278e5.svg",
-  "plausible": "views/zero-page/components/settings/icons/plausible-ff49eddd163e.svg",
-  "podchaser": "views/zero-page/components/settings/icons/podchaser-86cc6b891620.svg",
-  "porkbun": "views/zero-page/components/settings/icons/porkbun-6c11e42ddc44.svg",
-  "posthog": "views/zero-page/components/settings/icons/posthog-8bff2e8232f4.svg",
-  "primitive": "views/zero-page/components/settings/icons/primitive-9df35a923915.png",
-  "printful": "views/zero-page/components/settings/icons/printful-cb359d029305.svg",
-  "prisma-postgres": "views/zero-page/components/settings/icons/prisma-postgres-b0df05d1a65d.svg",
-  "productlane": "views/zero-page/components/settings/icons/productlane-bf1482f05bbc.svg",
-  "profound": "views/zero-page/components/settings/icons/profound-f169839aa64a.svg",
-  "pushinator": "views/zero-page/components/settings/icons/pushinator-06d3705897df.svg",
-  "qdrant": "views/zero-page/components/settings/icons/qdrant-378b348e08c5.svg",
-  "qiita": "views/zero-page/components/settings/icons/qiita-6c078d974a73.svg",
-  "qomplement": "views/zero-page/components/settings/icons/qomplement-b700b0f3d7f3.png",
-  "quickbooks": "views/zero-page/components/settings/icons/quickbooks-fcc0886d32c3.svg",
-  "railway": "views/zero-page/components/settings/icons/railway-22723db2f4f9.svg",
-  "reap": "views/zero-page/components/settings/icons/reap-dd68e029348e.svg",
-  "recraft": "views/zero-page/components/settings/icons/recraft-fac1a92b013f.svg",
-  "reddit": "views/zero-page/components/settings/icons/reddit-e1ac3f0da2b6.svg",
-  "reducto": "views/zero-page/components/settings/icons/reducto-c00c6f16661d.svg",
-  "render": "views/zero-page/components/settings/icons/render-4fcb845a3f77.svg",
-  "rentahuman": "views/zero-page/components/settings/icons/rentahuman-fec5bd25072b.svg",
-  "rentcast": "views/zero-page/components/settings/icons/rentcast-ba9e471c1a7f.svg",
-  "replicas": "views/zero-page/components/settings/icons/replicas-70208a17587f.svg",
-  "replicate": "views/zero-page/components/settings/icons/replicate-fca98dbfb77f.svg",
-  "reportei": "views/zero-page/components/settings/icons/reportei-4bee89a35829.svg",
-  "resend": "views/zero-page/components/settings/icons/resend-caa7e78784cb.svg",
-  "revenuecat": "views/zero-page/components/settings/icons/revenuecat-ea0c623502d9.svg",
-  "river-markets": "views/zero-page/components/settings/icons/river-markets-fc23a0022420.png",
-  "runtime": "views/zero-page/components/settings/icons/runtime-529df4ae1f3f.svg",
-  "runway": "views/zero-page/components/settings/icons/runway-453d2365bcc5.svg",
-  "salesforce": "views/zero-page/components/settings/icons/salesforce-346f79d05a04.svg",
-  "salesgraph": "views/zero-page/components/settings/icons/salesgraph-577ddc49a9cb.svg",
-  "scrapeninja": "views/zero-page/components/settings/icons/scrapeninja-dc11f0f32e56.svg",
-  "segment": "views/zero-page/components/settings/icons/segment-56b8b0e2ccf0.svg",
-  "semrush": "views/zero-page/components/settings/icons/semrush-12a3461815e7.svg",
-  "sendgrid": "views/zero-page/components/settings/icons/sendgrid-d3332cf8b59c.svg",
-  "sentry": "views/zero-page/components/settings/icons/sentry-93cf192fc6c3.svg",
-  "serpapi": "views/zero-page/components/settings/icons/serpapi-b731737f9b72.svg",
-  "servicenow": "views/zero-page/components/settings/icons/servicenow-315c79989d29.svg",
-  "shopify": "views/zero-page/components/settings/icons/shopify-83cb0271954f.svg",
-  "shortio": "views/zero-page/components/settings/icons/shortio-775376bc8c7d.svg",
-  "silmaril": "views/zero-page/components/settings/icons/silmaril-2f64fe3445c8.png",
-  "similarweb": "views/zero-page/components/settings/icons/similarweb-872d9e66300b.svg",
-  "slack": "views/zero-page/components/settings/icons/slack-198390069136.svg?v=568fa471",
-  "slock": "views/zero-page/components/settings/icons/slock-f419faf6c6c4.svg",
-  "smol-machines": "views/zero-page/components/settings/icons/smol-machines-41c59d345b00.svg",
-  "snowflake": "views/zero-page/components/settings/icons/snowflake-fd2f3b315278.svg",
-  "sociavault": "views/zero-page/components/settings/icons/sociavault-44913bcfa5a4.svg",
-  "sponge": "views/zero-page/components/settings/icons/sponge-5d9c0211e5bc.svg",
-  "spotify": "views/zero-page/components/settings/icons/spotify-e27177df2642.svg",
-  "sproutgigs": "views/zero-page/components/settings/icons/sproutgigs-c1192764dbee.svg",
-  "square": "views/zero-page/components/settings/icons/square-b95ac9f46e21.svg",
-  "stability-ai": "views/zero-page/components/settings/icons/stability-ai-0d39725dc8b5.svg",
-  "stablebrowse": "views/zero-page/components/settings/icons/stablebrowse-b2fbca350120.png",
-  "strapi": "views/zero-page/components/settings/icons/strapi-593e7af16585.svg",
-  "strava": "views/zero-page/components/settings/icons/strava-206d8c9aa841.svg",
-  "streak": "views/zero-page/components/settings/icons/streak-1455d7cc87e0.svg",
-  "stripe": "views/zero-page/components/settings/icons/stripe-4a7793fa96ae.svg",
-  "supabase": "views/zero-page/components/settings/icons/supabase-a19a2501b366.svg",
-  "supadata": "views/zero-page/components/settings/icons/supadata-08a65918dcdb.svg",
-  "supermemory": "views/zero-page/components/settings/icons/supermemory-da72ccb9600c.svg",
-  "tavily": "views/zero-page/components/settings/icons/tavily-013555e5fe64.svg",
-  "teams": "views/zero-page/components/settings/icons/teams-0dc3a5275d31.svg",
-  "telegram": "views/zero-page/components/settings/icons/telegram-2d9ff5d01146.svg",
-  "test-oauth": "views/zero-page/components/settings/icons/test-oauth-1566bca3cb11.svg",
-  "testerarmy": "views/zero-page/components/settings/icons/testerarmy-1c5f5ba86505.png",
-  "testrail": "views/zero-page/components/settings/icons/testrail-c8c658083c6c.svg",
-  "ticketmaster": "views/zero-page/components/settings/icons/ticketmaster-842dc4fa3af6.svg",
-  "tiktok-ads": "views/zero-page/components/settings/icons/tiktok-ads-d837a2f9f550.svg",
-  "tldv": "views/zero-page/components/settings/icons/tldv-b92546888050.svg",
-  "todoist": "views/zero-page/components/settings/icons/todoist-7ccd1dfa28e5.svg",
-  "together": "views/zero-page/components/settings/icons/together-c8adc591dd9e.svg",
-  "totalis": "views/zero-page/components/settings/icons/totalis-d97d41cfb7f0.png",
-  "trellis": "views/zero-page/components/settings/icons/trellis-3273c8af062d.png",
-  "tripo": "views/zero-page/components/settings/icons/tripo-cee4ccd95d55.svg",
-  "twenty": "views/zero-page/components/settings/icons/twenty-c793eaf377c4.svg",
-  "twilio": "views/zero-page/components/settings/icons/twilio-ec4acea94d58.svg",
-  "typeform": "views/zero-page/components/settings/icons/typeform-f164f8538dae.svg",
-  "v0": "views/zero-page/components/settings/icons/v0-16752e92fba7.svg",
-  "vercel": "views/zero-page/components/settings/icons/vercel-c2c941b10e27.svg",
-  "vm0": "views/zero-page/components/settings/icons/vm0-0b40ba3af356.svg",
-  "voquill": "views/zero-page/components/settings/icons/voquill-2af65d8d8d90.svg",
-  "wandb": "views/zero-page/components/settings/icons/wandb-de3acbf6474d.svg",
-  "webflow": "views/zero-page/components/settings/icons/webflow-21cb0ee09d17.svg",
-  "weread": "views/zero-page/components/settings/icons/weread-8cd219dc2a90.svg",
-  "whale-alert": "views/zero-page/components/settings/icons/whale-alert-98cbb1bbfdf6.png",
-  "wix": "views/zero-page/components/settings/icons/wix-53a609ed8e78.svg",
-  "workos": "views/zero-page/components/settings/icons/workos-c7ad66d8b5a0.svg",
-  "wrike": "views/zero-page/components/settings/icons/wrike-86c509db0d0c.svg",
-  "x": "views/zero-page/components/settings/icons/x-c6644387ea39.svg",
-  "xero": "views/zero-page/components/settings/icons/xero-39a95d992dd5.svg",
-  "youtube": "views/zero-page/components/settings/icons/youtube-7d0026b054c2.svg",
-  "zapier": "views/zero-page/components/settings/icons/zapier-53711819f9ee.svg",
-  "zapsign": "views/zero-page/components/settings/icons/zapsign-e9e1ddefebed.svg",
-  "zendesk": "views/zero-page/components/settings/icons/zendesk-7984da5ed551.svg",
-  "zep": "views/zero-page/components/settings/icons/zep-298c7ff5291e.svg",
-  "zeptomail": "views/zero-page/components/settings/icons/zeptomail-4469f325f353.svg",
-  "zoom": "views/zero-page/components/settings/icons/zoom-69a0c0bc6fe9.svg",
+  adzuna: "views/zero-page/components/settings/icons/adzuna-dc78789bbbcd.svg",
+  agentmail:
+    "views/zero-page/components/settings/icons/agentmail-aabbd0730098.svg",
+  agora: "views/zero-page/components/settings/icons/agora-e1ad121bb1d3.svg",
+  ahrefs: "views/zero-page/components/settings/icons/ahrefs-f0a1878981ae.svg",
+  airtable:
+    "views/zero-page/components/settings/icons/airtable-eee466f3f35f.svg",
+  alchemy: "views/zero-page/components/settings/icons/alchemy-52305d20dd90.svg",
+  "altium-365":
+    "views/zero-page/components/settings/icons/altium-365-596dd870332f.svg",
+  amadeus: "views/zero-page/components/settings/icons/amadeus-ae8f238ad1d3.svg",
+  amplitude:
+    "views/zero-page/components/settings/icons/amplitude-207cc9e7fc3d.svg",
+  anthropic:
+    "views/zero-page/components/settings/icons/anthropic-3fcfdf761a69.svg",
+  "anthropic-managed-agents":
+    "views/zero-page/components/settings/icons/anthropic-managed-agents-3fcfdf761a69.svg",
+  apify: "views/zero-page/components/settings/icons/apify-5c05851a5ece.svg",
+  apollo: "views/zero-page/components/settings/icons/apollo-bf8302798dfb.svg",
+  archer: "views/zero-page/components/settings/icons/archer-1f01e618583e.svg",
+  ardent: "views/zero-page/components/settings/icons/ardent-ae05ebe263dc.svg",
+  "arga-labs":
+    "views/zero-page/components/settings/icons/arga-labs-cbf8647380cd.png",
+  armature:
+    "views/zero-page/components/settings/icons/armature-1990741703fa.svg",
+  asana: "views/zero-page/components/settings/icons/asana-693513c4245f.svg",
+  ashby: "views/zero-page/components/settings/icons/ashby-93e690ec6d4c.svg",
+  atlascloud:
+    "views/zero-page/components/settings/icons/atlascloud-fc9fa3a12884.svg",
+  atlassian:
+    "views/zero-page/components/settings/icons/atlassian-316afc512581.svg",
+  attio: "views/zero-page/components/settings/icons/attio-2ccc836df795.svg",
+  aviationstack:
+    "views/zero-page/components/settings/icons/aviationstack-e547c6f73453.svg",
+  aws: "views/zero-page/components/settings/icons/aws-8ec381036030.svg",
+  axiom: "views/zero-page/components/settings/icons/axiom-7657ffc69323.svg",
+  azure: "views/zero-page/components/settings/icons/azure-a3fe212c8716.svg",
+  base44: "views/zero-page/components/settings/icons/base44-8cc1e52c1775.svg",
+  bedrock: "views/zero-page/components/settings/icons/bedrock-60e2c52cb4a2.svg",
+  "bentolabs-ai":
+    "views/zero-page/components/settings/icons/bentolabs-ai-b3d6223fb7a9.png",
+  bentoml: "views/zero-page/components/settings/icons/bentoml-2f0b56c3ad28.svg",
+  bfl: "views/zero-page/components/settings/icons/bfl-c8dada65dc9e.svg",
+  bitrefill:
+    "views/zero-page/components/settings/icons/bitrefill-b8e5facc9514.svg",
+  bitrix: "views/zero-page/components/settings/icons/bitrix-6bdd38c9a309.svg",
+  bland: "views/zero-page/components/settings/icons/bland-8d7e921c413f.svg",
+  bloom: "views/zero-page/components/settings/icons/bloom-4c6f7ac5f465.svg",
+  box: "views/zero-page/components/settings/icons/box-5658678ffc4b.svg",
+  "brave-search":
+    "views/zero-page/components/settings/icons/brave-search-66814699ff97.svg",
+  brevo: "views/zero-page/components/settings/icons/brevo-e6864f00fca7.svg",
+  brex: "views/zero-page/components/settings/icons/brex-072214bc1f9d.svg",
+  "bright-data":
+    "views/zero-page/components/settings/icons/bright-data-3168ae4200e9.svg",
+  "browser-use":
+    "views/zero-page/components/settings/icons/browser-use-4aa74d615f7c.svg",
+  browserbase:
+    "views/zero-page/components/settings/icons/browserbase-47febbf5088a.svg",
+  browserless:
+    "views/zero-page/components/settings/icons/browserless-ba6f9d5b55fa.svg",
+  browserstack:
+    "views/zero-page/components/settings/icons/browserstack-af1e6416e878.svg",
+  bubblemaps:
+    "views/zero-page/components/settings/icons/bubblemaps-229d049c9345.svg",
+  buffer: "views/zero-page/components/settings/icons/buffer-c08c7f7a0ce3.svg",
+  builtwith:
+    "views/zero-page/components/settings/icons/builtwith-6f78c4278b1c.svg",
+  "cal-com":
+    "views/zero-page/components/settings/icons/cal-com-a02b7c08ed70.svg",
+  calendly:
+    "views/zero-page/components/settings/icons/calendly-a74d2624c450.svg",
+  canva: "views/zero-page/components/settings/icons/canva-0951b8855de4.svg",
+  chatglm: "views/zero-page/components/settings/icons/chatglm-7e6a9cb772fa.svg",
+  chatwoot:
+    "views/zero-page/components/settings/icons/chatwoot-6d8e00d88204.svg",
+  checkr: "views/zero-page/components/settings/icons/checkr-87a016320b17.svg",
+  chert: "views/zero-page/components/settings/icons/chert-784986ecd9a9.png",
+  clado: "views/zero-page/components/settings/icons/clado-4e5752a6bccf.svg",
+  "claude-code":
+    "views/zero-page/components/settings/icons/claude-code-03a5132e24ca.svg",
+  clearbit:
+    "views/zero-page/components/settings/icons/clearbit-a81ec985a7e3.svg",
+  clerk: "views/zero-page/components/settings/icons/clerk-4f05e7088819.svg",
+  clickup: "views/zero-page/components/settings/icons/clickup-92a639a865ec.svg",
+  close: "views/zero-page/components/settings/icons/close-50f27153d806.svg",
+  cloudflare:
+    "views/zero-page/components/settings/icons/cloudflare-c73ea33bdc10.svg",
+  cloudinary:
+    "views/zero-page/components/settings/icons/cloudinary-902003bb0153.svg",
+  coda: "views/zero-page/components/settings/icons/coda-298689264957.svg",
+  coingecko:
+    "views/zero-page/components/settings/icons/coingecko-5267811161ec.svg",
+  coresignal:
+    "views/zero-page/components/settings/icons/coresignal-2b7ff39b9e1a.svg",
+  cronlytic:
+    "views/zero-page/components/settings/icons/cronlytic-76fb40c74299.svg",
+  crustdata:
+    "views/zero-page/components/settings/icons/crustdata-65c7407fca80.svg",
+  cursor: "views/zero-page/components/settings/icons/cursor-0375fe0bba07.svg",
+  "customer-io":
+    "views/zero-page/components/settings/icons/customer-io-3592b474801b.svg",
+  daytona: "views/zero-page/components/settings/icons/daytona-aed50e967460.svg",
+  db9: "views/zero-page/components/settings/icons/db9-0d3f5466120d.svg",
+  deel: "views/zero-page/components/settings/icons/deel-3ab75a49a804.svg",
+  deepseek:
+    "views/zero-page/components/settings/icons/deepseek-a8663c0a81d9.svg",
+  defillama:
+    "views/zero-page/components/settings/icons/defillama-ca6e0436cc1e.svg",
+  devto: "views/zero-page/components/settings/icons/devto-bba6ca399b94.svg",
+  diffbot: "views/zero-page/components/settings/icons/diffbot-182ffd8a6c40.svg",
+  dify: "views/zero-page/components/settings/icons/dify-7f2bef3c9440.svg",
+  discord: "views/zero-page/components/settings/icons/discord-8039c495de67.svg",
+  "discord-webhook":
+    "views/zero-page/components/settings/icons/discord-webhook-8039c495de67.svg",
+  docusign:
+    "views/zero-page/components/settings/icons/docusign-e93dd2ff5e07.svg",
+  doppler: "views/zero-page/components/settings/icons/doppler-6edc501a4dd9.svg",
+  doubao: "views/zero-page/components/settings/icons/doubao-4c8ef236fcf9.svg",
+  drive9: "views/zero-page/components/settings/icons/drive9-4aa08c7836de.svg",
+  dropbox: "views/zero-page/components/settings/icons/dropbox-5866286a0bf3.svg",
+  "dropbox-sign":
+    "views/zero-page/components/settings/icons/dropbox-sign-61a8d3dd3649.svg",
+  duffel: "views/zero-page/components/settings/icons/duffel-2dc83457b099.svg",
+  e2b: "views/zero-page/components/settings/icons/e2b-4a490da5dc7c.svg",
+  elevenlabs:
+    "views/zero-page/components/settings/icons/elevenlabs-027d98a44abc.svg",
+  etherscan:
+    "views/zero-page/components/settings/icons/etherscan-0d8b09b0f756.svg",
+  etsy: "views/zero-page/components/settings/icons/etsy-ac890f8bb332.svg",
+  exa: "views/zero-page/components/settings/icons/exa-9a6e04de6b38.svg",
+  explorium:
+    "views/zero-page/components/settings/icons/explorium-356f27323ba2.svg",
+  faire: "views/zero-page/components/settings/icons/faire-c16be6b57fa8.svg",
+  fal: "views/zero-page/components/settings/icons/fal-01e8e07ab4a6.svg",
+  figma: "views/zero-page/components/settings/icons/figma-2c2a32ced345.svg",
+  firecrawl:
+    "views/zero-page/components/settings/icons/firecrawl-33490f4a10bd.svg",
+  fireflies:
+    "views/zero-page/components/settings/icons/fireflies-ccfade904c3d.svg",
+  flightaware:
+    "views/zero-page/components/settings/icons/flightaware-c44e79efed07.svg",
+  freshdesk:
+    "views/zero-page/components/settings/icons/freshdesk-a5f20e344c7c.svg",
+  gamma: "views/zero-page/components/settings/icons/gamma-b47fa2ead856.svg",
+  "garmin-connect":
+    "views/zero-page/components/settings/icons/garmin-connect-a71a33da8219.svg",
+  gemini: "views/zero-page/components/settings/icons/gemini-46bd52fb85d9.svg",
+  github: "views/zero-page/components/settings/icons/github-4a739019d805.svg",
+  gitlab: "views/zero-page/components/settings/icons/gitlab-3f258ed8cb9a.svg",
+  gmail: "views/zero-page/components/settings/icons/gmail-18f42e2c6f80.svg",
+  gong: "views/zero-page/components/settings/icons/gong-68520f07a7dc.svg",
+  "google-ads":
+    "views/zero-page/components/settings/icons/google-ads-c1e9d7954aa5.svg",
+  "google-analytics":
+    "views/zero-page/components/settings/icons/google-analytics-e867ed328724.svg",
+  "google-calendar":
+    "views/zero-page/components/settings/icons/google-calendar-58ef860565d1.svg",
+  "google-cloud":
+    "views/zero-page/components/settings/icons/google-cloud-0a48e1af4a43.svg",
+  "google-docs":
+    "views/zero-page/components/settings/icons/google-docs-ce8a250ed67f.svg",
+  "google-drive":
+    "views/zero-page/components/settings/icons/google-drive-aa75924aa727.svg",
+  "google-maps":
+    "views/zero-page/components/settings/icons/google-maps-5b06e906e8fc.svg",
+  "google-meet":
+    "views/zero-page/components/settings/icons/google-meet-5243598ff429.svg",
+  "google-search-console":
+    "views/zero-page/components/settings/icons/google-search-console-f48ce6f21ebc.svg",
+  "google-sheets":
+    "views/zero-page/components/settings/icons/google-sheets-dec60c57a097.svg",
+  granola: "views/zero-page/components/settings/icons/granola-fe035645ea19.svg",
+  greenhouse:
+    "views/zero-page/components/settings/icons/greenhouse-714265097838.svg",
+  groq: "views/zero-page/components/settings/icons/groq-62f86752be05.svg",
+  gumroad: "views/zero-page/components/settings/icons/gumroad-2dde63e716df.svg",
+  helicone:
+    "views/zero-page/components/settings/icons/helicone-09ae8b5c924b.svg",
+  heygen: "views/zero-page/components/settings/icons/heygen-a213e9f1b1b0.svg",
+  hitem3d: "views/zero-page/components/settings/icons/hitem3d-1973c58d08a5.svg",
+  honcho: "views/zero-page/components/settings/icons/honcho-36380d300244.svg",
+  htmlcsstoimage:
+    "views/zero-page/components/settings/icons/htmlcsstoimage-c0c45a50f597.svg",
+  hubspot: "views/zero-page/components/settings/icons/hubspot-69b856e1dc1a.svg",
+  "hugging-face":
+    "views/zero-page/components/settings/icons/hugging-face-b3da7fed90dd.svg",
+  hume: "views/zero-page/components/settings/icons/hume-07c995294c6a.svg",
+  hunter: "views/zero-page/components/settings/icons/hunter-c58056025e04.svg",
+  imessage:
+    "views/zero-page/components/settings/icons/imessage-5275a5a9cb9a.svg",
+  imgur: "views/zero-page/components/settings/icons/imgur-e4b0fb24400e.svg",
+  infisical:
+    "views/zero-page/components/settings/icons/infisical-433116d4de23.svg",
+  insforge:
+    "views/zero-page/components/settings/icons/insforge-e831c2ea14f5.png",
+  instagram:
+    "views/zero-page/components/settings/icons/instagram-b4cfdf33b929.svg",
+  instantly:
+    "views/zero-page/components/settings/icons/instantly-61fa7572e06b.svg",
+  intercom:
+    "views/zero-page/components/settings/icons/intercom-773dd768e0d4.svg",
+  interfaze:
+    "views/zero-page/components/settings/icons/interfaze-f64eecea9b1d.svg",
+  "intervals-icu":
+    "views/zero-page/components/settings/icons/intervals-icu-78d7a557a3a9.svg",
+  inth: "views/zero-page/components/settings/icons/inth-e0c16be84129.png",
+  ironclad:
+    "views/zero-page/components/settings/icons/ironclad-27e516a89b5d.svg",
+  jam: "views/zero-page/components/settings/icons/jam-97b070088e92.svg",
+  jira: "views/zero-page/components/settings/icons/jira-f682013e1302.svg",
+  jotform: "views/zero-page/components/settings/icons/jotform-523706a4c2fc.svg",
+  "keyframe-labs":
+    "views/zero-page/components/settings/icons/keyframe-labs-f9ee16b4ba55.svg",
+  kimi: "views/zero-page/components/settings/icons/kimi-bd6d8b8d5390.svg",
+  klaviyo: "views/zero-page/components/settings/icons/klaviyo-e87a373fc59b.svg",
+  kommo: "views/zero-page/components/settings/icons/kommo-739e724879a6.svg",
+  kugelaudio:
+    "views/zero-page/components/settings/icons/kugelaudio-6ce394d192cf.png",
+  langfuse:
+    "views/zero-page/components/settings/icons/langfuse-1ffd2ae0976b.svg",
+  langsmith:
+    "views/zero-page/components/settings/icons/langsmith-cddee9b4b113.svg",
+  lark: "views/zero-page/components/settings/icons/lark-f5fdfb27067a.svg",
+  limrun: "views/zero-page/components/settings/icons/limrun-181966484546.png",
+  line: "views/zero-page/components/settings/icons/line-55235c2f3a58.svg",
+  linear: "views/zero-page/components/settings/icons/linear-aff4bbe00efc.svg",
+  "local-agent":
+    "views/zero-page/components/settings/icons/local-agent-57c613146fc9.svg",
+  "local-browser":
+    "views/zero-page/components/settings/icons/local-browser-9a71e5c6fee7.svg",
+  loops: "views/zero-page/components/settings/icons/loops-29d64256a064.svg",
+  luma: "views/zero-page/components/settings/icons/luma-1e0311e88d0f.svg",
+  "luma-ai":
+    "views/zero-page/components/settings/icons/luma-ai-a3776de7b705.svg",
+  mailchimp:
+    "views/zero-page/components/settings/icons/mailchimp-1c208f9c6576.svg",
+  mailsac: "views/zero-page/components/settings/icons/mailsac-1b850a691eba.svg",
+  make: "views/zero-page/components/settings/icons/make-2dac6beecd28.svg",
+  manus: "views/zero-page/components/settings/icons/manus-ecf491ca9a0d.svg",
+  mapbox: "views/zero-page/components/settings/icons/mapbox-34d6827e7949.svg",
+  maskdb: "views/zero-page/components/settings/icons/maskdb-1376653c02a8.svg",
+  massive: "views/zero-page/components/settings/icons/massive-5460a1758365.svg",
+  mathpix: "views/zero-page/components/settings/icons/mathpix-87fd95ee2101.svg",
+  mem0: "views/zero-page/components/settings/icons/mem0-50e7cc80e37a.svg",
+  mercury: "views/zero-page/components/settings/icons/mercury-baf568144ac4.svg",
+  meshy: "views/zero-page/components/settings/icons/meshy-02e71ea6eb0f.svg",
+  "meta-ads":
+    "views/zero-page/components/settings/icons/meta-ads-bdbde15c3cd9.svg",
+  metabase:
+    "views/zero-page/components/settings/icons/metabase-2f00f22e1c88.svg",
+  "microsoft-365":
+    "views/zero-page/components/settings/icons/microsoft-365-ea4d37dcf563.svg",
+  minicor: "views/zero-page/components/settings/icons/minicor-446daaf992e2.png",
+  minimax: "views/zero-page/components/settings/icons/minimax-ec3b12fc26ff.svg",
+  minio: "views/zero-page/components/settings/icons/minio-ecd4eac71afa.svg",
+  miro: "views/zero-page/components/settings/icons/miro-eefd0c4b5f78.svg",
+  mixpanel:
+    "views/zero-page/components/settings/icons/mixpanel-6c0f2e835e5a.svg",
+  modal: "views/zero-page/components/settings/icons/modal-438525a3b676.svg",
+  monday: "views/zero-page/components/settings/icons/monday-d196940958ef.svg",
+  moss: "views/zero-page/components/settings/icons/moss-e756e788ba2d.svg",
+  msg9: "views/zero-page/components/settings/icons/msg9-a65b9b18454c.svg",
+  n8n: "views/zero-page/components/settings/icons/n8n-2355976a50d0.svg",
+  neon: "views/zero-page/components/settings/icons/neon-2b1aaef0b2de.svg",
+  netdata: "views/zero-page/components/settings/icons/netdata-df49d68a3ecd.svg",
+  netter: "views/zero-page/components/settings/icons/netter-4c7de538303c.svg",
+  notion: "views/zero-page/components/settings/icons/notion-beeb509915a9.svg",
+  novita: "views/zero-page/components/settings/icons/novita-3aa7cdf6fd0b.svg",
+  nyne: "views/zero-page/components/settings/icons/nyne-cb5e80de7d46.svg",
+  oddpool: "views/zero-page/components/settings/icons/oddpool-b0416e7d9c21.svg",
+  onyx: "views/zero-page/components/settings/icons/onyx-5db98d1eed15.svg",
+  openai: "views/zero-page/components/settings/icons/openai-df8a3d9c4274.svg",
+  openrouter:
+    "views/zero-page/components/settings/icons/openrouter-82e9dead836b.svg",
+  openweather:
+    "views/zero-page/components/settings/icons/openweather-614f7acfed2b.svg",
+  "outlook-calendar":
+    "views/zero-page/components/settings/icons/outlook-calendar-d67b8bb4bb8d.svg",
+  "outlook-mail":
+    "views/zero-page/components/settings/icons/outlook-mail-d67b8bb4bb8d.svg",
+  pandadoc:
+    "views/zero-page/components/settings/icons/pandadoc-50d5db7dbe0d.svg",
+  parallel:
+    "views/zero-page/components/settings/icons/parallel-8999315ceac1.svg",
+  pdf4me: "views/zero-page/components/settings/icons/pdf4me-72901b68f016.svg",
+  pdfco: "views/zero-page/components/settings/icons/pdfco-3e7abac71518.svg",
+  pdforge: "views/zero-page/components/settings/icons/pdforge-bdafb344440c.svg",
+  "people-data-labs":
+    "views/zero-page/components/settings/icons/people-data-labs-3f5ade20d1f6.svg",
+  perplexity:
+    "views/zero-page/components/settings/icons/perplexity-7f1c9264c825.svg",
+  pexels: "views/zero-page/components/settings/icons/pexels-066fd51404dc.png",
+  pika: "views/zero-page/components/settings/icons/pika-83321d1aa81f.svg",
+  pinecone:
+    "views/zero-page/components/settings/icons/pinecone-5b72ed27b620.svg",
+  pipedream:
+    "views/zero-page/components/settings/icons/pipedream-42dda4b1effa.svg",
+  pipedrive:
+    "views/zero-page/components/settings/icons/pipedrive-4576bea235fe.svg",
+  plain: "views/zero-page/components/settings/icons/plain-a9121ba278e5.svg",
+  plausible:
+    "views/zero-page/components/settings/icons/plausible-ff49eddd163e.svg",
+  podchaser:
+    "views/zero-page/components/settings/icons/podchaser-86cc6b891620.svg",
+  porkbun: "views/zero-page/components/settings/icons/porkbun-6c11e42ddc44.svg",
+  posthog: "views/zero-page/components/settings/icons/posthog-8bff2e8232f4.svg",
+  primitive:
+    "views/zero-page/components/settings/icons/primitive-9df35a923915.png",
+  printful:
+    "views/zero-page/components/settings/icons/printful-cb359d029305.svg",
+  "prisma-postgres":
+    "views/zero-page/components/settings/icons/prisma-postgres-b0df05d1a65d.svg",
+  productlane:
+    "views/zero-page/components/settings/icons/productlane-bf1482f05bbc.svg",
+  profound:
+    "views/zero-page/components/settings/icons/profound-f169839aa64a.svg",
+  pushinator:
+    "views/zero-page/components/settings/icons/pushinator-06d3705897df.svg",
+  qdrant: "views/zero-page/components/settings/icons/qdrant-378b348e08c5.svg",
+  qiita: "views/zero-page/components/settings/icons/qiita-6c078d974a73.svg",
+  qomplement:
+    "views/zero-page/components/settings/icons/qomplement-b700b0f3d7f3.png",
+  quickbooks:
+    "views/zero-page/components/settings/icons/quickbooks-fcc0886d32c3.svg",
+  railway: "views/zero-page/components/settings/icons/railway-22723db2f4f9.svg",
+  reap: "views/zero-page/components/settings/icons/reap-dd68e029348e.svg",
+  recraft: "views/zero-page/components/settings/icons/recraft-fac1a92b013f.svg",
+  reddit: "views/zero-page/components/settings/icons/reddit-e1ac3f0da2b6.svg",
+  reducto: "views/zero-page/components/settings/icons/reducto-c00c6f16661d.svg",
+  render: "views/zero-page/components/settings/icons/render-4fcb845a3f77.svg",
+  rentahuman:
+    "views/zero-page/components/settings/icons/rentahuman-fec5bd25072b.svg",
+  rentcast:
+    "views/zero-page/components/settings/icons/rentcast-ba9e471c1a7f.svg",
+  replicas:
+    "views/zero-page/components/settings/icons/replicas-70208a17587f.svg",
+  replicate:
+    "views/zero-page/components/settings/icons/replicate-fca98dbfb77f.svg",
+  reportei:
+    "views/zero-page/components/settings/icons/reportei-4bee89a35829.svg",
+  resend: "views/zero-page/components/settings/icons/resend-caa7e78784cb.svg",
+  revenuecat:
+    "views/zero-page/components/settings/icons/revenuecat-ea0c623502d9.svg",
+  "river-markets":
+    "views/zero-page/components/settings/icons/river-markets-fc23a0022420.png",
+  runtime: "views/zero-page/components/settings/icons/runtime-529df4ae1f3f.svg",
+  runway: "views/zero-page/components/settings/icons/runway-453d2365bcc5.svg",
+  salesforce:
+    "views/zero-page/components/settings/icons/salesforce-346f79d05a04.svg",
+  salesgraph:
+    "views/zero-page/components/settings/icons/salesgraph-577ddc49a9cb.svg",
+  scrapeninja:
+    "views/zero-page/components/settings/icons/scrapeninja-dc11f0f32e56.svg",
+  segment: "views/zero-page/components/settings/icons/segment-56b8b0e2ccf0.svg",
+  semrush: "views/zero-page/components/settings/icons/semrush-12a3461815e7.svg",
+  sendgrid:
+    "views/zero-page/components/settings/icons/sendgrid-d3332cf8b59c.svg",
+  sentry: "views/zero-page/components/settings/icons/sentry-93cf192fc6c3.svg",
+  serpapi: "views/zero-page/components/settings/icons/serpapi-b731737f9b72.svg",
+  servicenow:
+    "views/zero-page/components/settings/icons/servicenow-315c79989d29.svg",
+  shopify: "views/zero-page/components/settings/icons/shopify-83cb0271954f.svg",
+  shortio: "views/zero-page/components/settings/icons/shortio-775376bc8c7d.svg",
+  silmaril:
+    "views/zero-page/components/settings/icons/silmaril-2f64fe3445c8.png",
+  similarweb:
+    "views/zero-page/components/settings/icons/similarweb-872d9e66300b.svg",
+  slack:
+    "views/zero-page/components/settings/icons/slack-198390069136.svg?v=568fa471",
+  slock: "views/zero-page/components/settings/icons/slock-f419faf6c6c4.svg",
+  "smol-machines":
+    "views/zero-page/components/settings/icons/smol-machines-41c59d345b00.svg",
+  snowflake:
+    "views/zero-page/components/settings/icons/snowflake-fd2f3b315278.svg",
+  sociavault:
+    "views/zero-page/components/settings/icons/sociavault-44913bcfa5a4.svg",
+  sponge: "views/zero-page/components/settings/icons/sponge-5d9c0211e5bc.svg",
+  spotify: "views/zero-page/components/settings/icons/spotify-e27177df2642.svg",
+  sproutgigs:
+    "views/zero-page/components/settings/icons/sproutgigs-c1192764dbee.svg",
+  square: "views/zero-page/components/settings/icons/square-b95ac9f46e21.svg",
+  "stability-ai":
+    "views/zero-page/components/settings/icons/stability-ai-0d39725dc8b5.svg",
+  stablebrowse:
+    "views/zero-page/components/settings/icons/stablebrowse-b2fbca350120.png",
+  strapi: "views/zero-page/components/settings/icons/strapi-593e7af16585.svg",
+  strava: "views/zero-page/components/settings/icons/strava-206d8c9aa841.svg",
+  streak: "views/zero-page/components/settings/icons/streak-1455d7cc87e0.svg",
+  stripe: "views/zero-page/components/settings/icons/stripe-4a7793fa96ae.svg",
+  supabase:
+    "views/zero-page/components/settings/icons/supabase-a19a2501b366.svg",
+  supadata:
+    "views/zero-page/components/settings/icons/supadata-08a65918dcdb.svg",
+  supermemory:
+    "views/zero-page/components/settings/icons/supermemory-da72ccb9600c.svg",
+  tavily: "views/zero-page/components/settings/icons/tavily-013555e5fe64.svg",
+  teams: "views/zero-page/components/settings/icons/teams-0dc3a5275d31.svg",
+  telegram:
+    "views/zero-page/components/settings/icons/telegram-2d9ff5d01146.svg",
+  "test-oauth":
+    "views/zero-page/components/settings/icons/test-oauth-1566bca3cb11.svg",
+  testerarmy:
+    "views/zero-page/components/settings/icons/testerarmy-1c5f5ba86505.png",
+  testrail:
+    "views/zero-page/components/settings/icons/testrail-c8c658083c6c.svg",
+  ticketmaster:
+    "views/zero-page/components/settings/icons/ticketmaster-842dc4fa3af6.svg",
+  "tiktok-ads":
+    "views/zero-page/components/settings/icons/tiktok-ads-d837a2f9f550.svg",
+  tldv: "views/zero-page/components/settings/icons/tldv-b92546888050.svg",
+  todoist: "views/zero-page/components/settings/icons/todoist-7ccd1dfa28e5.svg",
+  together:
+    "views/zero-page/components/settings/icons/together-c8adc591dd9e.svg",
+  totalis: "views/zero-page/components/settings/icons/totalis-d97d41cfb7f0.png",
+  trellis: "views/zero-page/components/settings/icons/trellis-3273c8af062d.png",
+  tripo: "views/zero-page/components/settings/icons/tripo-cee4ccd95d55.svg",
+  twenty: "views/zero-page/components/settings/icons/twenty-c793eaf377c4.svg",
+  twilio: "views/zero-page/components/settings/icons/twilio-ec4acea94d58.svg",
+  typeform:
+    "views/zero-page/components/settings/icons/typeform-f164f8538dae.svg",
+  v0: "views/zero-page/components/settings/icons/v0-16752e92fba7.svg",
+  vercel: "views/zero-page/components/settings/icons/vercel-c2c941b10e27.svg",
+  vm0: "views/zero-page/components/settings/icons/vm0-0b40ba3af356.svg",
+  voquill: "views/zero-page/components/settings/icons/voquill-2af65d8d8d90.svg",
+  wandb: "views/zero-page/components/settings/icons/wandb-de3acbf6474d.svg",
+  webflow: "views/zero-page/components/settings/icons/webflow-21cb0ee09d17.svg",
+  weread: "views/zero-page/components/settings/icons/weread-8cd219dc2a90.svg",
+  "whale-alert":
+    "views/zero-page/components/settings/icons/whale-alert-98cbb1bbfdf6.png",
+  wix: "views/zero-page/components/settings/icons/wix-53a609ed8e78.svg",
+  workos: "views/zero-page/components/settings/icons/workos-c7ad66d8b5a0.svg",
+  wrike: "views/zero-page/components/settings/icons/wrike-86c509db0d0c.svg",
+  x: "views/zero-page/components/settings/icons/x-c6644387ea39.svg",
+  xero: "views/zero-page/components/settings/icons/xero-39a95d992dd5.svg",
+  youtube: "views/zero-page/components/settings/icons/youtube-7d0026b054c2.svg",
+  zapier: "views/zero-page/components/settings/icons/zapier-53711819f9ee.svg",
+  zapsign: "views/zero-page/components/settings/icons/zapsign-e9e1ddefebed.svg",
+  zendesk: "views/zero-page/components/settings/icons/zendesk-7984da5ed551.svg",
+  zep: "views/zero-page/components/settings/icons/zep-298c7ff5291e.svg",
+  zeptomail:
+    "views/zero-page/components/settings/icons/zeptomail-4469f325f353.svg",
+  zoom: "views/zero-page/components/settings/icons/zoom-69a0c0bc6fe9.svg",
 } as const;
 
 export type SettingsIconAssetKey = keyof typeof SETTINGS_ICON_ASSET_PATHS;
 
-export const SETTINGS_ICON_ASSETS: Readonly<Record<SettingsIconAssetKey, string>> =
-  Object.freeze(
-    Object.fromEntries(
-      Object.entries(SETTINGS_ICON_ASSET_PATHS).map(([key, path]) => [
-        key,
-        platformStaticAssetUrl(path),
-      ]),
-    ) as Record<SettingsIconAssetKey, string>,
-  );
+export const SETTINGS_ICON_ASSETS: Readonly<
+  Record<SettingsIconAssetKey, string>
+> = Object.freeze(
+  Object.fromEntries(
+    Object.entries(SETTINGS_ICON_ASSET_PATHS).map(([key, path]) => [
+      key,
+      platformStaticAssetUrl(path),
+    ]),
+  ) as Record<SettingsIconAssetKey, string>,
+);
 
 export function settingsIconAssetUrl(key: SettingsIconAssetKey): string {
   return SETTINGS_ICON_ASSETS[key];
