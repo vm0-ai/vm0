@@ -296,7 +296,7 @@ echo "SECOND_SLACK_STATUS=$SECOND_STATUS"
 echo "SECOND_SLACK_FIREWALL_DENIED=$SECOND_FIREWALL_DENIED"
 echo "SECOND_SLACK_BODY=$SECOND_BODY"
 
-if [ "$SECOND_STATUS" = "000" ] || [ "$SECOND_FIREWALL_DENIED" != "0" ]; then
+if [ "$FIRST_STATUS" != "403" ] || ! is_firewall_denied "$FIRST_BODY" || [ "$SECOND_STATUS" = "000" ] || [ "$SECOND_FIREWALL_DENIED" != "0" ]; then
     exit 1
 fi
 EOF
@@ -314,7 +314,9 @@ EOF
     wait_for_zero_run_status "$LAST_RUN_ID" running 90
 
     local run_body run_status
-    for ATTEMPT in $(seq 1 15); do
+    # The grant patch is idempotent. Repeat briefly so at least one refresh
+    # notification lands after the runner has registered this active run locally.
+    for _attempt in $(seq 1 15); do
         run apply_slack_chat_write_permission "$AGENT_ID" allow
         echo "$output"
         assert_success
@@ -331,11 +333,13 @@ EOF
 
     wait_for_zero_run_completed "$LAST_RUN_ID" 140
     WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$LAST_RUN_ID" -- \
-        "FIRST_SLACK_STATUS=" \
+        "FIRST_SLACK_STATUS=403" \
+        'FIRST_SLACK_BODY={"error": "permission_denied"' \
         "SECOND_SLACK_STATUS=" \
         "SECOND_SLACK_FIREWALL_DENIED=0"
 
-    assert_output --partial "FIRST_SLACK_STATUS="
+    assert_output --partial "FIRST_SLACK_STATUS=403"
+    assert_output --partial 'FIRST_SLACK_BODY={"error": "permission_denied"'
     assert_output --partial "SECOND_SLACK_FIREWALL_DENIED=0"
     refute_output --partial "SECOND_SLACK_STATUS=000"
 }

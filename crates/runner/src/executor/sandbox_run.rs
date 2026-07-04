@@ -776,12 +776,12 @@ fn active_connector_refs(context: &ExecutionContext) -> HashSet<String> {
         .as_deref()
         .unwrap_or_default()
         .iter()
-        .map(|entry| match entry {
-            FirewallEntry::Builtin { name, .. } => name,
-            FirewallEntry::Inline { firewall } => &firewall.name,
-        })
-        .filter(|name| {
-            !name.starts_with("model-provider:") && network_policies.contains_key(name.as_str())
+        .filter_map(|entry| {
+            let FirewallEntry::Builtin { name, .. } = entry else {
+                return None;
+            };
+            (!name.starts_with("model-provider:") && network_policies.contains_key(name.as_str()))
+                .then_some(name)
         })
         .map(|name| name.to_string())
         .collect()
@@ -895,7 +895,7 @@ mod tests {
     }
 
     #[test]
-    fn active_connector_refs_include_inline_firewalls_with_network_policy() {
+    fn active_connector_refs_only_include_builtin_connectors_with_network_policy() {
         let mut context = crate::test_fixtures::execution_context_for_test(RunId::nil());
         context.firewalls = Some(vec![
             FirewallEntry::Builtin {
@@ -935,9 +935,6 @@ mod tests {
 
         let refs = active_connector_refs(&context);
 
-        assert_eq!(
-            refs,
-            HashSet::from(["custom-crm".to_string(), "github".to_string()])
-        );
+        assert_eq!(refs, HashSet::from(["github".to_string()]));
     }
 }
