@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.554.1](https://github.com/vm0-ai/vm0/compare/app-v0.554.0...app-v0.554.1) (2026-07-04)
+
+
+### Refactoring
+
+* simplify new chat thread data flow ([#20153](https://github.com/vm0-ai/vm0/issues/20153)) ([717a7c0](https://github.com/vm0-ai/vm0/commit/717a7c07196a77ea8a3796055dfff8074a07abc0))
+
 ## [0.554.0](https://github.com/vm0-ai/vm0/compare/app-v0.553.0...app-v0.554.0) (2026-07-04)
 
 
