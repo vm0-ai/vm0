@@ -117,15 +117,22 @@ apply_slack_chat_write_permission() {
     local action="$2"
     local payload
 
-    if [[ "$action" == "allow" ]]; then
-        payload=$(jq -nc \
-            --arg agentId "$agent_id" \
-            '{agentId: $agentId, connectorRef: "slack", mode: "patch", grants: [{permission: "chat:write", action: "allow", expiresIn: "1h"}]}')
-    else
-        payload=$(jq -nc \
-            --arg agentId "$agent_id" \
-            '{agentId: $agentId, connectorRef: "slack", mode: "patch", grants: [{permission: "chat:write", action: "deny"}]}')
-    fi
+    case "$action" in
+        allow)
+            payload=$(jq -nc \
+                --arg agentId "$agent_id" \
+                '{agentId: $agentId, connectorRef: "slack", mode: "patch", grants: [{permission: "chat:write", action: "allow", expiresIn: "1h"}]}')
+            ;;
+        deny)
+            payload=$(jq -nc \
+                --arg agentId "$agent_id" \
+                '{agentId: $agentId, connectorRef: "slack", mode: "patch", grants: [{permission: "chat:write", action: "deny"}]}')
+            ;;
+        *)
+            echo "Unsupported Slack chat:write grant action: $action" >&2
+            return 1
+            ;;
+    esac
 
     zero_curl "/api/zero/user-permission-grants/apply" \
         -X PUT \
