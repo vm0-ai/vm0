@@ -217,6 +217,30 @@ export function threadListSnapshot(threads: readonly ThreadListItem[]) {
   });
 }
 
+function defaultThreadListItem({
+  running,
+  threadId,
+  title,
+}: {
+  running: boolean;
+  threadId: string;
+  title: string | null;
+}): ThreadListItem {
+  return {
+    id: threadId,
+    title,
+    agent: {
+      id: DEFAULT_AGENT_ID,
+      avatarUrl: null,
+    },
+    createdAt: "2026-03-10T00:00:00Z",
+    updatedAt: "2026-03-10T00:00:00Z",
+    running,
+    pinnedAt: null,
+    renamedAt: null,
+  };
+}
+
 interface MockLifecycleControl {
   setRunStatus: (status: RunStatus) => void;
   setQueuePosition: (n: number) => void;
@@ -440,7 +464,6 @@ export function mockChatLifecycle(
   let events: AgentEvent[] = [];
   let queuePosition = 0;
   let resultContent = "";
-  let threadList: ThreadListItem[] = [];
   let runPrompt: string | null = null;
   let runUserMessageId = "msg-user-sent";
   let runAssociated = false;
@@ -451,6 +474,16 @@ export function mockChatLifecycle(
   let computerUseHostId: string | null = options?.computerUseHostId ?? null;
   const queuedMessages: MockPagedMessage[] = [];
   const optionActiveRunIds = options?.activeRunIds ?? [];
+  let threadList: ThreadListItem[] =
+    options?.threadId === undefined
+      ? []
+      : [
+          defaultThreadListItem({
+            running: optionActiveRunIds.length > 0,
+            threadId,
+            title: threadTitle,
+          }),
+        ];
   // Version counter: bumped whenever the run reaches a terminal state so
   // subsequent polls discover a "new" assistant message row (simulating the
   // real server inserting event-backed rows on run completion).

@@ -163,7 +163,7 @@ describe("chat run queue", () => {
 
   it("queues an attachment-only follow-up during an active run", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "thread-attachment-only-active";
+    const threadId = "b0000000-0000-4000-a000-000000000902";
     let queuedBody: QueuedMessageCapture | null = null;
 
     mockChatLifecycle(context, {
