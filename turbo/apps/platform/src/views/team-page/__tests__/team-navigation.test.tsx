@@ -395,14 +395,6 @@ function mockTeamAPIs({
       return respond(200, { enabledIds: enabledCustomConnectorIds });
     },
   );
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, {
-      pinned: [],
-      threads: [],
-      hasMore: false,
-      nextCursor: null,
-    });
-  });
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     return respond(200, {
       chatThreads: [],
@@ -693,14 +685,6 @@ describe("team page navigation", () => {
         pinnedAt: null,
       },
     ];
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, {
-        pinned: [],
-        threads: shortcutThreads,
-        hasMore: false,
-        nextCursor: null,
-      });
-    });
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
       return respond(200, {
         chatThreads: shortcutThreads.map((thread) => {

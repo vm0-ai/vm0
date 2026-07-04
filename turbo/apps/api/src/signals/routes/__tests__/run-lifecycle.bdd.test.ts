@@ -5709,7 +5709,11 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     expect(matchingDuplicateRows[0]?.content).toBe("Hello from BDD events");
 
     // Assistant text on a run without a chat thread changes no thread state.
-    const threadsBefore = await chat.listThreads(actor, { agentId });
+    const eventsBefore = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(eventsBefore.status).toBe(200);
+    if (eventsBefore.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
     const detachedRun = await api.createRun(actor, {
       agentId,
       prompt: "report events without a thread",
@@ -5733,8 +5737,12 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       { authorization: `Bearer ${detachedClaim.sandboxToken}` },
       [200],
     );
-    const threadsAfter = await chat.listThreads(actor, { agentId });
-    expect(threadsAfter.threads).toHaveLength(threadsBefore.threads.length);
+    const eventsAfter = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(eventsAfter.status).toBe(200);
+    if (eventsAfter.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(eventsAfter.body.events).toStrictEqual(eventsBefore.body.events);
 
     await api.requestCancelRun(actor, detachedRun.runId, [200]);
     await api.requestCancelRun(actor, runId, [200]);

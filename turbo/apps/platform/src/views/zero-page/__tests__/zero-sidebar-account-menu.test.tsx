@@ -1,7 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
@@ -15,7 +14,6 @@ import {
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { clearMockNow, mockNow } from "../../../lib/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -144,9 +142,6 @@ function mockAdminAccountSidebar(): void {
     slug: "test-org",
     name: "Test Org",
     role: "admin",
-  });
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, splitChatThreadListResponse([]));
   });
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
     return respond(200, {
@@ -460,9 +455,6 @@ describe("zero sidebar account menu", () => {
     context.mocks.data.userPreferences({
       captureNetworkBodiesRemaining: 0,
     });
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     detachedSetupPage({
       context,
@@ -554,9 +546,6 @@ describe("zero sidebar account menu", () => {
 
   it("shows account switching, add-account, and sign-out actions", async () => {
     prepareDefaultAgent();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     detachedSetupPage({
       context,

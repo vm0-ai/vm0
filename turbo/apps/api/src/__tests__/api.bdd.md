@@ -35,7 +35,7 @@ BDD helpers should be thin wrappers over route calls:
 - Organization helpers: `readMe`, `readOrg`, `listOrgs`, `inviteMember`, `requestMembership`, `listMembers`, `updateOrg`, `uploadOrgLogo`.
 - Agent and compose helpers: `createAgent`, `readAgent`, `listAgents`, `updateAgent`, `deleteAgent`, `setDefaultAgent`, `createCompose`, `readCompose`, `listComposes`.
 - Run helpers: `createRun`, `readRun`, `readRunContext`, `readRunQueue`, `cancelRun`, `createCheckpoint`, `readCheckpoint`, `runnerHeartbeat`, `runnerPoll`, `runnerClaim`, `completeRun`.
-- Chat helpers: `createThread`, `readThread`, `listThreads`, `sendMessage`, `readMessages`, `searchThreads`, `readThreadArtifacts`.
+- Chat helpers: `createThread`, `readThread`, `getThreadSnapshot`, `requestThreadEvents`, `sendMessage`, `readMessages`, `searchThreads`, `readThreadArtifacts`.
 - Connector helpers: `listConnectors`, `searchConnectors`, `readConnectorByType`, `startOAuth`, `completeOAuth`, `connectManualGrant`, `createCustomConnector`, `setConnectorSecret`, `deleteConnectorSecret`, `readIntegrationStatus`.
 - Billing and usage helpers: `readBillingStatus`, `startCheckout`, `openPortal`, `redeemCredit`, `readUsage`, `readUsageMembers`, `readUsageRuns`, `readInsights`, `runUsageCron`.
 - File and media helpers: `prepareUpload`, `completeUpload`, `readFile`, `readArtifact`, `readHostedContent`, `startImageGeneration`, `startVideoGeneration`, `startVoiceGeneration`, `readGenerationStatus`.

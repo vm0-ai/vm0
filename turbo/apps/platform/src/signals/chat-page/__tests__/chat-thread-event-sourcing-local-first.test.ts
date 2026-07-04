@@ -176,7 +176,6 @@ describe("chat thread event sourcing local-first list", () => {
     });
 
     let eventsRequests = 0;
-    let listRequests = 0;
     let teamRequests = 0;
     let unblockEventsRequest: (() => void) | null = null;
     context.mocks.api(
@@ -191,10 +190,6 @@ describe("chat thread event sourcing local-first list", () => {
         return respond(200, { events: [], hasMore: false });
       },
     );
-    context.mocks.api(chatThreadsContract.list, ({ never }) => {
-      listRequests += 1;
-      return never();
-    });
     context.mocks.api(zeroTeamContract.list, ({ never }) => {
       teamRequests += 1;
       return never();
@@ -231,7 +226,6 @@ describe("chat thread event sourcing local-first list", () => {
       },
     ]);
     expect(eventsRequests).toBe(1);
-    expect(listRequests).toBe(0);
     expect(teamRequests).toBe(0);
     expectCallback(unblockEventsRequest)();
   });
@@ -270,7 +264,6 @@ describe("chat thread event sourcing local-first list", () => {
     });
 
     let unreadsRequests = 0;
-    let listRequests = 0;
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
     });
@@ -288,11 +281,6 @@ describe("chat thread event sourcing local-first list", () => {
         ],
       });
     });
-    context.mocks.api(chatThreadsContract.list, ({ never }) => {
-      listRequests += 1;
-      return never();
-    });
-
     await setupPage({
       context,
       path: "/error",
@@ -316,7 +304,6 @@ describe("chat thread event sourcing local-first list", () => {
       }),
     ).toStrictEqual([THREAD_ID]);
     expect(unreadsRequests).toBe(1);
-    expect(listRequests).toBe(0);
   });
 
   it("uses optimistic create events instead of pending thread ids for event-sourced sidebar ids", async () => {
@@ -330,18 +317,12 @@ describe("chat thread event sourcing local-first list", () => {
       events: [],
     });
 
-    let listRequests = 0;
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
     });
     context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
       return respond(200, { threadIds: [] });
     });
-    context.mocks.api(chatThreadsContract.list, ({ never }) => {
-      listRequests += 1;
-      return never();
-    });
-
     await setupPage({
       context,
       path: "/error",
@@ -405,7 +386,6 @@ describe("chat thread event sourcing local-first list", () => {
         renamedAt: null,
       },
     ]);
-    expect(listRequests).toBe(0);
   });
 
   it("prefills rename dialog title from provided event-driven thread metadata", async () => {

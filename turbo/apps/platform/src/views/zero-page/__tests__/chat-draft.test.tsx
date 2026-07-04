@@ -69,14 +69,6 @@ function mockThreadDetails(): void {
       running: false,
     },
   ];
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, {
-      pinned: [],
-      threads,
-      hasMore: false,
-      nextCursor: null,
-    });
-  });
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     return respond(200, {
       chatThreads: threads.map((thread) => {

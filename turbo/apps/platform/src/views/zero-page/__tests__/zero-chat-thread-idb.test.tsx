@@ -116,14 +116,6 @@ function mockSidebarThread(): void {
     running: false,
     pinnedAt: null,
   };
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, {
-      pinned: [],
-      threads: [thread],
-      hasMore: false,
-      nextCursor: null,
-    });
-  });
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     return respond(200, {
       chatThreads: [
