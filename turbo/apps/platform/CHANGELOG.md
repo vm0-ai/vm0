@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.549.1](https://github.com/vm0-ai/vm0/compare/app-v0.549.0...app-v0.549.1) (2026-07-04)
+
+
+### Bug Fixes
+
+* avoid storing raw gmail relationship excerpts ([#20130](https://github.com/vm0-ai/vm0/issues/20130)) ([cc3643d](https://github.com/vm0-ai/vm0/commit/cc3643d435314f8ee5da7c7859367ccd4664e7ab))
+* prefill workflow refine prompts ([#20131](https://github.com/vm0-ai/vm0/issues/20131)) ([7c6847f](https://github.com/vm0-ai/vm0/commit/7c6847f0e76035a4821d32ac27a483869057ba3a))
+
 ## [0.549.0](https://github.com/vm0-ai/vm0/compare/app-v0.548.0...app-v0.549.0) (2026-07-04)
 
 
