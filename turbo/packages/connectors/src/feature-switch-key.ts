@@ -49,6 +49,7 @@ export enum FeatureSwitchKey {
   ChatGithubPrTracking = "chatGithubPrTracking",
   ChatThreadEmoji = "chatThreadEmoji",
   MemoryViewer = "memoryViewer",
+  RelationshipMemory = "relationshipMemory",
   HtmlArtifactCommentEditing = "htmlArtifactCommentEditing",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   DesktopX64Download = "desktopX64Download",

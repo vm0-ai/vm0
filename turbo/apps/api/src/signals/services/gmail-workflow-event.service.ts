@@ -48,6 +48,7 @@ import {
 } from "./zero-workflow-trigger-run.service";
 import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
 import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
+import { enqueueGmailRelationshipRefreshJob } from "./relationship-memory-gmail.service";
 
 const log = logger("api:gmail-workflow-event");
 
@@ -1516,6 +1517,35 @@ async function dispatchGmailNewMessageHistoryEvent(args: {
   );
   if (!message || !messageIsInbound(message)) {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
+  }
+
+  const relationshipJob = await settle(
+    enqueueGmailRelationshipRefreshJob(args.db, {
+      orgId: args.state.orgId,
+      userId: args.state.userId,
+      connectorId: args.state.connectorId,
+      message: {
+        mailboxEmail: args.decoded.emailAddress,
+        historyId: args.event.historyId,
+        messageId: message.messageId,
+        threadId: message.threadId,
+        from: message.from,
+        to: message.to,
+        cc: message.cc,
+        subject: message.subject,
+        bodyText: message.bodyText,
+      },
+    }),
+  );
+  if (!relationshipJob.ok) {
+    log.warn("Failed to enqueue Gmail relationship memory refresh", {
+      watchStateId: args.state.id,
+      messageId: message.messageId,
+      error:
+        relationshipJob.error instanceof Error
+          ? relationshipJob.error.message
+          : String(relationshipJob.error),
+    });
   }
 
   let dispatched = 0;

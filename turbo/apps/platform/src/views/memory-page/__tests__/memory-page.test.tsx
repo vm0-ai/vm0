@@ -8,6 +8,10 @@ import {
   zeroMemoryActivityContract,
   type MemoryActivityResponse,
 } from "@vm0/api-contracts/contracts/zero-memory-activity";
+import {
+  zeroRelationshipsContract,
+  type RelationshipSearchResponse,
+} from "@vm0/api-contracts/contracts/zero-relationships";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { afterEach, describe, expect, it } from "vitest";
@@ -15,6 +19,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   click,
   detachedSetupPage,
+  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { nowDate } from "../../../__tests__/time.ts";
@@ -220,6 +225,131 @@ function memoryActivityPage(
   };
 }
 
+function relationshipSearchPage(
+  query: string | undefined,
+): RelationshipSearchResponse {
+  const relationships: RelationshipSearchResponse["relationships"] = [
+    {
+      id: "00000000-0000-4000-8000-000000000101",
+      entity: {
+        id: "00000000-0000-4000-8000-000000000102",
+        type: "person",
+        displayName: "Alice Lee",
+        primaryEmail: "alice@acme.com",
+        domain: "acme.com",
+      },
+      relationshipType: "Customer champion",
+      status: "active",
+      summary:
+        "Alice evaluates enterprise automation for Acme and is waiting on a security answer.",
+      lastInteractionAt: "2026-07-02T12:00:00.000Z",
+      items: [
+        {
+          id: "00000000-0000-4000-8000-000000000103",
+          kind: "open_loop",
+          text: "Send the security data-retention answer.",
+          confidence: 90,
+          lastSeenAt: "2026-07-02T12:00:00.000Z",
+          sources: [
+            {
+              id: "00000000-0000-4000-8000-000000000104",
+              provider: "gmail",
+              externalId: "gmail-message-1:open_loop:security",
+              threadId: "thread-1",
+              messageId: "gmail-message-1",
+              quote: "Can you send the retention answer?",
+              occurredAt: "2026-07-02T12:00:00.000Z",
+            },
+          ],
+        },
+      ],
+      recentInteractions: [
+        {
+          id: "00000000-0000-4000-8000-000000000105",
+          provider: "gmail",
+          externalId: "gmail-message-1",
+          threadId: "thread-1",
+          messageId: "gmail-message-1",
+          subject: "Security review",
+          snippet:
+            "Asked for security and retention details before the pilot expansion.",
+          occurredAt: "2026-07-02T12:00:00.000Z",
+        },
+      ],
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000201",
+      entity: {
+        id: "00000000-0000-4000-8000-000000000202",
+        type: "organization",
+        displayName: "Acme",
+        primaryEmail: null,
+        domain: "acme.com",
+      },
+      relationshipType: "Enterprise prospect",
+      status: "active",
+      summary:
+        "Acme is evaluating Zero for internal automation across support and operations.",
+      lastInteractionAt: "2026-07-02T12:00:00.000Z",
+      items: [
+        {
+          id: "00000000-0000-4000-8000-000000000203",
+          kind: "key_fact",
+          text: "Support and operations are the first pilot teams.",
+          confidence: 82,
+          lastSeenAt: "2026-07-01T12:00:00.000Z",
+          sources: [],
+        },
+      ],
+      recentInteractions: [],
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000301",
+      entity: {
+        id: "00000000-0000-4000-8000-000000000302",
+        type: "person",
+        displayName: "Mina Johnson",
+        primaryEmail: "mina@northstar.io",
+        domain: "northstar.io",
+      },
+      relationshipType: "Partner lead",
+      status: "active",
+      summary: "Mina coordinates partnership conversations for Northstar.",
+      lastInteractionAt: "2026-06-29T12:00:00.000Z",
+      items: [
+        {
+          id: "00000000-0000-4000-8000-000000000303",
+          kind: "open_loop",
+          text: "Share the partner pricing follow-up.",
+          confidence: 88,
+          lastSeenAt: "2026-06-29T12:00:00.000Z",
+          sources: [],
+        },
+      ],
+      recentInteractions: [],
+    },
+  ];
+
+  const normalized = query?.toLowerCase().trim();
+  return {
+    relationships: normalized
+      ? relationships.filter((relationship) => {
+          return [
+            relationship.entity.displayName,
+            relationship.entity.primaryEmail,
+            relationship.entity.domain,
+            relationship.relationshipType,
+            relationship.summary,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase()
+            .includes(normalized);
+        })
+      : relationships,
+  };
+}
+
 describe("memory page", () => {
   it("shows debug memory updates and browses raw files", async () => {
     context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
@@ -328,6 +458,80 @@ describe("memory page", () => {
     expect(
       screen.queryByTitle("Force-refresh memory summaries"),
     ).not.toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("tab").some((tab) => {
+        return tab.textContent?.trim() === "Relationships";
+      }),
+    ).toBeFalsy();
+  });
+
+  it("shows relationship memory when the relationship switch is enabled", async () => {
+    context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      expect(query.limit).toBe(7);
+      return respond(200, memoryActivityPage(query.cursor));
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, memoryDetailResponse());
+    });
+    context.mocks.api(
+      zeroRelationshipsContract.search,
+      ({ query, respond }) => {
+        return respond(200, relationshipSearchPage(query.q));
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.RelationshipMemory]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+    });
+
+    click(getTabByText("Relationships"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Customer champion - last touch Jul 2"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Send the security data-retention answer."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("This org only")).toBeInTheDocument();
+
+    click(getButtonContaining("Organizations"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Enterprise prospect - last touch Jul 2"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Support and operations are the first pilot teams."),
+    ).toBeInTheDocument();
+
+    click(getButtonContaining("All"));
+    await fill(
+      screen.getByPlaceholderText(
+        "Search people, companies, emails, or open loops",
+      ),
+      "northstar",
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Partner lead - last touch Jun 29"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Share the partner pricing follow-up."),
+    ).toBeInTheDocument();
   });
 
   it("shows empty memory activity and raw memory states", async () => {

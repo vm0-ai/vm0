@@ -29,6 +29,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   workflow: "agent:read",
   goal: ["goal:read", "goal:agent-result:write", "goal:user-control:write"],
   connector: "connector:read",
+  relationship: "relationship:read",
   // "schedule" and "automation" are deliberately absent: the removal stubs
   // stay out of token-scoped (agent) help but remain invokable and visible to
   // humans.
@@ -90,6 +91,14 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     description: "Check third-party service connections (GitHub, Slack, etc.)",
     load: async () => {
       return (await import("./commands/zero/connector")).zeroConnectorCommand;
+    },
+  },
+  {
+    name: "relationship",
+    description: "Query relationship memory",
+    load: async () => {
+      return (await import("./commands/zero/relationship"))
+        .zeroRelationshipCommand;
     },
   },
   {

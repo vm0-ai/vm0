@@ -150,6 +150,13 @@ const cronSummarizeMemoryResponseSchema = z.union([
   cronSummarizeMemorySummarizedResponseSchema,
 ]);
 
+const cronDrainRelationshipMemoryResponseSchema = z.object({
+  success: z.literal(true),
+  processed: z.number(),
+  failed: z.number(),
+  relationshipsUpdated: z.number(),
+});
+
 const cronRefreshSystemStoragePresignedUrlsResponseSchema = z.object({
   success: z.literal(true),
   due: z.number(),
@@ -369,6 +376,19 @@ export const cronSummarizeMemoryContract = c.router({
   },
 });
 
+export const cronDrainRelationshipMemoryContract = c.router({
+  drain: {
+    method: "GET",
+    path: "/api/cron/drain-relationship-memory",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronDrainRelationshipMemoryResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Drain pending relationship memory sync jobs",
+  },
+});
+
 export const cronRefreshSystemStoragePresignedUrlsContract = c.router({
   refresh: {
     method: "GET",
@@ -394,6 +414,8 @@ export type CronAggregateInsightsContract =
 export type CronAggregateModelStatsContract =
   typeof cronAggregateModelStatsContract;
 export type CronSummarizeMemoryContract = typeof cronSummarizeMemoryContract;
+export type CronDrainRelationshipMemoryContract =
+  typeof cronDrainRelationshipMemoryContract;
 export type CronRefreshSystemStoragePresignedUrlsContract =
   typeof cronRefreshSystemStoragePresignedUrlsContract;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
@@ -427,5 +449,6 @@ export {
   cronAggregateInsightsResponseSchema,
   cronAggregateModelStatsResponseSchema,
   cronSummarizeMemoryResponseSchema,
+  cronDrainRelationshipMemoryResponseSchema,
   cronRefreshSystemStoragePresignedUrlsResponseSchema,
 };

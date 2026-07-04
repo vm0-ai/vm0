@@ -92,6 +92,7 @@ import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
 import * as bankingSchema from "./schema/banking";
 import * as memoryChangeSummarySchema from "./schema/memory-change-summary";
 import * as memoryChangeItemSchema from "./schema/memory-change-item";
+import * as relationshipMemorySchema from "./schema/relationship-memory";
 import * as automationSchema from "./schema/automation";
 import * as gmailEventSchema from "./schema/gmail-event";
 import * as googleCalendarEventSchema from "./schema/google-calendar-event";
@@ -192,6 +193,7 @@ export const schema = {
   ...bankingSchema,
   ...memoryChangeSummarySchema,
   ...memoryChangeItemSchema,
+  ...relationshipMemorySchema,
   ...automationSchema,
   ...gmailEventSchema,
   ...googleCalendarEventSchema,

@@ -198,6 +198,12 @@ export {
   searchZeroChat,
 } from "./domains/zero-chat";
 
+// Domain modules - Zero Relationships
+export {
+  resolveZeroRelationship,
+  searchZeroRelationships,
+} from "./domains/zero-relationships";
+
 // Domain modules - Logs
 export {
   getSystemLog,

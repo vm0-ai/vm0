@@ -11,12 +11,22 @@ import {
   zeroMemoryDevRefreshContract,
   type MemoryDevRefreshResponse,
 } from "@vm0/api-contracts/contracts/zero-memory-dev-refresh";
+import {
+  zeroRelationshipsContract,
+  type RelationshipSearchResponse,
+} from "@vm0/api-contracts/contracts/zero-relationships";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 
-export type MemoryTab = "updates" | "raw";
+export type MemoryRelationshipFilter =
+  | "all"
+  | "people"
+  | "organizations"
+  | "open-loops";
+
+export type MemoryTab = "updates" | "relationships" | "raw";
 
 export const MEMORY_ACTIVITY_RECENT_LIMIT = 7;
 
@@ -41,6 +51,41 @@ export const memoryTab$ = computed((get) => {
 export const setMemoryTab$ = command(({ set }, tab: MemoryTab) => {
   set(internalMemoryTab$, tab);
 });
+
+const internalMemoryRelationshipSearch$ = state("");
+const internalMemoryRelationshipFilter$ =
+  state<MemoryRelationshipFilter>("all");
+const internalSelectedMemoryRelationshipId$ = state<string | null>(null);
+
+export const memoryRelationshipSearch$ = computed((get) => {
+  return get(internalMemoryRelationshipSearch$);
+});
+
+export const setMemoryRelationshipSearch$ = command(
+  ({ set }, search: string) => {
+    set(internalMemoryRelationshipSearch$, search);
+  },
+);
+
+export const memoryRelationshipFilter$ = computed((get) => {
+  return get(internalMemoryRelationshipFilter$);
+});
+
+export const setMemoryRelationshipFilter$ = command(
+  ({ set }, filter: MemoryRelationshipFilter) => {
+    set(internalMemoryRelationshipFilter$, filter);
+  },
+);
+
+export const selectedMemoryRelationshipId$ = computed((get) => {
+  return get(internalSelectedMemoryRelationshipId$);
+});
+
+export const setSelectedMemoryRelationshipId$ = command(
+  ({ set }, relationshipId: string) => {
+    set(internalSelectedMemoryRelationshipId$, relationshipId);
+  },
+);
 
 const memoryActivityReload$ = state(0);
 
@@ -84,6 +129,23 @@ export const memoryActivity$ = computed(
     const client = get(zeroClient$)(zeroMemoryActivityContract);
     const result = await accept(
       client.get({ query: { limit: MEMORY_ACTIVITY_RECENT_LIMIT } }),
+      [200],
+    );
+    return result.body;
+  },
+);
+
+export const memoryRelationships$ = computed(
+  async (get): Promise<RelationshipSearchResponse> => {
+    const search = get(memoryRelationshipSearch$).trim();
+    const client = get(zeroClient$)(zeroRelationshipsContract);
+    const result = await accept(
+      client.search({
+        query: {
+          q: search.length > 0 ? search : undefined,
+          limit: 20,
+        },
+      }),
       [200],
     );
     return result.body;
